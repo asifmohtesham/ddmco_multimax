@@ -116,10 +116,12 @@ class BatchResult {
 ///     — BarcodeAwareMixin resolves all focus nodes through the base type
 ///       without casting.  Both nodes disposed in disposeControllers().
 ///   feat(barcode): wire BarcodeAwareMixin
-///     — initBarcodeListeners() called in onInit(); mixin onClose() cancels
-///       stream subscriptions automatically via super.onClose() chain.
+///     — initBarcodeListeners() called in onInit(); mixin applied on each
+///       concrete subclass (SE, DN, PO, PR, PS) — NOT on this base class.
+///   fix(barcode): remove circular `with BarcodeAwareMixin` from base class
+///     — BarcodeAwareMixin is declared `on ItemSheetControllerBase`; applying
+///       it here created a recursive superinterface cycle (issue #22 Group 1).
 abstract class ItemSheetControllerBase extends GetxController
-    with BarcodeAwareMixin
     implements
         RackFieldWithBrowseDelegate,
         BatchNoFieldWithBrowseDelegate,
