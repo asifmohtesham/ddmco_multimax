@@ -15,6 +15,15 @@ class DataWedgeService extends GetxService {
   final Queue<String> _scanQueue = Queue<String>();
   bool _isProcessing = false;
 
+  /// Broadcast stream of non-empty scanned barcode strings.
+  ///
+  /// [BarcodeAwareMixin.initBarcodeListeners] subscribes to this stream.
+  /// The empty-string reset pulse emitted at the end of each
+  /// [_processQueue] cycle is filtered out so consumers only see real
+  /// scan values.
+  Stream<String> get barcodeStream =>
+      scannedCode.stream.where((v) => v.isNotEmpty);
+
   @override
   void onInit() {
     super.onInit();
