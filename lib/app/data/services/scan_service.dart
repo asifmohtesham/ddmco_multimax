@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/item_model.dart';
@@ -6,6 +7,36 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 
 class ScanService extends GetxService {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+
+  // ── barcodeStream ─────────────────────────────────────────────────────
+
+  /// Broadcast [StreamController] that emits camera-scan results.
+  ///
+  /// Parent form controllers (DeliveryNoteFormController,
+  /// StockEntryFormController, etc.) call [emitBarcode] from their
+  /// MobileScanner `onDetect` callback.  [BarcodeAwareMixin] subscribes
+  /// to [barcodeStream] to route those values into the active item sheet.
+  final StreamController<String> _barcodeController =
+      StreamController<String>.broadcast();
+
+  /// Stream of barcode strings emitted by the in-app camera scanner.
+  ///
+  /// [BarcodeAwareMixin.initBarcodeListeners] subscribes to this stream.
+  Stream<String> get barcodeStream => _barcodeController.stream;
+
+  /// Push [barcode] into [barcodeStream].
+  ///
+  /// Call from MobileScanner `onDetect` callbacks in parent form
+  /// controllers when a camera scan result should be routed through
+  /// [BarcodeAwareMixin] into the active item sheet.
+  void emitBarcode(String barcode) {
+    if (barcode.isEmpty) return;
+    if (!_barcodeController.isClosed) {
+      _barcodeController.add(barcode);
+    }
+  }
+
+  // ── processScan ───────────────────────────────────────────────────────
 
   Future<ScanResult> processScan(String barcode, {String? contextItemCode}) async {
     if (barcode.isEmpty) {
@@ -143,5 +174,11 @@ class ScanService extends GetxService {
     int lastDigit = int.parse(code[7]);
 
     return checksum == lastDigit;
+  }
+
+  @override
+  void onClose() {
+    _barcodeController.close();
+    super.onClose();
   }
 }
