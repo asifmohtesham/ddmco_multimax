@@ -79,8 +79,8 @@ class WarehousePicker {
                     itemBuilder: (_, i) {
                       final wh = filteredWarehouses[i];
                       final isSelected = isSource
-                          ? controller.selectedFromWarehouse.value == wh
-                          : controller.selectedToWarehouse.value == wh;
+                          ? controller.fromWarehouse.value == wh
+                          : controller.toWarehouse.value == wh;
                       return ListTile(
                         title: Text(wh),
                         trailing: isSelected
@@ -89,9 +89,9 @@ class WarehousePicker {
                             : null,
                         onTap: () {
                           if (isSource) {
-                            controller.selectedFromWarehouse.value = wh;
+                            controller.fromWarehouse.value = wh;
                           } else {
-                            controller.selectedToWarehouse.value = wh;
+                            controller.toWarehouse.value = wh;
                           }
                           // ── Commit 3: propagate to WO prefill items ──────────────────
                           // When this SE was opened from executeWorkOrder() the items

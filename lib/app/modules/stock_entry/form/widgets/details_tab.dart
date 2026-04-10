@@ -26,7 +26,7 @@ class DetailsTab extends StatelessWidget {
       padding: const EdgeInsets.all(16.0),
       child: Form(
         child: Obx(() {
-          final type = controller.selectedStockEntryType.value;
+          final type = controller.stockEntryType.value;
           final isMaterialIssue = type == 'Material Issue';
           final isEditable = entry.docstatus == 0;
 

@@ -33,7 +33,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           ? 'Loading...'
           : (entry.name?.isNotEmpty == true
               ? entry.name!
-              : 'New ${controller.selectedStockEntryType.value}');
+              : 'New ${controller.stockEntryType.value}');
 
       return PopScope(
         canPop: !controller.isDirty.value,

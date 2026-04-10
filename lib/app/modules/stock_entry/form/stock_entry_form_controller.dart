@@ -105,14 +105,14 @@ class StockEntryFormController extends GetxController
   var mrItemFilter = 'All'.obs;
 
   // ── Form fields ───────────────────────────────────────────────────────────────────────────────────
-  var selectedFromWarehouse    = RxnString();
-  var selectedToWarehouse      = RxnString();
+  var fromWarehouse    = RxnString();
+  var toWarehouse      = RxnString();
   final customReferenceNoController = TextEditingController();
   String _initialReferenceNo   = '';
 
   var stockEntryTypes      = <String>[].obs;
   var isFetchingTypes      = false.obs;
-  var selectedStockEntryType = 'Material Transfer'.obs;
+  var stockEntryType = 'Material Transfer'.obs;
 
   var warehouses          = <String>[].obs;
   var isFetchingWarehouses = false.obs;
@@ -288,15 +288,15 @@ class StockEntryFormController extends GetxController
       if (code.isNotEmpty) scanBarcode(code);
     });
 
-    ever(selectedFromWarehouse,    (_) => _markDirty());
-    ever(selectedToWarehouse,      (_) => _markDirty());
-    ever(selectedStockEntryType,   (_) => _markDirty());
+    ever(fromWarehouse,    (_) => _markDirty());
+    ever(toWarehouse,      (_) => _markDirty());
+    ever(stockEntryType,   (_) => _markDirty());
 
     customReferenceNoController.addListener(() {
       final current = customReferenceNoController.text;
       if (current != _initialReferenceNo) _markDirty();
       if (entrySource == StockEntrySource.manual &&
-          selectedStockEntryType.value == 'Material Issue' &&
+          stockEntryType.value == 'Material Issue' &&
           current.isNotEmpty) {
         if (current.startsWith('KX') || current.startsWith('MX')) {
           fetchPosUpload(current);
@@ -370,7 +370,7 @@ class StockEntryFormController extends GetxController
     final type = argStockEntryType    ?? 'Material Transfer';
     final ref  = argCustomReferenceNo ?? '';
 
-    selectedStockEntryType.value     = type;
+    stockEntryType.value     = type;
     customReferenceNoController.text = ref;
     _initialReferenceNo              = ref;
 
@@ -383,10 +383,10 @@ class StockEntryFormController extends GetxController
       final argToWarehouse   = Get.arguments?['toWarehouse']   as String?;
 
       if (argFromWarehouse != null && argFromWarehouse.isNotEmpty) {
-        selectedFromWarehouse.value = argFromWarehouse;
+        fromWarehouse.value = argFromWarehouse;
       }
       if (argToWarehouse != null && argToWarehouse.isNotEmpty) {
-        selectedToWarehouse.value = argToWarehouse;
+        toWarehouse.value = argToWarehouse;
       }
 
       final rawItems = Get.arguments?['items'] as List? ?? [];
@@ -423,11 +423,11 @@ class StockEntryFormController extends GetxController
         );
       }).toList();
 
-      if (selectedFromWarehouse.value == null && prefillItems.isNotEmpty) {
-        selectedFromWarehouse.value = prefillItems.first.sWarehouse;
+      if (fromWarehouse.value == null && prefillItems.isNotEmpty) {
+        fromWarehouse.value = prefillItems.first.sWarehouse;
       }
-      if (selectedToWarehouse.value == null && prefillItems.isNotEmpty) {
-        selectedToWarehouse.value = prefillItems.first.tWarehouse;
+      if (toWarehouse.value == null && prefillItems.isNotEmpty) {
+        toWarehouse.value = prefillItems.first.tWarehouse;
       }
     } else if (entrySource == StockEntrySource.materialRequest) {
       await _initMaterialRequestFlow(ref);
@@ -437,14 +437,14 @@ class StockEntryFormController extends GetxController
 
     stockEntry.value = StockEntry(
       name:          'New Stock Entry',
-      purpose:        selectedStockEntryType.value,
+      purpose:        stockEntryType.value,
       totalAmount:    0.0,
       postingDate:    DateFormat('yyyy-MM-dd').format(now),
       modified:       '',
       creation:       now.toString(),
       status:         'Draft',
       docstatus:      0,
-      stockEntryType: selectedStockEntryType.value,
+      stockEntryType: stockEntryType.value,
       postingTime:    DateFormat('HH:mm:ss').format(now),
       customTotalQty: 0.0,
       customReferenceNo: ref,
@@ -493,7 +493,7 @@ class StockEntryFormController extends GetxController
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'];
           if (data['material_request_type'] != null) {
-            selectedStockEntryType.value = data['material_request_type'];
+            stockEntryType.value = data['material_request_type'];
           }
           final items = data['items'] as List? ?? [];
           mrReferenceItems = items
@@ -524,9 +524,9 @@ class StockEntryFormController extends GetxController
         final entry = StockEntry.fromJson(response.data['data']);
         stockEntry.value = entry;
 
-        selectedStockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
-        selectedFromWarehouse.value  = entry.fromWarehouse;
-        selectedToWarehouse.value    = entry.toWarehouse;
+        stockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
+        fromWarehouse.value  = entry.fromWarehouse;
+        toWarehouse.value    = entry.toWarehouse;
 
         final ref = entry.customReferenceNo ?? '';
         _initialReferenceNo              = ref;
@@ -582,14 +582,14 @@ class StockEntryFormController extends GetxController
   // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────────────────
 
   bool get requiresSourceWarehouse {
-    final t = selectedStockEntryType.value;
+    final t = stockEntryType.value;
     return t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture' ||
         t == 'Material Issue';
   }
 
   bool get requiresTargetWarehouse {
-    final t = selectedStockEntryType.value;
+    final t = stockEntryType.value;
     return t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture' ||
         t == 'Material Receipt';
@@ -597,13 +597,13 @@ class StockEntryFormController extends GetxController
 
   bool enforceWarehouseBeforeScan() {
     if (requiresSourceWarehouse &&
-        (selectedFromWarehouse.value == null ||
-            selectedFromWarehouse.value!.isEmpty)) {
+        (fromWarehouse.value == null ||
+            fromWarehouse.value!.isEmpty)) {
       return true;
     }
     if (requiresTargetWarehouse &&
-        (selectedToWarehouse.value == null ||
-            selectedToWarehouse.value!.isEmpty)) {
+        (toWarehouse.value == null ||
+            toWarehouse.value!.isEmpty)) {
       return true;
     }
     return false;
@@ -611,15 +611,15 @@ class StockEntryFormController extends GetxController
 
   bool _validateHeaderBeforeScan() {
     if (requiresSourceWarehouse &&
-        (selectedFromWarehouse.value == null ||
-            selectedFromWarehouse.value!.isEmpty)) {
+        (fromWarehouse.value == null ||
+            fromWarehouse.value!.isEmpty)) {
       GlobalSnackbar.warning(
           message: 'Please set the Source Warehouse (Details tab) before scanning.');
       return false;
     }
     if (requiresTargetWarehouse &&
-        (selectedToWarehouse.value == null ||
-            selectedToWarehouse.value!.isEmpty)) {
+        (toWarehouse.value == null ||
+            toWarehouse.value!.isEmpty)) {
       GlobalSnackbar.warning(
           message: 'Please set the Target Warehouse (Details tab) before scanning.');
       return false;
@@ -632,8 +632,8 @@ class StockEntryFormController extends GetxController
     if (entry == null || entry.items.isEmpty) return;
 
     final newWarehouse = source
-        ? selectedFromWarehouse.value
-        : selectedToWarehouse.value;
+        ? fromWarehouse.value
+        : toWarehouse.value;
     if (newWarehouse == null || newWarehouse.isEmpty) return;
 
     final updated = entry.items.map((item) {
@@ -1196,16 +1196,16 @@ class StockEntryFormController extends GetxController
 
     if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
       final first = stockEntry.value!.items.first;
-      if (selectedFromWarehouse.value == null && first.sWarehouse != null) {
-        selectedFromWarehouse.value = first.sWarehouse;
+      if (fromWarehouse.value == null && first.sWarehouse != null) {
+        fromWarehouse.value = first.sWarehouse;
       }
-      if (selectedToWarehouse.value == null && first.tWarehouse != null) {
-        selectedToWarehouse.value = first.tWarehouse;
+      if (toWarehouse.value == null && first.tWarehouse != null) {
+        toWarehouse.value = first.tWarehouse;
       }
     }
-    if (selectedStockEntryType.value == 'Material Transfer') {
-      if (selectedFromWarehouse.value == null ||
-          selectedToWarehouse.value == null) {
+    if (stockEntryType.value == 'Material Transfer') {
+      if (fromWarehouse.value == null ||
+          toWarehouse.value == null) {
         GlobalSnackbar.error(
             message: 'Source and Target Warehouses are required');
         return;
@@ -1214,11 +1214,11 @@ class StockEntryFormController extends GetxController
 
     isSaving.value = true;
     final Map<String, dynamic> data = {
-      'stock_entry_type':   selectedStockEntryType.value,
+      'stock_entry_type':   stockEntryType.value,
       'posting_date':       stockEntry.value?.postingDate,
       'posting_time':       stockEntry.value?.postingTime,
-      'from_warehouse':     selectedFromWarehouse.value,
-      'to_warehouse':       selectedToWarehouse.value,
+      'from_warehouse':     fromWarehouse.value,
+      'to_warehouse':       toWarehouse.value,
       'custom_reference_no': customReferenceNoController.text,
       'modified':           stockEntry.value?.modified,
       if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)

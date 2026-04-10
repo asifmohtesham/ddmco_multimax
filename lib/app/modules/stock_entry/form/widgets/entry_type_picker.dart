@@ -90,7 +90,7 @@ class EntryTypePicker {
                             final type = filteredTypes[index];
                             final isSelected = type ==
                                 controller
-                                    .selectedStockEntryType.value;
+                                    .stockEntryType.value;
                             return ListTile(
                               title: Text(
                                 type,
@@ -116,7 +116,7 @@ class EntryTypePicker {
                                   : null,
                               onTap: () {
                                 controller
-                                    .selectedStockEntryType.value = type;
+                                    .stockEntryType.value = type;
                                 Navigator.of(ctx).pop();
                               },
                             );

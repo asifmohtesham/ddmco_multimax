@@ -25,7 +25,7 @@ class EntryTypeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final type = controller.selectedStockEntryType.value;
+      final type = controller.stockEntryType.value;
       final isMaterialIssue = type == 'Material Issue';
       final isMaterialReceipt = type == 'Material Receipt';
       final isMaterialTransfer =
@@ -87,7 +87,7 @@ class EntryTypeCard extends StatelessWidget {
               children: [
                 WarehouseColumn(
                   label: 'FROM',
-                  selectedValue: controller.selectedFromWarehouse.value,
+                  selectedValue: controller.fromWarehouse.value,
                   fallbackText:
                       isMaterialReceipt ? 'N/A' : 'Select Source',
                   isActive: isMaterialIssue || isMaterialTransfer,
@@ -103,7 +103,7 @@ class EntryTypeCard extends StatelessWidget {
                 ),
                 WarehouseColumn(
                   label: 'TO',
-                  selectedValue: controller.selectedToWarehouse.value,
+                  selectedValue: controller.toWarehouse.value,
                   fallbackText:
                       isMaterialIssue ? 'N/A' : 'Select Target',
                   isActive: isMaterialReceipt || isMaterialTransfer,

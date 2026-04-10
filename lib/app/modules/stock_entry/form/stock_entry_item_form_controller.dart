@@ -148,7 +148,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── Abstract overrides ─────────────────────────────────────────────────
   @override
-  String? get resolvedWarehouse => _parent.selectedFromWarehouse.value;
+  String? get resolvedWarehouse => _parent.fromWarehouse.value;
 
   @override bool get requiresBatch => true;
   @override bool get requiresRack  => false;
@@ -356,13 +356,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── DualRackDelegate: parent warehouse accessors ─────────────────────────
   @override
-  RxnString get selectedFromWarehouse => _parent.selectedFromWarehouse;
+  RxnString get selectedFromWarehouse => _parent.fromWarehouse;
 
   @override
-  RxnString get selectedToWarehouse => _parent.selectedToWarehouse;
+  RxnString get selectedToWarehouse => _parent.toWarehouse;
 
   @override
-  RxString get selectedStockEntryType => _parent.selectedStockEntryType;
+  RxString get selectedStockEntryType => _parent.stockEntryType;
 
   // ── Dual-rack actions ──────────────────────────────────────────────────────
   @override
@@ -531,7 +531,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── Whether this SE type requires a source rack ──────────────────────────
   bool get _requiresSourceRack {
-    final t = _parent.selectedStockEntryType.value;
+    final t = _parent.stockEntryType.value;
     return t == 'Material Issue' ||
         t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture';
@@ -887,8 +887,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final tgtRack    = isTargetRackValid.value ? targetRackController.text : null;
     final serial     = selectedSerial.value;
 
-    final sWh = itemSourceWarehouse.value ?? _parent.selectedFromWarehouse.value;
-    final tWh = itemTargetWarehouse.value ?? _parent.selectedToWarehouse.value;
+    final sWh = itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
+    final tWh = itemTargetWarehouse.value ?? _parent.toWarehouse.value;
 
     final rowId = editingItemName.value;
     if (rowId != null) {
