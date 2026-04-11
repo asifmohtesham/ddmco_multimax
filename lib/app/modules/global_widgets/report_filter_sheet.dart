@@ -61,6 +61,42 @@ class ReportFilterField {
   });
 }
 
+/// Describes one option within a [ReportFilterChipGroup].
+class ReportFilterChipOption {
+  final String value;  // stored value written to the controller
+  final String label;  // display text on the chip
+  final IconData? icon;
+
+  const ReportFilterChipOption({
+    required this.value,
+    required this.label,
+    this.icon,
+  });
+}
+
+/// Describes a group of mutually-exclusive [ChoiceChip]s rendered as a
+/// horizontal wrap inside [showReportFilterSheet].
+///
+/// Backed by a plain [TextEditingController] (empty string = no selection).
+/// Setting a chip writes its [ReportFilterChipOption.value] into the
+/// controller; tapping the selected chip again clears it (toggle-off).
+class ReportFilterChipGroup {
+  /// Key used in the controller map — must be unique across all fields and
+  /// chip groups passed to [showReportFilterSheet].
+  final String key;
+
+  /// Section heading drawn above the chip row.
+  final String label;
+
+  final List<ReportFilterChipOption> options;
+
+  const ReportFilterChipGroup({
+    required this.key,
+    required this.label,
+    required this.options,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helper: count active (non-empty) filters
 // ---------------------------------------------------------------------------
@@ -108,9 +144,12 @@ Future<void> showReportFilterSheet({
   required Map<String, TextEditingController> controllers,
   required VoidCallback onRun,
   VoidCallback? onClear,
-
-  /// Optional section breaks: map of field key → section label drawn above it.
   Map<String, String> sectionLabels = const {},
+  // ── NEW ──────────────────────────────────────────────────────────────────
+  /// Optional chip groups appended below [fields] in the sheet.
+  /// Each group's controller must be present in [controllers].
+  List<ReportFilterChipGroup> chipGroups = const [],
+  // ─────────────────────────────────────────────────────────────────────────
 }) async {
   await showModalBottomSheet(
     context: context,
@@ -124,6 +163,7 @@ Future<void> showReportFilterSheet({
       onRun:         onRun,
       onClear:       onClear,
       sectionLabels: sectionLabels,
+      chipGroups:    chipGroups,    // ← NEW
     ),
   );
 }
@@ -139,6 +179,7 @@ class _ReportFilterSheet extends StatelessWidget {
   final VoidCallback                       onRun;
   final VoidCallback?                      onClear;
   final Map<String, String>                sectionLabels;
+  final List<ReportFilterChipGroup>        chipGroups;
 
   const _ReportFilterSheet({
     required this.title,
@@ -147,6 +188,7 @@ class _ReportFilterSheet extends StatelessWidget {
     required this.onRun,
     this.onClear,
     this.sectionLabels = const {},
+    this.chipGroups    = const [],
   });
 
   @override
@@ -229,6 +271,7 @@ class _ReportFilterSheet extends StatelessWidget {
                   controller: scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                   children: [
+                    // ── text / date / browse fields (unchanged) ──────────────────
                     for (final field in fields) ...[
                       if (sectionLabels.containsKey(field.key))
                         _SheetSubheading(sectionLabels[field.key]!),
@@ -236,6 +279,17 @@ class _ReportFilterSheet extends StatelessWidget {
                       _FieldWidget(
                         field:      field,
                         controller: controllers[field.key]!,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ── ChoiceChip groups (NEW) ───────────────────────────────────
+                    for (final group in chipGroups) ...[
+                      _SheetSubheading(group.label),          // reuses existing heading widget
+                      const SizedBox(height: 6),
+                      _ChipGroupWidget(
+                        group:      group,
+                        controller: controllers[group.key]!,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -777,3 +831,89 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// _ChipGroupWidget — mutually-exclusive ChoiceChip row for a chip group
+// ---------------------------------------------------------------------------
+
+class _ChipGroupWidget extends StatefulWidget {
+  final ReportFilterChipGroup  group;
+  final TextEditingController  controller;
+
+  const _ChipGroupWidget({
+    required this.group,
+    required this.controller,
+  });
+
+  @override
+  State<_ChipGroupWidget> createState() => _ChipGroupWidgetState();
+}
+
+class _ChipGroupWidgetState extends State<_ChipGroupWidget> {
+  late String _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.controller.text;
+    widget.controller.addListener(_syncFromController);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncFromController);
+    super.dispose();
+  }
+
+  /// Keeps local state in sync when the controller is cleared externally
+  /// (e.g. when the user taps "Clear All Filters").
+  void _syncFromController() {
+    final v = widget.controller.text;
+    if (v != _selected) setState(() => _selected = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final option in widget.group.options)
+          ChoiceChip(
+            avatar: option.icon != null ? Icon(option.icon, size: 16) : null,
+            label: Text(option.label),
+            selected: _selected == option.value,
+            onSelected: (picked) {
+              setState(() {
+                // Toggle-off: tapping the active chip deselects it.
+                _selected = (picked && _selected != option.value)
+                    ? option.value
+                    : '';
+                widget.controller.text = _selected;
+              });
+            },
+            selectedColor: cs.secondaryContainer,
+            labelStyle: TextStyle(
+              color: _selected == option.value
+                  ? cs.onSecondaryContainer
+                  : cs.onSurface,
+              fontWeight: _selected == option.value
+                  ? FontWeight.w600
+                  : FontWeight.normal,
+            ),
+            side: BorderSide(
+              color: _selected == option.value
+                  ? cs.secondary
+                  : cs.outlineVariant,
+            ),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+      ],
+    );
+  }
+}
+

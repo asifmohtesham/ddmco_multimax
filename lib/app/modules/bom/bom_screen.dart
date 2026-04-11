@@ -6,6 +6,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/bom/bom_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 
@@ -249,15 +250,70 @@ class _BomScreenState extends State<BomScreen> {
   }
 
   void _showFilterSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _BomFilterSheet(controller: controller),
-    );
+    // Activate the DataWedge worker before the sheet opens.
+    controller.initBarcodeListener();
+
+    showReportFilterSheet(
+      context:     context,
+      title:       'BOM Search Filters',
+      fields:      [ /* 5 item code fields — unchanged */ ],
+      controllers: controller.filterControllers,
+
+      // ── NEW: chip groups appended below the scan-slot fields ──────────────
+      chipGroups: [
+        ReportFilterChipGroup(
+          key:   'is_active',
+          label: 'Status',
+          options: const [
+            ReportFilterChipOption(
+              value: '1',
+              label: 'Active',
+              icon:  Icons.check_circle_outline,
+            ),
+          ],
+        ),
+        ReportFilterChipGroup(
+          key:   'docstatus',
+          label: 'Document Status',
+          options: const [
+            ReportFilterChipOption(
+              value: '1',
+              label: 'Submitted',
+              icon:  Icons.verified_outlined,
+            ),
+          ],
+        ),
+      ],
+      // ─────────────────────────────────────────────────────────────────────
+
+      onRun: () {
+        for (final key in BomController.scanSlotKeys) {
+          final val = controller.filterControllers[key]!.text.trim();
+          if (val.isNotEmpty) {
+            controller.setFilter(key, val);
+          } else {
+            controller.removeFilter(key);
+          }
+        }
+        // Propagate chip selections — same pattern as scan slots.
+        final isActive = controller.filterControllers['is_active']!.text.trim();
+        final docStatus = controller.filterControllers['docstatus']!.text.trim();
+        if (isActive.isNotEmpty) {
+          controller.setFilter('is_active', isActive);
+        } else {
+          controller.removeFilter('is_active');
+        }
+        if (docStatus.isNotEmpty) {
+          controller.setFilter('docstatus', int.tryParse(docStatus) ?? docStatus);
+        } else {
+          controller.removeFilter('docstatus');
+        }
+      },
+      onClear: () {
+        controller.clearFilterControllers();
+        controller.clearFilters();
+      },
+    ).then((_) => controller.disposeBarcodeListener());
   }
 }
 
