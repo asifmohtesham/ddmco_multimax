@@ -908,8 +908,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   void onClose() {
     disposeBarcodeListener();   // BarcodeAwareMixin: safety-net disposal
     disposeAutoFillListener();
-    sourceRackController.dispose();
-    targetRackController.dispose();
     super.onClose();
   }
 
