@@ -137,7 +137,7 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///     referenced it — they were no-ops anyway since addSheetListeners() never
 ///     wires _resetSaveStateOnEdit to sourceRackController / targetRackController.
 class StockEntryItemFormController extends ItemSheetControllerBase
-    with SerialFieldMixin, AutoFillRackMixin, BarcodeListenerMixin
+    with SerialFieldMixin, AutoFillRackMixin, BarcodeListenerMixin, BarcodeAwareMixin
     implements DualRackDelegate {
 
   // ── Parent back-reference ──────────────────────────────────────────────────────
