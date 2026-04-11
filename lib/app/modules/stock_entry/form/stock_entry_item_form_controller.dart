@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
@@ -135,7 +136,7 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///     referenced it — they were no-ops anyway since addSheetListeners() never
 ///     wires _resetSaveStateOnEdit to sourceRackController / targetRackController.
 class StockEntryItemFormController extends ItemSheetControllerBase
-    with SerialFieldMixin, AutoFillRackMixin
+    with SerialFieldMixin, AutoFillRackMixin, BarcodeAwareMixin
     implements DualRackDelegate {
 
   // ── Parent back-reference ──────────────────────────────────────────────────────
@@ -902,6 +903,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  @override
+  void onClose() {
+    disposeBarcodeListener();   // BarcodeAwareMixin: safety-net disposal
+    disposeAutoFillListener();
+    sourceRackController.dispose();
+    targetRackController.dispose();
+    super.onClose();
+  }
+
   // ── validateRack override (uses rackStockMap cache) ──────────────────────
   @override
   Future<void> validateRack(String rack) async {
@@ -929,6 +939,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       ..addAll(map);
   }
 
+  @override
   void applyRackScan(String rackId) {
     if (sourceRackController.text.isEmpty) {
       sourceRackController.text = rackId;

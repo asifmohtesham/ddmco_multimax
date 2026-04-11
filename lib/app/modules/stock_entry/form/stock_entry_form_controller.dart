@@ -108,7 +108,6 @@ class StockEntryFormController extends GetxController
   var fromWarehouse    = RxnString();
   var toWarehouse      = RxnString();
   final customReferenceNoController = TextEditingController();
-  String _initialReferenceNo   = '';
 
   var stockEntryTypes      = <String>[].obs;
   var isFetchingTypes      = false.obs;
@@ -284,25 +283,20 @@ class StockEntryFormController extends GetxController
     fetchWarehouses();
     fetchStockEntryTypes();
 
+    // Doc-level scan worker: fires only when no item sheet is open.
+    // Sheet-level scans are owned by BarcodeAwareMixin on the child controller.
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
-      if (code.isNotEmpty) scanBarcode(code);
+      if (code.isNotEmpty && !isItemSheetOpen.value) scanBarcode(code);
     });
 
     ever(fromWarehouse,    (_) => _markDirty());
     ever(toWarehouse,      (_) => _markDirty());
     ever(stockEntryType,   (_) => _markDirty());
 
-    customReferenceNoController.addListener(() {
-      final current = customReferenceNoController.text;
-      if (current != _initialReferenceNo) _markDirty();
-      if (entrySource == StockEntrySource.manual &&
-          stockEntryType.value == 'Material Issue' &&
-          current.isNotEmpty) {
-        if (current.startsWith('KX') || current.startsWith('MX')) {
-          fetchPosUpload(current);
-        }
-      }
-    });
+    // customReferenceNoController listener removed.
+    // The reference number is read-only in the UI (set once from route arguments).
+    // fetchPosUpload() is called directly in _initNewStockEntry() and
+    // fetchStockEntry() where needed. No runtime listener is required.
   }
 
   @override
@@ -328,7 +322,7 @@ class StockEntryFormController extends GetxController
   @override
   Future<void> onScanResult(ScanResult result) async {
     if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
-      _handleSheetScan(result.rawCode);
+      // _handleSheetScan(result.rawCode);
       return;
     }
 
@@ -372,7 +366,6 @@ class StockEntryFormController extends GetxController
 
     stockEntryType.value     = type;
     customReferenceNoController.text = ref;
-    _initialReferenceNo              = ref;
 
     determineSource(type, ref);
 
@@ -529,7 +522,6 @@ class StockEntryFormController extends GetxController
         toWarehouse.value    = entry.toWarehouse;
 
         final ref = entry.customReferenceNo ?? '';
-        _initialReferenceNo              = ref;
         customReferenceNoController.text = ref;
 
         if (entry.stockEntryType == 'Material Issue' &&
@@ -997,6 +989,7 @@ class StockEntryFormController extends GetxController
   //   Resolves: #17 — barcode scan does not set field values in SE item form.
   Future<void> _openItemSheet(StockEntryItemFormController child) async {
     isItemSheetOpen.value = true;
+    child.initBarcodeListener();   // BarcodeAwareMixin: attach sheet-level worker
     try {
       await Get.bottomSheet(
         DraggableScrollableSheet(
@@ -1037,6 +1030,7 @@ class StockEntryFormController extends GetxController
         isScrollControlled: true,
       );
     } finally {
+      child.disposeBarcodeListener(); // BarcodeAwareMixin: detach before delete
       isItemSheetOpen.value = false;
       Get.delete<StockEntryItemFormController>();
     }
@@ -1050,10 +1044,9 @@ class StockEntryFormController extends GetxController
     if (barcode.isEmpty) return;
     if (isScanning.value) return;
 
-    if (isItemSheetOpen.value && Get.isBottomSheetOpen == true) {
-      _handleSheetScan(barcode);
-      return;
-    }
+    // Sheet-level scans are routed by BarcodeAwareMixin on the child controller.
+    // The _scanWorker guard (isItemSheetOpen check) means this method is never
+    // reached while a sheet is open. The branch below is removed.
 
     if (!_validateHeaderBeforeScan()) return;
 
@@ -1085,30 +1078,6 @@ class StockEntryFormController extends GetxController
     } finally {
       isScanning.value = false;
       barcodeController.clear();
-    }
-  }
-
-  void _handleSheetScan(String barcode) async {
-    barcodeController.clear();
-    final child = Get.find<StockEntryItemFormController>();
-    final contextItem = child.currentScannedEan.isNotEmpty
-        ? child.currentScannedEan
-        : currentItemCode;
-    final result =
-        await _scanService.processScan(barcode, contextItemCode: contextItem);
-
-    if (result.type == ScanType.rack && result.rackId != null) {
-      child.applyRackScan(result.rackId!);
-    } else if ((result.type == ScanType.batch || result.type == ScanType.item) &&
-        result.batchNo != null) {
-      child.batchController.text = result.batchNo!;
-      child.validateBatch(result.batchNo!);
-    } else {
-      if (child.needsRackScanFallback) {
-        child.applyRackScan(barcode);
-      } else {
-        GlobalSnackbar.error(message: 'Invalid Scan');
-      }
     }
   }
 
