@@ -433,8 +433,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// its own idempotent + guarded try/catch blocks (Rule 2).
   @override
   void disposeControllers() {
-    try { sourceRackController.dispose(); } catch (_) {}
-    try { targetRackController.dispose(); } catch (_) {}
+    // Rule 1 (tec_lifecycle_rules.dart): capture TECs into locals BEFORE
+    // calling super — super sets _controllersDisposed and removes listeners.
+    // Disposal is deferred to the next frame so the exit animation
+    // completes before _AnimatedState.didUpdateWidget fires addListener().
+    final TextEditingController srcCtrl = sourceRackController;
+    final TextEditingController tgtCtrl = targetRackController;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try { srcCtrl.dispose(); } catch (_) {}
+      try { tgtCtrl.dispose(); } catch (_) {}
+    });
     super.disposeControllers();
   }
 
