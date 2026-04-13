@@ -638,7 +638,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     try {
       final res = await _provider.getMaterialTransferForManufacture(
         name,
-        qty: wo.qty,
       );
       if (res.statusCode != 200 || res.data['message'] == null) {
         GlobalSnackbar.error(
@@ -815,7 +814,11 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       final payload = eligibleOps
           .map((op) => op.toJobCardPayload(qty: op.pendingQty(wo.qty)))
           .toList();
-      final res = await _provider.makeJobCard(name, payload);
+      final res = await _provider.makeJobCard(
+        workOrderName: name,
+        operations: payload,
+      );
+
       if (res.statusCode == 200) {
         await fetchLinkedJobCards();
         GlobalSnackbar.success(

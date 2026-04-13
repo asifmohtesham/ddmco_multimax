@@ -9,12 +9,14 @@ class WorkOrderProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    Map<String, dynamic>? orFilters,
   }) async {
     return _apiProvider.getDocumentList(
       'Work Order',
       limit: limit,
       limitStart: limitStart,
       filters: filters,
+      orFilters: orFilters,
       fields: [
         'name', 'production_item', 'item_name', 'bom_no',
         'qty', 'produced_qty', 'status', 'planned_start_date',
@@ -61,9 +63,9 @@ class WorkOrderProvider {
     required String workOrderName,
     required List<Map<String, dynamic>> operations,
   }) async {
-    return _apiProvider.callMethodPost(
+    return _apiProvider.dio.post(
       '/api/method/erpnext.manufacturing.doctype.work_order.work_order.make_job_card',
-      params: {
+      data: {
         'work_order': workOrderName,
         'operations': operations,
       },
@@ -87,5 +89,23 @@ class WorkOrderProvider {
         filters: {'item': itemCode, 'is_active': 1},
         fields: ['name', 'item', 'item_name', 'quantity'],
         limit: 50,
+      );
+
+  /// Fetch existing Stock Entries of type "Material Transfer for Manufacture"
+  /// for this Work Order — used to check if materials have been issued.
+  Future<Response> getMaterialTransferForManufacture(String workOrderName) async =>
+      _apiProvider.getDocumentList(
+        'Stock Entry',
+        filters: {
+          'work_order': workOrderName,
+          'stock_entry_type': 'Material Transfer for Manufacture',
+          'docstatus': 1,
+        },
+        fields: [
+          'name', 'work_order', 'stock_entry_type',
+          'posting_date', 'docstatus', 'total_amount',
+        ],
+        limit: 100,
+        orderBy: 'modified desc',
       );
 }

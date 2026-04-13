@@ -20,6 +20,8 @@ class ApiProvider {
 
   String get baseUrl => _baseUrl;
 
+  Dio get dio => _dio;
+
   ApiProvider() {
     _initDio();
   }

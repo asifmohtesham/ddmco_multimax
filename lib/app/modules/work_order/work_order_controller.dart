@@ -109,7 +109,6 @@ class WorkOrderController extends GetxController {
       final (:filters, :orFilters) = _buildSearchFilters();
       final response = await _provider.getWorkOrders(
         filters: filters,
-        orFilters: orFilters,
         limit: _pageSize,
         limitStart: _start,
       );
