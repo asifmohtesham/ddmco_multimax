@@ -736,20 +736,20 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         return;
       }
 
-      final operations = rawOps.map<Map<String, dynamic>>((op) => {
-        'name':        op['name'] ?? '',
-        'operation':   op['operation'] ?? '',
-        'workstation': op['workstation'] ?? '',
-        'qty':         currentWo.qty,
-        'pending_qty': currentWo.qty,
-        'sequence_id': op['sequence_id'] ?? 0,
-        'batch_size':  currentWo.qty,   // WorkOrder model has no batchSize field
-      }).toList();
-
-      await _provider.makeJobCard(
-        workOrderName: name,
-        operations: operations,
-      );
+      // final operations = rawOps.map<Map<String, dynamic>>((op) => {
+      //   'name':        op['name'] ?? '',
+      //   'operation':   op['operation'] ?? '',
+      //   'workstation': op['workstation'] ?? '',
+      //   'qty':         currentWo.qty,
+      //   'pending_qty': currentWo.qty,
+      //   'sequence_id': op['sequence_id'] ?? 0,
+      //   'batch_size':  currentWo.qty,   // WorkOrder model has no batchSize field
+      // }).toList();
+      //
+      // await _provider.makeJobCard(
+      //   workOrderName: name,
+      //   operations: operations,
+      // );
       GlobalSnackbar.success(message: 'Job Card(s) created successfully');
 
     } on DioException catch (e) {
