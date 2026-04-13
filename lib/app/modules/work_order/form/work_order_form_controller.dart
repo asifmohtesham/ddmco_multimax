@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
@@ -538,6 +540,124 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     markDirty();
   }
 
+  // ── Execute Work Order ────────────────────────────────────────────────────
+  //
+  // Sequence enforced by ERPNext:
+  //   1. Ensure a Job Card exists (create via make_job_card if needed).
+  //   2. Create Stock Entry with job_card field linked.
+  //   3. Submit the Stock Entry.
+  //
+  // Without step 1+2, update_work_order_qty() skips
+  // material_transferred_for_manufacturing (transfer_material_against="Job Card"
+  // guard) and the WO status never transitions to "In Process".
+
+  Future<void> executeWorkOrder() async {
+    if (!canExecute || isExecuting.value) return;
+    isExecuting.value = true;
+    try {
+      final wo = workOrder.value!;
+
+      // ── Step 1: Resolve Job Card ──────────────────────────────────────────
+      String? jobCardName = await _provider.fetchOpenJobCardName(name);
+
+      if (jobCardName == null) {
+        // No open Job Card — create one via ERPNext's make_job_card.
+        // Operations must come from the loaded WO operations list.
+        if (wo.operations.isEmpty) {
+          GlobalSnackbar.error(
+              message: 'No operations found on Work Order. '
+                  'Create Job Cards first from the Operations tab.');
+          return;
+        }
+        final operationsJson = wo.operations
+              .map((op) => {
+            'name': op.name,
+            'operation': op.operation,
+            'workstation': op.workstation,
+            'hour_rate': op.hourRate,
+            'time_in_mins': op.timeInMins,
+            'pending_qty': op.pendingQty(wo.qty),
+            'qty': op.pendingQty(wo.qty),
+          }).toList();
+        final jcRes = await _provider.makeJobCard(
+          workOrderName: name,
+          operations: operationsJson
+        );
+        if (jcRes.statusCode != 200) {
+          GlobalSnackbar.error(message: 'Failed to create Job Card');
+          return;
+        }
+        // Fetch the newly created Job Card.
+        jobCardName = await _provider.fetchOpenJobCardName(name);
+        if (jobCardName == null) {
+          GlobalSnackbar.error(message: 'Job Card created but could not be fetched');
+          return;
+        }
+      }
+
+      // ── Step 2: Build items from WO required_items ────────────────────────
+      final items = wo.requiredItems
+          .map((item) => {
+        'item_code': item.itemCode,
+        's_warehouse': wo.wip_warehouse ?? item.sourceWarehouse,
+        't_warehouse': wo.fg_warehouse,
+        'qty': item.requiredQty - item.transferredQty,
+        'uom': item.uom,
+        'stock_uom': item.stockUom,
+        'conversion_factor': 1,
+      })
+          .where((i) => (i['qty'] as double) > 0)
+          .toList();
+
+      if (items.isEmpty) {
+        GlobalSnackbar.info(message: 'All required items already transferred');
+        return;
+      }
+
+      // ── Step 3: Create Stock Entry linked to Job Card ─────────────────────
+      final sePayload = <String, dynamic>{
+        'stock_entry_type': 'Material Transfer for Manufacture',
+        'purpose': 'Material Transfer for Manufacture',
+        'work_order': name,
+        'job_card': jobCardName,           // ← critical linkage
+        'from_warehouse': wo.wip_warehouse,
+        'to_warehouse': wo.wip_warehouse,
+        'items': items,
+      };
+
+      final createRes = await _provider.createStockEntry(sePayload);
+      if (createRes.statusCode != 200 ||
+          createRes.data['data']?['name'] == null) {
+        GlobalSnackbar.error(message: 'Failed to create Stock Entry');
+        return;
+      }
+
+      final seName = createRes.data['data']['name'] as String;
+
+      // ── Step 4: Submit Stock Entry ────────────────────────────────────────
+      final submitRes = await _provider.submitStockEntry(seName);
+      if (submitRes.statusCode == 200) {
+        GlobalSnackbar.success(
+            message: 'Stock Entry $seName submitted — Work Order In Process');
+        await _fetchDocument();   // refresh WO status
+      } else {
+        GlobalSnackbar.error(
+            message: 'Stock Entry created ($seName) but submit failed. '
+                'Submit manually from the web.');
+      }
+    } on DioException catch (e) {
+      final ex = e.response?.data is Map
+          ? (e.response!.data['exception']?.toString() ?? '')
+          : '';
+      GlobalSnackbar.error(
+          message: ex.isNotEmpty ? ex.split(':').last.trim() : 'Execute failed');
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isExecuting.value = false;
+    }
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> save() async {
     if (isSaving.value || !canSave) return;
@@ -628,73 +748,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   }
 
   // ── Execute ───────────────────────────────────────────────────────────────
-  Future<void> executeWorkOrder() async {
-    if (!canExecute) return;
-
-    final wo = workOrder.value!;
-    isExecuting.value = true;
-
-    Map<String, dynamic> seDoc;
-    try {
-      final res = await _provider.getMaterialTransferForManufacture(
-        name,
-      );
-      if (res.statusCode != 200 || res.data['message'] == null) {
-        GlobalSnackbar.error(
-          message:
-              'Could not build Material Transfer — check BOM and warehouses.',
-        );
-        isExecuting.value = false;
-        return;
-      }
-      seDoc = Map<String, dynamic>.from(res.data['message'] as Map);
-    } on DioException catch (e) {
-      GlobalSnackbar.error(
-          message:
-              _extractErrorMessage(e, 'Failed to build Material Transfer'));
-      isExecuting.value = false;
-      return;
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
-      isExecuting.value = false;
-      return;
-    } finally {
-      isExecuting.value = false;
-    }
-
-    final rawItems = seDoc['items'];
-    final List<Map<String, dynamic>> prefillItems = rawItems is List
-        ? rawItems
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList()
-        : [];
-
-    if (prefillItems.isEmpty) {
-      GlobalSnackbar.error(
-        message:
-            'No items found for Material Transfer. '
-            'Verify the BOM has raw-material components and the WIP warehouse is set on the Work Order.',
-      );
-      return;
-    }
-
-    final String? fromWarehouse = seDoc['from_warehouse'] as String?;
-    final String? toWarehouse   = seDoc['to_warehouse']   as String?;
-
-    Get.toNamed(
-      AppRoutes.STOCK_ENTRY_FORM,
-      arguments: {
-        'mode': 'new',
-        'stockEntryType': 'Material Transfer for Manufacture',
-        'workOrderName': name,
-        'workOrder':      workOrder.value!.name,
-        'fromWarehouse': fromWarehouse,
-        'toWarehouse':   toWarehouse,
-        'items': prefillItems,
-      },
-    );
-  }
-
   Future<void> startAndCreateJobCards() async {
     final wo = workOrder.value;
     if (wo == null) return;
@@ -736,20 +789,20 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         return;
       }
 
-      // final operations = rawOps.map<Map<String, dynamic>>((op) => {
-      //   'name':        op['name'] ?? '',
-      //   'operation':   op['operation'] ?? '',
-      //   'workstation': op['workstation'] ?? '',
-      //   'qty':         currentWo.qty,
-      //   'pending_qty': currentWo.qty,
-      //   'sequence_id': op['sequence_id'] ?? 0,
-      //   'batch_size':  currentWo.qty,   // WorkOrder model has no batchSize field
-      // }).toList();
-      //
-      // await _provider.makeJobCard(
-      //   workOrderName: name,
-      //   operations: operations,
-      // );
+      final operations = rawOps.map<Map<String, dynamic>>((op) => {
+        'name':        op['name'] ?? '',
+        'operation':   op['operation'] ?? '',
+        'workstation': op['workstation'] ?? '',
+        'qty':         currentWo.qty,
+        'pending_qty': currentWo.qty,
+        'sequence_id': op['sequence_id'] ?? 0,
+        'batch_size':  currentWo.qty,   // WorkOrder model has no batchSize field
+      }).toList();
+
+      await _provider.makeJobCard(
+        workOrderName: name,
+        operations: operations,
+      );
       GlobalSnackbar.success(message: 'Job Card(s) created successfully');
 
     } on DioException catch (e) {

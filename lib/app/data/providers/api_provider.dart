@@ -20,8 +20,6 @@ class ApiProvider {
 
   String get baseUrl => _baseUrl;
 
-  Dio get dio => _dio;
-
   // Expose for providers that need raw Dio access (e.g. makeJobCard form-post)
   bool get isDioInitialised => _dioInitialised;
   Dio get dio => _dio;

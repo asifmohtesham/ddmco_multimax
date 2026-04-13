@@ -91,6 +91,31 @@ class WorkOrderProvider {
         limit: 50,
       );
 
+  /// Fetch the first open Job Card linked to a Work Order.
+  Future<String?> fetchOpenJobCardName(String workOrderName) async {
+    final res = await _apiProvider.getDocumentList(
+      'Job Card',
+      filters: {
+        'work_order': workOrderName,
+        'docstatus': 0,
+      },
+      fields: ['name'],
+      limit: 1,
+    );
+    if (res.statusCode == 200 && (res.data['data'] as List).isNotEmpty) {
+      return (res.data['data'] as List).first['name'] as String;
+    }
+    return null;
+  }
+
+  /// Create a Material Transfer for Manufacture Stock Entry linked to a Job Card.
+  Future<Response> createStockEntry(Map<String, dynamic> data) async =>
+      _apiProvider.createDocument('Stock Entry', data);
+
+  /// Submit a saved Stock Entry (docstatus 0 → 1).
+  Future<Response> submitStockEntry(String name) async =>
+      _apiProvider.updateDocument('Stock Entry', name, {'docstatus': 1});
+
   /// Fetch existing Stock Entries of type "Material Transfer for Manufacture"
   /// for this Work Order — used to check if materials have been issued.
   Future<Response> getMaterialTransferForManufacture(String workOrderName) async =>
