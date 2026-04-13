@@ -688,6 +688,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         'mode': 'new',
         'stockEntryType': 'Material Transfer for Manufacture',
         'workOrderName': name,
+        'workOrder':      workOrder.value!.name,
         'fromWarehouse': fromWarehouse,
         'toWarehouse':   toWarehouse,
         'items': prefillItems,

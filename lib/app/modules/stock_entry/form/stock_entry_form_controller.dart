@@ -264,11 +264,12 @@ class StockEntryFormController extends GetxController
     super.onInit();
     // Read route arguments here — after the route transition is complete —
     // so Get.arguments reliably reflects StockEntryForm's own arguments.
-    name                 = Get.arguments?['name']              ?? '';
-    mode                 = Get.arguments?['mode']              ?? 'view';
-    argStockEntryType    = Get.arguments?['stockEntryType']    as String?;
-    argCustomReferenceNo = Get.arguments?['customReferenceNo'] as String?;
-    argWorkOrderName     = Get.arguments?['workOrderName']     as String?;
+    name                               = Get.arguments?['name']              ?? '';
+    mode                               = Get.arguments?['mode']              ?? 'view';
+    argStockEntryType                  = Get.arguments?['stockEntryType']    as String?;
+    argCustomReferenceNo               = Get.arguments?['customReferenceNo'] as String?;
+    argWorkOrderName                   = Get.arguments?['workOrderName']     as String?;
+    final String? argWorkOrder         = Get.arguments?['workOrder'];
 
     initScanWiring();
     _initDependencies();
@@ -429,20 +430,21 @@ class StockEntryFormController extends GetxController
     }
 
     stockEntry.value = StockEntry(
-      name:          'New Stock Entry',
-      purpose:        stockEntryType.value,
-      totalAmount:    0.0,
-      postingDate:    DateFormat('yyyy-MM-dd').format(now),
-      modified:       '',
-      creation:       now.toString(),
-      status:         'Draft',
-      docstatus:      0,
-      stockEntryType: stockEntryType.value,
-      postingTime:    DateFormat('HH:mm:ss').format(now),
-      customTotalQty: 0.0,
-      customReferenceNo: ref,
-      currency:       'AED',
-      items:          prefillItems,
+      name:               'New Stock Entry',
+      purpose:            stockEntryType.value,
+      totalAmount:        0.0,
+      postingDate:        DateFormat('yyyy-MM-dd').format(now),
+      modified:           '',
+      creation:           now.toString(),
+      status:             'Draft',
+      docstatus:          0,
+      stockEntryType:     stockEntryType.value,
+      postingTime:        DateFormat('HH:mm:ss').format(now),
+      customTotalQty:     0.0,
+      customReferenceNo:  ref,
+      workOrder:          argWorkOrderName,
+      currency:           'AED',
+      items:              prefillItems,
     );
 
     for (final item in prefillItems) {
@@ -1190,6 +1192,8 @@ class StockEntryFormController extends GetxController
       'to_warehouse':       toWarehouse.value,
       'custom_reference_no': customReferenceNoController.text,
       'modified':           stockEntry.value?.modified,
+      if ((stockEntry.value?.workOrder ?? '').isNotEmpty)
+        'work_order': stockEntry.value!.workOrder,
       if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)
         'work_order': argWorkOrderName,
     };

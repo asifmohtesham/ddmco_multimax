@@ -17,6 +17,7 @@ class StockEntry {
   final String? toWarehouse;
   final double? customTotalQty;
   final String? customReferenceNo;
+  final String? workOrder;
   final String currency;
   final List<StockEntryItem> items;
 
@@ -37,6 +38,7 @@ class StockEntry {
     this.toWarehouse,
     this.customTotalQty,
     this.customReferenceNo,
+    this.workOrder,
     required this.currency,
     required this.items,
   });
@@ -63,6 +65,7 @@ class StockEntry {
       toWarehouse: json['to_warehouse']?.toString(),
       customTotalQty: _parseDoubleNullable(json['custom_total_qty']),
       customReferenceNo: json['custom_reference_no']?.toString(),
+      workOrder: json['work_order']?.toString(),
       currency: json['currency']?.toString() ?? 'AED',
       items: items,
     );
@@ -76,6 +79,7 @@ class StockEntry {
       'from_warehouse': fromWarehouse,
       'to_warehouse': toWarehouse,
       'custom_reference_no': customReferenceNo,
+      'work_order': workOrder,
       'items': items.map((i) => i.toJson()).toList(),
     };
   }
