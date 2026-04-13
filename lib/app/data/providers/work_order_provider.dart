@@ -9,27 +9,16 @@ class WorkOrderProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
-    Map<String, dynamic>? orFilters,
   }) async {
     return _apiProvider.getDocumentList(
       'Work Order',
       limit: limit,
       limitStart: limitStart,
       filters: filters,
-      orFilters: orFilters,
       fields: [
-        'name',
-        'production_item',
-        'item_name',
-        'bom_no',
-        'qty',
-        'produced_qty',
-        'status',
-        'planned_start_date',
-        'docstatus',
-        'modified',
-        'wip_warehouse',
-        'fg_warehouse',
+        'name', 'production_item', 'item_name', 'bom_no',
+        'qty', 'produced_qty', 'status', 'planned_start_date',
+        'docstatus', 'modified', 'wip_warehouse', 'fg_warehouse',
       ],
       orderBy: 'modified desc',
     );
@@ -41,40 +30,15 @@ class WorkOrderProvider {
   Future<Response> createWorkOrder(Map<String, dynamic> data) async =>
       _apiProvider.createDocument('Work Order', data);
 
-  Future<Response> updateWorkOrder(
-          String name, Map<String, dynamic> data) async =>
+  Future<Response> updateWorkOrder(String name, Map<String, dynamic> data) async =>
       _apiProvider.updateDocument('Work Order', name, data);
 
-  /// Fetch BOM details (bom_no, wip_warehouse, fg_warehouse, item_name)
-  /// from the BOM document to auto-populate the form.
-  Future<Response> getBom(String bomNo) async =>
-      _apiProvider.getDocument('BOM', bomNo);
-
-  /// Search BOMs filtered by item code for the typeahead picker.
-  Future<Response> searchBoms(String itemCode) async =>
-      _apiProvider.getDocumentList(
-        'BOM',
-        filters: {'item': itemCode, 'is_active': 1, 'is_default': 1},
-        fields: ['name', 'item', 'item_name', 'quantity'],
-        limit: 20,
-      );
-
-  /// Get all active BOMs for an item (for when there is no default).
-  Future<Response> getBomsForItem(String itemCode) async =>
-      _apiProvider.getDocumentList(
-        'BOM',
-        filters: {'item': itemCode, 'is_active': 1},
-        fields: ['name', 'item', 'item_name', 'quantity'],
-        limit: 50,
-      );
-
-  // ── Submit & Job Card ───────────────────────────────────────────────────
-
-  /// Submit a Work Order by setting docstatus to 1.
+  /// Submit the Work Order (docstatus = 1).
+  /// ERPNext on_submit hook auto-creates Job Cards when the BOM has operations.
   Future<Response> submitWorkOrder(String name) async =>
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
 
-  /// Fetch existing Job Cards for this Work Order.
+  /// Fetch existing Job Cards for a Work Order.
   Future<Response> getJobCards(String workOrderName) async =>
       _apiProvider.getDocumentList(
         'Job Card',
@@ -89,10 +53,10 @@ class WorkOrderProvider {
         orderBy: 'modified desc',
       );
 
-  /// Only call this when [getJobCards] returns an empty list.
-  /// Uses POST + JSON body so Frappe correctly deserialises the
-  /// nested `operations` list — GET query-string notation is NOT
-  /// supported for array/dict arguments by frappe.form_dict.
+  /// Fallback: create Job Cards manually via POST+JSON body.
+  /// Only call when getJobCards() returns an empty list after submit.
+  /// GET with query-string notation is NOT supported by frappe.form_dict
+  /// for nested list/dict arguments — must be POST with JSON body.
   Future<Response> makeJobCard({
     required String workOrderName,
     required List<Map<String, dynamic>> operations,
@@ -106,46 +70,22 @@ class WorkOrderProvider {
     );
   }
 
-  // ── Execute: Material Transfer for Manufacture ──────────────────────────
+  Future<Response> getBom(String bomNo) async =>
+      _apiProvider.getDocument('BOM', bomNo);
 
-  /// Ask ERPNext to build a pre-filled Material Transfer for Manufacture
-  /// Stock Entry for [workOrderName].
-  Future<Response> getMaterialTransferForManufacture(
-    String workOrderName, {
-    required double qty,
-  }) async =>
-      _apiProvider.callMethod(
-        'erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry',
-        params: {
-          'work_order_id': workOrderName,
-          'purpose': 'Material Transfer for Manufacture',
-          'qty': qty,
-        },
+  Future<Response> searchBoms(String itemCode) async =>
+      _apiProvider.getDocumentList(
+        'BOM',
+        filters: {'item': itemCode, 'is_active': 1, 'is_default': 1},
+        fields: ['name', 'item', 'item_name', 'quantity'],
+        limit: 20,
       );
 
-  /// Save a pre-filled Stock Entry document returned by
-  /// [getMaterialTransferForManufacture] (or any other SE builder).
-  Future<Response> saveStockEntry(Map<String, dynamic> data) async =>
-      _apiProvider.createDocument('Stock Entry', data);
-
-  /// Submit a saved Stock Entry (docstatus 0 → 1).
-  Future<Response> submitStockEntry(String stockEntryName) async =>
-      _apiProvider.updateDocument(
-        'Stock Entry',
-        stockEntryName,
-        {'docstatus': 1},
-      );
-
-  /// Create Job Cards for the selected operations on a submitted Work Order.
-  Future<Response> makeJobCard(
-    String workOrderName,
-    List<Map<String, dynamic>> operations,
-  ) async =>
-      _apiProvider.callMethod(
-        'erpnext.manufacturing.doctype.work_order.work_order.make_job_card',
-        params: {
-          'work_order': workOrderName,
-          'operations': operations,
-        },
+  Future<Response> getBomsForItem(String itemCode) async =>
+      _apiProvider.getDocumentList(
+        'BOM',
+        filters: {'item': itemCode, 'is_active': 1},
+        fields: ['name', 'item', 'item_name', 'quantity'],
+        limit: 50,
       );
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
@@ -702,52 +702,64 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
 
     isSaving.value = true;
     try {
-      // Step 1: Submit the Work Order
+      // Step 1: Submit (docstatus = 1) — on_submit auto-creates Job Cards
       final submitRes = await _provider.submitWorkOrder(name);
       if (submitRes.statusCode != 200) {
         GlobalSnackbar.error(message: 'Failed to submit Work Order');
         return;
       }
-      await _fetchDocument(); // refresh local state (docstatus = 1)
+      await _fetchDocument();
 
-      // Step 2: Check whether on_submit already created Job Cards
+      // Step 2: Check if on_submit already created Job Cards
       final existingRes = await _provider.getJobCards(name);
       final existing = (existingRes.data?['data'] as List?) ?? [];
       if (existing.isNotEmpty) {
-        // ✅ ERPNext created them automatically — nothing more to do.
         GlobalSnackbar.success(
           message: 'Work Order submitted. ${existing.length} Job Card(s) ready.',
         );
         return;
       }
 
-      // Step 3: No cards yet — create manually via POST JSON body
+      // Step 3: No cards — fetch BOM operations and create via POST JSON body
       final currentWo = workOrder.value!;
-      final operations = (currentWo.operations ?? []).map((op) => {
-        'name':         op.name,
-        'operation':    op.operation,
-        'workstation':  op.workstation,
-        'qty':          currentWo.qty,
-        'pending_qty':  currentWo.qty,
-        'sequence_id':  op.sequenceId ?? 0,
-        'batch_size':   currentWo.batchSize ?? currentWo.qty,
-      }).toList();
-
-      if (operations.isEmpty) {
-        GlobalSnackbar.info(message: 'No operations found on BOM to create Job Cards');
+      Response bomRes;
+      try {
+        bomRes = await _provider.getBom(currentWo.bomNo);
+      } catch (_) {
+        GlobalSnackbar.error(message: 'Could not load BOM operations');
         return;
       }
+
+      final bomData = bomRes.data?['data'];
+      final rawOps = (bomData?['operations'] as List?) ?? [];
+      if (rawOps.isEmpty) {
+        GlobalSnackbar.info(message: 'No operations on BOM — Job Cards not required');
+        return;
+      }
+
+      final operations = rawOps.map<Map<String, dynamic>>((op) => {
+        'name':        op['name'] ?? '',
+        'operation':   op['operation'] ?? '',
+        'workstation': op['workstation'] ?? '',
+        'qty':         currentWo.qty,
+        'pending_qty': currentWo.qty,
+        'sequence_id': op['sequence_id'] ?? 0,
+        'batch_size':  currentWo.qty,   // WorkOrder model has no batchSize field
+      }).toList();
 
       await _provider.makeJobCard(
         workOrderName: name,
         operations: operations,
       );
       GlobalSnackbar.success(message: 'Job Card(s) created successfully');
+
     } on DioException catch (e) {
       final msg = (e.response?.data is Map)
-          ? (e.response!.data['exception']?.toString().split(':').last.trim() ?? 'Error')
+          ? (e.response!.data['exception']?.toString().split(':').last.trim() ?? 'Request failed')
           : 'Request failed (${e.response?.statusCode})';
       GlobalSnackbar.error(message: msg);
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isSaving.value = false;
     }
@@ -761,11 +773,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     if (ops.isEmpty || isCreatingJobCards.value) return;
     isCreatingJobCards.value = true;
     try {
-      final payload = ops.map((op) {
+      final operations = ops.map((op) {
         final qty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
         return op.toJobCardPayload(qty: qty);
       }).toList();
-      final res = await _provider.makeJobCard(name, payload);
+      final res = await _provider.makeJobCard(
+        workOrderName: name,
+        operations: operations,
+      );
       if (res.statusCode == 200) {
         await fetchLinkedJobCards();
         GlobalSnackbar.success(
