@@ -22,10 +22,11 @@ class WorkOrder {
   final String bomNo;
   final double qty;
   final double producedQty;
+  final double? materialTransferredForManufacturing;
   final String status;
   final String plannedStartDate;
   final String? expectedEndDate;
-  final String? wip_warehouse;
+  final String? wipWarehouse;
   final String? fg_warehouse;
   final String? description;
   final String? modified;
@@ -60,10 +61,11 @@ class WorkOrder {
     required this.bomNo,
     required this.qty,
     required this.producedQty,
+    this.materialTransferredForManufacturing,
     required this.status,
     required this.plannedStartDate,
     this.expectedEndDate,
-    this.wip_warehouse,
+    this.wipWarehouse,
     this.fg_warehouse,
     this.description,
     this.modified,
@@ -82,10 +84,11 @@ class WorkOrder {
       bomNo:           json['bom_no']            ?? '',
       qty:             (json['qty']              as num?)?.toDouble() ?? 0.0,
       producedQty:     (json['produced_qty']     as num?)?.toDouble() ?? 0.0,
+      materialTransferredForManufacturing: (json['material_transferred_for_manufacturing'] as num?)?.toDouble(),
       status:          json['status']            ?? 'Draft',
       plannedStartDate: json['planned_start_date'] ?? '',
       expectedEndDate: json['expected_end_date'],
-      wip_warehouse:   json['wip_warehouse'],
+      wipWarehouse:    json['wip_warehouse'],
       fg_warehouse:    json['fg_warehouse'],
       description:     json['description'],
       modified:        json['modified'],
@@ -110,7 +113,7 @@ class WorkOrder {
     'qty':             qty,
     'planned_start_date': plannedStartDate,
     if (expectedEndDate != null) 'expected_end_date': expectedEndDate,
-    if (wip_warehouse   != null) 'wip_warehouse':     wip_warehouse,
+    if (wipWarehouse    != null) 'wip_warehouse':     wipWarehouse,
     if (fg_warehouse    != null) 'fg_warehouse':      fg_warehouse,
     if (description     != null) 'description':       description,
     'docstatus': docstatus,

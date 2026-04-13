@@ -41,6 +41,8 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final isFetchingBom = false.obs;
   final isFetchingWarehouses = false.obs;
   final isFetchingItems = false.obs;
+  final isCheckingTransfer = false.obs;
+  final hasMaterialTransferSubmitted = false.obs;
 
   // ── Operations state ──────────────────────────────────────────────────────
   final isSubmitting = false.obs;
@@ -133,6 +135,10 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         !isCreatingJobCards.value;
   }
 
+  // "Create Job Cards" is only unlocked after a submitted
+  // Material Transfer for Manufacture Stock Entry exists for this WO.
+  // ERP requires transfer_material_against = "Job Card" WOs to have
+  // material transferred (via a linked SE) before Job Cards can be created.
   bool get canCreateJobCards {
     final wo = workOrder.value;
     if (wo == null || wo.docstatus != 1) return false;
@@ -301,6 +307,24 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
+  // Checks whether at least one submitted "Material Transfer for Manufacture"
+  // Stock Entry exists for this Work Order.
+  // Uses material_transferred_for_manufacturing from the WO itself —
+  // ERP sets this > 0 only after a linked SE is submitted — so no
+  // extra API call is needed.
+  void _checkMaterialTransferSubmitted() {
+    final wo = workOrder.value;
+    if (wo == null) {
+      hasMaterialTransferSubmitted.value = false;
+      return;
+    }
+    // material_transferred_for_manufacturing is updated by ERPNext's
+    // update_work_order_qty() on SE submit. If it is > 0, at least one
+    // Material Transfer SE has been submitted for this WO.
+    hasMaterialTransferSubmitted.value =
+        (wo.materialTransferredForManufacturing ?? 0) > 0;
+  }
+
   Future<void> fetchLinkedJobCards() async {
     if (mode == 'new') return;
     isFetchingLinkedCards.value = true;
@@ -328,7 +352,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         wo.qty % 1 == 0 ? wo.qty.toInt().toString() : wo.qty.toString();
     plannedStartController.text = wo.plannedStartDate;
     expectedEndController.text = wo.expectedEndDate ?? '';
-    wipWarehouseController.text = wo.wip_warehouse ?? '';
+    wipWarehouseController.text = wo.wipWarehouse ?? '';
     fgWarehouseController.text = wo.fg_warehouse ?? '';
     descriptionController.text = wo.description ?? '';
     _validateForm();
@@ -599,11 +623,13 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       final items = wo.requiredItems
           .map((item) => {
         'item_code': item.itemCode,
-        's_warehouse': wo.wip_warehouse ?? item.sourceWarehouse,
-        't_warehouse': wo.fg_warehouse,
+        's_warehouse': item.sourceWarehouse?.isNotEmpty == true
+            ? item.sourceWarehouse          // raw-material source
+            : wo.wipWarehouse,             // fallback
+        't_warehouse': wo.wipWarehouse,
         'qty': item.requiredQty - item.transferredQty,
-        'uom': item.uom,
-        'stock_uom': item.stockUom,
+        if (item.uom?.isNotEmpty == true)       'uom':         item.uom,
+        if (item.stockUom?.isNotEmpty == true)  'stock_uom':   item.stockUom,
         'conversion_factor': 1,
       })
           .where((i) => (i['qty'] as double) > 0)
@@ -620,8 +646,8 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
         'purpose': 'Material Transfer for Manufacture',
         'work_order': name,
         'job_card': jobCardName,           // ← critical linkage
-        'from_warehouse': wo.wip_warehouse,
-        'to_warehouse': wo.wip_warehouse,
+        'from_warehouse': wo.wipWarehouse,
+        'to_warehouse': wo.wipWarehouse,
         'items': items,
       };
 
@@ -717,14 +743,19 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
+  // ── Computed: job card presence guard ────────────────────────────────────
+  /// True when at least one linked Job Card has been created for this WO.
+  /// Used by the UI to gate "Execute Work Order" visibility.
+  bool get hasLinkedJobCards => linkedJobCards.isNotEmpty;
+
   // ── Submit ────────────────────────────────────────────────────────────────
   Future<void> submitWorkOrder() async {
     if (!canSubmit) return;
     final confirmed = await GlobalDialog.confirm(
       title: 'Submit Work Order',
       message:
-          'Submitting will lock this Work Order for editing and automatically '
-          'create Job Cards for all pending operations. Continue?',
+      'Submitting will lock this Work Order for editing. '
+          'You can create Job Cards from the form after submitting. Continue?',
       confirmText: 'Submit',
     );
     if (confirmed != true) return;
@@ -732,9 +763,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     try {
       final res = await _provider.submitWorkOrder(name);
       if (res.statusCode == 200) {
-        await _fetchDocument();
+        await _fetchDocument();   // also calls fetchLinkedJobCards() internally
         GlobalSnackbar.success(message: 'Work Order $name submitted');
-        await _autoCreateJobCards();
+        // _autoCreateJobCards() removed: ERP creates Job Cards
       } else {
         GlobalSnackbar.error(message: 'Failed to submit Work Order');
       }

@@ -440,12 +440,15 @@ class _WorkOrderForm extends StatelessWidget {
               );
             }),
 
-            // [3] Execute — shown when submitted + status is "Not Started"
+            // [3] Execute — shown ONLY when submitted + status "Not Started"
+            // AND at least one Job Card already exists for this WO.
             Obx(() {
-              final wo         = controller.workOrder.value;
-              final executing  = controller.isExecuting.value;
-              final canExecute = wo?.docstatus == 1 &&
+              final wo              = controller.workOrder.value;
+              final executing       = controller.isExecuting.value;
+              final hasJobCards     = controller.linkedJobCards.isNotEmpty;
+              final canExecute      = wo?.docstatus == 1 &&
                   wo?.status == 'Not Started' &&
+                  hasJobCards &&
                   !executing &&
                   !controller.isSubmitting.value &&
                   !controller.isCreatingJobCards.value;
@@ -455,8 +458,7 @@ class _WorkOrderForm extends StatelessWidget {
                 child: SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed:
-                        executing ? null : controller.executeWorkOrder,
+                    onPressed: executing ? null : controller.executeWorkOrder,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       backgroundColor: Colors.orange.shade700,
@@ -464,15 +466,13 @@ class _WorkOrderForm extends StatelessWidget {
                     ),
                     icon: executing
                         ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.play_circle_outline),
                     label: Text(
-                      executing
-                          ? 'Executing…'
-                          : 'Execute Work Order',
+                      executing ? 'Executing...' : 'Execute Work Order',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ),
@@ -481,13 +481,18 @@ class _WorkOrderForm extends StatelessWidget {
             }),
 
             // [4] Create Job Cards — shown when submitted + pending ops exist
+            // AND no Job Cards have been created yet.
             Obx(() {
               final wo              = controller.workOrder.value;
               final creatingCards   = controller.isCreatingJobCards.value;
               final woQty           = wo?.qty ?? 0;
               final hasPendingOps   = controller.operations.any(
-                  (op) => op.pendingQty(woQty) > 0);
-              final canCreateCards  = wo?.docstatus == 1 && hasPendingOps;
+                      (op) => op.pendingQty(woQty) > 0);
+              final hasJobCards     = controller.linkedJobCards.isNotEmpty;
+              // Show only when: submitted, has pending ops, and no JC created yet.
+              final canCreateCards  = wo?.docstatus == 1 &&
+                  hasPendingOps &&
+                  !hasJobCards;                          // ← NEW guard
               if (!canCreateCards) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -497,26 +502,23 @@ class _WorkOrderForm extends StatelessWidget {
                     onPressed: creatingCards
                         ? null
                         : () => Get.bottomSheet(
-                              JobCardCreationSheet(
-                                  controller: controller),
-                              isScrollControlled: true,
-                              backgroundColor: Colors.transparent,
-                            ),
+                      JobCardCreationSheet(controller: controller),
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                    ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       side: BorderSide(color: cs.primary, width: 1.5),
                     ),
                     icon: creatingCards
                         ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: cs.primary))
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: cs.primary))
                         : const Icon(Icons.playlist_add_check_outlined),
                     label: Text(
-                      creatingCards
-                          ? 'Creating Job Cards…'
-                          : 'Create Job Cards',
+                      creatingCards ? 'Creating Job Cards...' : 'Create Job Cards',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ),
