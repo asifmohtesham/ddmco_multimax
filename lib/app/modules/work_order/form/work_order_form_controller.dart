@@ -696,6 +696,63 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     );
   }
 
+  Future<void> startAndCreateJobCards() async {
+    final wo = workOrder.value;
+    if (wo == null) return;
+
+    isSaving.value = true;
+    try {
+      // Step 1: Submit the Work Order
+      final submitRes = await _provider.submitWorkOrder(name);
+      if (submitRes.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to submit Work Order');
+        return;
+      }
+      await _fetchDocument(); // refresh local state (docstatus = 1)
+
+      // Step 2: Check whether on_submit already created Job Cards
+      final existingRes = await _provider.getJobCards(name);
+      final existing = (existingRes.data?['data'] as List?) ?? [];
+      if (existing.isNotEmpty) {
+        // ✅ ERPNext created them automatically — nothing more to do.
+        GlobalSnackbar.success(
+          message: 'Work Order submitted. ${existing.length} Job Card(s) ready.',
+        );
+        return;
+      }
+
+      // Step 3: No cards yet — create manually via POST JSON body
+      final currentWo = workOrder.value!;
+      final operations = (currentWo.operations ?? []).map((op) => {
+        'name':         op.name,
+        'operation':    op.operation,
+        'workstation':  op.workstation,
+        'qty':          currentWo.qty,
+        'pending_qty':  currentWo.qty,
+        'sequence_id':  op.sequenceId ?? 0,
+        'batch_size':   currentWo.batchSize ?? currentWo.qty,
+      }).toList();
+
+      if (operations.isEmpty) {
+        GlobalSnackbar.info(message: 'No operations found on BOM to create Job Cards');
+        return;
+      }
+
+      await _provider.makeJobCard(
+        workOrderName: name,
+        operations: operations,
+      );
+      GlobalSnackbar.success(message: 'Job Card(s) created successfully');
+    } on DioException catch (e) {
+      final msg = (e.response?.data is Map)
+          ? (e.response!.data['exception']?.toString().split(':').last.trim() ?? 'Error')
+          : 'Request failed (${e.response?.statusCode})';
+      GlobalSnackbar.error(message: msg);
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
   // ── Create Job Cards (public) ─────────────────────────────────────────────
   Future<void> createJobCards(
     List<WorkOrderOperation> ops,

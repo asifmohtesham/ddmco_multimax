@@ -74,6 +74,38 @@ class WorkOrderProvider {
   Future<Response> submitWorkOrder(String name) async =>
       _apiProvider.updateDocument('Work Order', name, {'docstatus': 1});
 
+  /// Fetch existing Job Cards for this Work Order.
+  Future<Response> getJobCards(String workOrderName) async =>
+      _apiProvider.getDocumentList(
+        'Job Card',
+        filters: {'work_order': workOrderName},
+        fields: [
+          'name', 'work_order', 'operation', 'operation_id',
+          'workstation', 'status', 'for_quantity',
+          'total_completed_qty', 'process_loss_qty',
+          'docstatus', 'modified', 'posting_date',
+        ],
+        limit: 100,
+        orderBy: 'modified desc',
+      );
+
+  /// Only call this when [getJobCards] returns an empty list.
+  /// Uses POST + JSON body so Frappe correctly deserialises the
+  /// nested `operations` list — GET query-string notation is NOT
+  /// supported for array/dict arguments by frappe.form_dict.
+  Future<Response> makeJobCard({
+    required String workOrderName,
+    required List<Map<String, dynamic>> operations,
+  }) async {
+    return _apiProvider.callMethodPost(
+      '/api/method/erpnext.manufacturing.doctype.work_order.work_order.make_job_card',
+      params: {
+        'work_order': workOrderName,
+        'operations': operations,
+      },
+    );
+  }
+
   // ── Execute: Material Transfer for Manufacture ──────────────────────────
 
   /// Ask ERPNext to build a pre-filled Material Transfer for Manufacture
