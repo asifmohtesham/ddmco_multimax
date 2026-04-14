@@ -64,6 +64,10 @@ class BatchPickerController extends GetxController {
   final _allRows     = <BatchWiseBalanceRow>[].obs;
   final searchQuery  = ''.obs;
 
+  /// When true the warehouse filter is lifted — all batches for [itemCode]
+  /// across every warehouse are fetched, regardless of [warehouse].
+  final showAllWarehouses  = false.obs;
+
   // ── Computed filtered list ────────────────────────────────────────────────────
   List<BatchWiseBalanceRow> get filtered {
     final q = searchQuery.value.trim().toLowerCase();
@@ -95,20 +99,12 @@ class BatchPickerController extends GetxController {
     isLoading.value    = true;
     errorMessage.value = null;
     try {
-      // [ApiProvider.fetchBatchesForItem] returns rows already stripped of
-      // the Total Row footer from Batch-Wise Balance History.  The raw
-      // report always appends a Total Row as its last entry (keyed
-      // `"batch"` = '', `"balance_qty"` = aggregate sum, `"item"` = item
-      // code); that row is discarded inside ApiProvider before being
-      // returned here.
-      //
-      // Do NOT add discard logic here — the invariant is owned by
-      // [BatchNoBrowseDelegate] and enforced at the ApiProvider layer.
-      // Adding it here would be a double-discard that silently removes a
-      // real batch row when the report changes its footer behaviour.
+      // Pass warehouse only when the user has NOT toggled "show all".
+      // When showAllWarehouses is true we omit the warehouse param so
+      // ApiProvider fetches batches across every warehouse.
       final rows = await _api.fetchBatchesForItem(
         itemCode,
-        warehouse: warehouse,
+        warehouse: showAllWarehouses.value ? null : warehouse,
       );
       _allRows.assignAll(rows);
     } catch (e) {
@@ -117,6 +113,15 @@ class BatchPickerController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Flips the warehouse-filter toggle and re-fetches batches.
+  ///
+  /// When [showAllWarehouses] becomes true the preloaded rows are stale
+  /// (they were scoped to [warehouse]), so we always hit the network.
+  void toggleWarehouseFilter() {
+    showAllWarehouses.value = !showAllWarehouses.value;
+    _fetch(); // always re-fetch — preloaded rows are warehouse-scoped
   }
 
   void retry() => _fetch();

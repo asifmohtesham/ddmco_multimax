@@ -96,7 +96,7 @@ class BatchPickerSheet extends StatelessWidget {
           child: Column(
             children: [
               _Handle(),
-              _Header(itemCode: itemCode, warehouse: warehouse, accentColor: accentColor),
+              _Header(tag: tag, itemCode: itemCode, warehouse: warehouse, accentColor: accentColor),
               _SearchBar(c: c, accentColor: accentColor),
               const Divider(height: 1),
               Expanded(
@@ -112,8 +112,10 @@ class BatchPickerSheet extends StatelessWidget {
                   final rows = c.filtered;
                   if (rows.isEmpty) {
                     return _EmptyState(
-                      hasSearch:  c.searchQuery.value.isNotEmpty,
+                      hasSearch:   c.searchQuery.value.isNotEmpty,
                       accentColor: accentColor,
+                      warehouseFiltered: !c.showAllWarehouses.value && warehouse != null,
+                      onShowAll: c.toggleWarehouseFilter,
                     );
                   }
                   return ListView.separated(
@@ -157,11 +159,13 @@ class _Handle extends StatelessWidget {
 
 // ── Header ────────────────────────────────────────────────────────────────────
 class _Header extends StatelessWidget {
+  final String  tag;
   final String  itemCode;
   final String? warehouse;
   final Color   accentColor;
 
   const _Header({
+    required this.tag,
     required this.itemCode,
     required this.warehouse,
     required this.accentColor,
@@ -170,36 +174,102 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c     = Get.find<BatchPickerController>(tag: tag);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 8, 8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.inventory_2_outlined, color: accentColor, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Select Batch',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+          // ── Title row ──────────────────────────────────────────────────
+          Row(
+            children: [
+              Icon(Icons.inventory_2_outlined, color: accentColor, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Select Batch',
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    if (warehouse != null && warehouse!.isNotEmpty)
+                      Obx(() => Text(
+                        c.showAllWarehouses.value
+                            ? 'All Warehouses'
+                            : warehouse!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: c.showAllWarehouses.value
+                              ? accentColor
+                              : Colors.grey.shade600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      )),
+                  ],
                 ),
-                if (warehouse != null && warehouse!.isNotEmpty)
-                  Text(
-                    warehouse!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: Colors.grey.shade600),
-                    overflow: TextOverflow.ellipsis,
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Get.back(),
+                tooltip: 'Close',
+              ),
+            ],
+          ),
+
+          // ── Warehouse filter toggle (only shown when a warehouse is set) ──
+          if (warehouse != null && warehouse!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 2),
+              child: Obx(() {
+                final allWh = c.showAllWarehouses.value;
+                return GestureDetector(
+                  onTap: c.toggleWarehouseFilter,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: allWh
+                          ? accentColor.withOpacity(0.12)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: allWh
+                            ? accentColor.withOpacity(0.5)
+                            : Colors.grey.shade300,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          allWh
+                              ? Icons.public_rounded
+                              : Icons.warehouse_outlined,
+                          size:  14,
+                          color: allWh ? accentColor : Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          allWh
+                              ? 'Showing all warehouses'
+                              : 'Tap to show all warehouses',
+                          style: TextStyle(
+                            fontSize:   12,
+                            fontWeight: FontWeight.w500,
+                            color:      allWh
+                                ? accentColor
+                                : Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-              ],
+                );
+              }),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Get.back(),
-            tooltip: 'Close',
-          ),
         ],
       ),
     );
@@ -418,11 +488,20 @@ class _SkeletonBar extends StatelessWidget {
 }
 
 // ── Empty State ───────────────────────────────────────────────────────────────
+// After:
 class _EmptyState extends StatelessWidget {
-  final bool hasSearch;
-  final Color accentColor;
+  final bool         hasSearch;
+  final Color        accentColor;
+  /// True when results are scoped to a specific warehouse (filter is active).
+  final bool         warehouseFiltered;
+  final VoidCallback onShowAll;
 
-  const _EmptyState({required this.hasSearch, required this.accentColor});
+  const _EmptyState({
+    required this.hasSearch,
+    required this.accentColor,
+    this.warehouseFiltered = false,
+    required this.onShowAll,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -448,6 +527,24 @@ class _EmptyState extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
+            // Hint to lift the warehouse filter when results are empty
+            // and the user hasn't already done so.
+            if (!hasSearch && warehouseFiltered) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: onShowAll,
+                icon:  Icon(Icons.public_rounded, size: 16, color: accentColor),
+                label: Text(
+                  'Show all warehouses',
+                  style: TextStyle(color: accentColor),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: accentColor.withOpacity(0.5)),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 8),
+                ),
+              ),
+            ],
           ],
         ),
       ),
