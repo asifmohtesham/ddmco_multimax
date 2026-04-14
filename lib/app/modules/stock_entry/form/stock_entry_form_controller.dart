@@ -374,10 +374,12 @@ class StockEntryFormController extends GetxController
         await fetchPosUpload(ref);
         return [];
       case StockEntrySource.manufacture:
+        return await _fetchAndMapManufactureItems(); // ← fetch at init time
       case StockEntrySource.manual:
         return [];
     }
   }
+
 
   /// Maps raw route-argument items into [StockEntryItem] instances.
   List<StockEntryItem> _mapWorkOrderItems() {
@@ -521,30 +523,78 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  /// Calls ERP's get_items API after the Manufacture SE is saved to
-  /// auto-populate the items table (required_items + production_item).
+  /// Calls ERP's make_stock_entry whitelist API to resolve the full
+  /// items list (BOM components + production item) for a Manufacture SE.
   ///
-  /// ERP populates:
-  ///   - All BOM components (from required_items) as source rows (s_warehouse = WIP)
-  ///   - The finished production_item as a target row (t_warehouse = FG)
-  ///
-  /// Called only for [StockEntrySource.manufacture] after [_createEntry] succeeds.
-  Future<void> _fetchManufactureItems() async {
-    if (name.isEmpty) return;
+  /// Returns the items as [StockEntryItem] instances ready to be set as
+  /// the initial items table — no SE document needs to exist yet.
+  Future<List<StockEntryItem>> _fetchAndMapManufactureItems() async {
+    final woName = argWorkOrderName;
+    if (woName == null || woName.isEmpty) return [];
+
+    final fgQty = (Get.arguments?['fgCompletedQty'] as num?)?.toDouble() ?? 1.0;
+    final argFrom = Get.arguments?['fromWarehouse'] as String?;
+    final argTo   = Get.arguments?['toWarehouse']   as String?;
+
     try {
-      final res = await _provider.getItemsForStockEntry(name);
-      if (res.statusCode == 200 && res.data['message'] != null) {
-        // ERP returns the updated SE document with items populated.
-        await fetchStockEntry();
-      } else {
-        GlobalSnackbar.warning(
-          message: 'Items could not be auto-populated. Add them manually.',
-        );
-      }
-    } on DioException catch (_) {
-      GlobalSnackbar.warning(
-        message: 'Could not fetch BOM items. Check connection and retry.',
+      final res = await _provider.getItemsForManufactureEntry(
+        workOrderName:  woName,
+        fgCompletedQty: fgQty,
       );
+
+      if (res.statusCode != 200 || res.data['message'] == null) {
+        GlobalSnackbar.warning(
+          message: 'Could not load BOM items. Add them manually.',
+        );
+        return [];
+      }
+
+      final message  = res.data['message'] as Map<String, dynamic>;
+      final rawItems = message['items'] as List? ?? [];
+
+      if (rawItems.isEmpty) {
+        GlobalSnackbar.warning(
+          message: 'BOM returned no items. Check BOM is active.',
+        );
+        return [];
+      }
+
+      return rawItems.asMap().entries.map((entry) {
+        final e  = Map<String, dynamic>.from(entry.value as Map);
+        final id = 'mfg_prefill_${entry.key}_${DateTime.now().millisecondsSinceEpoch}';
+
+        // ERP returns s_warehouse / t_warehouse on each row.
+        // Fall back to the WO-level warehouses from route args.
+        final sW = (e['s_warehouse'] as String?)?.isNotEmpty == true
+            ? e['s_warehouse'] as String
+            : argFrom;
+        final tW = (e['t_warehouse'] as String?)?.isNotEmpty == true
+            ? e['t_warehouse'] as String
+            : argTo;
+
+        return StockEntryItem(
+          name:            id,
+          itemCode:        e['item_code']   as String? ?? '',
+          itemName:        e['item_name']   as String?,
+          qty:             (e['qty']        as num?)?.toDouble() ?? 0.0,
+          basicRate:       (e['basic_rate'] as num?)?.toDouble() ?? 0.0,
+          itemGroup:       e['item_group']  as String?,
+          customVariantOf: e['variant_of']  as String?,
+          batchNo:         e['batch_no']    as String?,
+          rack:            e['rack']        as String?,
+          toRack:          null,
+          sWarehouse:      sW,
+          tWarehouse:      tW,
+          customInvoiceSerialNumber: null,
+          materialRequest:     null,
+          materialRequestItem: null,
+        );
+      }).toList();
+    } on DioException catch (e) {
+      GlobalSnackbar.warning(
+        message: 'Could not fetch BOM items: ${e.response?.statusCode}',
+      );
+      return [];
     }
   }
 
@@ -1281,10 +1331,6 @@ class StockEntryFormController extends GetxController
       await fetchStockEntry();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
-      // For Manufacture entries, auto-populate BOM items from ERP.
-      if (entrySource == StockEntrySource.manufacture) {
-        await _fetchManufactureItems();
-      }
     } else {
       _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(
