@@ -116,6 +116,20 @@ class WorkOrderProvider {
   Future<Response> submitStockEntry(String name) async =>
       _apiProvider.updateDocument('Stock Entry', name, {'docstatus': 1});
 
+  /// Fetch a single Job Card document (including its items child table).
+  Future<Response> getJobCard(String name) async =>
+      _apiProvider.getDocument('Job Card', name);
+
+  /// Call the Job Card's make_stock_entry whitelisted method.
+  /// Returns a draft Stock Entry with job_card_item set on every item row.
+  /// Must be used instead of manually building item rows — ERP's
+  /// validate_job_card_item() rejects manually-constructed rows.
+  Future<Response> makeStockEntryFromJobCard(String jobCardName) async =>
+      _apiProvider.dio.post(
+        '/api/method/erpnext.manufacturing.doctype.job_card.job_card.make_stock_entry',
+        data: {'source_name': jobCardName},
+      );
+
   /// Fetch existing Stock Entries of type "Material Transfer for Manufacture"
   /// for this Work Order — used to check if materials have been issued.
   Future<Response> getMaterialTransferForManufacture(String workOrderName) async =>
