@@ -152,6 +152,10 @@ class StockEntryItem {
   // Link Fields
   final String? materialRequest;
   final String? materialRequestItem;
+  // Manufacture: marks the Finished Good row (is_finished_item = 1).
+  // Returned by make_stock_entry; must be echoed back on save so ERP
+  // does not raise FinishedGoodError.
+  final int isFinishedItem;
   // Metadata Fields
   final String? owner;
   final String? creation;
@@ -175,6 +179,7 @@ class StockEntryItem {
     this.customInvoiceSerialNumber,
     this.materialRequest,
     this.materialRequestItem,
+    this.isFinishedItem = 0,
     this.owner,
     this.creation,
     this.modified,
@@ -200,6 +205,7 @@ class StockEntryItem {
           json['custom_invoice_serial_number']?.toString(),
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
+      isFinishedItem: StockEntry._parseInt(json['is_finished_item']),
       owner: json['owner']?.toString(),
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
@@ -222,6 +228,7 @@ class StockEntryItem {
       'material_request': materialRequest,
       'material_request_item': materialRequestItem,
       'use_serial_batch_fields': 1,
+      'is_finished_item': isFinishedItem,
     };
     if (name != null) {
       data['name'] = name;

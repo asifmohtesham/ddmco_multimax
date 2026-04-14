@@ -588,6 +588,7 @@ class StockEntryFormController extends GetxController
           customInvoiceSerialNumber: null,
           materialRequest:     null,
           materialRequestItem: null,
+          isFinishedItem:  e['is_finished_item'],
         );
       }).toList();
     } on DioException catch (e) {
@@ -736,6 +737,7 @@ class StockEntryFormController extends GetxController
         customInvoiceSerialNumber: item.customInvoiceSerialNumber,
         materialRequest:     item.materialRequest,
         materialRequestItem: item.materialRequestItem,
+        isFinishedItem: item.isFinishedItem,
         owner:      item.owner,
         creation:   item.creation,
         modified:   item.modified,
@@ -798,6 +800,7 @@ class StockEntryFormController extends GetxController
       customInvoiceSerialNumber: serial,
       materialRequest:     matReq,
       materialRequestItem: matReqItem,
+      isFinishedItem: item.isFinishedItem,
       owner:       item.owner,
       creation:    item.creation,
       modified:    item.modified,
@@ -853,6 +856,7 @@ class StockEntryFormController extends GetxController
       customInvoiceSerialNumber: serial,
       materialRequest:     existing.materialRequest,
       materialRequestItem: existing.materialRequestItem,
+      isFinishedItem: existing.isFinishedItem,
       owner:      existing.owner,
       creation:   existing.creation,
       modified:   existing.modified,
