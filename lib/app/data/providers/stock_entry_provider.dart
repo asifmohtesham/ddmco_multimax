@@ -56,4 +56,16 @@ class StockEntryProvider {
       String name, Map<String, dynamic> data) async {
     return _apiProvider.updateDocument('Stock Entry', name, data);
   }
+
+  /// Calls ERP's whitelisted helper to auto-populate items for a
+  /// Work Order-linked Stock Entry. Equivalent to the "Get Items" button
+  /// in the ERPNext web UI.
+  ///
+  /// [stockEntryName] — the saved SE document name (e.g. "STE-00123").
+  Future<Response> getItemsForStockEntry(String stockEntryName) async {
+    return await _apiProvider.dio.post(
+      '/api/method/erpnext.stock.doctype.stock_entry.stock_entry.get_items',
+      data: {'stock_entry': stockEntryName},
+    );
+  }
 }

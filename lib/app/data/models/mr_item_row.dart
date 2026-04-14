@@ -1,4 +1,10 @@
-enum StockEntrySource { manual, materialRequest, posUpload, workOrder }
+enum StockEntrySource {
+  manual,
+  workOrder,       // Material Transfer for Manufacture (has items in args)
+  manufacture,     // Stock Entry: Manufacture (no items in args — fetched after save)
+  materialRequest,
+  posUpload,
+}
 
 class MrItemRow {
   final String itemCode;

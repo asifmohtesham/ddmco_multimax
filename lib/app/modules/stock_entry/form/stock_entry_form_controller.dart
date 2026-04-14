@@ -373,6 +373,7 @@ class StockEntryFormController extends GetxController
       case StockEntrySource.posUpload:
         await fetchPosUpload(ref);
         return [];
+      case StockEntrySource.manufacture:
       case StockEntrySource.manual:
         return [];
     }
@@ -466,10 +467,13 @@ class StockEntryFormController extends GetxController
   void determineSource(String type, String ref) {
     final rawItems = Get.arguments?['items'];
     final hasItems = rawItems is List && rawItems.isNotEmpty;
+    final hasWo    = argWorkOrderName != null && argWorkOrderName!.isNotEmpty;
 
-    if (argWorkOrderName != null &&
-        argWorkOrderName!.isNotEmpty &&
-        hasItems) {
+    if (hasWo && type == 'Manufacture') {
+      // Finish flow: WO name present, no items — fetched after SE is saved.
+      entrySource = StockEntrySource.manufacture;
+    } else if (hasWo && hasItems) {
+      // Execute flow: WO name + prefilled items (Material Transfer for Manufacture).
       entrySource = StockEntrySource.workOrder;
     } else if (hasItems) {
       entrySource = StockEntrySource.materialRequest;
@@ -514,6 +518,33 @@ class StockEntryFormController extends GetxController
       } catch (e) {
         GlobalSnackbar.error(message: 'Error fetching Material Request: $e');
       }
+    }
+  }
+
+  /// Calls ERP's get_items API after the Manufacture SE is saved to
+  /// auto-populate the items table (required_items + production_item).
+  ///
+  /// ERP populates:
+  ///   - All BOM components (from required_items) as source rows (s_warehouse = WIP)
+  ///   - The finished production_item as a target row (t_warehouse = FG)
+  ///
+  /// Called only for [StockEntrySource.manufacture] after [_createEntry] succeeds.
+  Future<void> _fetchManufactureItems() async {
+    if (name.isEmpty) return;
+    try {
+      final res = await _provider.getItemsForStockEntry(name);
+      if (res.statusCode == 200 && res.data['message'] != null) {
+        // ERP returns the updated SE document with items populated.
+        await fetchStockEntry();
+      } else {
+        GlobalSnackbar.warning(
+          message: 'Items could not be auto-populated. Add them manually.',
+        );
+      }
+    } on DioException catch (_) {
+      GlobalSnackbar.warning(
+        message: 'Could not fetch BOM items. Check connection and retry.',
+      );
     }
   }
 
@@ -882,7 +913,7 @@ class StockEntryFormController extends GetxController
   /// Opens the item-form sheet for a NEW item.
   ///
   /// Made async (Commit 5) so that [child.initialise()] — which fetches
-  /// item metadata from ERPNext and pre-loads the rack-stock map — fully
+  /// item metadata from ERP and pre-loads the rack-stock map — fully
   /// completes before the bottom sheet is presented.
   ///
   /// Commit 6: setupAutoSubmit() call updated to match the base-class
@@ -1182,7 +1213,8 @@ class StockEntryFormController extends GetxController
       'work_order': stockEntry.value!.workOrder,
     if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)
       'work_order': argWorkOrderName,
-    if (entrySource == StockEntrySource.workOrder) ...{
+    if (entrySource == StockEntrySource.workOrder ||
+        entrySource == StockEntrySource.manufacture) ...{
       'from_bom':         stockEntry.value?.fromBom == true ? 1 : 0,
       if ((stockEntry.value?.bomNo ?? '').isNotEmpty)
         'bom_no':         stockEntry.value!.bomNo,
@@ -1249,6 +1281,10 @@ class StockEntryFormController extends GetxController
       await fetchStockEntry();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
+      // For Manufacture entries, auto-populate BOM items from ERP.
+      if (entrySource == StockEntrySource.manufacture) {
+        await _fetchManufactureItems();
+      }
     } else {
       _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(
