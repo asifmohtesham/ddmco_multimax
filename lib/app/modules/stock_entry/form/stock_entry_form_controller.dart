@@ -1205,6 +1205,13 @@ class StockEntryFormController extends GetxController
         'work_order': stockEntry.value!.workOrder,
       if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)
         'work_order': argWorkOrderName,
+      // ── BOM / FG fields — required for WO status transition to In Process ──
+      if (entrySource == StockEntrySource.workOrder) ...{
+        'from_bom': stockEntry.value?.fromBom == true ? 1 : 0,
+        if ((stockEntry.value?.bomNo ?? '').isNotEmpty)
+          'bom_no': stockEntry.value!.bomNo,
+        'fg_completed_qty': stockEntry.value?.fgCompletedQty ?? 0.0,
+      },
     };
 
     final itemsJson = stockEntry.value?.items.map((i) {
