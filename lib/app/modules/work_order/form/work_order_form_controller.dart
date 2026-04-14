@@ -138,6 +138,19 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
         !isCreatingJobCards.value;
   }
 
+  /// True when the WO is "In Process" and not yet fully produced.
+  /// Mirrors ERPNext's "Finish" button visibility: docstatus=1, status="In Process",
+  /// and produced_qty < qty.
+  bool get canFinish {
+    final wo = workOrder.value;
+    if (wo == null) return false;
+    return wo.docstatus == 1 &&
+        wo.status == 'In Process' &&
+        wo.producedQty < wo.qty &&
+        !isExecuting.value &&
+        !isSubmitting.value;
+  }
+
   // "Create Job Cards" is only unlocked after a submitted
   // Material Transfer for Manufacture Stock Entry exists for this WO.
   // ERP requires transfer_material_against = "Job Card" WOs to have
@@ -614,13 +627,13 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       return;
     }
 
-    _navigateToStockEntryForm(wo, pendingItems);
+    _navigateToTransferEntry(wo, pendingItems);
   }
 
   /// Navigates to [AppRoutes.STOCK_ENTRY_FORM] with the Work Order's
   /// pending required items prefilled. The SE form's
   /// [StockEntrySource.workOrder] branch handles the rest.
-  void _navigateToStockEntryForm(
+  void _navigateToTransferEntry(
       WorkOrder wo,
       List<WorkOrderItem> items,
       ) {
@@ -642,6 +655,49 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       'fromBom':          true,             // sets from_bom = 1
       'bomNo':            wo.bomNo,         // links to BOM for qty validation
       'fgCompletedQty':   wo.qty,           // the WO's planned production qty
+    });
+  }
+
+  // ── Finish Work Order ─────────────────────────────────────────────────────
+
+  /// Tap handler for the "Finish" button.
+  /// Navigates to the Stock Entry form prefilled to create
+  /// a Stock Entry: Manufacture document for this Work Order.
+  Future<void> finishWorkOrder() async {
+    if (!canFinish || isExecuting.value) return;
+    final wo = workOrder.value!;
+    _navigateToManufactureEntry(wo);
+  }
+
+  /// Navigates to [AppRoutes.STOCK_ENTRY_FORM] prefilled for
+  /// Stock Entry: Manufacture.
+  ///
+  /// ERPNext Manufacture SE moves the finished item from the WIP
+  /// warehouse into the FG warehouse. The key fields are:
+  ///   - stock_entry_type = 'Manufacture'
+  ///   - work_order       = WO name
+  ///   - from_bom         = 1
+  ///   - bom_no           = WO's BOM
+  ///   - fg_completed_qty = remaining qty to produce (qty - produced_qty)
+  ///
+  /// The SE form's [StockEntrySource.workOrder] branch populates the
+  /// items table automatically using ERPNext's get_items_se() API,
+  /// so no items payload is needed here.
+  void _navigateToManufactureEntry(WorkOrder wo) {
+    final remainingQty = wo.qty - wo.producedQty;
+
+    Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+      'name':           '',
+      'mode':           'new',
+      'stockEntryType': 'Manufacture',
+      'workOrderName':  wo.name,
+      'fromWarehouse':  wo.wipWarehouse ?? '',
+      'toWarehouse':    wo.fgWarehouse  ?? '',
+      'fromBom':        true,
+      'bomNo':          wo.bomNo,
+      'fgCompletedQty': remainingQty,
+      // items is intentionally omitted — the SE form fetches BOM
+      // components automatically for Manufacture type entries.
     });
   }
 

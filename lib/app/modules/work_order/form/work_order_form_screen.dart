@@ -525,6 +525,39 @@ class _WorkOrderForm extends StatelessWidget {
                 ),
               );
             }),
+
+            // [5] Finish — shown when WO is "In Process" and producedQty < qty.
+            // Navigates to Stock Entry: Manufacture prefilled form.
+            Obx(() {
+              final wo       = controller.workOrder.value;
+              final executing = controller.isExecuting.value;
+              final canFinish = controller.canFinish;
+              if (!canFinish) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: executing ? null : controller.finishWorkOrder,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: executing
+                        ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.check_circle_outline),
+                    label: Text(
+                      executing ? 'Opening...' : 'Finish Work Order',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
           ],
         ),
       );
