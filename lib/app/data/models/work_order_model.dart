@@ -3,7 +3,7 @@ import 'package:multimax/app/data/models/work_order_operation_model.dart';
 
 /// Model for the **Work Order** DocType.
 ///
-/// ERPNext path: Manufacturing → Work Order
+/// ERP path: Manufacturing → Work Order
 ///
 /// [operations] maps the `Work Order Operation` child table — populated
 /// only when fetching a single document (GET /api/resource/Work Order/{name}).
@@ -27,7 +27,7 @@ class WorkOrder {
   final String plannedStartDate;
   final String? expectedEndDate;
   final String? wipWarehouse;
-  final String? fg_warehouse;
+  final String? fgWarehouse;
   final String? description;
   final String? modified;
   final int docstatus;
@@ -66,7 +66,7 @@ class WorkOrder {
     required this.plannedStartDate,
     this.expectedEndDate,
     this.wipWarehouse,
-    this.fg_warehouse,
+    this.fgWarehouse,
     this.description,
     this.modified,
     required this.docstatus,
@@ -89,7 +89,7 @@ class WorkOrder {
       plannedStartDate: json['planned_start_date'] ?? '',
       expectedEndDate: json['expected_end_date'],
       wipWarehouse:    json['wip_warehouse'],
-      fg_warehouse:    json['fg_warehouse'],
+      fgWarehouse:    json['fg_warehouse'],
       description:     json['description'],
       modified:        json['modified'],
       docstatus:       json['docstatus']         as int? ?? 0,
@@ -114,7 +114,7 @@ class WorkOrder {
     'planned_start_date': plannedStartDate,
     if (expectedEndDate != null) 'expected_end_date': expectedEndDate,
     if (wipWarehouse    != null) 'wip_warehouse':     wipWarehouse,
-    if (fg_warehouse    != null) 'fg_warehouse':      fg_warehouse,
+    if (fgWarehouse    != null) 'fg_warehouse':      fgWarehouse,
     if (description     != null) 'description':       description,
     'docstatus': docstatus,
     // operations and requiredItems are read-only from the app — excluded

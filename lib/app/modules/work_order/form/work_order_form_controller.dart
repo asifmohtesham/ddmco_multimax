@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
 import 'package:multimax/app/data/models/bom_model.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/models/work_order_item_model.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
@@ -354,7 +355,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     plannedStartController.text = wo.plannedStartDate;
     expectedEndController.text = wo.expectedEndDate ?? '';
     wipWarehouseController.text = wo.wipWarehouse ?? '';
-    fgWarehouseController.text = wo.fg_warehouse ?? '';
+    fgWarehouseController.text = wo.fgWarehouse ?? '';
     descriptionController.text = wo.description ?? '';
     _validateForm();
   }
@@ -580,37 +581,56 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
   final WorkOrderExecutionService _executionService =
   Get.find<WorkOrderExecutionService>();
 
-  // ── Execute Work Order ────────────────────────────────────────────────
-  /// Delegates the multi-step workflow to [WorkOrderExecutionService].
-  /// This method owns ONLY: the UI guard, the loading flag, and
-  /// translating the sealed ExecuteResult into snackbar messages.
+  /// Tap handler for "Execute Work Order" button.
+  /// Validates the WO state, resolves the items payload, then navigates
+  /// to the Stock Entry form with all WO data prefilled.
+  /// No network calls are made here — the SE form handles its own save.
   Future<void> executeWorkOrder() async {
     if (!canExecute || isExecuting.value) return;
+
     final wo = workOrder.value!;
-    isExecuting.value = true;
-    try {
-      final result = await _executionService.execute(wo);
-      switch (result) {
-        case ExecuteSuccess(:final stockEntryName):
-          GlobalSnackbar.success(
-            message: 'Stock Entry $stockEntryName submitted — Work Order In Process',
-          );
-          await _fetchDocument();
-        case ExecuteAlreadyTransferred():
-          GlobalSnackbar.success(
-            message: 'All materials already transferred for this Job Card',
-          );
-        case ExecuteNoTransferRequired():
-          GlobalSnackbar.info(
-            message: 'No material transfer required. '
-                'Check "Transfer Material Against" in ERPNext settings.',
-          );
-        case ExecuteFailure(:final message):
-          GlobalSnackbar.error(message: message);
-      }
-    } finally {
-      isExecuting.value = false;
+
+    // Items that still need material transfer (pending qty > 0).
+    final pendingItems = wo.requiredItems
+        .where((i) => i.pendingTransferQty > 0)
+        .toList();
+
+    if (pendingItems.isEmpty) {
+      GlobalSnackbar.info(
+        message: 'All materials already transferred for Work Order ${wo.name}.',
+      );
+      return;
     }
+
+    _navigateToStockEntryForm(wo, pendingItems);
+  }
+
+  /// Navigates to [AppRoutes.STOCK_ENTRY_FORM] with the Work Order's
+  /// pending required items prefilled. The SE form's
+  /// [StockEntrySource.workOrder] branch handles the rest.
+  void _navigateToStockEntryForm(
+      WorkOrder wo,
+      List<WorkOrderItem> items,
+      ) {
+    final targetWarehouse = wo.wipWarehouse ?? '';
+
+    final itemsPayload = items
+        .map((i) => i.toStockEntryItemPayload(targetWarehouse: targetWarehouse))
+        .toList();
+
+    Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+      'name':             '',
+      'mode':             'new',
+      'stockEntryType':   'Material Transfer for Manufacture',
+      'workOrderName':    wo.name,
+      'fromWarehouse':    items.first.sourceWarehouse ?? '',
+      'toWarehouse':      targetWarehouse,
+      'items':            itemsPayload,
+      // ── Required for ERPNext WO status transition ──────────────────────
+      'fromBom':          true,             // sets from_bom = 1
+      'bomNo':            wo.bomNo,         // links to BOM for qty validation
+      'fgCompletedQty':   wo.qty,           // the WO's planned production qty
+    });
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────

@@ -18,6 +18,9 @@ class StockEntry {
   final double? customTotalQty;
   final String? customReferenceNo;
   final String? workOrder;
+  final bool    fromBom;
+  final String? bomNo;
+  final double  fgCompletedQty;
   final String currency;
   final List<StockEntryItem> items;
 
@@ -41,6 +44,9 @@ class StockEntry {
     this.workOrder,
     required this.currency,
     required this.items,
+    this.fromBom       = false,
+    this.bomNo,
+    this.fgCompletedQty = 0.0,
   });
 
   factory StockEntry.fromJson(Map<String, dynamic> json) {
@@ -81,6 +87,9 @@ class StockEntry {
       'custom_reference_no': customReferenceNo,
       'work_order': workOrder,
       'items': items.map((i) => i.toJson()).toList(),
+      'from_bom':          fromBom ? 1 : 0,
+      'bom_no':            bomNo,
+      'fg_completed_qty':  fgCompletedQty,
     };
   }
 

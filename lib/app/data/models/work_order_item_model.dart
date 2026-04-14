@@ -81,7 +81,21 @@ class WorkOrderItem {
   /// True when all required qty has been consumed.
   bool get isFullyConsumed => consumedQty >= requiredQty;
 
-  // ── Deserialization ───────────────────────────────────────────────────────
+  /// Converts this required item into the arguments map consumed by
+  /// [StockEntryFormController._initNewStockEntry()] for the workOrder source.
+  /// [targetWarehouse] is the Work Order's wip_warehouse field.
+  Map<String, dynamic> toStockEntryItemPayload({required String targetWarehouse}) {
+    return {
+      'item_code':   itemCode,
+      'item_name':   itemName,
+      'qty':         pendingTransferQty,
+      'basic_rate':  0.0,
+      's_warehouse': sourceWarehouse ?? '',
+      't_warehouse': targetWarehouse,
+    };
+  }
+
+  // ── Deserialisation ───────────────────────────────────────────────────────
 
   factory WorkOrderItem.fromJson(Map<String, dynamic> json) {
     return WorkOrderItem(

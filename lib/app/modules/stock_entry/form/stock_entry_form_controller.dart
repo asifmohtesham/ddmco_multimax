@@ -429,6 +429,11 @@ class StockEntryFormController extends GetxController
       await fetchPosUpload(ref);
     }
 
+    // Read WO-specific header fields from arguments (only present in workOrder source).
+    final bool   argFromBom        = Get.arguments?['fromBom']        as bool?   ?? false;
+    final String? argBomNo         = Get.arguments?['bomNo']          as String?;
+    final double argFgCompletedQty = (Get.arguments?['fgCompletedQty'] as num?)?.toDouble() ?? 0.0;
+
     stockEntry.value = StockEntry(
       name:               'New Stock Entry',
       purpose:            stockEntryType.value,
@@ -445,6 +450,10 @@ class StockEntryFormController extends GetxController
       workOrder:          argWorkOrderName,
       currency:           'AED',
       items:              prefillItems,
+      // ── BOM/FG fields for WO status transition ────────────────────────
+      fromBom:            argFromBom,        // → from_bom: 1
+      bomNo:              argBomNo,          // → bom_no
+      fgCompletedQty:     argFgCompletedQty, // → fg_completed_qty
     );
 
     for (final item in prefillItems) {
