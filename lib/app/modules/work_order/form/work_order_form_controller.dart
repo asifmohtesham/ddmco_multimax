@@ -5,6 +5,7 @@ import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
+import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
 import 'package:multimax/app/data/models/bom_model.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/work_order_item_model.dart';
@@ -25,7 +26,7 @@ import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 
-class WorkOrderFormController extends GetxController with BarcodeScanMixin {
+class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioErrorMixin {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
@@ -394,18 +395,29 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     }
   }
 
-  void onItemSelected(String itemCode) async {
-    selectedItem.value = itemCode;
+  // Responsibility 1: update observable state
+  void _applyItemSelection(String itemCode) {
+    selectedItem.value  = itemCode;
     itemController.text = itemCode;
     itemOptions.clear();
+    _clearBomSelection();
+    bomOptions.clear();
+  }
+
+  // Responsibility 2: fetch item display name
+  Future<void> _fetchItemName(String itemCode) async {
     try {
       final res = await _apiProvider.getDocument('Item', itemCode);
       if (res.statusCode == 200 && res.data['data'] != null) {
         selectedItemName.value = res.data['data']['item_name'] ?? itemCode;
       }
     } catch (_) {}
-    _clearBomSelection();
-    bomOptions.clear();
+  }
+
+  // Coordinator: called by UI tap
+  Future<void> onItemSelected(String itemCode) async {
+    _applyItemSelection(itemCode);
+    await _fetchItemName(itemCode);
     markDirty();
     _validateForm();
     await _autoLoadBom(itemCode);
@@ -633,55 +645,47 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
     });
   }
 
+  // ── Payload builders ──────────────────────────────────────────────────────
+
+  Map<String, dynamic> _buildBasePayload() => {
+    'production_item':    selectedItem.value,
+    'bom_no':             selectedBom.value,
+    'qty':                double.tryParse(qtyController.text) ?? 0,
+    'planned_start_date': plannedStartController.text,
+    if (expectedEndController.text.isNotEmpty)
+      'expected_end_date': expectedEndController.text,
+    if (wipWarehouseController.text.isNotEmpty)
+      'wip_warehouse': wipWarehouseController.text,
+    if (fgWarehouseController.text.isNotEmpty)
+      'fg_warehouse': fgWarehouseController.text,
+    if (descriptionController.text.isNotEmpty)
+      'description': descriptionController.text,
+  };
+
+  Map<String, dynamic> _buildCreatePayload() {
+    final data = _buildBasePayload();
+    if (bomOperations.isNotEmpty) {
+      data['operations'] =
+          bomOperations.map((o) => o.toWorkOrderOperationPayload()).toList();
+    }
+    return data;
+  }
+
+  Map<String, dynamic> _buildUpdatePayload() => {
+    ..._buildBasePayload(),
+    'modified': workOrder.value?.modified,
+  };
+
   // ── Save ──────────────────────────────────────────────────────────────────
+
   Future<void> save() async {
     if (isSaving.value || !canSave) return;
     isSaving.value = true;
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    final data = <String, dynamic>{
-      'production_item': selectedItem.value,
-      'bom_no': selectedBom.value,
-      'qty': qty,
-      'planned_start_date': plannedStartController.text,
-      if (expectedEndController.text.isNotEmpty)
-        'expected_end_date': expectedEndController.text,
-      if (wipWarehouseController.text.isNotEmpty)
-        'wip_warehouse': wipWarehouseController.text,
-      if (fgWarehouseController.text.isNotEmpty)
-        'fg_warehouse': fgWarehouseController.text,
-      if (descriptionController.text.isNotEmpty)
-        'description': descriptionController.text,
-    };
     try {
       if (mode == 'new') {
-        // Include BOM operations in the creation payload so ERPNext
-        // pre-fills the Work Order operations child table, enabling
-        // Job Card generation immediately after submit.
-        if (bomOperations.isNotEmpty) {
-          data['operations'] = bomOperations
-              .map((o) => o.toWorkOrderOperationPayload())
-              .toList();
-        }
-        final res = await _provider.createWorkOrder(data);
-        if (res.statusCode == 200 && res.data['data'] != null) {
-          name = res.data['data']['name'];
-          mode = 'view';
-          await _fetchDocument();
-          GlobalSnackbar.success(message: 'Work Order $name created');
-          isDirty.value = false;
-        } else {
-          GlobalSnackbar.error(message: 'Failed to create Work Order');
-        }
+        await _createWorkOrder();
       } else {
-        data['modified'] = workOrder.value?.modified;
-        final res = await _provider.updateWorkOrder(name, data);
-        if (res.statusCode == 200) {
-          await _fetchDocument();
-          GlobalSnackbar.success(message: 'Work Order updated');
-          isDirty.value = false;
-        } else {
-          GlobalSnackbar.error(message: 'Failed to update Work Order');
-        }
+        await _updateWorkOrder();
       }
     } on DioException catch (e) {
       GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
@@ -689,6 +693,30 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin {
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isSaving.value = false;
+    }
+  }
+
+  Future<void> _createWorkOrder() async {
+    final res = await _provider.createWorkOrder(_buildCreatePayload());
+    if (res.statusCode == 200 && res.data['data'] != null) {
+      name = res.data['data']['name'];
+      mode = 'view';
+      await _fetchDocument();
+      GlobalSnackbar.success(message: 'Work Order $name created');
+      isDirty.value = false;
+    } else {
+      GlobalSnackbar.error(message: 'Failed to create Work Order');
+    }
+  }
+
+  Future<void> _updateWorkOrder() async {
+    final res = await _provider.updateWorkOrder(name, _buildUpdatePayload());
+    if (res.statusCode == 200) {
+      await _fetchDocument();
+      GlobalSnackbar.success(message: 'Work Order updated');
+      isDirty.value = false;
+    } else {
+      GlobalSnackbar.error(message: 'Failed to update Work Order');
     }
   }
 

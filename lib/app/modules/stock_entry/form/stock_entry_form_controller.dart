@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
+import 'package:multimax/app/data/models/mr_item_row.dart';
 
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -32,28 +33,6 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 // ── SE-module-local widgets ───────────────────────────────────────────────────────────────────────────
 
 import 'widgets/item_form_sheet/rack_section.dart';
-
-enum StockEntrySource { manual, materialRequest, posUpload, workOrder }
-
-/// Lightweight view-model that merges one MR line with the summed scanned qty.
-class MrItemRow {
-  final String itemCode;
-  final double requestedQty;
-  final double scannedQty;
-  final String materialRequest;
-  final String materialRequestItem;
-
-  const MrItemRow({
-    required this.itemCode,
-    required this.requestedQty,
-    required this.scannedQty,
-    required this.materialRequest,
-    required this.materialRequestItem,
-  });
-
-  bool get isCompleted => scannedQty >= requestedQty;
-  bool get isPending   => scannedQty < requestedQty;
-}
 
 class StockEntryFormController extends GetxController
     with OptimisticLockingMixin, BarcodeScanMixin {
@@ -361,107 +340,127 @@ class StockEntryFormController extends GetxController
 
   Future<void> _initNewStockEntry() async {
     isLoading.value = true;
-    final now  = DateTime.now();
     final type = argStockEntryType    ?? 'Material Transfer';
     final ref  = argCustomReferenceNo ?? '';
 
-    stockEntryType.value     = type;
+    stockEntryType.value             = type;
     customReferenceNoController.text = ref;
-
     determineSource(type, ref);
 
-    List<StockEntryItem> prefillItems = [];
+    final prefillItems = await _resolvePrefillItems(ref);
+    _resolveHeaderWarehouses(prefillItems);
 
-    if (entrySource == StockEntrySource.workOrder) {
-      final argFromWarehouse = Get.arguments?['fromWarehouse'] as String?;
-      final argToWarehouse   = Get.arguments?['toWarehouse']   as String?;
-
-      if (argFromWarehouse != null && argFromWarehouse.isNotEmpty) {
-        fromWarehouse.value = argFromWarehouse;
-      }
-      if (argToWarehouse != null && argToWarehouse.isNotEmpty) {
-        toWarehouse.value = argToWarehouse;
-      }
-
-      final rawItems = Get.arguments?['items'] as List? ?? [];
-      prefillItems = rawItems.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final e   = Map<String, dynamic>.from(entry.value as Map);
-        final uniqueId = 'wo_prefill_${idx}_${DateTime.now().millisecondsSinceEpoch}';
-
-        final rowSWarehouse = e['s_warehouse'] as String?;
-        final rowTWarehouse = e['t_warehouse'] as String?;
-        final resolvedS = (rowSWarehouse != null && rowSWarehouse.isNotEmpty)
-            ? rowSWarehouse
-            : argFromWarehouse;
-        final resolvedT = (rowTWarehouse != null && rowTWarehouse.isNotEmpty)
-            ? rowTWarehouse
-            : argToWarehouse;
-
-        return StockEntryItem(
-          name:       uniqueId,
-          itemCode:   e['item_code']   as String? ?? '',
-          itemName:   e['item_name']   as String?,
-          qty:        (e['qty']        as num?)?.toDouble() ?? 0.0,
-          basicRate:  (e['basic_rate'] as num?)?.toDouble() ?? 0.0,
-          itemGroup:  e['item_group']  as String?,
-          customVariantOf: e['variant_of'] as String?,
-          batchNo:    e['batch_no']    as String?,
-          rack:       e['rack']        as String?,
-          toRack:     null,
-          sWarehouse: resolvedS,
-          tWarehouse: resolvedT,
-          customInvoiceSerialNumber: null,
-          materialRequest:     null,
-          materialRequestItem: null,
-        );
-      }).toList();
-
-      if (fromWarehouse.value == null && prefillItems.isNotEmpty) {
-        fromWarehouse.value = prefillItems.first.sWarehouse;
-      }
-      if (toWarehouse.value == null && prefillItems.isNotEmpty) {
-        toWarehouse.value = prefillItems.first.tWarehouse;
-      }
-    } else if (entrySource == StockEntrySource.materialRequest) {
-      await _initMaterialRequestFlow(ref);
-    } else if (entrySource == StockEntrySource.posUpload) {
-      await fetchPosUpload(ref);
-    }
-
-    // Read WO-specific header fields from arguments (only present in workOrder source).
-    final bool   argFromBom        = Get.arguments?['fromBom']        as bool?   ?? false;
-    final String? argBomNo         = Get.arguments?['bomNo']          as String?;
-    final double argFgCompletedQty = (Get.arguments?['fgCompletedQty'] as num?)?.toDouble() ?? 0.0;
-
-    stockEntry.value = StockEntry(
-      name:               'New Stock Entry',
-      purpose:            stockEntryType.value,
-      totalAmount:        0.0,
-      postingDate:        DateFormat('yyyy-MM-dd').format(now),
-      modified:           '',
-      creation:           now.toString(),
-      status:             'Draft',
-      docstatus:          0,
-      stockEntryType:     stockEntryType.value,
-      postingTime:        DateFormat('HH:mm:ss').format(now),
-      customTotalQty:     0.0,
-      customReferenceNo:  ref,
-      workOrder:          argWorkOrderName,
-      currency:           'AED',
-      items:              prefillItems,
-      // ── BOM/FG fields for WO status transition ────────────────────────
-      fromBom:            argFromBom,        // → from_bom: 1
-      bomNo:              argBomNo,          // → bom_no
-      fgCompletedQty:     argFgCompletedQty, // → fg_completed_qty
+    stockEntry.value = _buildInitialStockEntry(
+      type:         type,
+      ref:          ref,
+      prefillItems: prefillItems,
     );
 
-    for (final item in prefillItems) {
-      ensureItemKey(item);
-    }
-
+    for (final item in prefillItems) ensureItemKey(item);
     isLoading.value = false;
     isDirty.value   = true;
+  }
+
+  /// Resolves the prefill items list based on [entrySource].
+  /// Returns an empty list for manual entries.
+  Future<List<StockEntryItem>> _resolvePrefillItems(String ref) async {
+    switch (entrySource) {
+      case StockEntrySource.workOrder:
+        return _mapWorkOrderItems();
+      case StockEntrySource.materialRequest:
+        await _initMaterialRequestFlow(ref);
+        return [];
+      case StockEntrySource.posUpload:
+        await fetchPosUpload(ref);
+        return [];
+      case StockEntrySource.manual:
+        return [];
+    }
+  }
+
+  /// Maps raw route-argument items into [StockEntryItem] instances.
+  List<StockEntryItem> _mapWorkOrderItems() {
+    final argFrom = Get.arguments?['fromWarehouse'] as String?;
+    final argTo   = Get.arguments?['toWarehouse']   as String?;
+    if (argFrom != null) fromWarehouse.value = argFrom;
+    if (argTo   != null) toWarehouse.value   = argTo;
+
+    final rawItems = Get.arguments?['items'] as List? ?? [];
+    return rawItems.asMap().entries.map((entry) {
+      final e  = Map<String, dynamic>.from(entry.value as Map);
+      final id = 'wo_prefill_${entry.key}_${DateTime.now().millisecondsSinceEpoch}';
+      final sW = (e['s_warehouse'] as String?)?.isNotEmpty == true
+          ? e['s_warehouse'] as String
+          : argFrom;
+      final tW = (e['t_warehouse'] as String?)?.isNotEmpty == true
+          ? e['t_warehouse'] as String
+          : argTo;
+      return StockEntryItem(
+        name: id, itemCode: e['item_code'] as String? ?? '',
+        itemName:  e['item_name']   as String?,
+        qty:       (e['qty']        as num?)?.toDouble() ?? 0.0,
+        basicRate: (e['basic_rate'] as num?)?.toDouble() ?? 0.0,
+        itemGroup: e['item_group']  as String?,
+        customVariantOf: e['variant_of'] as String?,
+        batchNo:   e['batch_no']    as String?,
+        rack:      e['rack']        as String?,
+        toRack: null, sWarehouse: sW, tWarehouse: tW,
+        customInvoiceSerialNumber: null,
+        materialRequest: null, materialRequestItem: null,
+      );
+    }).toList();
+  }
+
+  /// Falls back header warehouse fields from prefill items when not set by args.
+  void _resolveHeaderWarehouses(List<StockEntryItem> items) {
+    if (items.isEmpty) return;
+    fromWarehouse.value ??= items.first.sWarehouse;
+    toWarehouse.value   ??= items.first.tWarehouse;
+  }
+
+  /// Constructs the initial [StockEntry] value object for a new document.
+  StockEntry _buildInitialStockEntry({
+    required String type,
+    required String ref,
+    required List<StockEntryItem> prefillItems,
+  }) {
+    final now = DateTime.now();
+    return StockEntry(
+      name:              'New Stock Entry',
+      purpose:           type,
+      totalAmount:       0.0,
+      postingDate:       DateFormat('yyyy-MM-dd').format(now),
+      modified:          '',
+      creation:          now.toString(),
+      status:            'Draft',
+      docstatus:         0,
+      stockEntryType:    type,
+      postingTime:       DateFormat('HH:mm:ss').format(now),
+      customTotalQty:    0.0,
+      customReferenceNo: ref,
+      workOrder:         argWorkOrderName,
+      currency:          'AED',
+      items:             prefillItems,
+      fromBom:           Get.arguments?['fromBom']        as bool?   ?? false,
+      bomNo:             Get.arguments?['bomNo']           as String?,
+      fgCompletedQty:   (Get.arguments?['fgCompletedQty'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+
+  void _wireAutoSubmit(StockEntryItemFormController child) {
+    final autoEnabled   = _storageService.getAutoSubmitEnabled();
+    final autoDelaySecs = _storageService.getAutoSubmitDelay();
+    child.setupAutoSubmit(
+      onValid: () async {
+        if (!autoEnabled)           return;
+        if (!isItemSheetOpen.value) return;
+        if (!isEditable)            return;
+        isAddingItem.value = true;
+        await Future.delayed(Duration(seconds: autoDelaySecs));
+        await addItem();
+        isAddingItem.value = false;
+      },
+    );
   }
 
   void determineSource(String type, String ref) {
@@ -915,18 +914,7 @@ class StockEntryFormController extends GetxController
     // document is editable.
     final autoEnabled    = _storageService.getAutoSubmitEnabled();
     final autoDelaySecs  = _storageService.getAutoSubmitDelay();
-    child.setupAutoSubmit(
-      onValid: () async {
-        if (!autoEnabled) return;
-        if (!isItemSheetOpen.value) return;
-        if (!isEditable) return;
-        isAddingItem.value = true;
-        await Future.delayed(Duration(seconds: autoDelaySecs));
-        await addItem();
-        isAddingItem.value = false;
-      },
-    );
-
+    _wireAutoSubmit(child);
     await _openItemSheet(child);
   }
 
@@ -965,17 +953,7 @@ class StockEntryFormController extends GetxController
       // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
       final autoEnabled   = _storageService.getAutoSubmitEnabled();
       final autoDelaySecs = _storageService.getAutoSubmitDelay();
-      child.setupAutoSubmit(
-        onValid: () async {
-          if (!autoEnabled) return;
-          if (!isItemSheetOpen.value) return;
-          if (!isEditable) return;
-          isAddingItem.value = true;
-          await Future.delayed(Duration(seconds: autoDelaySecs));
-          await addItem();
-          isAddingItem.value = false;
-        },
-      );
+      _wireAutoSubmit(child);
 
       ensureItemKey(item);
       await _openItemSheet(child);
@@ -1168,132 +1146,167 @@ class StockEntryFormController extends GetxController
         (StockEntryItem i) => i.customInvoiceSerialNumber ?? '0');
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────────────────────
+  // ── Header validation ─────────────────────────────────────────────────────
+
+  /// Returns true when the header is valid to proceed with save.
+  /// Shows an error snackbar and returns false otherwise.
+  bool _validateHeaderForSave() {
+    // Resolve warehouses from first item if header fields are still null.
+    final firstItem = stockEntry.value?.items.firstOrNull;
+    if (fromWarehouse.value == null && firstItem?.sWarehouse != null) {
+      fromWarehouse.value = firstItem!.sWarehouse;
+    }
+    if (toWarehouse.value == null && firstItem?.tWarehouse != null) {
+      toWarehouse.value = firstItem!.tWarehouse;
+    }
+    if (stockEntryType.value == 'Material Transfer' &&
+        (fromWarehouse.value == null || toWarehouse.value == null)) {
+      GlobalSnackbar.error(
+          message: 'Source and Target Warehouses are required');
+      return false;
+    }
+    return true;
+  }
+
+  // ── Payload builders ──────────────────────────────────────────────────────
+
+  Map<String, dynamic> _buildHeaderPayload() => {
+    'stock_entry_type':    stockEntryType.value,
+    'posting_date':        stockEntry.value?.postingDate,
+    'posting_time':        stockEntry.value?.postingTime,
+    'from_warehouse':      fromWarehouse.value,
+    'to_warehouse':        toWarehouse.value,
+    'custom_reference_no': customReferenceNoController.text,
+    'modified':            stockEntry.value?.modified,
+    if ((stockEntry.value?.workOrder ?? '').isNotEmpty)
+      'work_order': stockEntry.value!.workOrder,
+    if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)
+      'work_order': argWorkOrderName,
+    if (entrySource == StockEntrySource.workOrder) ...{
+      'from_bom':         stockEntry.value?.fromBom == true ? 1 : 0,
+      if ((stockEntry.value?.bomNo ?? '').isNotEmpty)
+        'bom_no':         stockEntry.value!.bomNo,
+      'fg_completed_qty': stockEntry.value?.fgCompletedQty ?? 0.0,
+    },
+  };
+
+  List<Map<String, dynamic>> _buildItemsPayload() {
+    return (stockEntry.value?.items ?? []).map((item) {
+      final json = item.toJson();
+      _stripLocalName(json);
+      _stripZeroRate(json);
+      _injectMrFields(json, item);
+      _injectWorkOrderField(json);
+      json.removeWhere((_, v) => v == null);
+      return json;
+    }).toList();
+  }
+
+  void _stripLocalName(Map<String, dynamic> json) {
+    final n = json['name']?.toString() ?? '';
+    if (n.startsWith('local_') || n.startsWith('wo_prefill_')) {
+      json.remove('name');
+    }
+  }
+
+  void _stripZeroRate(Map<String, dynamic> json) {
+    if (json['basic_rate'] == 0.0) json.remove('basic_rate');
+  }
+
+  void _injectMrFields(Map<String, dynamic> json, StockEntryItem item) {
+    if (item.materialRequest != null) {
+      json['material_request'] = item.materialRequest;
+    }
+    if (item.materialRequestItem != null) {
+      json['material_request_item'] = item.materialRequestItem;
+    }
+    if (item.materialRequest == null &&
+        entrySource == StockEntrySource.materialRequest &&
+        mrReferenceItems.isNotEmpty) {
+      final ref = mrReferenceItems.firstWhereOrNull((r) =>
+      r['item_code'].toString().trim().toLowerCase() ==
+          item.itemCode.trim().toLowerCase());
+      if (ref != null) {
+        json['material_request']      = ref['material_request'];
+        json['material_request_item'] = ref['material_request_item'];
+      }
+    }
+  }
+
+  void _injectWorkOrderField(Map<String, dynamic> json) {
+    if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty) {
+      json['work_order'] = argWorkOrderName;
+    }
+  }
+
+  // ── Create / update ───────────────────────────────────────────────────────
+
+  Future<void> _createEntry(Map<String, dynamic> data) async {
+    final res = await _provider.createStockEntry(data);
+    if (res.statusCode == 200) {
+      name = res.data['data']['name'];
+      mode = 'edit';
+      await fetchStockEntry();
+      _setSaveResult(SaveResult.success);
+      GlobalSnackbar.success(message: 'Stock Entry created: $name');
+    } else {
+      _setSaveResult(SaveResult.error);
+      GlobalSnackbar.error(
+          message: 'Failed to create: ${res.data['exception'] ?? 'Unknown error'}');
+    }
+  }
+
+  Future<void> _updateEntry(Map<String, dynamic> data) async {
+    final res = await _provider.updateStockEntry(name, data);
+    if (res.statusCode == 200) {
+      if (res.data['data'] != null) {
+        stockEntry.value = StockEntry.fromJson(res.data['data']);
+      }
+      _setSaveResult(SaveResult.success);
+      isDirty.value = false;
+      await fetchStockEntry();
+    } else {
+      _setSaveResult(SaveResult.error);
+      GlobalSnackbar.error(
+          message: 'Failed to update: ${res.data['exception'] ?? 'Unknown error'}');
+    }
+  }
+
+  // ── Error handler ─────────────────────────────────────────────────────────
+
+  void _handleSaveDioError(DioException e) {
+    if (handleVersionConflict(e)) return;
+    _setSaveResult(SaveResult.error);
+    String msg = 'Save failed';
+    final data = e.response?.data;
+    if (data is Map) {
+      if (data['exception'] != null) {
+        msg = data['exception'].toString().split(':').last.trim();
+      } else if (data['_server_messages'] != null) {
+        msg = 'Validation Error: Check form details';
+      }
+    }
+    GlobalSnackbar.error(message: msg);
+  }
+
+  // ── saveStockEntry (orchestrator only, ~15 lines) ─────────────────────────
 
   Future<void> saveStockEntry() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
-
-    if (stockEntry.value != null && stockEntry.value!.items.isNotEmpty) {
-      final first = stockEntry.value!.items.first;
-      if (fromWarehouse.value == null && first.sWarehouse != null) {
-        fromWarehouse.value = first.sWarehouse;
-      }
-      if (toWarehouse.value == null && first.tWarehouse != null) {
-        toWarehouse.value = first.tWarehouse;
-      }
-    }
-    if (stockEntryType.value == 'Material Transfer') {
-      if (fromWarehouse.value == null ||
-          toWarehouse.value == null) {
-        GlobalSnackbar.error(
-            message: 'Source and Target Warehouses are required');
-        return;
-      }
-    }
+    if (!_validateHeaderForSave()) return;
 
     isSaving.value = true;
-    final Map<String, dynamic> data = {
-      'stock_entry_type':   stockEntryType.value,
-      'posting_date':       stockEntry.value?.postingDate,
-      'posting_time':       stockEntry.value?.postingTime,
-      'from_warehouse':     fromWarehouse.value,
-      'to_warehouse':       toWarehouse.value,
-      'custom_reference_no': customReferenceNoController.text,
-      'modified':           stockEntry.value?.modified,
-      if ((stockEntry.value?.workOrder ?? '').isNotEmpty)
-        'work_order': stockEntry.value!.workOrder,
-      if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)
-        'work_order': argWorkOrderName,
-      // ── BOM / FG fields — required for WO status transition to In Process ──
-      if (entrySource == StockEntrySource.workOrder) ...{
-        'from_bom': stockEntry.value?.fromBom == true ? 1 : 0,
-        if ((stockEntry.value?.bomNo ?? '').isNotEmpty)
-          'bom_no': stockEntry.value!.bomNo,
-        'fg_completed_qty': stockEntry.value?.fgCompletedQty ?? 0.0,
-      },
-    };
-
-    final itemsJson = stockEntry.value?.items.map((i) {
-          final json = i.toJson();
-          if (json['name'] != null &&
-              (json['name'].toString().startsWith('local_') ||
-               json['name'].toString().startsWith('wo_prefill_'))) {
-            json.remove('name');
-          }
-          if (json['basic_rate'] == 0.0) json.remove('basic_rate');
-          if (json['material_request'] == null &&
-              entrySource == StockEntrySource.materialRequest &&
-              mrReferenceItems.isNotEmpty) {
-            final ref = mrReferenceItems.firstWhereOrNull((r) =>
-                r['item_code'].toString().trim().toLowerCase() ==
-                i.itemCode.trim().toLowerCase());
-            if (ref != null) {
-              json['material_request']      = ref['material_request'];
-              json['material_request_item'] = ref['material_request_item'];
-            }
-          }
-          if (i.materialRequest != null)
-            json['material_request'] = i.materialRequest;
-          if (i.materialRequestItem != null)
-            json['material_request_item'] = i.materialRequestItem;
-          if (argWorkOrderName != null && argWorkOrderName!.isNotEmpty)
-            json['work_order'] = argWorkOrderName;
-          json.removeWhere((key, value) => value == null);
-          return json;
-        }).toList() ??
-        [];
-    data['items'] = itemsJson;
-
+    final data = _buildHeaderPayload()
+      ..['items'] = _buildItemsPayload();
     try {
       if (mode == 'new') {
-        final response = await _provider.createStockEntry(data);
-        if (response.statusCode == 200) {
-          final createdDoc = response.data['data'];
-          name = createdDoc['name'];
-          mode = 'edit';
-          await fetchStockEntry();
-          _setSaveResult(SaveResult.success);
-          GlobalSnackbar.success(message: 'Stock Entry created: $name');
-        } else {
-          _setSaveResult(SaveResult.error);
-          GlobalSnackbar.error(
-              message: 'Failed to create: '
-                  '${response.data['exception'] ?? 'Unknown error'}');
-        }
+        await _createEntry(data);
       } else {
-        final response = await _provider.updateStockEntry(name, data);
-        if (response.statusCode == 200) {
-          final updatedDoc = response.data['data'];
-          if (updatedDoc != null) {
-            stockEntry.value = StockEntry.fromJson(updatedDoc);
-          }
-          _setSaveResult(SaveResult.success);
-          isDirty.value = false;
-          await fetchStockEntry();
-        } else {
-          _setSaveResult(SaveResult.error);
-          GlobalSnackbar.error(
-              message: 'Failed to update: '
-                  '${response.data['exception'] ?? 'Unknown error'}');
-        }
+        await _updateEntry(data);
       }
     } on DioException catch (e) {
-      if (handleVersionConflict(e)) {
-        // handled by mixin
-      } else {
-        _setSaveResult(SaveResult.error);
-        String msg = 'Save failed';
-        if (e.response?.data is Map) {
-          if (e.response!.data['exception'] != null) {
-            msg = e.response!.data['exception']
-                .toString().split(':').last.trim();
-          } else if (e.response!.data['_server_messages'] != null) {
-            msg = 'Validation Error: Check form details';
-          }
-        }
-        GlobalSnackbar.error(message: msg);
-      }
+      _handleSaveDioError(e);
     } catch (e) {
       _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(message: 'Save failed: $e');

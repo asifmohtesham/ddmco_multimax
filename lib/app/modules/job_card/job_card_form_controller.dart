@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
@@ -9,7 +10,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
-class JobCardFormController extends GetxController {
+class JobCardFormController extends GetxController with DioErrorMixin {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
 
   // ── Route args ────────────────────────────────────────────────────────────
@@ -222,7 +223,7 @@ class JobCardFormController extends GetxController {
       }
     } on DioException catch (e) {
       GlobalSnackbar.error(
-          message: _extractErrorMessage(e, 'Add time log failed'));
+          message: extractDioError(e, 'Add time log failed'));
     } catch (e) {
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
