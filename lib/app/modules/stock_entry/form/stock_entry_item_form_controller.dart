@@ -171,6 +171,38 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   bool get canBrowseRacks =>
       itemCode.value.isNotEmpty && resolvedWarehouse != null;
 
+  // ── SourceRackDelegate: warehouse + change hook ────────────────────────────
+
+  /// Resolved warehouse for the source-rack picker scope.
+  ///
+  /// Returns the parent SE's "from" warehouse so the [RackPickerController]
+  /// is seeded with the correct warehouse filter on open.
+  @override
+  RxnString get sourceRackWarehouse => _parent.fromWarehouse;
+
+  /// Called by [SharedSourceRackField] when the user edits the source-rack
+  /// field directly (typed input).  Delegates to [validateDualRack] which
+  /// handles balance fetch + [isSourceRackValid] state.
+  @override
+  Future<void> onSourceRackChanged(String rack) async =>
+      validateDualRack(rack, true);
+
+  // ── TargetRackDelegate: warehouse + change hook ────────────────────────────
+
+  /// Resolved warehouse for the target-rack picker scope.
+  ///
+  /// Returns the parent SE's "to" warehouse so the [RackPickerController]
+  /// for the target side is scoped to the correct destination warehouse.
+  @override
+  RxnString get targetRackWarehouse => _parent.toWarehouse;
+
+  /// Called by [SharedTargetRackField] when the user edits the target-rack
+  /// field directly (typed input).  Delegates to [validateDualRack] on the
+  /// target side (isSource = false).
+  @override
+  Future<void> onTargetRackChanged(String rack) async =>
+      validateDualRack(rack, false);
+
   /// Opens the rack picker sheet for the single-rack (non-dual) flow.
   ///
   /// Lifecycle mirrors [SharedDualRackSection._openRackPicker]:

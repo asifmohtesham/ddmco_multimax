@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'rack_location.dart';
 
 // ── SufficiencyStatus ─────────────────────────────────────────────────────────
@@ -324,6 +328,12 @@ class RackPickerController extends GetxController {
 /// after the sheet closes. Used by both [SharedSourceRackField] and
 /// [SharedTargetRackField] to avoid duplicating the lifecycle boilerplate.
 abstract final class RackPickerLauncher {
+  /// Opens a [RackPickerSheet] for [warehouse] + [itemCode] + [batchNo],
+  /// calls [onSelected] with the chosen rack ID, and disposes the scoped
+  /// [RackPickerController] after the sheet closes.
+  ///
+  /// Both [SharedSourceRackField] and [SharedTargetRackField] delegate here
+  /// so the picker-lifecycle boilerplate is not duplicated.
   static Future<void> open(
       BuildContext context, {
         required String warehouse,
@@ -331,6 +341,30 @@ abstract final class RackPickerLauncher {
         required String batchNo,
         required double requestedQty,
         required String currentRack,
+        required Map<String, double> fallbackMap,
         required void Function(String rack) onSelected,
-      }) async { /* extracted _openRackPicker body */ }
+      }) async {
+    final tag = 'rack_picker_${DateTime.now().microsecondsSinceEpoch}';
+    final ctrl = Get.put(RackPickerController(), tag: tag);
+    unawaited(ctrl.load(
+      itemCode:     itemCode,
+      batchNo:      batchNo,
+      warehouse:    warehouse,
+      requestedQty: requestedQty,
+      currentRack:  currentRack,
+      fallbackMap:  fallbackMap,
+    ));
+    await Get.bottomSheet(
+      RackPickerSheet(
+        pickerTag:  tag,
+        onSelected: onSelected,
+      ),
+      isScrollControlled: true,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Get.isRegistered<RackPickerController>(tag: tag)) {
+        Get.delete<RackPickerController>(tag: tag);
+      }
+    });
+  }
 }
