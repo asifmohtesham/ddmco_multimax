@@ -120,42 +120,77 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
     ];
 
+    final PreferredSizeWidget? resolvedBottom =
+      (displayStatus == null && bottom == null && appActions.isEmpty)
+          ? null
+          : PreferredSize(
+        preferredSize: Size.fromHeight(
+          40 + (bottom?.preferredSize.height ?? 0),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 40,
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  if (displayStatus != null) StatusPill(status: displayStatus),
+                  const Spacer(),
+                  ...appActions,
+                ],
+              ),
+            ),
+            if (bottom != null) bottom!,
+          ],
+        ),
+      );
+
     return AppBar(
+      titleSpacing: 0,
+      leadingWidth: 48,
       leading: leading ??
           (showBack && Navigator.canPop(context)
               ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.maybePop(context),
-                )
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.maybePop(context),
+          )
               : null),
-      title: Column(
-        crossAxisAlignment:
-            centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          titleWidget ??
-              Text(
-                title,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-          if (displayStatus != null) ...[
-            const SizedBox(height: 4),
-            StatusPill(status: displayStatus),
-          ],
-        ],
-      ),
-      actions: appActions,
+      title: titleWidget ??
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+      actions: const [], // top row intentionally kept free
       centerTitle: centerTitle,
       elevation: 0,
       scrolledUnderElevation: 0,
       backgroundColor: Theme.of(context).primaryColor,
       foregroundColor: Theme.of(context).colorScheme.onPrimary,
-      bottom: bottom,
+      bottom: resolvedBottom,
     );
   }
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
+  Size get preferredSize {
+    final hasSecondRow =
+        (isDirty || status != null) ||
+            onReload != null ||
+            onSave != null ||
+            _hasSearch ||
+            (actions?.isNotEmpty ?? false);
+
+    return Size.fromHeight(
+      kToolbarHeight +
+          (hasSecondRow ? 40.0 : 0.0) +
+          (bottom?.preferredSize.height ?? 0),
+    );
+  }
 }
