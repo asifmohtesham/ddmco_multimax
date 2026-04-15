@@ -343,14 +343,68 @@ class _WorkOrderForm extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _SectionHeader(
-                    label: 'Job Cards (${linkedCards.length})',
+                    // Show "2/3 Completed" tally when WO is submitted
+                    label: wo?.docstatus == 1
+                        ? 'Job Cards '
+                        '(${controller.completedJobCardsCount}/${linkedCards.length} Completed)'
+                        : 'Job Cards (${linkedCards.length})',
                     icon: Icons.assignment_ind_outlined,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+
+                  // Contextual hint when WO is Not Started (JCs exist but not yet unlocked)
+                  if (wo?.status == 'Not Started')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, left: 2),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 13,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Tap "Execute Work Order" to begin processing.',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Hint when In Process but not all JCs are done
+                  if (wo?.status == 'In Process' &&
+                      !controller.allJobCardsCompleted &&
+                      linkedCards.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, left: 2),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_outlined, size: 13,
+                              color: Colors.orange.shade700),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Complete all Job Cards to enable "Finish Work Order".',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.orange.shade700,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 4),
                   if (fetchingJC)
                     const Center(child: CircularProgressIndicator())
                   else
-                    ...linkedCards.map((jc) => _JobCardRow(jc: jc)),
+                    ...linkedCards.map((jc) => _JobCardRow(
+                      jc: jc,
+                      // Lock JC rows until WO is "In Process" or beyond.
+                      isLocked: wo?.status == 'Not Started',
+                    )),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -1027,51 +1081,102 @@ class _WarehouseField extends StatelessWidget {
 /// Private widget to render a single Job Card row in the linked section.
 class _JobCardRow extends StatelessWidget {
   final JobCard jc;
+  /// When true the row is tappable; false = WO not yet "In Process".
+  final bool isLocked;
 
-  const _JobCardRow({required this.jc});
+  const _JobCardRow({required this.jc, this.isLocked = false});
+
+  Color _statusColor(String? status, ColorScheme cs) => switch (status) {
+    'Open'        => cs.onSurfaceVariant,
+    'Work In Progress' => Colors.orange.shade700,
+    'Completed'   => Colors.green.shade700,
+    _             => cs.onSurfaceVariant,
+  };
+
+  IconData _statusIcon(String? status) => switch (status) {
+    'Open'             => Icons.radio_button_unchecked,
+    'Work In Progress' => Icons.timelapse_outlined,
+    'Completed'        => Icons.check_circle_outline,
+    _                  => Icons.help_outline,
+  };
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final name = jc.name ?? '';
+    final cs     = Theme.of(context).colorScheme;
+    final name   = jc.name ?? '';
+    final status = jc.status ?? 'Open';
+    final clr    = _statusColor(status, cs);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
-        onTap: () {
-          Get.toNamed(AppRoutes.JOB_CARD_FORM, arguments: {'name': name});
-        },
+        // Locked = WO not yet executed; tapping is suppressed.
+        onTap: isLocked
+            ? null
+            : () => Get.toNamed(AppRoutes.JOB_CARD_FORM,
+            arguments: {'name': name}),
         borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            border: Border.all(color: cs.outline.withOpacity(0.3)),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.assignment_outlined,
-                size: 20,
-                color: cs.primary,
+        child: Opacity(
+          opacity: isLocked ? 0.55 : 1.0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: isLocked
+                  ? cs.surfaceContainerHighest.withValues(alpha: 0.5)
+                  : null,
+              border: Border.all(
+                color: isLocked
+                    ? cs.outline.withValues(alpha: 0.15)
+                    : clr.withValues(alpha: 0.35),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: cs.onSurface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                // Status icon
+                Icon(_statusIcon(status), size: 20, color: clr),
+                const SizedBox(width: 10),
+
+                // JC name
+                Expanded(
+                  child: Text(
+                    name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: isLocked ? cs.onSurfaceVariant : cs.onSurface,
+                    ),
                   ),
                 ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: cs.onSurfaceVariant,
-              ),
-            ],
+
+                // Status chip
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: clr.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: clr,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 6),
+
+                // Trailing: lock icon when locked, chevron when navigable
+                Icon(
+                  isLocked ? Icons.lock_outline : Icons.chevron_right,
+                  size: 18,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
+            ),
           ),
         ),
       ),

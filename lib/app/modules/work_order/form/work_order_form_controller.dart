@@ -33,8 +33,28 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   // ── Route args ────────────────────────────────────────────────────────────
   late String name;
   final JobCardProvider _jobCardProvider = Get.find<JobCardProvider>();
-  final linkedJobCards = <JobCard>[].obs;
-  final isFetchingLinkedCards = false.obs;
+
+  var linkedJobCards        = <JobCard>[].obs;
+  var isFetchingLinkedCards = false.obs;
+
+  /// True when every linked Job Card has status "Completed".
+  bool get allJobCardsCompleted =>
+      linkedJobCards.isNotEmpty &&
+          linkedJobCards.every((jc) => jc.status == 'Completed');
+
+  /// How many Job Cards have status "Completed".
+  int get completedJobCardsCount =>
+      linkedJobCards.where((jc) => jc.status == 'Completed').length;
+
+  /// True when the WO is "In Process" AND all Job Cards are completed.
+  /// Used to gate the "Finish Work Order" button.
+  bool get canFinishWithJobCards {
+    final wo = workOrder.value;
+    if (wo?.status != 'In Process') return false;
+    if (linkedJobCards.isEmpty) return true;  // no JCs → no gate
+    return allJobCardsCompleted;
+  }
+
   late String mode; // 'new' | 'view'
 
   // ── Rx state ──────────────────────────────────────────────────────────────
@@ -55,7 +75,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   final workOrder = Rx<WorkOrder?>(null);
 
   /// BOM operations cached when a BOM is selected in 'new' mode.
-  /// Serialised into the WO creation payload so ERPNext pre-fills the
+  /// Serialised into the WO creation payload so ERP pre-fills the
   /// operations child table, enabling Job Card creation after submit.
   final bomOperations = <BomOperation>[].obs;
 
@@ -139,16 +159,14 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   }
 
   /// True when the WO is "In Process" and not yet fully produced.
-  /// Mirrors ERPNext's "Finish" button visibility: docstatus=1, status="In Process",
+  /// Mirrors ERP's "Finish" button visibility: docstatus=1, status="In Process",
   /// and produced_qty < qty.
   bool get canFinish {
     final wo = workOrder.value;
-    if (wo == null) return false;
-    return wo.docstatus == 1 &&
-        wo.status == 'In Process' &&
-        wo.producedQty < wo.qty &&
-        !isExecuting.value &&
-        !isSubmitting.value;
+    return wo?.docstatus == 1 &&
+        wo?.status == 'In Process' &&
+        canFinishWithJobCards &&      // ← NEW: all JCs must be Completed
+        !isExecuting.value;
   }
 
   // "Create Job Cards" is only unlocked after a submitted
@@ -334,7 +352,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       hasMaterialTransferSubmitted.value = false;
       return;
     }
-    // material_transferred_for_manufacturing is updated by ERPNext's
+    // material_transferred_for_manufacturing is updated by ERP's
     // update_work_order_qty() on SE submit. If it is > 0, at least one
     // Material Transfer SE has been submitted for this WO.
     hasMaterialTransferSubmitted.value =
@@ -478,7 +496,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
         if (fgWarehouseController.text.isEmpty) {
           fgWarehouseController.text = bom.defaultTargetWarehouse ?? '';
         }
-        // Cache BOM operations — sent to ERPNext during WO creation so the
+        // Cache BOM operations — sent to ERP during WO creation so the
         // operations child table is pre-filled without a second round-trip.
         bomOperations.assignAll(bom.operations);
         markDirty();
@@ -593,7 +611,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
 
   // ── Execute Work Order ────────────────────────────────────────────────────
   //
-  // Sequence enforced by ERPNext:
+  // Sequence enforced by ERP:
   //   1. Ensure a Job Card exists (create via make_job_card if needed).
   //   2. Create Stock Entry with job_card field linked.
   //   3. Submit the Stock Entry.
@@ -651,7 +669,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       'fromWarehouse':    items.first.sourceWarehouse ?? '',
       'toWarehouse':      targetWarehouse,
       'items':            itemsPayload,
-      // ── Required for ERPNext WO status transition ──────────────────────
+      // ── Required for ERP WO status transition ──────────────────────
       'fromBom':          true,             // sets from_bom = 1
       'bomNo':            wo.bomNo,         // links to BOM for qty validation
       'fgCompletedQty':   wo.qty,           // the WO's planned production qty
@@ -672,7 +690,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   /// Navigates to [AppRoutes.STOCK_ENTRY_FORM] prefilled for
   /// Stock Entry: Manufacture.
   ///
-  /// ERPNext Manufacture SE moves the finished item from the WIP
+  /// ERP Manufacture SE moves the finished item from the WIP
   /// warehouse into the FG warehouse. The key fields are:
   ///   - stock_entry_type = 'Manufacture'
   ///   - work_order       = WO name
@@ -681,7 +699,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   ///   - fg_completed_qty = remaining qty to produce (qty - produced_qty)
   ///
   /// The SE form's [StockEntrySource.workOrder] branch populates the
-  /// items table automatically using ERPNext's get_items_se() API,
+  /// items table automatically using ERP's get_items_se() API,
   /// so no items payload is needed here.
   void _navigateToManufactureEntry(WorkOrder wo) {
     final remainingQty = wo.qty - wo.producedQty;
