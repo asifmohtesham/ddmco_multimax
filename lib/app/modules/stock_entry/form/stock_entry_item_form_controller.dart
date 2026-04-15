@@ -530,6 +530,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   var isBatchedItem    = false.obs;
   var isSerialisedItem = false.obs;
   var isEditingExisting = false.obs;
+
+  /// Whether the item being edited/added is the finished-good row of a
+  /// Manufacture Stock Entry ([StockEntryItem.isFinishedItem] == 1).
+  ///
+  /// When `true`, batch-balance validation is **relaxed**: a batch that
+  /// exists but has a zero balance is accepted because the finished good
+  /// is being *produced* (output row) — its balance starts at 0.
+  ///
+  /// This flag is seeded inside [_loadExistingItem] for edit mode and
+  /// inside [initForNewItem] (reset to `false`) for add mode.
+  var isFinishedItem = false.obs;
+
   String? editingOriginalBatch;
 
   // MR-link state
@@ -547,13 +559,49 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         t == 'Material Transfer for Manufacture';
   }
 
+  @override
+  bool get showSourceRack {
+    if (selectedStockEntryType.value == 'Manufacture' && isFinishedItem.value) {
+      return false;
+    }
+    return ['Material Issue', 'Material Transfer',
+      'Material Transfer for Manufacture']
+        .contains(selectedStockEntryType.value);
+  }
+
+  @override
+  bool get showTargetRack {
+    if (selectedStockEntryType.value == 'Manufacture' && isFinishedItem.value) {
+      return true; // FG row always needs a target rack
+    }
+    return ['Material Receipt', 'Material Transfer',
+      'Material Transfer for Manufacture']
+        .contains(selectedStockEntryType.value);
+  }
+
   // ── Sheet-valid gate ────────────────────────────────────────────────────────
+  /// Recomputes [isSheetValid] based on the current field state.
+  ///
+  /// ## Batch gate relaxation for Manufacture finished-good rows
+  ///
+  /// For [StockEntrySource.manufacture] entries, the item with
+  /// [isFinishedItem] == 1 is the *output* of the production run.
+  /// Its batch balance is 0 by definition (it has not yet been
+  /// manufactured), so the normal [isBatchValid] gate would permanently
+  /// block the save button.  When [isFinishedItem] is `true` **and**
+  /// [batchController] is non-empty **and** the parent SE type is
+  /// `'Manufacture'`, the batch gate is treated as satisfied regardless
+  /// of the balance returned by ERP.
+  ///
+  /// All other validation axes (qty > 0, qty ≤ ceiling, source-rack for
+  /// transfer/issue types) remain unchanged.
   @override
   void validateSheet() {
     final qty  = double.tryParse(qtyController.text);
     final ceil = effectiveMaxQty;
 
-    final rackOk   = !_requiresSourceRack || isSourceRackValid.value;
+    // rackOk: only enforce source-rack if the current item/context requires it.
+    final rackOk = !showSourceRack || isSourceRackValid.value;
     final ceilOk   = ceil == double.infinity || (qty != null && qty <= ceil);
     final qtyOk    = qty != null && qty > 0;
 
@@ -571,7 +619,17 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       qtyError.value   = '';
     }
 
-    final valid = isBatchValid.value && qtyOk && ceilOk && rackOk;
+    // Manufacture finished-good rows are outputs, not consumed stock.
+    // Their batch may validly have a zero on-hand balance (it is being
+    // produced right now), so we allow isBatchValid == false provided the
+    // batch text is non-empty and the parent is a Manufacture SE.
+    final batchOk = isBatchValid.value ||
+        (_parent.stockEntryType.value == 'Manufacture' &&
+            isFinishedItem.value &&
+            batchController.text.isNotEmpty);
+
+    final valid = batchOk && qtyOk && ceilOk && rackOk;
+
     isSheetValid.value = valid;
 
     // ── Live remaining via SerialFieldMixin ───────────────────────────────
@@ -674,6 +732,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (isClosed) return;
     editingItemName.value    = null;
     isEditingExisting.value  = false;
+    isFinishedItem.value = false; // reset; seeded later by _loadExistingItem
     editingOriginalBatch     = null;
     // Commit 6: reset docStatus → unlocks isQtyReadOnly via ever() worker.
     docStatus.value          = 0;
@@ -728,6 +787,10 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     // fix(docstatus): docstatus belongs to the parent document, not the item
     // row. Read from parent StockEntry to drive the isQtyReadOnly lock.
     docStatus.value = _parent.stockEntry.value?.docstatus ?? 0;
+
+    // Seed finished-item flag so validateSheet() can relax the
+    // batch-balance gate for the Manufacture FG row.
+    isFinishedItem.value = item.isFinishedItem == 1;
 
     batchController.text        = item.batchNo ?? '';
     rackController.text         = item.rack    ?? '';

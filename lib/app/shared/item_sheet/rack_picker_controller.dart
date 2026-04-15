@@ -316,3 +316,21 @@ class RackPickerController extends GetxController {
   int get withStockCount =>
       entries.where((e) => e.availableQty > 0).length;
 }
+
+/// Static rack-picker lifecycle utility.
+///
+/// Registers a scoped [RackPickerController], presents [RackPickerSheet],
+/// calls [onSelected] with the picked rack, then disposes the controller
+/// after the sheet closes. Used by both [SharedSourceRackField] and
+/// [SharedTargetRackField] to avoid duplicating the lifecycle boilerplate.
+abstract final class RackPickerLauncher {
+  static Future<void> open(
+      BuildContext context, {
+        required String warehouse,
+        required String itemCode,
+        required String batchNo,
+        required double requestedQty,
+        required String currentRack,
+        required void Function(String rack) onSelected,
+      }) async { /* extracted _openRackPicker body */ }
+}
