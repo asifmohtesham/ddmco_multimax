@@ -5,51 +5,65 @@ import 'package:multimax/app/shared/item_sheet/target_rack_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
-/// Target-rack input field with optional Browse Rack button.
+/// Target-rack input field with Browse Rack (shelves) button.
 ///
-/// Renders a validated text field wired to [TargetRackDelegate]. The
-/// shelves-icon button opens [RackPickerSheet] scoped to
-/// [TargetRackDelegate.targetRackWarehouse].
+/// Accepts any controller that implements [TargetRackDelegate] — including
+/// [DualRackDelegate] subclasses, since [DualRackDelegate] extends
+/// [TargetRackDelegate]. No cast is required at any call site.
 ///
-/// Used for Material Receipt / Material Transfer target-side fields, and
-/// for the Manufacture finished-good row via [_ManufactureTargetRackSection]
-/// in `rack_section.dart`.
+/// ## Validation flow
+/// - Typed input → `onChanged` → [TargetRackDelegate.onTargetRackChanged]
+/// - Browse button → [RackPickerSheet] → [TargetRackDelegate.onTargetRackChanged]
+///
+/// ## Picker scope
+/// The rack picker is scoped to [TargetRackDelegate.targetRackWarehouse]
+/// so only racks in the correct destination warehouse are shown.
+///
+/// ## Typical callers
+/// - [SharedDualRackSection]: Material Transfer / Transfer for Manufacture
+///   (both source + target shown)
+/// - `_ManufactureTargetRackSection` in `rack_section.dart`: Manufacture
+///   finished-good row (target only — no source rack for output items)
 class SharedTargetRackField extends StatelessWidget {
-  /// The controller that implements [TargetRackDelegate].
-  final TargetRackDelegate delegate;
+  /// Controller implementing [TargetRackDelegate].
+  ///
+  /// Typically a [DualRackDelegate] passed down from [SharedDualRackSection],
+  /// but any controller that mixes in [TargetRackDelegate] alone is equally
+  /// valid.
+  final TargetRackDelegate controller;
 
-  /// Tint color for the validated-state icon and focus ring.
+  /// Tint applied to the validated check-circle icon.
   final Color accentColor;
 
-  /// Whether to show the Browse Rack (shelves) icon button.
+  /// Whether to show the Browse Rack shelves-icon button.
   final bool canBrowse;
 
-  /// Constructs a target-rack field backed by [delegate].
+  /// Constructs a target-rack field backed by [controller].
   const SharedTargetRackField({
     super.key,
-    required this.delegate,
-    required this.accentColor,
-    required this.canBrowse,
+    required this.controller,
+    this.accentColor = Colors.purple,
+    this.canBrowse   = true,
   });
 
   Future<void> _openPicker() async {
-    final warehouse = delegate.targetRackWarehouse?.value ?? '';
-    final tag = 'tgt_rack_picker_${DateTime.now().microsecondsSinceEpoch}';
+    final warehouse = controller.targetRackWarehouse?.value ?? '';
+    final tag = 'tgt_rack_${DateTime.now().microsecondsSinceEpoch}';
     final ctrl = Get.put(RackPickerController(), tag: tag);
     unawaited(ctrl.load(
-      itemCode:     '',
-      batchNo:      delegate.targetRackController.text.trim(),
+      itemCode:     controller.itemCode.value,
+      batchNo:      controller.batchController.text.trim(),
       warehouse:    warehouse,
-      requestedQty: 0.0,
-      currentRack:  delegate.targetRackController.text.trim(),
-      fallbackMap:  {},
+      requestedQty: double.tryParse(controller.qtyController.text) ?? 0.0,
+      currentRack:  controller.targetRackController.text.trim(),
+      fallbackMap:  const {},
     ));
     await Get.bottomSheet(
       RackPickerSheet(
         pickerTag:  tag,
         onSelected: (rack) {
-          delegate.targetRackController.text = rack;
-          delegate.onTargetRackChanged(rack);
+          controller.targetRackController.text = rack;
+          controller.onTargetRackChanged(rack);
         },
       ),
       isScrollControlled: true,
@@ -64,43 +78,38 @@ class SharedTargetRackField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final isValid      = delegate.isTargetRackValid.value;
-      final isValidating = delegate.isValidatingTargetRack.value;
-      final error        = delegate.rackError.value;
+      final isValid      = controller.isTargetRackValid.value;
+      final isValidating = controller.isValidatingTargetRack.value;
+      final error        = controller.rackError.value;
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: delegate.targetRackController,
-            decoration: InputDecoration(
-              labelText:  'Target Rack',
-              errorText:  error.isNotEmpty ? error : null,
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (isValidating)
-                    const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  else if (isValid)
-                    Icon(Icons.check_circle, color: accentColor, size: 20),
-                  if (canBrowse)
-                    IconButton(
-                      icon: const Icon(Icons.shelves),
-                      tooltip: 'Browse Racks',
-                      onPressed: _openPicker,
-                    ),
-                ],
-              ),
-            ),
-            onChanged: delegate.onTargetRackChanged,
+      return TextField(
+        controller: controller.targetRackController,
+        decoration: InputDecoration(
+          labelText: 'Target Rack',
+          errorText: error.isNotEmpty ? error : null,
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isValidating)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else if (isValid)
+                Icon(Icons.check_circle, color: accentColor, size: 20),
+              if (canBrowse)
+                IconButton(
+                  icon:    const Icon(Icons.shelves),
+                  tooltip: 'Browse Racks',
+                  onPressed: _openPicker,
+                ),
+            ],
           ),
-        ],
+        ),
+        onChanged: controller.onTargetRackChanged,
       );
     });
   }
