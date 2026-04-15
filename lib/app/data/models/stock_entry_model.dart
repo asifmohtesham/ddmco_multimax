@@ -217,22 +217,29 @@ class StockEntryItem {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {
       'item_code': itemCode,
-      'qty': qty,
+      'qty':        qty,
       'basic_rate': basicRate,
-      'batch_no': batchNo,
-      's_warehouse': sWarehouse,
-      't_warehouse': tWarehouse,
-      'rack': rack,
+      'batch_no':   batchNo,
+      // ── Manufacture row asymmetry ──────────────────────────────────────
+      // Finished good rows (is_finished_item == 1) are PRODUCED into a
+      // target warehouse — they must NOT carry an s_warehouse, otherwise
+      // ERPNext treats the batch as consumed from WIP and immediately
+      // posts a negative stock ledger entry.
+      //
+      // Component rows (is_finished_item == 0) are CONSUMED from a source
+      // warehouse — they must NOT carry a t_warehouse on outgoing-only
+      // entries, matching the payload that the ERPNext web UI generates.
+      if (isFinishedItem != 1) 's_warehouse': sWarehouse,
+      if (isFinishedItem == 1 || sWarehouse == null) 't_warehouse': tWarehouse,
+      'rack':    rack,
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
-      'material_request': materialRequest,
+      'material_request':      materialRequest,
       'material_request_item': materialRequestItem,
       'use_serial_batch_fields': 1,
-      'is_finished_item': isFinishedItem,
+      'is_finished_item':      isFinishedItem,
     };
-    if (name != null) {
-      data['name'] = name;
-    }
+    if (name != null) data['name'] = name;
     return data;
   }
 }
