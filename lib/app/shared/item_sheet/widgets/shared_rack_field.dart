@@ -88,13 +88,32 @@ class SharedRackField extends StatelessWidget {
   final String hint;
   final bool   editMode;
 
-  /// Optional balance override.  When non-null, the [BalanceChip] calls this
-  /// getter on every rebuild instead of calling
-  /// [RackFieldDelegate.rackBalanceFor] via [_rackBalance].
+  /// Optional balance override.
   ///
-  /// Use this when the call site needs a balance value that is not
-  /// sourced through [rackBalanceFor] — for example a separate live
-  /// RxDouble field maintained by the orchestrator controller.
+  /// When non-null and returns a [double], the [BalanceChip] displays that
+  /// value instead of calling [RackFieldDelegate.rackBalanceFor].
+  ///
+  /// When non-null and **returns `null`**, the [BalanceChip] is suppressed
+  /// entirely.  Use this to opt out of the chip at the call site without
+  /// needing a separate `showBalanceChip` flag:
+  ///
+  /// ```dart
+  /// // Target rack — no outbound balance to show:
+  /// SharedRackField(
+  ///   c: targetAdapter,
+  ///   balanceOverride: () => null,   // chip hidden
+  /// )
+  ///
+  /// // Source rack — live RxDouble balance:
+  /// SharedRackField(
+  ///   c: sourceAdapter,
+  ///   balanceOverride: () => controller.rackBalance.value,
+  /// )
+  /// ```
+  ///
+  /// When `null` (not supplied), the chip falls back to
+  /// [RackFieldDelegate.rackBalanceFor] and is shown whenever
+  /// `balance > 0 || forceShow`.
   final double? Function()? balanceOverride;
 
   /// Optional callback fired when the picker icon button is tapped.
@@ -256,7 +275,12 @@ class _EditModeRack extends StatelessWidget {
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
       // DN-10: respect balanceOverride when supplied; fall back to rackBalanceFor.
-      final rackBal    = w.balanceOverride?.call() ?? w._rackBalance(c);
+      // When balanceOverride returns null, the caller explicitly opts out of
+      // displaying any balance.  Suppress the chip entirely in that case by
+      // short-circuiting forceShow.
+      final double? overriddenBal = w.balanceOverride?.call();
+      final double  rackBal       = overriddenBal ?? w._rackBalance(c);
+      final bool    showChip      = overriddenBal != null || w.balanceOverride == null;
 
       // Derive the border accent colour to match _SimpleRack behaviour:
       // green when valid, error colour on error, accent otherwise.
@@ -294,13 +318,14 @@ class _EditModeRack extends StatelessWidget {
           ),
           // DN-9: forceShow: validating || isValid — chip stays visible after
           // validation completes even when rackBalance is momentarily 0.0.
-          BalanceChip(
-            balance:   rackBal,
-            isLoading: validating,
-            color:     w.accentColor,
-            prefix:    'Rack Balance:',
-            forceShow: validating || isValid,
-          ),
+          if (showChip)
+            BalanceChip(
+              balance:   rackBal,
+              isLoading: validating,
+              color:     w.accentColor,
+              prefix:    'Rack Balance:',
+              forceShow: validating || isValid,
+            ),
         ],
       );
     });

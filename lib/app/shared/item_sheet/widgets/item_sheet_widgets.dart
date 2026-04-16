@@ -1,33 +1,27 @@
 /// Barrel export for all shared item-sheet widgets.
 ///
-/// Import this single file instead of individual paths:
+/// Available widgets / adapters:
+///   - [SharedBatchField]
+///   - [SharedRackField]               — single rack (simple + edit modes),
+///                                       BalanceChip + Browse Rack included
+///   - [SharedDualRackSection]         — SE dual rack; renders two
+///                                       [SharedRackField] instances via
+///                                       [SourceRackFieldAdapter] /
+///                                       [TargetRackFieldAdapter]
+///   - [SourceRackFieldAdapter]        — bridges [DualRackDelegate] source-side
+///                                       to [RackFieldWithBrowseDelegate]
+///   - [TargetRackFieldAdapter]        — bridges [DualRackDelegate] target-side
+///                                       to [RackFieldWithBrowseDelegate]
+///   - [SharedQtyField]
+///   - [QtyCapBadge]
+///   - [SharedInvoiceSerialNumberField]
+///   - [ValidatedRackField]
+///   - [ValidatedBatchField]
+///   - [BrowseBatchButton]
 ///
-/// ```dart
-/// import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
-/// ```
-///
-/// Available widgets:
-///   - [SharedBatchField]                 -- batch no input (simple + edit modes)
-///   - [SharedRackField]                  -- single rack input (simple + edit modes)
-///   - [SharedQtyField]                   -- qty input with optional ± stepper and
-///                                           Max-Qty chip; driven by QtyFieldDelegate
-///                                           (or QtyFieldWithPlusMinusDelegate for full
-///                                           stepper support)
-///   - [QtyCapBadge]                      -- tappable pill chip showing the active qty cap;
-///                                           driven by QtyCapDelegate
-///   - [SharedInvoiceSerialNumberField]   -- delegate-driven invoice serial number input
-///                                           + POS cap badge; driven by
-///                                           SerialNumberFieldDelegate /
-///                                           SerialFieldMixin
-///   - [SharedDualRackSection]            -- SE dual source+target rack section
-///   - [ValidatedRackField]               -- primitive validated rack field (plain-param,
-///                                           controller-free; moved from stock_entry
-///                                           module in Commit 1 of RackFieldWithBrowseDelegate)
-///   - [ValidatedBatchField]              -- primitive validated batch field (plain-param,
-///                                           controller-free; extracted in Commit 6 of
-///                                           BatchNoFieldWithBrowseDelegate refactor)
-///   - [BrowseBatchButton]                -- conditional 'Browse Batches' text button
-///                                           rendered below the batch input field
+/// Removed in Commit 4 (SE rack regression fix):
+///   - SharedSourceRackField  (deleted — replaced by SharedRackField + adapter)
+///   - SharedTargetRackField  (deleted — replaced by SharedRackField + adapter)
 export 'shared_batch_field.dart';
 export 'shared_rack_field.dart';
 export 'shared_qty_field.dart';
@@ -37,3 +31,6 @@ export 'shared_dual_rack_section.dart';
 export 'validated_rack_field.dart';
 export 'validated_batch_field.dart';
 export 'browse_batch_button.dart';
+// Adapters — exported so callers that build custom dual-rack UIs can
+// instantiate adapters directly without importing dual_rack_adapters.dart.
+export 'package:multimax/app/shared/item_sheet/dual_rack_adapters.dart';
