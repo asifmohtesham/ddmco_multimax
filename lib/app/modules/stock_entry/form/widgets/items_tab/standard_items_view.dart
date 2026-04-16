@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
@@ -28,18 +29,26 @@ class StandardItemsView extends StatelessWidget {
         final item = entry.items[index];
         controller.ensureItemKey(item);
 
-        return DocItemCard(
-          key:  controller.itemKeys[item.name],
-          data: ItemCardData.fromStockEntryItem(
-            item,
-            index:      index,
-            isEditable: isEditable,
-          ),
-          onTap:    isEditable ? () => controller.editItem(item) : null,
-          onDelete: isEditable
-              ? () => controller.confirmAndDeleteItem(item)
-              : null,
-        );
+        return Obx(() {
+          final isThisLoading = controller.isLoadingItemEdit.value &&
+            controller.loadingForItemName.value == item.name;
+
+          return DocItemCard(
+            key: controller.itemKeys[item.name],
+            data: ItemCardData.fromStockEntryItem(
+              item,
+              index: index,
+              isEditable: isEditable,
+            ),
+            onTap: isEditable && !controller.isLoadingItemEdit.value
+                ? () => controller.editItem(item)
+                : null,
+            onDelete: isEditable
+                ? () => controller.confirmAndDeleteItem(item)
+                : null,
+            isLoadingEdit: isThisLoading,
+          );
+        });
       },
     );
   }
