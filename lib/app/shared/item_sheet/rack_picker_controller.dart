@@ -225,7 +225,7 @@ class RackPickerController extends GetxController {
 
       // Collapse rows into a {rackId → qty} map (sum duplicate rack entries).
       final liveMap = <String, double>{};
-      for (final row in rows) {
+      for (final row in rows.whereType<Map<String, dynamic>>()) {
         final rack = (row['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
         final qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
