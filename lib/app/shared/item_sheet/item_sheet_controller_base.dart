@@ -586,7 +586,7 @@ abstract class ItemSheetControllerBase extends GetxController
         warehouse: wh,
         batchNo:   batch.isEmpty ? null : batch,
       );
-      final match = rows.firstWhere(
+      final match = rows.whereType<Map<String, dynamic>>().firstWhere(
         (r) => (r['rack'] as String?) == rack,
         orElse: () => {'bal_qty': 0.0},
       );
