@@ -505,7 +505,7 @@ class DeliveryNoteFormController extends GetxController
 
       switch (result.type) {
         case ScanType.item:
-          currentScannedEan = result.itemCode ?? '';
+          currentScannedEan = result.rawCode ?? '';
           await _handleScanResult(result);
           break;
         case ScanType.batch:

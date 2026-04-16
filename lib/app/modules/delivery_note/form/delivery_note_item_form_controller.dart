@@ -95,6 +95,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
 
+  String _itemEan8 = '';
+  String get itemEan8 => _itemEan8;
+
+  // Also pass into initForNewItem and reset in initForEdit:
+  // initForNewItem: _itemEan8 already set above, no param needed
+  // initForEdit: _itemEan8 = item.batchNo?.split('-').first ?? '' (or keep from initialise)
+
   // ── Base abstract overrides ────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
@@ -336,6 +343,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     DeliveryNoteItem? editingItem,
   }) {
     _parent = parent;
+    // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
+    _itemEan8 = scannedEan8 ?? '';
 
     if (editingItem != null) {
       final items = parent.deliveryNote.value?.items ?? [];
