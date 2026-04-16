@@ -37,8 +37,16 @@ mixin BarcodeAwareMixin on ItemSheetControllerBase, BarcodeListenerMixin {
 
   @override
   Future<void> handleScan(String raw) async {
+    // Check rack pattern on the unmodified raw string, BEFORE splitEanBatch
+    // strips the company prefix (e.g. "KA-" from "KA-WH-DXB1-BLOCK 1").
+    if (BarcodeAwareMixin.isRackBarcode(raw)) {
+      log('[BarcodeAwareMixin] rack pattern matched: $raw', name: 'ItemSheet');
+      applyRackScan(raw);
+      return;
+    }
+
     final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
-    // When ean is present, raw is already the full Batch No (e.g. '20003609-ESU').
+    // When ean is present, raw is already the full Batch No (e.g. '{EAN}-{Batch ID}').
     // When ean is absent, pass batchId for subclass handleScan overrides to process.
     await _routeScan(raw, ean.isNotEmpty ? raw : batchId);
   }
@@ -67,11 +75,15 @@ mixin BarcodeAwareMixin on ItemSheetControllerBase, BarcodeListenerMixin {
   /// candidate to [validateRack] for authoritative API confirmation.
   static bool isRackBarcode(String raw) {
     final parts = raw.split('-');
-    if (parts.length != 4) return false;
+    if (parts.length < 4) return false;          // ← was == 4, now >= 4
+
     final companyOk  = RegExp(r'^[A-Za-z]{2,3}$').hasMatch(parts[0]);
     final typeOk     = RegExp(r'^[A-Z]{2,4}$').hasMatch(parts[1]);
     final locationOk = RegExp(r'^[A-Za-z]{2,3}\d+$').hasMatch(parts[2]);
-    final shelfOk    = parts[3].length >= 3;
+    // Shelf = everything after the third hyphen — may contain spaces or hyphens
+    final shelf      = parts.sublist(3).join('-');
+    final shelfOk    = shelf.trim().isNotEmpty;
+
     return companyOk && typeOk && locationOk && shelfOk;
   }
 
