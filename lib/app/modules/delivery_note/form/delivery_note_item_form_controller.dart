@@ -618,20 +618,34 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// form the correct Batch No ('20003609-ESU').
   @override
   Future<void> handleScan(String raw) async {
+    // ── Rack-first gate (your rule) ──────────────────────────────────────────
+    // If the first hyphen-delimited token is neither an 8-digit numeric EAN-8
+    // nor the deprecated "SHIPMENT" prefix, it is a rack asset code.
+    // Route immediately — do NOT pass through splitEanBatch or _extractBatchId.
+    final firstToken = raw.split('-').first;
+    final isEan8     = firstToken.length == 8 && int.tryParse(firstToken) != null;
+    final isShipment = firstToken.toUpperCase() == 'SHIPMENT';
+
+    if (!isEan8 && !isShipment && raw.contains('-')) {
+      applyRackScan(raw);
+      return;
+    }
+
+    // ── Batch paths (unchanged) ───────────────────────────────────────────────
     final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
 
     if (ean.isNotEmpty) {
-      // Current format: raw is already the full Batch No — base handles it.
+      // Current format: raw is the full Batch No (e.g. '20003609-ESU').
       batchController.text = raw;
       await validateBatch(raw);
       return;
     }
 
-    // Deprecated or plain Batch ID: extract and reassemble with item EAN8.
+    // Deprecated SHIPMENT-* format: extract Batch ID and prepend item EAN-8.
     final extractedId = _extractBatchId(raw);
     final fullBatchNo = _itemEan8.isNotEmpty
         ? '$_itemEan8-$extractedId'
-        : extractedId; // graceful fallback if EAN8 context unavailable
+        : extractedId;
 
     batchController.text = fullBatchNo;
     await validateBatch(fullBatchNo);
