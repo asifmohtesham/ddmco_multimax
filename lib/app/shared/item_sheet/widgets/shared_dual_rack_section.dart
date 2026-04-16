@@ -86,9 +86,12 @@ class SharedDualRackSection extends StatelessWidget {
             // Browse button is active when both an item code and a resolved
             // source warehouse are available.  Reactive because the Obx
             // surrounding this build() re-evaluates when either changes.
-            onPickerTap: (controller.itemCode.value.isNotEmpty &&
-                (controller.sourceRackWarehouse?.value?.isNotEmpty ?? false))
-                ? srcAdapter.browseRacks
+            onPickerTap: controller.itemCode.value.isNotEmpty &&
+                (controller.sourceRackWarehouse?.value?.isNotEmpty ?? false)
+                ? () async {
+              final result = await srcAdapter.browseRacks();
+              if (result != null) await srcAdapter.handleRackPicked(result);
+            }
                 : null,
             accentColor: Colors.purple,
           ),
@@ -105,9 +108,12 @@ class SharedDualRackSection extends StatelessWidget {
             // Target rack has no outbound balance to display; suppress chip
             // by returning null from the override.
             balanceOverride: () => null,
-            onPickerTap: (controller.itemCode.value.isNotEmpty &&
-                (controller.targetRackWarehouse?.value?.isNotEmpty ?? false))
-                ? tgtAdapter.browseRacks
+            onPickerTap: controller.itemCode.value.isNotEmpty &&
+                (controller.targetRackWarehouse?.value?.isNotEmpty ?? false)
+                ? () async {
+              final result = await tgtAdapter.browseRacks();
+              if (result != null) await tgtAdapter.handleRackPicked(result);
+            }
                 : null,
             accentColor: Colors.blueGrey,
           ),

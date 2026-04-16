@@ -78,6 +78,19 @@ class SourceRackFieldAdapter implements RackFieldWithBrowseDelegate {
   @override
   RxnString get rackStockTooltip => RxnString(null); // SE has no per-rack tooltip
 
+  /// Soft-resets source-rack validity state without clearing the text field.
+  ///
+  /// Called when the user taps the pencil/edit icon to re-enter edit mode
+  /// on the source rack.  Preserves [_d.sourceRackController] text so the
+  /// operator can edit in-place rather than retyping.
+  ///
+  /// Delegates to [SourceRackDelegate.resetSourceRackValidation] which
+  /// clears [isSourceRackValid], [rackError], and [rackBalance] but leaves
+  /// [sourceRackController.text] intact.  This satisfies [RackFieldDelegate]'s
+  /// [softResetRack] contract for the source-rack side.
+  @override
+  void softResetRack() => _d.resetSourceRackValidation();
+
   @override
   void resetRack() => _d.resetSourceRackValidation();
 
@@ -95,15 +108,59 @@ class SourceRackFieldAdapter implements RackFieldWithBrowseDelegate {
   @override
   TextEditingController get qtyController   => _d.qtyController;
 
-  /// Presents [RackPickerSheet] scoped to [_d.sourceRackWarehouse].
+  /// Whether the source-rack picker can currently be opened.
   ///
-  /// Moved from [SharedSourceRackField._openPicker].  Logic is unchanged;
-  /// ownership is now the adapter (controller-adjacent) rather than the widget.
+  /// Returns `true` only when both an item code and a resolved source
+  /// warehouse are available — the two pre-conditions required by
+  /// [RackPickerSheet] to scope the rack list.
+  ///
+  /// This getter is read inside [SharedRackField]'s [Obx] rebuild, so it
+  /// is evaluated reactively: the picker button appears as soon as
+  /// [_d.sourceRackWarehouse] becomes non-empty (e.g. after the operator
+  /// picks an item that resolves to a warehouse).
+  ///
+  /// Mirrors the inline `onPickerTap` guard in [SharedDualRackSection]:
+  /// ```dart
+  /// onPickerTap: (controller.itemCode.value.isNotEmpty &&
+  ///     (controller.sourceRackWarehouse?.value?.isNotEmpty ?? false))
+  ///     ? srcAdapter.browseRacks
+  ///     : null,
+  /// ```
+  /// Having both guards is intentional: the widget suppresses the button
+  /// entirely when `null`; this getter adds a second, internal guard so
+  /// [browseRacks] is always safe to call even from non-widget code paths.
   @override
-  Future<void> browseRacks() async {
+  bool get canBrowseRacks =>
+      _d.itemCode.value.isNotEmpty &&
+          (_d.sourceRackWarehouse?.value?.isNotEmpty ?? false);
+
+  /// Opens the rack picker scoped to [_d.sourceRackWarehouse] and returns
+  /// the operator's selection, or `null` if dismissed.
+  ///
+  /// ## Responsibility boundary
+  /// This method owns **only the browse flow** per [RackBrowseDelegate]'s
+  /// contract [cite:56]:
+  ///   - Checks [canBrowseRacks] pre-condition.
+  ///   - Instantiates [RackPickerController] with a unique timestamped tag
+  ///     to prevent GetX tag collisions when two sheets open in sequence.
+  ///   - Fires `ctrl.load(...)` unawaited — the sheet renders progressively
+  ///     as data arrives.
+  ///   - Presents [RackPickerSheet] via `Get.bottomSheet`.
+  ///   - Returns the selection as a [RackPickerResult] — does NOT write
+  ///     into [_d.sourceRackController] directly.
+  ///   - Post-frame cleanup of the [RackPickerController] singleton.
+  ///
+  /// Post-selection handling (writing the rack ID into the controller,
+  /// triggering validation) is performed by [handleRackPicked], which the
+  /// [SharedDualRackSection] orchestrator calls after this method returns.
+  @override
+  Future<RackPickerResult?> browseRacks() async {
+    if (!canBrowseRacks) return null;
+
     final warehouse = _d.sourceRackWarehouse?.value ?? '';
-    final tag = 'src_rack_${DateTime.now().microsecondsSinceEpoch}';
-    final ctrl = Get.put(RackPickerController(), tag: tag);
+    final tag       = 'src_rack_${DateTime.now().microsecondsSinceEpoch}';
+    final ctrl      = Get.put(RackPickerController(), tag: tag);
+
     unawaited(ctrl.load(
       itemCode:     _d.itemCode.value,
       batchNo:      _d.batchController.text.trim(),
@@ -112,23 +169,41 @@ class SourceRackFieldAdapter implements RackFieldWithBrowseDelegate {
       currentRack:  _d.sourceRackController.text.trim(),
       fallbackMap:  const {},
     ));
+
+    RackPickerResult? result;
+
     await Get.bottomSheet(
       RackPickerSheet(
         pickerTag:  tag,
         onSelected: (rack) {
-          _d.sourceRackController.text = rack;
-          _d.onSourceRackChanged(rack);
+          // availableQty is 0.0 here because RackPickerSheet.onSelected receives
+          // only the rack String, not the full entry.  The post-pick call to
+          // handleRackPicked → onSourceRackChanged / onTargetRackChanged triggers
+          // the controller's validateRack pipeline which fetches and populates the
+          // authoritative live balance before availableQty is ever read.
+          // See RackPickerResult.availableQty Dartdoc for the full rationale.
+          result = RackPickerResult(rackId: rack, availableQty: 0.0);
         },
       ),
       isScrollControlled: true,
     );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (Get.isRegistered<RackPickerController>(tag: tag)) {
         Get.delete<RackPickerController>(tag: tag);
       }
     });
+
+    return result;
   }
 
+  /// Writes the picked [result.rackId] into [_d.sourceRackController] and
+  /// triggers source-rack validation via [_d.onSourceRackChanged].
+  ///
+  /// Called by [SharedDualRackSection] (or any sheet orchestrator) after
+  /// [browseRacks] returns a non-null result.  The separation of [browseRacks]
+  /// (returns result) and [handleRackPicked] (applies result) matches the
+  /// [RackFieldWithBrowseDelegate] contract [cite:55].
   @override
   Future<void> handleRackPicked(RackPickerResult result) async {
     _d.sourceRackController.text = result.rackId;
@@ -185,6 +260,13 @@ class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
   @override
   RxnString get rackStockTooltip => RxnString(null);
 
+  /// Soft-resets target-rack validity state without clearing the text field.
+  ///
+  /// Delegates to [TargetRackDelegate.resetTargetRackValidation].
+  /// See [SourceRackFieldAdapter.softResetRack] for the full rationale.
+  @override
+  void softResetRack() => _d.resetTargetRackValidation();
+
   @override
   void resetRack() => _d.resetTargetRackValidation();
 
@@ -202,12 +284,26 @@ class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
   @override
   TextEditingController get qtyController   => _d.qtyController;
 
-  /// Presents [RackPickerSheet] scoped to [_d.targetRackWarehouse].
+  /// Whether the target-rack picker can currently be opened.
+  ///
+  /// Returns `true` only when both an item code and a resolved target
+  /// warehouse are available.  See [SourceRackFieldAdapter.canBrowseRacks]
+  /// for the full rationale.
   @override
-  Future<void> browseRacks() async {
+  bool get canBrowseRacks =>
+      _d.itemCode.value.isNotEmpty &&
+          (_d.targetRackWarehouse?.value?.isNotEmpty ?? false);
+
+  /// Opens the rack picker scoped to [_d.targetRackWarehouse].
+  /// See [SourceRackFieldAdapter.browseRacks] for the full rationale.
+  @override
+  Future<RackPickerResult?> browseRacks() async {
+    if (!canBrowseRacks) return null;
+
     final warehouse = _d.targetRackWarehouse?.value ?? '';
-    final tag = 'tgt_rack_${DateTime.now().microsecondsSinceEpoch}';
-    final ctrl = Get.put(RackPickerController(), tag: tag);
+    final tag       = 'tgt_rack_${DateTime.now().microsecondsSinceEpoch}';
+    final ctrl      = Get.put(RackPickerController(), tag: tag);
+
     unawaited(ctrl.load(
       itemCode:     _d.itemCode.value,
       batchNo:      _d.batchController.text.trim(),
@@ -216,23 +312,36 @@ class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
       currentRack:  _d.targetRackController.text.trim(),
       fallbackMap:  const {},
     ));
+
+    RackPickerResult? result;
+
     await Get.bottomSheet(
       RackPickerSheet(
         pickerTag:  tag,
         onSelected: (rack) {
-          _d.targetRackController.text = rack;
-          _d.onTargetRackChanged(rack);
+          // availableQty is 0.0 here because RackPickerSheet.onSelected receives
+          // only the rack String, not the full entry.  The post-pick call to
+          // handleRackPicked → onSourceRackChanged / onTargetRackChanged triggers
+          // the controller's validateRack pipeline which fetches and populates the
+          // authoritative live balance before availableQty is ever read.
+          // See RackPickerResult.availableQty Dartdoc for the full rationale.
+          result = RackPickerResult(rackId: rack, availableQty: 0.0);
         },
       ),
       isScrollControlled: true,
     );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (Get.isRegistered<RackPickerController>(tag: tag)) {
         Get.delete<RackPickerController>(tag: tag);
       }
     });
+
+    return result;
   }
 
+  /// Writes the picked [result.rackId] into [_d.targetRackController] and
+  /// triggers target-rack validation via [_d.onTargetRackChanged].
   @override
   Future<void> handleRackPicked(RackPickerResult result) async {
     _d.targetRackController.text = result.rackId;
