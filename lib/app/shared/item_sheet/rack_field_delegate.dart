@@ -185,6 +185,18 @@ abstract interface class RackFieldDelegate {
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
+  /// Resets rack validity state (isRackValid, rackError, rackStockTooltip)
+  /// WITHOUT clearing [rackController] text or zeroing [rackBalance].
+  ///
+  /// Called when the user taps the ✏ pencil button to re-enter edit mode.
+  /// The current rack value is preserved so the user can edit it in-place
+  /// rather than retyping from scratch.
+  ///
+  /// Contrast with [resetRack] which performs a full teardown (clears text,
+  /// zeros balance). Use [softResetRack] for the pencil/edit action;
+  /// use [resetRack] for the explicit clear action.
+  void softResetRack();
+
   /// Clears the rack text field, resets all rack validity state, and zeros
   /// the rack balance.  Called when the user taps the clear / edit button.
   void resetRack();

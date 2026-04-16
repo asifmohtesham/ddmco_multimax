@@ -285,7 +285,7 @@ class _EditModeRack extends StatelessWidget {
               isValidating:   validating,
               label:          w.hint,   // inner field hint/label
               color:          w.accentColor,
-              // onEdit:         c.softResetRack,
+              onEdit:         c.softResetRack,
               onReset:        c.resetRack,
               onValidate:     () => c.validateRack(c.rackController.text),
               onSubmitted:    (val) => c.validateRack(val),
