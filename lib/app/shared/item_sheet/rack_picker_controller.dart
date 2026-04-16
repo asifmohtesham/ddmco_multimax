@@ -228,7 +228,7 @@ class RackPickerController extends GetxController {
       for (final row in rows.whereType<Map<String, dynamic>>()) {
         final rack = (row['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
-        final qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        final qty = (row['qty'] as num?)?.toDouble() ?? 0.0;
         liveMap[rack] = (liveMap[rack] ?? 0.0) + qty;
       }
 

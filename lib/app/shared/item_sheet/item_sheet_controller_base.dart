@@ -588,9 +588,9 @@ abstract class ItemSheetControllerBase extends GetxController
       );
       final match = rows.whereType<Map<String, dynamic>>().firstWhere(
         (r) => (r['rack'] as String?) == rack,
-        orElse: () => {'bal_qty': 0.0},
+        orElse: () => {'qty': 0.0},
       );
-      rackBalance.value = (match['bal_qty'] as num).toDouble();
+      rackBalance.value = (match['qty'] as num).toDouble();
     } catch (e) {
       log('[ItemSheet] fetchRackBalance error: $e', name: 'ItemSheet');
     }
