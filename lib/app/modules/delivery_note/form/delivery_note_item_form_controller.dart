@@ -95,6 +95,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
 
+  // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
+  /// Stores the 8-digit EAN8 barcode of the current item, set at sheet-open
+  /// time by initialise(). Used by handleScan to reassemble Batch No from
+  /// deprecated SHIPMENT-* label formats.
   String _itemEan8 = '';
   String get itemEan8 => _itemEan8;
 
@@ -342,9 +346,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     String?  variantOf,
     DeliveryNoteItem? editingItem,
   }) {
-    _parent = parent;
     // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
     _itemEan8 = scannedEan8 ?? '';
+    _parent = parent;
 
     if (editingItem != null) {
       final items = parent.deliveryNote.value?.items ?? [];
@@ -602,6 +606,56 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     } finally {
       isValidatingRack.value = false;
     }
+  }
+
+  // ── BarcodeAwareMixin: handleScan override for deprecated batch labels ──────
+  /// The base BarcodeAwareMixin.handleScan handles current-format scans
+  /// ('20003609-ESU') correctly — ean is non-empty so raw is used as-is.
+  ///
+  /// This override adds handling for deprecated SHIPMENT-* formats and plain
+  /// Batch ID scans where no EAN8 prefix is present in the scanned string.
+  /// The Batch ID is extracted and prepended with the stored _itemEan8 to
+  /// form the correct Batch No ('20003609-ESU').
+  @override
+  Future<void> handleScan(String raw) async {
+    final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
+
+    if (ean.isNotEmpty) {
+      // Current format: raw is already the full Batch No — base handles it.
+      batchController.text = raw;
+      await validateBatch(raw);
+      return;
+    }
+
+    // Deprecated or plain Batch ID: extract and reassemble with item EAN8.
+    final extractedId = _extractBatchId(raw);
+    final fullBatchNo = _itemEan8.isNotEmpty
+        ? '$_itemEan8-$extractedId'
+        : extractedId; // graceful fallback if EAN8 context unavailable
+
+    batchController.text = fullBatchNo;
+    await validateBatch(fullBatchNo);
+  }
+
+  /// Splits [raw] on '-', discards the literal token 'SHIPMENT' (any case),
+  /// and discards any token shorter than 3 characters.
+  /// Returns the first surviving token, or [raw] unchanged if none survive.
+  ///
+  /// Examples:
+  ///   'SHIPMENT-ESU'       → 'ESU'
+  ///   'SHIPMENT-24-ESU'    → 'ESU'  (discards '24' — length < 3)
+  ///   'SHIPMENT-24-ESU-1'  → 'ESU'  (discards '24' and '1')
+  ///   'ESU'                → 'ESU'  (no hyphens, passes through as-is via
+  ///                                   the ean.isNotEmpty guard above, so
+  ///                                   this method is only called for
+  ///                                   hyphenated SHIPMENT-* strings in
+  ///                                   practice — but handles plain too)
+  String _extractBatchId(String raw) {
+    final candidates = raw.split('-').where((p) =>
+    p.toUpperCase() != 'SHIPMENT' &&
+        p.length >= 3
+    ).toList();
+    return candidates.isNotEmpty ? candidates.first : raw;
   }
 
   void applyRackScan(String rackId) {
