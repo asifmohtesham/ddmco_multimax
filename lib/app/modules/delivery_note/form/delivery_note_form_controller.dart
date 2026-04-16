@@ -329,6 +329,7 @@ class DeliveryNoteFormController extends GetxController
     const rackPickerTag = 'dn_rack_picker';
 
     isItemSheetOpen.value = true;
+    child.initBarcodeListener();
     await Get.bottomSheet(
       UniversalItemFormSheet(
         controller:       child,
@@ -393,6 +394,7 @@ class DeliveryNoteFormController extends GetxController
       isDismissible:      false,
       backgroundColor:    Colors.transparent,
     );
+    child.disposeBarcodeListener();
     isItemSheetOpen.value = false;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {

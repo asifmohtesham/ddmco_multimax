@@ -3,6 +3,8 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:multimax/app/shared/barcode_listener_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 
 // Shared base + mixins
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
@@ -74,7 +76,7 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 ///
 /// fix(docstatus): read from parent document, not item row.
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
-    with SerialFieldMixin, AutoFillRackMixin {
+    with SerialFieldMixin, AutoFillRackMixin, BarcodeListenerMixin, BarcodeAwareMixin {
 
   // ── Parent back-reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
