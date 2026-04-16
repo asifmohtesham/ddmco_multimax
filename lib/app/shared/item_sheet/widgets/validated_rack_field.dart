@@ -83,6 +83,11 @@ class ValidatedRackField extends StatelessWidget {
   /// field border highlights. Should match the parent DocType's theme colour.
   final Color color;
 
+  /// Called when the user taps the edit (✏) button to re-enter edit mode.
+  /// Should only unlock the field — NOT clear its value.
+  /// When null, falls back to [onReset] (legacy behaviour).
+  final VoidCallback? onEdit;
+
   /// Callback invoked when the user clears the field or taps the edit (✏)
   /// button. The caller is responsible for resetting all rack-related
   /// reactive state (isRackValid, isValidatingRack, rackError, etc.).
@@ -115,6 +120,7 @@ class ValidatedRackField extends StatelessWidget {
     required this.isValidating,
     required this.label,
     required this.color,
+    this.onEdit,
     required this.onReset,
     required this.onValidate,
     required this.onSubmitted,
@@ -167,6 +173,7 @@ class ValidatedRackField extends StatelessWidget {
       isValid: isValid,
       isValidating: isValidating,
       onValidate: onValidate,
+      onEdit: onEdit,
       onReset: onReset,
       onFieldSubmitted: onSubmitted,
       fontFamily: 'ShureTechMono',

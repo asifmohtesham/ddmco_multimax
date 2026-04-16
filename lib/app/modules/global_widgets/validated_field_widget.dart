@@ -54,6 +54,11 @@ class ValidatedFieldWidget extends StatelessWidget {
   /// field via the keyboard.
   final VoidCallback onValidate;
 
+  /// Called when the user taps the edit (✏) button to re-enter edit mode.
+  /// Should only unlock the field — NOT clear its value.
+  /// When null, falls back to [onReset] (legacy behaviour).
+  final VoidCallback? onEdit;
+
   /// Called when the user taps the edit (✏) button to reset the field.
   final VoidCallback onReset;
 
@@ -101,6 +106,7 @@ class ValidatedFieldWidget extends StatelessWidget {
     required this.isValid,
     required this.isValidating,
     required this.onValidate,
+    this.onEdit,
     required this.onReset,
     this.helperText,
     this.hasError = false,
@@ -133,7 +139,7 @@ class ValidatedFieldWidget extends StatelessWidget {
           ...extraSuffixActions,
           IconButton(
             icon: Icon(Icons.edit, color: color),
-            onPressed: onReset,
+            onPressed: onEdit ?? onReset,
             tooltip: 'Edit',
           ),
         ],
