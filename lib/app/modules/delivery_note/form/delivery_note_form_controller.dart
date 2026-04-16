@@ -135,10 +135,12 @@ class DeliveryNoteFormController extends GetxController
   void _onRawScan(String code) {
     if (code.isEmpty) return;
     if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) return;
+    if (isItemSheetOpen.value) return;
     final clean = code.trim();
     barcodeController.text = clean;
     scanBarcode(clean);
   }
+
 
   // ── PopScope ──────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {

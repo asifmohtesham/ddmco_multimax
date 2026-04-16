@@ -658,11 +658,16 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return candidates.isNotEmpty ? candidates.first : raw;
   }
 
-  void applyRackScan(String rackId) {
-    final id = rackId.trim();
-    if (id.isEmpty) return;
-    rackController.text = id;
-    validateRack(id);
+  // ── BarcodeAwareMixin: applyRackScan ─────────────────────────────────────
+  /// Called by BarcodeAwareMixin._routeScan when the scan pattern matches a
+  /// rack barcode (KA-WH-DXB1-101A), either after batch is valid or before.
+  ///
+  /// Writes the rack name to [rackController] and triggers [validateRack]
+  /// for API confirmation (fetches rack balance, sets isRackValid).
+  @override
+  void applyRackScan(String code) {
+    rackController.text = code;
+    validateRack(code);   // base-class API round-trip — sets isRackValid + rackBalance
   }
 
   void clearAll() {
