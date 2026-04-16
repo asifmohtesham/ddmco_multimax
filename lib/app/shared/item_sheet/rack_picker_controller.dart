@@ -220,7 +220,7 @@ class RackPickerController extends GetxController {
       final rows = await _api.getStockBalanceWithDimension(
         itemCode:  itemCode,
         warehouse: warehouse.isNotEmpty ? warehouse : null,
-        batchNo:   batchNo.isNotEmpty   ? batchNo   : null,
+        // batchNo:   batchNo.isNotEmpty   ? batchNo   : null,
       );
 
       // Collapse rows into a {rackId → qty} map (sum duplicate rack entries).
@@ -228,7 +228,7 @@ class RackPickerController extends GetxController {
       for (final row in rows) {
         final rack = (row['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
-        final qty = (row['qty'] as num?)?.toDouble() ?? 0.0;
+        final qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
         liveMap[rack] = (liveMap[rack] ?? 0.0) + qty;
       }
 
