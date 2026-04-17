@@ -177,4 +177,42 @@ class PackingSlipItem {
       'creation': creation,
     };
   }
+
+  PackingSlipItem copyWith({
+    String? name,
+    String? dnDetail,
+    String? itemCode,
+    String? itemName,
+    double? qty,
+    String? uom,
+    String? batchNo,
+    double? netWeight,
+    double? weightUom,
+    String? customInvoiceSerialNumber,
+    String? customVariantOf,
+    String? customCountryOfOrigin,
+    String? owner,
+    String? creation,
+    String? modified,
+    String? modifiedBy,
+  }) {
+    return PackingSlipItem(
+      name:                       name       ?? this.name,
+      dnDetail:                   dnDetail   ?? this.dnDetail,
+      itemCode:                   itemCode   ?? this.itemCode,
+      itemName:                   itemName   ?? this.itemName,
+      qty:                        qty        ?? this.qty,
+      uom:                        uom        ?? this.uom,
+      batchNo:                    batchNo    ?? this.batchNo,
+      netWeight:                  netWeight  ?? this.netWeight,
+      weightUom:                  weightUom  ?? this.weightUom,
+      customInvoiceSerialNumber:  customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
+      customVariantOf:            customVariantOf           ?? this.customVariantOf,
+      customCountryOfOrigin:      customCountryOfOrigin     ?? this.customCountryOfOrigin,
+      owner:                      owner      ?? this.owner,
+      creation:                   creation   ?? this.creation,
+      modified:                   modified   ?? this.modified,
+      modifiedBy:                 modifiedBy ?? this.modifiedBy,
+    );
+  }
 }
