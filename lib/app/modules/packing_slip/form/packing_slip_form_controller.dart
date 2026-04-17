@@ -751,8 +751,8 @@ class PackingSlipFormController extends GetxController
         ));
       }
     }
-    packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
     Get.back();
+    packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
     _checkForChanges();
     if (isDirty.value) await savePackingSlip();
   }
