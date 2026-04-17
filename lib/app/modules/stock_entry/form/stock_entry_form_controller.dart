@@ -532,7 +532,7 @@ class StockEntryFormController extends GetxController
     final woName = argWorkOrderName;
     if (woName == null || woName.isEmpty) return [];
 
-    final fgQty = (Get.arguments?['fgCompletedQty'] as num?)?.toDouble() ?? 1.0;
+    final fgQty   = (Get.arguments?['fgCompletedQty'] as num?)?.toDouble() ?? 1.0;
     final argFrom = Get.arguments?['fromWarehouse'] as String?;
     final argTo   = Get.arguments?['toWarehouse']   as String?;
 
@@ -559,18 +559,40 @@ class StockEntryFormController extends GetxController
         return [];
       }
 
-      return rawItems.asMap().entries.map((entry) {
-        final e  = Map<String, dynamic>.from(entry.value as Map);
-        final id = 'mfg_prefill_${entry.key}_${DateTime.now().millisecondsSinceEpoch}';
+      // ── NEW: fetch batch+rack from the linked Transfer SE ──────────────────
+      // Silently skipped when no submitted Transfer SE exists (graceful
+      // degradation — items still appear, batch/rack just remain blank).
+      Map<String, TransferRow> transferLookup = {};
+      try {
+        final linkedSe = await _provider.getLinkedTransferSE(woName);
+        if (linkedSe != null) {
+          transferLookup = await _provider.getTransferSEItemLookup(linkedSe);
+        }
+      } catch (_) {
+        // Non-fatal: BOM items still prefill correctly without batch/rack.
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
-        // ERP returns s_warehouse / t_warehouse on each row.
-        // Fall back to the WO-level warehouses from route args.
+      return rawItems.asMap().entries.map((entry) {
+        final e          = Map<String, dynamic>.from(entry.value as Map);
+        final id         = 'mfg_prefill_${entry.key}_${DateTime.now().millisecondsSinceEpoch}';
+        final isFinished = e['is_finished_item'];
+
         final sW = (e['s_warehouse'] as String?)?.isNotEmpty == true
             ? e['s_warehouse'] as String
             : argFrom;
         final tW = (e['t_warehouse'] as String?)?.isNotEmpty == true
             ? e['t_warehouse'] as String
             : argTo;
+
+        // ── NEW: pull batch + source rack from Transfer SE for raw
+        //   material rows only. Finished good row keeps nulls so
+        //   the user can enter the target rack manually.
+        final isFinishedBool =
+            isFinished == true || isFinished == 1;
+        final transfer = isFinishedBool
+            ? null
+            : transferLookup[e['item_code'] as String? ?? ''];
 
         return StockEntryItem(
           name:            id,
@@ -580,15 +602,16 @@ class StockEntryFormController extends GetxController
           basicRate:       (e['basic_rate'] as num?)?.toDouble() ?? 0.0,
           itemGroup:       e['item_group']  as String?,
           customVariantOf: e['variant_of']  as String?,
-          batchNo:         e['batch_no']    as String?,
-          rack:            e['rack']        as String?,
-          toRack:          null,
+          // Transfer SE values take priority; BOM row values are the fallback.
+          batchNo:         transfer?.batchNo ?? e['batch_no'] as String?,
+          rack:            transfer?.rack    ?? e['rack']     as String?,
+          toRack:          null,   // target rack: user fills for finished item
           sWarehouse:      sW,
           tWarehouse:      tW,
           customInvoiceSerialNumber: null,
           materialRequest:     null,
           materialRequestItem: null,
-          isFinishedItem:  e['is_finished_item'],
+          isFinishedItem:  isFinished,
         );
       }).toList();
     } on DioException catch (e) {
