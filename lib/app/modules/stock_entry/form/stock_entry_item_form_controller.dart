@@ -148,6 +148,64 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── In-sheet scan context ───────────────────────────────────────────────
   String currentScannedEan = '';
 
+  // ── BarcodeAwareMixin: handleScan override for deprecated batch labels ────
+  /// Mirrors DeliveryNoteItemFormController.handleScan exactly.
+  ///
+  /// Routing priority:
+  ///   1. Rack barcode   → applyRackScan (unchanged from mixin)
+  ///   2. Current EAN-8 format ("{EAN}-{BatchID}") → raw is the full Batch No ✔
+  ///   3. Deprecated SHIPMENT-* format / plain Batch ID → extract batch ID,
+  ///      prepend currentScannedEan to form the full Batch No
+  @override
+  Future<void> handleScan(String raw) async {
+    // ── Rack-first gate ────────────────────────────────────────────────────
+    // If first token is not an 8-digit EAN-8 and not "SHIPMENT", it is a rack
+    // asset code. Route immediately — bypass all batch reconstruction.
+    final firstToken = raw.split('-').first;
+    final isEan8     = firstToken.length == 8 && int.tryParse(firstToken) != null;
+    final isShipment = firstToken.toUpperCase() == 'SHIPMENT';
+
+    if (!isEan8 && !isShipment && raw.contains('-')) {
+      applyRackScan(raw);
+      return;
+    }
+
+    // ── Batch paths ────────────────────────────────────────────────────────
+    final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
+
+    if (ean.isNotEmpty) {
+      // Current format: raw IS the full Batch No (e.g. "20003609-ESU").
+      batchController.text = raw;
+      await validateBatch(raw);
+      return;
+    }
+
+    // Deprecated SHIPMENT-* or plain Batch ID: extract ID and prepend item EAN-8.
+    final extractedId = _extractBatchId(raw);
+    final fullBatchNo = currentScannedEan.isNotEmpty
+        ? '$currentScannedEan-$extractedId'
+        : extractedId;
+
+    batchController.text = fullBatchNo;
+    await validateBatch(fullBatchNo);
+  }
+
+  /// Splits [raw] on '-', discards the literal token 'SHIPMENT' (any case),
+  /// and discards tokens shorter than 3 characters.
+  /// Returns the first surviving token, or [raw] unchanged when none survive.
+  ///
+  /// Examples:
+  ///   'SHIPMENT-ESU'      → 'ESU'
+  ///   'SHIPMENT-24-ESU'   → 'ESU'
+  ///   'ESU'               → 'ESU'
+  String _extractBatchId(String raw) {
+    final candidates = raw
+        .split('-')
+        .where((p) => p.toUpperCase() != 'SHIPMENT' && p.length >= 3)
+        .toList();
+    return candidates.isNotEmpty ? candidates.first : raw;
+  }
+
   // ── Abstract overrides ─────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse => _parent.fromWarehouse.value;
