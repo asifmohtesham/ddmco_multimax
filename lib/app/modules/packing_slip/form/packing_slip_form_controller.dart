@@ -474,7 +474,9 @@ class PackingSlipFormController extends GetxController
           key:              ValueKey(child.editingItemName.value ?? 'new'),
           controller:       child,
           scrollController: sc,
-          onSubmit:         () => addItemToSlip(),
+          onSubmit: () async {
+            if (isDirty.value) await savePackingSlip();
+          },
           onScan:           null,
           isSaveEnabled:    packingSlip.value?.docstatus == 0,
           itemSubtext:      currentItemVariantOf,
@@ -549,8 +551,10 @@ class PackingSlipFormController extends GetxController
       onValid: () async {
         isAddingItem.value = true;
         await Future.delayed(const Duration(milliseconds: 500));
-        await addItemToSlip();
-        isAddingItem.value = false;},
+        // Child's submit() already called updateItemLocally(); just save.
+        if (isDirty.value) await savePackingSlip();
+        isAddingItem.value = false;
+      },
     );
     _openItemSheet(child);
   }
@@ -612,7 +616,8 @@ class PackingSlipFormController extends GetxController
         onValid: () async {
           isAddingItem.value = true;
           await Future.delayed(const Duration(milliseconds: 500));
-          await addItemToSlip();
+          // Child's submit() already called updateItemLocally(); just save.
+          if (isDirty.value) await savePackingSlip();
           isAddingItem.value = false;
         },
       );
@@ -673,91 +678,61 @@ class PackingSlipFormController extends GetxController
     bsQtyController.text = newVal.toStringAsFixed(0);
   }
 
+  /// Writes [qtyToAdd] into the in-memory slip items synchronously.
+  /// Does NOT save to ERP — call savePackingSlip() separately.
+  /// Mirrors StockEntryFormController.addItemLocally / updateItemLocally.
+  void updateItemLocally(double qtyToAdd) {
+    if (qtyToAdd <= 0) return;
+
+    final currentItems = packingSlip.value?.items.toList() ?? [];
+
+    if (isEditing.value && currentItemNameKey != null) {
+      final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
+      if (index != -1) {
+        final existing = currentItems[index];
+        currentItems[index] = existing.copyWith(qty: qtyToAdd);
+      }
+    } else {
+      final existingIndex =
+      currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
+      if (existingIndex != -1) {
+        final existing = currentItems[existingIndex];
+        currentItems[existingIndex] =
+            existing.copyWith(qty: existing.qty + qtyToAdd);
+      } else {
+        currentItems.add(PackingSlipItem(
+          name:      '',
+          dnDetail:  currentItemDnDetail!,
+          itemCode:  currentItemCode!,
+          itemName:  currentItemName ?? '',
+          qty:       qtyToAdd,
+          uom:       currentUom ?? '',
+          batchNo:   currentBatchNo ?? '',
+          netWeight: 0.0,
+          weightUom: 0.0,
+          customInvoiceSerialNumber: currentSerial,
+          customVariantOf:           null,
+          customCountryOfOrigin:     null,
+          creation:  DateTime.now().toString(),
+          owner:     bsItemOwner.value,
+          modified:  null,
+          modifiedBy: null,
+        ));
+      }
+    }
+
+    packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
+    _checkForChanges();
+  }
+
   // ---------------------------------------------------------------------------
   // Commit item
   // ---------------------------------------------------------------------------
 
   Future<void> addItemToSlipWithQty(double qtyToAdd) async {
-    if (qtyToAdd <= 0) { return; }
-
-    final currentItems = packingSlip.value?.items.toList() ?? [];
-    if (isEditing.value && currentItemNameKey != null) {
-      final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
-      if (index != -1) {
-        final existing = currentItems[index];
-        currentItems[index] = PackingSlipItem(
-          name:       existing.name,
-          dnDetail:   existing.dnDetail,
-          itemCode:   existing.itemCode,
-          itemName:   existing.itemName,
-          qty:        qtyToAdd,
-          uom:        existing.uom,
-          batchNo:    existing.batchNo,
-          netWeight:  existing.netWeight,
-          weightUom:  existing.weightUom,
-          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
-          customVariantOf:           existing.customVariantOf,
-          customCountryOfOrigin:     existing.customCountryOfOrigin,
-          creation:   existing.creation,
-          owner:      existing.owner,
-          modified:   existing.modified,
-          modifiedBy: existing.modifiedBy,
-        );
-      }
-    } else {
-      final existingIndex =
-          currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
-      if (existingIndex != -1) {
-        final existing = currentItems[existingIndex];
-        currentItems[existingIndex] = PackingSlipItem(
-          name:       existing.name,
-          dnDetail:   existing.dnDetail,
-          itemCode:   existing.itemCode,
-          itemName:   existing.itemName,
-          qty:        existing.qty + qtyToAdd,
-          uom:        existing.uom,
-          batchNo:    existing.batchNo,
-          netWeight:  existing.netWeight,
-          weightUom:  existing.weightUom,
-          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
-          customVariantOf:           existing.customVariantOf,
-          customCountryOfOrigin:     existing.customCountryOfOrigin,
-          creation:   existing.creation,
-          owner:      existing.owner,
-          modified:   existing.modified,
-          modifiedBy: existing.modifiedBy,
-        );
-      } else {
-        currentItems.add(PackingSlipItem(
-          name:        '',
-          dnDetail:    currentItemDnDetail!,
-          itemCode:    currentItemCode!,
-          itemName:    currentItemName ?? '',
-          qty:         qtyToAdd,
-          uom:         currentUom ?? '',
-          batchNo:     currentBatchNo ?? '',
-          netWeight:   0.0,
-          weightUom:   0.0,
-          customInvoiceSerialNumber: currentSerial,
-          customVariantOf:           null,
-          customCountryOfOrigin:     null,
-          creation:    DateTime.now().toString(),
-          owner:       bsItemOwner.value,
-          modified:    null,
-          modifiedBy:  null,
-        ));
-      }
-    }
-    Get.key.currentState?.pop();
-    // Defer state mutation to the next frame so the sheet's exit animation
-    // fully unmounts SharedQtyField (and its TextEditingController) before
-    // the Obx rebuild fires.  Without this, _AnimatedState.didUpdateWidget
-    // calls addListener on an already-disposed TextEditingController → crash.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
-      _checkForChanges();
-      if (isDirty.value) await savePackingSlip();
-    });
+    if (qtyToAdd <= 0) return;
+    updateItemLocally(qtyToAdd);
+    if (isDirty.value) await savePackingSlip();
   }
 
   Future<void> addItemToSlip() async {

@@ -144,15 +144,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
-    // Dismiss the keyboard before closing the sheet.
-    // When the keyboard is open, the IME holds a live connection to
-    // qtyController. Calling Get.back() without unfocusing first causes
-    // _AnimatedState.didUpdateWidget to call addListener() on the controller
-    // during the keyboard-dismiss layout pass, racing with disposeControllers().
-    final context = Get.context;
-    if (context != null) FocusScope.of(context).unfocus();
-    Get.back();
-    await _parent.addItemToSlipWithQty(qty);
+    // Write into the parent's in-memory slip synchronously — no Get.back(),
+    // no await here. The base class's confirm-and-dismiss flow calls Get.back()
+    // after this method returns, and the parent's updateItemLocally() fires
+    // before any disposal starts.
+    // Matches StockEntryItemFormController.submit() architecture exactly.
+    _parent.updateItemLocally(qty);
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────────

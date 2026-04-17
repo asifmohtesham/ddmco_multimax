@@ -227,6 +227,13 @@ abstract class ItemSheetControllerBase extends GetxController
   /// FocusNode for the rack text field.
   final FocusNode rackFocusNode = FocusNode();
 
+  /// FocusNode for the qty text field.
+  ///
+  /// Owned here so [disposeControllers] can gate TEC disposal on confirmed
+  /// blur — preventing the "used after disposed" crash on devices where
+  /// the IME tears down asynchronously (e.g. Zebra TC15).
+  final FocusNode qtyFocusNode = FocusNode();
+
   /// ScrollController for the sheet's scrollable body.
   ///
   /// Exposed so parent orchestrators (e.g. DeliveryNoteFormController) can
@@ -422,30 +429,53 @@ abstract class ItemSheetControllerBase extends GetxController
   ///   3. Call `super.onClose()` — which calls this method — AFTER
   ///      scheduling the deferred callback.
   void disposeControllers() {
-    if (_controllersDisposed) return; // ← idempotent guard (Rule 2)
+    if (_controllersDisposed) return;
     _controllersDisposed = true;
 
-    removeSheetListeners(); // ← Rule 3: remove before invalidating controllers
+    removeSheetListeners(); // detach listeners before any async gap (Rule 3)
 
     final textControllers = <TextEditingController>[
       batchController,
       rackController,
       qtyController,
     ];
-    final scroll = sheetScrollController;
-    final focus  = rackFocusNode;
+    final scroll    = sheetScrollController;
+    final rackFocus = rackFocusNode;
+    final qtyFocus  = qtyFocusNode;
 
-    // AFTER — double post-frame: first frame = exit animation completes,
-    // second frame = parent list rebuild flushes, THEN dispose is safe.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // _runDispose: scheduled one frame after blur is confirmed so the
+    // bottom-sheet exit animation and any parent list rebuild have flushed
+    // before TECs are invalidated.
+    void runDispose() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         for (final c in textControllers) {
           try { c.dispose(); } catch (_) {}
         }
-        try { scroll.dispose(); } catch (_) {}
-        try { focus.dispose();  } catch (_) {}
+        try { scroll.dispose();    } catch (_) {}
+        try { rackFocus.dispose(); } catch (_) {}
+        try { qtyFocus.dispose();  } catch (_) {}
       });
-    });
+    }
+
+    if (qtyFocus.hasFocus) {
+      // The IME is still attached (confirmed on Zebra TC15 / TC52 where the
+      // OS tears down the input connection asynchronously after Get.back()).
+      // Wait for the FocusNode to report blur before disposing — this is the
+      // earliest moment it is safe to invalidate qtyController without racing
+      // against _AnimatedState.didUpdateWidget calling addListener() on it.
+      void onFocusChange() {
+        if (!qtyFocus.hasFocus) {
+          qtyFocus.removeListener(onFocusChange);
+          runDispose();
+        }
+      }
+      qtyFocus.addListener(onFocusChange);
+    } else {
+      // Qty field is already unfocused — use the original single post-frame
+      // path, which is sufficient on all other devices and close paths
+      // (Cancel tap, back-swipe, system back).
+      runDispose();
+    }
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────────
