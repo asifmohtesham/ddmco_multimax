@@ -144,12 +144,18 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
-    // Write into the parent's in-memory slip synchronously — no Get.back(),
-    // no await here. The base class's confirm-and-dismiss flow calls Get.back()
-    // after this method returns, and the parent's updateItemLocally() fires
-    // before any disposal starts.
-    // Matches StockEntryItemFormController.submit() architecture exactly.
+
+    // 1. Write into parent's in-memory list synchronously — before any
+    //    disposal starts. No TextEditingController is touched after this.
     _parent.updateItemLocally(qty);
+
+    // 2. Now dismiss. The sheet's exit animation starts here. Because the
+    //    in-memory state is already updated, no further reactive mutation
+    //    will fire during the TEC's disposal window.
+    Get.back();
+
+    // 3. Persist asynchronously — sheet is already gone, no TEC alive.
+    if (_parent.isDirty.value) await _parent.savePackingSlip();
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────────
