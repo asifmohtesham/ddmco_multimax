@@ -144,6 +144,12 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
+
+    // 1. Dismiss keyboard before anything else.
+    //    This prevents the IME viewport-resize from triggering a layout
+    //    rebuild on SharedQtyField while its TEC is mid-disposal.
+    FocusManager.instance.primaryFocus?.unfocus();
+
     // Dismiss the keyboard before closing the sheet.
     // When the keyboard is open, the IME holds a live connection to
     // qtyController. Calling Get.back() without unfocusing first causes
