@@ -777,7 +777,7 @@ class PackingSlipFormController extends GetxController
       message:     'Are you sure you want to remove this item from the package?',
       confirmText: 'Remove',
       onConfirm: () async {
-        Get.key.currentState?.pop();
+        if (Get.isBottomSheetOpen == true) Get.key.currentState?.pop();
         final items = packingSlip.value?.items.toList() ?? [];
         items.removeWhere((i) => i.name == currentItemNameKey);
         packingSlip.value = packingSlip.value?.copyWith(items: items);
