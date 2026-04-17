@@ -144,6 +144,13 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   Future<void> submit() async {
     final qty = double.tryParse(qtyController.text) ?? 0.0;
     if (qty <= 0) return;
+    // Capture qty locally before the controller is closed.
+    // Dismiss the sheet first so the exit animation completes before the
+    // parent list mutates. addItemToSlipWithQty schedules a parent rebuild
+    // which races with the sheet's _AnimatedState.didUpdateWidget and causes
+    // a "TextEditingController used after dispose" crash when the rebuild
+    // fires mid-animation against a disposed qtyController.
+    Get.back();
     await _parent.addItemToSlipWithQty(qty);
   }
 

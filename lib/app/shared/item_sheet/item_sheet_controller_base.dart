@@ -435,13 +435,16 @@ abstract class ItemSheetControllerBase extends GetxController
     final scroll = sheetScrollController;
     final focus  = rackFocusNode;
 
-    // Rule 1: defer to post-frame so exit animation completes first.
+    // AFTER — double post-frame: first frame = exit animation completes,
+    // second frame = parent list rebuild flushes, THEN dispose is safe.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final c in textControllers) {
-        try { c.dispose(); } catch (_) {}
-      }
-      try { scroll.dispose(); } catch (_) {}
-      try { focus.dispose();  } catch (_) {}
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final c in textControllers) {
+          try { c.dispose(); } catch (_) {}
+        }
+        try { scroll.dispose(); } catch (_) {}
+        try { focus.dispose();  } catch (_) {}
+      });
     });
   }
 
