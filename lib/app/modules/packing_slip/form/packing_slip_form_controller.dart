@@ -614,7 +614,6 @@ class PackingSlipFormController extends GetxController
           await Future.delayed(const Duration(milliseconds: 500));
           await addItemToSlip();
           isAddingItem.value = false;
-          if (Get.isBottomSheetOpen == true) Get.back();
         },
       );
       _openItemSheet(child);
@@ -778,11 +777,18 @@ class PackingSlipFormController extends GetxController
       confirmText: 'Remove',
       onConfirm: () async {
         if (Get.isBottomSheetOpen == true) Get.key.currentState?.pop();
-        final items = packingSlip.value?.items.toList() ?? [];
-        items.removeWhere((i) => i.name == currentItemNameKey);
-        packingSlip.value = packingSlip.value?.copyWith(items: items);
-        _checkForChanges();
-        if (isDirty.value) await savePackingSlip();
+        // Defer state mutation to the next frame so the sheet's exit animation
+        // fully unmounts SharedQtyField (and its TextEditingController) before
+        // the Obx rebuild fires. Mutating packingSlip.value on the same call
+        // stack as pop() causes _AnimatedState.didUpdateWidget to call
+        // addListener on the already-disposed TextEditingController → crash.
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final items = packingSlip.value?.items.toList() ?? [];
+          items.removeWhere((i) => i.name == currentItemNameKey);
+          packingSlip.value = packingSlip.value?.copyWith(items: items);
+          _checkForChanges();
+          if (isDirty.value) await savePackingSlip();
+        });
       },
     );
   }
