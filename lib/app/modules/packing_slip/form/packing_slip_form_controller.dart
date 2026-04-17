@@ -678,7 +678,7 @@ class PackingSlipFormController extends GetxController
   // ---------------------------------------------------------------------------
 
   Future<void> addItemToSlipWithQty(double qtyToAdd) async {
-    if (qtyToAdd <= 0) { Get.key.currentState?.pop(); return; }
+    if (qtyToAdd <= 0) { return; }
 
     final currentItems = packingSlip.value?.items.toList() ?? [];
     if (isEditing.value && currentItemNameKey != null) {
@@ -762,6 +762,8 @@ class PackingSlipFormController extends GetxController
 
   Future<void> addItemToSlip() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0.0;
+    if (qty <= 0) { Get.key.currentState?.pop(); return; }
+    Get.key.currentState?.pop();
     await addItemToSlipWithQty(qty);
   }
 
