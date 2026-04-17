@@ -153,9 +153,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     //    in-memory state is already updated, no further reactive mutation
     //    will fire during the TEC's disposal window.
     Get.back();
-
-    // 3. Persist asynchronously — sheet is already gone, no TEC alive.
-    if (_parent.isDirty.value) await _parent.savePackingSlip();
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────────

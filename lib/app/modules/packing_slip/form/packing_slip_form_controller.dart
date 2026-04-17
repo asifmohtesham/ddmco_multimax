@@ -499,8 +499,12 @@ class PackingSlipFormController extends GetxController
       ),
       isScrollControlled: true,
     );
+    // Sheet is fully dismissed. Child controller still alive here.
     isItemSheetOpen.value = false;
     Get.delete<PackingSlipItemFormController>();
+
+    // Save after child is cleaned up — no controller on the stack anymore.
+    if (isDirty.value) await savePackingSlip();
   }
 
   // ---------------------------------------------------------------------------
