@@ -50,11 +50,9 @@ class PackingSlipFormController extends GetxController
   String currentScannedEan = '';
 
   // bsQtyController and bsMaxQty kept as shims until step-6.
-  final bsQtyController = TextEditingController();
   var bsMaxQty  = 0.0.obs;
   // isSheetValid shim kept until step-6.
   var isSheetValid = false.obs;
-  String _initialQty = '';
 
   var packingSlip        = Rx<PackingSlip?>(null);
   var linkedDeliveryNote = Rx<DeliveryNote?>(null);
@@ -88,9 +86,6 @@ class PackingSlipFormController extends GetxController
 
   // Metadata shims kept until step-6.
   var bsItemOwner      = RxnString();
-  var bsItemCreation   = RxnString();
-  var bsItemModified   = RxnString();
-  var bsItemModifiedBy = RxnString();
 
   // DataWedge hardware-scan worker.
   Worker? _scanWorker;
@@ -104,11 +99,8 @@ class PackingSlipFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    bsQtyController.addListener(_validateSheetShim);
-
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isNotEmpty) {
-        log('[PackingSlipForm] DataWedge scan received: $code', name: 'Scan');
         scanBarcode(code);
       }
     });
@@ -124,7 +116,6 @@ class PackingSlipFormController extends GetxController
   void onClose() {
     _scanWorker?.dispose();
     barcodeController.dispose();
-    bsQtyController.dispose();
     super.onClose();
   }
 
@@ -136,37 +127,6 @@ class PackingSlipFormController extends GetxController
   bool _isQtyInvalid(String text) {
     final qty = double.tryParse(text);
     return qty == null || qty <= 0;
-  }
-
-  /// Returns true when the entered qty exceeds the remaining capacity cap.
-  ///
-  /// The cap is only enforced when [bsMaxQty] > 0 (i.e. a POS Upload is loaded
-  /// and a ceiling is known). When bsMaxQty is 0.0 (no cap), this guard passes.
-  bool _isQtyOverCap(double qty) =>
-      bsMaxQty.value > 0 && qty > bsMaxQty.value;
-
-  /// Returns true when in edit mode and the user has not changed the qty
-  /// from its value at sheet-open time. Saving an unchanged qty is a no-op.
-  bool _isUnchangedEditQty(String text) =>
-      isEditing.value && text == _initialQty;
-
-  // ── Sheet validation orchestrator ──────────────────────────────────────────
-
-  /// Listener attached to [bsQtyController]. Orchestrates the three
-  /// independent validity guards and writes the result to [isSheetValid].
-  ///
-  /// Each guard is a single-responsibility predicate so this function stays
-  /// at the level of control flow only — it contains no parsing or comparison
-  /// logic of its own.
-  void _validateSheetShim() {
-    final text = bsQtyController.text;
-    final qty  = double.tryParse(text) ?? 0.0;
-
-    if (_isQtyInvalid(text) || _isQtyOverCap(qty) || _isUnchangedEditQty(text)) {
-      isSheetValid.value = false;
-      return;
-    }
-    isSheetValid.value = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -824,9 +784,6 @@ class PackingSlipFormController extends GetxController
     isEditing.value    = false;
     currentItemNameKey = null;
     bsItemOwner.value      = null;
-    bsItemCreation.value   = null;
-    bsItemModified.value   = null;
-    bsItemModifiedBy.value = null;
     _populateItemDetails(item);
   }
 
@@ -878,12 +835,6 @@ class PackingSlipFormController extends GetxController
   /// assignments and the [_validateSheetShim] trigger in one place.
   void _seedSheetQty({required double maxQty, double? initialQty}) {
     bsMaxQty.value = maxQty;
-    final qtyStr         = (initialQty ?? maxQty) > 0
-        ? (initialQty ?? maxQty).toStringAsFixed(0)
-        : '0';
-    bsQtyController.text = qtyStr;
-    _initialQty          = qtyStr;
-    _validateSheetShim();
   }
 
   // ── Child controller wiring ────────────────────────────────────────────────
@@ -981,9 +932,6 @@ class PackingSlipFormController extends GetxController
     isEditing.value    = true;
     currentItemNameKey = slipItem.name;
     bsItemOwner.value      = slipItem.owner;
-    bsItemCreation.value   = slipItem.creation;
-    bsItemModified.value   = slipItem.modified;
-    bsItemModifiedBy.value = slipItem.modifiedBy;
     _populateItemDetails(dnItem);
   }
 
@@ -1069,16 +1017,8 @@ class PackingSlipFormController extends GetxController
   /// arrives here as double from the stepper.  Cast at the call site.
   void adjustQty(double delta) {
     if (isItemSheetOpen.value) {
-      try {
-        Get.find<PackingSlipItemFormController>().adjustQty(delta.toInt());
-        return;
-      } catch (_) { /* fall through to legacy shim path */ }
+      Get.find<PackingSlipItemFormController>().adjustQty(delta.toInt());
     }
-    double current = double.tryParse(bsQtyController.text) ?? 0;
-    double newVal  = current + delta;
-    if (newVal < 0) newVal = 0;
-    if (newVal > bsMaxQty.value) newVal = bsMaxQty.value;
-    bsQtyController.text = newVal.toStringAsFixed(0);
   }
 
   // ── Item list mutations ────────────────────────────────────────────────────
@@ -1234,7 +1174,9 @@ class PackingSlipFormController extends GetxController
   /// Mirrors [StockEntryFormController.addItem] as the thin coordinator
   /// that reads form state and hands off to the mutation layer.
   Future<void> addItemToSlip() async {
-    final qty = double.tryParse(bsQtyController.text) ?? 0.0;
+    // Read qty from the child controller's field — that is what the user typed into.
+    final child = Get.find<PackingSlipItemFormController>();
+    final qty = double.tryParse(child.qtyController.text) ?? 0.0;
     if (qty <= 0) {
       Get.key.currentState?.pop();
       return;
