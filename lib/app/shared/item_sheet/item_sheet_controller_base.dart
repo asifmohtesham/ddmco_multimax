@@ -375,6 +375,11 @@ abstract class ItemSheetControllerBase extends GetxController
 
   // ── submitWithFeedback ─────────────────────────────────────────────────────────
   Future<bool> submitWithFeedback() async {
+    // Wait for any in-flight batch/rack validation to settle first.
+    if (isValidatingBatch.value || isValidatingRack.value) {
+      GlobalSnackbar.warning(message: 'Validation in progress, please wait.');
+      return false;
+    }
     saveButtonState.value = SaveButtonState.loading;
     try {
       await submit();
@@ -493,11 +498,14 @@ abstract class ItemSheetControllerBase extends GetxController
   // ── setupAutoSubmit ──────────────────────────────────────────────────────────
   void setupAutoSubmit({required Future<void> Function() onValid}) {
     _autoSubmitWorker?.dispose();
+    bool _handling = false;
     _autoSubmitWorker = ever(
       saveButtonState,
       (state) async {
-        if (state == SaveButtonState.success) {
+        if (state == SaveButtonState.success && !_handling) {
+          _handling = true;
           await onValid();
+          _handling = false;
         }
       },
     );

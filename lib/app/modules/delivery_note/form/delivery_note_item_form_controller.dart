@@ -207,8 +207,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
     _parent.deliveryNote.value?.items.removeAt(editingIndex.value);
-    _parent.deliveryNote.refresh();
     Get.back();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_parent.isClosed) _parent.deliveryNote.refresh();
+    });
   }
 
   // ── SerialFieldMixin wiring ────────────────────────────────────────────────
@@ -539,11 +541,15 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     if (isExistingItem.value && editingIndex.value >= 0) {
       _parent.deliveryNote.value?.items[editingIndex.value] = item;
-      _parent.deliveryNote.refresh();
     } else {
       _parent.deliveryNote.value?.items.add(item);
-      _parent.deliveryNote.refresh();
     }
+
+    // ✅ Defer the Rx notification to the NEXT frame so the sheet's
+    // exit animation completes before the parent list rebuilds.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_parent.isClosed) _parent.deliveryNote.refresh();
+    });
   }
 
   // ── Rack-map preload for AutoFillRack / RackPicker ─────────────────────────
