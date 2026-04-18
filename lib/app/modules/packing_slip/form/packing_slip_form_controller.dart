@@ -684,181 +684,350 @@ class PackingSlipFormController extends GetxController
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Sheet: shared private opener
-  // ---------------------------------------------------------------------------
+  // ── Serial badge predicate ─────────────────────────────────────────────────
 
-  Future<void> _openItemSheet(PackingSlipItemFormController child) async {
-    isItemSheetOpen.value = true;
+  /// Returns true when the invoice-serial badge ([SharedInvoiceSerialNumberField])
+  /// should be rendered in the item sheet.
+  ///
+  /// All four conditions must hold:
+  ///   1. A POS Upload is loaded (the badge shows the POS qty cap).
+  ///   2. [currentSerial] is non-null.
+  ///   3. [currentSerial] is not empty.
+  ///   4. [currentSerial] is not the sentinel value `'0'` (items with no
+  ///      serial are stored as `'0'` by convention).
+  bool _shouldShowSerialBadge() =>
+      posUpload.value != null &&
+          currentSerial != null &&
+          currentSerial!.isNotEmpty &&
+          currentSerial != '0';
 
-    // ── Serial cap badge (Commit 6) ───────────────────────────────────────────
-    // Rendered as a read-only custom field tile when a POS Upload is loaded
-    // and the linked DN item carries a valid invoice serial number.
-    // posItemQtyOverride closes over this controller instance so the badge
-    // always reads posQtyCapForSerial(currentSerial) for the current sheet
-    // session, regardless of what the child controller exposes.
-    final serial = currentSerial;
-    final showSerialBadge = posUpload.value != null &&
-        serial != null &&
-        serial.isNotEmpty &&
-        serial != '0';
+  // ── Custom fields builder ──────────────────────────────────────────────────
 
-    await Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize:     0.4,
-        maxChildSize:     0.95,
-        expand:           false,
-        builder: (context, sc) => UniversalItemFormSheet(
-          key:              ValueKey(child.editingItemName.value ?? 'new'),
-          controller:       child,
-          scrollController: sc,
-          onSubmit:         () => addItemToSlip(),
-          onScan:           null,
-          isSaveEnabled:    packingSlip.value?.docstatus == 0,
-          itemSubtext:      currentItemVariantOf,
-          customFields: [
-            if (currentBatchNo != null && currentBatchNo!.isNotEmpty)
-              BatchDisplayTile(batchNo: currentBatchNo!),
-            if (showSerialBadge)
-              SharedInvoiceSerialNumberField(
-                c:           child,
-                accentColor: Colors.teal,
-                label:       'Invoice Serial No',
-                hint:        serial!,
-                // Override: read the POS cap directly from this parent
-                // controller so the badge is correct even before the child
-                // controller's first validateSheet() fires.
-                posItemQtyOverride: () => posQtyCapForSerial(serial),
-              ),
-          ],
+  /// Builds the ordered list of custom field widgets for the item sheet.
+  ///
+  /// - [BatchDisplayTile] is shown when a batch number is present on the
+  ///   current DN item — it is read-only, displaying the resolved batch.
+  /// - [SharedInvoiceSerialNumberField] is shown only when
+  ///   [_shouldShowSerialBadge] passes, providing the POS qty cap badge.
+  ///
+  /// Single responsibility: custom field composition. Widget identity and
+  /// conditional inclusion rules are owned here; [_openItemSheet] receives
+  /// a ready-made list.
+  List<Widget> _buildItemSheetCustomFields(
+      PackingSlipItemFormController child,
+      ) {
+    final fields = <Widget>[];
+
+    if (currentBatchNo != null && currentBatchNo!.isNotEmpty) {
+      fields.add(BatchDisplayTile(batchNo: currentBatchNo!));
+    }
+
+    if (_shouldShowSerialBadge()) {
+      final serial = currentSerial!;
+      fields.add(
+        SharedInvoiceSerialNumberField(
+          c:           child,
+          accentColor: Colors.teal,
+          label:       'Invoice Serial No',
+          hint:        serial,
+          posItemQtyOverride: () => posQtyCapForSerial(serial),
         ),
-      ),
-      isScrollControlled: true,
-    );
+      );
+    }
+
+    return fields;
+  }
+
+  // ── Sheet presentation ─────────────────────────────────────────────────────
+
+  /// Presents the [UniversalItemFormSheet] inside a [DraggableScrollableSheet]
+  /// and awaits its dismissal.
+  ///
+  /// Single responsibility: sheet widget construction and bottom-sheet
+  /// presentation. Receives all variable inputs as parameters so the
+  /// function is free of direct state reads.
+  Future<void> _presentItemSheet(
+      PackingSlipItemFormController child,
+      List<Widget> customFields,
+      ) =>
+      Get.bottomSheet(
+        DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize:     0.4,
+          maxChildSize:     0.95,
+          expand:           false,
+          builder: (context, sc) => UniversalItemFormSheet(
+            key:              ValueKey(child.editingItemName.value ?? 'new'),
+            controller:       child,
+            scrollController: sc,
+            onSubmit:         () => addItemToSlip(),
+            onScan:           null,
+            isSaveEnabled:    packingSlip.value?.docstatus == 0,
+            itemSubtext:      currentItemVariantOf,
+            customFields:     customFields,
+          ),
+        ),
+        isScrollControlled: true,
+      );
+
+  // ── Sheet teardown ─────────────────────────────────────────────────────────
+
+  /// Resets the sheet-open flag and removes the child controller from the
+  /// GetX registry.
+  ///
+  /// Always called after [_presentItemSheet] resolves, regardless of how the
+  /// sheet was dismissed (user swipe, submit, or auto-submit).
+  /// Single responsibility: post-sheet cleanup. Mirrors the teardown pattern
+  /// in [StockEntryFormController._openItemSheet] and
+  /// [DeliveryNoteFormController._openItemSheet].
+  void _teardownItemSheet() {
     isItemSheetOpen.value = false;
     Get.delete<PackingSlipItemFormController>();
   }
 
-  // ---------------------------------------------------------------------------
-  // Sheet: add
-  // ---------------------------------------------------------------------------
+  // ── Orchestrator ───────────────────────────────────────────────────────────
 
-  void prepareSheetForAdd(DeliveryNoteItem item) {
-    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
+  Future<void> _openItemSheet(PackingSlipItemFormController child) async {
+    isItemSheetOpen.value = true;
+    final customFields = _buildItemSheetCustomFields(child);
+    await _presentItemSheet(child, customFields);
+    _teardownItemSheet();
+  }
 
+  // ── Sheet-open guard ───────────────────────────────────────────────────────
+
+  /// Returns true when a bottom sheet is already open and a new one must
+  /// not be presented.
+  ///
+  /// Checks both the reactive [isItemSheetOpen] flag (owned by this
+  /// controller) and [Get.isBottomSheetOpen] (the GetX global sheet state)
+  /// so that sheets opened outside this controller's lifecycle are also
+  /// detected.
+  ///
+  /// Shared by [prepareSheetForAdd] and [editItem] — both must block when
+  /// a sheet is already active.
+  bool _isSheetAlreadyOpen() =>
+      isItemSheetOpen.value || Get.isBottomSheetOpen == true;
+
+  // ── Add-mode session state reset ───────────────────────────────────────────
+
+  /// Resets all session-context fields to their add-mode defaults.
+  ///
+  /// - [itemFormKey] is recreated so the new sheet gets a clean form state.
+  /// - [isEditing] is set false — this session is an add, not an edit.
+  /// - [currentItemNameKey] is cleared — no existing item is being targeted.
+  /// - Metadata shims are cleared — they carry no meaning for a new item.
+  /// - [_populateItemDetails] copies DN item fields into the current-item
+  ///   context fields consumed by [_openItemSheet] and [addItemToSlipWithQty].
+  void _resetSessionForAdd(DeliveryNoteItem item) {
     itemFormKey        = GlobalKey<FormState>();
     isEditing.value    = false;
     currentItemNameKey = null;
-    _populateItemDetails(item);
-
     bsItemOwner.value      = null;
     bsItemCreation.value   = null;
     bsItemModified.value   = null;
     bsItemModifiedBy.value = null;
+    _populateItemDetails(item);
+  }
 
-    double globalPackedForLine = 0.0;
+  // ── Remaining qty calculation ──────────────────────────────────────────────
+
+  /// Calculates the quantity remaining to be packed for the given
+  /// [DeliveryNoteItem] across all related packing slips and the current slip.
+  ///
+  /// Algorithm:
+  ///   1. Sum qty from all *other* related slips whose items reference
+  ///      [item.name] as their [dnDetail].
+  ///   2. Sum qty from the current slip's items that reference [item.name].
+  ///   3. Subtract the total packed from the DN line qty.
+  ///   4. Clamp to zero — negative remaining is treated as fully packed.
+  ///
+  /// Single responsibility: packed-qty aggregation and cap derivation.
+  /// Used by both [prepareSheetForAdd] (full line remaining) and
+  /// [editItem] (line remaining excluding the item being edited).
+  double _calcRemainingQtyForDnItem(DeliveryNoteItem dnItem, {String? excludeSlipItemName}) {
+    double packed = 0.0;
     final currentSlipName = packingSlip.value?.name;
-    for (var slip in relatedPackingSlips) {
+
+    for (final slip in relatedPackingSlips) {
       if (slip.name == currentSlipName) continue;
-      for (var i in slip.items) {
-        if (i.dnDetail == item.name) globalPackedForLine += i.qty;
+      for (final i in slip.items) {
+        if (i.dnDetail == dnItem.name) packed += i.qty;
       }
     }
-    for (var i in (packingSlip.value?.items ?? [])) {
-      if (i.dnDetail == item.name) globalPackedForLine += i.qty;
+    for (final i in (packingSlip.value?.items ?? [])) {
+      if (i.dnDetail == dnItem.name && i.name != excludeSlipItemName) {
+        packed += i.qty;
+      }
     }
-    double remaining = item.qty - globalPackedForLine;
-    if (remaining < 0) remaining = 0;
-    bsMaxQty.value = remaining;
 
-    // Keep bsQtyController in sync (shim until step-6).
-    final qtyStr         = remaining > 0 ? remaining.toStringAsFixed(0) : '0';
+    final remaining = dnItem.qty - packed;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  // ── Sheet qty shim seeding ─────────────────────────────────────────────────
+
+  /// Seeds the qty shim fields ([bsQtyController], [_initialQty], [bsMaxQty])
+  /// for a sheet session and fires the validation listener.
+  ///
+  /// [maxQty] is the computed remaining capacity for the current line.
+  /// [initialQty] defaults to [maxQty] for add-mode (pre-fill with the full
+  /// remaining qty) but is the existing item qty for edit-mode.
+  ///
+  /// Single responsibility: qty shim initialisation. Keeps the three coupled
+  /// assignments and the [_validateSheetShim] trigger in one place.
+  void _seedSheetQty({required double maxQty, double? initialQty}) {
+    bsMaxQty.value = maxQty;
+    final qtyStr         = (initialQty ?? maxQty) > 0
+        ? (initialQty ?? maxQty).toStringAsFixed(0)
+        : '0';
     bsQtyController.text = qtyStr;
     _initialQty          = qtyStr;
     _validateSheetShim();
+  }
 
+  // ── Child controller wiring ────────────────────────────────────────────────
+
+  /// Creates, initialises, and wires the auto-submit callback for a new
+  /// [PackingSlipItemFormController] in add mode.
+  ///
+  /// Single responsibility: child controller lifecycle setup for add path.
+  /// Returns the ready-to-use child so [prepareSheetForAdd] can pass it
+  /// directly to [_openItemSheet].
+  PackingSlipItemFormController _wireChildForAdd(DeliveryNoteItem item) {
     final child = Get.put(PackingSlipItemFormController());
     child.initialise(
       parent:   this,
       itemCode: item.itemCode,
       itemName: item.itemName ?? '',
     );
-    child.setupAutoSubmit(
-      onValid: () async {
-        isAddingItem.value = true;
-        await Future.delayed(const Duration(milliseconds: 500));
-        await addItemToSlip();
-        isAddingItem.value = false;},
-    );
+    child.setupAutoSubmit(onValid: _onAutoSubmitValid);
+    return child;
+  }
+
+  // ── Auto-submit callback ───────────────────────────────────────────────────
+
+  /// Callback passed to [setupAutoSubmit] for both add and edit sheet sessions.
+  ///
+  /// Mirrors the auto-submit wiring pattern in [StockEntryFormController]
+  /// (_wireAutoSubmit). The [isAddingItem] flag prevents concurrent submits
+  /// during the debounce window.
+  Future<void> _onAutoSubmitValid() async {
+    isAddingItem.value = true;
+    await Future.delayed(const Duration(milliseconds: 500));
+    await addItemToSlip();
+    isAddingItem.value = false;
+  }
+
+  // ── Orchestrator ───────────────────────────────────────────────────────────
+
+  void prepareSheetForAdd(DeliveryNoteItem item) {
+    if (_isSheetAlreadyOpen()) return;
+    _resetSessionForAdd(item);
+    final remaining = _calcRemainingQtyForDnItem(item);
+    _seedSheetQty(maxQty: remaining);
+    final child = _wireChildForAdd(item);
     _openItemSheet(child);
   }
 
-  // ---------------------------------------------------------------------------
-  // Sheet: edit
-  // ---------------------------------------------------------------------------
+  // ── Edit-mode loading flags ────────────────────────────────────────────────
+
+  /// Sets the loading-indicator flags while the edit sheet is being prepared.
+  ///
+  /// Called before async DN resolution so the UI can show a per-item spinner
+  /// immediately. Mirrors the flag pattern in
+  /// [DeliveryNoteFormController.editItem].
+  void _beginItemEditLoading(String? itemName) {
+    isLoadingItemEdit.value  = true;
+    loadingForItemName.value = itemName;
+  }
+
+  /// Clears the loading-indicator flags after the edit sheet has opened
+  /// (or after an early return due to a missing DN item).
+  ///
+  /// Always called in a [finally] block so flags are reset regardless of
+  /// how the preparation path exits.
+  void _endItemEditLoading() {
+    isLoadingItemEdit.value  = false;
+    loadingForItemName.value = null;
+  }
+
+  // ── DN item resolution ─────────────────────────────────────────────────────
+
+  /// Resolves the [DeliveryNoteItem] that backs the given [PackingSlipItem].
+  ///
+  /// Returns null when the linked Delivery Note is not loaded or when no
+  /// DN item matches [slipItem.dnDetail]. The caller must treat null as a
+  /// non-recoverable early-exit condition — the sheet cannot be opened
+  /// without a backing DN item.
+  DeliveryNoteItem? _resolveDnItemForSlipItem(PackingSlipItem slipItem) =>
+      linkedDeliveryNote.value?.items
+          .firstWhereOrNull((d) => d.name == slipItem.dnDetail);
+
+  // ── Edit-mode session state reset ──────────────────────────────────────────
+
+  /// Resets all session-context fields to their edit-mode values.
+  ///
+  /// - [itemFormKey] is recreated so the sheet gets a clean form state.
+  /// - [isEditing] is set true — this session targets an existing item.
+  /// - [currentItemNameKey] is set to the slip item's name so
+  ///   [addItemToSlipWithQty] can locate the correct list entry.
+  /// - Metadata shims are populated from the existing item so they are
+  ///   preserved on the round-trip through [addItemToSlipWithQty].
+  /// - [_populateItemDetails] copies DN item fields into the current-item
+  ///   context fields consumed by [_openItemSheet].
+  void _resetSessionForEdit(PackingSlipItem slipItem, DeliveryNoteItem dnItem) {
+    itemFormKey        = GlobalKey<FormState>();
+    isEditing.value    = true;
+    currentItemNameKey = slipItem.name;
+    bsItemOwner.value      = slipItem.owner;
+    bsItemCreation.value   = slipItem.creation;
+    bsItemModified.value   = slipItem.modified;
+    bsItemModifiedBy.value = slipItem.modifiedBy;
+    _populateItemDetails(dnItem);
+  }
+
+  // ── Child controller wiring (edit) ─────────────────────────────────────────
+
+  /// Creates, initialises, and wires the auto-submit callback for a new
+  /// [PackingSlipItemFormController] in edit mode.
+  ///
+  /// Passes [editingItem] to [child.initialise] so the child controller can
+  /// pre-populate its fields from the existing slip item.
+  /// Single responsibility: child controller lifecycle setup for edit path.
+  PackingSlipItemFormController _wireChildForEdit(
+      DeliveryNoteItem dnItem,
+      PackingSlipItem  slipItem,
+      ) {
+    final child = Get.put(PackingSlipItemFormController());
+    child.initialise(
+      parent:      this,
+      itemCode:    dnItem.itemCode,
+      itemName:    dnItem.itemName ?? '',
+      editingItem: slipItem,
+    );
+    child.setupAutoSubmit(onValid: _onAutoSubmitValid);
+    return child;
+  }
+
+  // ── Orchestrator ───────────────────────────────────────────────────────────
 
   Future<void> editItem(PackingSlipItem item) async {
-    if (isItemSheetOpen.value || Get.isBottomSheetOpen == true) return;
-
-    isLoadingItemEdit.value  = true;
-    loadingForItemName.value = item.name;
-
+    if (_isSheetAlreadyOpen()) return;
+    _beginItemEditLoading(item.name);
     try {
-      itemFormKey = GlobalKey<FormState>();
-      final dnItem = linkedDeliveryNote.value?.items
-          .firstWhereOrNull((d) => d.name == item.dnDetail);
+      final dnItem = _resolveDnItemForSlipItem(item);
       if (dnItem == null) return;
-
-      isEditing.value    = true;
-      currentItemNameKey = item.name;
-
-      bsItemOwner.value      = item.owner;
-      bsItemCreation.value   = item.creation;
-      bsItemModified.value   = item.modified;
-      bsItemModifiedBy.value = item.modifiedBy;
-
-      _populateItemDetails(dnItem);
-
-      double globalPackedOthers = 0.0;
-      final currentSlipName = packingSlip.value?.name;
-      for (var slip in relatedPackingSlips) {
-        if (slip.name == currentSlipName) continue;
-        for (var i in slip.items) {
-          if (i.dnDetail == item.dnDetail) globalPackedOthers += i.qty;
-        }
-      }
-      for (var i in (packingSlip.value?.items ?? [])) {
-        if (i.dnDetail == item.dnDetail && i.name != item.name) {
-          globalPackedOthers += i.qty;
-        }
-      }
-      bsMaxQty.value = dnItem.qty - globalPackedOthers;
-
-      final qtyStr         = item.qty.toStringAsFixed(0);
-      bsQtyController.text = qtyStr;
-      _initialQty          = qtyStr;
-      _validateSheetShim();
-
-      final child = Get.put(PackingSlipItemFormController());
-      child.initialise(
-        parent:      this,
-        itemCode:    dnItem.itemCode,
-        itemName:    dnItem.itemName ?? '',
-        editingItem: item,
+      _resetSessionForEdit(item, dnItem);
+      final remaining = _calcRemainingQtyForDnItem(
+        dnItem,
+        excludeSlipItemName: item.name,
       );
-      child.setupAutoSubmit(
-        onValid: () async {
-          isAddingItem.value = true;
-          await Future.delayed(const Duration(milliseconds: 500));
-          await addItemToSlip();
-          isAddingItem.value = false;
-        },
-      );
+      _seedSheetQty(maxQty: remaining, initialQty: item.qty);
+      final child = _wireChildForEdit(dnItem, item);
       _openItemSheet(child);
     } finally {
-      isLoadingItemEdit.value  = false;
-      loadingForItemName.value = null;
+      _endItemEditLoading();
     }
   }
 
