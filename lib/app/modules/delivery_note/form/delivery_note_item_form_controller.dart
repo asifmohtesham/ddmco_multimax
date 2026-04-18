@@ -726,7 +726,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// exit animation completes before the parent list re-renders.
   void _scheduleParentRefresh() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_parent.isClosed) _parent.deliveryNote.refresh();
+      if (_parent.isClosed) return;
+      _parent.deliveryNote.refresh();
+      _parent.checkForChanges();
+      if (_parent.mode == 'edit') {
+        _parent.saveDeliveryNote();
+      }
     });
   }
 

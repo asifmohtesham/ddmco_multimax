@@ -108,7 +108,7 @@ class DeliveryNoteFormController extends GetxController
   void onInit() {
     super.onInit();
     fetchWarehouses();
-    ever(setWarehouse, (_) => _checkForChanges());
+    ever(setWarehouse, (_) => checkForChanges());
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
     log('[DN:onInit] _scanWorker registered on DataWedgeService.scannedCode',
         name: 'DN');
@@ -153,7 +153,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Dirty tracking ────────────────────────────────────────────────────────
-  void _checkForChanges() {
+  void checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') { isDirty.value = true; return; }
     if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
@@ -547,7 +547,7 @@ class DeliveryNoteFormController extends GetxController
   void addItem(DeliveryNoteItem newItem) {
     deliveryNote.value?.items.add(newItem);
     deliveryNote.refresh();
-    _checkForChanges();
+    checkForChanges();
     recentlyAddedItemCode.value = newItem.itemCode;
     recentlyAddedSerial.value   = newItem.customInvoiceSerialNumber ?? '';
     Future.delayed(const Duration(seconds: 2), () {
@@ -565,63 +565,43 @@ class DeliveryNoteFormController extends GetxController
     if (idx != -1) {
       items[idx] = updatedItem;
       deliveryNote.refresh();
-      _checkForChanges();
+      checkForChanges();
     }
     if (mode == 'edit') saveDeliveryNote();
   }
 
-  void addItemLocally(
-    String code,
-    String itemName,
-    double qty,
-    String rack,
-    String batch,
-    String? serial,
-  ) {
-    final newItem = DeliveryNoteItem(
-      name:                       null,
-      itemCode:                   code,
-      itemName:                   itemName,
-      qty:                        qty,
-      rate:                       0.0,
-      rack:                       rack.isEmpty ? null : rack,
-      batchNo:                    batch.isEmpty ? null : batch,
-      uom:                        'Nos',
-      customInvoiceSerialNumber:  serial,
-      owner:                      null,
-      creation:                   null,
-      modified:                   null,
-      modifiedBy:                 null,
+  /// Private factory — single source of truth for item construction.
+  DeliveryNoteItem _buildItem({
+    required String   itemCode,
+    required String   itemName,
+    required double   qty,
+    required String   rack,
+    required String   batch,
+    String?           serial,
+    // Fields preserved from an existing item (null = fresh add)
+    String?           existingName,
+    double            rate        = 0.0,
+    String            uom         = 'Nos',
+    String?           owner,
+    String?           creation,
+    String?           modified,
+    String?           modifiedBy,
+  }) {
+    return DeliveryNoteItem(
+      name:                      existingName,
+      itemCode:                  itemCode,
+      itemName:                  itemName,
+      qty:                       qty,
+      rate:                      rate,
+      rack:                      rack.isEmpty  ? null : rack,
+      batchNo:                   batch.isEmpty ? null : batch,
+      uom:                       uom,
+      customInvoiceSerialNumber: serial,
+      owner:                     owner,
+      creation:                  creation,
+      modified:                  modified,
+      modifiedBy:                modifiedBy,
     );
-    addItem(newItem);
-  }
-
-  void updateItemLocally(
-    String existingName,
-    double qty,
-    String rack,
-    String batch,
-    String? serial,
-  ) {
-    final itemList  = deliveryNote.value?.items ?? [];
-    final existing  = itemList.firstWhereOrNull((i) => i.name == existingName);
-    if (existing == null) return;
-    final updated = DeliveryNoteItem(
-      name:                       existing.name,
-      itemCode:                   existing.itemCode,
-      itemName:                   existing.itemName,
-      qty:                        qty,
-      rate:                       existing.rate,
-      rack:                       rack.isEmpty ? null : rack,
-      batchNo:                    batch.isEmpty ? null : batch,
-      uom:                        existing.uom,
-      customInvoiceSerialNumber:  serial,
-      owner:                      existing.owner,
-      creation:                   existing.creation,
-      modified:                   existing.modified,
-      modifiedBy:                 existing.modifiedBy,
-    );
-    updateItem(updated);
   }
 
   Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
@@ -635,7 +615,7 @@ class DeliveryNoteFormController extends GetxController
     if (confirmed != true) return;
     deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
     deliveryNote.refresh();
-    _checkForChanges();
+    checkForChanges();
     if (mode == 'edit') saveDeliveryNote();
   }
 
