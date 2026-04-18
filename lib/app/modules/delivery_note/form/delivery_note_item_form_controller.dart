@@ -348,28 +348,62 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     String?  variantOf,
     DeliveryNoteItem? editingItem,
   }) {
-    // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
-    _itemEan8 = scannedEan8 ?? '';
-    _parent = parent;
+    _seedContext(parent: parent, scannedEan8: scannedEan8);
 
     if (editingItem != null) {
-      final items = parent.deliveryNote.value?.items ?? [];
-      final idx   = items.indexWhere((i) => i.name == editingItem.name);
-      initForEdit(
-        index:    idx >= 0 ? idx : 0,
-        item:     editingItem,
-        variantOf: variantOf ?? editingItem.customVariantOf ?? '',
-      );
+      _initEdit(item: editingItem, variantOf: variantOf);
     } else {
-      initForNewItem(
-        itemCode:  code,
-        itemName:  name,
-        uom:       'Nos',
-        itemGroup: '',
-        variantOf: variantOf ?? '',
+      _initNew(
+        code:      code,
+        name:      name,
         batchNo:   batchNo,
+        variantOf: variantOf,
       );
     }
+  }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: bind the parent back-reference and seed the EAN-8
+  /// barcode context used by deprecated batch-label reassembly.
+  void _seedContext({
+    required DeliveryNoteFormController parent,
+    String? scannedEan8,
+  }) {
+    _parent   = parent;
+    _itemEan8 = scannedEan8 ?? '';
+  }
+
+  /// Responsibility: resolve the editing index from the parent's items list
+  /// and route to [initForEdit].
+  void _initEdit({
+    required DeliveryNoteItem item,
+    String? variantOf,
+  }) {
+    final items = _parent.deliveryNote.value?.items ?? [];
+    final idx   = items.indexWhere((i) => i.name == item.name);
+    initForEdit(
+      index:     idx >= 0 ? idx : 0,
+      item:      item,
+      variantOf: variantOf ?? item.customVariantOf ?? '',
+    );
+  }
+
+  /// Responsibility: build the new-item arguments and route to [initForNewItem].
+  void _initNew({
+    required String  code,
+    required String  name,
+    String?  batchNo,
+    String?  variantOf,
+  }) {
+    initForNewItem(
+      itemCode:  code,
+      itemName:  name,
+      uom:       'Nos',
+      itemGroup: '',
+      variantOf: variantOf ?? '',
+      batchNo:   batchNo,
+    );
   }
 
   // ── Lifecycle / init ───────────────────────────────────────────────────────
@@ -378,25 +412,66 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required String itemName,
     required String uom,
     required String itemGroup,
-    String variantOf = '',
+    String  variantOf = '',
     String? batchNo,
   }) {
+    _seedNewItemModeFlags();
+    _seedItemIdentity(
+      itemCode:  itemCode,
+      itemName:  itemName,
+      uom:       uom,
+      itemGroup: itemGroup,
+      variantOf: variantOf,
+    );
+    _seedFieldControllers(batchNo: batchNo);
+    _resetValidationState();
+    _wireListenersAndSnapshot();
+
+    if ((batchNo ?? '').isNotEmpty) {
+      validateBatchOnInit(batchNo!);
+    }
+  }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: mark this sheet as an add-mode (non-editing) session
+  /// and seed the doc-status from the live parent document.
+  void _seedNewItemModeFlags() {
     isExistingItem.value  = false;
     editingIndex.value    = -1;
     editingItemName.value = null;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+  }
 
+  /// Responsibility: write all item-identity reactive variables so the
+  /// sheet widgets observe the correct item from the moment they build.
+  void _seedItemIdentity({
+    required String itemCode,
+    required String itemName,
+    required String uom,
+    required String itemGroup,
+    required String variantOf,
+  }) {
     this.itemCode.value    = itemCode;
     itemCodeRx.value       = itemCode;
     itemNameRx.value       = itemName;
     itemUomRx.value        = uom;
     itemGroupRx.value      = itemGroup;
     currentVariantOf.value = variantOf;
+  }
 
+  /// Responsibility: pre-populate (or clear) the three text-field controllers
+  /// so the user sees the correct starting values on sheet open.
+  void _seedFieldControllers({String? batchNo}) {
     batchController.text = batchNo ?? '';
     rackController.clear();
     qtyController.clear();
+  }
 
+  /// Responsibility: reset every piece of validation state to a clean
+  /// baseline — batch, rack, serial, live-remaining, qty error, and the
+  /// transient rack-stock map.
+  void _resetValidationState() {
     resetBatch();
     resetRack();
     selectedSerial.value  = null;
@@ -405,15 +480,16 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = false;
     isQtyValid.value   = false;
     qtyError.value     = '';
+  }
 
+  /// Responsibility: tear down any stale listeners, attach fresh ones,
+  /// then capture the baseline state snapshots that change-detection
+  /// and serial-remaining logic depend on.
+  void _wireListenersAndSnapshot() {
     removeSheetListeners();
     addSheetListeners();
     snapshotState();
     captureSerialSnapshot();
-
-    if ((batchNo ?? '').isNotEmpty) {
-      validateBatchOnInit(batchNo!);
-    }
   }
 
   void initForEdit({
@@ -421,38 +497,76 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required DeliveryNoteItem item,
     String variantOf = '',
   }) {
+    _seedEditModeFlags(index: index, item: item);
+    _seedItemIdentityFromItem(item: item, variantOf: variantOf);
+
+    final existingBatch = item.batchNo ?? '';
+    final existingRack  = item.rack    ?? '';
+    _seedEditFieldControllers(item: item);
+
+    _resolveAndSeedSerial(item: item);
+    _seedLiveRemainingFromItem(item: item);
+    _resetValidationState();
+    _wireListenersAndSnapshot();
+
+    _triggerEditValidations(
+      existingBatch: existingBatch,
+      existingRack:  existingRack,
+    );
+  }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: mark this sheet as an edit-mode session, record which
+  /// index is being edited, and seed doc-status from the live parent document.
+  void _seedEditModeFlags({
+    required int index,
+    required DeliveryNoteItem item,
+  }) {
     isExistingItem.value  = true;
     editingIndex.value    = index;
     editingItemName.value = item.name;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+  }
 
+  /// Responsibility: write all item-identity reactive variables from the
+  /// existing [item] row so sheet widgets observe the correct values on open.
+  void _seedItemIdentityFromItem({
+    required DeliveryNoteItem item,
+    required String variantOf,
+  }) {
     this.itemCode.value    = item.itemCode;
     itemCodeRx.value       = item.itemCode;
-    itemNameRx.value       = item.itemName ?? '';
-    itemUomRx.value        = item.uom ?? '';
+    itemNameRx.value       = item.itemName  ?? '';
+    itemUomRx.value        = item.uom       ?? '';
     itemGroupRx.value      = item.itemGroup ?? '';
     currentVariantOf.value = variantOf;
+  }
 
-    final existingRack  = item.rack    ?? '';
-    final existingBatch = item.batchNo ?? '';
-    final existingQty   = item.qty.toString();
-
+  /// Responsibility: reset batch/rack validation state, then pre-populate
+  /// the three text-field controllers with the item's persisted values.
+  void _seedEditFieldControllers({required DeliveryNoteItem item}) {
     resetBatch();
     resetRack();
+    batchController.text = item.batchNo ?? '';
+    rackController.text  = item.rack    ?? '';
+    qtyController.text   = item.qty.toString();
+  }
 
-    batchController.text = existingBatch;
-    rackController.text  = existingRack;
-    qtyController.text   = existingQty;
-
+  /// Responsibility: determine which serial number (if any) to pre-select
+  /// in the dropdown — validating the persisted serial against the live
+  /// availableSerialNos list and logging on mismatch.
+  void _resolveAndSeedSerial({required DeliveryNoteItem item}) {
     final persistedSerial = item.customInvoiceSerialNumber;
-    final serials = availableSerialNos;
+    final serials         = availableSerialNos;
+
     if (persistedSerial != null && persistedSerial.isNotEmpty) {
       if (serials.isEmpty || serials.contains(persistedSerial)) {
         selectedSerial.value = persistedSerial;
       } else {
         log(
           '[DN-Item] initForEdit: persisted serial "$persistedSerial" '
-          'is not in availableSerialNos $serials — dropdown left unset.',
+              'is not in availableSerialNos $serials — dropdown left unset.',
           name: 'DN-Item',
         );
         selectedSerial.value = null;
@@ -460,25 +574,24 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     } else {
       selectedSerial.value = null;
     }
+  }
 
-    // Seed liveRemaining at open time using the mixin formula so the badge
-    // is correct before the user types anything.
-    final existingQtyDouble = item.qty;
+  /// Responsibility: seed liveRemaining at open time using the mixin formula
+  /// so the remaining-qty badge is correct before the user types anything.
+  void _seedLiveRemainingFromItem({required DeliveryNoteItem item}) {
     computeLiveRemaining(
-      currentTypedQty: existingQtyDouble,
-      editingRowId: item.name,
+      currentTypedQty: item.qty,
+      editingRowId:    item.name,
     );
+  }
 
-    rackStockMapRx.clear();
-    isSheetValid.value = false;
-    isQtyValid.value   = false;
-    qtyError.value     = '';
-
-    removeSheetListeners();
-    addSheetListeners();
-    snapshotState();
-    captureSerialSnapshot();
-
+  /// Responsibility: trigger batch and rack background-validation after the
+  /// sheet is fully assembled. Rack validation is deferred to the next frame
+  /// so the widget tree is mounted before the round-trip begins.
+  void _triggerEditValidations({
+    required String existingBatch,
+    required String existingRack,
+  }) {
     if (existingBatch.isNotEmpty) {
       validateBatchOnInit(existingBatch);
     }
@@ -494,59 +607,124 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void validateSheet() {
     final qty  = double.tryParse(qtyController.text);
     final ceil = effectiveMaxQty;
+
+    _evaluateQtyValidity(qty: qty, ceil: ceil);
+    _evaluateSheetValidity(
+      qtyOk:  qty != null && qty > 0,
+      ceilOk: ceil == double.infinity || (qty != null && qty <= ceil),
+    );
+    _refreshLiveRemaining(qty: qty);
+  }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: determine whether the typed quantity is positive and
+  /// within the effective ceiling, then write [isQtyValid] and [qtyError]
+  /// with an appropriate message for each failure case.
+  void _evaluateQtyValidity({
+    required double? qty,
+    required double  ceil,
+  }) {
     final qtyOk  = qty != null && qty > 0;
     final ceilOk = ceil == double.infinity || (qty != null && qty <= ceil);
 
     if (!qtyOk) {
       isQtyValid.value = false;
       qtyError.value   = qty == null ? '' : 'Enter a quantity greater than 0';
-    } else if (!ceilOk) {
-      isQtyValid.value = false;
-      final ceilStr = ceil.toStringAsFixed(
-          ceil.truncateToDouble() == ceil ? 0 : 2);
-      qtyError.value = 'Qty cannot exceed $ceilStr';
-    } else {
-      isQtyValid.value = true;
-      qtyError.value   = '';
+      return;
     }
 
-    isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
+    if (!ceilOk) {
+      isQtyValid.value = false;
+      qtyError.value   = 'Qty cannot exceed ${_formatQty(ceil)}';
+      return;
+    }
 
-    // Update live-remaining badge via mixin formula.
+    isQtyValid.value = true;
+    qtyError.value   = '';
+  }
+
+  /// Responsibility: combine batch validity with the qty flags to decide
+  /// whether the sheet as a whole may be submitted.
+  void _evaluateSheetValidity({
+    required bool qtyOk,
+    required bool ceilOk,
+  }) {
+    isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
+  }
+
+  /// Responsibility: recompute and publish the live-remaining badge so the
+  /// UI reflects the current typed quantity without waiting for a rebuild.
+  void _refreshLiveRemaining({required double? qty}) {
     computeLiveRemaining(
       currentTypedQty: qty ?? 0.0,
-      editingRowId: editingItemName.value,
+      editingRowId:    editingItemName.value,
     );
   }
+
+  /// Formats a qty ceiling for display — no decimal places when the value
+  /// is a whole number, two decimal places otherwise.
+  String _formatQty(double value) =>
+      value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 2);
 
   // ── submit ─────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
+    final qty = _assertSubmitPreconditions();
+    final item = _buildItem(qty: qty);
+    _commitToParent(item: item);
+    _scheduleParentRefresh();
+  }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: assert that the sheet is in a submittable state.
+  /// Throws a descriptive [Exception] on the first failing precondition.
+  /// Returns the parsed qty so callers do not re-parse.
+  double _assertSubmitPreconditions() {
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
+    return qty;
+  }
 
-    final item = DeliveryNoteItem(
+  /// Responsibility: construct a [DeliveryNoteItem] from the current
+  /// reactive field state. Normalises optional fields (rack, variantOf)
+  /// to null when blank.
+  DeliveryNoteItem _buildItem({required double qty}) {
+    final rack      = rackController.text.trim();
+    final variantOf = currentVariantOf.value.trim();
+
+    return DeliveryNoteItem(
       itemCode:                  itemCode.value,
       itemName:                  itemNameRx.value,
       uom:                       itemUomRx.value,
       qty:                       qty,
       rate:                      0.0,
       batchNo:                   batchController.text.trim(),
-      rack:  rackController.text.trim().isEmpty ? null : rackController.text.trim(),
+      rack:                      rack.isEmpty      ? null : rack,
       itemGroup:                 itemGroupRx.value,
-      customVariantOf:           currentVariantOf.value.isEmpty ? null : currentVariantOf.value,
+      customVariantOf:           variantOf.isEmpty ? null : variantOf,
       customInvoiceSerialNumber: selectedSerial.value,
     );
+  }
+
+  /// Responsibility: write [item] into the parent document's items list —
+  /// replacing the row at [editingIndex] for edits, appending for new items.
+  void _commitToParent({required DeliveryNoteItem item}) {
+    final items = _parent.deliveryNote.value?.items;
+    if (items == null) return;
 
     if (isExistingItem.value && editingIndex.value >= 0) {
-      _parent.deliveryNote.value?.items[editingIndex.value] = item;
+      items[editingIndex.value] = item;
     } else {
-      _parent.deliveryNote.value?.items.add(item);
+      items.add(item);
     }
+  }
 
-    // ✅ Defer the Rx notification to the NEXT frame so the sheet's
-    // exit animation completes before the parent list rebuilds.
+  /// Responsibility: defer the Rx rebuild to the next frame so the sheet's
+  /// exit animation completes before the parent list re-renders.
+  void _scheduleParentRefresh() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_parent.isClosed) _parent.deliveryNote.refresh();
     });

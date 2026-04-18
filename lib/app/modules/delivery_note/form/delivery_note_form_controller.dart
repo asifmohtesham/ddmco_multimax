@@ -319,15 +319,6 @@ class DeliveryNoteFormController extends GetxController
       editingItem: editingItem,
     );
 
-    child.setupAutoSubmit(
-      onValid: () async {
-        isAddingItem.value = true;
-        final ok = await child.submitWithFeedback();
-        isAddingItem.value = false;
-        if (ok && Get.isBottomSheetOpen == true) Get.back();
-      },
-    );
-
     const rackPickerTag = 'dn_rack_picker';
 
     isItemSheetOpen.value = true;
