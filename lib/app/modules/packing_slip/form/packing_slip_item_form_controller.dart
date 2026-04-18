@@ -60,16 +60,40 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
 
   @override
   void adjustQty(int delta) {
-    final current = double.tryParse(qtyController.text) ?? 0.0;
-    final ceiling = _parent.bsMaxQty.value > 0
-        ? _parent.bsMaxQty.value
-        : double.infinity;
-    final next = (current + delta).clamp(0.0, ceiling);
-    qtyController.text =
-        next.truncateToDouble() == next
-            ? next.toInt().toString()
-            : next.toStringAsFixed(2);
+    final current = _parseCurrentQty();
+    final ceiling = _resolveQtyCeiling();
+    final next    = _clampNextQty(current + delta, ceiling);
+    _applyQty(next);
     validateSheet();
+  }
+
+  // ── Private SRP helpers ────────────────────────────────────────────────────
+
+  /// (1) Parses the current raw text in [qtyController], defaulting to 0.0
+  /// when the field is empty or contains a non-numeric value.
+  double _parseCurrentQty() =>
+      double.tryParse(qtyController.text) ?? 0.0;
+
+  /// (2) Resolves the effective upper bound for qty stepper adjustments.
+  ///
+  /// [bsMaxQty] > 0 means a DN item is linked and imposes a hard cap.
+  /// A zero value means uncapped → [double.infinity] so [clamp] is a no-op
+  /// on the upper bound.
+  double _resolveQtyCeiling() {
+    final cap = _parent.bsMaxQty.value;
+    return cap > 0 ? cap : double.infinity;
+  }
+
+  /// (3) Clamps [rawNext] into the valid range [0.0, ceiling].
+  double _clampNextQty(double rawNext, double ceiling) =>
+      rawNext.clamp(0.0, ceiling);
+
+  /// (4) Formats [qty] as a whole-number string when it has no fractional
+  /// part, otherwise as a two-decimal string, then writes it to [qtyController].
+  void _applyQty(double qty) {
+    qtyController.text = qty.truncateToDouble() == qty
+        ? qty.toInt().toString()
+        : qty.toStringAsFixed(2);
   }
 
   @override
@@ -108,60 +132,98 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
-  // ── Sheet validation ────────────────────────────────────────────────────────
+  // ── Sheet validation ───────────────────────────────────────────────────────
 
   @override
   void validateSheet() {
     final qty = double.tryParse(qtyController.text);
 
-    if (qty == null || qty <= 0) {
-      isSheetValid.value = false;
-      return;
-    }
-    if (_parent.bsMaxQty.value > 0 && qty > _parent.bsMaxQty.value) {
-      isSheetValid.value = false;
-      return;
-    }
-    if (editingItemName.value != null && !isDirty) {
+    if (!_isQtyPresent(qty) ||
+        !_isQtyWithinCap(qty!) ||
+        !_isEditDirtyWhenRequired()) {
       isSheetValid.value = false;
       return;
     }
 
-    // ── Live remaining via SerialFieldMixin ──────────────────────────────────
-    // computeLiveRemaining handles: no serial, no POS Upload (availableSerialNos
-    // empty → selectedSerial null → liveRemaining stays 0), infinity cap
-    // (badge hidden by widget), and edit-mode via savedQtyForRow (PS item
-    // controller is always in add mode — savedQtyForRow default 0.0 is correct).
+    _updateLiveRemaining(qty);
+    isSheetValid.value = true;
+  }
+
+  // ── Private SRP helpers ────────────────────────────────────────────────────
+
+  /// (1) True when [qty] was successfully parsed and is strictly positive.
+  bool _isQtyPresent(double? qty) => qty != null && qty > 0;
+
+  /// (2) True when the parent's balance cap is not exceeded.
+  ///
+  /// The cap is only active when [bsMaxQty] > 0; a zero value means
+  /// "uncapped" (no DN item linked), so the check is unconditionally
+  /// satisfied in that case.
+  bool _isQtyWithinCap(double qty) {
+    final cap = _parent.bsMaxQty.value;
+    return cap <= 0 || qty <= cap;
+  }
+
+  /// (3) True when the edit-mode dirty requirement is satisfied.
+  ///
+  /// In add mode ([editingItemName] == null) the check is always satisfied.
+  /// In edit mode the sheet must be dirty before the save button is enabled —
+  /// submitting an unchanged item is a no-op and therefore invalid.
+  bool _isEditDirtyWhenRequired() {
+    if (editingItemName.value == null) return true;
+    return isDirty;
+  }
+
+  /// (4) Recomputes the live remaining badge via [SerialFieldMixin].
+  ///
+  /// Called only after all guards pass so [computeLiveRemaining] always
+  /// receives a valid, in-range [qty].
+  void _updateLiveRemaining(double qty) {
     computeLiveRemaining(
       currentTypedQty: qty,
       editingRowId:    editingItemName.value,
     );
-
-    isSheetValid.value = true;
   }
 
   @override
   Future<void> submit() async {
-    final qty = double.tryParse(qtyController.text) ?? 0.0;
-    if (qty <= 0) return;
+    final qty = _parseQty();
+    if (qty == null) return;
 
-    // 1. Dismiss keyboard before anything else.
-    //    This prevents the IME viewport-resize from triggering a layout
-    //    rebuild on SharedQtyField while its TEC is mid-disposal.
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    // Dismiss the keyboard before closing the sheet.
-    // When the keyboard is open, the IME holds a live connection to
-    // qtyController. Calling Get.back() without unfocusing first causes
-    // _AnimatedState.didUpdateWidget to call addListener() on the controller
-    // during the keyboard-dismiss layout pass, racing with disposeControllers().
-    final context = Get.context;
-    if (context != null) FocusScope.of(context).unfocus();
-    Get.back();
+    await _dismissKeyboardAndClose();
     await _parent.addItemToSlipWithQty(qty);
   }
 
-  // ── Initialisation ──────────────────────────────────────────────────────────
+  // ── Private SRP helpers ────────────────────────────────────────────────────
+
+  /// (1) Parses and validates the qty field.
+  /// Returns null (caller must return early) when the value is absent or ≤ 0.
+  double? _parseQty() {
+    final qty = double.tryParse(qtyController.text) ?? 0.0;
+    return qty > 0 ? qty : null;
+  }
+
+  /// (2) Dismisses the software keyboard through both APIs, then pops the sheet.
+  ///
+  /// Two unfocus calls are required:
+  /// • [FocusManager.instance.primaryFocus?.unfocus()] — severs the IME
+  ///   connection immediately, preventing the TEC from receiving further
+  ///   events while the sheet animates out.
+  /// • [FocusScope.of(context).unfocus()] — propagates the unfocus through
+  ///   the widget-tree focus scope so no descendant can reclaim focus during
+  ///   the dispose cycle.
+  /// Both must precede [Get.back()] to avoid the race between
+  /// _AnimatedState.didUpdateWidget and disposeControllers().
+  Future<void> _dismissKeyboardAndClose() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final context = Get.context;
+    if (context != null) FocusScope.of(context).unfocus();
+
+    Get.back();
+  }
+
+  // ── Initialisation ─────────────────────────────────────────────────────────
 
   void initialise({
     required PackingSlipFormController parent,
@@ -169,51 +231,88 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     required String itemName,
     PackingSlipItem? editingItem,
   }) {
+    _bindParent(parent);
+    _seedItemIdentity(itemCode: itemCode, itemName: itemName);
+    _seedSerial(parent);
+    _populateFields(editingItem: editingItem, parent: parent);
+    _finaliseInit();
+  }
+
+  // ── Private SRP helpers ────────────────────────────────────────────────────
+
+  /// (1) Binds the parent controller reference and propagates its current
+  /// isAddingItem flag into the base layer.
+  void _bindParent(PackingSlipFormController parent) {
     _parent = parent;
-
     isAddingItemFlag = parent.isAddingItem.value;
+  }
 
+  /// (2) Seeds the read-only item identity fields exposed to the sheet widget.
+  void _seedItemIdentity({
+    required String itemCode,
+    required String itemName,
+  }) {
     this.itemCode.value = itemCode;
     this.itemName.value = itemName;
+  }
 
-    // ── Seed selectedSerial from parent's currentSerial ──────────────────────
-    // PS serial is fixed by the linked DN item; we pre-select it so the
-    // read-only dropdown opens already showing the correct serial, and
-    // computeLiveRemaining has a non-null serial to work with immediately.
+  /// (3) Pre-selects the serial from [parent.currentSerial].
+  ///
+  /// PS serials are fixed by the linked DN item; the dropdown is read-only.
+  /// A null / empty / sentinel ('0') serial clears the selection so the
+  /// widget is hidden entirely by [availableSerialNos].
+  void _seedSerial(PackingSlipFormController parent) {
     final serial = parent.currentSerial;
-    if (serial != null && serial.isNotEmpty && serial != '0') {
-      selectedSerial.value = serial;
-    } else {
-      selectedSerial.value = null;
-    }
+    selectedSerial.value =
+    (serial != null && serial.isNotEmpty && serial != '0') ? serial : null;
     // Baseline for isSerialDirty — must follow the seed above.
     captureSerialSnapshot();
+  }
 
+  /// (4a) Populates sheet fields for **edit** mode from [editingItem].
+  void _populateEditFields(PackingSlipItem editingItem) {
+    editingItemName.value = editingItem.name;
+    itemOwner.value       = editingItem.owner;
+    itemCreation.value    = editingItem.creation;
+    itemModified.value    = editingItem.modified;
+    itemModifiedBy.value  = editingItem.modifiedBy;
+
+    final qty = editingItem.qty;
+    qtyController.text =
+    qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
+  }
+
+  /// (4b) Clears sheet fields for **add** mode and pre-fills qty from the
+  /// parent's remaining balance ([bsMaxQty]).
+  void _populateAddFields(PackingSlipFormController parent) {
+    editingItemName.value = null;
+    itemOwner.value       = null;
+    itemCreation.value    = null;
+    itemModified.value    = null;
+    itemModifiedBy.value  = null;
+
+    final remaining = parent.bsMaxQty.value;
+    qtyController.text = remaining > 0
+        ? (remaining % 1 == 0
+        ? remaining.toInt().toString()
+        : remaining.toString())
+        : '0';
+  }
+
+  /// (4) Dispatch to the correct field-population helper based on mode.
+  void _populateFields({
+    required PackingSlipItem? editingItem,
+    required PackingSlipFormController parent,
+  }) {
     if (editingItem != null) {
-      editingItemName.value = editingItem.name;
-      itemOwner.value       = editingItem.owner;
-      itemCreation.value    = editingItem.creation;
-      itemModified.value    = editingItem.modified;
-      itemModifiedBy.value  = editingItem.modifiedBy;
-
-      final qty = editingItem.qty;
-      qtyController.text =
-          qty % 1 == 0 ? qty.toInt().toString() : qty.toString();
+      _populateEditFields(editingItem);
     } else {
-      editingItemName.value = null;
-      itemOwner.value       = null;
-      itemCreation.value    = null;
-      itemModified.value    = null;
-      itemModifiedBy.value  = null;
-
-      final remaining = parent.bsMaxQty.value;
-      qtyController.text = remaining > 0
-          ? (remaining % 1 == 0
-              ? remaining.toInt().toString()
-              : remaining.toString())
-          : '0';
+      _populateAddFields(parent);
     }
+  }
 
+  /// (5) Runs the lifecycle finalisers that must always execute last.
+  void _finaliseInit() {
     initBaseListeners();
     captureSnapshot();
     validateSheet();
