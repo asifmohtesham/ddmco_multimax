@@ -2,15 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
+import 'package:dio/dio.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -24,12 +27,13 @@ import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item
 
 class PackingSlipFormController extends GetxController
     with OptimisticLockingMixin {
-  final PackingSlipProvider  _provider          = Get.find<PackingSlipProvider>();
-  final DeliveryNoteProvider _dnProvider        = Get.find<DeliveryNoteProvider>();
-  final PosUploadProvider    _posUploadProvider = Get.find<PosUploadProvider>();
-  final ApiProvider          _apiProvider       = Get.find<ApiProvider>();
-  final StorageService       _storageService    = Get.find<StorageService>();
-  final DataWedgeService     _dataWedgeService  = Get.find<DataWedgeService>();
+  final PackingSlipProvider  _provider              = Get.find<PackingSlipProvider>();
+  final DeliveryNoteProvider _deliveryNoteProvider  = Get.find<DeliveryNoteProvider>();
+  final PosUploadProvider    _posUploadProvider     = Get.find<PosUploadProvider>();
+  final ApiProvider          _apiProvider           = Get.find<ApiProvider>();
+  final StorageService       _storageService        = Get.find<StorageService>();
+  final DataWedgeService     _dataWedgeService      = Get.find<DataWedgeService>();
+  final ScanService          _scanService           = Get.find<ScanService>();
 
   var itemFormKey = GlobalKey<FormState>();
   String name = Get.arguments['name'];
@@ -41,6 +45,9 @@ class PackingSlipFormController extends GetxController
   var isDirty      = false.obs;
   var isAddingItem = false.obs;
   String _originalJson = '';
+
+  // ── EAN scan context ──────────────────────────────────────────────────────
+  String currentScannedEan = '';
 
   // bsQtyController and bsMaxQty kept as shims until step-6.
   final bsQtyController = TextEditingController();
@@ -113,21 +120,53 @@ class PackingSlipFormController extends GetxController
     }
   }
 
-  void _validateSheetShim() {
-    final text = bsQtyController.text;
-    final qty  = double.tryParse(text);
-    if (qty == null || qty <= 0)                     { isSheetValid.value = false; return; }
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) { isSheetValid.value = false; return; }
-    if (isEditing.value && text == _initialQty)      { isSheetValid.value = false; return; }
-    isSheetValid.value = true;
-  }
-
   @override
   void onClose() {
     _scanWorker?.dispose();
     barcodeController.dispose();
     bsQtyController.dispose();
     super.onClose();
+  }
+
+  // ── Sheet validation predicates ────────────────────────────────────────────
+  // Each function answers exactly one question about validity.
+  // Returns true when the sheet should be considered INVALID for that reason.
+
+  /// Returns true when the qty text is unparseable or zero / negative.
+  bool _isQtyInvalid(String text) {
+    final qty = double.tryParse(text);
+    return qty == null || qty <= 0;
+  }
+
+  /// Returns true when the entered qty exceeds the remaining capacity cap.
+  ///
+  /// The cap is only enforced when [bsMaxQty] > 0 (i.e. a POS Upload is loaded
+  /// and a ceiling is known). When bsMaxQty is 0.0 (no cap), this guard passes.
+  bool _isQtyOverCap(double qty) =>
+      bsMaxQty.value > 0 && qty > bsMaxQty.value;
+
+  /// Returns true when in edit mode and the user has not changed the qty
+  /// from its value at sheet-open time. Saving an unchanged qty is a no-op.
+  bool _isUnchangedEditQty(String text) =>
+      isEditing.value && text == _initialQty;
+
+  // ── Sheet validation orchestrator ──────────────────────────────────────────
+
+  /// Listener attached to [bsQtyController]. Orchestrates the three
+  /// independent validity guards and writes the result to [isSheetValid].
+  ///
+  /// Each guard is a single-responsibility predicate so this function stays
+  /// at the level of control flow only — it contains no parsing or comparison
+  /// logic of its own.
+  void _validateSheetShim() {
+    final text = bsQtyController.text;
+    final qty  = double.tryParse(text) ?? 0.0;
+
+    if (_isQtyInvalid(text) || _isQtyOverCap(qty) || _isUnchangedEditQty(text)) {
+      isSheetValid.value = false;
+      return;
+    }
+    isSheetValid.value = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -147,71 +186,188 @@ class PackingSlipFormController extends GetxController
   // Document init / fetch
   // ---------------------------------------------------------------------------
 
+  // ── New-document argument extraction ───────────────────────────────────────
+
+  /// Reads and coerces the route arguments required to bootstrap a new
+  /// Packing Slip. Single responsibility: argument access and type coercion.
+  /// No side effects.
+  ({String dnName, String? customPoNo, int nextCaseNo}) _extractNewSlipArgs() => (
+  dnName:     Get.arguments['deliveryNote'] as String? ?? '',
+  customPoNo: Get.arguments['customPoNo']  as String?,
+  nextCaseNo: Get.arguments['nextCaseNo']  as int? ?? 1,
+  );
+
+  // ── New-document construction ───────────────────────────────────────────────
+
+  /// Builds the initial [PackingSlip] scaffold for a new document.
+  /// Single responsibility: field mapping. Receives all values as
+  /// parameters so it is pure and independently testable.
+  PackingSlip _buildNewPackingSlip({
+    required String  dnName,
+    required int     nextCaseNo,
+    String?          customPoNo,
+  }) =>
+      PackingSlip(
+        name:         'New Packing Slip',
+        deliveryNote: dnName,
+        modified:     '',
+        creation:     DateTime.now().toString(),
+        docstatus:    0,
+        status:       'Draft',
+        customPoNo:   customPoNo,
+        fromCaseNo:   nextCaseNo,
+        toCaseNo:     nextCaseNo,
+        items:        [],
+        customer:     '',
+      );
+
+  // ── New-document dirty state reset ─────────────────────────────────────────
+
+  /// Marks the controller as dirty with no saved baseline.
+  /// Semantically distinct from [_updateOriginalState] (which records a
+  /// fetched/saved document). A new document has no original to compare
+  /// against, so the snapshot is explicitly empty.
+  void _resetDirtyStateForNewDocument() {
+    _originalJson = '';
+    isDirty.value = true;
+  }
+
+  // ── Linked-document side-effect trigger ────────────────────────────────────
+
+  /// Triggers async fetches for all documents that are linked to [dnName].
+  /// Guard (isNotEmpty) is owned here so [_initNewPackingSlip] reads as
+  /// pure policy: "if we have a DN, load its dependents."
+  void _fetchLinkedDocumentsIfPresent(String dnName) {
+    if (dnName.isEmpty) return;
+    fetchLinkedDeliveryNote(dnName);
+    fetchRelatedPackingSlips(dnName);
+  }
+
+  // ── Orchestrator ───────────────────────────────────────────────────────────
+
   void _initNewPackingSlip() {
     isLoading.value = true;
-    final String dnName      = Get.arguments['deliveryNote'] ?? '';
-    final String? customPoNo = Get.arguments['customPoNo'];
-    final int nextCaseNo     = Get.arguments['nextCaseNo'] ?? 1;
-    packingSlip.value = PackingSlip(
-      name:         'New Packing Slip',
-      deliveryNote: dnName,
-      modified:     '',
-      creation:     DateTime.now().toString(),
-      docstatus:    0,
-      status:       'Draft',
-      customPoNo:   customPoNo,
-      fromCaseNo:   nextCaseNo,
-      toCaseNo:     nextCaseNo,
-      items:        [],
-      customer:     '',
+    final (:dnName, :customPoNo, :nextCaseNo) = _extractNewSlipArgs();
+    packingSlip.value = _buildNewPackingSlip(
+      dnName:     dnName,
+      nextCaseNo: nextCaseNo,
+      customPoNo: customPoNo,
     );
-    isDirty.value  = true;
-    _originalJson  = '';
-    if (dnName.isNotEmpty) {
-      fetchLinkedDeliveryNote(dnName);
-      fetchRelatedPackingSlips(dnName);
-    }
+    _resetDirtyStateForNewDocument();
+    _fetchLinkedDocumentsIfPresent(dnName);
     isLoading.value = false;
   }
+
+  // ── Response validation ────────────────────────────────────────────────────
+
+  /// Returns true when [response] carries a valid, non-null data payload.
+  /// Single responsibility: success-gate check, reusable across all fetch
+  /// methods (fetchLinkedDeliveryNote, fetchRelatedPackingSlips, fetchPosUpload).
+  bool _isSuccessResponse(Response response) =>
+      response.statusCode == 200 && response.data['data'] != null;
+
+  // ── Document hydration ─────────────────────────────────────────────────────
+
+  /// Deserialises the raw API map into a [PackingSlip], writes it to the
+  /// reactive [packingSlip] observable, and anchors the clean-state snapshot.
+  /// Single responsibility: reactive state population for a fetched document.
+  void _hydratePackingSlip(Map<String, dynamic> data) {
+    final slip = PackingSlip.fromJson(data);
+    packingSlip.value = slip;
+    _updateOriginalState(slip);
+  }
+
+  // ── Fetch error handlers ───────────────────────────────────────────────────
+
+  /// Called when the server responds but the payload is missing or status
+  /// is non-200. Distinct from a network/exception failure.
+  void _onFetchPackingSlipBadResponse() =>
+      GlobalSnackbar.error(message: 'Failed to fetch packing slip details');
+
+  /// Called when an exception is thrown during the fetch (network error,
+  /// timeout, parse failure). Receives the raw error for diagnostics.
+  void _onFetchPackingSlipError(Object e) =>
+      GlobalSnackbar.error(message: 'Failed to load data: ${e.toString()}');
+
+  // ── Orchestrator ───────────────────────────────────────────────────────────
 
   Future<void> fetchPackingSlip() async {
     isLoading.value = true;
     try {
       final response = await _provider.getPackingSlip(name);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final slip = PackingSlip.fromJson(response.data['data']);
-        packingSlip.value = slip;
-        _updateOriginalState(slip);
-        if (slip.deliveryNote.isNotEmpty) {
-          await fetchLinkedDeliveryNote(slip.deliveryNote);
-          fetchRelatedPackingSlips(slip.deliveryNote);
-        }
+      if (_isSuccessResponse(response)) {
+        _hydratePackingSlip(response.data['data']);
+        _fetchLinkedDocumentsIfPresent(packingSlip.value!.deliveryNote);
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch packing slip details');
+        _onFetchPackingSlipBadResponse();
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load data: ${e.toString()}');
+      _onFetchPackingSlipError(e);
     } finally {
       isLoading.value = false;
     }
   }
 
+  // ── DN hydration ───────────────────────────────────────────────────────────
+
+  /// Deserialises the raw API map into a [DeliveryNote] and writes it to the
+  /// [linkedDeliveryNote] observable.
+  /// Single responsibility: reactive state population for the linked DN.
+  void _hydrateLinkedDeliveryNote(Map<String, dynamic> data) {
+    linkedDeliveryNote.value = DeliveryNote.fromJson(data);
+  }
+
+  // ── POS Upload side-effect trigger ─────────────────────────────────────────
+
+  /// Triggers [fetchPosUpload] when the given [DeliveryNote] carries a
+  /// non-empty PO number.
+  /// Single responsibility: POS Upload conditional fetch guard.
+  void _fetchPosUploadIfPresent(DeliveryNote dn) {
+    if (dn.poNo != null && dn.poNo!.isNotEmpty) fetchPosUpload(dn.poNo!);
+  }
+
+  // ── Customer back-fill ─────────────────────────────────────────────────────
+
+  /// Copies the DN customer onto the current packing slip when the slip has
+  /// no customer set yet.
+  ///
+  /// Also re-anchors the clean-state snapshot for edit-mode documents so
+  /// the back-fill is not treated as a dirty change by [_checkForChanges].
+  ///
+  /// Single responsibility: customer field propagation from linked DN to slip.
+  /// Two distinct invariants owned here:
+  ///   1. Only back-fill when slip.customer is null or empty.
+  ///   2. Only re-anchor the snapshot when not in new-document mode.
+  void _backfillCustomerFromDn(DeliveryNote dn) {
+    final slip = packingSlip.value;
+    if (slip == null) return;
+    final customerMissing =
+        slip.customer == null || slip.customer!.isEmpty;
+    if (!customerMissing) return;
+    packingSlip.value = slip.copyWith(customer: dn.customer);
+    if (mode != 'new') _updateOriginalState(packingSlip.value!);
+  }
+
+  // ── Fetch error handler ────────────────────────────────────────────────────
+
+  /// Called when an exception is thrown during the linked DN fetch.
+  /// Logs silently — a missing linked DN is non-fatal; the slip can still
+  /// be viewed without its DN context.
+  void _onFetchLinkedDeliveryNoteError(Object e) =>
+      log('Failed to fetch linked DN: $e');
+
+  // ── Orchestrator ───────────────────────────────────────────────────────────
+
   Future<void> fetchLinkedDeliveryNote(String dnName) async {
     try {
-      final response = await _dnProvider.getDeliveryNote(dnName);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final dn = DeliveryNote.fromJson(response.data['data']);
-        linkedDeliveryNote.value = dn;
-        if (dn.poNo != null && dn.poNo!.isNotEmpty) fetchPosUpload(dn.poNo!);
-        if (packingSlip.value != null &&
-            (packingSlip.value!.customer == null ||
-                packingSlip.value!.customer!.isEmpty)) {
-          packingSlip.value = packingSlip.value!.copyWith(customer: dn.customer);
-          if (mode != 'new') _updateOriginalState(packingSlip.value!);
-        }
+      final response = await _deliveryNoteProvider.getDeliveryNote(dnName);
+      if (_isSuccessResponse(response)) {
+        _hydrateLinkedDeliveryNote(response.data['data']);
+        _fetchPosUploadIfPresent(linkedDeliveryNote.value!);
+        _backfillCustomerFromDn(linkedDeliveryNote.value!);
       }
     } catch (e) {
-      log('Failed to fetch linked DN: $e');
+      _onFetchLinkedDeliveryNoteError(e);
     }
   }
 
@@ -254,24 +410,52 @@ class PackingSlipFormController extends GetxController
     isDirty.value = currentJson != _originalJson;
   }
 
-  // ---------------------------------------------------------------------------
-  // POS qty cap helper (Commit 6)
-  // ---------------------------------------------------------------------------
+  // ── POS qty cap helpers ────────────────────────────────────────────────────
 
-  /// Returns the POS Upload quantity cap for the given invoice serial number.
+  /// Returns true when no POS Upload document is currently loaded.
   ///
-  /// Resolution: serial (string) → idx (int.tryParse) → PosUploadItem.quantity.
+  /// When the upload is absent the quantity cap is undefined — callers that
+  /// need a numeric sentinel should return [double.infinity] (no ceiling).
+  bool _isPosUploadAbsent() => posUpload.value == null;
+
+  /// Converts an invoice serial number string to its integer index.
   ///
-  /// Returns [double.infinity] when no POS Upload is loaded (badge hidden by
-  /// [SharedInvoiceSerialNumberField]).
-  /// Returns `0.0` when the serial cannot be matched to any POS Upload item.
-  double posQtyCapForSerial(String serial) {
-    final upload = posUpload.value;
-    if (upload == null) return double.infinity;
-    final idx = int.tryParse(serial);
-    if (idx == null) return 0.0;
-    final item = upload.items.firstWhereOrNull((i) => i.idx == idx);
+  /// Returns `null` when [serial] cannot be parsed as an integer, which
+  /// indicates the serial does not map to any [PosUploadItem].
+  int? _serialToIdx(String serial) => int.tryParse(serial);
+
+  /// Looks up the quantity for the [PosUploadItem] matching [idx].
+  ///
+  /// Returns `0.0` when no item with that index exists in the loaded upload,
+  /// treating an unmatched serial as a zero-quantity line rather than an
+  /// uncapped one. This distinguishes "item exists but is zero" from
+  /// "no upload loaded" ([double.infinity]).
+  double _posItemQtyForIdx(int idx) {
+    final item = posUpload.value!.items.firstWhereOrNull((i) => i.idx == idx);
     return item?.quantity?.toDouble() ?? 0.0;
+  }
+
+  // ── Public cap resolver ────────────────────────────────────────────────────
+
+  /// Returns the POS Upload quantity cap for the given invoice [serial] number.
+  ///
+  /// Resolution chain:
+  ///   1. If no POS Upload is loaded → [double.infinity] (no ceiling; the
+  ///      [SharedInvoiceSerialNumberField] badge is hidden in this state).
+  ///   2. If [serial] cannot be parsed as an integer index → `0.0` (the serial
+  ///      does not correspond to any POS Upload line).
+  ///   3. Otherwise → the matched [PosUploadItem.quantity] as a [double], or
+  ///      `0.0` if no item with that index exists.
+  ///
+  /// The two zero-returning branches are semantically distinct:
+  ///   - An unparseable serial means the data is malformed.
+  ///   - A matched-but-zero (or unmatched) item means the line is exhausted.
+  /// Both safely prevent over-packing.
+  double posQtyCapForSerial(String serial) {
+    if (_isPosUploadAbsent()) return double.infinity;
+    final idx = _serialToIdx(serial);
+    if (idx == null) return 0.0;
+    return _posItemQtyForIdx(idx);
   }
 
   // ---------------------------------------------------------------------------
@@ -401,39 +585,94 @@ class PackingSlipFormController extends GetxController
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
-  // ---------------------------------------------------------------------------
-  // Scan
-  // ---------------------------------------------------------------------------
+  // ── Pre-scan header validation ──────────────────────────────────────────────
 
-  Future<void> scanBarcode(String barcode) async {
-    if (isItemSheetOpen.value) return;
-    if (checkStaleAndBlock()) return;
-    if (barcode.isEmpty) return;
+  /// Returns true when the header is in a valid state to process a scan.
+  ///
+  /// The linked Delivery Note must be loaded before any item can be resolved
+  /// and added to the slip. Shows an error snackbar and returns false when
+  /// the precondition is not met.
+  ///
+  /// Mirrors [StockEntryFormController._validateHeaderBeforeScan] and
+  /// [DeliveryNoteFormController._validateHeaderBeforeScan].
+  bool _validateHeaderBeforeScan() {
     if (linkedDeliveryNote.value == null) {
       GlobalSnackbar.error(message: 'Delivery Note not loaded yet.');
-      return;
+      return false;
     }
-    isScanning.value = true;
-    String itemCode;
-    String? batchNo;
-    if (barcode.contains('-')) {
-      final parts = barcode.split('-');
-      final ean   = parts.first;
-      itemCode    = ean.length > 7 ? ean.substring(0, 7) : ean;
-      batchNo     = parts.join('-');
-    } else {
-      final ean = barcode;
-      itemCode  = ean.length > 7 ? ean.substring(0, 7) : ean;
-      batchNo   = null;
-    }
-    final match = _findItemInDN(itemCode, batchNo);
-    isScanning.value = false;
-    barcodeController.clear();
+    return true;
+  }
+
+  // ── Scan result handlers ───────────────────────────────────────────────────
+
+  /// Resolves a successful [ScanResult] to the matching [DeliveryNoteItem]
+  /// and opens the add-item sheet.
+  ///
+  /// Mirrors [DeliveryNoteFormController._handleScanResult]: sets the EAN
+  /// context field, then delegates to the sheet opener.
+  /// Single responsibility: success-path routing after a resolved scan.
+  Future<void> _handleScanResult(ScanResult result) async {
+    currentScannedEan = result.rawCode ?? '';
+    final match = _findItemInDN(
+      result.itemData!.itemCode,
+      result.batchNo,
+    );
     if (match != null) {
       prepareSheetForAdd(match);
     } else {
       GlobalSnackbar.error(
-          message: 'Item $itemCode not found in Delivery Note or Batch mismatch.');
+        message:
+        'Item ${result.itemData!.itemCode} not found in Delivery Note'
+            ' or Batch mismatch.',
+      );
+    }
+  }
+
+  /// Called when [ScanService] returns a failed or unresolvable result.
+  /// Single responsibility: failure-path feedback.
+  void _onScanFailed(ScanResult result) =>
+      GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+
+  /// Called when an exception is thrown during scan processing.
+  /// Single responsibility: exception-path feedback.
+  void _onScanError(Object e) =>
+      GlobalSnackbar.error(message: 'Scan processing error: $e');
+
+  // ── Orchestrator ────────────────────────────────────────────────────────────
+
+  /// Processes a raw barcode string from DataWedge.
+  ///
+  /// Guard order mirrors [StockEntryFormController.scanBarcode]:
+  ///   1. Sheet-open guard (handled upstream by [_scanWorker] — sheet-level
+  ///      scans are routed by the child controller's BarcodeAwareMixin).
+  ///   2. Stale-document guard.
+  ///   3. Empty-barcode guard.
+  ///   4. Header-validity guard ([_validateHeaderBeforeScan]).
+  ///
+  /// Delegates barcode resolution to [ScanService.processScan] — the same
+  /// path used by Stock Entry and Delivery Note — instead of manual string
+  /// splitting. This ensures EAN/batch parsing rules are consistent across
+  /// all form controllers.
+  Future<void> scanBarcode(String barcode) async {
+    if (isItemSheetOpen.value) return;
+    if (checkStaleAndBlock()) return;
+    if (barcode.isEmpty) return;
+    if (!_validateHeaderBeforeScan()) return;
+
+    final cleanBarcode = barcode.trim();
+    isScanning.value = true;
+    try {
+      final result = await _scanService.processScan(cleanBarcode);
+      if (result.isSuccess && result.itemData != null) {
+        await _handleScanResult(result);
+      } else {
+        _onScanFailed(result);
+      }
+    } catch (e) {
+      _onScanError(e);
+    } finally {
+      isScanning.value = false;
+      barcodeController.clear();
     }
   }
 
