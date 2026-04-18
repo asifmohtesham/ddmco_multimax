@@ -1081,96 +1081,164 @@ class PackingSlipFormController extends GetxController
     bsQtyController.text = newVal.toStringAsFixed(0);
   }
 
-  // ---------------------------------------------------------------------------
-  // Commit item
-  // ---------------------------------------------------------------------------
+  // ── Item list mutations ────────────────────────────────────────────────────
 
-  Future<void> addItemToSlipWithQty(double qtyToAdd) async {
-    if (qtyToAdd <= 0) { return; }
+  /// Replaces the qty on the [PackingSlipItem] identified by [nameKey].
+  ///
+  /// All other fields are preserved from the existing item — only [qty] is
+  /// written. This is the edit-path mutation, equivalent to
+  /// [StockEntryFormController.updateItemLocally] and
+  /// [DeliveryNoteFormController.updateItemLocally].
+  ///
+  /// Returns silently if no item with [nameKey] exists in the current list.
+  void updateItemLocally(String nameKey, double qty) {
+    final items = packingSlip.value?.items.toList() ?? [];
+    final index = items.indexWhere((i) => i.name == nameKey);
+    if (index == -1) return;
 
-    final currentItems = packingSlip.value?.items.toList() ?? [];
-    if (isEditing.value && currentItemNameKey != null) {
-      final index = currentItems.indexWhere((i) => i.name == currentItemNameKey);
-      if (index != -1) {
-        final existing = currentItems[index];
-        currentItems[index] = PackingSlipItem(
-          name:       existing.name,
-          dnDetail:   existing.dnDetail,
-          itemCode:   existing.itemCode,
-          itemName:   existing.itemName,
-          qty:        qtyToAdd,
-          uom:        existing.uom,
-          batchNo:    existing.batchNo,
-          netWeight:  existing.netWeight,
-          weightUom:  existing.weightUom,
-          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
-          customVariantOf:           existing.customVariantOf,
-          customCountryOfOrigin:     existing.customCountryOfOrigin,
-          creation:   existing.creation,
-          owner:      existing.owner,
-          modified:   existing.modified,
-          modifiedBy: existing.modifiedBy,
-        );
-      }
-    } else {
-      final existingIndex =
-          currentItems.indexWhere((i) => i.dnDetail == currentItemDnDetail);
-      if (existingIndex != -1) {
-        final existing = currentItems[existingIndex];
-        currentItems[existingIndex] = PackingSlipItem(
-          name:       existing.name,
-          dnDetail:   existing.dnDetail,
-          itemCode:   existing.itemCode,
-          itemName:   existing.itemName,
-          qty:        existing.qty + qtyToAdd,
-          uom:        existing.uom,
-          batchNo:    existing.batchNo,
-          netWeight:  existing.netWeight,
-          weightUom:  existing.weightUom,
-          customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
-          customVariantOf:           existing.customVariantOf,
-          customCountryOfOrigin:     existing.customCountryOfOrigin,
-          creation:   existing.creation,
-          owner:      existing.owner,
-          modified:   existing.modified,
-          modifiedBy: existing.modifiedBy,
-        );
-      } else {
-        currentItems.add(PackingSlipItem(
-          name:        '',
-          dnDetail:    currentItemDnDetail!,
-          itemCode:    currentItemCode!,
-          itemName:    currentItemName ?? '',
-          qty:         qtyToAdd,
-          uom:         currentUom ?? '',
-          batchNo:     currentBatchNo ?? '',
-          netWeight:   0.0,
-          weightUom:   0.0,
-          customInvoiceSerialNumber: currentSerial,
-          customVariantOf:           null,
-          customCountryOfOrigin:     null,
-          creation:    DateTime.now().toString(),
-          owner:       bsItemOwner.value,
-          modified:    null,
-          modifiedBy:  null,
-        ));
-      }
-    }
-    Get.key.currentState?.pop();
-    // Defer state mutation to the next frame so the sheet's exit animation
-    // fully unmounts SharedQtyField (and its TextEditingController) before
-    // the Obx rebuild fires.  Without this, _AnimatedState.didUpdateWidget
-    // calls addListener on an already-disposed TextEditingController → crash.
+    final existing = items[index];
+    items[index] = PackingSlipItem(
+      name:       existing.name,
+      dnDetail:   existing.dnDetail,
+      itemCode:   existing.itemCode,
+      itemName:   existing.itemName,
+      qty:        qty,
+      uom:        existing.uom,
+      batchNo:    existing.batchNo,
+      netWeight:  existing.netWeight,
+      weightUom:  existing.weightUom,
+      customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
+      customVariantOf:           existing.customVariantOf,
+      customCountryOfOrigin:     existing.customCountryOfOrigin,
+      creation:   existing.creation,
+      owner:      existing.owner,
+      modified:   existing.modified,
+      modifiedBy: existing.modifiedBy,
+    );
+    packingSlip.value = packingSlip.value?.copyWith(items: items);
+  }
+
+  /// Accumulates [qty] into an existing [PackingSlipItem] whose [dnDetail]
+  /// matches [currentItemDnDetail].
+  ///
+  /// PS-specific: multiple scans of the same DN line accumulate into one
+  /// row rather than creating duplicate rows. SE and DN do not have this
+  /// path — they always create unique rows.
+  ///
+  /// Returns silently if no matching row is found (caller must fall through
+  /// to [addItemLocally]).
+  bool _mergeItemQty(List<PackingSlipItem> items, double qty) {
+    final index = items.indexWhere((i) => i.dnDetail == currentItemDnDetail);
+    if (index == -1) return false;
+
+    final existing = items[index];
+    items[index] = PackingSlipItem(
+      name:       existing.name,
+      dnDetail:   existing.dnDetail,
+      itemCode:   existing.itemCode,
+      itemName:   existing.itemName,
+      qty:        existing.qty + qty,
+      uom:        existing.uom,
+      batchNo:    existing.batchNo,
+      netWeight:  existing.netWeight,
+      weightUom:  existing.weightUom,
+      customInvoiceSerialNumber: existing.customInvoiceSerialNumber,
+      customVariantOf:           existing.customVariantOf,
+      customCountryOfOrigin:     existing.customCountryOfOrigin,
+      creation:   existing.creation,
+      owner:      existing.owner,
+      modified:   existing.modified,
+      modifiedBy: existing.modifiedBy,
+    );
+    return true;
+  }
+
+  /// Appends a brand-new [PackingSlipItem] to [items] built from the current
+  /// session context fields.
+  ///
+  /// Equivalent to [StockEntryFormController.addItemLocally] and
+  /// [DeliveryNoteFormController.addItemLocally]: constructs the item from
+  /// the controller's context state and appends it to the list.
+  void addItemLocally(List<PackingSlipItem> items, double qty) {
+    items.add(PackingSlipItem(
+      name:        '',
+      dnDetail:    currentItemDnDetail!,
+      itemCode:    currentItemCode!,
+      itemName:    currentItemName ?? '',
+      qty:         qty,
+      uom:         currentUom ?? '',
+      batchNo:     currentBatchNo ?? '',
+      netWeight:   0.0,
+      weightUom:   0.0,
+      customInvoiceSerialNumber: currentSerial,
+      customVariantOf:           null,
+      customCountryOfOrigin:     null,
+      creation:    DateTime.now().toString(),
+      owner:       bsItemOwner.value,
+      modified:    null,
+      modifiedBy:  null,
+    ));
+  }
+
+  // ── Post-commit persistence ────────────────────────────────────────────────
+
+  /// Applies [items] to the packing slip, checks for changes, and triggers
+  /// a background save when the document is dirty.
+  ///
+  /// Deferred to the next frame so the sheet's exit animation fully unmounts
+  /// [SharedQtyField] (and its [TextEditingController]) before the Obx
+  /// rebuild fires. Without this deferral, [_AnimatedState.didUpdateWidget]
+  /// calls addListener on an already-disposed controller → crash.
+  ///
+  /// Mirrors the deferred-save pattern used in
+  /// [StockEntryFormController.addItem].
+  void _applyAndPersist(List<PackingSlipItem> items) {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      packingSlip.value = packingSlip.value?.copyWith(items: currentItems);
+      packingSlip.value = packingSlip.value?.copyWith(items: items);
       _checkForChanges();
       if (isDirty.value) await savePackingSlip();
     });
   }
 
+  // ── Orchestrators ──────────────────────────────────────────────────────────
+
+  /// Commits the given [qty] to the packing slip item list.
+  ///
+  /// Three paths — edit, add-merge, add-create — are each delegated to a
+  /// single-responsibility mutation function.
+  ///
+  /// Mirrors the structural split of [StockEntryFormController.updateItemLocally]
+  /// (edit path) and [StockEntryFormController.addItemLocally] (add path).
+  Future<void> addItemToSlipWithQty(double qty) async {
+    if (qty <= 0) return;
+
+    if (isEditing.value && currentItemNameKey != null) {
+      updateItemLocally(currentItemNameKey!, qty);
+      Get.key.currentState?.pop();
+      _applyAndPersist(packingSlip.value?.items.toList() ?? []);
+      return;
+    }
+
+    final items = packingSlip.value?.items.toList() ?? [];
+    final merged = _mergeItemQty(items, qty);
+    if (!merged) addItemLocally(items, qty);
+    Get.key.currentState?.pop();
+    _applyAndPersist(items);
+  }
+
+  /// Entry point called by the sheet's submit button and auto-submit.
+  ///
+  /// Parses the qty from [bsQtyController], pops the sheet on zero-qty,
+  /// then delegates to [addItemToSlipWithQty].
+  ///
+  /// Mirrors [StockEntryFormController.addItem] as the thin coordinator
+  /// that reads form state and hands off to the mutation layer.
   Future<void> addItemToSlip() async {
     final qty = double.tryParse(bsQtyController.text) ?? 0.0;
-    if (qty <= 0) { Get.key.currentState?.pop(); return; }
+    if (qty <= 0) {
+      Get.key.currentState?.pop();
+      return;
+    }
     await addItemToSlipWithQty(qty);
   }
 
@@ -1202,56 +1270,139 @@ class PackingSlipFormController extends GetxController
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Save
-  // ---------------------------------------------------------------------------
+  // ── Item payload serialisation helper ──────────────────────────────────────
 
+  /// Serialises a single [PackingSlipItem] into the API payload map.
+  ///
+  /// Only the fields the server accepts on create/update are included.
+  /// The [name] field is conditionally included — new items (empty name)
+  /// must not send a name, otherwise ERPNext treats the row as an update
+  /// to a non-existent child row.
+  ///
+  /// Extracted as a named helper so [_buildItemsPayload] is free of
+  /// per-field construction logic. Mirrors SE's [_stripLocalName] and
+  /// item-field helpers inside [_buildItemsPayload].
+  Map<String, dynamic> _serialiseItem(PackingSlipItem item) {
+    final json = <String, dynamic>{
+      'item_code':                    item.itemCode,
+      'qty':                          item.qty,
+      'dn_detail':                    item.dnDetail,
+      'custom_invoice_serial_number': item.customInvoiceSerialNumber,
+    };
+    if (item.name.isNotEmpty) json['name'] = item.name;
+    return json;
+  }
+
+  // ── Payload builders ───────────────────────────────────────────────────────
+
+  /// Builds the document-level (header) fields for the save payload.
+  ///
+  /// Does not include the items array — that is composed separately by
+  /// [_buildItemsPayload] and merged by the orchestrator. Mirrors
+  /// [StockEntryFormController._buildHeaderPayload].
+  Map<String, dynamic> _buildHeaderPayload() => {
+    'delivery_note': packingSlip.value!.deliveryNote,
+    'from_case_no':  packingSlip.value!.fromCaseNo,
+    'to_case_no':    packingSlip.value!.toCaseNo,
+    'custom_po_no':  packingSlip.value!.customPoNo,
+    'modified':      packingSlip.value?.modified,
+  };
+
+  /// Builds the items array for the save payload.
+  ///
+  /// Delegates per-item serialisation to [_serialiseItem] so this function
+  /// owns only the mapping concern, not the per-field construction detail.
+  /// Mirrors [StockEntryFormController._buildItemsPayload].
+  List<Map<String, dynamic>> _buildItemsPayload() =>
+      (packingSlip.value?.items ?? []).map(_serialiseItem).toList();
+
+  // ── Create / update document calls ─────────────────────────────────────────
+
+  /// Calls the create-document API, applies the returned document to state,
+  /// transitions [mode] to `'edit'`, and shows the creation snackbar.
+  ///
+  /// Single responsibility: the create path and its post-save state
+  /// mutations. Mirrors [StockEntryFormController._createEntry].
+  Future<void> _createDocument(Map<String, dynamic> data) async {
+    final response =
+    await _apiProvider.createDocument('Packing Slip', data);
+    if (response.statusCode == 200 && response.data['data'] != null) {
+      final saved = PackingSlip.fromJson(response.data['data']);
+      packingSlip.value = saved;
+      _updateOriginalState(saved);
+      name = saved.name;
+      mode = 'edit';
+      GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
+    } else {
+      GlobalSnackbar.error(message: 'Failed to save Packing Slip');
+    }
+  }
+
+  /// Calls the update-document API, applies the returned document to state,
+  /// and shows the save snackbar.
+  ///
+  /// Single responsibility: the update path and its post-save state
+  /// mutations. Mirrors [StockEntryFormController._updateEntry].
+  Future<void> _updateDocument(Map<String, dynamic> data) async {
+    final response =
+    await _apiProvider.updateDocument('Packing Slip', name, data);
+    if (response.statusCode == 200 && response.data['data'] != null) {
+      final saved = PackingSlip.fromJson(response.data['data']);
+      packingSlip.value = saved;
+      _updateOriginalState(saved);
+      GlobalSnackbar.success(message: 'Packing Slip Saved');
+    } else {
+      GlobalSnackbar.error(message: 'Failed to save Packing Slip');
+    }
+  }
+
+  // ── Error handler ──────────────────────────────────────────────────────────
+
+  /// Handles exceptions thrown during [savePackingSlip].
+  ///
+  /// Version-conflict exceptions are forwarded to [handleVersionConflict]
+  /// (the mixin method that shows the stale-document dialog). All other
+  /// exceptions fall through to a generic error snackbar.
+  ///
+  /// Mirrors [StockEntryFormController._handleSaveDioError] — PS does not
+  /// currently parse DioException response bodies, so a single catch is
+  /// sufficient. Promote to [DioException]-specific handling when
+  /// server-side validation errors need richer feedback.
+  void _handleSaveError(Object e) {
+    if (handleVersionConflict(e)) return;
+    GlobalSnackbar.error(message: 'Save failed: $e');
+  }
+
+  // ── Orchestrator ───────────────────────────────────────────────────────────
+
+  /// Persists the current packing slip to the server.
+  ///
+  /// Guard order mirrors [StockEntryFormController.saveStockEntry]:
+  ///   1. Dirty guard — skip if nothing has changed (except on new docs).
+  ///   2. Concurrent-save guard — skip if a save is already in flight.
+  ///   3. Stale-document guard — block if the document has been modified
+  ///      externally since it was last fetched.
+  ///
+  /// Delegates payload construction to [_buildHeaderPayload] /
+  /// [_buildItemsPayload], API calls to [_createDocument] / [_updateDocument],
+  /// and error handling to [_handleSaveError]. The orchestrator contains no
+  /// field access, no JSON construction, and no snackbar calls.
   Future<void> savePackingSlip() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
 
     isSaving.value = true;
+    final data = _buildHeaderPayload()
+      ..['items'] = _buildItemsPayload();
     try {
-      final docName = packingSlip.value?.name ?? '';
-      final isNew   = docName == 'New Packing Slip';
-      final Map<String, dynamic> data = {
-        'delivery_note': packingSlip.value!.deliveryNote,
-        'from_case_no':  packingSlip.value!.fromCaseNo,
-        'to_case_no':    packingSlip.value!.toCaseNo,
-        'custom_po_no':  packingSlip.value!.customPoNo,
-        'modified':      packingSlip.value?.modified,
-        'items': packingSlip.value!.items.map((e) {
-          final json = <String, dynamic>{
-            'item_code':                    e.itemCode,
-            'qty':                          e.qty,
-            'dn_detail':                    e.dnDetail,
-            'custom_invoice_serial_number': e.customInvoiceSerialNumber,
-          };
-          if (e.name.isNotEmpty) json['name'] = e.name;
-          return json;
-        }).toList(),
-      };
-      final response = isNew
-          ? await _apiProvider.createDocument('Packing Slip', data)
-          : await _apiProvider.updateDocument('Packing Slip', docName, data);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final saved = PackingSlip.fromJson(response.data['data']);
-        packingSlip.value = saved;
-        _updateOriginalState(saved);
-        if (isNew) {
-          name = saved.name;
-          mode = 'edit';
-          GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
-        } else {
-          GlobalSnackbar.success(message: 'Packing Slip Saved');
-        }
+      if (mode == 'new') {
+        await _createDocument(data);
       } else {
-        GlobalSnackbar.error(message: 'Failed to save Packing Slip');
+        await _updateDocument(data);
       }
     } catch (e) {
-      if (handleVersionConflict(e)) return;
-      GlobalSnackbar.error(message: 'Save failed: $e');
+      _handleSaveError(e);
     } finally {
       isSaving.value = false;
     }
