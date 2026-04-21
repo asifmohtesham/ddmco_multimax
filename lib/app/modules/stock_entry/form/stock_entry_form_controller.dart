@@ -951,19 +951,59 @@ class StockEntryFormController extends GetxController
   Future<void> addItem() async {
     _autoSubmitTimer?.cancel();
     final child = Get.find<StockEntryItemFormController>();
-    await child.submit();
+
+    // 1. Run submit() through the state machine so the button immediately
+    //    transitions to the orange loading spinner while work is in progress.
+    //    submitWithFeedback() sets saveButtonState → loading → success/error
+    //    and returns false if validation or submit() itself throws.
+    final success = await child.submitWithFeedback();
+    if (!success) return; // button already shows error state for 1.5 s then resets
+
     final items = stockEntry.value?.items ?? [];
     final String highlightKey = child.editingItemName.value ??
         (items.lastOrNull?.name ?? '');
     barcodeController.clear();
     triggerHighlight(highlightKey);
-    if (Get.isBottomSheetOpen == true) Get.back();
+
+    // 2. Dismiss the keyboard BEFORE closing the sheet so the IME-dismiss
+    //    frame has no live TextEditingControllers to rebuild against.
+    //    FocusManager.instance.primaryFocus?.unfocus() works from the
+    //    controller layer without needing a BuildContext.
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    // 3. Wait one frame for the IME insets callback to fire and settle.
+    //    This ensures Flutter's WindowInsets rebuild (triggered by the OS
+    //    collapsing the keyboard) completes BEFORE we close the sheet and
+    //    schedule controller disposal.
+    await Future.delayed(Duration.zero);
+
+    // 4. Execute the save WHILE the sheet (and its controllers) are still alive.
+    //    The controllers are not disposed until after this returns.
+    // 4. Save — keep sheet open on failure so user can retry.
+    bool saved = false;
     if (mode == 'new') {
-      saveStockEntry();
+      try {
+        await saveStockEntry();
+        saved = true;
+      } catch (_) {
+        saved = false;
+      }
     } else {
       isDirty.value = true;
-      saveStockEntry().catchError((e) => debugPrint('Background save: $e'));
+      try {
+        await saveStockEntry();
+        saved = true;
+      } catch (_) {
+        saved = false;
+      }
     }
+
+    // 5. Only NOW close the sheet. GetX will call onDelete → disposeControllers()
+    //    which defers TEC disposal to the next two frames via postFrameCallback.
+    //    At this point the save is complete, the keyboard is fully dismissed,
+    //    and no widget rebuild is in-flight that references qtyController.
+    // 5. Close sheet only on success (or always close — your choice).
+    if (saved && Get.isBottomSheetOpen == true) Get.back();
   }
 
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
