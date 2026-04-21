@@ -518,6 +518,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     _seedLiveRemainingFromItem(item: item);
     _resetValidationState();
+    // Re-seed rack text after _resetValidationState() which calls resetRack()
+    // and clears rackController. The validation round-trip happens later in
+    // _triggerEditValidations(), so the text must survive until then.
+    rackController.text = existingRack;
+
     _resolveAndSeedSerial(item: item);
     _wireListenersAndSnapshot();
 
