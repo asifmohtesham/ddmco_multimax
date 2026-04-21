@@ -525,14 +525,14 @@ class ApiProvider {
       final firstDataRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
 
       // ── Fix 2a: Map rows (key-based) ──────────────────────────────────────
-      // Accept both 'rack' and 'custom_rack' key spellings for resilience.
+      // Accept both 'rack' key spellings for resilience.
       // Balance field is 'bal_qty' from Stock Balance report; fall back to
       // 'qty' / 'balance_qty' for any variant report configurations.
       if (firstDataRow is Map) {
         return rawRows
             .whereType<Map>()
             .map((r) {
-              final rack = (r['rack'] ?? r['custom_rack'] ?? '').toString().trim();
+              final rack = (r['rack'] ?? '').toString().trim();
               final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
               return <String, dynamic>{'rack': rack, 'qty': qty};
             })
@@ -558,7 +558,7 @@ class ApiProvider {
       }
 
       final cols    = rawColumns.map(fn).toList();
-      final rackIdx = cols.indexWhere((c) => c == 'rack' || c == 'custom_rack');
+      final rackIdx = cols.indexWhere((c) => c == 'rack');
 
       // Prefer exact 'bal_qty' column; fall back to any column containing
       // 'balance' or the generic 'qty' column.

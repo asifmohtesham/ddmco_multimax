@@ -236,18 +236,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final upload = _parent.posUpload.value;
     if (upload == null) return null;
 
-    // serial == idx.toString(); find the PosUploadItem with matching idx.
     final idx = int.tryParse(serial);
     if (idx == null) return null;
 
     final posItem = upload.items.firstWhereOrNull((i) => i.idx == idx);
     if (posItem == null) return null;
 
+    final cap  = posItem.quantity.toDouble();
+    final used = sumQtyUsedForSerial(serial);
+    // Per-serial remaining capacity.
+    // For the row currently being edited, add back its saved qty so the
+    // serial is not penalised for its own existing allocation.
+    final editingQty = (editingItemName.value != null)
+        ? savedQtyForRow(editingItemName.value!)
+        : 0.0;
+    final remaining = cap - used + editingQty;
+
     return SerialDropdownItem(
       serial:    serial,
       itemName:  posItem.itemName,
-      qty:       posItem.quantity.toDouble(),
-      remaining: liveRemaining.value,
+      qty:       cap,
+      remaining: remaining,   // ← FIX: actual per-serial remaining at open time
     );
   }
 

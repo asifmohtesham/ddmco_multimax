@@ -1029,7 +1029,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       );
       final map = <String, double>{};
       for (final r in rows) {
-        final rack = r['custom_rack'] as String?;
+        final rack = r['rack'] as String?;
         final qty  = (r['qty'] as num?)?.toDouble() ?? 0.0;
         if (rack != null && rack.isNotEmpty) map[rack] = qty;
       }

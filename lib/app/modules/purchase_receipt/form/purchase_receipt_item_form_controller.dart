@@ -386,7 +386,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
       );
 
       final exists = rows.any((r) =>
-          (r['custom_rack'] ?? '').toString().trim().toLowerCase() ==
+          (r['rack'] ?? '').toString().trim().toLowerCase() ==
           trimmed.toLowerCase());
 
       if (!exists) {
