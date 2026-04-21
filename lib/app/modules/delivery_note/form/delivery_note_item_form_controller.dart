@@ -483,7 +483,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void _resetValidationState() {
     resetBatch();
     resetRack();
-    selectedSerial.value  = null;
+    // selectedSerial is intentionally NOT reset here.
+    // - initForNewItem: serial is cleared in _seedFieldControllers() below.
+    // - initForEdit:    serial is seeded in _resolveAndSeedSerial() AFTER
+    //                   this method runs, so it must not be clobbered here.
     liveRemaining.value   = 0.0;
     rackStockMapRx.clear();
     isSheetValid.value = false;
@@ -513,9 +516,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final existingRack  = item.rack    ?? '';
     _seedEditFieldControllers(item: item);
 
-    _resolveAndSeedSerial(item: item);
     _seedLiveRemainingFromItem(item: item);
     _resetValidationState();
+    _resolveAndSeedSerial(item: item);
     _wireListenersAndSnapshot();
 
     _triggerEditValidations(
@@ -569,6 +572,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final persistedSerial = item.customInvoiceSerialNumber;
     final serials         = availableSerialNos;
 
+    // ── Primary path: persisted serial field is populated ────────────────────
     if (persistedSerial != null && persistedSerial.isNotEmpty) {
       if (serials.isEmpty || serials.contains(persistedSerial)) {
         selectedSerial.value = persistedSerial;
@@ -580,9 +584,26 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         );
         selectedSerial.value = null;
       }
-    } else {
-      selectedSerial.value = null;
+      return;
     }
+
+    // ── Fallback path: item was added in-session but serial was never saved ──
+    // Infer the serial from the item's position in the parent items list.
+    // The DN item list is parallel to availableSerialNos (both are 1-indexed
+    // POS Upload entries), so editingIndex maps directly to serials[index].
+    if (serials.isNotEmpty &&
+        editingIndex.value >= 0 &&
+        editingIndex.value < serials.length) {
+      selectedSerial.value = serials[editingIndex.value];
+      log(
+        '[DN-Item] initForEdit: no persisted serial — inferred '
+            '"${selectedSerial.value}" from editingIndex ${editingIndex.value}.',
+        name: 'DN-Item',
+      );
+      return;
+    }
+
+    selectedSerial.value = null;
   }
 
   /// Responsibility: seed liveRemaining at open time using the mixin formula
