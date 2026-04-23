@@ -186,6 +186,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         ? '$currentScannedEan-$extractedId'
         : extractedId;
 
+    // Guard against {EAN}-{EAN} Batch No scan
+    if (currentScannedEan == extractedId) {
+      return;
+    }
+
     batchController.text = fullBatchNo;
     await validateBatch(fullBatchNo);
   }
