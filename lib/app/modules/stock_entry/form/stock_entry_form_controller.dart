@@ -947,6 +947,7 @@ class StockEntryFormController extends GetxController
   }
 
   // ── addItem coordinator ──────────────────────────────────────────────────────────────────────────────────
+  bool _isClosingSheet = false;
 
   Future<void> addItem() async {
     _autoSubmitTimer?.cancel();
@@ -958,6 +959,9 @@ class StockEntryFormController extends GetxController
     //    and returns false if validation or submit() itself throws.
     final success = await child.submitWithFeedback();
     if (!success) return; // button already shows error state for 1.5 s then resets
+
+    // Guard: prevent double-close if auto-submit and manual tap race.
+    if (_isClosingSheet) return;
 
     final items = stockEntry.value?.items ?? [];
     final String highlightKey = child.editingItemName.value ??
@@ -1003,7 +1007,15 @@ class StockEntryFormController extends GetxController
     //    At this point the save is complete, the keyboard is fully dismissed,
     //    and no widget rebuild is in-flight that references qtyController.
     // 5. Close sheet only on success (or always close — your choice).
-    if (saved && Get.isBottomSheetOpen == true) Get.back();
+    if (saved && !_isClosingSheet && Get.isBottomSheetOpen == true) {
+      _isClosingSheet = true;
+      Get.back();
+      // Reset the flag after the closing frame completes so the next
+      // item scan can open a fresh sheet normally.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _isClosingSheet = false;
+      });
+    }
   }
 
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
@@ -1169,6 +1181,7 @@ class StockEntryFormController extends GetxController
     } finally {
       child.disposeBarcodeListener(); // BarcodeAwareMixin: detach before delete
       isItemSheetOpen.value = false;
+      _isClosingSheet = false;
       Get.delete<StockEntryItemFormController>();
     }
   }

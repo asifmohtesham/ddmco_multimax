@@ -527,11 +527,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     // calling super — super sets _controllersDisposed and removes listeners.
     // Disposal is deferred to the next frame so the exit animation
     // completes before _AnimatedState.didUpdateWidget fires addListener().
-    final TextEditingController srcCtrl = sourceRackController;
-    final TextEditingController tgtCtrl = targetRackController;
+    // Capture local references — the controller fields may be nulled
+    // or garbage-collected before the callback fires.
+    final tecs = <TextEditingController>[
+      batchController,
+      qtyController,
+      rackController,
+      // add any others here
+    ];
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      try { srcCtrl.dispose(); } catch (_) {}
-      try { tgtCtrl.dispose(); } catch (_) {}
+      for (final tec in tecs) {
+        tec.dispose();
+      }
     });
     super.disposeControllers();
   }
