@@ -260,8 +260,11 @@ class GlobalItemFormSheet extends StatelessWidget {
   ItemFormSheetController get _sheetCtrl =>
       Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
 
-  static void _popSheet(BuildContext context) =>
-      Navigator.of(context).pop();
+  static Future<void> _popSheet(BuildContext context) async {
+    FocusScope.of(context).unfocus();
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (context.mounted) Navigator.of(context).pop();
+  }
 
   Widget _buildMetadataHeader(BuildContext context) {
     if (owner == null &&
@@ -430,8 +433,8 @@ class GlobalItemFormSheet extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: TextButton.icon(
-            onPressed: () {
-              _popSheet(context);
+            onPressed: () async {
+              await _popSheet(context);
               onDelete!();
             },
             style: TextButton.styleFrom(
