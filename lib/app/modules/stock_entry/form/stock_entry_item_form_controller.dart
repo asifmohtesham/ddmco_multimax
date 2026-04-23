@@ -1108,16 +1108,42 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   @override
   void applyRackScan(String rackId) {
-    if (sourceRackController.text.isEmpty) {
+    // Route the scanned rack to the correct side based on what is visible
+    // (and therefore applicable) for the current SE type.
+    //
+    // For SE types where source rack is not shown (e.g. Material Receipt),
+    // the very first scan must go directly to the target rack controller.
+    // The old logic checked sourceRackController.text.isEmpty, which is always
+    // true on a fresh form and caused Material Receipt scans to silently set
+    // the hidden source rack instead of the visible target rack.
+    //
+    // Priority:
+    //   1. If showSourceRack and sourceRackController is empty → fill source.
+    //   2. If showTargetRack and targetRackController is empty → fill target.
+    //   3. Otherwise fall back to source (handles single-rack SE types like
+    //      Material Issue where only source is shown).
+    if (showSourceRack && sourceRackController.text.isEmpty) {
+      sourceRackController.text = rackId;
+      validateDualRack(rackId, true);
+    } else if (showTargetRack && targetRackController.text.isEmpty) {
+      targetRackController.text = rackId;
+      validateDualRack(rackId, false);
+    } else if (showSourceRack) {
+      // Both racks already filled or second scan on a source-only type:
+      // overwrite source (original fallback behaviour).
       sourceRackController.text = rackId;
       validateDualRack(rackId, true);
     } else {
+      // showTargetRack only (e.g. Material Receipt with target already set):
+      // overwrite target.
       targetRackController.text = rackId;
       validateDualRack(rackId, false);
     }
   }
 
-  bool get needsRackScanFallback => sourceRackController.text.isEmpty;
+  bool get needsRackScanFallback =>
+      (showSourceRack && sourceRackController.text.isEmpty) ||
+          (showTargetRack && targetRackController.text.isEmpty);
 
   // ── Snackbar helpers ──────────────────────────────────────────────────────────
   void showError(String msg)   => GlobalSnackbar.error(message: msg);
