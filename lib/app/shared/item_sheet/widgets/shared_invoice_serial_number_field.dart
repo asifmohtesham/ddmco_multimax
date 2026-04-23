@@ -115,8 +115,9 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
   ///   Right — itemName (1 line, ellipsis) + ×qty sub-label
   ///
   /// Full rows are dimmed (opacity 0.4) and non-selectable.
-  List<DropdownMenuItem<String>> _buildItems() {
-    return c.serialDropdownItems.map((item) {
+  List<DropdownMenuItem<String>> _buildItems(
+      List<SerialDropdownItem> items) {
+    return items.map((item) {
       final badge = _IndexBadge(
         serial: item.serial,
         accentColor: accentColor,
@@ -182,8 +183,8 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
   /// Builds the compact summary shown in the closed trigger:
   ///   `"#N · Item Name"` when item name is available
   ///   `"#N"`             otherwise
-  List<Widget> _buildSelectedItems() {
-    return c.serialDropdownItems.map((item) {
+  List<Widget> _buildSelectedItems(List<SerialDropdownItem> items) {
+    return items.map((item) {
       final label = item.itemName != null && item.itemName!.isNotEmpty
           ? '#${item.serial} \u00b7 ${item.itemName}'
           : '#${item.serial}';
@@ -209,6 +210,10 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
           serial.isNotEmpty &&
           _isBadgeVisible(cap);
 
+      // Build the items list inside Obx so isFull is re-evaluated
+      // whenever liveRemaining changes.
+      final dropdownItems = c.serialDropdownItems;
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -229,8 +234,8 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
                 // at the field's bottom border with no colour tail.
                 isDense: true,
               ),
-              items: _buildItems(),
-              selectedItemBuilder: (_) => _buildSelectedItems(),
+              items: _buildItems(dropdownItems),
+              selectedItemBuilder: (_) => _buildSelectedItems(dropdownItems),
               onChanged: (value) => c.selectedSerial.value = value,
             ),
           ),
