@@ -256,7 +256,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       serial:    serial,
       itemName:  posItem.itemName,
       qty:       cap,
-      remaining: remaining,   // ← FIX: actual per-serial remaining at open time
+      remaining: remaining,
+      used:      used,
     );
   }
 

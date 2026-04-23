@@ -238,10 +238,11 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
           // ── POS cap badge — sibling, NOT inside the tinted container ────
           if (showBadge)
             _PosCapChip(
-              text: '${SerialFieldMixin.fmtQty(remaining)}'
-                    ' / '
-                    '${SerialFieldMixin.fmtQty(cap)}',
+              text: 'Qty: ${SerialFieldMixin.fmtQty(cap)}'
+                  '  •  Used: ${SerialFieldMixin.fmtQty(cap - remaining)}'
+                  '  •  Pending: ${SerialFieldMixin.fmtQty(remaining)}',
               isOverAllocated: remaining < 0,
+              isFull:          remaining <= 0 && cap > 0,
             ),
         ],
       );
@@ -295,9 +296,15 @@ class _PosCapChip extends StatelessWidget {
   /// True when liveRemaining < 0; renders the badge in the error colour.
   final bool isOverAllocated;
 
+  /// True when remaining == 0 and cap > 0 (serial fully consumed).
+  /// Renders the chip in the error/red palette to match the "Full" state
+  /// shown in the dropdown row for the same serial.
+  final bool isFull;
+
   const _PosCapChip({
     required this.text,
     this.isOverAllocated = false,
+    this.isFull = false,
   });
 
   @override

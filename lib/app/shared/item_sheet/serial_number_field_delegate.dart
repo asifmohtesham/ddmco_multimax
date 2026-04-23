@@ -22,11 +22,18 @@ class SerialDropdownItem {
   /// at list-build time).  Used to decide whether this row is "full".
   final double remaining;
 
+  /// Total qty already committed across all rows for this serial.
+  ///
+  /// Computed at list-build time as `cap − remaining`.
+  /// Displayed in the cap chip as "Used: N".
+  final double used;
+
   const SerialDropdownItem({
     required this.serial,
     this.itemName,
     this.qty,
     required this.remaining,
+    this.used = 0.0,
   });
 
   /// True when a finite qty cap is set and no allocation remains.
