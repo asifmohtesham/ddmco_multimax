@@ -210,9 +210,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
     _parent.deliveryNote.value?.items.removeAt(editingIndex.value);
-    Get.back();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_parent.isClosed) _parent.deliveryNote.refresh();
+      if (_parent.isClosed) return;
+      _parent.deliveryNote.refresh();
+      _parent.checkForChanges();           // Mark document dirty
+      if (_parent.mode == 'edit') {
+        _parent.saveDeliveryNote();        // Execute PUT request
+      }
     });
   }
 
