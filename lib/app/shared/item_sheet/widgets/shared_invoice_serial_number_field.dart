@@ -210,6 +210,12 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
           serial.isNotEmpty &&
           _isBadgeVisible(cap);
 
+      // Also subscribe to serialItemsStamp so the dropdown rebuilds
+      // whenever a sibling item is committed (isFull state changes).
+      if (c is SerialFieldMixin) {
+        (c as SerialFieldMixin).serialItemsStamp.value; // reactive read
+      }
+
       // Build the items list inside Obx so isFull is re-evaluated
       // whenever liveRemaining changes.
       final dropdownItems = c.serialDropdownItems;

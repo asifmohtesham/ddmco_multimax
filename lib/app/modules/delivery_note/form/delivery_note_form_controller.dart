@@ -277,8 +277,7 @@ class DeliveryNoteFormController extends GetxController
   double scannedQtyForSerial(String serial, {String? excludeItemName}) {
     return (deliveryNote.value?.items ?? [])
         .where((i) =>
-            (i.customInvoiceSerialNumber ?? '0') == serial &&
-            i.name != excludeItemName)
+            (i.customInvoiceSerialNumber) == serial)
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 

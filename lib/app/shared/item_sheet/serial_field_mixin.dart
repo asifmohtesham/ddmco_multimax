@@ -109,6 +109,14 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
   @override
   final liveRemaining = 0.0.obs;
 
+  /// Incremented every time the serial dropdown items list should be
+  /// re-evaluated (e.g. after a sibling row is committed or qty changes).
+  /// Read by [SharedInvoiceSerialNumberField] inside its Obx to force a
+  /// dropdown rebuild when the underlying data changes.
+  final serialItemsStamp = 0.obs;
+
+  void notifySerialItemsChanged() => serialItemsStamp.value++;
+
   // ── Abstract hooks (concrete controller must provide) ────────────────────
 
   /// Ordered list of valid serial numbers for the dropdown.
@@ -170,6 +178,7 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
   ///
   /// Calls [posDropdownItemFor] for each serial; falls back to a bare
   /// [SerialDropdownItem] (index badge only) when the hook returns null.
+  /// remaining = cap − already-scanned qty, so isFull triggers correctly at 0.
   @override
   List<SerialDropdownItem> get serialDropdownItems =>
       availableSerialNos.map((s) {
@@ -224,12 +233,20 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
       return;
     }
 
-    final committed = sumQtyUsedForSerial(serial);
-    final savedOfCurrentRow =
-        editingRowId != null ? savedQtyForRow(editingRowId) : 0.0;
+    // usedExcludingEditRow: sum of all rows EXCEPT the currently editing row
+    // (sumQtyUsedForSerial passes excludeItemName so the editing row is omitted).
+    final usedExcludingEditRow = sumQtyUsedForSerial(serial);
 
+    // savedOfEditRow: the editing row's already-committed qty.
+    // In add mode (editingRowId == null) this is 0.0.
+    // Together: usedExcludingEditRow + savedOfEditRow = total used across ALL rows.
+    final savedOfEditRow =
+    editingRowId != null ? savedQtyForRow(editingRowId) : 0.0;
+
+    // Pending = Qty − (totalUsed + currentlyTypingQty)
+    //         = cap − (usedExcludingEditRow + savedOfEditRow) − currentTypedQty
     liveRemaining.value =
-        cap - committed + savedOfCurrentRow - currentTypedQty;
+        cap - usedExcludingEditRow - savedOfEditRow - currentTypedQty;
   }
 
   // ── Dirty-check & validation (ported from PosSerialMixin unchanged) ───────

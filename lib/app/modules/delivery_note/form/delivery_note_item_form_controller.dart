@@ -149,9 +149,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     final serial = selectedSerial.value;
     if (serial != null && serial.isNotEmpty) {
-      final cap = posItemQtyForSerial(serial);
-      if (cap != double.infinity && cap > 0) {
-        ceil = (ceil == null) ? cap : (cap < ceil ? cap : ceil);
+      // Use liveRemaining (cap - used + editingQty), not the raw POS cap.
+      // This ensures the qty ceiling reflects what is actually still allocatable,
+      // and prevents adding qty to a serial whose remaining is already 0.
+      final live = liveRemaining.value;
+      if (live > 0) {
+        ceil = (ceil == null) ? live : (live < ceil ? live : ceil);
       }
     }
 
@@ -242,22 +245,30 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final posItem = upload.items.firstWhereOrNull((i) => i.idx == idx);
     if (posItem == null) return null;
 
-    final cap  = posItem.quantity.toDouble();
-    final used = sumQtyUsedForSerial(serial);
-    // Per-serial remaining capacity.
-    // For the row currently being edited, add back its saved qty so the
-    // serial is not penalised for its own existing allocation.
-    final editingQty = (editingItemName.value != null)
-        ? savedQtyForRow(editingItemName.value!)
-        : 0.0;
-    final remaining = cap - used + editingQty;
+    // Qty: POS Upload Item (1-based idx) quantity field.
+    final cap = posItem.quantity.toDouble();
+
+    // Used: sum of DN item qtys where custom_invoice_serial_number == serial.
+    // sumQtyUsedForSerial already excludes the row being edited via
+    // excludeItemName, so each dropdown row reflects committed-only used.
+    // Used = total scanned qty for this serial across ALL rows (no exclusion).
+    final used = _parent.scannedQtyForSerial(serial);
+
+    // Remaining (for isFull per-row): Qty − Used, independently per serial.
+    // Do NOT add back editingQty here — that compensation is only needed
+    // for liveRemaining (the badge on the selected serial), handled in
+    // computeLiveRemaining via savedQtyForRow. Each dropdown row must show
+    // its true remaining so isFull is correct for all rows, not just the
+    // currently selected one.
+    final remaining = cap - used;
+    debugPrint('Sr, Cap, Used, Rem: $serial, $cap, $used, $remaining');
 
     return SerialDropdownItem(
-      serial:    serial,
-      itemName:  posItem.itemName,
-      qty:       cap,
+      serial:   serial,
+      itemName: posItem.itemName,
+      qty:      cap,
       remaining: remaining,
-      used:      used,
+      used:     used,
     );
   }
 
@@ -503,6 +514,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     addSheetListeners();
     snapshotState();
     captureSerialSnapshot();
+    // Seed the chip immediately with the correct remaining value so the
+    // badge is accurate the moment the sheet opens — without waiting for
+    // the user to change the qty field.
+    _refreshLiveRemaining(qty: double.tryParse(qtyController.text));
   }
 
   void initForEdit({
@@ -593,21 +608,19 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       return;
     }
 
-    // ── Fallback path: item was added in-session but serial was never saved ──
-    // Infer the serial from the item's position in the parent items list.
-    // The DN item list is parallel to availableSerialNos (both are 1-indexed
-    // POS Upload entries), so editingIndex maps directly to serials[index].
-    if (serials.isNotEmpty &&
-        editingIndex.value >= 0 &&
-        editingIndex.value < serials.length) {
-      selectedSerial.value = serials[editingIndex.value];
-      log(
-        '[DN-Item] initForEdit: no persisted serial — inferred '
-            '"${selectedSerial.value}" from editingIndex ${editingIndex.value}.',
-        name: 'DN-Item',
-      );
-      return;
-    }
+    // ── Fallback path: no persisted serial — leave unset ─────────────────────
+    // Do NOT infer serial from editingIndex. The DN item list is NOT
+    // guaranteed to be parallel to availableSerialNos: multiple items can
+    // share the same idx position if serials were not persisted, and inferring
+    // by position silently assigns the wrong serial (e.g. serial "7" to all
+    // items), causing scannedQtyForSerial to sum all their qtys and report
+    // Used: 372 instead of 12.
+    selectedSerial.value = null;
+    log(
+      '[DN-Item] initForEdit: no persisted serial and no safe inference — '
+          'serial left unset. User must select manually.',
+      name: 'DN-Item',
+    );
 
     selectedSerial.value = null;
   }
@@ -765,6 +778,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       if (_parent.isClosed) return;
       _parent.deliveryNote.refresh();
       _parent.checkForChanges();
+      debugPrint('_scheduleParentRefresh');
+      notifySerialItemsChanged();
       if (_parent.mode == 'edit') {
         _parent.saveDeliveryNote();
       }
