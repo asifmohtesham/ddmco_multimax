@@ -66,11 +66,9 @@ class _SaveIconButtonState extends State<SaveIconButton> {
 
     // ── Saving spinner ────────────────────────────────────────────────────
     if (widget.isSaving) {
-      return Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SizedBox(
-          width:  20,
-          height: 20,
+      return SizedBox.square(       // ← enforces equal width & height
+        dimension: 20,
+        child: Center(              // ← centres within the IconButton tap zone
           child: CircularProgressIndicator(
             color:       cs.onPrimary,
             strokeWidth: 2.5,
