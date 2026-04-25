@@ -261,9 +261,7 @@ class GlobalItemFormSheet extends StatelessWidget {
       Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
 
   static Future<void> _popSheet(BuildContext context) async {
-    FocusScope.of(context).unfocus();
-    await Future.delayed(const Duration(milliseconds: 300));
-    if (context.mounted) Navigator.of(context).pop();
+    Navigator.of(context).pop();
   }
 
   Widget _buildMetadataHeader(BuildContext context) {
@@ -434,7 +432,7 @@ class GlobalItemFormSheet extends StatelessWidget {
           width: double.infinity,
           child: TextButton.icon(
             onPressed: () async {
-              await _popSheet(context);
+              _popSheet(context);
               onDelete!();
             },
             style: TextButton.styleFrom(
