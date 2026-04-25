@@ -256,8 +256,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     // Used: sum of DN item qtys where custom_invoice_serial_number == serial.
     // sumQtyUsedForSerial already excludes the row being edited via
     // excludeItemName, so each dropdown row reflects committed-only used.
-    // Used = total scanned qty for this serial across ALL rows (no exclusion).
-    final used = _parent.scannedQtyForSerial(serial);
+    // Used =
+    final used = _parent.scannedQtyForSerial(
+      serial,
+      excludeItemName: editingItemName.value,  // exclude self when in edit mode
+    );
 
     // Remaining (for isFull per-row): Qty − Used, independently per serial.
     // Do NOT add back editingQty here — that compensation is only needed
@@ -266,7 +269,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     // its true remaining so isFull is correct for all rows, not just the
     // currently selected one.
     final remaining = cap - used;
-    debugPrint('Sr, Cap, Used, Rem: $serial, $cap, $used, $remaining');
+    debugPrint('_parent.scannedQtyForSerial: $serial, $used / $cap, $remaining');
 
     return SerialDropdownItem(
       serial:   serial,

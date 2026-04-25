@@ -246,7 +246,8 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
     // Pending = Qty − (totalUsed + currentlyTypingQty)
     //         = cap − (usedExcludingEditRow + savedOfEditRow) − currentTypedQty
     liveRemaining.value =
-        cap - usedExcludingEditRow - savedOfEditRow - currentTypedQty;
+        cap - usedExcludingEditRow - currentTypedQty;
+        // cap - usedExcludingEditRow - savedOfEditRow - currentTypedQty;
   }
 
   // ── Dirty-check & validation (ported from PosSerialMixin unchanged) ───────
