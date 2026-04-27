@@ -26,34 +26,25 @@ class PurchaseReceiptFormScreen
           child: DefaultTabController(
             length: 2,
             child: Scaffold(
-              appBar: PreferredSize(
-                preferredSize: const Size.fromHeight(
-                    kToolbarHeight + kTextTabBarHeight),
-                child: Obx(() {
-                  final receipt = controller.purchaseReceipt.value;
-                  return MainAppBar(
-                    title:      receipt?.name ?? 'Loading...',
-                    status:     receipt?.status,
-                    isDirty:    controller.isDirty.value,
-                    isSaving:   controller.isSaving.value,
-                    saveResult: controller.saveResult.value,
-                    onSave: (receipt?.docstatus == 0 &&
-                            controller.isDirty.value)
-                        ? controller.savePurchaseReceipt
-                        : null,
-                    onReload:
-                        (controller.mode != 'new' &&
-                                !controller.isDirty.value)
-                            ? controller.reloadDocument
-                            : null,
-                    bottom: const TabBar(
-                      tabs: [
-                        Tab(text: 'Details'),
-                        Tab(text: 'Items'),
-                      ],
-                    ),
-                  );
-                }),
+              appBar: MainAppBar(
+                title:      controller.purchaseReceipt.value?.name ?? 'Loading...',
+                status:     controller.purchaseReceipt.value?.status,
+                isDirty:    controller.isDirty.value,
+                isSaving:   controller.isSaving.value,
+                saveResult: controller.saveResult.value,
+                onSave: (controller.purchaseReceipt.value?.docstatus == 0 &&
+                    controller.isDirty.value)
+                    ? controller.savePurchaseReceipt
+                    : null,
+                onReload: (controller.mode != 'new' && !controller.isDirty.value)
+                    ? controller.reloadDocument
+                    : null,
+                bottom: const TabBar(
+                  tabs: [
+                    Tab(text: 'Details'),
+                    Tab(text: 'Items'),
+                  ],
+                ),
               ),
               body: Obx(() {
                 if (controller.isLoading.value) {
