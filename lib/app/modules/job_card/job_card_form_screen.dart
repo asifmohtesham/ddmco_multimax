@@ -354,10 +354,43 @@ class _StatusActionsRow extends StatelessWidget {
         // C5: only insert gap when the status row above actually rendered.
         if (hasStatusRow) const SizedBox(height: 12),
 
-        // ── Submit button — always visible while docstatus == 0 ──────────
+        // ── Submit button — shown only after job started + time log added ──
         Obx(() {
-          final submitting = controller.isSubmitting.value;
-          final canSubmit  = controller.canSubmit;
+          final submitting    = controller.isSubmitting.value;
+          final canSubmit     = controller.canSubmit;
+          final showHint      = controller.showSubmitHint;
+
+          // If the job hasn't been started or has no time log, show a contextual
+          // hint row instead of a confusing disabled button.
+          if (showHint) {
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      jc.isOpen
+                          ? 'Start the job card, then add a time log before submitting.'
+                          : 'Add at least one time log before submitting.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Preconditions met — show the active submit button.
           return FilledButton.tonalIcon(
             onPressed: canSubmit ? controller.submitJobCard : null,
             style: FilledButton.styleFrom(
@@ -365,11 +398,11 @@ class _StatusActionsRow extends StatelessWidget {
             ),
             icon: submitting
                 ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: cs.onSecondaryContainer),
-                  )
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: cs.onSecondaryContainer),
+            )
                 : const Icon(Icons.upload_outlined),
             label: Text(
               submitting ? 'Submitting…' : 'Submit Job Card',

@@ -94,10 +94,24 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     if (jc == null) return false;
     if (!jc.isEditable) return false;  // docstatus != 0
     if (jc.isCancelled) return false;
+    // Must have been started and have at least one time log recorded.
+    if (jc.isOpen) return false;
     return !isSubmitting.value &&
            !isUpdatingStatus.value &&
            !isAddingTimeLog.value &&
            !isEditingTimeLog.value;
+  }
+
+  /// True when submit preconditions are partially met but job not yet ready.
+  /// Used by the UI to show a contextual hint instead of a plain disabled button.
+  bool get showSubmitHint {
+    final jc = jobCard.value;
+    if (jc == null) return false;
+    if (!jc.isEditable) return false;
+    if (jc.isCancelled) return false;
+    if (jc.docstatus == 1) return false;
+    // Hint only needed when canSubmit is blocked by start/time-log preconditions.
+    return jc.isOpen || jc.timeLogs.isEmpty;
   }
 
   /// Qty that can still be logged without exceeding forQuantity.
