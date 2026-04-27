@@ -6,6 +6,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/shared/barcode_listener_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 
@@ -47,7 +49,8 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///   PurchaseReceiptItem does not carry a docstatus field — docstatus belongs
 ///   to the parent PurchaseReceipt only.  Both initForCreate and initForEdit
 ///   now read _parent.purchaseReceipt.value?.docstatus ?? 0.
-class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
+class PurchaseReceiptItemFormController extends ItemSheetControllerBase
+    with BarcodeListenerMixin, BarcodeAwareMixin {
 
   // ── Parent back-reference ───────────────────────────────────────────────
   late PurchaseReceiptFormController _parent;
@@ -56,6 +59,51 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
 
   // ── In-sheet scan context ──────────────────────────────────────────────
   String currentScannedEan = '';
+
+  // ── BarcodeAwareMixin: handleScan with rack-first gate ────────────────────
+  /// Routing priority (mirrors DeliveryNoteItemFormController.handleScan):
+  ///   1. Rack barcode    → applyRackScan
+  ///   2. Current EAN-8 format ("{EAN}-{BatchID}") → raw is the full Batch No
+  ///   3. Deprecated SHIPMENT-* / plain Batch ID   → prepend currentScannedEan
+  @override
+  Future<void> handleScan(String raw) async {
+    final firstToken = raw.split('-').first;
+    final isEan8     = firstToken.length == 8 && int.tryParse(firstToken) != null;
+    final isShipment = firstToken.toUpperCase() == 'SHIPMENT';
+
+    if (!isEan8 && !isShipment && raw.contains('-')) {
+      applyRackScan(raw);
+      return;
+    }
+
+    final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
+
+    if (ean.isNotEmpty) {
+      batchController.text = raw;
+      await validateBatch(raw);
+      return;
+    }
+
+    final extractedId = _extractBatchId(raw);
+    final fullBatchNo = currentScannedEan.isNotEmpty
+        ? '$currentScannedEan-$extractedId'
+        : extractedId;
+
+    if (currentScannedEan == extractedId) return;
+
+    batchController.text = fullBatchNo;
+    await validateBatch(fullBatchNo);
+  }
+
+  /// Splits [raw] on '-', discards 'SHIPMENT' (any case) and tokens < 3 chars.
+  /// Returns the first surviving token, or [raw] unchanged when none survive.
+  String _extractBatchId(String raw) {
+    final candidates = raw
+        .split('-')
+        .where((p) => p.toUpperCase() != 'SHIPMENT' && p.length >= 3)
+        .toList();
+    return candidates.isNotEmpty ? candidates.first : raw;
+  }
 
   // ── Parent-backed warehouse ───────────────────────────────────────────
   final RxnString itemWarehouse = RxnString();
@@ -365,6 +413,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   // ── Rack validation override ──────────────────────────────────────────────────
+  /// For Purchase Receipt the rack is a *destination* for incoming goods.
+  /// Validate by Rack doctype existence — NOT by current stock balance.
   @override
   Future<void> validateRack(String rack) async {
     final trimmed = rack.trim();
@@ -379,18 +429,14 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
     isRackValid.value      = false;
 
     try {
-      final rows = await ApiProvider().getStockBalanceWithDimension(
-        itemCode:  itemCode.value,
-        warehouse: resolvedWarehouse,
-        batchNo:   null,
+      final rows = await ApiProvider().getList(
+        'Rack',
+        filters: {'name': trimmed},
+        fields:  ['name'],
       );
 
-      final exists = rows.any((r) =>
-          (r['rack'] ?? '').toString().trim().toLowerCase() ==
-          trimmed.toLowerCase());
-
-      if (!exists) {
-        rackError.value = 'Rack not found in selected warehouse.';
+      if (rows.isEmpty) {
+        rackError.value = 'Rack "$trimmed" not found.';
         validateSheet();
         return;
       }
@@ -408,11 +454,12 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────────
+  @override
   void applyRackScan(String rackId) {
     final id = rackId.trim();
     if (id.isEmpty) return;
     rackController.text = id;
-    validateRack(id);
+    validateRack(id).then((_) => validateSheet());
   }
 
   void clearAll() {
@@ -430,4 +477,10 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase {
   }
 
   void showError(String msg) => GlobalSnackbar.error(message: msg);
+
+  @override
+  void onClose() {
+    disposeBarcodeListener();  // BarcodeAwareMixin safety-net disposal
+    super.onClose();
+  }
 }
