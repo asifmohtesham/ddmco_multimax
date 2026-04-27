@@ -739,8 +739,17 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   Map<String, dynamic> _buildCreatePayload() {
     final data = _buildBasePayload();
     if (bomOperations.isNotEmpty) {
-      data['operations'] =
-          bomOperations.map((o) => o.toWorkOrderOperationPayload()).toList();
+      final parentBom = selectedBom.value ?? '';
+      data['operations'] = bomOperations.map((o) {
+        final row = o.toWorkOrderOperationPayload();
+        // Ensure the bom link is set — ERP requires it so the column
+        // is visible in the Operations table after WO creation.
+        if ((row['bom'] == null || (row['bom'] as String).isEmpty) &&
+            parentBom.isNotEmpty) {
+          row['bom'] = parentBom;
+        }
+        return row;
+      }).toList();
     }
     return data;
   }

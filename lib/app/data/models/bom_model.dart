@@ -127,6 +127,10 @@ class BomOperation {
   final double  operatingCost;
   final int     sequenceId;
   final String? description;
+  /// Link → BOM. Populated when the parent BOM is fetched from ERP.
+  /// Passed through to the Work Order operations payload so ERP stores
+  /// the BOM reference on each Work Order Operation child row.
+  final String? bom;
 
   const BomOperation({
     required this.operation,
@@ -136,6 +140,7 @@ class BomOperation {
     required this.operatingCost,
     required this.sequenceId,
     this.description,
+    this.bom
   });
 
   factory BomOperation.fromJson(Map<String, dynamic> json) => BomOperation(
@@ -146,6 +151,7 @@ class BomOperation {
     operatingCost:   (json['operating_cost']  as num?)?.toDouble() ?? 0.0,
     sequenceId:      (json['sequence_id']     as num?)?.toInt()    ?? 0,
     description:     json['description']      as String?,
+    bom:             json['bom']              as String?,
   );
 
   /// Converts to a Work Order `operations` child-table payload row.
@@ -156,6 +162,7 @@ class BomOperation {
     'time_in_mins':   timeInMins,
     'operating_cost': operatingCost,
     'sequence_id':    sequenceId,
+    if (bom != null && bom!.isNotEmpty) 'bom': bom,
     if (description != null && description!.isNotEmpty)
       'description': description,
   };

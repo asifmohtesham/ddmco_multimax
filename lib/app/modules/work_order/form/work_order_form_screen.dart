@@ -692,7 +692,7 @@ class _BomOperationsPreview extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
 
-                // Operation name + optional workstation
+                // Operation name + optional workstation + optional BOM
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -720,6 +720,28 @@ class _BomOperationsPreview extends StatelessWidget {
                                 color: cs.onSurfaceVariant,
                               ),
                               overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ],
+                      if ((op.bom ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.account_tree_outlined,
+                              size: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                op.bom!,
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
@@ -872,6 +894,26 @@ class _OperationsSection extends StatelessWidget {
                         op.workstation!,
                         style: textTheme.labelSmall
                             ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
+
+                // Row 3: BOM (if set)
+                if ((op.bom ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.account_tree_outlined,
+                          size: 12, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          op.bom!,
+                          style: textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
