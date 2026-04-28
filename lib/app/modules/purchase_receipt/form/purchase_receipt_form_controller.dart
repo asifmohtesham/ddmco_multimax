@@ -88,6 +88,7 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── Persistent scan worker ────────────────────────────────────────────────────
   Worker? _scanWorker;
+  Timer?  _scanDebounce;
 
   bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
 
@@ -119,6 +120,7 @@ class PurchaseReceiptFormController extends GetxController
   void onClose() {
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
+    _scanDebounce?.cancel();
     log('[PR:onClose] _scanWorker disposed', name: 'PR');
     supplierController.dispose();
     postingDateController.dispose();
@@ -149,10 +151,17 @@ class PurchaseReceiptFormController extends GetxController
   void _onRawScan(String code) {
     log('[PR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'PR');
     if (code.isEmpty) return;
-    if (Get.currentRoute != AppRoutes.PURCHASE_RECEIPT_FORM) return;
-    final clean = code.trim();
-    barcodeController.text = clean;
-    scanBarcode(clean);
+    final route = Get.currentRoute;
+    final isOnForm  = route == AppRoutes.PURCHASE_RECEIPT_FORM;
+    final isOnSheet = isItemSheetOpen.value;
+    if (!isOnForm && !isOnSheet) return;
+    // Debounce: ignore follow-up firings within 300 ms of a valid scan.
+    _scanDebounce?.cancel();
+    _scanDebounce = Timer(const Duration(milliseconds: 300), () {
+      final clean = code.trim();
+      barcodeController.text = clean;
+      scanBarcode(clean);
+    });
   }
 
   // ── Data fetching ────────────────────────────────────────────────────────────
@@ -463,6 +472,7 @@ class PurchaseReceiptFormController extends GetxController
               accentColor: Colors.purple,
               editMode:    true,
               fieldKey:    'pr_batch_field',
+              showBrowseBatches: true,
             ),
             SharedRackField(
               c:           child,
