@@ -183,6 +183,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     }
 
     _parent.linkToPurchaseOrder(code, this);
+
+    // Re-run after linkToPurchaseOrder so qtyInfoText and effectiveMaxQty
+    // reflect the now-populated poQty (initForCreate calls validateSheet
+    // before poQty is set, leaving the PO Qty chip and progress bar blank).
+    validateSheet();
   }
 
   // ── validateSheet ───────────────────────────────────────────────────────────

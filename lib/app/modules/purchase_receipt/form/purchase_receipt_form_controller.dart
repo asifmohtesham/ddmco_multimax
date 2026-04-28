@@ -432,6 +432,12 @@ class PurchaseReceiptFormController extends GetxController
       editingItem:    editingItem,
     );
 
+    // Inject PO qty so the progress bar and PO Qty chip render on the item card.
+    // Only for new items — editing items already have purchaseOrderQty from server.
+    if (editingItem == null) {
+      linkToPurchaseOrder(itemCode, child);
+    }
+
     if (editingItem != null) ensureItemKey(editingItem);
 
     Future<void> onSubmit() async {
