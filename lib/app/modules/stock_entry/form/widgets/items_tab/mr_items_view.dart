@@ -88,6 +88,7 @@ class MrItemsView extends StatelessWidget {
                       // DocItemProgressBar shows fulfilment progress.
                       final cardData = ItemCardData.fromStockEntryItem(
                         displayItem,
+                        stockEntryType: entry.stockEntryType ?? entry.purpose,
                         index:      index,
                         isEditable: isEditable && realItem != null,
                       ).copyWithTargetQty(row.requestedQty);

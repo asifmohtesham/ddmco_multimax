@@ -70,6 +70,7 @@ class PosUploadItemsView extends StatelessWidget {
                   key:  controller.itemKeys[item.name],
                   data: ItemCardData.fromStockEntryItem(
                     item,
+                    stockEntryType: entry.stockEntryType ?? entry.purpose,
                     index:      groupIndex,
                     isEditable: isEditable,
                   ),

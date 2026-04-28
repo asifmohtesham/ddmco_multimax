@@ -37,6 +37,7 @@ class StandardItemsView extends StatelessWidget {
             key: controller.itemKeys[item.name],
             data: ItemCardData.fromStockEntryItem(
               item,
+              stockEntryType: entry.stockEntryType ?? entry.purpose,
               index: index,
               isEditable: isEditable,
             ),

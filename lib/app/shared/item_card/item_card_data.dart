@@ -14,6 +14,23 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 ///
 /// The fields themselves are retained in the model for potential future
 /// re-use; they are simply not populated by any factory at this time.
+/// Declares which rack chips DocItemCard should render for this row.
+///
+/// The widget uses this enum — never raw null-checks — to decide layout.
+enum RackDisplayMode {
+  /// No rack chips shown (PO, PS, any DocType without rack tracking).
+  none,
+
+  /// Single chip labelled "Target Rack" — receipt flows (PR, SE Material Receipt).
+  targetOnly,
+
+  /// Single chip labelled "Source Rack" — issue / outgoing flows (SE Material Issue, DN).
+  sourceOnly,
+
+  /// Two chips "Source Rack → Target Rack" — transfer flows (SE Material Transfer).
+  sourceAndTarget,
+}
+
 class ItemCardData {
   // ── Identity ──────────────────────────────────────────────────────────────
 
@@ -65,6 +82,8 @@ class ItemCardData {
   final bool isEditable;
   final bool isHighlighted;
 
+  final RackDisplayMode rackDisplayMode;
+
   // ── Constructor ───────────────────────────────────────────────────────────
 
   const ItemCardData({
@@ -88,6 +107,7 @@ class ItemCardData {
     this.warehouseLabel,
     required this.isEditable,
     this.isHighlighted = false,
+    this.rackDisplayMode = RackDisplayMode.none,
   });
 
   // ── copyWith helpers ───────────────────────────────────────────────────────
@@ -116,6 +136,7 @@ class ItemCardData {
       warehouseLabel: warehouseLabel,
       isEditable:     isEditable,
       isHighlighted:  isHighlighted,
+      rackDisplayMode: rackDisplayMode,
     );
   }
 
@@ -189,8 +210,11 @@ class ItemCardData {
       warehouse:      null,
       toWarehouse:    null,
       batchNo:        item.batchNo,
-      rack:           null,
-      toRack:         item.rack,
+      rack:           item.rack,
+      toRack:         null,
+      rackDisplayMode: item.rack != null && item.rack!.isNotEmpty
+          ? RackDisplayMode.targetOnly
+          : RackDisplayMode.none,
       qtyLabel:       'Accepted Qty',
       rateLabel:      null,
       warehouseLabel: null,
@@ -205,10 +229,17 @@ class ItemCardData {
   /// For Material Request entries call [copyWithTargetQty] afterwards.
   factory ItemCardData.fromStockEntryItem(
     StockEntryItem item, {
+    required String stockEntryType,
     int? index,
     required bool isEditable,
     bool isHighlighted = false,
   }) {
+    final RackDisplayMode mode = _rackModeForStockEntry(
+      stockEntryType: stockEntryType,
+      rack: item.rack,
+      toRack: item.toRack,
+    );
+
     return ItemCardData(
       rowName:       item.name,
       index:         index,
@@ -224,12 +255,40 @@ class ItemCardData {
       batchNo:        item.batchNo,
       rack:           item.rack,
       toRack:         item.toRack,
+      rackDisplayMode: mode,
       qtyLabel:       'Qty',
       rateLabel:      null,
       warehouseLabel: null,
       isEditable:     isEditable,
       isHighlighted:  isHighlighted,
     );
+  }
+
+  /// Derives the correct rack display mode from the SE's stockEntryType string.
+  static RackDisplayMode _rackModeForStockEntry({
+    required String  stockEntryType,
+    required String? rack,
+    required String? toRack,
+  }) {
+    final hasRack   = rack   != null && rack.isNotEmpty;
+    final hasToRack = toRack != null && toRack.isNotEmpty;
+
+    switch (stockEntryType) {
+      case 'Material Receipt':
+      case 'Manufacture':       // FG row arrives into target rack
+        return hasRack ? RackDisplayMode.targetOnly : RackDisplayMode.none;
+
+      case 'Material Transfer':
+      case 'Material Transfer for Manufacture':
+        if (!hasRack) return RackDisplayMode.none;
+        return hasToRack
+            ? RackDisplayMode.sourceAndTarget
+            : RackDisplayMode.sourceOnly;
+
+      case 'Material Issue':
+      default:
+        return hasRack ? RackDisplayMode.sourceOnly : RackDisplayMode.none;
+    }
   }
 
   /// Maps a [DeliveryNoteItem] to [ItemCardData].
@@ -256,6 +315,10 @@ class ItemCardData {
       toWarehouse:    null,
       batchNo:        item.batchNo,
       rack:           item.rack,
+      toRack:         null,
+      rackDisplayMode: item.rack != null && item.rack!.isNotEmpty
+          ? RackDisplayMode.sourceOnly
+          : RackDisplayMode.none,
       qtyLabel:       'Qty',
       rateLabel:      null,
       warehouseLabel: null,

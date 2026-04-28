@@ -343,6 +343,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     qtyError.value   = '';
     removeSheetListeners();
     addSheetListeners();
+    rackController.text = item.rack ?? '';
 
     if ((item.batchNo ?? '').isNotEmpty) {
       validateBatchOnInit(item.batchNo!);

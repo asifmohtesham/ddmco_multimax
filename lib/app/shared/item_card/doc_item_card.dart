@@ -156,6 +156,7 @@ class DocItemCard extends StatelessWidget {
                     qtyLabel:       data.qtyLabel ?? 'Qty',
                     rack:           data.rack,
                     toRack:         data.toRack,
+                    rackDisplayMode: data.rackDisplayMode,
                     warehouse:      data.warehouse,
                     toWarehouse:    data.toWarehouse,
                     warehouseLabel: data.warehouseLabel ?? 'Warehouse',
@@ -292,6 +293,7 @@ class _OperationalZone extends StatelessWidget {
   final String  qtyLabel;
   final String? rack;
   final String? toRack;
+  final RackDisplayMode rackDisplayMode;
   final String? warehouse;
   final String? toWarehouse;
   final String  warehouseLabel;
@@ -305,6 +307,7 @@ class _OperationalZone extends StatelessWidget {
     required this.qtyLabel,
     this.rack,
     this.toRack,
+    required this.rackDisplayMode,
     this.warehouse,
     this.toWarehouse,
     required this.warehouseLabel,
@@ -353,25 +356,54 @@ class _OperationalZone extends StatelessWidget {
       rows.add(qtyCell);
     }
 
-    // ── Rack pair ───────────────────────────────────────────────────────
-    if (hasSourceRack) {
-      rows.add(const SizedBox(height: 6));
-      rows.add(_ArrowPairRow(
-        source: _LabelValueCell(
-          icon:  Icons.shelves,
-          label: 'Source Rack',
-          value: rack!,
-          role:  MetaChipRole.rack,
-        ),
-        target: (toRack != null && toRack!.isNotEmpty)
-            ? _LabelValueCell(
-                icon:  Icons.shelves,
-                label: 'Target Rack',
-                value: toRack!,
-                role:  MetaChipRole.toRack,
-              )
-            : null,
-      ));
+    // ── Rack pair — driven entirely by rackDisplayMode ──────────────────
+    switch (rackDisplayMode) {
+      case RackDisplayMode.targetOnly:
+        rows.add(const SizedBox(height: 6));
+        rows.add(_ArrowPairRow(
+          source: _LabelValueCell(
+            icon:  Icons.shelves,
+            label: 'Target Rack',   // ← correct label for receipt flows
+            value: rack ?? '',
+            role:  MetaChipRole.rack,
+          ),
+          target: null,             // ← no arrow, single chip full-width
+        ));
+        break;
+
+      case RackDisplayMode.sourceOnly:
+        rows.add(const SizedBox(height: 6));
+        rows.add(_ArrowPairRow(
+          source: _LabelValueCell(
+            icon:  Icons.shelves,
+            label: 'Source Rack',
+            value: rack ?? '',
+            role:  MetaChipRole.rack,
+          ),
+          target: null,
+        ));
+        break;
+
+      case RackDisplayMode.sourceAndTarget:
+        rows.add(const SizedBox(height: 6));
+        rows.add(_ArrowPairRow(
+          source: _LabelValueCell(
+            icon:  Icons.shelves,
+            label: 'Source Rack',
+            value: rack ?? '',
+            role:  MetaChipRole.rack,
+          ),
+          target: _LabelValueCell(
+            icon:  Icons.shelves,
+            label: 'Target Rack',
+            value: toRack ?? '',
+            role:  MetaChipRole.toRack,
+          ),
+        ));
+        break;
+
+      case RackDisplayMode.none:
+        break; // nothing rendered — replaces the old hasSourceRack guard
     }
 
     // ── Warehouse pair ──────────────────────────────────────────────────
