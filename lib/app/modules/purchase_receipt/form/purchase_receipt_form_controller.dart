@@ -223,7 +223,6 @@ class PurchaseReceiptFormController extends GetxController
       final response = await _provider.getPurchaseReceipt(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final receipt = PurchaseReceipt.fromJson(response.data['data']);
-        purchaseReceipt.value = receipt;
 
         supplierController.text    = receipt.supplier;
         postingDateController.text = receipt.postingDate;
@@ -238,6 +237,34 @@ class PurchaseReceiptFormController extends GetxController
             .toList();
 
         if (poNames.isNotEmpty) await _fetchLinkedPurchaseOrders(poNames);
+
+        // Re-hydrate poQty on each PR item from the cached PO items.
+        // purchase_order_qty is not stored on the server — the app derives
+        // it by matching purchaseOrderItem (the PO item row name) to the
+        // cached PO items fetched above.
+        final hydratedItems = receipt.items.map((prItem) {
+          if (prItem.purchaseOrderItem == null) return prItem;
+          final qty = poItemQuantities[prItem.purchaseOrderItem!];
+          if (qty == null || qty <= 0) return prItem;
+          return prItem.copyWith(purchaseOrderQty: qty);
+        }).toList();
+
+        purchaseReceipt.value = PurchaseReceipt(
+          name:         receipt.name,
+          postingDate:  receipt.postingDate,
+          modified:     receipt.modified,
+          creation:     receipt.creation,
+          status:       receipt.status,
+          docstatus:    receipt.docstatus,
+          owner:        receipt.owner,
+          postingTime:  receipt.postingTime,
+          setWarehouse: receipt.setWarehouse,
+          supplier:     receipt.supplier,
+          currency:     receipt.currency,
+          totalQty:     receipt.totalQty,
+          grandTotal:   receipt.grandTotal,
+          items:        hydratedItems,
+        );
       } else {
         AppNotification.error('Failed to fetch purchase receipt');
       }

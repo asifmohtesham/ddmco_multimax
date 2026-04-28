@@ -163,6 +163,16 @@ class ItemCardData {
     required bool isEditable,
     bool isHighlighted = false,
   }) {
+    // purchaseOrderQty is populated by the API on persisted docs.
+    // For locally-added rows (new PR from PO), fall back to poQty which is
+    // set by addItemLocally() via the child controller's poQty field.
+    final double? resolvedTargetQty =
+    (item.purchaseOrderQty != null && item.purchaseOrderQty! > 0)
+        ? item.purchaseOrderQty
+        : (item.poQty != null && item.poQty! > 0)
+        ? item.poQty
+        : null;
+
     return ItemCardData(
       rowName:       item.name,
       index:         index,
@@ -171,7 +181,7 @@ class ItemCardData {
       variantOf:     item.customVariantOf,
       qty:           item.qty,
       uom:           item.uom,
-      targetQty:     item.purchaseOrderQty,
+      targetQty:     resolvedTargetQty,
       // rate / amount suppressed — C11
       rate:          null,
       amount:        null,
