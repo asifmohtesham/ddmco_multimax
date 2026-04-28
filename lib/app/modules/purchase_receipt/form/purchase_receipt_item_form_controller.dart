@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -8,7 +9,11 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 
 /// Item-level sheet controller for Purchase Receipt.
@@ -412,6 +417,43 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     }
   }
 
+  // ── BatchNoBrowseDelegate ──────────────────────────────────────────────────
+
+  /// Batch picker is available as soon as an item is loaded.
+  /// For PR, batches are inbound so itemCode alone is sufficient to browse.
+  @override
+  bool get canBrowseBatch => itemCode.value.isNotEmpty;
+
+  static const _kBatchPickerTag = 'pr_batch_picker';
+
+  @override
+  Future<String?> browseBatches() async {
+    if (!canBrowseBatch) return null;
+    if (isValidatingBatch.value) return null;
+
+    final ctx = Get.context;
+    if (ctx == null) return null;
+
+    try {
+      return await showBatchPickerSheet(
+        ctx,
+        itemCode:    itemCode.value,
+        warehouse:   resolvedWarehouse,
+        accentColor: accentColor,
+      );
+    } catch (e) {
+      log('[PR-Item] browseBatches error: $e', name: 'PR-Item');
+      return null;
+    }
+  }
+
+  @override
+  Future<void> handleBatchPicked(String batchNo) async {
+    if (batchNo.trim().isEmpty) return;
+    batchController.text = batchNo.trim();
+    await validateBatch(batchNo.trim());
+  }
+
   // ── Rack validation override ──────────────────────────────────────────────────
   /// For Purchase Receipt the rack is a *destination* for incoming goods.
   /// Validate by Rack doctype existence — NOT by current stock balance.
@@ -453,6 +495,80 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     }
   }
 
+  // ── RackBrowseDelegate ─────────────────────────────────────────────────────
+
+  /// Rack picker is available as soon as an item is loaded.
+  /// For PR the rack is a destination; no stock-balance pre-filter is needed.
+  @override
+  bool get canBrowseRacks => itemCode.value.isNotEmpty;
+
+  static const _kRackPickerTag = 'pr_rack_picker';
+
+  @override
+  Future<RackPickerResult?> browseRacks() async {
+    if (!canBrowseRacks) return null;
+    if (isValidatingRack.value) return null;
+
+    final ctx = Get.context;
+    if (ctx == null) return null;
+
+    final pickerCtrl = Get.put(
+      RackPickerController(),
+      tag: _kRackPickerTag,
+    );
+
+    try {
+      // For Purchase Receipt the rack is inbound: pass empty batchNo/fallbackMap
+      // so the picker shows all racks in the warehouse without balance filtering.
+      unawaited(pickerCtrl.load(
+        itemCode:     itemCode.value,
+        batchNo:      '',
+        warehouse:    resolvedWarehouse ?? '',
+        requestedQty: double.tryParse(qtyController.text) ?? 0.0,
+        currentRack:  rackController.text.trim(),
+        fallbackMap:  const {},
+      ));
+
+      String? selectedRackId;
+
+      await showModalBottomSheet<void>(
+        context: ctx,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => RackPickerSheet(
+          pickerTag:  _kRackPickerTag,
+          onSelected: (rack) { selectedRackId = rack; },
+        ),
+      );
+
+      if (selectedRackId == null || selectedRackId!.isEmpty) return null;
+
+      final entry = pickerCtrl.entries.firstWhere(
+            (e) => e.rackName == selectedRackId,
+        orElse: () => RackPickerEntry(
+          rackName:     selectedRackId!,
+          location:     null,
+          availableQty: 0.0,
+          requestedQty: double.tryParse(qtyController.text) ?? 0.0,
+        ),
+      );
+
+      return RackPickerResult(
+        rackId:       entry.rackName,
+        availableQty: entry.availableQty,
+        warehouse:    entry.warehouseName,
+        raw:          const {},
+      );
+    } catch (e) {
+      log('[PR-Item] browseRacks error: $e', name: 'PR-Item');
+      return null;
+    } finally {
+      if (Get.isRegistered<RackPickerController>(tag: _kRackPickerTag)) {
+        Get.delete<RackPickerController>(tag: _kRackPickerTag);
+      }
+    }
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────────
   @override
   void applyRackScan(String rackId) {
@@ -460,6 +576,14 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     if (id.isEmpty) return;
     rackController.text = id;
     validateRack(id).then((_) => validateSheet());
+  }
+
+  /// Called by the base after [browseRacks] returns a non-null result.
+  /// Writes the rack name and triggers existence validation.
+  @override
+  Future<void> handleRackPicked(RackPickerResult result) async {
+    rackController.text = result.rackId;
+    await validateRack(result.rackId);
   }
 
   void clearAll() {

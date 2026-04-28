@@ -470,6 +470,7 @@ class PurchaseReceiptFormController extends GetxController
               label:       'Target Rack',
               hint:        'Rack',
               editMode:    true,
+              balanceOverride: () => null,
             ),
           ],
         ),
