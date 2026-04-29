@@ -133,40 +133,38 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   final RxnString qtyInfoTooltip = RxnString(null);
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty ────────────────────────
+  // ── Private helper ────────────────────────────────────────────────────────
+  /// Responsibility: apply a positive-only candidate to the running minimum.
+  /// Returns [candidate] when [current] is null, the smaller value otherwise.
+  /// Non-positive candidates are ignored (treated as "no constraint").
+  double? _applyConstraint(double? current, double candidate) =>
+      candidate > 0
+          ? (current == null ? candidate : candidate.clamp(0, current))
+          : current;
+
+  // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty ────────────────────────
   @override
   double get effectiveMaxQty {
     double? ceil;
-
-    final batch = batchBalance.value;
-    if (batch > 0) {
-      ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
+    ceil = _applyConstraint(ceil, batchBalance.value);
+    ceil = _applyConstraint(ceil, rackBalance.value);
+    if ((selectedSerial.value ?? '').isNotEmpty) {
+      ceil = _applyConstraint(ceil, liveRemaining.value);
     }
-
-    final rack = rackBalance.value;
-    if (rack > 0) {
-      ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
-    }
-
-    final serial = selectedSerial.value;
-    if (serial != null && serial.isNotEmpty) {
-      // Use liveRemaining (cap - used + editingQty), not the raw POS cap.
-      // This ensures the qty ceiling reflects what is actually still allocatable,
-      // and prevents adding qty to a serial whose remaining is already 0.
-      final live = liveRemaining.value;
-      if (live > 0) {
-        ceil = (ceil == null) ? live : (live < ceil ? live : ceil);
-      }
-    }
-
     return ceil ?? double.infinity;
   }
 
-  /// Returns true when the rack field is populated AND the fetched balance > 0.
-  /// Returns true (permissive) when no rack has been entered yet.
+  /// Returns true when:
+  /// - No rack has been entered yet (permissive)
+  /// - Rack validation is still in progress (don't block while fetching)
+  /// - Rack has been validated and balance > 0
+  /// Returns false only when rack validation is COMPLETE and balance ≤ 0.
   bool get _rackBalanceOk {
     final rack = rackController.text.trim();
-    if (rack.isEmpty) return true;   // no rack entered → not a blocking failure
-    return rackBalance.value > 0;    // rack entered → balance must be positive
+    if (rack.isEmpty) return true;              // no rack entered
+    if (isValidatingRack.value) return true;    // still fetching — don't block yet
+    if (!isRackValid.value) return false;       // validation done, failed
+    return rackBalance.value > 0;              // validation done, check balance
   }
 
   // ── SerialFieldMixin: posItemQtyForSerial override ────────────────────────
@@ -295,13 +293,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   RxString get itemGroupValue => itemGroupRx;
 
   // ── AutoFillRackMixin wiring ───────────────────────────────────────────────
-  @override String  get mixinItemCode  => itemCode.value;
-  @override String? get mixinWarehouse => resolvedWarehouse;
-  @override String  get mixinBatch     => batchController.text;
-  @override double  get mixinQty       => double.tryParse(qtyController.text) ?? 0.0;
+  String  get mixinItemCode  => itemCode.value;
+  String? get mixinWarehouse => resolvedWarehouse;
+  String  get mixinBatch     => batchController.text;
+  double  get mixinQty       => double.tryParse(qtyController.text) ?? 0.0;
   @override Map<String, double> get rackStockMap => Map<String, double>.from(rackStockMapRx);
 
-  @override
   void onRackAutoFilled(String rackId) {
     rackController.text = rackId;
     validateRack(rackId);
@@ -315,56 +312,16 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   Future<RackPickerResult?> browseRacks() async {
-    if (!canBrowseRacks) return null;
-    if (isValidatingRack.value) return null;
-
+    if (!canBrowseRacks || isValidatingRack.value) return null;
     final ctx = Get.context;
     if (ctx == null) return null;
 
     final pickerCtrl = Get.put(RackPickerController(), tag: _kPickerTag);
-
     try {
-      unawaited(pickerCtrl.load(
-        itemCode:     itemCode.value,
-        batchNo:      batchController.text.trim(),
-        warehouse:    resolvedWarehouse ?? '',
-        requestedQty: double.tryParse(qtyController.text) ?? 0.0,
-        currentRack:  rackController.text.trim(),
-        fallbackMap:  Map<String, double>.from(rackStockMapRx),
-      ));
-
-      String? selectedRackId;
-
-      await showModalBottomSheet<void>(
-        context: ctx,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => RackPickerSheet(
-          pickerTag: _kPickerTag,
-          onSelected: (rack) {
-            selectedRackId = rack;
-          },
-        ),
-      );
-
-      if (selectedRackId == null || selectedRackId!.isEmpty) return null;
-
-      final entry = pickerCtrl.entries.firstWhere(
-        (e) => e.rackName == selectedRackId,
-        orElse: () => RackPickerEntry(
-          rackName:     selectedRackId!,
-          location:     null,
-          availableQty: 0.0,
-          requestedQty: double.tryParse(qtyController.text) ?? 0.0,
-        ),
-      );
-
-      return RackPickerResult(
-        rackId:       entry.rackName,
-        availableQty: entry.availableQty,
-        warehouse:    entry.warehouseName,
-        raw:          const {},
-      );
+      _triggerRackPickerLoad(pickerCtrl);
+      final selectedRackId = await _presentRackSheet(ctx);
+      if (selectedRackId == null || selectedRackId.isEmpty) return null;
+      return _rackPickerResultFor(pickerCtrl, selectedRackId);
     } catch (e) {
       log('[DN-Item] browseRacks error: $e', name: 'DN-Item');
       return null;
@@ -374,6 +331,62 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       }
     }
   }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: start the async rack-stock load on [pickerCtrl]
+  /// without awaiting it — the sheet observes the reactive state directly.
+  void _triggerRackPickerLoad(RackPickerController pickerCtrl) {
+    unawaited(pickerCtrl.load(
+      itemCode:     itemCode.value,
+      batchNo:      batchController.text.trim(),
+      warehouse:    resolvedWarehouse ?? '',
+      requestedQty: double.tryParse(qtyController.text) ?? 0.0,
+      currentRack:  rackController.text.trim(),
+      fallbackMap:  Map<String, double>.from(rackStockMapRx),
+    ));
+  }
+
+  /// Responsibility: show the [RackPickerSheet] modal and return the
+  /// rack ID selected by the user, or null if dismissed.
+  Future<String?> _presentRackSheet(BuildContext ctx) async {
+    String? selectedRackId;
+    await showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => RackPickerSheet(
+        pickerTag: _kPickerTag,
+        onSelected: (rack) => selectedRackId = rack,
+      ),
+    );
+    return selectedRackId;
+  }
+
+  /// Responsibility: map [selectedRackId] to a [RackPickerResult] using
+  /// the entry already loaded in [pickerCtrl], falling back to a zero-
+  /// balance sentinel when no matching entry exists.
+  RackPickerResult _rackPickerResultFor(
+      RackPickerController pickerCtrl,
+      String selectedRackId,
+      ) {
+    final entry = pickerCtrl.entries.firstWhere(
+          (e) => e.rackName == selectedRackId,
+      orElse: () => RackPickerEntry(
+        rackName:     selectedRackId,
+        location:     null,
+        availableQty: 0.0,
+        requestedQty: double.tryParse(qtyController.text) ?? 0.0,
+      ),
+    );
+    return RackPickerResult(
+      rackId:       entry.rackName,
+      availableQty: entry.availableQty,
+      warehouse:    entry.warehouseName,
+      raw:          const {},
+    );
+  }
+
 
   // ── initialise() entry point ───────────────────────────────────────────────
   void initialise({
@@ -831,7 +844,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     }
   }
 
-  @override
   Future<void> maybeAutoFillRack() async {
     await preloadRackStockMap();
     final qty = double.tryParse(qtyController.text) ?? 0.0;
@@ -858,34 +870,36 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       final mapQty = rackStockMapRx[trimmed];
       if (mapQty != null) {
         rackBalance.value = mapQty;
-
-        // FIX: treat ≤ 0 as invalid (was always true before)
-        if (mapQty > 0) {
-          isRackValid.value = true;
-        } else {
-          rackError.value   = 'No stock available in rack "$trimmed" '
-              '(balance: ${mapQty.toStringAsFixed(2)})';
-          isRackValid.value = false;
-        }
-        validateSheet();   // re-evaluate the sheet gate with updated balance
-        return;
-      }
-
-      // API fallback
-      await fetchRackBalance(trimmed);
-      if (rackBalance.value > 0) {
-        isRackValid.value = true;
       } else {
-        rackError.value   = 'No stock available in rack "$trimmed" '
-            '(balance: ${rackBalance.value.toStringAsFixed(2)})';
-        isRackValid.value = false;
+        await fetchRackBalance(trimmed);
       }
+      _applyRackValidationResult(rackName: trimmed, balance: rackBalance.value);
       validateSheet();
     } catch (e) {
       rackError.value = 'Error validating rack: $e';
       log('[DN-Item] validateRack error: $e', name: 'DN-Item');
     } finally {
       isValidatingRack.value = false;
+    }
+  }
+
+  // ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: evaluate the fetched [balance] for [rackName] and
+  /// write [isRackValid] / [rackError] accordingly.
+  /// Single definition of the "no stock" error template (DRY).
+  void _applyRackValidationResult({
+    required String rackName,
+    required double balance,
+  }) {
+    if (balance > 0) {
+      isRackValid.value = true;
+      rackError.value   = '';
+    } else {
+      isRackValid.value = false;
+      rackError.value   =
+      'No stock available in rack "$rackName" '
+          '(balance: ${balance.toStringAsFixed(2)})';
     }
   }
 
@@ -899,37 +913,41 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// form the correct Batch No ('20003609-ESU').
   @override
   Future<void> handleScan(String raw) async {
-    // ── Rack-first gate (your rule) ──────────────────────────────────────────
-    // If the first hyphen-delimited token is neither an 8-digit numeric EAN-8
-    // nor the deprecated "SHIPMENT" prefix, it is a rack asset code.
-    // Route immediately — do NOT pass through splitEanBatch or _extractBatchId.
-    final firstToken = raw.split('-').first;
-    final isEan8     = firstToken.length == 8 && int.tryParse(firstToken) != null;
-    final isShipment = firstToken.toUpperCase() == 'SHIPMENT';
-
-    if (!isEan8 && !isShipment && raw.contains('-')) {
+    if (_isRackScan(raw)) {
       applyRackScan(raw);
       return;
     }
+    final batchNo = _assembleBatchNo(raw);
+    batchController.text = batchNo;
+    await validateBatch(batchNo);
+  }
 
-    // ── Batch paths (unchanged) ───────────────────────────────────────────────
+// ── SRP helpers ────────────────────────────────────────────────────────────
+
+  /// Responsibility: classify [raw] as a rack asset code.
+  /// A scan is a rack scan when it contains a hyphen and its first
+  /// hyphen-delimited token is neither an 8-digit EAN-8 numeric string
+  /// nor the legacy "SHIPMENT" prefix.
+  bool _isRackScan(String raw) {
+    if (!raw.contains('-')) return false;
+    final first = raw.split('-').first;
+    final isEan8     = first.length == 8 && int.tryParse(first) != null;
+    final isShipment = first.toUpperCase() == 'SHIPMENT';
+    return !isEan8 && !isShipment;
+  }
+
+  /// Responsibility: resolve the correct Batch No string from [raw].
+  ///
+  /// - Current format (`EAN8-BatchId`): the raw string already is the
+  ///   full Batch No — return it unchanged.
+  /// - Deprecated SHIPMENT-* format: extract the Batch ID token and
+  ///   prepend the stored [_itemEan8] to reconstruct the Batch No.
+  String _assembleBatchNo(String raw) {
     final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
+    if (ean.isNotEmpty) return raw;
 
-    if (ean.isNotEmpty) {
-      // Current format: raw is the full Batch No (e.g. '20003609-ESU').
-      batchController.text = raw;
-      await validateBatch(raw);
-      return;
-    }
-
-    // Deprecated SHIPMENT-* format: extract Batch ID and prepend item EAN-8.
     final extractedId = _extractBatchId(raw);
-    final fullBatchNo = _itemEan8.isNotEmpty
-        ? '$_itemEan8-$extractedId'
-        : extractedId;
-
-    batchController.text = fullBatchNo;
-    await validateBatch(fullBatchNo);
+    return _itemEan8.isNotEmpty ? '$_itemEan8-$extractedId' : extractedId;
   }
 
   /// Splits [raw] on '-', discards the literal token 'SHIPMENT' (any case),
