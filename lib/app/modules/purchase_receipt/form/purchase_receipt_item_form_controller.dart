@@ -24,7 +24,15 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 ///  - Rack is REQUIRED (isSheetValid stays false until rack validated)
 ///  - Batch validation accepts both existing AND new batches ("New Batch" flow)
 ///  - PO-linking state lives here (poItemId, poDocName, poQty, poRate)
-///  - EAN-equals-batch guard (custom PR rule)
+///  • EAN-equals-batch guard (custom PR rule)
+///
+/// Commit (warehouse-from-rack fix):
+///  • validateRack now fetches the 'warehouse' field from the Rack doctype
+///    and writes it to itemWarehouse, matching SE / DN behaviour.
+///  • handleRackPicked applies result.warehouse before the validateRack
+///    round-trip so resolvedWarehouse is immediately correct.
+///  • applyRackScan clears itemWarehouse before re-validation to prevent
+///    stale warehouse from a previous scan being read during the async gap.
 ///
 /// Commit 6:
 ///  • No-arg constructor; parent wired via initialise().
@@ -247,38 +255,26 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
   // ── submit ────────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0) throw Exception('Enter a valid quantity');
-    if (!isRackValid.value) throw Exception('Target rack is required');
-
+    final qty       = double.tryParse(qtyController.text) ?? 0.0;
     final batch     = batchController.text.trim();
     final rack      = rackController.text.trim();
-    final warehouse = itemWarehouse.value ?? _parent.setWarehouse.value ?? '';
+    final warehouse = resolvedWarehouse ?? '';
 
-    final rowId = editingItemName.value;
-    if (rowId != null) {
-      _parent.updateItemLocally(
-        rowId,
-        qty,
-        batch,
-        rack,
-        warehouse,
+    if (editingItemName.value != null) {
+      parent.updateItemLocally(
+        editingItemName.value!, qty, batch, rack, warehouse,
       );
     } else {
-      _parent.addItemLocally(
-        itemCode.value,
-        itemName.value,
-        qty,
-        batch,
-        rack,
-        warehouse,
+      parent.addItemLocally(
+        itemCode.value, itemName.value, qty, batch, rack, warehouse,
         uom:       itemUom.value,
         poItemId:  poItemId.value,
         poDocName: poDocName.value,
-        poQty:     poQty.value   ?? 0.0,
-        poRate:    poRate.value  ?? 0.0,
+        poQty:     poQty.value  ?? 0.0,
+        poRate:    poRate.value ?? 0.0,
       );
     }
+    await parent.savePurchaseReceipt();
   }
 
   // ── Init helpers ──────────────────────────────────────────────────────────────
@@ -480,13 +476,19 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
       final rows = await ApiProvider().getList(
         'Rack',
         filters: {'name': trimmed},
-        fields:  ['name'],
+        fields: ['name', 'warehouse'],
       );
 
       if (rows.isEmpty) {
         rackError.value = 'Rack "$trimmed" not found.';
         validateSheet();
         return;
+      }
+
+      // Derive warehouse from the Rack doctype — mirrors SE / DN behaviour.
+      final derivedWh = rows.first['warehouse'] as String?;
+      if (derivedWh != null && derivedWh.isNotEmpty) {
+        itemWarehouse.value = derivedWh;
       }
 
       rackBalance.value = 0.0;
@@ -580,6 +582,9 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
   void applyRackScan(String rackId) {
     final id = rackId.trim();
     if (id.isEmpty) return;
+    // Clear any previously derived warehouse so a re-scan of a different
+    // rack does not leave the old warehouse value in place during the async gap.
+    itemWarehouse.value = null;
     rackController.text = id;
     validateRack(id).then((_) => validateSheet());
   }
@@ -588,6 +593,12 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
   /// Writes the rack name and triggers existence validation.
   @override
   Future<void> handleRackPicked(RackPickerResult result) async {
+    // Apply picker-resolved warehouse immediately (before the API round-trip
+    // in validateRack overwrites it) so resolvedWarehouse is correct as soon
+    // as the rack is accepted — mirrors SE/DN behaviour.
+    if (result.warehouse != null && result.warehouse!.isNotEmpty) {
+      itemWarehouse.value = result.warehouse;
+    }
     rackController.text = result.rackId;
     await validateRack(result.rackId);
   }

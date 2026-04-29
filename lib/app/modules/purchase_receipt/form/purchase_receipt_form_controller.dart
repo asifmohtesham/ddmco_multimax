@@ -472,16 +472,6 @@ class PurchaseReceiptFormController extends GetxController
       await savePurchaseReceipt();
     }
 
-    // Commit 6: setupAutoSubmit uses the canonical one-param base signature.
-    child.setupAutoSubmit(
-      onValid: () async {
-        isAddingItem.value = true;
-        await onSubmit();
-        isAddingItem.value = false;
-        if (Get.isBottomSheetOpen == true) Get.back();
-      },
-    );
-
     isItemSheetOpen.value = true;
     log('[PR:_openItemSheet] isItemSheetOpen → true', name: 'PR');
 
@@ -495,8 +485,8 @@ class PurchaseReceiptFormController extends GetxController
           controller:       child,
           scrollController: sc,
           onSubmit: () async {
-            await onSubmit();
-            Get.back();
+            final ok = await child.submitWithFeedback();
+            if (ok) Get.back();
           },
           onScan: (code) => scanBarcode(code),
           customFields: [
@@ -524,6 +514,13 @@ class PurchaseReceiptFormController extends GetxController
     isItemSheetOpen.value = false;
     log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
     barcodeController.clear();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      child.disposeControllers();
+      Get.delete<PurchaseReceiptItemFormController>(force: true);
+      log('[PR:_openItemSheet] post-frame teardown complete', name: 'PR');
+    });
+
     if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
       Get.delete<PurchaseReceiptItemFormController>();
     }
