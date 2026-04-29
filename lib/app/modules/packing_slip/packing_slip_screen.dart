@@ -664,7 +664,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       final isExpanded =
           controller.expandedSlipName.value == (slip.name as String);
       final isLoadingDetails = controller.isLoadingDetails.value &&
-          controller.detailedSlip?.name != slip.name;
+          controller.detailedSlip.value?.name != slip.name;
 
       return GenericDocumentCard(
         title: slip.name as String,
@@ -693,7 +693,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   /// consistent across all three list screens.
   Widget _buildExpandedContent(BuildContext context, String slipName) {
     return Obx(() {
-      final detailed = controller.detailedSlip;
+      final detailed = controller.detailedSlip.value;
       if (detailed == null || detailed.name != slipName) {
         return const SizedBox.shrink();
       }

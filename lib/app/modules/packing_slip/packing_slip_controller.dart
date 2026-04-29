@@ -51,15 +51,11 @@ class PackingSlipController extends GetxController {
   /// The fully-fetched [PackingSlip] currently shown in the expand panel.
   ///
   /// `null` until the user first taps a card row to expand it.
-  /// Mirrored from [StockEntryController.detailedEntry] and
-  /// [DeliveryNoteController.detailedEntry] — do not rename without updating
-  /// the sibling controllers.
-  ///
-  /// ⚠️ UI/UX contract: the expand panel reads from this field inside an
-  /// [Obx] in [PackingSlipScreen._buildExpandedContent]. Keep this field
-  /// non-observable ([PackingSlip?]) — the [Obx] dependency is on
-  /// [expandedSlipName] and [isLoadingDetails], which are [RxBool]/[RxString].
-  PackingSlip? detailedSlip;
+  /// Made reactive ([Rx]) so [Obx] in [PackingSlipScreen._buildExpandedContent]
+  /// has a live dependency and rebuilds when [fetchSlipDetails] writes the
+  /// fetched document — without this, GetX throws "improper use of GetX"
+  /// because the [Obx] finds no observable variables in its builder scope.
+  final detailedSlip = Rx<PackingSlip?>(null);
 
   /// `true` while [fetchSlipDetails] is loading a slip document from the
   /// ERPNext API. Drives the inline [CircularProgressIndicator] inside
@@ -215,12 +211,12 @@ class PackingSlipController extends GetxController {
   /// is reset to `''` so the card collapses cleanly instead of showing a
   /// stuck spinner.
   Future<void> fetchSlipDetails(String name) async {
-    if (detailedSlip?.name == name) return; // cache hit
+    if (detailedSlip.value?.name == name) return; // cache hit
     isLoadingDetails.value = true;
     try {
       final response = await _provider.getPackingSlip(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        detailedSlip = PackingSlip.fromJson(response.data['data']);
+        detailedSlip.value = PackingSlip.fromJson(response.data['data']);
       } else {
         AppNotification.error('Failed to load packing slip details');
         expandedSlipName.value = '';
