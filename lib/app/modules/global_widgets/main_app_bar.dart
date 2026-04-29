@@ -105,7 +105,7 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
       if (onReload != null)
         IconButton(
           tooltip: 'Reload document',
-          icon: const Icon(Icons.refresh),
+          icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.surface,),
           onPressed: isSaving ? null : onReload,
         ),
       // ── Extra caller-supplied actions ────────────────────────────────────
