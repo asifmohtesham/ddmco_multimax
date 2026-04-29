@@ -498,11 +498,25 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           await fetchRackBalance(rack);
         }
         isLoadingRackBalance.value = false;
-        isSourceRackValid.value    = true;
+        // FIX: only mark source rack valid when balance is non-negative
+        if (rackBalance.value < 0) {
+          isSourceRackValid.value = rackBalance.value >= 0;
+          if (rackBalance.value < 0) {
+            rackError.value =
+            'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
+          }
+        } else {
+          isSourceRackValid.value = true;
+          rackError.value = '';          // cleared on success (existing commit-7 rule)
+        }
       } else {
         isTargetRackValid.value = true;
+        // Only clear rackError if source rack has no active error.
+        // Preserving source-side negative-balance error message.
+        if (isSourceRackValid.value) {
+          rackError.value = '';
+        }
       }
-      rackError.value = '';
     } catch (e) {
       rackError.value = 'Rack validation error: $e';
       log('[SE-Item] validateDualRack error: $e', name: 'SE-Item');
@@ -703,7 +717,18 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final ceil = effectiveMaxQty;
 
     // rackOk: only enforce source-rack if the current item/context requires it.
-    final rackOk = !showSourceRack || isSourceRackValid.value;
+    final rackOk = !showSourceRack ||
+        (isSourceRackValid.value && rackBalance.value >= 0);
+    // Re-assert the rack error message so it persists across subsequent
+    // field edits (qty, target rack) that trigger validateSheet.
+    if (!rackOk && rackBalance.value < 0) {
+      rackError.value =
+      'Rack balance is negative (${rackBalance.value.toStringAsFixed(0)}). '
+          'Cannot issue from this rack.';
+      debugPrint('SE-Item rackError set to: ${rackError.value}');
+      debugPrint('SE-Item isSourceRackValid: ${isSourceRackValid.value}');
+    }
+
     final ceilOk   = ceil == double.infinity || (qty != null && qty <= ceil);
     final qtyOk    = qty != null && qty > 0;
 
