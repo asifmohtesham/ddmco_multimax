@@ -40,8 +40,10 @@ class BomFormScreen extends GetView<BomFormController> {
               actions: [
                 if (bom != null)
                   IconButton(
-                    icon: const Icon(
-                        Icons.precision_manufacturing_outlined),
+                    icon: Icon(
+                      Icons.precision_manufacturing_outlined,
+                      color: Theme.of(context).colorScheme.surface,
+                    ),
                     tooltip: 'Create Work Order',
                     onPressed: controller.createWorkOrder,
                   ),
