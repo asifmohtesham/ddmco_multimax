@@ -161,6 +161,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return ceil ?? double.infinity;
   }
 
+  /// Returns true when the rack field is populated AND the fetched balance > 0.
+  /// Returns true (permissive) when no rack has been entered yet.
+  bool get _rackBalanceOk {
+    final rack = rackController.text.trim();
+    if (rack.isEmpty) return true;   // no rack entered → not a blocking failure
+    return rackBalance.value > 0;    // rack entered → balance must be positive
+  }
+
   // ── SerialFieldMixin: posItemQtyForSerial override ────────────────────────
   /// Delegates to the parent controller's POS qty-cap lookup.
   /// The parent resolves serial (= idx string) → PosUploadItem.quantity.
@@ -678,10 +686,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// Responsibility: determine whether the typed quantity is positive and
   /// within the effective ceiling, then write [isQtyValid] and [qtyError]
   /// with an appropriate message for each failure case.
-  void _evaluateQtyValidity({
-    required double? qty,
-    required double  ceil,
-  }) {
+  void _evaluateQtyValidity({required double? qty, required double ceil}) {
+    // FIX: gate on rack balance first
+    if (!_rackBalanceOk) {
+      isQtyValid.value = false;
+      qtyError.value   = 'No stock available in selected rack';
+      return;
+    }
+
     final qtyOk  = qty != null && qty > 0;
     final ceilOk = ceil == double.infinity || (qty != null && qty <= ceil);
 
@@ -703,11 +715,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   /// Responsibility: combine batch validity with the qty flags to decide
   /// whether the sheet as a whole may be submitted.
-  void _evaluateSheetValidity({
-    required bool qtyOk,
-    required bool ceilOk,
-  }) {
-    isSheetValid.value = isBatchValid.value && qtyOk && ceilOk;
+  void _evaluateSheetValidity({required bool qtyOk, required bool ceilOk}) {
+    // FIX: added _rackBalanceOk to the gate
+    isSheetValid.value = isBatchValid.value && _rackBalanceOk && qtyOk && ceilOk;
   }
 
   /// Responsibility: recompute and publish the live-remaining badge so the
@@ -784,6 +794,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void _scheduleParentRefresh() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_parent.isClosed) return;
+      if (isClosed) return;   // ← ADD THIS
       _parent.deliveryNote.refresh();
       _parent.checkForChanges();
       debugPrint('_scheduleParentRefresh');
@@ -844,13 +855,35 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isRackValid.value      = false;
 
     try {
-      final qty = rackStockMapRx[trimmed];
-      if (qty != null) {
-        rackBalance.value = qty;
-        isRackValid.value = true;
+      final mapQty = rackStockMapRx[trimmed];
+      if (mapQty != null) {
+        rackBalance.value = mapQty;
+
+        // FIX: treat ≤ 0 as invalid (was always true before)
+        if (mapQty > 0) {
+          isRackValid.value = true;
+        } else {
+          rackError.value   = 'No stock available in rack "$trimmed" '
+              '(balance: ${mapQty.toStringAsFixed(2)})';
+          isRackValid.value = false;
+        }
+        validateSheet();   // re-evaluate the sheet gate with updated balance
         return;
       }
-      await super.validateRack(trimmed);
+
+      // API fallback
+      await fetchRackBalance(trimmed);
+      if (rackBalance.value > 0) {
+        isRackValid.value = true;
+      } else {
+        rackError.value   = 'No stock available in rack "$trimmed" '
+            '(balance: ${rackBalance.value.toStringAsFixed(2)})';
+        isRackValid.value = false;
+      }
+      validateSheet();
+    } catch (e) {
+      rackError.value = 'Error validating rack: $e';
+      log('[DN-Item] validateRack error: $e', name: 'DN-Item');
     } finally {
       isValidatingRack.value = false;
     }
@@ -955,6 +988,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   void onClose() {
     removeSheetListeners();
-    super.onClose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      super.onClose();
+    });
   }
 }
