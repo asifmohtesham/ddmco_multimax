@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 
 class ItemFormController extends GetxController {
+  final String docType = 'Item';
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 

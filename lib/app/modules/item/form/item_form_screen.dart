@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -19,63 +19,75 @@ class ItemFormScreen extends GetView<ItemFormController> {
     final cs = Theme.of(context).colorScheme;
     final tabCtrl = Get.find<ItemTabController>();
 
-    return Scaffold(
-      appBar: MainAppBar(
-        title: '',
-        titleWidget: Obx(
-          () => Text(
-            controller.item.value?.itemName ?? 'Item Details',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        leading: isModal
-            ? IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: Get.back,
-              )
-            : null,
-        bottom: TabBar(
-          controller: tabCtrl.tabController,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'Stock Levels'),
-            Tab(text: 'Attributes'),
-            Tab(text: 'Attachments'),
-          ],
-        ),
-      ),
-      body: Obx(() {
-        if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final item = controller.item.value;
-        if (item == null) {
-          return Center(
-            child: _buildEmptyState(
-              context,
-              cs,
-              icon: Icons.error_outline,
-              message: 'Item not found.',
-            ),
-          );
-        }
+    // DocTypeFormHeader takes a plain String, so wrap in Obx to
+    // reactively update the title once the item loads.
+    return Obx(() {
+      final docTypeName = controller.docType;
 
-        return TabBarView(
-          controller: tabCtrl.tabController,
-          children: [
-            _buildOverviewTab(context, item, cs),
-            _buildStockLevelsTab(context, cs),
-            _buildAttributesTab(context, item, cs),
-            _buildAttachmentsTab(context, cs),
+      return Scaffold(
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            // ── Standard form app bar ──────────────────────────────────
+            DocTypeFormHeader(
+              title: docTypeName,
+              // Item form is read-only — no Reload / Save / Share.
+              // In modal mode the back arrow won't exist, so surface
+              // an explicit Close button via extraActions instead.
+              extraActions: isModal
+                  ? [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                  onPressed: Get.back,
+                ),
+              ]
+                  : null,
+            ),
+
+            // ── TabBar pinned below the collapsing header ──────────────
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PinnedTabBarDelegate(
+                TabBar(
+                  controller: tabCtrl.tabController,
+                  isScrollable: true,
+                  tabs: const [
+                    Tab(text: 'Overview'),
+                    Tab(text: 'Stock Levels'),
+                    Tab(text: 'Attributes'),
+                    Tab(text: 'Attachments'),
+                  ],
+                ),
+              ),
+            ),
           ],
-        );
-      }),
-    );
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final item = controller.item.value;
+            if (item == null) {
+              return Center(
+                child: _buildEmptyState(
+                  context, cs,
+                  icon: Icons.error_outline,
+                  message: 'Item not found.',
+                ),
+              );
+            }
+            return TabBarView(
+              controller: tabCtrl.tabController,
+              children: [
+                _buildOverviewTab(context, item, cs),
+                _buildStockLevelsTab(context, cs),
+                _buildAttributesTab(context, item, cs),
+                _buildAttachmentsTab(context, cs),
+              ],
+            );
+          }),
+        ),
+      );
+    });
   }
 
   // ── Overview Tab ──────────────────────────────────────────────────────────
@@ -929,4 +941,27 @@ class ItemFormScreen extends GetView<ItemFormController> {
       ),
     );
   }
+}
+
+// Pins the TabBar below the collapsing DocTypeFormHeader sliver.
+// minExtent == maxExtent == TabBar.preferredSize.height so it never shrinks.
+class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  const _PinnedTabBarDelegate(this.tabBar);
+
+  @override double get minExtent => tabBar.preferredSize.height;
+  @override double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: Theme.of(context).colorScheme.onSurface,
+      elevation: overlapsContent ? 1.0 : 0.0,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedTabBarDelegate old) =>
+      tabBar != old.tabBar;
 }

@@ -392,7 +392,6 @@ class HomeController extends GetxController {
       ),
       isScrollControlled: true,
       enableDrag: true,
-      backgroundColor: Colors.white,
     ).then((_) {
       Get.delete<ItemTabController>(force: true);
       Get.delete<ItemFormController>(force: true);
