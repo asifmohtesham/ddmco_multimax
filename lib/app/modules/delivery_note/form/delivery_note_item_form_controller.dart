@@ -912,29 +912,30 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// The Batch ID is extracted and prepended with the stored _itemEan8 to
   /// form the correct Batch No ('20003609-ESU').
   @override
+  @override
   Future<void> handleScan(String raw) async {
-    if (_isRackScan(raw)) {
+    // Priority 1 — strict rack pattern (same gate as SE via isRackBarcode).
+    if (BarcodeAwareMixin.isRackBarcode(raw)) {
       applyRackScan(raw);
       return;
     }
+
+    // Priority 2 — SE fallback: when batch is already valid any unrecognised
+    // scan is treated as a rack scan.  Mirrors BarcodeAwareMixin._routeScan's
+    // else-branch so rack names whose format doesn't satisfy the isRackBarcode
+    // regex (e.g. KA-WH-DUBAI-SHELF1) still reach validateRack().
+    if (isBatchValid.value) {
+      applyRackScan(raw);
+      return;
+    }
+
+    // Priority 3 — batch not yet set: assemble and validate batch.
     final batchNo = _assembleBatchNo(raw);
     batchController.text = batchNo;
     await validateBatch(batchNo);
   }
 
-// ── SRP helpers ────────────────────────────────────────────────────────────
-
-  /// Responsibility: classify [raw] as a rack asset code.
-  /// A scan is a rack scan when it contains a hyphen and its first
-  /// hyphen-delimited token is neither an 8-digit EAN-8 numeric string
-  /// nor the legacy "SHIPMENT" prefix.
-  bool _isRackScan(String raw) {
-    if (!raw.contains('-')) return false;
-    final first = raw.split('-').first;
-    final isEan8     = first.length == 8 && int.tryParse(first) != null;
-    final isShipment = first.toUpperCase() == 'SHIPMENT';
-    return !isEan8 && !isShipment;
-  }
+  // ── SRP helpers ────────────────────────────────────────────────────────────
 
   /// Responsibility: resolve the correct Batch No string from [raw].
   ///
@@ -971,16 +972,20 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return candidates.isNotEmpty ? candidates.first : raw;
   }
 
-  // ── BarcodeAwareMixin: applyRackScan ─────────────────────────────────────
+  // BarcodeAwareMixin: applyRackScan
   /// Called by BarcodeAwareMixin._routeScan when the scan pattern matches a
   /// rack barcode (KA-WH-DXB1-101A), either after batch is valid or before.
   ///
-  /// Writes the rack name to [rackController] and triggers [validateRack]
-  /// for API confirmation (fetches rack balance, sets isRackValid).
+  /// Resets rack validity flags BEFORE writing to [rackController] so the
+  /// TextEditingController listener's [validateSheet] call sees a clean state
+  /// (isRackValid = false) rather than stale state from a prior autofill.
+  /// [validateRack] then confirms the balance and calls [validateSheet] again
+  /// with the authoritative result.
   @override
   void applyRackScan(String code) {
+    softResetRack();      // zero isRackValid before listener fires
     rackController.text = code;
-    validateRack(code);   // base-class API round-trip — sets isRackValid + rackBalance
+    unawaited(validateRack(code)); // API round-trip — sets isRackValid + rackBalance
   }
 
   void clearAll() {

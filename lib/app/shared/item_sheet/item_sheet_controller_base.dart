@@ -598,10 +598,12 @@ abstract class ItemSheetControllerBase extends GetxController
         batchNo:   batch.isEmpty ? null : batch,
       );
       final match = rows.whereType<Map<String, dynamic>>().firstWhere(
-        (r) => (r['rack'] as String?) == rack,
-        orElse: () => {'qty': 0.0},
+            (r) => (r['rack'] as String?) == rack,
+        orElse: () => <String, dynamic>{},   // ← empty sentinel; no default qty
       );
-      rackBalance.value = (match['qty'] as num).toDouble();
+      // API returns 'bal_qty'; fall back to 'qty' for forward-compat.
+      final raw = match['bal_qty'] ?? match['qty'];
+      rackBalance.value = (raw as num?)?.toDouble() ?? 0.0;
     } catch (e) {
       log('[ItemSheet] fetchRackBalance error: $e', name: 'ItemSheet');
     }
