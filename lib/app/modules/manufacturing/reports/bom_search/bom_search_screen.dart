@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
@@ -85,7 +86,7 @@ class BomSearchScreen extends GetView<BomSearchController> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return AppShellScaffold(
       backgroundColor: cs.surfaceContainerLow,
       body: Obx(() {
         return RefreshIndicator(

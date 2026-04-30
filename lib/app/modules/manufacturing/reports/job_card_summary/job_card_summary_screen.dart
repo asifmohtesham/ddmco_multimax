@@ -2,6 +2,7 @@ import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_controller.dart';
@@ -84,7 +85,7 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return AppShellScaffold(
       backgroundColor: cs.surfaceContainerLow,
       body: Obx(() {
         return RefreshIndicator(
