@@ -369,6 +369,12 @@ class AppNavDrawer extends StatelessWidget {
                           route: AppRoutes.BOM_SEARCH,
                           currentRoute: currentRoute,
                         ),
+                        _DrawerItem(                                   // ← NEW
+                          title: 'Job Card Summary',
+                          icon: Icons.summarize_outlined,
+                          route: AppRoutes.JOB_CARD_SUMMARY,
+                          currentRoute: currentRoute,
+                        ),
                       ],
                     ),
 

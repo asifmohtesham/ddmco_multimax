@@ -172,7 +172,7 @@ class ApiProvider {
     return await _dio.delete('/api/resource/$doctype/$name');
   }
 
-  /// Submit a document (change docstatus from 0 to 1) in ERPNext.
+  /// Submit a document (change docstatus from 0 to 1) in ERP.
   Future<Response> submitDocument(String doctype, String name) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.put('/api/resource/$doctype/$name', data: {'docstatus': 1});
@@ -349,7 +349,7 @@ class ApiProvider {
   /// Both Map rows (key-based) and List rows (positional) are normalised to
   /// a consistent shape: {'batch_no': String, 'qty': double, ...} so that
   /// [ItemSheetControllerBase.fetchBatchBalance] can always read r['qty']
-  /// regardless of the ERPNext response format.
+  /// regardless of the ERP response format.
   Future<List<Map<String, dynamic>>> getBatchWiseBalance({
     required String itemCode,
     String? batchNo,
@@ -473,7 +473,7 @@ class ApiProvider {
   /// Both Map rows (key-based) and List rows (positional) are handled.
   /// Every returned row is normalised to {'rack': String, 'qty': double}
   /// so callers can always read r['rack'] and r['qty'] regardless of the
-  /// ERPNext response format.
+  /// ERP response format.
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
     required String itemCode,
     String? warehouse,
@@ -543,7 +543,7 @@ class ApiProvider {
       // ── Fix 2b: List rows (positional) ────────────────────────────────────
       // The previous implementation discarded all List rows via
       // whereType<Map>() with no fallback, silently returning [] when
-      // ERPNext sends positional arrays.  Resolve column indices and map
+      // ERP sends positional arrays.  Resolve column indices and map
       // to the same normalised shape as the Map branch above.
       final rawColumns = message['columns'] as List<dynamic>?;
       if (rawColumns == null) return [];
@@ -753,6 +753,55 @@ class ApiProvider {
         'ignore_prepared_report': 'true',
         'are_default_filters'  : 'false',
         '_'                    : DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // JOB CARD SUMMARY
+  // ---------------------------------------------------------------------------
+
+  /// Runs the ERP "Job Card Summary" scripted report.
+  ///
+  /// Filters match the ERP desktop defaults:
+  ///   company        — read from StorageService (required)
+  ///   fiscal_year    — e.g. "2026"
+  ///   from_date      — yyyy-MM-dd
+  ///   to_date        — yyyy-MM-dd
+  ///   work_order     — optional single value (empty list → no filter)
+  ///   production_item — optional item code (empty list → no filter)
+  ///
+  /// Returns the raw [Response] so the controller can parse
+  /// message.result (List<dynamic>) and message.columns.
+  Future<Response> getJobCardSummary({
+    required String fromDate,
+    required String toDate,
+    String? workOrder,
+    String? productionItem,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage     = Get.find<StorageService>();
+    final company     = storage.getCompany();
+    final fiscalYear  = fromDate.substring(0, 4);   // e.g. "2026"
+
+    final filters = <String, dynamic>{
+      'company'         : company,
+      'fiscal_year'     : fiscalYear,
+      'from_date'       : fromDate,
+      'to_date'         : toDate,
+      'work_order'      : workOrder?.isNotEmpty == true ? workOrder : [],
+      'production_item' : productionItem?.isNotEmpty == true ? productionItem : [],
+    };
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        'report_name'           : 'Job Card Summary',
+        'filters'               : json.encode(filters),
+        'ignore_prepared_report': 'false',
+        'are_default_filters'   : 'true',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
       },
     );
   }

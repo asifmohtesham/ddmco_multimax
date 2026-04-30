@@ -7,6 +7,8 @@ import 'package:multimax/app/modules/job_card/job_card_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_screen.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_binding.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_screen.dart';
+import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_binding.dart';
+import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
@@ -187,6 +189,12 @@ class AppPages {
       name: AppRoutes.BOM_SEARCH,
       page: () => const BomSearchScreen(),
       binding: BomSearchBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.JOB_CARD_SUMMARY,
+      page: () => const JobCardSummaryScreen(),
+      binding: JobCardSummaryBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
