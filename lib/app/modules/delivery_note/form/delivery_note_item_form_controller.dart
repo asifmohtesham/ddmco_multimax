@@ -834,7 +834,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       for (final raw in rows) {
         final rack = (raw['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
-        final qty = (raw['bal_qty'] as num?)?.toDouble() ?? 0.0;
+        final qty = (raw['qty'] as num?)?.toDouble() ?? 0.0;
         map[rack] = (map[rack] ?? 0) + qty;
       }
       rackStockMapRx.assignAll(map);
@@ -867,19 +867,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isRackValid.value      = false;
 
     try {
+      double balance;
       final mapQty = rackStockMapRx[trimmed];
+      debugPrint('mapQty: $mapQty');
       if (mapQty != null) {
-        rackBalance.value = mapQty;
+        balance = mapQty;
       } else {
         await fetchRackBalance(trimmed);
+        // ✅ Re-read from the map AFTER the await instead of trusting rackBalance.value
+        balance = rackStockMapRx[trimmed] ?? 0.0;
       }
-      _applyRackValidationResult(rackName: trimmed, balance: rackBalance.value);
-      validateSheet();
+      rackBalance.value = balance; // sync the observable last
+
+      debugPrint('trimmed: $trimmed');
+      debugPrint('rackBalance: $balance');
+      _applyRackValidationResult(rackName: trimmed, balance: balance);
     } catch (e) {
       rackError.value = 'Error validating rack: $e';
       log('[DN-Item] validateRack error: $e', name: 'DN-Item');
     } finally {
       isValidatingRack.value = false;
+      validateSheet();
     }
   }
 
