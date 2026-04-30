@@ -32,11 +32,15 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
       key:         'work_order',
       label:       'Work Order',
       prefixIcon:  Icons.assignment_outlined,
+      type:        ReportFilterType.doctypeLink,
+      linkDoctype: 'Work Order',
     ),
     ReportFilterField(
       key:         'production_item',
       label:       'Production Item',
       prefixIcon:  Icons.category_outlined,
+      type:        ReportFilterType.doctypeLink,
+      linkDoctype: 'Item',
     ),
   ];
 

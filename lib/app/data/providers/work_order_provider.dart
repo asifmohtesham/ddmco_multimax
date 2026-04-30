@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 
 class WorkOrderProvider {
@@ -90,6 +92,26 @@ class WorkOrderProvider {
         fields: ['name', 'item', 'item_name', 'quantity'],
         limit: 50,
       );
+
+  /// Fetches the most recently modified Work Orders with no status/owner filter.
+  /// Used by report filter sheets to pre-populate a picker without requiring search input.
+  Future<List<WorkOrder>> fetchRecent({int limit = 20}) async {
+    try {
+      final response = await _apiProvider.getList(
+        'Work Order',
+        doctype: 'Work Order',
+        fields: ['name', 'production_item', 'item_name', 'status', 'planned_start_date'],
+        filters: null,            // no filters — all statuses, all owners
+        orderBy: 'creation desc',
+        // limitPageLength: limit,
+        // limitStart: 0,
+      );
+      final data = response as List<dynamic>? ?? [];
+      return data.map((e) => WorkOrder.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
 
   /// Fetch the first open Job Card linked to a Work Order.
   Future<String?> fetchOpenJobCardName(String workOrderName) async {

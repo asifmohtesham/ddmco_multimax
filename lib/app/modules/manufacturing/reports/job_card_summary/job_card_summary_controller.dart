@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
@@ -20,6 +22,11 @@ class JobCardSummaryController extends GetxController {
   final isLoading     = false.obs;
   final reportData    = <Map<String, dynamic>>[].obs;
   final activeFilters = <String, String>{}.obs;
+
+  final RxList<WorkOrder> recentWorkOrders = <WorkOrder>[].obs;
+  final RxBool isLoadingWorkOrders = false.obs;
+
+  final WorkOrderProvider _workOrderProvider = Get.find<WorkOrderProvider>();
 
   // ── Filter field descriptors (passed to ReportFilterSheet) ────────────────
   List<ReportFilterField> get filterFields => [
@@ -57,6 +64,7 @@ class JobCardSummaryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _loadRecentWorkOrders();
     filterControllers = {
       'from_date'       : fromDateController,
       'to_date'         : toDateController,
@@ -75,6 +83,16 @@ class JobCardSummaryController extends GetxController {
   void onClose() {
     for (final c in filterControllers.values) c.dispose();
     super.onClose();
+  }
+
+  Future<void> _loadRecentWorkOrders() async {
+    isLoadingWorkOrders.value = true;
+    try {
+      final list = await _workOrderProvider.fetchRecent(limit: 20);
+      recentWorkOrders.assignAll(list);
+    } finally {
+      isLoadingWorkOrders.value = false;
+    }
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
