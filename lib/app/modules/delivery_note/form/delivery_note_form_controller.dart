@@ -219,6 +219,7 @@ class DeliveryNoteFormController extends GetxController
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
     }
+    await _validateCustomerOnOpen();
     isDirty.value   = true;
     _originalJson   = '';
     isLoading.value = false;
@@ -236,6 +237,7 @@ class DeliveryNoteFormController extends GetxController
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
+        await _validateCustomerOnOpen();
       } else {
         showBanner('Failed to fetch delivery note', type: BannerType.error);
       }
@@ -406,6 +408,22 @@ class DeliveryNoteFormController extends GetxController
     GlobalDialog.showCustomerNotFound(customer: customer);
   }
 
+  Future<void> _validateCustomerOnOpen() async {
+    final customer = deliveryNote.value?.customer ?? '';
+    if (customer.isEmpty) return;
+    try {
+      final response = await _apiProvider.getDocument('Customer', customer);
+      if (response.statusCode != 200 || response.data['data'] == null) {
+        _handleCustomerNotFound(customer);
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        _handleCustomerNotFound(customer);
+      }
+      // Network/other errors: don't block the form; save will surface them.
+    }
+  }
+
   // ── Save ──────────────────────────────────────────────────────────────────
   Future<void> saveDeliveryNote() async {
     if (isSaving.value) return;
@@ -449,10 +467,10 @@ class DeliveryNoteFormController extends GetxController
       })();
 
       final bool isCustomerNotFound =
-          statusCode == 417 &&
+          (statusCode == 417 || statusCode == 400) &&
           (rawError.toLowerCase().contains('customer') ||
-           rawError.toLowerCase().contains('does not exist') ||
-           rawError.toLowerCase().contains('link validation'));
+          rawError.toLowerCase().contains('does not exist') ||
+          rawError.toLowerCase().contains('link validation'));
 
       if (isCustomerNotFound) {
         _handleCustomerNotFound(
@@ -548,7 +566,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Item CRUD ─────────────────────────────────────────────────────────────
-  void addItem(DeliveryNoteItem newItem) {
+  Future<void> addItem(DeliveryNoteItem newItem) async {
     deliveryNote.value?.items.add(newItem);
     deliveryNote.refresh();
     checkForChanges();
@@ -560,10 +578,10 @@ class DeliveryNoteFormController extends GetxController
       }
     });
     _scrollToItem(newItem.name ?? newItem.itemCode);
-    if (mode == 'edit') saveDeliveryNote();
+    if (mode == 'edit') await saveDeliveryNote();
   }
 
-  void updateItem(DeliveryNoteItem updatedItem) {
+  Future<void> updateItem(DeliveryNoteItem updatedItem) async {
     final items = deliveryNote.value?.items ?? [];
     final idx   = items.indexWhere((i) => i.name == updatedItem.name);
     if (idx != -1) {
@@ -571,7 +589,7 @@ class DeliveryNoteFormController extends GetxController
       deliveryNote.refresh();
       checkForChanges();
     }
-    if (mode == 'edit') saveDeliveryNote();
+    if (mode == 'edit') await saveDeliveryNote();
   }
 
   /// Private factory — single source of truth for item construction.
@@ -620,7 +638,7 @@ class DeliveryNoteFormController extends GetxController
     deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
     deliveryNote.refresh();
     checkForChanges();
-    if (mode == 'edit') saveDeliveryNote();
+    if (mode == 'edit') await saveDeliveryNote();
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {
