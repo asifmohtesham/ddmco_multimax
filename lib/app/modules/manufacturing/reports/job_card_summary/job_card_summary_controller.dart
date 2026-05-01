@@ -15,6 +15,7 @@ class JobCardSummaryController extends GetxController {
   final toDateController        = TextEditingController();
   final workOrderController     = TextEditingController();
   final productionItemController = TextEditingController();
+  final workstationController = TextEditingController();
 
   late final Map<String, TextEditingController> filterControllers;
 
@@ -58,6 +59,13 @@ class JobCardSummaryController extends GetxController {
       prefixIcon:  Icons.category_outlined,
       linkDoctype: 'Item',
     ),
+    const ReportFilterField(
+      key:         'workstation',
+      label:       'Workstation',
+      type:        ReportFilterType.doctypeLink,
+      prefixIcon:  Icons.category_outlined,
+      linkDoctype: 'Workstation',
+    ),
   ];
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -70,6 +78,7 @@ class JobCardSummaryController extends GetxController {
       'to_date'         : toDateController,
       'work_order'      : workOrderController,
       'production_item' : productionItemController,
+      'workstation'     : workstationController,
     };
     // Pre-fill: first day of current year → today (mirrors ERPNext default)
     final now    = DateTime.now();
@@ -102,6 +111,7 @@ class JobCardSummaryController extends GetxController {
   void clearFilters() {
     workOrderController.clear();
     productionItemController.clear();
+    workstationController.clear();
     final now  = DateTime.now();
     fromDateController.text = _fmt(DateTime(now.year, 1, 1));
     toDateController.text   = _fmt(now);
@@ -142,6 +152,7 @@ class JobCardSummaryController extends GetxController {
         toDate:         to,
         workOrder:      workOrderController.text.trim(),
         productionItem: productionItemController.text.trim(),
+        workstation:    workstationController.text.trim(),
       );
 
       if (response.statusCode == 200) {
@@ -170,6 +181,7 @@ class JobCardSummaryController extends GetxController {
     'to_date'         : 'To',
     'work_order'      : 'WO',
     'production_item' : 'Item',
+    'workstation'     : 'Workstation',
   };
 
   void _rebuildActiveFilters() {

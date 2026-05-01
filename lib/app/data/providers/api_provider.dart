@@ -778,6 +778,7 @@ class ApiProvider {
     required String toDate,
     String? workOrder,
     String? productionItem,
+    String? workstation,
   }) async {
     if (!_dioInitialised) await _initDio();
 
@@ -792,6 +793,7 @@ class ApiProvider {
       'to_date'         : toDate,
       'work_order'      : workOrder?.isNotEmpty == true ? workOrder : [],
       'production_item' : productionItem?.isNotEmpty == true ? productionItem : [],
+      'workstation'     : workstation?.isNotEmpty == true ? workstation : [],
     };
 
     return await _dio.get(

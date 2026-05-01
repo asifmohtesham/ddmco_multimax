@@ -43,6 +43,12 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
       type:        ReportFilterType.doctypeLink,
       linkDoctype: 'Item',
     ),
+    ReportFilterField(
+      key: 'workstation',
+      label: 'Workstation',
+      type: ReportFilterType.doctypeLink,
+      linkDoctype: 'Workstation',
+    ),
   ];
 
   static const _sectionLabels = <String, String>{};
