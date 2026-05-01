@@ -125,7 +125,41 @@ class WorkOrderOperation {
   bool get isWip       => status == statusWip;
   bool get isCompleted => status == statusCompleted;
 
-  // ── Deserialization ──────────────────────────────────────────────────────────
+  // ── Deserialization ────────────────────────────────────────────────────────
+
+  WorkOrderOperation copyWith({
+    String? name,
+    String? operation,
+    int? sequenceId,
+    String? status,
+    String? workstation,
+    String? bom,
+    double? completedQty,
+    double? timeInMins,
+    double? processLossQty,
+    double? hourRate,
+    double? plannedOperatingCost,
+    double? actualOperatingCost,
+    double? actualOperationTime,
+    double? batchSize,
+  }) {
+    return WorkOrderOperation(
+      name: name ?? this.name,
+      operation: operation ?? this.operation,
+      sequenceId: sequenceId ?? this.sequenceId,
+      status: status ?? this.status,
+      workstation: workstation ?? this.workstation,
+      bom: bom ?? this.bom,
+      completedQty: completedQty ?? this.completedQty,
+      timeInMins: timeInMins ?? this.timeInMins,
+      processLossQty: processLossQty ?? this.processLossQty,
+      hourRate: hourRate ?? this.hourRate,
+      plannedOperatingCost: plannedOperatingCost ?? this.plannedOperatingCost,
+      actualOperatingCost: actualOperatingCost ?? this.actualOperatingCost,
+      actualOperationTime: actualOperationTime ?? this.actualOperationTime,
+      batchSize: batchSize ?? this.batchSize,
+    );
+  }
 
   factory WorkOrderOperation.fromJson(Map<String, dynamic> json) {
     return WorkOrderOperation(

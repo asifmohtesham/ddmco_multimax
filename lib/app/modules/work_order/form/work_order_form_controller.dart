@@ -904,4 +904,55 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
     } catch (_) {}
     return fallback;
   }
+
+  // ── Set workstation on an operation row ──────────────────────────────────
+  Future<void> showWorkstationPicker(WorkOrderOperation op) async {
+    if (!canEdit) return;
+    final selected = await showDocTypePickerBottomSheet(
+      Get.context!,
+      config: DocTypePickerConfig(
+        doctype: 'Workstation',
+        title: 'Set Workstation — ${op.operation}',
+        columns: [
+          DocTypePickerColumn(
+              fieldname: 'name', label: 'Workstation', isPrimary: true),
+          DocTypePickerColumn(
+              fieldname: 'workstation_type',
+              label: 'Type',
+              isSecondary: true),
+        ],
+        allowRefresh: true,
+      ),
+    );
+    if (selected == null) return;
+
+    final newWorkstation = selected['name'] as String;
+
+    // Optimistically update the local list so the UI reacts immediately.
+    final idx = operations.indexWhere((o) => o.name == op.name);
+    if (idx == -1) return;
+    operations[idx] = operations[idx].copyWith(workstation: newWorkstation);
+    operations.refresh();
+
+    // Persist to ERP: patch just the child row.
+    try {
+      final res = await _provider.updateWorkOrderOperationWorkstation(
+        workOrderName: name,
+        operationRowName: op.name,
+        workstation: newWorkstation,
+      );
+      if (res.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to save workstation');
+        // Roll back optimistic update.
+        operations[idx] = op;
+        operations.refresh();
+      } else {
+        GlobalSnackbar.success(message: 'Workstation set to $newWorkstation');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
+      operations[idx] = op;
+      operations.refresh();
+    }
+  }
 }

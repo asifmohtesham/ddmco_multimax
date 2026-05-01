@@ -169,4 +169,15 @@ class WorkOrderProvider {
         limit: 100,
         orderBy: 'modified desc',
       );
+
+  Future<Response> updateWorkOrderOperationWorkstation({
+    required String workOrderName,
+    required String operationRowName,
+    required String workstation,
+  }) {
+    return _apiProvider.dio.put(
+      '/api/resource/Work Order Operation/$operationRowName',
+      data: {'workstation': workstation},
+    );
+  }
 }

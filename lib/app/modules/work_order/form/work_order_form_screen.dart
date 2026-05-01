@@ -825,135 +825,146 @@ class _OperationsSection extends StatelessWidget {
               : 0.0;
           final statusClr = _statusColor(op.status);
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: cs.outlineVariant),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Row 1: sequence badge + operation name + status chip
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: cs.secondaryContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${op.sequenceId}',
-                        style: textTheme.labelSmall?.copyWith(
-                          color: cs.onSecondaryContainer,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        op.operation,
-                        style: textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: statusClr.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        op.status,
-                        style: textTheme.labelSmall?.copyWith(
-                          color: statusClr,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Row 2: workstation (if set)
-                if ((op.workstation ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
+          return InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => controller.showWorkstationPicker(op),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Row 1: sequence badge + operation name + status chip
                   Row(
                     children: [
-                      Icon(Icons.precision_manufacturing_outlined,
-                          size: 12, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 4),
-                      Text(
-                        op.workstation!,
-                        style: textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.secondaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${op.sequenceId}',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSecondaryContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                ],
-
-                // Row 3: BOM (if set)
-                if ((op.bom ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.account_tree_outlined,
-                          size: 12, color: cs.onSurfaceVariant),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          op.bom!,
-                          style: textTheme.labelSmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
+                          op.operation,
+                          style: textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: statusClr.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          op.status,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: statusClr,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Row 2: workstation (if set)
+                  if ((op.workstation ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.precision_manufacturing_outlined,
+                            size: 12, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          op.workstation!,
+                          style: textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  // Row 3: BOM (if set)
+                  if ((op.bom ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.account_tree_outlined,
+                            size: 12, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            op.bom!,
+                            style: textTheme.labelSmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Progress bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: cs.outlineVariant,
+                      color: statusClr,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // Completed / pending counts
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Completed: ${_fmtQty(op.completedQty)}',
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      Text(
+                        'Pending: ${_fmtQty(pending)}',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: pending > 0
+                              ? cs.error
+                              : cs.onSurfaceVariant,
+                        ),
+                      ),
                     ],
                   ),
                 ],
-
-                const SizedBox(height: 8),
-
-                // Progress bar
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: cs.outlineVariant,
-                    color: statusClr,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                // Completed / pending counts
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Completed: ${_fmtQty(op.completedQty)}',
-                      style: textTheme.labelSmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                    Text(
-                      'Pending: ${_fmtQty(pending)}',
-                      style: textTheme.labelSmall?.copyWith(
-                        color: pending > 0
-                            ? cs.error
-                            : cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           );
         }),
