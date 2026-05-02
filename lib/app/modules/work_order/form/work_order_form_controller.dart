@@ -359,6 +359,17 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
         (wo.materialTransferredForManufacturing ?? 0) > 0;
   }
 
+  // ── Reload ────────────────────────────────────────────────────────────────
+  /// Re-fetches the current Work Order document from the server and refreshes
+  /// all form fields, operations, and linked Job Cards.
+  /// No-op in 'new' mode (document has not been saved yet).
+  Future<void> reload() async {
+    if (mode == 'new') return;
+    if (isLoading.value || isSaving.value) return;
+    await _fetchDocument();
+    GlobalSnackbar.success(message: 'Work Order reloaded');
+  }
+
   Future<void> fetchLinkedJobCards() async {
     if (mode == 'new') return;
     isFetchingLinkedCards.value = true;

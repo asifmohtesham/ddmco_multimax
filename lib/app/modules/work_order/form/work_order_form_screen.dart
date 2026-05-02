@@ -35,6 +35,7 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
             title: title,
             status: wo?.status,
             onSave: controller.canEdit ? controller.save : null,
+            onReload: controller.mode != 'new' ? controller.reload : null,
             isSaving: controller.isSaving.value,
             isDirty: controller.isDirty.value,
             saveResult: SaveResult.idle,
