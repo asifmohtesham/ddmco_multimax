@@ -907,7 +907,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
 
   // ── Set workstation on an operation row ──────────────────────────────────
   Future<void> showWorkstationPicker(WorkOrderOperation op) async {
-    if (!canEdit) return;
     final selected = await showDocTypePickerBottomSheet(
       Get.context!,
       config: DocTypePickerConfig(
@@ -954,5 +953,211 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       operations[idx] = op;
       operations.refresh();
     }
+  }
+
+  Future<void> showWorkstationTypePicker(WorkOrderOperation op) async {
+    if (!canEdit) return;
+    final selected = await showDocTypePickerBottomSheet(
+      Get.context!,
+      config: DocTypePickerConfig(
+        doctype: 'Workstation Type',
+        title: 'Set Workstation Type — ${op.operation}',
+        columns: [
+          DocTypePickerColumn(fieldname: 'name', label: 'Type', isPrimary: true),
+        ],
+        allowRefresh: true,
+      ),
+    );
+    if (selected == null) return;
+    final newType = selected['name'] as String;
+    final idx = operations.indexWhere((o) => o.name == op.name);
+    if (idx == -1) return;
+    operations[idx] = operations[idx].copyWith(workstationType: newType);
+    operations.refresh();
+    try {
+      final res = await _provider.updateOperationWorkstationType(
+        operationRowName: op.name,
+        workstationType: newType,
+      );
+      if (res.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to save workstation type');
+        operations[idx] = op; operations.refresh();
+      } else {
+        GlobalSnackbar.success(message: 'Workstation Type set to $newType');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: extractErrorMessage(e, 'Save failed'));
+      operations[idx] = op; operations.refresh();
+    }
+  }
+
+  Future<void> pickOperationPlannedStartTime(WorkOrderOperation op) async {
+    if (!canEdit) return;
+    final initial = _parseDatetime(op.plannedStartTime) ?? DateTime.now();
+    final picked = await _pickDatetime(initial);
+    if (picked == null) return;
+    final formatted = DateFormat('yyyy-MM-dd HH:mm:ss').format(picked);
+    final idx = operations.indexWhere((o) => o.name == op.name);
+    if (idx == -1) return;
+    operations[idx] = operations[idx].copyWith(plannedStartTime: formatted);
+    operations.refresh();
+    try {
+      final res = await _provider.updateOperationPlannedStartTime(
+        operationRowName: op.name,
+        plannedStartTime: formatted,
+      );
+      if (res.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to save planned start time');
+        operations[idx] = op; operations.refresh();
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: extractErrorMessage(e, 'Save failed'));
+      operations[idx] = op; operations.refresh();
+    }
+  }
+
+  /// Reuse the existing showDatePicker + showTimePicker pattern from pickDate().
+  Future<DateTime?> _pickDatetime(DateTime initial) async {
+    final date = await showDatePicker(
+      context: Get.context!,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+    );
+    if (date == null) return null;
+    final time = await showTimePicker(
+      context: Get.context!,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    return DateTime(date.year, date.month, date.day,
+        time?.hour ?? 0, time?.minute ?? 0);
+  }
+
+  DateTime? _parseDatetime(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return raw.contains('T')
+          ? DateTime.parse(raw)
+          : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+    } catch (_) { return null; }
+  }
+
+  void _showOperationEditSheet(
+      BuildContext context,
+      WorkOrderFormController controller,
+      WorkOrderOperation op,
+      ) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    Get.bottomSheet(
+      Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Header: sequence badge + operation name
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text('${op.sequenceId}',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    )),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(op.operation,
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Workstation Type
+            _OperationEditRow(
+              icon: Icons.category_outlined,
+              label: 'Workstation Type',
+              value: op.workstationType,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationTypePicker(op);
+              },
+            ),
+
+            // Row: Workstation (filtered by type if set)
+            _OperationEditRow(
+              icon: Icons.precision_manufacturing_outlined,
+              label: 'Workstation',
+              value: op.workstation,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationPicker(op);
+              },
+            ),
+
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Planned Start Time
+            _OperationEditRow(
+              icon: Icons.schedule_outlined,
+              label: 'Planned Start Time',
+              value: _fmtDatetime(op.plannedStartTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedStartTime(op);
+              },
+            ),
+
+            // Row: Planned End Time
+            _OperationEditRow(
+              icon: Icons.schedule,
+              label: 'Planned End Time',
+              value: _fmtDatetime(op.plannedEndTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedEndTime(op);
+              },
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  /// Format ISO datetime string → "27 Apr, 14:30"
+  String _fmtDatetime(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    try {
+      final dt = raw.contains('T')
+          ? DateTime.parse(raw)
+          : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+      return DateFormat('dd MMM, HH:mm').format(dt);
+    } catch (_) { return raw; }
   }
 }

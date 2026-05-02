@@ -180,4 +180,31 @@ class WorkOrderProvider {
       data: {'workstation': workstation},
     );
   }
+
+  // ── Workstation Type ────────────────────────────────────────────────────────
+  Future<Response> updateOperationWorkstationType({
+    required String operationRowName,
+    required String workstationType,
+  }) => _apiProvider.dio.put(
+    '/api/resource/Work Order Operation/$operationRowName',
+    data: {'workstation_type': workstationType},
+  );
+
+  // ── Planned Start Time ─────────────────────────────────────────────────────
+  Future<Response> updateOperationPlannedStartTime({
+    required String operationRowName,
+    required String plannedStartTime,   // ISO 8601: "yyyy-MM-dd HH:mm:ss"
+  }) => _apiProvider.dio.put(
+    '/api/resource/Work Order Operation/$operationRowName',
+    data: {'planned_start_time': plannedStartTime},
+  );
+
+  // ── Planned End Time ───────────────────────────────────────────────────────
+  Future<Response> updateOperationPlannedEndTime({
+    required String operationRowName,
+    required String plannedEndTime,
+  }) => _apiProvider.dio.put(
+    '/api/resource/Work Order Operation/$operationRowName',
+    data: {'planned_end_time': plannedEndTime},
+  );
 }

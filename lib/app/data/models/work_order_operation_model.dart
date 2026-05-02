@@ -142,6 +142,9 @@ class WorkOrderOperation {
     double? actualOperatingCost,
     double? actualOperationTime,
     double? batchSize,
+    String? workstationType,
+    String? plannedStartTime,
+    String? plannedEndTime,
   }) {
     return WorkOrderOperation(
       name: name ?? this.name,
@@ -158,6 +161,13 @@ class WorkOrderOperation {
       actualOperatingCost: actualOperatingCost ?? this.actualOperatingCost,
       actualOperationTime: actualOperationTime ?? this.actualOperationTime,
       batchSize: batchSize ?? this.batchSize,
+      workstationType:  workstationType  ?? this.workstationType,
+      plannedStartTime: plannedStartTime ?? this.plannedStartTime,
+      plannedEndTime:   plannedEndTime   ?? this.plannedEndTime,
+      // passthrough-only fields still missing from copyWith (no-ops):
+      description:      this.description,
+      actualStartTime:  this.actualStartTime,
+      actualEndTime:    this.actualEndTime,
     );
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
@@ -827,7 +828,7 @@ class _OperationsSection extends StatelessWidget {
 
           return InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () => controller.showWorkstationPicker(op),
+            onTap: () => _showOperationEditSheet(context, controller, op),
             child: Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(12),
@@ -1232,6 +1233,175 @@ class _JobCardRow extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showOperationEditSheet(
+      BuildContext context,
+      WorkOrderFormController controller,
+      WorkOrderOperation op,
+      ) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    Get.bottomSheet(
+      Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Header: sequence badge + operation name
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text('${op.sequenceId}',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    )),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(op.operation,
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Workstation Type
+            _OperationEditRow(
+              icon: Icons.category_outlined,
+              label: 'Workstation Type',
+              value: op.workstationType,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationTypePicker(op);
+              },
+            ),
+
+            // Row: Workstation (filtered by type if set)
+            _OperationEditRow(
+              icon: Icons.precision_manufacturing_outlined,
+              label: 'Workstation',
+              value: op.workstation,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationPicker(op);
+              },
+            ),
+
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Planned Start Time
+            _OperationEditRow(
+              icon: Icons.schedule_outlined,
+              label: 'Planned Start Time',
+              value: _fmtDatetime(op.plannedStartTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedStartTime(op);
+              },
+            ),
+
+            // Row: Planned End Time
+            _OperationEditRow(
+              icon: Icons.schedule,
+              label: 'Planned End Time',
+              value: _fmtDatetime(op.plannedEndTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedEndTime(op);
+              },
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  /// Format ISO datetime string → "27 Apr, 14:30"
+  String _fmtDatetime(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    try {
+      final dt = raw.contains('T')
+          ? DateTime.parse(raw)
+          : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+      return DateFormat('dd MMM, HH:mm').format(dt);
+    } catch (_) { return raw; }
+  }
+}
+
+class _OperationEditRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? value;
+  final VoidCallback onTap;
+  const _OperationEditRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(children: [
+          Icon(icon, size: 18, color: cs.primary),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: tt.labelMedium?.copyWith(
+                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 2),
+              Text(
+                value?.isNotEmpty == true ? value! : 'Not set',
+                style: tt.bodyMedium?.copyWith(
+                  color: (value?.isNotEmpty == true)
+                      ? cs.onSurface
+                      : cs.onSurfaceVariant,
+                  fontStyle: (value?.isNotEmpty == true)
+                      ? FontStyle.normal
+                      : FontStyle.italic,
+                ),
+              ),
+            ],
+          )),
+          Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+        ]),
       ),
     );
   }
