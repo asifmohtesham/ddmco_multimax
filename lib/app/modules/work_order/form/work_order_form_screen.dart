@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/models/work_order_item_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
@@ -72,6 +73,7 @@ class _WorkOrderForm extends StatelessWidget {
       final operations = controller.operations;
       final linkedCards = controller.linkedJobCards;
       final fetchingJC = controller.isFetchingLinkedCards.value;
+      final requiredItems = controller.workOrder.value?.requiredItems ?? const [];
 
       return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
@@ -302,6 +304,14 @@ class _WorkOrderForm extends StatelessWidget {
               fillColor: !canEdit ? cs.surfaceContainerHighest : null,
             ),
             const SizedBox(height: 24),
+
+            // ── Section: Required Items ─────────────────────────────────────────────
+            if (requiredItems.isNotEmpty)
+              _RequiredItemsSection(
+                items: requiredItems,
+                cs: cs,
+                textTheme: textTheme,
+              ),
 
             // ── Section: BOM Operations Preview (new-WO mode only) ──────────────
             // Plain `if` — no nested Obx. bomOps is already subscribed above.
@@ -1178,10 +1188,10 @@ class _OperationsSection extends StatelessWidget {
       ],
     );
   }
-
-  String _fmtQty(double qty) =>
-      qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
 }
+
+String _fmtQty(double qty) =>
+    qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
 
 /// Thin status constant shim used by [_OperationsSection._statusColor].
 abstract class WorkOrderOperationStatus {
@@ -1192,6 +1202,160 @@ abstract class WorkOrderOperationStatus {
 // ────────────────────────────────────────────────────────────────────────────
 // Small widgets
 // ────────────────────────────────────────────────────────────────────────────
+
+// Required Items section (read-only — from BOM snapshot)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _RequiredItemsSection extends StatelessWidget {
+  final List<WorkOrderItem> items;
+  final ColorScheme cs;
+  final TextTheme textTheme;
+
+  const _RequiredItemsSection({
+    required this.items,
+    required this.cs,
+    required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          label: 'Required Items',
+          icon: Icons.checklist_outlined,
+        ),
+        const SizedBox(height: 12),
+        ...items.map((item) {
+          final progress = item.requiredQty > 0
+              ? (item.transferredQty / item.requiredQty).clamp(0.0, 1.0)
+              : 0.0;
+          final isFullyTransferred = item.isFullyTransferred;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Row 1: item code + transferred badge
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.itemCode,
+                        style: textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isFullyTransferred
+                            ? cs.primary.withValues(alpha: 0.12)
+                            : cs.outlineVariant.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        isFullyTransferred ? 'Transferred' : 'Pending',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: isFullyTransferred
+                              ? cs.primary
+                              : cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Row 2: item name (if different from code)
+                if (item.itemName.isNotEmpty && item.itemName != item.itemCode)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      item.itemName,
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                // Row 3: source warehouse (if set)
+                if ((item.sourceWarehouse ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.warehouse_outlined,
+                          size: 12, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          item.sourceWarehouse!,
+                          style: textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 8),
+
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: cs.outlineVariant,
+                    color: isFullyTransferred ? cs.primary : Colors.orange.shade700,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                // Qty row: required / transferred / UOM
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Required: ${_fmtQty(item.requiredQty)} ${item.uom ?? ''}',
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                    Text(
+                      'Transferred: ${_fmtQty(item.transferredQty)}',
+                      style: textTheme.labelSmall?.copyWith(
+                        color: isFullyTransferred
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                        fontWeight: isFullyTransferred
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+}
 
 class _SectionHeader extends StatelessWidget {
   final String label;
