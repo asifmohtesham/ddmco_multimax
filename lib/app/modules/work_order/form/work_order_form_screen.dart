@@ -26,17 +26,16 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
       },
       child: Obx(() {
         final wo = controller.workOrder.value;
-        final title =
-            (wo?.name.isEmpty ?? true) || wo?.name == 'New Work Order'
-                ? 'New Work Order'
-                : wo!.name;
+        final title = (wo?.name.isEmpty ?? true) || wo?.name == 'New Work Order'
+            ? 'New Work Order'
+            : wo!.name;
         return Scaffold(
           appBar: MainAppBar(
             title: title,
             status: wo?.status,
-            onSave:     controller.canEdit ? controller.save : null,
-            isSaving:   controller.isSaving.value,
-            isDirty:    controller.isDirty.value,
+            onSave: controller.canEdit ? controller.save : null,
+            isSaving: controller.isSaving.value,
+            isDirty: controller.isDirty.value,
             saveResult: SaveResult.idle,
           ),
           body: controller.isLoading.value
@@ -54,35 +53,36 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
 
 class _WorkOrderForm extends StatelessWidget {
   final WorkOrderFormController controller;
+
   const _WorkOrderForm({required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
     return Obx(() {
-      final wo          = controller.workOrder.value;
-      final canEdit     = wo?.docstatus == 0 || controller.mode == 'new';
+      final wo = controller.workOrder.value;
+      final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
 
       // ── Lift all RxList / Rx reads here so the parent Obx always
       //    subscribes to them — child visibility is then gated with plain
       //    `if` conditionals, eliminating nested Obx improper-use crashes.
-      final bomOps      = controller.bomOperations;
-      final operations  = controller.operations;
+      final bomOps = controller.bomOperations;
+      final operations = controller.operations;
       final linkedCards = controller.linkedJobCards;
-      final fetchingJC  = controller.isFetchingLinkedCards.value;
+      final fetchingJC = controller.isFetchingLinkedCards.value;
 
       return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // ── Section: Production ───────────────────────────────────────────────
             _SectionHeader(
-                label: 'Production Details',
-                icon: Icons.precision_manufacturing_outlined),
+              label: 'Production Details',
+              icon: Icons.precision_manufacturing_outlined,
+            ),
             const SizedBox(height: 12),
 
             // Item search typeahead
@@ -100,34 +100,35 @@ class _WorkOrderForm extends StatelessWidget {
                       hintText: 'Search item code…',
                       border: const OutlineInputBorder(),
                       filled: !canEdit,
-                      fillColor:
-                          !canEdit ? cs.surfaceContainerHighest : null,
+                      fillColor: !canEdit ? cs.surfaceContainerHighest : null,
                       prefixIcon: const Icon(Icons.inventory_2_outlined),
                       suffixIcon: controller.isFetchingItems.value
                           ? const Padding(
                               padding: EdgeInsets.all(12),
                               child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2)),
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
                             )
                           : (controller.itemController.text.isNotEmpty &&
-                                  canEdit
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () {
-                                    controller.itemController.clear();
-                                    controller.selectedItem.value = null;
-                                    controller.selectedItemName.value = null;
-                                    controller.bomController.clear();
-                                    controller.selectedBom.value = null;
-                                    controller.bomOptions.clear();
-                                    controller.isItemValid.value = false;
-                                    controller.isBomValid.value  = false;
-                                  },
-                                )
-                              : null),
+                                    canEdit
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      controller.itemController.clear();
+                                      controller.selectedItem.value = null;
+                                      controller.selectedItemName.value = null;
+                                      controller.bomController.clear();
+                                      controller.selectedBom.value = null;
+                                      controller.bomOptions.clear();
+                                      controller.isItemValid.value = false;
+                                      controller.isBomValid.value = false;
+                                    },
+                                  )
+                                : null),
                     ),
                     onChanged: controller.searchItems,
                   ),
@@ -141,12 +142,13 @@ class _WorkOrderForm extends StatelessWidget {
                       ),
                       child: Column(
                         children: items
-                            .map((code) => ListTile(
-                                  dense: true,
-                                  title: Text(code),
-                                  onTap: () =>
-                                      controller.onItemSelected(code),
-                                ))
+                            .map(
+                              (code) => ListTile(
+                                dense: true,
+                                title: Text(code),
+                                onTap: () => controller.onItemSelected(code),
+                              ),
+                            )
                             .toList(),
                       ),
                     ),
@@ -155,8 +157,9 @@ class _WorkOrderForm extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 4, left: 4),
                       child: Text(
                         controller.selectedItemName.value!,
-                        style: textTheme.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
                 ],
@@ -184,18 +187,19 @@ class _WorkOrderForm extends StatelessWidget {
                       ? const Padding(
                           padding: EdgeInsets.all(12),
                           child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2)),
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         )
                       : (canEdit && controller.bomOptions.length > 1
-                          ? IconButton(
-                              icon: const Icon(
-                                  Icons.arrow_drop_down_circle_outlined),
-                              onPressed: controller.showBomPicker,
-                            )
-                          : null),
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_drop_down_circle_outlined,
+                                ),
+                                onPressed: controller.showBomPicker,
+                              )
+                            : null),
                 ),
                 onTap: canEdit && controller.bomOptions.length > 1
                     ? controller.showBomPicker
@@ -219,15 +223,17 @@ class _WorkOrderForm extends StatelessWidget {
                     controller: controller.qtyController,
                     readOnly: !canEdit,
                     keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
+                      decimal: true,
+                    ),
                     textAlign: TextAlign.center,
                     decoration: InputDecoration(
                       border: const OutlineInputBorder(),
                       filled: !canEdit,
-                      fillColor:
-                          !canEdit ? cs.surfaceContainerHighest : null,
+                      fillColor: !canEdit ? cs.surfaceContainerHighest : null,
                       contentPadding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 8),
+                        vertical: 14,
+                        horizontal: 8,
+                      ),
                     ),
                   ),
                 ),
@@ -241,8 +247,7 @@ class _WorkOrderForm extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── Section: Dates ───────────────────────────────────────────────────
-            _SectionHeader(
-                label: 'Dates', icon: Icons.date_range_outlined),
+            _SectionHeader(label: 'Dates', icon: Icons.date_range_outlined),
             const SizedBox(height: 12),
 
             Row(
@@ -252,10 +257,9 @@ class _WorkOrderForm extends StatelessWidget {
                     label: 'Planned Start *',
                     controller: controller.plannedStartController,
                     readOnly: !canEdit,
-                    onTap: () => controller
-                        .pickDate(controller.plannedStartController),
-                    fillColor:
-                        !canEdit ? cs.surfaceContainerHighest : null,
+                    onTap: () =>
+                        controller.pickDate(controller.plannedStartController),
+                    fillColor: !canEdit ? cs.surfaceContainerHighest : null,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -264,10 +268,9 @@ class _WorkOrderForm extends StatelessWidget {
                     label: 'Expected End',
                     controller: controller.expectedEndController,
                     readOnly: !canEdit,
-                    onTap: () => controller
-                        .pickDate(controller.expectedEndController),
-                    fillColor:
-                        !canEdit ? cs.surfaceContainerHighest : null,
+                    onTap: () =>
+                        controller.pickDate(controller.expectedEndController),
+                    fillColor: !canEdit ? cs.surfaceContainerHighest : null,
                   ),
                 ),
               ],
@@ -275,16 +278,16 @@ class _WorkOrderForm extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── Section: Warehouses ─────────────────────────────────────────────
-            _SectionHeader(
-                label: 'Warehouses', icon: Icons.warehouse_outlined),
+            _SectionHeader(label: 'Warehouses', icon: Icons.warehouse_outlined),
             const SizedBox(height: 12),
 
             _WarehouseField(
               label: 'WIP Warehouse',
               controller: controller.wipWarehouseController,
               readOnly: !canEdit,
-              onTap: () => controller
-                  .showWarehousePicker(controller.wipWarehouseController),
+              onTap: () => controller.showWarehousePicker(
+                controller.wipWarehouseController,
+              ),
               fillColor: !canEdit ? cs.surfaceContainerHighest : null,
             ),
             const SizedBox(height: 12),
@@ -293,8 +296,9 @@ class _WorkOrderForm extends StatelessWidget {
               label: 'FG Warehouse',
               controller: controller.fgWarehouseController,
               readOnly: !canEdit,
-              onTap: () => controller
-                  .showWarehousePicker(controller.fgWarehouseController),
+              onTap: () => controller.showWarehousePicker(
+                controller.fgWarehouseController,
+              ),
               fillColor: !canEdit ? cs.surfaceContainerHighest : null,
             ),
             const SizedBox(height: 24),
@@ -309,8 +313,7 @@ class _WorkOrderForm extends StatelessWidget {
               ),
 
             // ── Section: Notes ───────────────────────────────────────────────────
-            _SectionHeader(
-                label: 'Notes', icon: Icons.notes_outlined),
+            _SectionHeader(label: 'Notes', icon: Icons.notes_outlined),
             const SizedBox(height: 12),
 
             TextField(
@@ -321,8 +324,7 @@ class _WorkOrderForm extends StatelessWidget {
                 hintText: 'Add notes or description…',
                 border: const OutlineInputBorder(),
                 filled: !canEdit,
-                fillColor:
-                    !canEdit ? cs.surfaceContainerHighest : null,
+                fillColor: !canEdit ? cs.surfaceContainerHighest : null,
                 alignLabelWithHint: true,
               ),
               onChanged: (_) => controller.markDirty(),
@@ -348,7 +350,7 @@ class _WorkOrderForm extends StatelessWidget {
                     // Show "2/3 Completed" tally when WO is submitted
                     label: wo?.docstatus == 1
                         ? 'Job Cards '
-                        '(${controller.completedJobCardsCount}/${linkedCards.length} Completed)'
+                              '(${controller.completedJobCardsCount}/${linkedCards.length} Completed)'
                         : 'Job Cards (${linkedCards.length})',
                     icon: Icons.assignment_ind_outlined,
                   ),
@@ -360,17 +362,23 @@ class _WorkOrderForm extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 8, left: 2),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, size: 13,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          Icon(
+                            Icons.info_outline,
+                            size: 13,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Tap "Execute Work Order" to begin processing.',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontStyle: FontStyle.italic,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                  fontStyle: FontStyle.italic,
+                                ),
                           ),
                         ],
                       ),
@@ -384,15 +392,19 @@ class _WorkOrderForm extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 8, left: 2),
                       child: Row(
                         children: [
-                          Icon(Icons.warning_amber_outlined, size: 13,
-                              color: Colors.orange.shade700),
+                          Icon(
+                            Icons.warning_amber_outlined,
+                            size: 13,
+                            color: Colors.orange.shade700,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Complete all Job Cards to enable "Finish Work Order".',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.orange.shade700,
-                              fontStyle: FontStyle.italic,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Colors.orange.shade700,
+                                  fontStyle: FontStyle.italic,
+                                ),
                           ),
                         ],
                       ),
@@ -402,11 +414,13 @@ class _WorkOrderForm extends StatelessWidget {
                   if (fetchingJC)
                     const Center(child: CircularProgressIndicator())
                   else
-                    ...linkedCards.map((jc) => _JobCardRow(
-                      jc: jc,
-                      // Lock JC rows until WO is "In Process" or beyond.
-                      isLocked: wo?.status == 'Not Started',
-                    )),
+                    ...linkedCards.map(
+                      (jc) => _JobCardRow(
+                        jc: jc,
+                        // Lock JC rows until WO is "In Process" or beyond.
+                        isLocked: wo?.status == 'Not Started',
+                      ),
+                    ),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -420,11 +434,12 @@ class _WorkOrderForm extends StatelessWidget {
             // GetX to throw "improper use" when the parent Obx rebuilds and
             // mounts/unmounts the inner Obx before it registers any observables.
             Obx(() {
-              final wo      = controller.workOrder.value;
+              final wo = controller.workOrder.value;
               final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
               if (!canEdit) return const SizedBox.shrink();
-              final saving  = controller.isSaving.value;
-              final canSave = controller.isDirty.value &&
+              final saving = controller.isSaving.value;
+              final canSave =
+                  controller.isDirty.value &&
                   controller.isItemValid.value &&
                   controller.isBomValid.value &&
                   controller.isQtyValid.value;
@@ -437,28 +452,33 @@ class _WorkOrderForm extends StatelessWidget {
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
                       : const Icon(Icons.save_outlined),
                   label: Text(
                     saving
                         ? 'Saving…'
                         : controller.mode == 'new'
-                            ? 'Create Work Order'
-                            : 'Save Changes',
+                        ? 'Create Work Order'
+                        : 'Save Changes',
                     style: const TextStyle(fontSize: 16),
                   ),
                   style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.all(16)),
+                    padding: const EdgeInsets.all(16),
+                  ),
                 ),
               );
             }),
 
             // [2] Submit — shown for saved drafts (docstatus 0, mode view)
             Obx(() {
-              final wo          = controller.workOrder.value;
-              final submitting  = controller.isSubmitting.value;
-              final creatingJC  = controller.isCreatingJobCards.value;
-              final canSubmit   = controller.mode != 'new' &&
+              final wo = controller.workOrder.value;
+              final submitting = controller.isSubmitting.value;
+              final creatingJC = controller.isCreatingJobCards.value;
+              final canSubmit =
+                  controller.mode != 'new' &&
                   wo?.docstatus == 0 &&
                   !controller.isSaving.value &&
                   !submitting;
@@ -481,14 +501,17 @@ class _WorkOrderForm extends StatelessWidget {
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.check_circle_outline),
                     label: Text(
                       submitting
                           ? 'Submitting…'
                           : creatingJC
-                              ? 'Creating Job Cards…'
-                              : 'Submit Work Order',
+                          ? 'Creating Job Cards…'
+                          : 'Submit Work Order',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ),
@@ -499,10 +522,11 @@ class _WorkOrderForm extends StatelessWidget {
             // [3] Execute — shown ONLY when submitted + status "Not Started"
             // AND at least one Job Card already exists for this WO.
             Obx(() {
-              final wo              = controller.workOrder.value;
-              final executing       = controller.isExecuting.value;
-              final hasJobCards     = controller.linkedJobCards.isNotEmpty;
-              final canExecute      = wo?.docstatus == 1 &&
+              final wo = controller.workOrder.value;
+              final executing = controller.isExecuting.value;
+              final hasJobCards = controller.linkedJobCards.isNotEmpty;
+              final canExecute =
+                  wo?.docstatus == 1 &&
                   wo?.status == 'Not Started' &&
                   hasJobCards &&
                   !executing &&
@@ -522,10 +546,13 @@ class _WorkOrderForm extends StatelessWidget {
                     ),
                     icon: executing
                         ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.play_circle_outline),
                     label: Text(
                       executing ? 'Executing...' : 'Execute Work Order',
@@ -539,16 +566,18 @@ class _WorkOrderForm extends StatelessWidget {
             // [4] Create Job Cards — shown when submitted + pending ops exist
             // AND no Job Cards have been created yet.
             Obx(() {
-              final wo              = controller.workOrder.value;
-              final creatingCards   = controller.isCreatingJobCards.value;
-              final woQty           = wo?.qty ?? 0;
-              final hasPendingOps   = controller.operations.any(
-                      (op) => op.pendingQty(woQty) > 0);
-              final hasJobCards     = controller.linkedJobCards.isNotEmpty;
+              final wo = controller.workOrder.value;
+              final creatingCards = controller.isCreatingJobCards.value;
+              final woQty = wo?.qty ?? 0;
+              final hasPendingOps = controller.operations.any(
+                (op) => op.pendingQty(woQty) > 0,
+              );
+              final hasJobCards = controller.linkedJobCards.isNotEmpty;
               // Show only when: submitted, has pending ops, and no JC created yet.
-              final canCreateCards  = wo?.docstatus == 1 &&
+              final canCreateCards =
+                  wo?.docstatus == 1 &&
                   hasPendingOps &&
-                  !hasJobCards;                          // ← NEW guard
+                  !hasJobCards; // ← NEW guard
               if (!canCreateCards) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -558,23 +587,28 @@ class _WorkOrderForm extends StatelessWidget {
                     onPressed: creatingCards
                         ? null
                         : () => Get.bottomSheet(
-                      JobCardCreationSheet(controller: controller),
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                    ),
+                            JobCardCreationSheet(controller: controller),
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                          ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       side: BorderSide(color: cs.primary, width: 1.5),
                     ),
                     icon: creatingCards
                         ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: cs.primary))
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: cs.primary,
+                            ),
+                          )
                         : const Icon(Icons.playlist_add_check_outlined),
                     label: Text(
-                      creatingCards ? 'Creating Job Cards...' : 'Create Job Cards',
+                      creatingCards
+                          ? 'Creating Job Cards...'
+                          : 'Create Job Cards',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ),
@@ -585,7 +619,7 @@ class _WorkOrderForm extends StatelessWidget {
             // [5] Finish — shown when WO is "In Process" and producedQty < qty.
             // Navigates to Stock Entry: Manufacture prefilled form.
             Obx(() {
-              final wo       = controller.workOrder.value;
+              final wo = controller.workOrder.value;
               final executing = controller.isExecuting.value;
               final canFinish = controller.canFinish;
               if (!canFinish) return const SizedBox.shrink();
@@ -602,9 +636,13 @@ class _WorkOrderForm extends StatelessWidget {
                     ),
                     icon: executing
                         ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Icon(Icons.check_circle_outline),
                     label: Text(
                       executing ? 'Opening...' : 'Finish Work Order',
@@ -627,8 +665,9 @@ class _WorkOrderForm extends StatelessWidget {
 
 class _BomOperationsPreview extends StatelessWidget {
   final WorkOrderFormController controller;
-  final ColorScheme   cs;
-  final TextTheme     textTheme;
+  final ColorScheme cs;
+  final TextTheme textTheme;
+
   const _BomOperationsPreview({
     required this.controller,
     required this.cs,
@@ -640,10 +679,7 @@ class _BomOperationsPreview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionHeader(
-          label: 'Operations Preview',
-          icon: Icons.route_outlined,
-        ),
+        _SectionHeader(label: 'Operations Preview', icon: Icons.route_outlined),
         const SizedBox(height: 4),
         Padding(
           padding: const EdgeInsets.only(bottom: 10, left: 2),
@@ -657,7 +693,7 @@ class _BomOperationsPreview extends StatelessWidget {
         ),
         ...controller.bomOperations.asMap().entries.map((entry) {
           final idx = entry.key;
-          final op  = entry.value;
+          final op = entry.value;
           final hasWorkstation = (op.workstation ?? '').isNotEmpty;
           final timeLabel = op.timeInMins != null && op.timeInMins! > 0
               ? _fmtTime(op.timeInMins!)
@@ -669,9 +705,7 @@ class _BomOperationsPreview extends StatelessWidget {
             decoration: BoxDecoration(
               color: cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: cs.primary.withValues(alpha: 0.18),
-              ),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.18)),
             ),
             child: Row(
               children: [
@@ -757,7 +791,9 @@ class _BomOperationsPreview extends StatelessWidget {
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 3),
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: cs.secondaryContainer,
                       borderRadius: BorderRadius.circular(4),
@@ -796,8 +832,9 @@ class _BomOperationsPreview extends StatelessWidget {
 
 class _OperationsSection extends StatelessWidget {
   final WorkOrderFormController controller;
-  final ColorScheme   cs;
-  final TextTheme     textTheme;
+  final ColorScheme cs;
+  final TextTheme textTheme;
+
   const _OperationsSection({
     required this.controller,
     required this.cs,
@@ -805,16 +842,16 @@ class _OperationsSection extends StatelessWidget {
   });
 
   Color _statusColor(String status) => switch (status) {
-    WorkOrderOperationStatus.wip       => Colors.orange.shade700,
+    WorkOrderOperationStatus.wip => Colors.orange.shade700,
     WorkOrderOperationStatus.completed => cs.primary,
-    _                                  => cs.onSurfaceVariant,
+    _ => cs.onSurfaceVariant,
   };
 
   void _showOperationEditSheet(
-      BuildContext context,
-      WorkOrderFormController controller,
-      WorkOrderOperation op,
-      ) {
+    BuildContext context,
+    WorkOrderFormController controller,
+    WorkOrderOperation op,
+  ) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
@@ -832,7 +869,8 @@ class _OperationsSection extends StatelessWidget {
             // Drag handle
             Center(
               child: Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
                   color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
@@ -842,23 +880,36 @@ class _OperationsSection extends StatelessWidget {
             const SizedBox(height: 16),
 
             // Header: sequence badge + operation name
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: cs.secondaryContainer,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Text('${op.sequenceId}',
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.secondaryContainer,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    '${op.sequenceId}',
                     style: tt.labelSmall?.copyWith(
                       color: cs.onSecondaryContainer,
                       fontWeight: FontWeight.w700,
-                    )),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(op.operation,
-                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-            ]),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    op.operation,
+                    style: tt.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
             Divider(color: cs.outlineVariant),
             const SizedBox(height: 4),
@@ -883,6 +934,21 @@ class _OperationsSection extends StatelessWidget {
                 Get.back();
                 controller.showWorkstationPicker(op);
               },
+            ),
+
+            // Row: Source Warehouse (Draft only — editable; Submitted — read-only)
+            _OperationEditRow(
+              icon: Icons.warehouse_outlined,
+              label: 'Source Warehouse',
+              value: op.sourceWarehouse,
+              // onTap is null when not canEdit → _OperationEditRow should render as
+              // read-only (no chevron, muted text). Pass null explicitly.
+              onTap: controller.canEdit
+                  ? () {
+                      Get.back();
+                      controller.showSourceWarehousePicker(op);
+                    }
+                  : null,
             ),
 
             const SizedBox(height: 4),
@@ -923,14 +989,12 @@ class _OperationsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionHeader(
-            label: 'Operations',
-            icon: Icons.account_tree_outlined),
+        _SectionHeader(label: 'Operations', icon: Icons.account_tree_outlined),
         const SizedBox(height: 12),
         ...controller.operations.map((op) {
-          final woQty     = controller.workOrder.value?.qty ?? 0;
-          final pending   = op.pendingQty(woQty);
-          final progress  = woQty > 0
+          final woQty = controller.workOrder.value?.qty ?? 0;
+          final pending = op.pendingQty(woQty);
+          final progress = woQty > 0
               ? (op.completedQty / woQty).clamp(0.0, 1.0)
               : 0.0;
           final statusClr = _statusColor(op.status);
@@ -954,7 +1018,9 @@ class _OperationsSection extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: cs.secondaryContainer,
                           borderRadius: BorderRadius.circular(4),
@@ -972,14 +1038,17 @@ class _OperationsSection extends StatelessWidget {
                         child: Text(
                           op.operation,
                           style: textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600),
+                            fontWeight: FontWeight.w600,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: statusClr.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(4),
@@ -1000,13 +1069,37 @@ class _OperationsSection extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.precision_manufacturing_outlined,
-                            size: 12, color: cs.onSurfaceVariant),
+                        Icon(
+                          Icons.precision_manufacturing_outlined,
+                          size: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           op.workstation!,
-                          style: textTheme.labelSmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
+                          style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  // After the workstation row block (~line 1016), before BOM row:
+                  if ((op.sourceWarehouse ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.warehouse_outlined,
+                            size: 12, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            op.sourceWarehouse!,
+                            style: textTheme.labelSmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -1017,14 +1110,18 @@ class _OperationsSection extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.account_tree_outlined,
-                            size: 12, color: cs.onSurfaceVariant),
+                        Icon(
+                          Icons.account_tree_outlined,
+                          size: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             op.bom!,
-                            style: textTheme.labelSmall
-                                ?.copyWith(color: cs.onSurfaceVariant),
+                            style: textTheme.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1060,15 +1157,14 @@ class _OperationsSection extends StatelessWidget {
                     children: [
                       Text(
                         'Completed: ${_fmtQty(op.completedQty)}',
-                        style: textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        style: textTheme.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                       Text(
                         'Pending: ${_fmtQty(pending)}',
                         style: textTheme.labelSmall?.copyWith(
-                          color: pending > 0
-                              ? cs.error
-                              : cs.onSurfaceVariant,
+                          color: pending > 0 ? cs.error : cs.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -1089,7 +1185,7 @@ class _OperationsSection extends StatelessWidget {
 
 /// Thin status constant shim used by [_OperationsSection._statusColor].
 abstract class WorkOrderOperationStatus {
-  static const String wip       = 'Work In Progress';
+  static const String wip = 'Work In Progress';
   static const String completed = 'Completed';
 }
 
@@ -1100,6 +1196,7 @@ abstract class WorkOrderOperationStatus {
 class _SectionHeader extends StatelessWidget {
   final String label;
   final IconData icon;
+
   const _SectionHeader({required this.label, required this.icon});
 
   @override
@@ -1112,15 +1209,17 @@ class _SectionHeader extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: cs.primary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
+            color: cs.primary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Divider(
-              color: cs.primary.withValues(alpha: 0.2), thickness: 1),
+            color: cs.primary.withValues(alpha: 0.2),
+            thickness: 1,
+          ),
         ),
       ],
     );
@@ -1129,6 +1228,7 @@ class _SectionHeader extends StatelessWidget {
 
 class _FieldLabel extends StatelessWidget {
   final String label;
+
   const _FieldLabel({required this.label});
 
   @override
@@ -1136,9 +1236,9 @@ class _FieldLabel extends StatelessWidget {
     return Text(
       label,
       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     );
   }
 }
@@ -1146,6 +1246,7 @@ class _FieldLabel extends StatelessWidget {
 class _StepButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+
   const _StepButton({required this.icon, required this.onTap});
 
   @override
@@ -1174,6 +1275,7 @@ class _DateField extends StatelessWidget {
   final bool readOnly;
   final VoidCallback onTap;
   final Color? fillColor;
+
   const _DateField({
     required this.label,
     required this.controller,
@@ -1244,31 +1346,32 @@ class _WarehouseField extends StatelessWidget {
 /// Private widget to render a single Job Card row in the linked section.
 class _JobCardRow extends StatelessWidget {
   final JobCard jc;
+
   /// When true the row is tappable; false = WO not yet "In Process".
   final bool isLocked;
 
   const _JobCardRow({required this.jc, this.isLocked = false});
 
   Color _statusColor(String? status, ColorScheme cs) => switch (status) {
-    'Open'        => cs.onSurfaceVariant,
+    'Open' => cs.onSurfaceVariant,
     'Work In Progress' => Colors.orange.shade700,
-    'Completed'   => Colors.green.shade700,
-    _             => cs.onSurfaceVariant,
+    'Completed' => Colors.green.shade700,
+    _ => cs.onSurfaceVariant,
   };
 
   IconData _statusIcon(String? status) => switch (status) {
-    'Open'             => Icons.radio_button_unchecked,
+    'Open' => Icons.radio_button_unchecked,
     'Work In Progress' => Icons.timelapse_outlined,
-    'Completed'        => Icons.check_circle_outline,
-    _                  => Icons.help_outline,
+    'Completed' => Icons.check_circle_outline,
+    _ => Icons.help_outline,
   };
 
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
-    final name   = jc.name ?? '';
+    final cs = Theme.of(context).colorScheme;
+    final name = jc.name ?? '';
     final status = jc.status ?? 'Open';
-    final clr    = _statusColor(status, cs);
+    final clr = _statusColor(status, cs);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1276,8 +1379,10 @@ class _JobCardRow extends StatelessWidget {
         // Locked = WO not yet executed; tapping is suppressed.
         onTap: isLocked
             ? null
-            : () => Get.toNamed(AppRoutes.JOB_CARD_FORM,
-            arguments: {'name': name}),
+            : () => Get.toNamed(
+                AppRoutes.JOB_CARD_FORM,
+                arguments: {'name': name},
+              ),
         borderRadius: BorderRadius.circular(8),
         child: Opacity(
           opacity: isLocked ? 0.55 : 1.0,
@@ -1315,7 +1420,9 @@ class _JobCardRow extends StatelessWidget {
                 // Status chip
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: clr.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(4),
@@ -1352,6 +1459,7 @@ class _OperationEditRow extends StatelessWidget {
   final String label;
   final String? value;
   final VoidCallback onTap;
+
   const _OperationEditRow({
     required this.icon,
     required this.label,
@@ -1368,30 +1476,39 @@ class _OperationEditRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        child: Row(children: [
-          Icon(icon, size: 18, color: cs.primary),
-          const SizedBox(width: 12),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: tt.labelMedium?.copyWith(
-                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 2),
-              Text(
-                value?.isNotEmpty == true ? value! : 'Not set',
-                style: tt.bodyMedium?.copyWith(
-                  color: (value?.isNotEmpty == true)
-                      ? cs.onSurface
-                      : cs.onSurfaceVariant,
-                  fontStyle: (value?.isNotEmpty == true)
-                      ? FontStyle.normal
-                      : FontStyle.italic,
-                ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: tt.labelMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value?.isNotEmpty == true ? value! : 'Not set',
+                    style: tt.bodyMedium?.copyWith(
+                      color: (value?.isNotEmpty == true)
+                          ? cs.onSurface
+                          : cs.onSurfaceVariant,
+                      fontStyle: (value?.isNotEmpty == true)
+                          ? FontStyle.normal
+                          : FontStyle.italic,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          )),
-          Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
-        ]),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }
@@ -1404,5 +1521,7 @@ String _fmtDatetime(String? raw) {
         ? DateTime.parse(raw)
         : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
     return DateFormat('dd MMM, HH:mm').format(dt);
-  } catch (_) { return raw; }
+  } catch (_) {
+    return raw;
+  }
 }

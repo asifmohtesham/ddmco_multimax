@@ -207,4 +207,14 @@ class WorkOrderProvider {
     '/api/resource/Work Order Operation/$operationRowName',
     data: {'planned_end_time': plannedEndTime},
   );
+
+  Future<Response> updateOperationSourceWarehouse({
+    required String operationRowName,
+    required String sourceWarehouse,
+  }) {
+    return _apiProvider.dio.put(
+      '/api/resource/Work Order Operation/$operationRowName',
+      data: {'source_warehouse': sourceWarehouse},
+    );
+  }
 }

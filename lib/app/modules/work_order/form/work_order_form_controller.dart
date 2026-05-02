@@ -955,6 +955,55 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
     }
   }
 
+  // ── Set source warehouse on an operation row ────────────────────────────
+  Future<void> showSourceWarehousePicker(WorkOrderOperation op) async {
+    if (!canEdit) return;                          // Draft-only guard
+
+    final selected = await showDocTypePickerBottomSheet(
+      Get.context!,
+      config: DocTypePickerConfig(
+        doctype: 'Warehouse',
+        title: 'Source Warehouse — ${op.operation}',
+        columns: [
+          DocTypePickerColumn(
+              fieldname: 'name', label: 'Warehouse', isPrimary: true),
+          DocTypePickerColumn(
+              fieldname: 'warehouse_type',
+              label: 'Type',
+              isSecondary: true),
+        ],
+        allowRefresh: true,
+      ),
+    );
+    if (selected == null) return;
+
+    final newWarehouse = selected['name'] as String;
+    final idx = operations.indexWhere((o) => o.name == op.name);
+    if (idx == -1) return;
+
+    // Optimistic update
+    operations[idx] = operations[idx].copyWith(sourceWarehouse: newWarehouse);
+    operations.refresh();
+
+    try {
+      final res = await _provider.updateOperationSourceWarehouse(
+        operationRowName: op.name,
+        sourceWarehouse: newWarehouse,
+      );
+      if (res.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to save source warehouse');
+        operations[idx] = op;
+        operations.refresh();
+      } else {
+        GlobalSnackbar.success(message: 'Source warehouse set');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
+      operations[idx] = op;
+      operations.refresh();
+    }
+  }
+
   Future<void> showWorkstationTypePicker(WorkOrderOperation op) async {
     if (!canEdit) return;
     final selected = await showDocTypePickerBottomSheet(

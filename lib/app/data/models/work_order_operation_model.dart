@@ -38,6 +38,10 @@ class WorkOrderOperation {
   /// Link → Workstation (optional).
   final String? workstation;
 
+  /// Link → Warehouse. The source warehouse for this operation step.
+  /// Editable in Draft (docstatus == 0) only.
+  final String? sourceWarehouse;
+
   // ── BOM link ─────────────────────────────────────────────────────────────────
   /// Link → BOM. Populated when `use_multi_level_bom` is enabled.
   final String? bom;
@@ -95,6 +99,7 @@ class WorkOrderOperation {
     required this.processLossQty,
     this.workstationType,
     this.workstation,
+    this.sourceWarehouse,
     this.bom,
     required this.sequenceId,
     this.plannedStartTime,
@@ -133,6 +138,7 @@ class WorkOrderOperation {
     int? sequenceId,
     String? status,
     String? workstation,
+    String? sourceWarehouse,
     String? bom,
     double? completedQty,
     double? timeInMins,
@@ -152,6 +158,7 @@ class WorkOrderOperation {
       sequenceId: sequenceId ?? this.sequenceId,
       status: status ?? this.status,
       workstation: workstation ?? this.workstation,
+      sourceWarehouse: sourceWarehouse ?? this.sourceWarehouse,
       bom: bom ?? this.bom,
       completedQty: completedQty ?? this.completedQty,
       timeInMins: timeInMins ?? this.timeInMins,
@@ -180,6 +187,7 @@ class WorkOrderOperation {
       processLossQty:       (json['process_loss_qty']      as num?)?.toDouble() ?? 0.0,
       workstationType:      json['workstation_type']       as String?,
       workstation:          json['workstation']            as String?,
+      sourceWarehouse:      json['source_warehouse']       as String?,
       bom:                  json['bom']                    as String?,
       sequenceId:           (json['sequence_id']           as num?)?.toInt()    ?? 0,
       plannedStartTime:     json['planned_start_time']     as String?,
