@@ -1345,17 +1345,6 @@ class _JobCardRow extends StatelessWidget {
       ),
     );
   }
-
-  /// Format ISO datetime string → "27 Apr, 14:30"
-  String _fmtDatetime(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    try {
-      final dt = raw.contains('T')
-          ? DateTime.parse(raw)
-          : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
-      return DateFormat('dd MMM, HH:mm').format(dt);
-    } catch (_) { return raw; }
-  }
 }
 
 class _OperationEditRow extends StatelessWidget {
@@ -1406,4 +1395,14 @@ class _OperationEditRow extends StatelessWidget {
       ),
     );
   }
+}
+
+String _fmtDatetime(String? raw) {
+  if (raw == null || raw.isEmpty) return '—';
+  try {
+    final dt = raw.contains('T')
+        ? DateTime.parse(raw)
+        : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+    return DateFormat('dd MMM, HH:mm').format(dt);
+  } catch (_) { return raw; }
 }
