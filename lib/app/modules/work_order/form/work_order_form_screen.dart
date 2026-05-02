@@ -1458,13 +1458,13 @@ class _OperationEditRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String? value;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _OperationEditRow({
     required this.icon,
     required this.label,
     required this.value,
-    required this.onTap,
+    this.onTap,
   });
 
   @override
@@ -1506,7 +1506,8 @@ class _OperationEditRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+            if (onTap != null)
+              Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
           ],
         ),
       ),
