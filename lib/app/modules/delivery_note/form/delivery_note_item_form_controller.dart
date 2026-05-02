@@ -167,6 +167,19 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return rackBalance.value > 0;              // validation done, check balance
   }
 
+  /// Returns true when:
+  /// - No batch has been entered yet (permissive)
+  /// - Batch validation is still in progress (don't block while fetching)
+  /// - Batch has been validated and balance > 0
+  /// Returns false only when batch validation is COMPLETE and balance ≤ 0.
+  bool get _batchBalanceOk {
+    final batch = batchController.text.trim();
+    if (batch.isEmpty) return true;              // no batch entered
+    if (isValidatingBatch.value) return true;    // still fetching — don't block yet
+    if (!isBatchValid.value) return false;       // validation done, failed
+    return batchBalance.value > 0;              // validation done, check balance
+  }
+
   // ── SerialFieldMixin: posItemQtyForSerial override ────────────────────────
   /// Delegates to the parent controller's POS qty-cap lookup.
   /// The parent resolves serial (= idx string) → PosUploadItem.quantity.
@@ -700,6 +713,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// within the effective ceiling, then write [isQtyValid] and [qtyError]
   /// with an appropriate message for each failure case.
   void _evaluateQtyValidity({required double? qty, required double ceil}) {
+    // Gate on batch balance first — mirrors _rackBalanceOk pattern.
+    if (!_batchBalanceOk) {
+      isQtyValid.value = false;
+      qtyError.value   = 'Batch has no available stock (balance: 0)';
+      return;
+    }
+
     // FIX: gate on rack balance first
     if (!_rackBalanceOk) {
       isQtyValid.value = false;
@@ -729,8 +749,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// Responsibility: combine batch validity with the qty flags to decide
   /// whether the sheet as a whole may be submitted.
   void _evaluateSheetValidity({required bool qtyOk, required bool ceilOk}) {
-    // FIX: added _rackBalanceOk to the gate
-    isSheetValid.value = isBatchValid.value && _rackBalanceOk && qtyOk && ceilOk;
+    // Added _batchBalanceOk alongside existing _rackBalanceOk gate.
+    isSheetValid.value =
+        isBatchValid.value && _batchBalanceOk && _rackBalanceOk && qtyOk && ceilOk;
   }
 
   /// Responsibility: recompute and publish the live-remaining badge so the
