@@ -986,7 +986,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
         GlobalSnackbar.success(message: 'Workstation Type set to $newType');
       }
     } on DioException catch (e) {
-      GlobalSnackbar.error(message: extractErrorMessage(e, 'Save failed'));
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
       operations[idx] = op; operations.refresh();
     }
   }
@@ -1011,7 +1011,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
         operations[idx] = op; operations.refresh();
       }
     } on DioException catch (e) {
-      GlobalSnackbar.error(message: extractErrorMessage(e, 'Save failed'));
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
       operations[idx] = op; operations.refresh();
     }
   }
@@ -1040,6 +1040,31 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
           ? DateTime.parse(raw)
           : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
     } catch (_) { return null; }
+  }
+
+  Future<void> pickOperationPlannedEndTime(WorkOrderOperation op) async {
+    if (!canEdit) return;
+    final initial = _parseDatetime(op.plannedEndTime) ?? DateTime.now();
+    final picked = await _pickDatetime(initial);
+    if (picked == null) return;
+    final formatted = DateFormat('yyyy-MM-dd HH:mm:ss').format(picked);
+    final idx = operations.indexWhere((o) => o.name == op.name);
+    if (idx == -1) return;
+    operations[idx] = operations[idx].copyWith(plannedEndTime: formatted);
+    operations.refresh();
+    try {
+      final res = await _provider.updateOperationPlannedEndTime(
+        operationRowName: op.name,
+        plannedEndTime: formatted,
+      );
+      if (res.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to save planned end time');
+        operations[idx] = op; operations.refresh();
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
+      operations[idx] = op; operations.refresh();
+    }
   }
 
   void _showOperationEditSheet(

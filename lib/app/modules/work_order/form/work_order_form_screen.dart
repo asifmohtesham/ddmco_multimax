@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
@@ -809,6 +810,114 @@ class _OperationsSection extends StatelessWidget {
     _                                  => cs.onSurfaceVariant,
   };
 
+  void _showOperationEditSheet(
+      BuildContext context,
+      WorkOrderFormController controller,
+      WorkOrderOperation op,
+      ) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    Get.bottomSheet(
+      Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Header: sequence badge + operation name
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cs.secondaryContainer,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text('${op.sequenceId}',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    )),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(op.operation,
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Workstation Type
+            _OperationEditRow(
+              icon: Icons.category_outlined,
+              label: 'Workstation Type',
+              value: op.workstationType,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationTypePicker(op);
+              },
+            ),
+
+            // Row: Workstation (filtered by type if set)
+            _OperationEditRow(
+              icon: Icons.precision_manufacturing_outlined,
+              label: 'Workstation',
+              value: op.workstation,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationPicker(op);
+              },
+            ),
+
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Planned Start Time
+            _OperationEditRow(
+              icon: Icons.schedule_outlined,
+              label: 'Planned Start Time',
+              value: _fmtDatetime(op.plannedStartTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedStartTime(op);
+              },
+            ),
+
+            // Row: Planned End Time
+            _OperationEditRow(
+              icon: Icons.schedule,
+              label: 'Planned End Time',
+              value: _fmtDatetime(op.plannedEndTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedEndTime(op);
+              },
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1234,114 +1343,6 @@ class _JobCardRow extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  void _showOperationEditSheet(
-      BuildContext context,
-      WorkOrderFormController controller,
-      WorkOrderOperation op,
-      ) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    Get.bottomSheet(
-      Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Header: sequence badge + operation name
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: cs.secondaryContainer,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Text('${op.sequenceId}',
-                    style: tt.labelSmall?.copyWith(
-                      color: cs.onSecondaryContainer,
-                      fontWeight: FontWeight.w700,
-                    )),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(op.operation,
-                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-            ]),
-            const SizedBox(height: 4),
-            Divider(color: cs.outlineVariant),
-            const SizedBox(height: 4),
-
-            // Row: Workstation Type
-            _OperationEditRow(
-              icon: Icons.category_outlined,
-              label: 'Workstation Type',
-              value: op.workstationType,
-              onTap: () {
-                Get.back();
-                controller.showWorkstationTypePicker(op);
-              },
-            ),
-
-            // Row: Workstation (filtered by type if set)
-            _OperationEditRow(
-              icon: Icons.precision_manufacturing_outlined,
-              label: 'Workstation',
-              value: op.workstation,
-              onTap: () {
-                Get.back();
-                controller.showWorkstationPicker(op);
-              },
-            ),
-
-            const SizedBox(height: 4),
-            Divider(color: cs.outlineVariant),
-            const SizedBox(height: 4),
-
-            // Row: Planned Start Time
-            _OperationEditRow(
-              icon: Icons.schedule_outlined,
-              label: 'Planned Start Time',
-              value: _fmtDatetime(op.plannedStartTime),
-              onTap: () {
-                Get.back();
-                controller.pickOperationPlannedStartTime(op);
-              },
-            ),
-
-            // Row: Planned End Time
-            _OperationEditRow(
-              icon: Icons.schedule,
-              label: 'Planned End Time',
-              value: _fmtDatetime(op.plannedEndTime),
-              onTap: () {
-                Get.back();
-                controller.pickOperationPlannedEndTime(op);
-              },
-            ),
-          ],
-        ),
-      ),
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
     );
   }
 
