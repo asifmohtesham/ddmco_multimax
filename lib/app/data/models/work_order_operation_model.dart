@@ -222,4 +222,24 @@ class WorkOrderOperation {
   String toString() =>
       'WorkOrderOperation(name: $name, operation: $operation, '
       'status: $status, completedQty: $completedQty, sequenceId: $sequenceId)';
+
+  /// Splits [totalQty] into a list of batch slices respecting [batchSize].
+  /// Mirrors ERPNext's split_qty_based_on_batch_size() while-loop logic.
+  ///
+  /// Examples:
+  ///   totalQty=120, batchSize=60 → [60, 60]
+  ///   totalQty=130, batchSize=60 → [60, 60, 10]
+  ///   totalQty=45,  batchSize=60 → [45]   (partial last batch)
+  ///   batchSize=0 or null        → [totalQty] (no split)
+  List<double> splitIntoBatches(double totalQty) {
+    if (batchSize <= 0) return [totalQty];
+    final slices = <double>[];
+    var remaining = totalQty;
+    while (remaining > 0) {
+      final slice = remaining >= batchSize ? batchSize : remaining;
+      slices.add(slice);
+      remaining -= slice;
+    }
+    return slices;
+  }
 }

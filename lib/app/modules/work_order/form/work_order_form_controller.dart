@@ -851,29 +851,44 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
 
   // ── Create Job Cards (public) ─────────────────────────────────────────────
   Future<void> createJobCards(
-    List<WorkOrderOperation> ops,
-    Map<String, double> qtys,
-  ) async {
+      List<WorkOrderOperation> ops,
+      Map<String, double> qtys,
+      ) async {
     if (ops.isEmpty || isCreatingJobCards.value) return;
     isCreatingJobCards.value = true;
+
+    int totalCreated = 0;
+    final jobCardCreationStatus = ''.obs;
+
     try {
-      final operations = ops.map((op) {
-        final qty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
-        return op.toJobCardPayload(qty: qty);
-      }).toList();
-      final res = await _provider.makeJobCard(
-        workOrderName: name,
-        operations: operations,
-      );
-      if (res.statusCode == 200) {
+      for (final op in ops) {
+        final totalQty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
+        final batches  = op.splitIntoBatches(totalQty); // e.g. [60, 60]
+        jobCardCreationStatus.value =
+        'Creating JC ${totalCreated + 1} of $totalToCreate...';
+
+        for (final batchQty in batches) {
+          final payload = op.toJobCardPayload(qty: batchQty);
+          final res = await _provider.makeJobCard(
+            workOrderName: name,
+            operations: [payload],   // one operation, one batch slice
+          );
+          if (res.statusCode == 200) {
+            totalCreated++;
+          } else {
+            GlobalSnackbar.warning(
+              message: 'Batch ${batches.indexOf(batchQty) + 1}/${batches.length} '
+                  'for ${op.operation} failed.',
+            );
+          }
+        }
+      }
+
+      if (totalCreated > 0) {
         await fetchLinkedJobCards();
         GlobalSnackbar.success(
-          message:
-              '${ops.length} Job Card${ops.length == 1 ? '' : 's'} created successfully',
+          message: '$totalCreated Job Card${totalCreated == 1 ? '' : 's'} created',
         );
-      } else {
-        GlobalSnackbar.warning(
-            message: 'Job Card creation failed. Please try again.');
       }
     } on DioException catch (e) {
       GlobalSnackbar.warning(

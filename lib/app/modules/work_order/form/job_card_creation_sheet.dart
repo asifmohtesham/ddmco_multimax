@@ -139,6 +139,11 @@ class _JobCardCreationSheetState extends State<JobCardCreationSheet> {
     await _c.createJobCards(selected, qtys);
   }
 
+  int _batchCount(WorkOrderOperation op) {
+    final qty = double.tryParse(_qtyControllers[op.name]?.text ?? '0') ?? 0;
+    return op.splitIntoBatches(qty).length;
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
@@ -270,7 +275,7 @@ class _JobCardCreationSheetState extends State<JobCardCreationSheet> {
                             : const Icon(Icons.check_circle_outline),
                         label: Text(
                           loading
-                              ? 'Creating…'
+                              ? 'Creating...'
                               : n == 0
                                   ? 'Select operations'
                                   : 'Create $n Job Card${n == 1 ? '' : 's'}',
@@ -466,6 +471,12 @@ class _OperationRow extends StatelessWidget {
                   ),
                 ),
               ),
+
+              if (op.batchSize > 0)
+                Text(
+                  '→ ${op.splitIntoBatches(woQty).length} Job Card(s) of ${op.batchSize.toInt()} each',
+                  style: textTheme.labelSmall?.copyWith(color: cs.primary),
+                ),
             ],
           ),
         ),
