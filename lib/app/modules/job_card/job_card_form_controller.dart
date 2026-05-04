@@ -222,11 +222,19 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     };
     if (savingFlag == null || valueObs == null) return;
 
+    // Build the serialised payload.
+    // `employee` is a Table MultiSelect on Job Card — Frappe requires a list of
+    // child-row dicts: [{"employee": "HR-EMP-XXXXX"}].
+    // Every other header field is a plain scalar value.
+    final Object serialisedValue = (fieldKey == 'employee' && value.isNotEmpty)
+        ? [{'employee': value}]
+        : value;
+
     savingFlag.value = true;
     try {
       final res = await _provider.updateJobCardHeaderField(
         jobCardName: name,
-        data: {fieldKey: value},
+        data: {fieldKey: serialisedValue},
       );
       if (res.statusCode == 200) {
         valueObs.value = value;
