@@ -600,6 +600,9 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
   }
 
+  bool get _isMaterialReceiptType =>
+      selectedStockEntryType.value == 'Material Receipt';
+
   /// Effective qty ceiling for SE: min(batchBalance, rackBalance,
   /// posSerialCeiling, mrQty) — whichever positive value is lowest.
   ///
@@ -611,26 +614,32 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   double get effectiveMaxQty {
     double? ceil;
 
+    // 1) POS serial ceiling (always honoured when present)
     final serial = _posSerialCeiling;
     if (serial != null && serial > 0) {
       ceil = serial;
     }
 
-    final batch = batchBalance.value;
-    if (batch > 0) {
-      ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
+    // 2) Batch/rack balances only apply to non–Material Receipt types
+    if (!_isMaterialReceiptType) {
+      final batch = batchBalance.value;
+      if (batch > 0) {
+        ceil = (ceil == null) ? batch : (batch < ceil ? batch : ceil);
+      }
+
+      final rack = rackBalance.value;
+      if (rack > 0) {
+        ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
+      }
     }
 
-    final rack = rackBalance.value;
-    if (rack > 0) {
-      ceil = (ceil == null) ? rack : (rack < ceil ? rack : ceil);
-    }
-
+    // 3) MR-linked qty (if any) still acts as a ceiling
     final mr = _mrQty;
     if (mr != null && mr > 0) {
       ceil = (ceil == null) ? mr : (mr < ceil ? mr : ceil);
     }
 
+    // 4) No ceiling → open-ended entry
     return ceil ?? double.infinity;
   }
 
