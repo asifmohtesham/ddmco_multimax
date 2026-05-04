@@ -1538,6 +1538,11 @@ class _JobCardRow extends StatelessWidget {
     final status = jc.status ?? 'Open';
     final clr = _statusColor(status, cs);
 
+    // Safe accessors for additional display fields
+    final workstation = (jc.workstation ?? '').trim();
+    final employee = (jc.primaryEmployeeDisplay ?? '').trim();
+    final qtyLabel = _fmtQty(jc.forQuantity);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -1545,9 +1550,9 @@ class _JobCardRow extends StatelessWidget {
         onTap: isLocked
             ? null
             : () => Get.toNamed(
-                AppRoutes.JOB_CARD_FORM,
-                arguments: {'name': name},
-              ),
+          AppRoutes.JOB_CARD_FORM,
+          arguments: {'name': name},
+        ),
         borderRadius: BorderRadius.circular(8),
         child: Opacity(
           opacity: isLocked ? 0.55 : 1.0,
@@ -1570,19 +1575,97 @@ class _JobCardRow extends StatelessWidget {
                 Icon(_statusIcon(status), size: 20, color: clr),
                 const SizedBox(width: 10),
 
-                // JC name
+                // Main content: name + workstation + employee + qty
                 Expanded(
-                  child: Text(
-                    name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: isLocked ? cs.onSurfaceVariant : cs.onSurface,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Job Card name
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isLocked ? cs.onSurfaceVariant : cs.onSurface,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                      // Workstation (optional)
+                      if (workstation.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.precision_manufacturing_outlined,
+                              size: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                workstation,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Employee name (optional)
+                      if (employee.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                employee,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Quantity (always shown)
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.straighten,
+                            size: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Qty: $qtyLabel',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
 
-                // Status chip
+                // Status chip (unchanged)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
