@@ -9,6 +9,8 @@ import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 
 class JobCardFormController extends GetxController with DioErrorMixin {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
@@ -34,6 +36,44 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   final isSubmitting = false.obs;
 
   final jobCard = Rx<JobCard?>(null);
+
+  // ── Editable header fields ────────────────────────────────────────────────
+  /// Current value shown in each inline field.  Seeded from the document on
+  /// every fetch; updated optimistically on a successful save.
+  final headerWorkstation = ''.obs;
+  final headerEmployee    = ''.obs;
+  final headerWipWarehouse = ''.obs;
+
+  /// Per-field saving spinners — keeps the three fields independent.
+  final isSavingWorkstation  = false.obs;
+  final isSavingEmployee     = false.obs;
+  final isSavingWipWarehouse = false.obs;
+
+  /// DocTypePicker config for the Employee link field.
+  static const employeePickerConfig = DocTypePickerConfig(
+    doctype: 'Employee',
+    title: 'Select Employee',
+    columns: [
+      DocTypePickerColumn(
+        fieldname: 'name',
+        label: 'Employee ID',
+        isPrimary: true,
+        flex: 2,
+      ),
+      DocTypePickerColumn(
+        fieldname: 'employee_name',
+        label: 'Employee Name',
+        isSecondary: true,
+        flex: 3,
+      ),
+    ],
+    subtitleFields: ['department', 'designation'],
+    filters: [
+      ['Employee', 'status', '=', 'Active'],
+    ],
+    searchFields: ['name', 'employee_name'],
+    cacheKey: 'job_card_employee_picker',
+  );
 
   // ── Add time log form controllers ─────────────────────────────────────────
   final startTimeController    = TextEditingController();
@@ -140,6 +180,81 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       isLoading.value = false;
     }
   }
+
+  /// Seed editable header observables from the freshly loaded document.
+  void _seedHeaderFields() {
+    final jc = jobCard.value;
+    if (jc == null) return;
+    headerWorkstation.value  = jc.workstation    ?? '';
+    headerEmployee.value     = jc.employee       ?? '';
+    headerWipWarehouse.value = jc.wipWarehouse    ?? '';
+  }
+
+  // ── Header field: per-field save ──────────────────────────────────────────
+
+  /// Save a single header field to ERPNext.
+  ///
+  /// [fieldKey]  — ERPNext fieldname: `'workstation'`, `'employee'`,
+  ///              or `'wip_warehouse'`.
+  /// [value]     — new value to persist (empty string clears the field).
+  ///
+  /// The matching [isSaving*] flag is set during the network call so the
+  /// corresponding UI icon shows a spinner.  On success the matching
+  /// [header*] observable is updated optimistically so the UI reflects the
+  /// new value immediately without a full document reload.
+  Future<void> saveHeaderField(String fieldKey, String value) async {
+    final jc = jobCard.value;
+    if (jc == null || !jc.isEditable) return;
+
+    final savingFlag = switch (fieldKey) {
+      'workstation'   => isSavingWorkstation,
+      'employee'      => isSavingEmployee,
+      'wip_warehouse' => isSavingWipWarehouse,
+      _               => null,
+    };
+    final valueObs = switch (fieldKey) {
+      'workstation'   => headerWorkstation,
+      'employee'      => headerEmployee,
+      'wip_warehouse' => headerWipWarehouse,
+      _               => null,
+    };
+    if (savingFlag == null || valueObs == null) return;
+
+    savingFlag.value = true;
+    try {
+      final res = await _provider.updateJobCardHeaderField(
+        jobCardName: name,
+        data: {fieldKey: value},
+      );
+      if (res.statusCode == 200) {
+        valueObs.value = value;
+        // Re-fetch so the model stays in sync (e.g., workstation display name).
+        await _fetchDocument();
+        GlobalSnackbar.success(
+          message: '${_fieldLabel(fieldKey)} updated',
+        );
+      } else {
+        GlobalSnackbar.error(
+          message: 'Failed to update ${_fieldLabel(fieldKey)}',
+        );
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+        message: extractDioError(e, 'Update ${_fieldLabel(fieldKey)} failed'),
+      );
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      savingFlag.value = false;
+    }
+  }
+
+  String _fieldLabel(String fieldKey) => switch (fieldKey) {
+    'workstation'   => 'Workstation',
+    'employee'      => 'Employee',
+    'wip_warehouse' => 'WIP Warehouse',
+    _               => fieldKey,
+  };
 
   // ── Prefill ───────────────────────────────────────────────────────────────
 

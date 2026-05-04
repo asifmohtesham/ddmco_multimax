@@ -56,6 +56,7 @@ class JobCard {
 
   // ── Warehouse & dates ─────────────────────────────────────────────────────
   final String? wipWarehouse;
+  final String? employee;       // Header-level "Assign To" employee link
   final String? postingDate;
   final String? expectedStartDate;
   final String? expectedEndDate;
@@ -98,6 +99,7 @@ class JobCard {
     required this.transferredQty,
     required this.status,
     this.wipWarehouse,
+    this.employee,
     this.postingDate,
     this.expectedStartDate,
     this.expectedEndDate,
@@ -160,6 +162,7 @@ class JobCard {
       transferredQty:     (json['transferred_qty']     as num?)?.toDouble() ?? 0.0,
       status:             json['status']               as String? ?? statusOpen,
       wipWarehouse:       json['wip_warehouse']        as String?,
+      employee:           json['employee']             as String?,
       postingDate:        json['posting_date']         as String?,
       expectedStartDate:  json['expected_start_date']  as String?,
       expectedEndDate:    json['expected_end_date']    as String?,

@@ -6,6 +6,9 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'job_card_form_controller.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
+import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 
 class JobCardFormScreen extends GetView<JobCardFormController> {
   const JobCardFormScreen({super.key});
@@ -54,6 +57,14 @@ class _JobCardFormBody extends StatelessWidget {
           children: [
             _HeaderCard(jc: jc),
             const SizedBox(height: 24),
+
+            // Editable header fields — only when draft (docstatus == 0)
+            Obx(() {
+              final current = controller.jobCard.value ?? jc;
+              if (!current.isEditable) return const SizedBox.shrink();
+              return _EditableHeaderSection(controller: controller);
+            }),
+            const SizedBox(height: 16),
 
             // Status action buttons (Start / Pause / Complete) + Submit
             Obx(() => _StatusActionsRow(
@@ -903,6 +914,248 @@ class _ErrorState extends StatelessWidget {
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Editable Header Fields
+// Mirrors ERPNext's inline-edit UX: read-only display + trailing pencil icon.
+// Hidden when docstatus != 0 (document not in draft).
+// ────────────────────────────────────────────────────────────────────────────
+
+class _EditableHeaderSection extends StatelessWidget {
+  final JobCardFormController controller;
+  const _EditableHeaderSection({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section heading
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: _SectionHeader(
+              label: 'Job Details',
+              icon: Icons.tune_outlined,
+            ),
+          ),
+          Divider(height: 1, color: cs.outlineVariant),
+
+          // Workstation — Link → Workstation DocType
+          Obx(() => _EditableFieldTile(
+            icon: Icons.precision_manufacturing_outlined,
+            label: 'Workstation',
+            value: controller.headerWorkstation.value,
+            isSaving: controller.isSavingWorkstation.value,
+            onEdit: () => _pickDocType(
+              context,
+              controller: controller,
+              fieldKey: 'workstation',
+              config: const DocTypePickerConfig(
+                doctype: 'Workstation',
+                title: 'Select Workstation',
+                columns: [
+                  DocTypePickerColumn(
+                    fieldname: 'name',
+                    label: 'Workstation',
+                    isPrimary: true,
+                    flex: 2,
+                  ),
+                  DocTypePickerColumn(
+                    fieldname: 'workstation_type',
+                    label: 'Type',
+                    isSecondary: true,
+                    flex: 2,
+                  ),
+                ],
+                subtitleFields: ['production_capacity'],
+                searchFields: ['name'],
+                cacheKey: 'job_card_workstation_picker',
+              ),
+              displayField: 'name',
+            ),
+          )),
+
+          Divider(height: 1, indent: 52, color: cs.outlineVariant),
+
+          // Employee (Assign To) — Link → Employee DocType
+          Obx(() => _EditableFieldTile(
+            icon: Icons.person_outline,
+            label: 'Assign To Employee',
+            value: controller.headerEmployee.value,
+            isSaving: controller.isSavingEmployee.value,
+            onEdit: () => _pickDocType(
+              context,
+              controller: controller,
+              fieldKey: 'employee',
+              config: JobCardFormController.employeePickerConfig,
+              displayField: 'name',
+            ),
+          )),
+
+          Divider(height: 1, indent: 52, color: cs.outlineVariant),
+
+          // WIP Warehouse — Link → Warehouse DocType
+          Obx(() => _EditableFieldTile(
+            icon: Icons.warehouse_outlined,
+            label: 'WIP Warehouse',
+            value: controller.headerWipWarehouse.value,
+            isSaving: controller.isSavingWipWarehouse.value,
+            onEdit: () => _pickDocType(
+              context,
+              controller: controller,
+              fieldKey: 'wip_warehouse',
+              config: const DocTypePickerConfig(
+                doctype: 'Warehouse',
+                title: 'Select WIP Warehouse',
+                columns: [
+                  DocTypePickerColumn(
+                    fieldname: 'name',
+                    label: 'Warehouse',
+                    isPrimary: true,
+                    flex: 3,
+                  ),
+                  DocTypePickerColumn(
+                    fieldname: 'warehouse_type',
+                    label: 'Type',
+                    isSecondary: true,
+                    flex: 2,
+                  ),
+                ],
+                subtitleFields: ['company'],
+                filters: [
+                  ['Warehouse', 'is_group', '=', 0],
+                ],
+                searchFields: ['name'],
+                cacheKey: 'job_card_wip_warehouse_picker',
+              ),
+              displayField: 'name',
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+
+  /// Opens the generic DocType picker sheet and saves the selected value.
+  static Future<void> _pickDocType(
+      BuildContext context, {
+        required JobCardFormController controller,
+        required String fieldKey,
+        required DocTypePickerConfig config,
+        required String displayField,
+      }) async {
+    final selected = await showDocTypePickerBottomSheet(context, config: config);
+    if (selected == null) return;
+    final value = (selected[displayField] ?? '').toString();
+    if (value.isEmpty) return;
+    await controller.saveHeaderField(fieldKey, value);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Single editable field tile
+// Shows current value (or an em-dash placeholder) with a trailing edit icon.
+// The edit icon becomes a CircularProgressIndicator while [isSaving] is true.
+// ────────────────────────────────────────────────────────────────────────────
+
+class _EditableFieldTile extends StatelessWidget {
+  final IconData     icon;
+  final String       label;
+  final String       value;
+  final bool         isSaving;
+  final VoidCallback onEdit;
+
+  const _EditableFieldTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.isSaving,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isEmpty   = value.isEmpty;
+
+    return InkWell(
+      onTap: isSaving ? null : onEdit,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isEmpty ? '—' : value,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: isEmpty ? cs.onSurfaceVariant : cs.onSurface,
+                      fontWeight: isEmpty ? FontWeight.normal : FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Trailing: spinner while saving, pencil when idle
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: isSaving
+                  ? Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
+                ),
+              )
+                  : IconButton(
+                icon: Icon(Icons.edit_outlined,
+                    size: 17, color: cs.primary),
+                onPressed: onEdit,
+                tooltip: 'Edit $label',
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ],
         ),

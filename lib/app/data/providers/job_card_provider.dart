@@ -118,6 +118,18 @@ class JobCardProvider {
     );
   }
 
+  // ── Header fields update ───────────────────────────────────────────────
+
+  /// Persist one or more header-level fields on a draft Job Card.
+  ///
+  /// Supported keys: `workstation`, `employee`, `wip_warehouse`.
+  /// Pass only the field(s) that changed; ERPNext ignores unknown keys.
+  Future<Response> updateJobCardHeaderField({
+    required String jobCardName,
+    required Map<String, dynamic> data,
+  }) async =>
+      _apiProvider.updateDocument('Job Card', jobCardName, data);
+
   // ── Submission ─────────────────────────────────────────────────────────
 
   Future<Response> submitJobCard(String name) async =>
