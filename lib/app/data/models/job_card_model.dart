@@ -146,6 +146,15 @@ class JobCard {
       timeLogs.fold(0.0, (sum, log) => sum + log.completedQty);
 
   // ── Deserialization ───────────────────────────────────────────────────────
+  /// Safely coerces a field that ERPNext may return as either a [String],
+  /// a [List] (e.g. serial_no / batch_no), or null into a nullable String.
+  /// Lists are joined with newlines to match ERPNext's own text serialisation.
+  static String? _toStringOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value.isEmpty ? null : value;
+    if (value is List)  return value.isEmpty ? null : value.join('\n');
+    return value.toString();
+  }
 
   factory JobCard.fromJson(Map<String, dynamic> json) {
     return JobCard(
@@ -171,8 +180,8 @@ class JobCard {
       sequenceId:         (json['sequence_id']         as num?)?.toInt()    ?? 0,
       hourRate:           (json['hour_rate']           as num?)?.toDouble() ?? 0.0,
       totalTimeInMins:    (json['total_time_in_mins']  as num?)?.toDouble() ?? 0.0,
-      batchNo:            json['batch_no']             as String?,
-      serialNo:           json['serial_no']            as String?,
+      batchNo:            _toStringOrNull(json['batch_no']),
+      serialNo:           _toStringOrNull(json['serial_no']),
       bomNo:              json['bom_no']               as String?,
       remarks:            json['remarks']              as String?,
       project:            json['project']              as String?,
