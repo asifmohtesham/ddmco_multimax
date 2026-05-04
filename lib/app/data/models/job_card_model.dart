@@ -214,9 +214,11 @@ class JobCard {
   // Only user-editable fields. Read-only server fields are excluded.
 
   Map<String, dynamic> toJson() => {
-    if (remarks != null) 'remarks': remarks,
-    if (project != null) 'project': project,
-    if (workstation != null) 'workstation': workstation,
+    if (remarks != null)       'remarks':    remarks,
+    if (project != null)       'project':    project,
+    if (workstation != null)   'workstation': workstation,
+    // Table MultiSelect — must be sent as a list of dicts, never a plain string.
+    'employee': employees.map((e) => e.toJson()).toList(),
   };
 
   @override
