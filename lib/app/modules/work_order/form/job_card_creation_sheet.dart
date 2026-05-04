@@ -438,6 +438,14 @@ class _OperationRow extends StatelessWidget {
                       style: textTheme.labelSmall
                           ?.copyWith(color: cs.onSurfaceVariant),
                     ),
+
+                    if (op.batchSize > 0) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '→ ${op.splitIntoBatches(woQty).length} Job Card(s) of ${op.batchSize.toInt()} each',
+                        style: textTheme.labelSmall?.copyWith(color: cs.primary),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -471,12 +479,6 @@ class _OperationRow extends StatelessWidget {
                   ),
                 ),
               ),
-
-              if (op.batchSize > 0)
-                Text(
-                  '→ ${op.splitIntoBatches(woQty).length} Job Card(s) of ${op.batchSize.toInt()} each',
-                  style: textTheme.labelSmall?.copyWith(color: cs.primary),
-                ),
             ],
           ),
         ),

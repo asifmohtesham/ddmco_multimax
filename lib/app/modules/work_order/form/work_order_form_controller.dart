@@ -859,6 +859,11 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
 
     int totalCreated = 0;
     final jobCardCreationStatus = ''.obs;
+    // Compute the total number of JCs that will be created across all ops
+    final int totalToCreate = ops.fold(0, (sum, op) {
+      final qty = qtys[op.name] ?? op.pendingQty(workOrder.value!.qty);
+      return sum + op.splitIntoBatches(qty).length;
+    });
 
     try {
       for (final op in ops) {
