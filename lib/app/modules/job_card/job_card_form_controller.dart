@@ -187,8 +187,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   void _seedHeaderFields() {
     final jc = jobCard.value;
     if (jc == null) return;
-    headerWorkstation.value  = jc.workstation    ?? '';
-    headerEmployee.value     = jc.employee       ?? '';
+    headerWorkstation.value  = jc.workstation     ?? '';
+    headerEmployee.value     = jc.primaryEmployee ?? '';
     headerWipWarehouse.value = jc.wipWarehouse    ?? '';
   }
 

@@ -1,3 +1,4 @@
+import 'package:multimax/app/data/models/job_card_employee_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 
 /// Model for the **Job Card** DocType.
@@ -56,7 +57,9 @@ class JobCard {
 
   // ── Warehouse & dates ─────────────────────────────────────────────────────
   final String? wipWarehouse;
-  final String? employee;       // Header-level "Assign To" employee link
+  /// Header-level assigned employees (Table MultiSelect → Job Card Time Log).
+  /// ERPNext returns this as a List of dicts, never a plain String.
+  final List<JobCardEmployee> employees;
   final String? postingDate;
   final String? expectedStartDate;
   final String? expectedEndDate;
@@ -99,7 +102,7 @@ class JobCard {
     required this.transferredQty,
     required this.status,
     this.wipWarehouse,
-    this.employee,
+    this.employees = const [],
     this.postingDate,
     this.expectedStartDate,
     this.expectedEndDate,
@@ -140,6 +143,16 @@ class JobCard {
   /// Whether the Job Card has any time log rows recorded.
   bool get hasTimeLogs => timeLogs.isNotEmpty;
 
+  /// First assigned employee ID, or null if none assigned.
+  /// Convenience accessor for single-employee display contexts.
+  String? get primaryEmployee =>
+      employees.isNotEmpty ? employees.first.employee : null;
+
+  /// Display name of first assigned employee, falling back to ID.
+  String? get primaryEmployeeDisplay => employees.isNotEmpty
+      ? (employees.first.employeeName ?? employees.first.employee)
+      : null;
+
   /// Total completed qty across all time logs (mirrors totalCompletedQty
   /// but computed locally — useful before a server refresh).
   double get localCompletedQty =>
@@ -171,7 +184,9 @@ class JobCard {
       transferredQty:     (json['transferred_qty']     as num?)?.toDouble() ?? 0.0,
       status:             json['status']               as String? ?? statusOpen,
       wipWarehouse:       json['wip_warehouse']        as String?,
-      employee:           json['employee']             as String?,
+      employees: (json['employee'] as List? ?? [])
+          .map((e) => JobCardEmployee.fromJson(e as Map<String, dynamic>))
+          .toList(),
       postingDate:        json['posting_date']         as String?,
       expectedStartDate:  json['expected_start_date']  as String?,
       expectedEndDate:    json['expected_end_date']    as String?,
