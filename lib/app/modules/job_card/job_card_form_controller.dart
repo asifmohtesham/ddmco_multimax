@@ -172,9 +172,11 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       final res = await _provider.getJobCard(name);
       if (res.statusCode == 200 && res.data['data'] != null) {
         jobCard.value = JobCard.fromJson(res.data['data']);
+        _seedHeaderFields();
         _validateTimeLogForm();
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('❌ _fetchDocument error: $e\n$st');
       GlobalSnackbar.error(message: 'Failed to load Job Card');
     } finally {
       isLoading.value = false;
