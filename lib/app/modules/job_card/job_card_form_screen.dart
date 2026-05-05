@@ -328,7 +328,7 @@ class _StatusActionsRow extends StatelessWidget {
         if (hasStatusRow)
           Row(
             children: [
-              if (jc.isOpen)
+              if (jc.isOpen) ...[
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: anyLoading
@@ -341,18 +341,24 @@ class _StatusActionsRow extends StatelessWidget {
                     ),
                     icon: statusLoading
                         ? _spinner(Colors.white)
-                        : const Icon(Icons.play_arrow_rounded),
-                    label:
-                        const Text('Start', style: TextStyle(fontSize: 15)),
+                        // ── Show Play for fresh start, Resume icon for paused ──
+                        : Icon(jc.hasTimeLogs
+                        ? Icons.replay_rounded
+                        : Icons.play_arrow_rounded),
+                    label: Text(
+                      // ── "Resume" when previously started, "Start" when fresh ──
+                      jc.hasTimeLogs ? 'Resume' : 'Start',
+                      style: const TextStyle(fontSize: 15),
+                    ),
                   ),
                 ),
+              ],
               if (jc.isWorkInProgress) ...[
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: anyLoading
                         ? null
-                        : () =>
-                            controller.updateStatus(JobCard.statusOpen),
+                        : controller.pauseJobCard,
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.all(14),
                       side: BorderSide(color: cs.primary),

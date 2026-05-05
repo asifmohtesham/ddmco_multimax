@@ -102,13 +102,14 @@ class JobCardProvider {
     required String erpNextStatus,
     required String startTime,
     String? completeTime,
+    double completedQty = 0,
     required List<Map<String, String>> employees,
   }) async {
     final Map<String, dynamic> argsMap = {
       'job_card_id':   jobCardId,
       'start_time':    startTime,
       'complete_time': completeTime ?? '',
-      'completed_qty': 0,
+      'completed_qty': completedQty,
       'employees':     employees,
       'status':        erpNextStatus,
     };

@@ -382,6 +382,62 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     ctrl.text = DateFormat('yyyy-MM-dd HH:mm:ss').format(combined);
   }
 
+  // ── Pause with qty prompt ─────────────────────────────────────────────────
+
+  /// Shows a qty bottom sheet before pausing.
+  /// Called by the Pause button instead of updateStatus directly.
+  Future<void> pauseJobCard() async {
+    if (!canUpdateStatus) return;
+
+    final qty = await _showPauseQtySheet();
+    if (qty == null) return; // user cancelled
+
+    await _doPause(completedQty: qty);
+  }
+
+  Future<double?> _showPauseQtySheet() {
+    return Get.bottomSheet<double>(
+      _PauseQtySheet(controller: this),
+      isScrollControlled: true,
+      backgroundColor: Get.context != null
+          ? Theme.of(Get.context!).colorScheme.surface
+          : null,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+    );
+  }
+
+  Future<void> _doPause({required double completedQty}) async {
+    final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+    isUpdatingStatus.value = true;
+    try {
+      final res = await _provider.updateJobCardStatus(
+        jobCardId:     name,
+        erpNextStatus: 'Resume Job',
+        startTime:     now,
+        completeTime:  now,       // required for Pause
+        completedQty:  completedQty,
+        employees:     _employees,
+      );
+
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        _syncTimer();
+        GlobalSnackbar.success(message: 'Job Card Paused');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to pause Job Card');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: _extractErrorMessage(e, 'Pause failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isUpdatingStatus.value = false;
+    }
+  }
+
   // ── Add time log ──────────────────────────────────────────────────────────
 
   Future<void> addTimeLog() async {
@@ -564,7 +620,6 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     final String erpNextStatus = switch (newStatus) {
       JobCard.statusWorkInProgress => 'Work In Progress',
-      JobCard.statusOpen           => 'Resume Job',
       JobCard.statusCompleted      => 'Complete',
       _                            => newStatus,
     };
@@ -960,6 +1015,131 @@ class _SheetDateTimeField extends StatelessWidget {
         prefixIcon: const Icon(Icons.schedule_outlined),
         suffixIcon: Icon(Icons.edit_calendar_outlined,
             size: 18, color: cs.primary),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pause Qty Sheet
+// Collects completed_qty before pausing so the time log row is fully recorded.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PauseQtySheet extends StatefulWidget {
+  final JobCardFormController controller;
+  const _PauseQtySheet({required this.controller});
+
+  @override
+  State<_PauseQtySheet> createState() => _PauseQtySheetState();
+}
+
+class _PauseQtySheetState extends State<_PauseQtySheet> {
+  final _qtyCtrl = TextEditingController();
+  String? _qtyError;
+
+  double get _maxQty => widget.controller.remainingQty;
+  bool get _forQtySet => (widget.controller.jobCard.value?.forQuantity ?? 0) > 0;
+
+  void _validate(String value) {
+    final qty = double.tryParse(value) ?? -1;
+    setState(() {
+      if (qty < 0) {
+        _qtyError = 'Enter 0 or a positive quantity';
+      } else if (_forQtySet && qty > _maxQty) {
+        _qtyError = 'Exceeds remaining qty '
+            '(max ${widget.controller._fmtQty(_maxQty)})';
+      } else {
+        _qtyError = null;
+      }
+    });
+  }
+
+  bool get _canConfirm {
+    final qty = double.tryParse(_qtyCtrl.text);
+    return qty != null && qty >= 0 && _qtyError == null;
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final padding   = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + padding),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Title
+          Row(
+            children: [
+              Icon(Icons.pause_circle_outline, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Text('Pause Job Card',
+                  style: textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Enter qty completed in this session (0 if none).',
+            style: textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 20),
+
+          // Qty field
+          TextField(
+            controller: _qtyCtrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: _validate,
+            decoration: InputDecoration(
+              labelText: 'Completed Qty',
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.numbers_outlined),
+              errorText: _qtyError,
+              errorMaxLines: 2,
+              helperText: _forQtySet && _qtyError == null
+                  ? 'Remaining: ${widget.controller._fmtQty(_maxQty)}'
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Confirm button
+          SizedBox(
+            width: double.infinity,
+            child: StatefulBuilder(
+              builder: (_, refresh) => FilledButton.icon(
+                onPressed: _canConfirm
+                    ? () => Get.back(result: double.parse(_qtyCtrl.text))
+                    : null,
+                icon: const Icon(Icons.pause_rounded),
+                label: const Text('Pause', style: TextStyle(fontSize: 15)),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.all(14)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
