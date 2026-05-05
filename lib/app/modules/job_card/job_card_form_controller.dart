@@ -448,7 +448,6 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     return ordered.map((e) => {'employee': e}).toList();
   }
 
-
   Future<double?> _showPauseQtySheet() {
     // Reset state from any previous pause attempt
     pauseQtyController.clear();
@@ -930,7 +929,7 @@ class _EditTimeLogSheetState extends State<_EditTimeLogSheet> {
     final padding   = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + padding),
+      padding: EdgeInsets.fromLTRB(20, 0, 20, padding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1115,109 +1114,101 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final enabled   = widget.controller.canConfirmPause;
-
-    // viewInsets.bottom = keyboard height (0 when keyboard is hidden)
-    // viewPadding.bottom = system nav bar height (always present on gesture nav)
+    final cs           = Theme.of(context).colorScheme;
+    final textTheme    = Theme.of(context).textTheme;
+    final enabled      = widget.controller.canConfirmPause;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final navBarHeight   = MediaQuery.of(context).viewPadding.bottom;
 
-    return SafeArea(
-      // SafeArea handles nav bar on its own — we add it manually below
-      // so we can fine-tune the keyboard offset separately.
-      bottom: false,
-      child: SingleChildScrollView(
-        // Push content up by keyboard height so the field stays visible.
-        // When keyboard is gone, this collapses to 0.
-        padding: EdgeInsets.only(bottom: keyboardHeight),
-        child: Padding(
-          // Horizontal + top padding for the sheet content.
-          // Bottom: whichever is bigger — nav bar height or a minimum 20dp.
-          padding: EdgeInsets.fromLTRB(
-            20,
-            0,
-            20,
-            keyboardHeight > 0
-                ? 20                       // keyboard open: button near field
-                : navBarHeight + 20,       // keyboard closed: clear nav bar
+    return Padding(
+      // This single padding does ALL the work:
+      // - keyboard open  → push content up by keyboard height + 20dp gap
+      // - keyboard closed → sit above the nav bar
+      padding: EdgeInsets.only(
+        bottom: keyboardHeight > 0
+            ? keyboardHeight + 20
+            : navBarHeight + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,   // ← shrink-wraps to content, no blank gap
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  width: 40, height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Row(
+                  children: [
+                    Icon(Icons.pause_circle_outline, size: 18, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Text('Pause Job Card',
+                        style: textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Enter qty completed in this session (0 if none).',
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 20),
+
+                // Qty field
+                TextField(
+                  controller: widget.controller.pauseQtyController,
+                  autofocus: true,
+                  keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: widget.controller.validatePauseQty,
+                  decoration: InputDecoration(
+                    labelText:     'Completed Qty',
+                    border:        const OutlineInputBorder(),
+                    prefixIcon:    const Icon(Icons.numbers_outlined),
+                    errorText:     _error,
+                    errorMaxLines: 2,
+                    helperText:    _error == null && _forQtySet
+                        ? 'Remaining: ${widget.controller._fmtQty(_remaining)}'
+                        : null,
                   ),
                 ),
-              ),
+                const SizedBox(height: 20),
 
-              // Title
-              Row(
-                children: [
-                  Icon(Icons.pause_circle_outline, size: 18, color: cs.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Pause Job Card',
-                    style: textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                // Pause button
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: enabled
+                        ? () => Get.back(
+                      result: double.parse(
+                          widget.controller.pauseQtyController.text),
+                    )
+                        : null,
+                    icon: const Icon(Icons.pause_rounded),
+                    label: const Text('Pause', style: TextStyle(fontSize: 15)),
+                    style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.all(14)),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Enter qty completed in this session (0 if none).',
-                style: textTheme.bodySmall
-                    ?.copyWith(color: cs.onSurfaceVariant),
-              ),
-              const SizedBox(height: 20),
-
-              // Qty field
-              TextField(
-                controller: widget.controller.pauseQtyController,
-                autofocus: true,
-                keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-                onChanged: widget.controller.validatePauseQty,
-                decoration: InputDecoration(
-                  labelText:     'Completed Qty',
-                  border:        const OutlineInputBorder(),
-                  prefixIcon:    const Icon(Icons.numbers_outlined),
-                  errorText:     _error,
-                  errorMaxLines: 2,
-                  helperText:    _error == null && _forQtySet
-                      ? 'Remaining: ${widget.controller._fmtQty(_remaining)}'
-                      : null,
                 ),
-              ),
-              const SizedBox(height: 20),
-
-              // Pause button
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: enabled
-                      ? () => Get.back(
-                    result: double.parse(
-                        widget.controller.pauseQtyController.text),
-                  )
-                      : null,
-                  icon: const Icon(Icons.pause_rounded),
-                  label: const Text('Pause', style: TextStyle(fontSize: 15)),
-                  style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.all(14)),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
