@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:flutter/services.dart';
+import 'package:multimax/app/core/widgets/keyboard_safe_bottom_sheet.dart';
 
 class LoginScreen extends GetView<LoginController> {
   const LoginScreen({super.key});
@@ -12,15 +13,10 @@ class LoginScreen extends GetView<LoginController> {
   }
 
   void _showServerConfigSheet(BuildContext context) {
-    Get.bottomSheet(
-      GetBuilder<LoginController>(
+    showKeyboardSafeBottomSheet(
+      context: context,
+      child: GetBuilder<LoginController>(
         builder: (c) => Container(
-          padding: EdgeInsets.only(
-            left: 24.0,
-            right: 24.0,
-            top: 24.0,
-            bottom: 24.0,
-          ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
@@ -134,14 +130,9 @@ class LoginScreen extends GetView<LoginController> {
               ),
               tooltip: 'Server Configuration',
               onPressed: () {
-                // 1) Dismiss any open keyboard from the login form.
-                FocusManager.instance.primaryFocus?.unfocus();
-
-                // 2) Open the server config sheet on the next frame,
-                //    after viewInsets have been updated.
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  _showServerConfigSheet(context);
-                });
+                // still safe to unfocus here if you like, but the helper
+                // already does it before opening the sheet.
+                _showServerConfigSheet(context);
               },
             ),
           ],
