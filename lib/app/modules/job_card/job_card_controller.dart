@@ -12,6 +12,10 @@ class JobCardController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
 
+  // Currently selected owner filter (user id/email) and its display label
+  final ownerUserId    = ''.obs;   // maps to activeFilters['owner']
+  final ownerUserLabel = ''.obs;   // nice text for the UI
+
   // ── List state ───────────────────────────────────────────────
   var jobCards = <JobCard>[].obs;
   var isLoading = true.obs;
@@ -50,27 +54,41 @@ class JobCardController extends GetxController {
     await fetchUsers();
 
     // Apply default Assigned To only if caller did not provide one
-    if (!activeFilters.containsKey('assigned_to')) {
-      await _ensureDefaultAssignedTo();
+    if (!activeFilters.containsKey('owner')) {
+      await _ensureDefaultOwnerFilter();
     }
 
     // Initial list fetch
     await fetchJobCards(clear: true);
   }
 
-  Future<void> _ensureDefaultAssignedTo() async {
+  Future<void> _ensureDefaultOwnerFilter() async {
     try {
       final response = await _apiProvider.getLoggedUser();
       if (response.statusCode == 200 && response.data['message'] is String) {
         final userId = response.data['message'] as String;
         if (userId.isNotEmpty) {
-          activeFilters['assigned_to'] = userId;
+          activeFilters['owner'] = userId;
+          ownerUserId.value      = userId;
+          ownerUserLabel.value   = userId; // or later from User list
         }
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('JobCardController._ensureDefaultAssignedTo error: $e');
-      // Fail silently — list will just load unfiltered
+      if (kDebugMode) debugPrint('JobCardController._ensureDefaultOwnerFilter error: $e');
     }
+  }
+
+  void setOwnerFilter(String? userId, String? label) {
+    if (userId == null || userId.isEmpty) {
+      ownerUserId.value    = '';
+      ownerUserLabel.value = '';
+      activeFilters.remove('owner');
+    } else {
+      ownerUserId.value    = userId;
+      ownerUserLabel.value = label ?? userId;
+      activeFilters['owner'] = userId;
+    }
+    fetchJobCards(clear: true);
   }
 
   Future<void> fetchUsers() async {

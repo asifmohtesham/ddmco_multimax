@@ -86,12 +86,12 @@ class _JobCardScreenState extends State<JobCardScreen> {
       ));
     }
 
-    if (controller.activeFilters.containsKey('assigned_to') &&
-        controller.activeFilters['assigned_to'].toString().isNotEmpty) {
+    if (controller.activeFilters.containsKey('owner') &&
+        controller.activeFilters['owner'].toString().isNotEmpty) {
       chips.add(chip(
         icon: Icons.person_outline,
-        label: 'Assigned To: ${controller.activeFilters['assigned_to']}',
-        onDeleted: () => controller.removeFilter('assigned_to'),
+        label: 'Assigned To: ${controller.activeFilters['owner']}',
+        onDeleted: () => controller.removeFilter('owner'),
       ));
     }
 
@@ -256,15 +256,10 @@ class _JobCardScreenState extends State<JobCardScreen> {
 
 // ── Filter bottom sheet ────────────────────────────────────────────────
 
-class _JobCardFilterSheet extends StatefulWidget {
+class _JobCardFilterSheet extends StatelessWidget {
   final JobCardController controller;
   const _JobCardFilterSheet({required this.controller});
 
-  @override
-  State<_JobCardFilterSheet> createState() => _JobCardFilterSheetState();
-}
-
-class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
   static const List<String> _statuses = [
     'Open',
     'Work In Progress',
@@ -274,35 +269,9 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
     'Cancelled',
   ];
 
-  late TextEditingController assignedToController;
-  late TextEditingController createdByController;
-
-  final assignedTo = ''.obs;
-  final createdBy  = ''.obs;
-
-  @override
-  void initState() {
-    super.initState();
-    final af = widget.controller.activeFilters;
-    assignedTo.value       = (af['assigned_to'] ?? '').toString();
-    createdBy.value        = (af['owner'] ?? '').toString();
-    assignedToController   = TextEditingController(text: assignedTo.value);
-    createdByController    = TextEditingController(text: createdBy.value);
-  }
-
-  @override
-  void dispose() {
-    assignedToController.dispose();
-    createdByController.dispose();
-    super.dispose();
-  }
-
-  void _showUserPicker({
-    required String title,
-    required void Function(String userId, String displayName) onSelected,
-  }) {
+  void _openUserPicker(BuildContext context) {
     final searchCtrl = TextEditingController();
-    final filtered   = RxList<User>(widget.controller.users);
+    final filtered   = RxList<User>(controller.users);
 
     Get.bottomSheet(
       SafeArea(
@@ -311,11 +280,11 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (ctx, scrollCtrl) {
-            final colorScheme = Theme.of(ctx).colorScheme;
+            final cs = Theme.of(ctx).colorScheme;
             return Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: colorScheme.surface,
+                color: cs.surface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Column(
@@ -323,7 +292,8 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                      Text('Select Assigned To',
+                          style: Theme.of(ctx).textTheme.titleLarge),
                       IconButton(
                         icon: const Icon(Icons.close),
                         onPressed: Get.back,
@@ -334,27 +304,27 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
                   TextField(
                     controller: searchCtrl,
                     decoration: InputDecoration(
-                      hintText: 'Search users...',
+                      hintText: 'Search users…',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     onChanged: (val) {
-                      final term = val.toLowerCase();
+                      final q = val.toLowerCase();
                       filtered.assignAll(
-                        val.isEmpty
-                            ? widget.controller.users
-                            : widget.controller.users.where((u) =>
-                        u.name.toLowerCase().contains(term) ||
-                            u.email.toLowerCase().contains(term)),
+                        q.isEmpty
+                            ? controller.users
+                            : controller.users.where((u) =>
+                        u.fullName.toLowerCase().contains(q) ||
+                            u.email.toLowerCase().contains(q)),
                       );
                     },
                   ),
                   const SizedBox(height: 12),
                   Expanded(
                     child: Obx(() {
-                      if (widget.controller.isFetchingUsers.value) {
+                      if (controller.isFetchingUsers.value) {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (filtered.isEmpty) {
@@ -365,28 +335,19 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
                         itemCount: filtered.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (_, i) {
-                          final u          = filtered[i];
-                          final userId     =
-                          u.email.isNotEmpty ? u.email : u.id;
-                          final displayName =
-                          u.name.isNotEmpty ? u.name : userId;
+                          final u       = filtered[i];
+                          final userId  = u.email;
+                          final display = u.fullName.isNotEmpty ? u.fullName : userId;
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: colorScheme.secondaryContainer,
-                              child: Text(
-                                displayName[0].toUpperCase(),
-                                style: TextStyle(
-                                  color: colorScheme.onSecondaryContainer,
-                                ),
-                              ),
+                              child: Text(display[0].toUpperCase()),
                             ),
-                            title: Text(displayName,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Text(u.email),
+                            title: Text(display),
+                            subtitle: Text(userId),
                             onTap: () {
                               Get.back();
-                              onSelected(userId, displayName);
+                              // Push selection into controller – no widget state
+                              controller.setOwnerFilter(userId, display);
                             },
                           );
                         },
@@ -403,39 +364,9 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
     );
   }
 
-  void _applyAndClose() {
-    // Start with existing filters
-    final filters = Map<String, dynamic>.from(widget.controller.activeFilters);
-
-    // Status (same semantics as before)
-    final activeStatus = filters['status'] as String?;
-    // status chips remain inside Obx Wrap as before; when a chip is tapped,
-    // widget.controller.setFilter('status', ...) is called immediately,
-    // so here we only care about Assigned To / Created By.
-
-    // Assigned To
-    if (assignedTo.value.isNotEmpty) {
-      filters['assigned_to'] = assignedTo.value;
-    } else {
-      filters.remove('assigned_to');
-    }
-
-    // Created By
-    if (createdBy.value.isNotEmpty) {
-      filters['owner'] = createdBy.value;
-    } else {
-      filters.remove('owner');
-    }
-
-    widget.controller.activeFilters.value = filters;
-    widget.controller.fetchJobCards(clear: true);
-    Navigator.pop(context);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final cs    = theme.colorScheme;
 
     return SafeArea(
       child: Padding(
@@ -448,11 +379,12 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Filters', style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+                Text('Filters',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
                 TextButton(
                   onPressed: () {
-                    widget.controller.clearFilters();
+                    controller.clearFilters();
                     Navigator.pop(context);
                   },
                   child: const Text('Clear All'),
@@ -461,11 +393,11 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Status chips (unchanged semantics)
+            // Status chips (unchanged)
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
             Obx(() {
-              final active = widget.controller.activeFilters['status'] as String?;
+              final active = controller.activeFilters['status'] as String?;
               return Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -475,10 +407,7 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
                     label: Text(s),
                     selected: selected,
                     onSelected: (_) {
-                      widget.controller.setFilter(
-                        'status',
-                        selected ? null : s,
-                      );
+                      controller.setFilter('status', selected ? null : s);
                     },
                   );
                 }).toList(),
@@ -486,75 +415,28 @@ class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
             }),
             const SizedBox(height: 16),
 
-            // Assigned To
-            Obx(() => TextFormField(
-              controller: assignedToController,
-              readOnly: true,
-              onTap: () => _showUserPicker(
-                title: 'Select Assigned To',
-                onSelected: (userId, displayName) {
-                  assignedTo.value           = userId;
-                  assignedToController.text  = displayName;
-                },
-              ),
-              decoration: InputDecoration(
-                labelText: 'Assigned To',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.person_outline),
-                suffixIcon: assignedTo.value.isNotEmpty
-                    ? IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  tooltip: 'Clear',
-                  onPressed: () {
-                    assignedTo.value = '';
-                    assignedToController.clear();
-                  },
-                )
-                    : const Icon(Icons.arrow_drop_down),
-                isDense: true,
-              ),
-            )),
-            const SizedBox(height: 16),
-
-            // Created By
-            Obx(() => TextFormField(
-              controller: createdByController,
-              readOnly: true,
-              onTap: () => _showUserPicker(
-                title: 'Select Created By',
-                onSelected: (userId, displayName) {
-                  createdBy.value          = userId;
-                  createdByController.text = displayName;
-                },
-              ),
-              decoration: InputDecoration(
-                labelText: 'Created By',
-                border: const OutlineInputBorder(),
-                prefixIcon:
-                const Icon(Icons.person_add_alt_1_outlined),
-                suffixIcon: createdBy.value.isNotEmpty
-                    ? IconButton(
-                  icon: const Icon(Icons.close, size: 18),
-                  tooltip: 'Clear',
-                  onPressed: () {
-                    createdBy.value = '';
-                    createdByController.clear();
-                  },
-                )
-                    : const Icon(Icons.arrow_drop_down),
-                isDense: true,
-              ),
-            )),
-            const SizedBox(height: 24),
-
-            // Apply button
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _applyAndClose,
-                child: const Text('Apply'),
-              ),
-            ),
+            // Assigned To (actually backed by owner)
+            Obx(() {
+              final label = controller.ownerUserLabel.value;
+              return TextFormField(
+                readOnly: true,
+                onTap: () => _openUserPicker(context),
+                decoration: InputDecoration(
+                  labelText: 'Assigned To',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.person_outline),
+                  suffixIcon: label.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: 'Clear',
+                    onPressed: () => controller.setOwnerFilter(null, null),
+                  )
+                      : const Icon(Icons.arrow_drop_down),
+                  isDense: true,
+                ),
+                controller: TextEditingController(text: label),
+              );
+            }),
           ],
         ),
       ),
