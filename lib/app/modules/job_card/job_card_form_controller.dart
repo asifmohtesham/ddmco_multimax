@@ -1083,14 +1083,44 @@ class _SheetDateTimeField extends StatelessWidget {
 // Collects completed_qty before pausing so the time log row is fully recorded.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PauseQtySheet extends StatelessWidget {
+class _PauseQtySheet extends StatefulWidget {
   final JobCardFormController controller;
   const _PauseQtySheet({required this.controller});
+
+  @override
+  State<_PauseQtySheet> createState() => _PauseQtySheetState();
+}
+
+class _PauseQtySheetState extends State<_PauseQtySheet> {
+  // Local mirror of reactive values — updated via listeners, NOT via Obx.
+  String? _error;
+  double  _remaining = 0;
+  bool    _forQtySet = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed initial values from controller state.
+    _sync();
+    // Listen to the two observables that drive UI changes in this sheet.
+    ever(widget.controller.pauseQtyError, (_) => _sync());
+    ever(widget.controller.jobCard,       (_) => _sync());
+  }
+
+  void _sync() {
+    if (!mounted) return;
+    setState(() {
+      _error      = widget.controller.pauseQtyError.value;
+      _remaining  = widget.controller.remainingQty;
+      _forQtySet  = (widget.controller.jobCard.value?.forQuantity ?? 0) > 0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs        = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final enabled   = widget.controller.canConfirmPause;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -1133,52 +1163,42 @@ class _PauseQtySheet extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // Qty field — only errorText/helperText are reactive
-              Obx(() {                                  // ← only reads pauseQtyError
-                final error     = controller.pauseQtyError.value;
-                final remaining = controller.remainingQty;
-                final forQtySet =
-                    (controller.jobCard.value?.forQuantity ?? 0) > 0;
-                return TextField(
-                  controller: controller.pauseQtyController,
-                  autofocus: true,
-                  keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: controller.validatePauseQty,
-                  decoration: InputDecoration(
-                    labelText:     'Completed Qty',
-                    border:        const OutlineInputBorder(),
-                    prefixIcon:    const Icon(Icons.numbers_outlined),
-                    errorText:     error,
-                    errorMaxLines: 2,
-                    helperText:    error == null && forQtySet
-                        ? 'Remaining: ${controller._fmtQty(remaining)}'
-                        : null,
-                  ),
-                );
-              }),
+              // Qty field — driven by setState, no Obx
+              TextField(
+                controller: widget.controller.pauseQtyController,
+                autofocus: true,
+                keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+                onChanged: widget.controller.validatePauseQty,
+                decoration: InputDecoration(
+                  labelText:     'Completed Qty',
+                  border:        const OutlineInputBorder(),
+                  prefixIcon:    const Icon(Icons.numbers_outlined),
+                  errorText:     _error,
+                  errorMaxLines: 2,
+                  helperText:    _error == null && _forQtySet
+                      ? 'Remaining: ${widget.controller._fmtQty(_remaining)}'
+                      : null,
+                ),
+              ),
               const SizedBox(height: 20),
 
-              // Confirm button — only reads canConfirmPause (via pauseQtyError)
-              Obx(() {                                  // ← only reads pauseQtyError
-                final enabled = controller.canConfirmPause;
-                return SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: enabled
-                        ? () => Get.back(
-                      result: double.parse(
-                          controller.pauseQtyController.text),
-                    )
-                        : null,
-                    icon: const Icon(Icons.pause_rounded),
-                    label: const Text('Pause',
-                        style: TextStyle(fontSize: 15)),
-                    style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.all(14)),
-                  ),
-                );
-              }),
+              // Confirm button — driven by setState, no Obx
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: enabled
+                      ? () => Get.back(
+                    result: double.parse(
+                        widget.controller.pauseQtyController.text),
+                  )
+                      : null,
+                  icon: const Icon(Icons.pause_rounded),
+                  label: const Text('Pause', style: TextStyle(fontSize: 15)),
+                  style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(14)),
+                ),
+              ),
             ],
           ),
         ),
