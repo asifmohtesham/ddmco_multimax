@@ -420,7 +420,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   /// Builds the employees list for make_time_log.
   ///
-  /// ERPNext requires the session user's own Employee record to appear first
+  /// ERP requires the session user's own Employee record to appear first
   /// in the list, otherwise it throws a PermissionError even for valid sessions.
   ///
   /// Strategy:
@@ -436,7 +436,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     final all          = jc.employees.map((e) => e.employee).toList();
 
     final ordered = <String>[
-      // Session user's employee always first (ERPNext ownership check)
+      // Session user's employee always first (ERP ownership check)
       if (sessionEmpId.isNotEmpty && all.contains(sessionEmpId))
         sessionEmpId,
       ...all.where((e) => e != sessionEmpId),
@@ -670,7 +670,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       final confirmed = await GlobalDialog.confirm(
         title: 'Complete Job Card',
         message: 'Mark this Job Card as Completed? '
-            'This cannot be undone without ERPNext admin access.',
+            'This cannot be undone without ERP admin access.',
         confirmText: 'Complete',
       );
       if (confirmed != true) return;
