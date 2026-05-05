@@ -24,7 +24,7 @@ class HomeScreen extends GetView<HomeController> {
         title: "Dashboard",
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onPrimary,),
             tooltip: 'Refresh Data',
             onPressed: () {
               controller.fetchDashboardData();
@@ -32,7 +32,7 @@ class HomeScreen extends GetView<HomeController> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
+            icon: Icon(Icons.notifications_outlined, color: Theme.of(context).colorScheme.onPrimary,),
             tooltip: 'Notifications',
             onPressed: () {
               GlobalSnackbar.info(title: 'Notifications', message: 'No new notifications');
