@@ -316,7 +316,7 @@ class _JobCardFilterSheet extends StatelessWidget {
                         q.isEmpty
                             ? controller.users
                             : controller.users.where((u) =>
-                        u.fullName.toLowerCase().contains(q) ||
+                        u.name.toLowerCase().contains(q) ||
                             u.email.toLowerCase().contains(q)),
                       );
                     },
@@ -337,7 +337,8 @@ class _JobCardFilterSheet extends StatelessWidget {
                         itemBuilder: (_, i) {
                           final u       = filtered[i];
                           final userId  = u.email;
-                          final display = u.fullName.isNotEmpty ? u.fullName : userId;
+                          // User.name already maps from json['full_name'] or falls back to json['name'][cite:27]
+                          final display = u.name.isNotEmpty ? u.name : userId;
                           return ListTile(
                             leading: CircleAvatar(
                               child: Text(display[0].toUpperCase()),
