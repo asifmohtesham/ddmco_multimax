@@ -60,10 +60,7 @@ class _JobCardFormBody extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── NEW: Expected schedule dates ────────────────────────────────────
-            Obx(() {
-              final current = controller.jobCard.value ?? jc;
-              return _ScheduleDatesRow(jc: current);
-            }),
+            _ScheduleDatesRow(controller: controller),
 
             // ── NEW: Live elapsed timer (WIP only) ──────────────────────────────
             _ActiveTimerBanner(controller: controller),
@@ -1277,82 +1274,92 @@ class _ActiveTimerBanner extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 class _ScheduleDatesRow extends StatelessWidget {
-  final JobCard jc;
-  const _ScheduleDatesRow({required this.jc});
+  final JobCardFormController controller;
+  const _ScheduleDatesRow({required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    final start = jc.expectedStartDate;
-    final end   = jc.expectedEndDate;
-    if ((start == null || start.isEmpty) &&
-        (end   == null || end.isEmpty)) {
-      return const SizedBox.shrink();
-    }
+    return Obx(() {
+      final jc = controller.jobCard.value;
+      if (jc == null) return const SizedBox.shrink();
 
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+      final start = jc.expectedStartDate;
+      final end = jc.expectedEndDate;
+      if ((start == null || start.isEmpty) &&
+          (end == null || end.isEmpty)) {
+        return const SizedBox.shrink();
+      }
 
-    // Determine urgency: if expected end is in the past → overdue.
-    final bool isOverdue = _isOverdue(end);
+      final cs = Theme
+          .of(context)
+          .colorScheme;
+      final textTheme = Theme
+          .of(context)
+          .textTheme;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: isOverdue
-            ? cs.errorContainer.withValues(alpha: 0.35)
-            : cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
+      // Determine urgency: if expected end is in the past → overdue.
+      final bool isOverdue = _isOverdue(end);
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
           color: isOverdue
-              ? cs.error.withValues(alpha: 0.4)
-              : cs.outlineVariant,
+              ? cs.errorContainer.withValues(alpha: 0.35)
+              : cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isOverdue
+                ? cs.error.withValues(alpha: 0.4)
+                : cs.outlineVariant,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isOverdue ? Icons.warning_amber_rounded : Icons.event_outlined,
-                size: 16,
-                color: isOverdue ? cs.error : cs.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                isOverdue ? 'Scheduled (Overdue)' : 'Scheduled Window',
-                style: textTheme.labelSmall?.copyWith(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isOverdue ? Icons.warning_amber_rounded : Icons
+                      .event_outlined,
+                  size: 16,
                   color: isOverdue ? cs.error : cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _DateBlock(
-                  label: 'Expected Start',
-                  value: _fmtDate(start),
-                  icon: Icons.play_circle_outline,
+                const SizedBox(width: 6),
+                Text(
+                  isOverdue ? 'Scheduled (Overdue)' : 'Scheduled Window',
+                  style: textTheme.labelSmall?.copyWith(
+                    color: isOverdue ? cs.error : cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _DateBlock(
-                  label: 'Expected End',
-                  value: _fmtDate(end),
-                  icon: Icons.flag_outlined,
-                  highlight: isOverdue,
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _DateBlock(
+                    label: 'Expected Start',
+                    value: _fmtDate(start),
+                    icon: Icons.play_circle_outline,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _DateBlock(
+                    label: 'Expected End',
+                    value: _fmtDate(end),
+                    icon: Icons.flag_outlined,
+                    highlight: isOverdue,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   bool _isOverdue(String? end) {
