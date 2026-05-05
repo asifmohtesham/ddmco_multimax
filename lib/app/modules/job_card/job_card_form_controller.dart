@@ -200,7 +200,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// Starts or stops the live timer depending on job card state.
   ///
   /// An "open" time log is one where [fromTime] is set but [toTime] is null/empty.
-  /// This mirrors ERPNext's own behaviour: time starts counting when a log row
+  /// This mirrors ERP's own behaviour: time starts counting when a log row
   /// is created with only a from_time, and stops when to_time is filled in.
   void _syncTimer() {
     _ticker?.cancel();
@@ -251,9 +251,9 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   // ── Header field: per-field save ──────────────────────────────────────────
 
-  /// Save a single header field to ERPNext.
+  /// Save a single header field to ERP.
   ///
-  /// [fieldKey]  — ERPNext fieldname: `'workstation'`, `'employee'`,
+  /// [fieldKey]  — ERP fieldname: `'workstation'`, `'employee'`,
   ///              or `'wip_warehouse'`.
   /// [value]     — new value to persist (empty string clears the field).
   ///
@@ -529,7 +529,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     isEditingTimeLog.value = true;
     try {
       final res = await _provider.deleteTimeLog(log.name);
-      // ERPNext DELETE returns 202 on success.
+      // ERP DELETE returns 202 on success.
       if (res.statusCode == 200 || res.statusCode == 202) {
         await _provider.touchJobCard(name);
         await _fetchDocument();
@@ -556,47 +556,53 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       final confirmed = await GlobalDialog.confirm(
         title: 'Complete Job Card',
         message: 'Mark this Job Card as Completed? '
-            'This cannot be undone without ERPNext admin access.',
+            'This cannot be undone without ERP admin access.',
         confirmText: 'Complete',
       );
       if (confirmed != true) return;
     }
 
-    final String erpNextStatus = switch (newStatus) {
-      JobCard.statusWorkInProgress => 'Work In Progress',
-      JobCard.statusOpen           => 'Resume Job',
-      JobCard.statusCompleted      => 'Complete',
-      _                            => newStatus,
-    };
-
-    final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-    final String? completeTime =
-        (newStatus == JobCard.statusCompleted) ? now : null;
-
     isUpdatingStatus.value = true;
     try {
-      final res = await _provider.updateJobCardStatus(
-        jobCardId:     name,
-        erpNextStatus: erpNextStatus,
-        startTime:     now,
-        completeTime:  completeTime,
-        employees:     _employees,
-      );
-
-      if (res.statusCode == 200) {
-        await _fetchDocument();
-        final label = switch (newStatus) {
-          JobCard.statusWorkInProgress => 'Started',
-          JobCard.statusOpen           => 'Paused',
-          JobCard.statusCompleted      => 'Completed',
+      if (newStatus == JobCard.statusOpen) {
+        // ── Pause ──────────────────────────────────────────────────────────────
+        // Step 1: close the open time log row (set to_time = now)
+        await _closeOpenTimeLog();
+        // Step 2: transition the Job Card status to Open via make_time_log
+        await _callMakeTimeLog(erpNextStatus: 'Resume Job');
+      } else {
+        // ── Start / Complete ────────────────────────────────────────────────────
+        final String erpNextStatus = switch (newStatus) {
+          JobCard.statusWorkInProgress => 'Work In Progress',
+          JobCard.statusCompleted      => 'Complete',
           _                            => newStatus,
         };
-        GlobalSnackbar.success(message: 'Job Card $label');
-        if (newStatus == JobCard.statusCompleted) {
-          await _autoSubmitIfComplete();
+        final now          = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+        final String? completeTime =
+        (newStatus == JobCard.statusCompleted) ? now : null;
+
+        final res = await _provider.updateJobCardStatus(
+          jobCardId:     name,
+          erpNextStatus: erpNextStatus,
+          startTime:     now,
+          completeTime:  completeTime,
+          employees:     _employees,
+        );
+
+        if (res.statusCode == 200) {
+          await _fetchDocument();
+          final label = switch (newStatus) {
+            JobCard.statusWorkInProgress => 'Started',
+            JobCard.statusCompleted      => 'Completed',
+            _                            => newStatus,
+          };
+          GlobalSnackbar.success(message: 'Job Card $label');
+          if (newStatus == JobCard.statusCompleted) {
+            await _autoSubmitIfComplete();
+          }
+        } else {
+          GlobalSnackbar.error(message: 'Failed to update status');
         }
-      } else {
-        GlobalSnackbar.error(message: 'Failed to update status');
       }
     } on DioException catch (e) {
       GlobalSnackbar.error(
@@ -605,6 +611,50 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isUpdatingStatus.value = false;
+    }
+  }
+
+  // ── Pause helpers ─────────────────────────────────────────────────────────
+
+  /// Finds the last open time log (has fromTime, empty toTime) and patches
+  /// its to_time to now.  If no open log exists, this is a no-op — the server
+  /// will still accept the "Resume Job" status call.
+  Future<void> _closeOpenTimeLog() async {
+    final jc = jobCard.value;
+    if (jc == null) return;
+
+    final openLog = jc.timeLogs.cast<JobCardTimeLog?>().lastWhere(
+          (l) => l!.fromTime != null && (l.toTime == null || l.toTime!.isEmpty),
+      orElse: () => null,
+    );
+    if (openLog == null) return;
+
+    final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    await _provider.updateTimeLog(
+      timeLogName:  openLog.name,
+      toTime:       now,
+      completedQty: openLog.completedQty,
+      employee:     openLog.employee,
+    );
+  }
+
+  /// Calls make_time_log for a pure status transition (no qty change).
+  Future<void> _callMakeTimeLog({required String erpNextStatus}) async {
+    final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    final res = await _provider.updateJobCardStatus(
+      jobCardId:     name,
+      erpNextStatus: erpNextStatus,
+      startTime:     now,
+      completeTime:  null,
+      employees:     _employees,
+    );
+
+    if (res.statusCode == 200) {
+      await _fetchDocument();
+      _syncTimer(); // refresh timer state after pause
+      GlobalSnackbar.success(message: 'Job Card Paused');
+    } else {
+      GlobalSnackbar.error(message: 'Failed to pause Job Card');
     }
   }
 
