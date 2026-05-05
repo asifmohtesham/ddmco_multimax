@@ -1092,7 +1092,6 @@ class _PauseQtySheet extends StatefulWidget {
 }
 
 class _PauseQtySheetState extends State<_PauseQtySheet> {
-  // Local mirror of reactive values — updated via listeners, NOT via Obx.
   String? _error;
   double  _remaining = 0;
   bool    _forQtySet = false;
@@ -1100,9 +1099,7 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
   @override
   void initState() {
     super.initState();
-    // Seed initial values from controller state.
     _sync();
-    // Listen to the two observables that drive UI changes in this sheet.
     ever(widget.controller.pauseQtyError, (_) => _sync());
     ever(widget.controller.jobCard,       (_) => _sync());
   }
@@ -1110,9 +1107,9 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
   void _sync() {
     if (!mounted) return;
     setState(() {
-      _error      = widget.controller.pauseQtyError.value;
-      _remaining  = widget.controller.remainingQty;
-      _forQtySet  = (widget.controller.jobCard.value?.forQuantity ?? 0) > 0;
+      _error     = widget.controller.pauseQtyError.value;
+      _remaining = widget.controller.remainingQty;
+      _forQtySet = (widget.controller.jobCard.value?.forQuantity ?? 0) > 0;
     });
   }
 
@@ -1122,13 +1119,30 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
     final textTheme = Theme.of(context).textTheme;
     final enabled   = widget.controller.canConfirmPause;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+    // viewInsets.bottom = keyboard height (0 when keyboard is hidden)
+    // viewPadding.bottom = system nav bar height (always present on gesture nav)
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final navBarHeight   = MediaQuery.of(context).viewPadding.bottom;
+
+    return SafeArea(
+      // SafeArea handles nav bar on its own — we add it manually below
+      // so we can fine-tune the keyboard offset separately.
+      bottom: false,
       child: SingleChildScrollView(
+        // Push content up by keyboard height so the field stays visible.
+        // When keyboard is gone, this collapses to 0.
+        padding: EdgeInsets.only(bottom: keyboardHeight),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          // Horizontal + top padding for the sheet content.
+          // Bottom: whichever is bigger — nav bar height or a minimum 20dp.
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            keyboardHeight > 0
+                ? 20                       // keyboard open: button near field
+                : navBarHeight + 20,       // keyboard closed: clear nav bar
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1150,9 +1164,11 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
                 children: [
                   Icon(Icons.pause_circle_outline, size: 18, color: cs.primary),
                   const SizedBox(width: 8),
-                  Text('Pause Job Card',
-                      style: textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  Text(
+                    'Pause Job Card',
+                    style: textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -1163,7 +1179,7 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
               ),
               const SizedBox(height: 20),
 
-              // Qty field — driven by setState, no Obx
+              // Qty field
               TextField(
                 controller: widget.controller.pauseQtyController,
                 autofocus: true,
@@ -1183,7 +1199,7 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
               ),
               const SizedBox(height: 20),
 
-              // Confirm button — driven by setState, no Obx
+              // Pause button
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
