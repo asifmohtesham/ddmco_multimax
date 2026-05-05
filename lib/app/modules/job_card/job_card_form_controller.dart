@@ -1114,30 +1114,27 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs           = Theme.of(context).colorScheme;
-    final textTheme    = Theme.of(context).textTheme;
-    final enabled      = widget.controller.canConfirmPause;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final cs         = Theme.of(context).colorScheme;
+    final textTheme  = Theme.of(context).textTheme;
+    final enabled    = widget.controller.canConfirmPause;
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final navBarHeight   = MediaQuery.of(context).viewPadding.bottom;
 
     return Padding(
-      // This single padding does ALL the work:
-      // - keyboard open  → push content up by keyboard height + 20dp gap
-      // - keyboard closed → sit above the nav bar
+      // Only compensate for nav bar when keyboard is CLOSED.
+      // When keyboard is open, Flutter already placed the sheet above it.
       padding: EdgeInsets.only(
-        bottom: keyboardHeight > 0
-            ? keyboardHeight + 20
-            : navBarHeight + 20,
+        bottom: isKeyboardOpen ? 0 : navBarHeight,
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,   // ← shrink-wraps to content, no blank gap
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Handle
+          // ── Drag handle ──────────────────────────────────────────────────
           Center(
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40, height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 36, height: 4,
               decoration: BoxDecoration(
                 color: cs.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
@@ -1146,35 +1143,45 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
           ),
 
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title
+                // ── Title ───────────────────────────────────────────────────
                 Row(
                   children: [
-                    Icon(Icons.pause_circle_outline, size: 18, color: cs.primary),
+                    Icon(Icons.pause_circle_outline,
+                        size: 18, color: cs.primary),
                     const SizedBox(width: 8),
                     Text('Pause Job Card',
                         style: textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w700)),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   'Enter qty completed in this session (0 if none).',
                   style: textTheme.bodySmall
                       ?.copyWith(color: cs.onSurfaceVariant),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // Qty field
+                // ── Qty field ───────────────────────────────────────────────
                 TextField(
                   controller: widget.controller.pauseQtyController,
                   autofocus: true,
                   keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
+                  // Tapping the keyboard's done key confirms the action —
+                  // this is the primary confirm path when space is limited.
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: enabled
+                      ? (_) => Get.back(
+                    result: double.parse(
+                        widget.controller.pauseQtyController.text),
+                  )
+                      : null,
                   onChanged: widget.controller.validatePauseQty,
                   decoration: InputDecoration(
                     labelText:     'Completed Qty',
@@ -1187,24 +1194,29 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
                         : null,
                   ),
                 ),
-                const SizedBox(height: 20),
 
-                // Pause button
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: enabled
-                        ? () => Get.back(
-                      result: double.parse(
-                          widget.controller.pauseQtyController.text),
-                    )
-                        : null,
-                    icon: const Icon(Icons.pause_rounded),
-                    label: const Text('Pause', style: TextStyle(fontSize: 15)),
-                    style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.all(14)),
+                // ── Pause button — hidden while keyboard is open ──────────
+                // Avoids overflow in the ~168dp gap above the keyboard.
+                // User confirms via TextInputAction.done on the keyboard.
+                if (!isKeyboardOpen) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: enabled
+                          ? () => Get.back(
+                        result: double.parse(
+                            widget.controller.pauseQtyController.text),
+                      )
+                          : null,
+                      icon: const Icon(Icons.pause_rounded),
+                      label: const Text('Pause',
+                          style: TextStyle(fontSize: 15)),
+                      style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.all(14)),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
