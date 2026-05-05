@@ -89,15 +89,6 @@ class _JobCardScreenState extends State<JobCardScreen> {
     if (controller.activeFilters.containsKey('owner') &&
         controller.activeFilters['owner'].toString().isNotEmpty) {
       chips.add(chip(
-        icon: Icons.person_outline,
-        label: 'Assigned To: ${controller.activeFilters['owner']}',
-        onDeleted: () => controller.removeFilter('owner'),
-      ));
-    }
-
-    if (controller.activeFilters.containsKey('owner') &&
-        controller.activeFilters['owner'].toString().isNotEmpty) {
-      chips.add(chip(
         icon: Icons.person_add_alt_1_outlined,
         label: 'Created By: ${controller.activeFilters['owner']}',
         onDeleted: () => controller.removeFilter('owner'),
@@ -304,7 +295,7 @@ class _JobCardFilterSheet extends StatelessWidget {
                   TextField(
                     controller: searchCtrl,
                     decoration: InputDecoration(
-                      hintText: 'Search users…',
+                      hintText: 'Search users...',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
