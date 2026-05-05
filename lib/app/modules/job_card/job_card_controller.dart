@@ -2,10 +2,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/providers/user_provider.dart';
 
 class JobCardController extends GetxController {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  final UserProvider _userProvider = Get.find<UserProvider>();
 
   // ── List state ───────────────────────────────────────────────
   var jobCards = <JobCard>[].obs;
@@ -16,6 +21,10 @@ class JobCardController extends GetxController {
   // ── Search & filter ──────────────────────────────────────────
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
+
+  // ── User cache for DocType List pickers ──────────────────────
+  var users = <User>[].obs;
+  var isFetchingUsers = false.obs;
 
   /// Optional title override injected via [Get.arguments] from the Dashboard
   /// quick-access shortcut (e.g. 'Open Job Cards'). Falls back to null so
@@ -33,7 +42,51 @@ class JobCardController extends GetxController {
   void onInit() {
     super.onInit();
     _applyRouteArguments();
-    fetchJobCards(clear: true);
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    // Preload user list for DocType List pickers
+    await fetchUsers();
+
+    // Apply default Assigned To only if caller did not provide one
+    if (!activeFilters.containsKey('assigned_to')) {
+      await _ensureDefaultAssignedTo();
+    }
+
+    // Initial list fetch
+    await fetchJobCards(clear: true);
+  }
+
+  Future<void> _ensureDefaultAssignedTo() async {
+    try {
+      final response = await _apiProvider.getLoggedUser();
+      if (response.statusCode == 200 && response.data['message'] is String) {
+        final userId = response.data['message'] as String;
+        if (userId.isNotEmpty) {
+          activeFilters['assigned_to'] = userId;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('JobCardController._ensureDefaultAssignedTo error: $e');
+      // Fail silently — list will just load unfiltered
+    }
+  }
+
+  Future<void> fetchUsers() async {
+    if (users.isNotEmpty) return;
+    isFetchingUsers.value = true;
+    try {
+      final response = await _userProvider.getUsers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        users.value = data.map((json) => User.fromJson(json)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('JobCardController.fetchUsers error: $e');
+    } finally {
+      isFetchingUsers.value = false;
+    }
   }
 
   @override

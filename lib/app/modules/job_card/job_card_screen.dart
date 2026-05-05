@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
@@ -82,6 +83,24 @@ class _JobCardScreenState extends State<JobCardScreen> {
         icon: Icons.flag_outlined,
         label: 'Status: ${controller.activeFilters['status']}',
         onDeleted: () => controller.removeFilter('status'),
+      ));
+    }
+
+    if (controller.activeFilters.containsKey('assigned_to') &&
+        controller.activeFilters['assigned_to'].toString().isNotEmpty) {
+      chips.add(chip(
+        icon: Icons.person_outline,
+        label: 'Assigned To: ${controller.activeFilters['assigned_to']}',
+        onDeleted: () => controller.removeFilter('assigned_to'),
+      ));
+    }
+
+    if (controller.activeFilters.containsKey('owner') &&
+        controller.activeFilters['owner'].toString().isNotEmpty) {
+      chips.add(chip(
+        icon: Icons.person_add_alt_1_outlined,
+        label: 'Created By: ${controller.activeFilters['owner']}',
+        onDeleted: () => controller.removeFilter('owner'),
       ));
     }
     return chips;
@@ -237,10 +256,15 @@ class _JobCardScreenState extends State<JobCardScreen> {
 
 // ── Filter bottom sheet ────────────────────────────────────────────────
 
-class _JobCardFilterSheet extends StatelessWidget {
+class _JobCardFilterSheet extends StatefulWidget {
   final JobCardController controller;
   const _JobCardFilterSheet({required this.controller});
 
+  @override
+  State<_JobCardFilterSheet> createState() => _JobCardFilterSheetState();
+}
+
+class _JobCardFilterSheetState extends State<_JobCardFilterSheet> {
   static const List<String> _statuses = [
     'Open',
     'Work In Progress',
@@ -250,9 +274,169 @@ class _JobCardFilterSheet extends StatelessWidget {
     'Cancelled',
   ];
 
+  late TextEditingController assignedToController;
+  late TextEditingController createdByController;
+
+  final assignedTo = ''.obs;
+  final createdBy  = ''.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    final af = widget.controller.activeFilters;
+    assignedTo.value       = (af['assigned_to'] ?? '').toString();
+    createdBy.value        = (af['owner'] ?? '').toString();
+    assignedToController   = TextEditingController(text: assignedTo.value);
+    createdByController    = TextEditingController(text: createdBy.value);
+  }
+
+  @override
+  void dispose() {
+    assignedToController.dispose();
+    createdByController.dispose();
+    super.dispose();
+  }
+
+  void _showUserPicker({
+    required String title,
+    required void Function(String userId, String displayName) onSelected,
+  }) {
+    final searchCtrl = TextEditingController();
+    final filtered   = RxList<User>(widget.controller.users);
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (ctx, scrollCtrl) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: Get.back,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Search users...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      final term = val.toLowerCase();
+                      filtered.assignAll(
+                        val.isEmpty
+                            ? widget.controller.users
+                            : widget.controller.users.where((u) =>
+                        u.name.toLowerCase().contains(term) ||
+                            u.email.toLowerCase().contains(term)),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (widget.controller.isFetchingUsers.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (filtered.isEmpty) {
+                        return const Center(child: Text('No users found'));
+                      }
+                      return ListView.separated(
+                        controller: scrollCtrl,
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final u          = filtered[i];
+                          final userId     =
+                          u.email.isNotEmpty ? u.email : u.id;
+                          final displayName =
+                          u.name.isNotEmpty ? u.name : userId;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: colorScheme.secondaryContainer,
+                              child: Text(
+                                displayName[0].toUpperCase(),
+                                style: TextStyle(
+                                  color: colorScheme.onSecondaryContainer,
+                                ),
+                              ),
+                            ),
+                            title: Text(displayName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold)),
+                            subtitle: Text(u.email),
+                            onTap: () {
+                              Get.back();
+                              onSelected(userId, displayName);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  void _applyAndClose() {
+    // Start with existing filters
+    final filters = Map<String, dynamic>.from(widget.controller.activeFilters);
+
+    // Status (same semantics as before)
+    final activeStatus = filters['status'] as String?;
+    // status chips remain inside Obx Wrap as before; when a chip is tapped,
+    // widget.controller.setFilter('status', ...) is called immediately,
+    // so here we only care about Assigned To / Created By.
+
+    // Assigned To
+    if (assignedTo.value.isNotEmpty) {
+      filters['assigned_to'] = assignedTo.value;
+    } else {
+      filters.remove('assigned_to');
+    }
+
+    // Created By
+    if (createdBy.value.isNotEmpty) {
+      filters['owner'] = createdBy.value;
+    } else {
+      filters.remove('owner');
+    }
+
+    widget.controller.activeFilters.value = filters;
+    widget.controller.fetchJobCards(clear: true);
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs    = theme.colorScheme;
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
@@ -260,25 +444,28 @@ class _JobCardFilterSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Filter by Status',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
+                Text('Filters', style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
                 TextButton(
                   onPressed: () {
-                    controller.removeFilter('status');
+                    widget.controller.clearFilters();
                     Navigator.pop(context);
                   },
-                  child: const Text('Clear'),
+                  child: const Text('Clear All'),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+
+            // Status chips (unchanged semantics)
+            Text('Status', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 8),
             Obx(() {
-              final active =
-                  controller.activeFilters['status'] as String?;
+              final active = widget.controller.activeFilters['status'] as String?;
               return Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -288,14 +475,86 @@ class _JobCardFilterSheet extends StatelessWidget {
                     label: Text(s),
                     selected: selected,
                     onSelected: (_) {
-                      controller.setFilter(
-                          'status', selected ? null : s);
-                      Navigator.pop(context);
+                      widget.controller.setFilter(
+                        'status',
+                        selected ? null : s,
+                      );
                     },
                   );
                 }).toList(),
               );
             }),
+            const SizedBox(height: 16),
+
+            // Assigned To
+            Obx(() => TextFormField(
+              controller: assignedToController,
+              readOnly: true,
+              onTap: () => _showUserPicker(
+                title: 'Select Assigned To',
+                onSelected: (userId, displayName) {
+                  assignedTo.value           = userId;
+                  assignedToController.text  = displayName;
+                },
+              ),
+              decoration: InputDecoration(
+                labelText: 'Assigned To',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.person_outline),
+                suffixIcon: assignedTo.value.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Clear',
+                  onPressed: () {
+                    assignedTo.value = '';
+                    assignedToController.clear();
+                  },
+                )
+                    : const Icon(Icons.arrow_drop_down),
+                isDense: true,
+              ),
+            )),
+            const SizedBox(height: 16),
+
+            // Created By
+            Obx(() => TextFormField(
+              controller: createdByController,
+              readOnly: true,
+              onTap: () => _showUserPicker(
+                title: 'Select Created By',
+                onSelected: (userId, displayName) {
+                  createdBy.value          = userId;
+                  createdByController.text = displayName;
+                },
+              ),
+              decoration: InputDecoration(
+                labelText: 'Created By',
+                border: const OutlineInputBorder(),
+                prefixIcon:
+                const Icon(Icons.person_add_alt_1_outlined),
+                suffixIcon: createdBy.value.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Clear',
+                  onPressed: () {
+                    createdBy.value = '';
+                    createdByController.clear();
+                  },
+                )
+                    : const Icon(Icons.arrow_drop_down),
+                isDense: true,
+              ),
+            )),
+            const SizedBox(height: 24),
+
+            // Apply button
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _applyAndClose,
+                child: const Text('Apply'),
+              ),
+            ),
           ],
         ),
       ),

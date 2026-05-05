@@ -51,7 +51,7 @@ class WorkOrderProvider {
           'name', 'work_order', 'operation', 'operation_id',
           'workstation', 'status', 'for_quantity',
           'total_completed_qty', 'process_loss_qty',
-          'docstatus', 'modified', 'posting_date',
+          'docstatus', 'modified', 'posting_date','owner',
         ],
         limit: 100,
         orderBy: 'modified desc',
