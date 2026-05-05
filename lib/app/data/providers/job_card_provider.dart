@@ -105,12 +105,12 @@ class JobCardProvider {
     required List<Map<String, String>> employees,
   }) async {
     final Map<String, dynamic> argsMap = {
-      'job_card_id': jobCardId,
-      'start_time':  startTime,
-      if (completeTime != null) 'complete_time': completeTime,
+      'job_card_id':   jobCardId,
+      'start_time':    startTime,
+      'complete_time': completeTime ?? '',
       'completed_qty': 0,
-      'employees':   employees,
-      'status':      erpNextStatus,
+      'employees':     employees,
+      'status':        erpNextStatus,
     };
     return _apiProvider.callMethodPost(
       'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',

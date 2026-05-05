@@ -231,6 +231,19 @@ class _HeaderCard extends StatelessWidget {
               value: jc.workstation!,
             ),
           ],
+          if ((jc.primaryEmployeeDisplay ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            if (jc.employees.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _DetailRow(
+                icon: Icons.people_outline,
+                label: jc.employees.length == 1 ? 'Employee' : 'Employees',
+                value: jc.employees
+                    .map((e) => e.employeeName ?? e.employee)
+                    .join(', '),
+              ),
+            ],
+          ],
           if ((jc.itemName ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
             _DetailRow(
