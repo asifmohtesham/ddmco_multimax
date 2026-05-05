@@ -12,8 +12,6 @@ class LoginScreen extends GetView<LoginController> {
   }
 
   void _showServerConfigSheet(BuildContext context) {
-    final viewInsets = MediaQuery.of(context).viewInsets;
-
     Get.bottomSheet(
       GetBuilder<LoginController>(
         builder: (c) => Container(
@@ -21,7 +19,7 @@ class LoginScreen extends GetView<LoginController> {
             left: 24.0,
             right: 24.0,
             top: 24.0,
-            bottom: viewInsets.bottom + 24.0,
+            bottom: 24.0,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
