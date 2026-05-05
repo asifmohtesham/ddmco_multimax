@@ -1114,41 +1114,43 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs         = Theme.of(context).colorScheme;
-    final textTheme  = Theme.of(context).textTheme;
-    final enabled    = widget.controller.canConfirmPause;
+    final cs           = Theme.of(context).colorScheme;
+    final textTheme    = Theme.of(context).textTheme;
+    final enabled      = widget.controller.canConfirmPause;
     final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final navBarHeight   = MediaQuery.of(context).viewPadding.bottom;
 
-    return Padding(
-      // Only compensate for nav bar when keyboard is CLOSED.
-      // When keyboard is open, Flutter already placed the sheet above it.
-      padding: EdgeInsets.only(
-        bottom: isKeyboardOpen ? 0 : navBarHeight,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Drag handle ──────────────────────────────────────────────────
-          Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          Padding(
+    return SafeArea(
+      bottom: false,                        // we control bottom manually
+      child: Padding(
+        // Only add nav bar clearance when keyboard is CLOSED.
+        // Flutter already lifts the sheet above the keyboard automatically.
+        padding: EdgeInsets.only(
+          bottom: isKeyboardOpen ? 0 : navBarHeight,
+        ),
+        child: SingleChildScrollView(
+          // physics ensures it scrolls only when content actually overflows
+          physics: const ClampingScrollPhysics(),
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Title ───────────────────────────────────────────────────
+                // ── Drag handle ─────────────────────────────────────────
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    width: 36, height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+
+                // ── Title ───────────────────────────────────────────────
                 Row(
                   children: [
                     Icon(Icons.pause_circle_outline,
@@ -1167,14 +1169,12 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
                 ),
                 const SizedBox(height: 16),
 
-                // ── Qty field ───────────────────────────────────────────────
+                // ── Qty field ───────────────────────────────────────────
                 TextField(
                   controller: widget.controller.pauseQtyController,
                   autofocus: true,
                   keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-                  // Tapping the keyboard's done key confirms the action —
-                  // this is the primary confirm path when space is limited.
                   textInputAction: TextInputAction.done,
                   onSubmitted: enabled
                       ? (_) => Get.back(
@@ -1194,33 +1194,29 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
                         : null,
                   ),
                 ),
+                const SizedBox(height: 16),
 
-                // ── Pause button — hidden while keyboard is open ──────────
-                // Avoids overflow in the ~168dp gap above the keyboard.
-                // User confirms via TextInputAction.done on the keyboard.
-                if (!isKeyboardOpen) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: enabled
-                          ? () => Get.back(
-                        result: double.parse(
-                            widget.controller.pauseQtyController.text),
-                      )
-                          : null,
-                      icon: const Icon(Icons.pause_rounded),
-                      label: const Text('Pause',
-                          style: TextStyle(fontSize: 15)),
-                      style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.all(14)),
-                    ),
+                // ── Pause button — always visible ───────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: enabled
+                        ? () => Get.back(
+                      result: double.parse(
+                          widget.controller.pauseQtyController.text),
+                    )
+                        : null,
+                    icon: const Icon(Icons.pause_rounded),
+                    label: const Text('Pause',
+                        style: TextStyle(fontSize: 15)),
+                    style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.all(14)),
                   ),
-                ],
+                ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
