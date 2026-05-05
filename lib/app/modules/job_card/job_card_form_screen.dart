@@ -752,12 +752,23 @@ class _TimeLogRow extends StatelessWidget {
                     ),
                   ],
                 ),
-                if ((log.employeeName ?? log.employee ?? '').isNotEmpty) ...[
+                if ((log.employee ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
+                  // Full name (primary) — shown when available
+                  if ((log.employeeName ?? '').isNotEmpty)
+                    Text(
+                      log.employeeName!,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  // Document name (secondary) — always shown when employee is set
                   Text(
-                    log.employeeName ?? log.employee!,
-                    style: textTheme.labelSmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
+                    log.employee!,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],
