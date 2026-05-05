@@ -50,7 +50,7 @@ class JobCardProvider {
     required String startTime,
     String? completeTime,
     required double completedQty,
-    required List<Map<String, String>> employees,
+    required List<Map<String, dynamic>> employees,
     required String status,
   }) async {
     final Map<String, dynamic> argsMap = {
@@ -99,11 +99,11 @@ class JobCardProvider {
 
   Future<Response> updateJobCardStatus({
     required String jobCardId,
-    required String erpNextStatus,
+    required String status,
     required String startTime,
     String? completeTime,
     double completedQty = 0,
-    required List<Map<String, String>> employees,
+    required List<Map<String, dynamic>> employees,
   }) async {
     final Map<String, dynamic> argsMap = {
       'job_card_id':   jobCardId,
@@ -111,7 +111,7 @@ class JobCardProvider {
       'complete_time': completeTime ?? '',
       'completed_qty': completedQty,
       'employees':     employees,
-      'status':        erpNextStatus,
+      'status':        status,
     };
     return _apiProvider.callMethodPost(
       'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',

@@ -23,7 +23,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   String? _sessionEmployeeId;
   bool get hasLinkedEmployee =>
       _sessionEmployeeId != null && _sessionEmployeeId!.isNotEmpty;
-  List<Map<String, String>> get _employees => hasLinkedEmployee
+  // ✅ FIX: Widen to Map<String, dynamic> to match provider signature
+  List<Map<String, dynamic>> get _employees => hasLinkedEmployee
       ? [{'employee': _sessionEmployeeId!}]
       : [];
 
@@ -428,8 +429,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   ///   2. Put it first; append all remaining employees after.
   ///   3. If the session employee is not in jc.employees at all,
   ///      prepend it anyway using the stored session employee ID.
-  List<Map<String, String>> _buildEmployeesPayload() {
-    final jc           = jobCard.value;
+  List<Map<String, dynamic>> _buildEmployeesPayload() {
+    final jc = jobCard.value;
     if (jc == null) return [];
 
     final sessionEmpId = _sessionEmployeeId ?? '';
@@ -445,7 +446,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         sessionEmpId,
     ];
 
-    return ordered.map((e) => {'employee': e}).toList();
+    return ordered.map((e) => <String, dynamic>{'employee': e}).toList(); // ✅
   }
 
   Future<double?> _showPauseQtySheet() {
@@ -465,6 +466,21 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     );
   }
 
+  // When pausing, use the SAME employees that are on the open time log,
+  // not the job card's assigned employee list.
+  List<Map<String, dynamic>> _getActiveLogEmployees() {
+    final logs = jobCard.value?.timeLogs ?? [];
+    // Find the open log (has fromTime, no toTime)
+    final JobCardTimeLog? openLog = logs.firstWhereOrNull( (l) => l.fromTime != null && (l.toTime == null || l.toTime!.isEmpty), );
+    if (openLog?.employee != null && openLog!.employee!.isNotEmpty) {
+      return [{'employee': openLog.employee}];
+    }
+    // Fallback: use the job card's employee field
+    return (jobCard.value?.employees ?? [])
+        .map((e) => {'employee': e.employee})
+        .toList();
+  }
+
   Future<void> _doPause({required double completedQty}) async {
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
@@ -472,11 +488,11 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     try {
       final res = await _provider.updateJobCardStatus(
         jobCardId:     name,
-        erpNextStatus: 'Resume Job',
+        status:        'Resume Job',
         startTime:     now,
         completeTime:  now,       // required for Pause
         completedQty:  completedQty,
-        employees:     _employees,
+        employees:     _getActiveLogEmployees(),
       );
 
       if (res.statusCode == 200) {
@@ -694,7 +710,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     try {
       final res = await _provider.updateJobCardStatus(
         jobCardId:     name,
-        erpNextStatus: erpNextStatus,
+        status: erpNextStatus,
         startTime:     now,
         completeTime:  completeTime,
         employees:     _buildEmployeesPayload(),
