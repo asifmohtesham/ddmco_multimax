@@ -1,5 +1,7 @@
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
@@ -8,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/job_card/job_card_form_controller.dart';
 
 class JobCardScreen extends StatefulWidget {
   const JobCardScreen({super.key});

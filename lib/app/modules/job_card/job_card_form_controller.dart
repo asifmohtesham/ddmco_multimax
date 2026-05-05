@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
@@ -31,6 +32,17 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   final isAddingTimeLog  = false.obs;
   final isUpdatingStatus = false.obs;
   final isEditingTimeLog = false.obs;
+
+  // ── Live timer ─────────────────────────────────────────────────────────────
+
+  /// Formatted elapsed time string, e.g. "01:23:45". Empty when no active log.
+  final elapsedDisplay = ''.obs;
+
+  /// The start time of the currently-active (open) time log.
+  DateTime? _activeLogStart;
+
+  /// Internal periodic ticker.
+  Timer? _ticker;
 
   /// True while submitJobCard() network call is in-flight.
   final isSubmitting = false.obs;
@@ -104,6 +116,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   @override
   void onClose() {
+    _ticker?.cancel();
     startTimeController.dispose();
     completeTimeController.dispose();
     completedQtyController.dispose();
@@ -174,6 +187,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         jobCard.value = JobCard.fromJson(res.data['data']);
         _seedHeaderFields();
         _validateTimeLogForm();
+        _syncTimer();
       }
     } catch (e, st) {
       debugPrint('❌ _fetchDocument error: $e\n$st');
@@ -181,6 +195,49 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Starts or stops the live timer depending on job card state.
+  ///
+  /// An "open" time log is one where [fromTime] is set but [toTime] is null/empty.
+  /// This mirrors ERPNext's own behaviour: time starts counting when a log row
+  /// is created with only a from_time, and stops when to_time is filled in.
+  void _syncTimer() {
+    _ticker?.cancel();
+    _ticker = null;
+    _activeLogStart = null;
+    elapsedDisplay.value = '';
+
+    final jc = jobCard.value;
+    if (jc == null || !jc.isWorkInProgress) return;
+
+    // Find the first open time log (no toTime).
+    final openLog = jc.timeLogs.cast<JobCardTimeLog?>().firstWhere(
+          (l) => l!.fromTime != null && (l.toTime == null || l.toTime!.isEmpty),
+      orElse: () => null,
+    );
+    if (openLog == null) return;
+
+    try {
+      _activeLogStart =
+          DateFormat('yyyy-MM-dd HH:mm:ss').parse(openLog.fromTime!);
+    } catch (_) {
+      return;
+    }
+
+    // Tick immediately, then every second.
+    _updateElapsed();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _updateElapsed());
+  }
+
+  void _updateElapsed() {
+    final start = _activeLogStart;
+    if (start == null) return;
+    final elapsed = DateTime.now().difference(start);
+    final h = elapsed.inHours.toString().padLeft(2, '0');
+    final m = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    elapsedDisplay.value = '$h:$m:$s';
   }
 
   /// Seed editable header observables from the freshly loaded document.

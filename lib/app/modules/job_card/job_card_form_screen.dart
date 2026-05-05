@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
@@ -57,6 +58,17 @@ class _JobCardFormBody extends StatelessWidget {
           children: [
             _HeaderCard(jc: jc),
             const SizedBox(height: 24),
+
+            // ── NEW: Expected schedule dates ────────────────────────────────────
+            Obx(() {
+              final current = controller.jobCard.value ?? jc;
+              return _ScheduleDatesRow(jc: current);
+            }),
+
+            // ── NEW: Live elapsed timer (WIP only) ──────────────────────────────
+            _ActiveTimerBanner(controller: controller),
+
+            const SizedBox(height: 12),
 
             // Editable header fields — only when draft (docstatus == 0)
             Obx(() {
@@ -1160,6 +1172,226 @@ class _EditableFieldTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Active timer banner — shown while job is Work In Progress
+// ────────────────────────────────────────────────────────────────────────────
+
+class _ActiveTimerBanner extends StatelessWidget {
+  final JobCardFormController controller;
+  const _ActiveTimerBanner({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Obx(() {
+      final elapsed = controller.elapsedDisplay.value;
+      if (elapsed.isEmpty) return const SizedBox.shrink();
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            // Pulsing timer icon
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.6, end: 1.0),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeInOut,
+              builder: (_, v, child) =>
+                  Opacity(opacity: v, child: child),
+              onEnd: () {},
+              child: Icon(Icons.timer_outlined,
+                  size: 22, color: cs.onPrimaryContainer),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Job In Progress',
+                    style: textTheme.labelMedium?.copyWith(
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Elapsed: $elapsed',
+                    style: textTheme.headlineSmall?.copyWith(
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                      fontFeatures: [const FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Expected schedule dates row (read-only)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _ScheduleDatesRow extends StatelessWidget {
+  final JobCard jc;
+  const _ScheduleDatesRow({required this.jc});
+
+  @override
+  Widget build(BuildContext context) {
+    final start = jc.expectedStartDate;
+    final end   = jc.expectedEndDate;
+    if ((start == null || start.isEmpty) &&
+        (end   == null || end.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    // Determine urgency: if expected end is in the past → overdue.
+    final bool isOverdue = _isOverdue(end);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isOverdue
+            ? cs.errorContainer.withValues(alpha: 0.35)
+            : cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isOverdue
+              ? cs.error.withValues(alpha: 0.4)
+              : cs.outlineVariant,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isOverdue ? Icons.warning_amber_rounded : Icons.event_outlined,
+                size: 16,
+                color: isOverdue ? cs.error : cs.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isOverdue ? 'Scheduled (Overdue)' : 'Scheduled Window',
+                style: textTheme.labelSmall?.copyWith(
+                  color: isOverdue ? cs.error : cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _DateBlock(
+                  label: 'Expected Start',
+                  value: _fmtDate(start),
+                  icon: Icons.play_circle_outline,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _DateBlock(
+                  label: 'Expected End',
+                  value: _fmtDate(end),
+                  icon: Icons.flag_outlined,
+                  highlight: isOverdue,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isOverdue(String? end) {
+    if (end == null || end.isEmpty) return false;
+    try {
+      final dt = end.contains(' ')
+          ? DateFormat('yyyy-MM-dd HH:mm:ss').parse(end)
+          : DateFormat('yyyy-MM-dd').parse(end);
+      return dt.isBefore(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _fmtDate(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    // Trim to date + time (no seconds) for compact display.
+    return raw.length >= 16 ? raw.substring(0, 16) : raw;
+  }
+}
+
+class _DateBlock extends StatelessWidget {
+  final String   label;
+  final String   value;
+  final IconData icon;
+  final bool     highlight;
+
+  const _DateBlock({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon,
+                size: 12,
+                color: highlight ? cs.error : cs.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: textTheme.labelSmall?.copyWith(
+                color: highlight ? cs.error : cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: highlight ? cs.error : cs.onSurface,
+          ),
+        ),
+      ],
     );
   }
 }
