@@ -28,78 +28,82 @@ class LoginScreen extends GetView<LoginController> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
           ),
           child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Connect to Instance',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Enter the URL of your ERP instance.',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-                if (c.currentServerUrl.isNotEmpty) ...[
-                  const SizedBox(height: 4),
+            top: false,
+            child: SingleChildScrollView(
+              // lets the content move above the keyboard instead of overflowing
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    'Current: ${c.currentServerUrl.value}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    'Connect to Instance',
+                    style: Theme.of(context)
+                        .textTheme
+                        .headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                ],
-                const SizedBox(height: 24),
-                TextField(
-                  controller: c.serverUrlController,
-                  decoration: InputDecoration(
-                    labelText: 'Server URL',
-                    hintText: 'https://erp.domain.com',
-                    prefixIcon: const Icon(Icons.link),
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.content_paste),
-                      tooltip: 'Paste from clipboard',
-                      onPressed: () async {
-                        final data = await Clipboard.getData(Clipboard.kTextPlain);
-                        final text = data?.text?.trim();
-                        if (text != null && text.isNotEmpty) {
-                          c.serverUrlController
-                            ..text = text
-                            ..selection = TextSelection.fromPosition(
-                              TextPosition(offset: text.length),
-                            );
-                        }
-                      },
+                  const SizedBox(height: 8),
+                  Text(
+                    'Enter the URL of your ERP instance.',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                  if (c.currentServerUrl.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Current: ${c.currentServerUrl.value}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: c.serverUrlController,
+                    decoration: InputDecoration(
+                      labelText: 'Server URL',
+                      hintText: 'https://erp.domain.com',
+                      prefixIcon: const Icon(Icons.link),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.content_paste),
+                        tooltip: 'Paste from clipboard',
+                        onPressed: () async {
+                          final data = await Clipboard.getData(Clipboard.kTextPlain);
+                          final text = data?.text?.trim();
+                          if (text != null && text.isNotEmpty) {
+                            c.serverUrlController
+                              ..text = text
+                              ..selection = TextSelection.fromPosition(
+                                TextPosition(offset: text.length),
+                              );
+                          }
+                        },
+                      ),
+                    ),
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.done,
+                    autofocus: true,
+                    autocorrect: false,
+                    onSubmitted: (_) => c.saveServerConfiguration(),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: c.isCheckingConnection.value
+                          ? null
+                          : c.saveServerConfiguration,
+                      style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: c.isCheckingConnection.value
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Connect'),
                     ),
                   ),
-                  keyboardType: TextInputType.url,
-                  textInputAction: TextInputAction.done,
-                  autofocus: true,
-                  autocorrect: false,
-                  onSubmitted: (_) => c.saveServerConfiguration(),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: c.isCheckingConnection.value
-                        ? null
-                        : c.saveServerConfiguration,
-                    style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16)),
-                    child: c.isCheckingConnection.value
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Connect'),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
