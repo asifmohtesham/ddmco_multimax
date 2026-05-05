@@ -324,41 +324,51 @@ class _StatusActionsRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Start / Pause / Complete row ─────────────────────────────────
+        // ── Start / Resume / Pause / Complete row ──────────────────────────────────
         if (hasStatusRow)
           Row(
             children: [
-              if (jc.isOpen) ...[
+              // Start — fresh job card, never been started
+              if (jc.isOpen)
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: anyLoading
                         ? null
-                        : () => controller.updateStatus(
-                            JobCard.statusWorkInProgress),
+                        : () => controller.updateStatus(JobCard.statusWorkInProgress),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(14),
                       backgroundColor: cs.primary,
                     ),
                     icon: statusLoading
                         ? _spinner(Colors.white)
-                        // ── Show Play for fresh start, Resume icon for paused ──
-                        : Icon(jc.hasTimeLogs
-                        ? Icons.replay_rounded
-                        : Icons.play_arrow_rounded),
-                    label: Text(
-                      // ── "Resume" when previously started, "Start" when fresh ──
-                      jc.hasTimeLogs ? 'Resume' : 'Start',
-                      style: const TextStyle(fontSize: 15),
-                    ),
+                        : const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Start', style: TextStyle(fontSize: 15)),
                   ),
                 ),
-              ],
+
+              // Resume — previously paused (On Hold)
+              if (jc.isOnHold)
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: anyLoading
+                        ? null
+                        : () => controller.updateStatus(JobCard.statusWorkInProgress),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(14),
+                      backgroundColor: cs.primary,
+                    ),
+                    icon: statusLoading
+                        ? _spinner(Colors.white)
+                        : const Icon(Icons.replay_rounded),
+                    label: const Text('Resume', style: TextStyle(fontSize: 15)),
+                  ),
+                ),
+
+              // Pause + Complete — only while Work In Progress
               if (jc.isWorkInProgress) ...[
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: anyLoading
-                        ? null
-                        : controller.pauseJobCard,
+                    onPressed: anyLoading ? null : controller.pauseJobCard,
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.all(14),
                       side: BorderSide(color: cs.primary),
@@ -366,8 +376,7 @@ class _StatusActionsRow extends StatelessWidget {
                     icon: statusLoading
                         ? _spinner(cs.primary)
                         : const Icon(Icons.pause_rounded),
-                    label:
-                        const Text('Pause', style: TextStyle(fontSize: 15)),
+                    label: const Text('Pause', style: TextStyle(fontSize: 15)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -375,8 +384,7 @@ class _StatusActionsRow extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: anyLoading
                         ? null
-                        : () => controller.updateStatus(
-                            JobCard.statusCompleted),
+                        : () => controller.updateStatus(JobCard.statusCompleted),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(14),
                       backgroundColor: cs.tertiary,
@@ -385,8 +393,7 @@ class _StatusActionsRow extends StatelessWidget {
                     icon: statusLoading
                         ? _spinner(cs.onTertiary)
                         : const Icon(Icons.check_circle_outline),
-                    label: const Text('Complete',
-                        style: TextStyle(fontSize: 15)),
+                    label: const Text('Complete', style: TextStyle(fontSize: 15)),
                   ),
                 ),
               ],

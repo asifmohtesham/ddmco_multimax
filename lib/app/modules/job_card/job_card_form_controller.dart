@@ -92,6 +92,10 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   final completeTimeController = TextEditingController();
   final completedQtyController = TextEditingController();
 
+  // ── Pause sheet state ─────────────────────────────────────────────────────
+  final pauseQtyController = TextEditingController();
+  final pauseQtyError      = RxnString();   // null = no error
+
   // ── Validation state ──────────────────────────────────────────────────────
   final isStartTimeValid    = false.obs;
   final isCompleteTimeValid = false.obs;
@@ -120,10 +124,16 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     startTimeController.dispose();
     completeTimeController.dispose();
     completedQtyController.dispose();
+    pauseQtyController.dispose();
     super.onClose();
   }
 
   // ── Computed guards ───────────────────────────────────────────────────────
+
+  bool get canConfirmPause {
+    final qty = double.tryParse(pauseQtyController.text);
+    return qty != null && qty >= 0 && pauseQtyError.value == null;
+  }
 
   bool get canAddTimeLog =>
       isStartTimeValid.value &&
@@ -173,6 +183,19 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     if (jc == null || jc.forQuantity <= 0) return 0;
     final rem = jc.forQuantity - jc.totalCompletedQty;
     return rem < 0 ? 0 : rem;
+  }
+
+  void validatePauseQty(String value) {
+    final qty = double.tryParse(value) ?? -1;
+    final jc  = jobCard.value;
+    if (qty < 0) {
+      pauseQtyError.value = 'Enter 0 or a positive quantity';
+    } else if (jc != null && jc.forQuantity > 0 && qty > remainingQty) {
+      pauseQtyError.value =
+      'Exceeds remaining qty (max ${_fmtQty(remainingQty)})';
+    } else {
+      pauseQtyError.value = null;
+    }
   }
 
   // ── Fetch document ────────────────────────────────────────────────────────
@@ -396,6 +419,10 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   }
 
   Future<double?> _showPauseQtySheet() {
+    // Reset state from any previous pause attempt
+    pauseQtyController.clear();
+    pauseQtyError.value = null;
+
     return Get.bottomSheet<double>(
       _PauseQtySheet(controller: this),
       isScrollControlled: true,
@@ -1025,45 +1052,9 @@ class _SheetDateTimeField extends StatelessWidget {
 // Collects completed_qty before pausing so the time log row is fully recorded.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _PauseQtySheet extends StatefulWidget {
+class _PauseQtySheet extends StatelessWidget {
   final JobCardFormController controller;
   const _PauseQtySheet({required this.controller});
-
-  @override
-  State<_PauseQtySheet> createState() => _PauseQtySheetState();
-}
-
-class _PauseQtySheetState extends State<_PauseQtySheet> {
-  final _qtyCtrl = TextEditingController();
-  String? _qtyError;
-
-  double get _maxQty => widget.controller.remainingQty;
-  bool get _forQtySet => (widget.controller.jobCard.value?.forQuantity ?? 0) > 0;
-
-  void _validate(String value) {
-    final qty = double.tryParse(value) ?? -1;
-    setState(() {
-      if (qty < 0) {
-        _qtyError = 'Enter 0 or a positive quantity';
-      } else if (_forQtySet && qty > _maxQty) {
-        _qtyError = 'Exceeds remaining qty '
-            '(max ${widget.controller._fmtQty(_maxQty)})';
-      } else {
-        _qtyError = null;
-      }
-    });
-  }
-
-  bool get _canConfirm {
-    final qty = double.tryParse(_qtyCtrl.text);
-    return qty != null && qty >= 0 && _qtyError == null;
-  }
-
-  @override
-  void dispose() {
-    _qtyCtrl.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1106,39 +1097,48 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
           ),
           const SizedBox(height: 20),
 
-          // Qty field
-          TextField(
-            controller: _qtyCtrl,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            onChanged: _validate,
-            decoration: InputDecoration(
-              labelText: 'Completed Qty',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.numbers_outlined),
-              errorText: _qtyError,
-              errorMaxLines: 2,
-              helperText: _forQtySet && _qtyError == null
-                  ? 'Remaining: ${widget.controller._fmtQty(_maxQty)}'
-                  : null,
-            ),
-          ),
+          // Qty field — error driven by controller observable
+          Obx(() {
+            final remaining = controller.remainingQty;
+            final forQtySet =
+                (controller.jobCard.value?.forQuantity ?? 0) > 0;
+            return TextField(
+              controller: controller.pauseQtyController,
+              autofocus: true,
+              keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+              onChanged: controller.validatePauseQty,
+              decoration: InputDecoration(
+                labelText:  'Completed Qty',
+                border:     const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.numbers_outlined),
+                errorText:  controller.pauseQtyError.value,
+                errorMaxLines: 2,
+                helperText: controller.pauseQtyError.value == null && forQtySet
+                    ? 'Remaining: ${controller._fmtQty(remaining)}'
+                    : null,
+              ),
+            );
+          }),
           const SizedBox(height: 20),
 
           // Confirm button
-          SizedBox(
+          Obx(() => SizedBox(
             width: double.infinity,
-            child: StatefulBuilder(
-              builder: (_, refresh) => FilledButton.icon(
-                onPressed: _canConfirm
-                    ? () => Get.back(result: double.parse(_qtyCtrl.text))
-                    : null,
-                icon: const Icon(Icons.pause_rounded),
-                label: const Text('Pause', style: TextStyle(fontSize: 15)),
-                style: FilledButton.styleFrom(padding: const EdgeInsets.all(14)),
-              ),
+            child: FilledButton.icon(
+              onPressed: controller.canConfirmPause
+                  ? () => Get.back(
+                result: double.parse(
+                    controller.pauseQtyController.text),
+              )
+                  : null,
+              icon: const Icon(Icons.pause_rounded),
+              label:
+              const Text('Pause', style: TextStyle(fontSize: 15)),
+              style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.all(14)),
             ),
-          ),
+          )),
         ],
       ),
     );
