@@ -8,7 +8,6 @@ import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
-import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
@@ -430,27 +429,25 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   ///   3. If the session employee is not in jc.employees at all,
   ///      prepend it anyway using the stored session employee ID.
   List<Map<String, String>> _buildEmployeesPayload() {
-    final jc = jobCard.value;
+    final jc           = jobCard.value;
     if (jc == null) return [];
-    final _authController = Get.find<AuthenticationController>();
 
-    // Session user's employee ID — stored during login, e.g. "HR-EMP-00012"
-    final sessionEmpId = _authController.currentUser?.employee ?? '';
+    final sessionEmpId = _sessionEmployeeId ?? '';
+    final all          = jc.employees.map((e) => e.employee).toList();
 
-    final all = jc.employees.map((e) => e.employee).toList();
-
-    // Sort: session employee first
     final ordered = <String>[
+      // Session user's employee always first (ERPNext ownership check)
       if (sessionEmpId.isNotEmpty && all.contains(sessionEmpId))
         sessionEmpId,
       ...all.where((e) => e != sessionEmpId),
-      // Fallback: if session employee not in assigned list, still prepend
+      // Fallback: session employee not in assigned list — still prepend
       if (sessionEmpId.isNotEmpty && !all.contains(sessionEmpId))
         sessionEmpId,
     ];
 
     return ordered.map((e) => {'employee': e}).toList();
   }
+
 
   Future<double?> _showPauseQtySheet() {
     // Reset state from any previous pause attempt
