@@ -93,20 +93,24 @@ class AppNavDrawer extends StatelessWidget {
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 18),
                 ),
+                // AFTER — add employeeId row
                 accountEmail: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       user?.email ?? 'Not logged in',
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12),
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     if (parts.isNotEmpty)
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 11),
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
+                    if (user?.employeeId?.isNotEmpty == true)
+                      Text(
+                        'Employee: ${user!.employeeId}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
                       ),
                   ],
                 ),
