@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:flutter/services.dart';
 
 class LoginScreen extends GetView<LoginController> {
   const LoginScreen({super.key});
@@ -11,8 +12,8 @@ class LoginScreen extends GetView<LoginController> {
   }
 
   void _showServerConfigSheet(BuildContext context) {
-    // Do NOT reset showServerGuide here — it is only cleared after a
-    // successful save inside _confirmAndSave in the controller.
+    final viewInsets = MediaQuery.of(context).viewInsets;
+
     Get.bottomSheet(
       GetBuilder<LoginController>(
         builder: (c) => Container(
@@ -20,9 +21,7 @@ class LoginScreen extends GetView<LoginController> {
             left: 24.0,
             right: 24.0,
             top: 24.0,
-            // Commit 4: push sheet content above the software keyboard
-            // so the URL field is not obscured on small screens.
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24.0,
+            bottom: viewInsets.bottom + 24.0,
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -41,21 +40,46 @@ class LoginScreen extends GetView<LoginController> {
                       ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Enter the URL of your instance.',
-                  style: TextStyle(color: Colors.grey),
+                Text(
+                  'Enter the URL of your ERP instance.',
+                  style: const TextStyle(color: Colors.grey),
                 ),
+                if (c.currentServerUrl.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Current: ${c.currentServerUrl.value}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 TextField(
                   controller: c.serverUrlController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Server URL',
                     hintText: 'https://erp.domain.com',
-                    prefixIcon: Icon(Icons.link),
-                    border: OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.link),
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.content_paste),
+                      tooltip: 'Paste from clipboard',
+                      onPressed: () async {
+                        final data = await Clipboard.getData(Clipboard.kTextPlain);
+                        final text = data?.text?.trim();
+                        if (text != null && text.isNotEmpty) {
+                          c.serverUrlController
+                            ..text = text
+                            ..selection = TextSelection.fromPosition(
+                              TextPosition(offset: text.length),
+                            );
+                        }
+                      },
+                    ),
                   ),
                   keyboardType: TextInputType.url,
                   textInputAction: TextInputAction.done,
+                  autofocus: true,
+                  autocorrect: false,
+                  onSubmitted: (_) => c.saveServerConfiguration(),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -107,7 +131,16 @@ class LoginScreen extends GetView<LoginController> {
                 color: showGuide ? Colors.orange : Colors.grey,
               ),
               tooltip: 'Server Configuration',
-              onPressed: () => _showServerConfigSheet(context),
+              onPressed: () {
+                // 1) Dismiss any open keyboard from the login form.
+                FocusManager.instance.primaryFocus?.unfocus();
+
+                // 2) Open the server config sheet on the next frame,
+                //    after viewInsets have been updated.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _showServerConfigSheet(context);
+                });
+              },
             ),
           ],
         );
