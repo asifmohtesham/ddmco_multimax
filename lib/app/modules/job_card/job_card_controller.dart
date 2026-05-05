@@ -12,9 +12,13 @@ class JobCardController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
 
-  // Currently selected owner filter (user id/email) and its display label
-  final ownerUserId    = ''.obs;   // maps to activeFilters['owner']
-  final ownerUserLabel = ''.obs;   // nice text for the UI
+  // Assigned To (maps to _assign like '%user%')
+  final assignedUserId    = ''.obs;
+  final assignedUserLabel = ''.obs;
+
+  // Created By (maps to owner = user)
+  final createdByUserId    = ''.obs;
+  final createdByUserLabel = ''.obs;
 
   // ── List state ───────────────────────────────────────────────
   var jobCards = <JobCard>[].obs;
@@ -54,38 +58,56 @@ class JobCardController extends GetxController {
     await fetchUsers();
 
     // Apply default Assigned To only if caller did not provide one
-    if (!activeFilters.containsKey('owner')) {
-      await _ensureDefaultOwnerFilter();
+    if (!activeFilters.containsKey('_assign')) {
+      await _ensureDefaultAssignedToFilter();
     }
 
     // Initial list fetch
     await fetchJobCards(clear: true);
   }
 
-  Future<void> _ensureDefaultOwnerFilter() async {
+  Future<void> _ensureDefaultAssignedToFilter() async {
     try {
       final response = await _apiProvider.getLoggedUser();
       if (response.statusCode == 200 && response.data['message'] is String) {
         final userId = response.data['message'] as String;
         if (userId.isNotEmpty) {
-          activeFilters['owner'] = userId;
-          ownerUserId.value      = userId;
-          ownerUserLabel.value   = userId; // or later from User list
+          // Store as "like" operator array so _buildSearchFilters() passes through
+          activeFilters['_assign'] = ['like', '%$userId%'];
+          assignedUserId.value     = userId;
+          assignedUserLabel.value  = userId; // can be replaced with full name after fetchUsers
         }
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('JobCardController._ensureDefaultOwnerFilter error: $e');
+      if (kDebugMode) {
+        debugPrint('JobCardController._ensureDefaultAssignedToFilter error: $e');
+      }
     }
   }
 
-  void setOwnerFilter(String? userId, String? label) {
+  void setAssignedToFilter(String? userId, String? label) {
     if (userId == null || userId.isEmpty) {
-      ownerUserId.value    = '';
-      ownerUserLabel.value = '';
+      assignedUserId.value    = '';
+      assignedUserLabel.value = '';
+      activeFilters.remove('_assign');
+    } else {
+      assignedUserId.value    = userId;
+      assignedUserLabel.value = label ?? userId;
+      // Store full operator tuple so _buildSearchFilters() passes it through
+      activeFilters['_assign'] = ['like', '%$userId%'];
+    }
+    fetchJobCards(clear: true);
+  }
+
+  void setCreatedByFilter(String? userId, String? label) {
+    if (userId == null || userId.isEmpty) {
+      createdByUserId.value    = '';
+      createdByUserLabel.value = '';
       activeFilters.remove('owner');
     } else {
-      ownerUserId.value    = userId;
-      ownerUserLabel.value = label ?? userId;
+      createdByUserId.value    = userId;
+      createdByUserLabel.value = label ?? userId;
+      // Simple equality – owner = user
       activeFilters['owner'] = userId;
     }
     fetchJobCards(clear: true);

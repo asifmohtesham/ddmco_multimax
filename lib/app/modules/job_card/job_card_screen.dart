@@ -86,12 +86,23 @@ class _JobCardScreenState extends State<JobCardScreen> {
       ));
     }
 
+    // Assigned To
+    if (controller.activeFilters.containsKey('_assign') &&
+        controller.assignedUserLabel.value.isNotEmpty) {
+      chips.add(chip(
+        icon: Icons.person_outline,
+        label: 'Assigned To: ${controller.assignedUserLabel.value}',
+        onDeleted: () => controller.setAssignedToFilter(null, null),
+      ));
+    }
+
+    // Created By
     if (controller.activeFilters.containsKey('owner') &&
-        controller.activeFilters['owner'].toString().isNotEmpty) {
+        controller.createdByUserLabel.value.isNotEmpty) {
       chips.add(chip(
         icon: Icons.person_add_alt_1_outlined,
-        label: 'Created By: ${controller.activeFilters['owner']}',
-        onDeleted: () => controller.removeFilter('owner'),
+        label: 'Created By: ${controller.createdByUserLabel.value}',
+        onDeleted: () => controller.setCreatedByFilter(null, null),
       ));
     }
     return chips;
@@ -260,7 +271,13 @@ class _JobCardFilterSheet extends StatelessWidget {
     'Cancelled',
   ];
 
-  void _openUserPicker(BuildContext context) {
+
+
+  void _openUserPicker(
+      BuildContext context, {
+        required String title,
+        required void Function(String userId, String displayName) onSelected,
+      }) {
     final searchCtrl = TextEditingController();
     final filtered   = RxList<User>(controller.users);
 
@@ -283,8 +300,7 @@ class _JobCardFilterSheet extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Select Assigned To',
-                          style: Theme.of(ctx).textTheme.titleLarge),
+                      Text(title, style: Theme.of(ctx).textTheme.titleLarge),
                       IconButton(
                         icon: const Icon(Icons.close),
                         onPressed: Get.back,
@@ -328,7 +344,6 @@ class _JobCardFilterSheet extends StatelessWidget {
                         itemBuilder: (_, i) {
                           final u       = filtered[i];
                           final userId  = u.email;
-                          // User.name already maps from json['full_name'] or falls back to json['name'][cite:27]
                           final display = u.name.isNotEmpty ? u.name : userId;
                           return ListTile(
                             leading: CircleAvatar(
@@ -338,8 +353,7 @@ class _JobCardFilterSheet extends StatelessWidget {
                             subtitle: Text(userId),
                             onTap: () {
                               Get.back();
-                              // Push selection into controller – no widget state
-                              controller.setOwnerFilter(userId, display);
+                              onSelected(userId, display);
                             },
                           );
                         },
@@ -407,12 +421,17 @@ class _JobCardFilterSheet extends StatelessWidget {
             }),
             const SizedBox(height: 16),
 
-            // Assigned To (actually backed by owner)
+            // Assigned To (backed by _assign)
             Obx(() {
-              final label = controller.ownerUserLabel.value;
+              final label = controller.assignedUserLabel.value;
               return TextFormField(
                 readOnly: true,
-                onTap: () => _openUserPicker(context),
+                onTap: () => _openUserPicker(
+                  context,
+                  title: 'Select Assigned To',
+                  onSelected: (userId, display) =>
+                      controller.setAssignedToFilter(userId, display),
+                ),
                 decoration: InputDecoration(
                   labelText: 'Assigned To',
                   border: const OutlineInputBorder(),
@@ -421,7 +440,36 @@ class _JobCardFilterSheet extends StatelessWidget {
                       ? IconButton(
                     icon: const Icon(Icons.close, size: 18),
                     tooltip: 'Clear',
-                    onPressed: () => controller.setOwnerFilter(null, null),
+                    onPressed: () => controller.setAssignedToFilter(null, null),
+                  )
+                      : const Icon(Icons.arrow_drop_down),
+                  isDense: true,
+                ),
+                controller: TextEditingController(text: label),
+              );
+            }),
+            const SizedBox(height: 16),
+
+            // Created By (backed by owner)
+            Obx(() {
+              final label = controller.createdByUserLabel.value;
+              return TextFormField(
+                readOnly: true,
+                onTap: () => _openUserPicker(
+                  context,
+                  title: 'Select Created By',
+                  onSelected: (userId, display) =>
+                      controller.setCreatedByFilter(userId, display),
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Created By',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.person_add_alt_1_outlined),
+                  suffixIcon: label.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: 'Clear',
+                    onPressed: () => controller.setCreatedByFilter(null, null),
                   )
                       : const Icon(Icons.arrow_drop_down),
                   isDense: true,
