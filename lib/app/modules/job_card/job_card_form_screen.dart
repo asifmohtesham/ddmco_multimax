@@ -34,29 +34,41 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
           isDirty:    false,
           saveResult: SaveResult.idle,
         ),
+
         body: controller.isLoading.value
             ? const Center(child: CircularProgressIndicator())
             : jc == null
             ? _ErrorState(onRetry: controller.fetchDocument)
             : _JobCardFormBody(controller: controller, jc: jc),
-        bottomNavigationBar: controller.isLoading.value || jc == null
+
+        // ✅ Status / Submit row is fixed at the bottom
+        bottomNavigationBar: (controller.isLoading.value || jc == null)
             ? null
-            : Obx(() {
-          final current = controller.jobCard.value ?? jc;
-          final padding = MediaQuery.of(context).viewPadding.bottom;
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              8,
-              16,
-              padding + 8,
-            ),
-            child: _StatusActionsRow(
-              jc:         current,
-              controller: controller,
-            ),
-          );
-        }),
+            : Builder(
+          builder: (context) {
+            return Obx(() {
+              final current = controller.jobCard.value ?? jc;
+              final bottomInset =
+                  MediaQuery.of(context).viewPadding.bottom;
+
+              return SafeArea(
+                top: false, // don't push it down from the top
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    bottomInset + 8,
+                  ),
+                  child: _StatusActionsRow(
+                    jc:         current,
+                    controller: controller,
+                  ),
+                ),
+              );
+            });
+          },
+        ),
       );
     });
   }
