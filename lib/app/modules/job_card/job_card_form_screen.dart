@@ -41,31 +41,41 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
             ? _ErrorState(onRetry: controller.fetchDocument)
             : _JobCardFormBody(controller: controller, jc: jc),
 
-        // ✅ Status / Submit row is fixed at the bottom
-        bottomNavigationBar: (controller.isLoading.value || jc == null)
+        bottomNavigationBar: controller.isLoading.value || jc == null
             ? null
             : Builder(
-          builder: (context) {
-            return Obx(() {
-              final current = controller.jobCard.value ?? jc;
-
-              return SafeArea(
-                top: false, // don't push it down from the top
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    8,
-                    16,
-                    8,
-                  ),
-                  child: _StatusActionsRow(
-                    jc:         current,
-                    controller: controller,
-                  ),
-                ),
-              );
-            });
-          },
+              builder: (context) {
+                return Obx(() {
+                  final current = controller.jobCard.value ?? jc;
+                  final mq = MediaQuery.of(context);
+                  return SafeArea(
+                    top: false,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        border: Border(
+                          top: BorderSide(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outlineVariant,
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        10,
+                        16,
+                        (mq.padding.bottom > 0 ? mq.padding.bottom : 8),
+                      ),
+                      child: _StatusActionsRow(
+                        jc:         current,
+                        controller: controller,
+                      ),
+                    ),
+                  );
+                });
+              },
         ),
       );
     });
@@ -83,11 +93,15 @@ class _JobCardFormBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Reserve clearance below last item for the sticky bottom bar.
+    // kBottomNavigationBarHeight (56) + typical action row (~64) + safe-area.
+    final bottomClearance = MediaQuery.of(context).padding.bottom + 120.0;
+
     return RefreshIndicator(
       onRefresh: controller.fetchDocument,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomClearance),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -115,7 +129,6 @@ class _JobCardFormBody extends StatelessWidget {
                 ],
               );
             }),
-            const SizedBox(height: 16),
 
             Obx(() {
               final current = controller.jobCard.value ?? jc;
