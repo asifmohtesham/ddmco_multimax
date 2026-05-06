@@ -1029,120 +1029,127 @@ class _EditTimeLogSheetState extends State<_EditTimeLogSheet> {
   Widget build(BuildContext context) {
     final cs        = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final navBarHeight = MediaQuery.of(context).viewPadding.bottom;
     final padding   = MediaQuery.of(context).viewInsets.bottom;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, padding),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Handle ──
-          Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // ── Title ──
-          Row(
-            children: [
-              Icon(Icons.edit_outlined, size: 18, color: cs.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Edit Time Log',
-                style: textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'From: ${_truncate(widget.log.fromTime ?? '—')}',
-            style: textTheme.bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-
-          // ── To time ──
-          _SheetDateTimeField(
-            label: 'Complete Time *',
-            controller: _toTimeCtrl,
-            onTap: _pickToTime,
-          ),
-          const SizedBox(height: 14),
-
-          // ── Completed qty ──
-          TextField(
-            controller: _qtyCtrl,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            onChanged: _validateQty,
-            decoration: InputDecoration(
-              labelText:   'Completed Qty *',
-              border:      const OutlineInputBorder(),
-              prefixIcon:  const Icon(Icons.numbers_outlined),
-              errorText:   _qtyError,
-              errorMaxLines: 2,
-              helperText: _qtyError == null && _maxQty != double.infinity
-                  ? 'Max for this row: ${widget.controller._fmtQty(_maxQty)}'
-                  : null,
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // ── Employee ──
-          TextField(
-            controller: _employeeCtrl,
-            decoration: const InputDecoration(
-              labelText:  'Employee',
-              hintText:   'Employee ID (e.g. EMP-0001)',
-              border:     OutlineInputBorder(),
-              prefixIcon: Icon(Icons.person_outline),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ── Save button ──
-          Obx(() {
-            final saving = widget.controller.isEditingTimeLog.value;
-            return SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _canSave
-                    ? () => widget.controller.updateTimeLog(
-                          log:          widget.log,
-                          toTime:       _toTimeCtrl.text,
-                          completedQty:
-                              double.parse(_qtyCtrl.text),
-                          employee: _employeeCtrl.text.isNotEmpty
-                              ? _employeeCtrl.text.trim()
-                              : null,
-                        )
-                    : null,
-                icon: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.save_outlined),
-                label: Text(
-                  saving ? 'Saving…' : 'Save Changes',
-                  style: const TextStyle(fontSize: 15),
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: isKeyboardOpen ? 0 : navBarHeight,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Handle ──
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.all(14)),
               ),
-            );
-          }),
-        ],
+            ),
+
+            // ── Title ──
+            Row(
+              children: [
+                Icon(Icons.edit_outlined, size: 18, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Edit Time Log',
+                  style: textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'From: ${_truncate(widget.log.fromTime ?? '—')}',
+              style: textTheme.bodySmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+
+            // ── To time ──
+            _SheetDateTimeField(
+              label: 'Complete Time *',
+              controller: _toTimeCtrl,
+              onTap: _pickToTime,
+            ),
+            const SizedBox(height: 14),
+
+            // ── Completed qty ──
+            TextField(
+              controller: _qtyCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: _validateQty,
+              decoration: InputDecoration(
+                labelText:   'Completed Qty *',
+                border:      const OutlineInputBorder(),
+                prefixIcon:  const Icon(Icons.numbers_outlined),
+                errorText:   _qtyError,
+                errorMaxLines: 2,
+                helperText: _qtyError == null && _maxQty != double.infinity
+                    ? 'Max for this row: ${widget.controller._fmtQty(_maxQty)}'
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // ── Employee ──
+            TextField(
+              controller: _employeeCtrl,
+              decoration: const InputDecoration(
+                labelText:  'Employee',
+                hintText:   'Employee ID (e.g. EMP-0001)',
+                border:     OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // ── Save button ──
+            Obx(() {
+              final saving = widget.controller.isEditingTimeLog.value;
+              return SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _canSave
+                      ? () => widget.controller.updateTimeLog(
+                            log:          widget.log,
+                            toTime:       _toTimeCtrl.text,
+                            completedQty:
+                                double.parse(_qtyCtrl.text),
+                            employee: _employeeCtrl.text.isNotEmpty
+                                ? _employeeCtrl.text.trim()
+                                : null,
+                          )
+                      : null,
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.save_outlined),
+                  label: Text(
+                    saving ? 'Saving…' : 'Save Changes',
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                  style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(14)),
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
