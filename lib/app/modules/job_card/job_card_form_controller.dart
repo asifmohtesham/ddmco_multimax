@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -413,6 +414,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   Future<void> pauseJobCard() async {
     if (!canUpdateStatus) return;
 
+    HapticFeedback.lightImpact();
+
     final qty = await _showPauseQtySheet();
     if (qty == null) return; // user cancelled
 
@@ -681,6 +684,9 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   Future<void> updateStatus(String newStatus) async {
     if (!canUpdateStatus) return;
 
+    // Light haptic bump for Start / Resume / Complete taps
+    HapticFeedback.lightImpact();
+
     if (newStatus == JobCard.statusCompleted) {
       final confirmed = await GlobalDialog.confirm(
         title: 'Complete Job Card',
@@ -751,6 +757,9 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// always shown so the user cannot accidentally trigger this action.
   Future<void> submitJobCard() async {
     if (!canSubmit) return;
+
+    // Stronger haptic for the final commit action
+    HapticFeedback.mediumImpact();
 
     final confirmed = await GlobalDialog.confirm(
       title:       'Submit Job Card',

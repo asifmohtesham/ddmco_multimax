@@ -37,8 +37,25 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
         body: controller.isLoading.value
             ? const Center(child: CircularProgressIndicator())
             : jc == null
-                ? _ErrorState(onRetry: controller.fetchDocument)
-                : _JobCardFormBody(controller: controller, jc: jc),
+            ? _ErrorState(onRetry: controller.fetchDocument)
+            : _JobCardFormBody(controller: controller, jc: jc),
+        bottomNavigationBar: controller.isLoading.value || jc == null
+            ? null
+            : Obx(() {
+          final current = controller.jobCard.value ?? jc;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              MediaQuery.of(Get.context!).viewPadding.bottom + 8,
+            ),
+            child: _StatusActionsRow(
+              jc:         current,
+              controller: controller,
+            ),
+          );
+        }),
       );
     });
   }
@@ -88,13 +105,6 @@ class _JobCardFormBody extends StatelessWidget {
               );
             }),
             const SizedBox(height: 16),
-
-            // Status action buttons...
-            Obx(() => _StatusActionsRow(
-              jc:         controller.jobCard.value ?? jc,
-              controller: controller,
-            )),
-            const SizedBox(height: 24),
 
             Obx(() {
               final current = controller.jobCard.value ?? jc;
@@ -437,8 +447,8 @@ class _StatusActionsRow extends StatelessWidget {
                   Expanded(
                     child: Text(
                       jc.isOpen
-                          ? 'Start the job card, then add a time log before submitting.'
-                          : 'Add at least one time log before submitting.',
+                          ? 'To submit: 1) Start the job, 2) Add at least one time log.'
+                          : 'To submit: add at least one time log, then try again.',
                       style: TextStyle(
                         fontSize: 13,
                         color: cs.onSurfaceVariant,
@@ -575,20 +585,44 @@ class _AddTimeLogSection extends StatelessWidget {
           return TextField(
             controller: controller.completedQtyController,
             keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
               labelText:  'Completed Qty *',
               border:     const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.numbers_outlined),
               helperText: !overLimit && forQty > 0
                   ? 'Remaining: ${_fmtQty(remaining)} '
-                    '(WO Qty: ${_fmtQty(forQty)})'
+                  '(WO Qty: ${_fmtQty(forQty)})'
                   : null,
               errorText: overLimit
                   ? 'Exceeds Work Order qty (max ${_fmtQty(forQty)}). '
-                    'Remaining: ${_fmtQty(remaining)}'
+                  'Remaining: ${_fmtQty(remaining)}'
                   : null,
               errorMaxLines: 2,
+              suffixIcon: (!overLimit &&
+                  forQty > 0 &&
+                  remaining > 0)
+                  ? TextButton(
+                onPressed: () {
+                  controller.completedQtyController.text =
+                      _fmtQty(remaining);
+                  controller.completedQtyController
+                      .selection = TextSelection.fromPosition(
+                    TextPosition(
+                      offset: controller
+                          .completedQtyController.text.length,
+                    ),
+                  );
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize:
+                  MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Use remaining'),
+              )
+                  : null,
             ),
           );
         }),
@@ -617,9 +651,9 @@ class _AddTimeLogSection extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'No Employee record is linked to your account. '
-                      'Time logs will be recorded without an employee. '
-                      'Contact your HR administrator.',
+                      'No Employee record is linked to your login. '
+                          'Your hours will not be attributed to you in reports. '
+                          'Ask HR to link your Employee record.',
                       style: TextStyle(
                         fontSize: 12,
                         color: cs.onErrorContainer,
@@ -1380,6 +1414,27 @@ class _ActiveTimerBanner extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: controller.canUpdateStatus
+                  ? controller.pauseJobCard
+                  : null,
+              style: OutlinedButton.styleFrom(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                side: BorderSide(color: cs.onPrimaryContainer),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: Icon(Icons.pause_rounded,
+                  size: 16, color: cs.onPrimaryContainer),
+              label: Text(
+                'Pause',
+                style: textTheme.labelSmall?.copyWith(
+                  color: cs.onPrimaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
