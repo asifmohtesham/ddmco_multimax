@@ -48,8 +48,6 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
           builder: (context) {
             return Obx(() {
               final current = controller.jobCard.value ?? jc;
-              final bottomInset =
-                  MediaQuery.of(context).viewPadding.bottom;
 
               return SafeArea(
                 top: false, // don't push it down from the top
@@ -58,7 +56,7 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
                     16,
                     8,
                     16,
-                    bottomInset + 8,
+                    8,
                   ),
                   child: _StatusActionsRow(
                     jc:         current,
