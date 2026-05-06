@@ -133,6 +133,21 @@ class JobCardProvider {
 
   // ── Submission ─────────────────────────────────────────────────────────
 
+  // ── Direct status field update ─────────────────────────────────────────
+
+  /// Sets the `status` field directly on the Job Card document via PATCH.
+  ///
+  /// Used after Pause to force `status = 'On Hold'` since `make_time_log`
+  /// with `status: 'Resume Job'` only closes the time log row but does
+  /// not update the parent document's status field to 'On Hold'.
+  ///
+  /// Valid values: `'Open'`, `'Work In Progress'`, `'On Hold'`,
+  ///              `'Completed'`, `'Cancelled'`.
+  Future<Response> setJobCardStatus(String jobCardName, String status) async =>
+      _apiProvider.updateDocument('Job Card', jobCardName, {'status': status});
+
+  // ── Submission ─────────────────────────────────────────────────────────
+
   Future<Response> submitJobCard(String name) async =>
       _apiProvider.submitDocument('Job Card', name);
 }

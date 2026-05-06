@@ -489,24 +489,119 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     isUpdatingStatus.value = true;
     try {
+      // Step 1: close the open time log row via make_time_log.
       final res = await _provider.updateJobCardStatus(
-        jobCardId:     name,
-        status:        'Resume Job',
-        startTime:     now,
-        completeTime:  now,       // required for Pause
-        completedQty:  completedQty,
-        employees:     _getActiveLogEmployees(),
+        jobCardId:    name,
+        status:       'Resume Job',
+        startTime:    now,
+        completeTime: now,
+        completedQty: completedQty,
+        employees:    _getActiveLogEmployees(),
       );
 
-      if (res.statusCode == 200) {
-        await _fetchDocument();
-        _syncTimer();
-        GlobalSnackbar.success(message: 'Job Card Paused');
-      } else {
+      if (res.statusCode != 200) {
         GlobalSnackbar.error(message: 'Failed to pause Job Card');
+        return;
       }
+
+      // Step 2: set the Job Card document status to 'On Hold'.
+      //
+      // make_time_log does NOT update the parent document's status field
+      // when called with 'Resume Job' — it only closes the time log row.
+      // We must PATCH the status field directly so the UI transitions to
+      // "On Hold" and shows Resume instead of Pause.
+      final holdRes = await _provider.setJobCardStatus(name, 'On Hold');
+      if (holdRes.statusCode != 200) {
+        // Non-fatal: time log is already closed. Warn but don't block.
+        GlobalSnackbar.warning(
+          message: 'Time log paused but status update to On Hold failed.',
+        );
+      }
+
+      await _fetchDocument();
+      _syncTimer();
+      GlobalSnackbar.success(message: 'Job Card Paused');
     } on DioException catch (e) {
       GlobalSnackbar.error(message: _extractErrorMessage(e, 'Pause failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isUpdatingStatus.value = false;
+    }
+  }
+
+  // ── Complete job card ──────────────────────────────────────────────────────
+
+  /// Handles the Complete button tap:
+  ///   1. Shows a confirmation dialog.
+  ///   2. Finds the open time log (fromTime set, toTime empty).
+  ///   3. Closes it: writes toTime=now and completedQty=remainingQty
+  ///      via [updateTimeLog] (reuses the existing PATCH endpoint).
+  ///   4. Calls updateJobCardStatus('Complete') to flip the ERP status.
+  ///   5. Falls back to a status-only call if no open log is found.
+  ///   6. Triggers [_autoSubmitIfComplete] on success.
+  Future<void> _completeJobCard() async {
+    if (!canUpdateStatus) return;
+
+    HapticFeedback.lightImpact();
+
+    final confirmed = await GlobalDialog.confirm(
+      title:       'Complete Job Card',
+      message:     'This will close the active time log and mark '
+          'the Job Card as Completed. '
+          'This cannot be undone without ERP admin access.',
+      confirmText: 'Complete',
+    );
+    if (confirmed != true) return;
+
+    final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+    final jc  = jobCard.value;
+
+    // ── Step 1: find and close the open time log ─────────────────────────
+    final JobCardTimeLog? openLog = jc?.timeLogs.firstWhereOrNull(
+          (l) => l.fromTime != null && (l.toTime == null || l.toTime!.isEmpty),
+    );
+
+    isUpdatingStatus.value = true;
+    try {
+      if (openLog != null) {
+        // Close the open log with toTime=now, qty=remainingQty.
+        // remainingQty is already clamped to ≥0 by the getter.
+        final res = await _provider.updateTimeLog(
+          timeLogName:  openLog.name,
+          toTime:       now,
+          completedQty: remainingQty,
+          employee:     openLog.employee,
+        );
+        if (res.statusCode != 200) {
+          GlobalSnackbar.error(message: 'Failed to close active time log');
+          return;
+        }
+        // Touch parent so server recalculates total_completed_qty
+        // before we send the status update.
+        await _provider.touchJobCard(name);
+      }
+
+      // ── Step 2: flip ERP status to Complete ──────────────────────────
+      final statusRes = await _provider.updateJobCardStatus(
+        jobCardId:    name,
+        status:       'Complete',
+        startTime:    now,
+        completeTime: now,
+        employees:    _buildEmployeesPayload(),
+      );
+
+      if (statusRes.statusCode == 200) {
+        await _fetchDocument();
+        _syncTimer();
+        GlobalSnackbar.success(message: 'Job Card Completed');
+        await _autoSubmitIfComplete();
+      } else {
+        GlobalSnackbar.error(message: 'Failed to update status');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+          message: _extractErrorMessage(e, 'Complete failed'));
     } catch (e) {
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
@@ -682,44 +777,32 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   // ── Update status ─────────────────────────────────────────────────────────
 
   Future<void> updateStatus(String newStatus) async {
+    // Complete has its own dedicated path: closes the open time log first,
+    // then updates the status. Delegate immediately.
+    if (newStatus == JobCard.statusCompleted) {
+      await _completeJobCard();
+      return;
+    }
+
     if (!canUpdateStatus) return;
 
-    // Light haptic bump for Start / Resume / Complete taps
     HapticFeedback.lightImpact();
-
-    if (newStatus == JobCard.statusCompleted) {
-      final confirmed = await GlobalDialog.confirm(
-        title: 'Complete Job Card',
-        message: 'Mark this Job Card as Completed? '
-            'This cannot be undone without ERP admin access.',
-        confirmText: 'Complete',
-      );
-      if (confirmed != true) return;
-    }
 
     final String erpNextStatus = switch (newStatus) {
       JobCard.statusWorkInProgress => 'Work In Progress',
-      JobCard.statusCompleted      => 'Complete',
       _                            => newStatus,
     };
 
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
-    // Pause (Resume Job) and Complete both need complete_time.
-    // Start (Work In Progress) must NOT send complete_time.
-    final String? completeTime =
-    (newStatus == JobCard.statusOpen || newStatus == JobCard.statusCompleted)
-        ? now
-        : null;
-
     isUpdatingStatus.value = true;
     try {
       final res = await _provider.updateJobCardStatus(
-        jobCardId:     name,
-        status: erpNextStatus,
-        startTime:     now,
-        completeTime:  completeTime,
-        employees:     _buildEmployeesPayload(),
+        jobCardId:    name,
+        status:       erpNextStatus,
+        startTime:    now,
+        completeTime: null,          // Start/Resume never sends completeTime
+        employees:    _buildEmployeesPayload(),
       );
 
       if (res.statusCode == 200) {
@@ -727,14 +810,9 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         _syncTimer();
         final label = switch (newStatus) {
           JobCard.statusWorkInProgress => 'Started',
-          JobCard.statusOpen           => 'Paused',
-          JobCard.statusCompleted      => 'Completed',
           _                            => newStatus,
         };
         GlobalSnackbar.success(message: 'Job Card $label');
-        if (newStatus == JobCard.statusCompleted) {
-          await _autoSubmitIfComplete();
-        }
       } else {
         GlobalSnackbar.error(message: 'Failed to update status');
       }
