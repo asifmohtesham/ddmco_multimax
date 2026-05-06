@@ -50,27 +50,29 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
                   final mq = MediaQuery.of(context);
                   return SafeArea(
                     top: false,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        border: Border(
-                          top: BorderSide(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .outlineVariant,
-                            width: 1,
+                    child: IntrinsicHeight(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          border: Border(
+                            top: BorderSide(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant,
+                              width: 1,
+                            ),
                           ),
                         ),
-                      ),
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        10,
-                        16,
-                        (mq.padding.bottom > 0 ? mq.padding.bottom : 8),
-                      ),
-                      child: _StatusActionsRow(
-                        jc:         current,
-                        controller: controller,
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          10,
+                          16,
+                          (mq.padding.bottom > 0 ? mq.padding.bottom : 8),
+                        ),
+                        child: _StatusActionsRow(
+                          jc:         current,
+                          controller: controller,
+                        ),
                       ),
                     ),
                   );
@@ -367,6 +369,7 @@ class _StatusActionsRow extends StatelessWidget {
     final bool hasStatusRow = !jc.isCompleted;
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // ── Start / Resume / Pause / Complete row ──────────────────────────────────
