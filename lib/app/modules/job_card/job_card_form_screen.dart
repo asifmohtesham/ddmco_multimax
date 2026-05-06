@@ -43,12 +43,13 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
             ? null
             : Obx(() {
           final current = controller.jobCard.value ?? jc;
+          final padding = MediaQuery.of(context).viewPadding.bottom;
           return Padding(
             padding: EdgeInsets.fromLTRB(
               16,
               8,
               16,
-              MediaQuery.of(Get.context!).viewPadding.bottom + 8,
+              padding + 8,
             ),
             child: _StatusActionsRow(
               jc:         current,
@@ -76,7 +77,7 @@ class _JobCardFormBody extends StatelessWidget {
       onRefresh: controller.fetchDocument,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
