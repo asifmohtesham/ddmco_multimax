@@ -578,6 +578,17 @@ class _JobCardTile extends StatelessWidget {
     };
   }
 
+  /// Label passed into [StatusPill] for consistent coloring.
+  /// Maps ERP's 'Work In Progress' to the existing 'In Progress' token.
+  String _statusLabelForPill() {
+    switch (jc.status) {
+      case JobCard.statusWorkInProgress:
+        return 'In Progress';
+      default:
+        return jc.status;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs          = Theme.of(context).colorScheme;
@@ -634,13 +645,11 @@ class _JobCardTile extends StatelessWidget {
                           style: theme.textTheme.bodySmall
                               ?.copyWith(color: cs.onSurfaceVariant),
                         ),
-                        const SizedBox(height: 5),
-                        StatusPill(status: jc.status),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _ActionBadge(jc: jc),
+                  StatusPill(status: _statusLabelForPill()),
                 ],
               ),
               if (hasProgress) ...[
@@ -679,62 +688,4 @@ class _JobCardTile extends StatelessWidget {
 
   String _fmtQty(double q) =>
       q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(1);
-}
-
-class _ActionBadge extends StatelessWidget {
-  final JobCard jc;
-  const _ActionBadge({required this.jc});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs    = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-
-    if (jc.docstatus == 1) {
-      return _badge(context,
-          label: 'SUBMITTED',
-          bg: cs.tertiaryContainer,
-          fg: cs.onTertiaryContainer,
-          theme: theme);
-    }
-    if (jc.isWorkInProgress) {
-      return _badge(context,
-          label: 'IN PROGRESS',
-          bg: cs.primaryContainer,
-          fg: cs.onPrimaryContainer,
-          theme: theme);
-    }
-    if (jc.isOpen) {
-      return _badge(context,
-          label: 'START',
-          bg: cs.primary,
-          fg: cs.onPrimary,
-          theme: theme);
-    }
-    return const SizedBox.shrink();
-  }
-
-  Widget _badge(
-    BuildContext context, {
-    required String label,
-    required Color bg,
-    required Color fg,
-    required ThemeData theme,
-  }) =>
-      Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: fg,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.3,
-          ),
-        ),
-      );
 }

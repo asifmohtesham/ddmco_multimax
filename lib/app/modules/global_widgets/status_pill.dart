@@ -44,6 +44,7 @@ class StatusPill extends StatelessWidget {
       case 'Pending':
       case 'To Bill':
       case 'Hold':
+      case 'On Hold':
         return _warningBg;
 
     // Info (Blue)
@@ -59,6 +60,7 @@ class StatusPill extends StatelessWidget {
         return _greyBg;
     }
   }
+
 
   Color _getTextColor(String status) {
     switch (status) {
@@ -84,6 +86,7 @@ class StatusPill extends StatelessWidget {
       case 'Pending':
       case 'To Bill':
       case 'Hold':
+      case 'On Hold':
         return _warningText;
 
     // Info
