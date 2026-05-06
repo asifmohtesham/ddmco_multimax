@@ -380,7 +380,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       serial:    serial,
       itemName:  posItem.itemName,
       qty:       posItem.quantity.toDouble(),
-      remaining: liveRemaining.value,
+      remaining: posItemQtyForSerial(serial), // ← FIX: real cap, not stale liveRemaining
     );
   }
 
