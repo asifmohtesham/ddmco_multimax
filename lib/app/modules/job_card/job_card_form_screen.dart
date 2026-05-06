@@ -18,9 +18,16 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
   Widget build(BuildContext context) {
     return Obx(() {
       final jc = controller.jobCard.value;
+      final title       = jc?.name ?? 'Job Card';
+      final assignedTo  = jc?.primaryEmployeeDisplay; // can be null/empty
+
       return Scaffold(
         appBar: MainAppBar(
-          title: jc?.name ?? 'Job Card',
+          title: title,
+          titleWidget: _JobCardAppBarTitle(
+            title:      title,
+            assignedTo: assignedTo,
+          ),
           status: jc?.status,
           onSave:     null,
           isSaving:   false,
@@ -71,15 +78,22 @@ class _JobCardFormBody extends StatelessWidget {
             Obx(() {
               final current = controller.jobCard.value ?? jc;
               if (!current.isEditable) return const SizedBox.shrink();
-              return _EditableHeaderSection(controller: controller);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _EditableHeaderSection(controller: controller),
+                  _AssignmentSection(controller: controller),
+                ],
+              );
             }),
             const SizedBox(height: 16),
 
-            // Status action buttons (Start / Pause / Complete) + Submit
+            // Status action buttons...
             Obx(() => _StatusActionsRow(
-                  jc:         controller.jobCard.value ?? jc,
-                  controller: controller,
-                )),
+              jc:         controller.jobCard.value ?? jc,
+              controller: controller,
+            )),
             const SizedBox(height: 24),
 
             Obx(() {
@@ -930,6 +944,64 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
+class _JobCardAppBarTitle extends StatelessWidget {
+  final String title;
+  final String? assignedTo;
+
+  const _JobCardAppBarTitle({
+    required this.title,
+    this.assignedTo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final assigned  = (assignedTo ?? '').trim();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (assigned.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.person_outline,
+                size: 14,
+                color: cs.onPrimary.withValues(alpha: 0.85),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Assigned to: $assigned',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: cs.onPrimary.withValues(alpha: 0.95),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
   const _ErrorState({required this.onRetry});
@@ -963,6 +1035,60 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AssignmentSection extends StatelessWidget {
+  final JobCardFormController controller;
+  const _AssignmentSection({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: _SectionHeader(
+              label: 'Assignment',
+              icon: Icons.person_outline,
+            ),
+          ),
+          Divider(height: 1, color: cs.outlineVariant),
+
+          // Assign To Employee — Link → Employee DocType
+          Obx(() => _EditableFieldTile(
+            icon: Icons.person_outline,
+            label: 'Assign To Employee',
+            value: controller.headerEmployee.value,
+            isSaving: controller.isSavingEmployee.value,
+            onEdit: () => _EditableHeaderSection._pickDocType(
+              context,
+              controller: controller,
+              fieldKey: 'employee',
+              config: JobCardFormController.employeePickerConfig,
+              displayField: 'name',
+            ),
+          )),
+        ],
       ),
     );
   }
@@ -1040,23 +1166,6 @@ class _EditableHeaderSection extends StatelessWidget {
                 searchFields: ['name'],
                 cacheKey: 'job_card_workstation_picker',
               ),
-              displayField: 'name',
-            ),
-          )),
-
-          Divider(height: 1, indent: 52, color: cs.outlineVariant),
-
-          // Employee (Assign To) — Link → Employee DocType
-          Obx(() => _EditableFieldTile(
-            icon: Icons.person_outline,
-            label: 'Assign To Employee',
-            value: controller.headerEmployee.value,
-            isSaving: controller.isSavingEmployee.value,
-            onEdit: () => _pickDocType(
-              context,
-              controller: controller,
-              fieldKey: 'employee',
-              config: JobCardFormController.employeePickerConfig,
               displayField: 'name',
             ),
           )),
