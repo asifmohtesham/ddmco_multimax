@@ -1003,7 +1003,7 @@ class _EditableHeaderSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
             child: _SectionHeader(
-              label: 'Job Details',
+              label: 'Operation and Workstation',
               icon: Icons.tune_outlined,
             ),
           ),
