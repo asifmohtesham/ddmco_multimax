@@ -54,8 +54,11 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   // ── Editable header fields ────────────────────────────────────────────────
   /// Current value shown in each inline field.  Seeded from the document on
   /// every fetch; updated optimistically on a successful save.
-  final headerWorkstation = ''.obs;
-  final headerEmployee    = ''.obs;
+  final headerWorkstation  = ''.obs;
+  final headerEmployee     = ''.obs;
+  /// Display name of the primary assigned employee (falls back to ID when
+  /// employeeName is absent). Used by the AppBar subtitle.
+  final headerEmployeeName = ''.obs;
   final headerWipWarehouse = ''.obs;
 
   /// Per-field saving spinners — keeps the three fields independent.
@@ -269,9 +272,10 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   void _seedHeaderFields() {
     final jc = jobCard.value;
     if (jc == null) return;
-    headerWorkstation.value  = jc.workstation     ?? '';
-    headerEmployee.value     = jc.primaryEmployee ?? '';
-    headerWipWarehouse.value = jc.wipWarehouse    ?? '';
+    headerWorkstation.value  = jc.workstation           ?? '';
+    headerEmployee.value     = jc.primaryEmployee       ?? '';
+    headerEmployeeName.value = jc.primaryEmployeeDisplay ?? '';
+    headerWipWarehouse.value = jc.wipWarehouse          ?? '';
   }
 
   // ── Header field: per-field save ──────────────────────────────────────────
@@ -322,6 +326,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         valueObs.value = value;
         // Re-fetch so the model stays in sync (e.g., workstation display name).
         await _fetchDocument();
+        // After _fetchDocument() re-seeds headerEmployeeName via _seedHeaderFields(),
+        // so no manual update needed here — _seedHeaderFields() already ran.
         GlobalSnackbar.success(
           message: '${_fieldLabel(fieldKey)} updated',
         );

@@ -17,16 +17,21 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final jc = controller.jobCard.value;
-      final title       = jc?.name ?? 'Job Card';
-      final assignedTo  = jc?.primaryEmployeeDisplay; // can be null/empty
+      final jc    = controller.jobCard.value;
+      final title = jc?.name ?? 'Job Card';
+      // Use the reactive observable so the AppBar subtitle updates live
+      // whenever the employee is changed via the picker, without requiring
+      // a full widget rebuild from jobCard.value.
+      final assignedTo = controller.headerEmployeeName.value.isNotEmpty
+          ? controller.headerEmployeeName.value
+          : (jc?.primaryEmployeeDisplay ?? '');
 
       return Scaffold(
         appBar: MainAppBar(
           title: title,
           titleWidget: _JobCardAppBarTitle(
             title:      title,
-            assignedTo: assignedTo,
+            assignedTo: assignedTo.isEmpty ? null : assignedTo,
           ),
           status: jc?.status,
           onSave:     null,
