@@ -132,13 +132,11 @@ class _JobCardFormBody extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _EditableHeaderSection(controller: controller),
-                  _EmployeeChipsSection(
-                    jc: current,
-                    controller: controller
-                  ),
                 ],
               );
             }),
+
+            const SizedBox(height: 24),
 
             Obx(() {
               final current = controller.jobCard.value ?? jc;
