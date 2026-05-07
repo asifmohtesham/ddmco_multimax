@@ -915,4 +915,155 @@ class GlobalDialog {
 
   static String _fmtQty(double q) =>
       q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
+
+  /// Hard-block sheet shown when an employee attempts to Start/Resume a
+  /// Job Card while another Job Card is already Work In Progress.
+  ///
+  /// Non-dismissible — the only action is "OK, Got It" which closes the
+  /// sheet. The user must navigate to the conflicting card and pause it.
+  ///
+  /// ```dart
+  /// GlobalDialog.showRunningJobCardBlock(
+  ///   conflictingName:      'PO-JOB00042',
+  ///   conflictingOperation: 'Assembly',
+  /// );
+  /// ```
+  static void showRunningJobCardBlock({
+    required String conflictingName,
+    required String conflictingOperation,
+  }) {
+    Get.bottomSheet(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.pause_circle_outline,
+                    color: Colors.orange,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Title ─────────────────────────────────────────────────
+                const Text(
+                  'Job Card Already Running',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Explanation ───────────────────────────────────────────
+                const Text(
+                  'You must pause the currently running Job Card before starting another.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+
+                // ── Conflicting card chip ─────────────────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.timer_outlined,
+                          size: 18, color: Colors.orange.shade700),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              conflictingName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                            if (conflictingOperation.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                conflictingOperation,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange.shade600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Work In Progress',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── CTA ───────────────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      'OK, Got It',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+    );
+  }
 }

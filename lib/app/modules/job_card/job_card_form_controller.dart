@@ -927,6 +927,44 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     }
   }
 
+  /// Queries ERP for any Job Card currently `Work In Progress` assigned to
+  /// the session employee. Returns the conflicting [Map] (keys: `name`,
+  /// `operation`) or `null` when none is running.
+  ///
+  /// Uses the existing [JobCardProvider.getJobCards] with two filters:
+  ///   - status == 'Work In Progress'
+  ///   - employee == sessionEmployeeId  (child-table field filter)
+  ///
+  /// The result excludes the current Job Card so a card cannot block itself
+  /// (edge case: re-resuming after a network glitch where status is stale).
+  Future<Map<String, dynamic>?> _checkForRunningJobCard() async {
+    final empId = _sessionEmployeeId ?? '';
+    if (empId.isEmpty) return null;
+
+    try {
+      final res = await _provider.getJobCards(
+        limit: 2,
+        filters: {
+          'status':   'Work In Progress',
+          'employee': empId,
+        },
+      );
+
+      if (res.statusCode != 200) return null;
+
+      final rows = (res.data['data'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((e) => (e['name'] ?? '') != name) // exclude self
+          .toList();
+
+      return rows.isNotEmpty ? rows.first : null;
+    } catch (_) {
+      // Non-fatal: if the check fails, allow the action to proceed.
+      // A failed check must never silently block work.
+      return null;
+    }
+  }
+
   // ── Update status ─────────────────────────────────────────────────────────
 
   Future<void> updateStatus(String newStatus) async {
@@ -938,6 +976,23 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     }
 
     if (!canUpdateStatus) return;
+
+    // ── Conflict check (Start / Resume only) ─────────────────────────────
+    // If another Job Card is already Work In Progress for this employee,
+    // block the action and show the hard-block sheet.
+    if (newStatus == JobCard.statusWorkInProgress) {
+      isUpdatingStatus.value = true;
+      final conflict = await _checkForRunningJobCard();
+      isUpdatingStatus.value = false;
+
+      if (conflict != null) {
+        GlobalDialog.showRunningJobCardBlock(
+          conflictingName:      (conflict['name']      ?? '').toString(),
+          conflictingOperation: (conflict['operation'] ?? '').toString(),
+        );
+        return;
+      }
+    }
 
     HapticFeedback.lightImpact();
 
