@@ -343,20 +343,12 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   void _seedHeaderFields() {
     final jc = jobCard.value;
     if (jc == null) return;
-    final headerWorkstation  = ''.obs;
-    final headerEmployee     = ''.obs;
-    /// Display name of the primary assigned employee (falls back to ID when
-    /// employeeName is absent). Used by the AppBar subtitle.
-    final headerEmployeeName = ''.obs;
-    final headerWipWarehouse = ''.obs;
-
-    /// Per-field saving spinners — keeps the three fields independent.
-    final isSavingWorkstation  = false.obs;
-    final isSavingEmployee     = false.obs;
-    final isSavingWipWarehouse = false.obs;
-
-    /// True while any employee chip toggle PATCH is in-flight.
-    final isSavingEmployees = false.obs;
+    headerWorkstation.value  = jc.workstation ?? '';
+    headerEmployee.value     = jc.employees.isNotEmpty
+        ? jc.employees.first.employee
+        : '';
+    headerEmployeeName.value = jc.primaryEmployeeDisplay ?? '';
+    headerWipWarehouse.value = jc.wipWarehouse ?? '';
   }
 
   // ── Header field: per-field save ──────────────────────────────────────────
