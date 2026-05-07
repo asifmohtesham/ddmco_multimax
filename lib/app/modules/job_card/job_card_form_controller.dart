@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
+import 'package:multimax/app/data/models/job_card_employee_model.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
@@ -191,7 +192,11 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     _prefillStartTime();
     _fetchDocument();
-    loadAvailableEmployees();
+    loadAvailableEmployees().then((_) {
+      // Re-enrich after the employee list arrives in case _fetchDocument()
+      // completed first and _enrichEmployeeNames() was a no-op.
+      _enrichEmployeeNames();
+    });
   }
 
   @override
@@ -349,6 +354,75 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         : '';
     headerEmployeeName.value = jc.primaryEmployeeDisplay ?? '';
     headerWipWarehouse.value = jc.wipWarehouse ?? '';
+
+    // Enrich employee names from availableEmployees cache.
+    // ERPNext does not reliably return employee_name on child table rows
+    // via the standard document GET. Resolve names locally from the
+    // already-loaded availableEmployees list (fetched once on onInit).
+    _enrichEmployeeNames();
+  }
+
+  /// Resolves [JobCardEmployee.employeeName] for each assigned employee
+  /// using the [availableEmployees] cache. Rebuilds the employees list on
+  /// [jobCard] with names filled in, then triggers a reactive update.
+  ///
+  /// No-op when [availableEmployees] is empty (not yet loaded) or when
+  /// all employees already have names.
+  void _enrichEmployeeNames() {
+    final jc = jobCard.value;
+    if (jc == null || availableEmployees.isEmpty) return;
+
+    // Build a quick lookup: employee ID → employee_name.
+    final nameMap = <String, String>{
+      for (final e in availableEmployees)
+        (e['name'] ?? '').toString(): (e['employee_name'] ?? '').toString(),
+    };
+
+    final enriched = jc.employees.map((e) {
+      if ((e.employeeName ?? '').isNotEmpty) return e; // already has name
+      final resolved = nameMap[e.employee] ?? '';
+      return resolved.isNotEmpty
+          ? JobCardEmployee(employee: e.employee, employeeName: resolved)
+          : e;
+    }).toList();
+
+    // Only rebuild if at least one name was resolved.
+    if (enriched.any((e) => (e.employeeName ?? '').isNotEmpty)) {
+      jobCard.value = JobCard(
+        name:               jc.name,
+        company:            jc.company,
+        workOrder:          jc.workOrder,
+        operation:          jc.operation,
+        operationId:        jc.operationId,
+        workstation:        jc.workstation,
+        workstationType:    jc.workstationType,
+        forQuantity:        jc.forQuantity,
+        totalCompletedQty:  jc.totalCompletedQty,
+        processLossQty:     jc.processLossQty,
+        transferredQty:     jc.transferredQty,
+        status:             jc.status,
+        wipWarehouse:       jc.wipWarehouse,
+        employees:          enriched,
+        postingDate:        jc.postingDate,
+        expectedStartDate:  jc.expectedStartDate,
+        expectedEndDate:    jc.expectedEndDate,
+        actualStartDate:    jc.actualStartDate,
+        actualEndDate:      jc.actualEndDate,
+        sequenceId:         jc.sequenceId,
+        hourRate:           jc.hourRate,
+        totalTimeInMins:    jc.totalTimeInMins,
+        batchNo:            jc.batchNo,
+        serialNo:           jc.serialNo,
+        bomNo:              jc.bomNo,
+        remarks:            jc.remarks,
+        project:            jc.project,
+        productionItem:     jc.productionItem,
+        itemName:           jc.itemName,
+        isCorrectiveJobCard: jc.isCorrectiveJobCard,
+        docstatus:          jc.docstatus,
+        timeLogs:           jc.timeLogs,
+      );
+    }
   }
 
   // ── Header field: per-field save ──────────────────────────────────────────
