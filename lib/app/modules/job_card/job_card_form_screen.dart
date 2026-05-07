@@ -1282,11 +1282,25 @@ class _EmployeeChipsSection extends StatelessWidget {
                     children: current.employees.map((emp) {
                       final isSelected = selected.contains(emp.employee);
                       return ChoiceChip(
-                        label: Text(
-                          emp.employeeName ?? emp.employee,
-                          style: textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        label: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              emp.employee,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if ((emp.employeeName ?? '').isNotEmpty)
+                              Text(
+                                emp.employeeName!,
+                                style: textTheme.labelSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
                         ),
                         selected: isSelected,
                         onSelected: saving
