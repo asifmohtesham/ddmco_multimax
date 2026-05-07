@@ -24,17 +24,86 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   String? _sessionEmployeeId;
   bool get hasLinkedEmployee =>
       _sessionEmployeeId != null && _sessionEmployeeId!.isNotEmpty;
-  // ✅ FIX: Widen to Map<String, dynamic> to match provider signature
+// ✅ FIX: Widen to Map<String, dynamic> to match provider signature
   List<Map<String, dynamic>> get _employees => hasLinkedEmployee
       ? [{'employee': _sessionEmployeeId!}]
       : [];
+
+// ── Employee chips ────────────────────────────────────────────────────────
+  /// All Active employees fetched once on form open; drives the picker sheet.
+  final availableEmployees = <Map<String, dynamic>>[].obs;
+
+  /// True while a toggle-employee PATCH is in-flight.
+  final isSavingEmployees = false.obs;
+
+  /// Fetches Active employees from ERP and stores in [availableEmployees].
+  /// Safe to call multiple times — skips if the list is already populated.
+  Future<void> loadAvailableEmployees() async {
+    if (availableEmployees.isNotEmpty) return;
+    try {
+      final res = await _provider.getActiveEmployees();
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        availableEmployees.assignAll(
+          (res.data['data'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList(),
+        );
+      }
+    } catch (_) {
+      // Non-fatal — sheet will show empty list with a retry option.
+    }
+  }
+
+  /// Adds [employeeId] to the Job Card's employee table when not already
+  /// present, or removes it when already assigned. One PATCH per tap.
+  ///
+  /// Payload shape: [{'employee': 'HR-EMP-XXXXX'}, ...]
+  /// ERP Table MultiSelect requires the full list on every PATCH.
+  Future<void> toggleEmployee(String employeeId, String employeeName) async {
+    final jc = jobCard.value;
+    if (jc == null || !jc.isEditable || isSavingEmployees.value) return;
+
+    // Build current employee ID list.
+    final current = jc.employees.map((e) => e.employee).toList();
+
+    // Toggle: remove if present, add if absent.
+    final List<String> updated;
+    if (current.contains(employeeId)) {
+      updated = current.where((e) => e != employeeId).toList();
+    } else {
+      updated = [...current, employeeId];
+    }
+
+    // Serialise to ERP child-table format.
+    final payload = updated.map((e) => <String, dynamic>{'employee': e}).toList();
+
+    isSavingEmployees.value = true;
+    try {
+      final res = await _provider.updateJobCardHeaderField(
+        jobCardName: name,
+        data: {'employee': payload},
+      );
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+      } else {
+        GlobalSnackbar.error(message: 'Failed to update employees');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+        message: extractDioError(e, 'Employee update failed'),
+      );
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isSavingEmployees.value = false;
+    }
+  }
 
   // ── Document state ────────────────────────────────────────────────────────
   final isLoading         = true.obs;
   final isAddingTimeLog   = false.obs;
   final isUpdatingStatus  = false.obs;
   final isEditingTimeLog  = false.obs;
-  final isSavingEmployees = false.obs;
 
   // ── Live timer ─────────────────────────────────────────────────────────────
 
@@ -122,6 +191,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     _prefillStartTime();
     _fetchDocument();
+    loadAvailableEmployees();
   }
 
   @override
@@ -364,52 +434,6 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     'wip_warehouse' => 'WIP Warehouse',
     _               => fieldKey,
   };
-
-  // ── Employee chip toggle ──────────────────────────────────────────────────
-
-  /// Toggles [employeeId] in the job card's `employee` Table MultiSelect.
-  ///
-  /// If [employeeId] is already in [jc.employees] it is removed; otherwise
-  /// it is added.  The resulting list is immediately PATCHed to ERP.
-  /// Uses [isSavingEmployees] as the in-flight guard so all chips are
-  /// disabled while the save is pending (prevents concurrent mutations).
-  Future<void> toggleEmployee(String employeeId) async {
-    final jc = jobCard.value;
-    if (jc == null || !jc.isEditable) return;
-
-    // Build the new list: toggle presence of employeeId.
-    final current = List<String>.from(jc.employees.map((e) => e.employee));
-    if (current.contains(employeeId)) {
-      current.remove(employeeId);
-    } else {
-      current.add(employeeId);
-    }
-
-    // Serialise as Table MultiSelect payload.
-    final payload = current.map((e) => <String, dynamic>{'employee': e}).toList();
-
-    isSavingEmployees.value = true;
-    try {
-      final res = await _provider.updateJobCardHeaderField(
-        jobCardName: name,
-        data: {'employee': payload},
-      );
-      if (res.statusCode == 200) {
-        await _fetchDocument();
-        GlobalSnackbar.success(message: 'Employees updated');
-      } else {
-        GlobalSnackbar.error(message: 'Failed to update employees');
-      }
-    } on DioException catch (e) {
-      GlobalSnackbar.error(
-        message: extractDioError(e, 'Update employees failed'),
-      );
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Error: $e');
-    } finally {
-      isSavingEmployees.value = false;
-    }
-  }
 
   // ── Prefill ───────────────────────────────────────────────────────────────
 

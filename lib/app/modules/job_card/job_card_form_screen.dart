@@ -128,7 +128,16 @@ class _JobCardFormBody extends StatelessWidget {
               final current = controller.jobCard.value ?? jc;
               if (!current.isEditable) return const SizedBox.shrink();
 
-              return _EditableHeaderSection(controller: controller);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _EditableHeaderSection(controller: controller),
+                  _EmployeeChipsSection(
+                    jc: current,
+                    controller: controller
+                  ),
+                ],
+              );
             }),
 
             Obx(() {
@@ -1255,7 +1264,7 @@ class _EmployeeChipsSection extends StatelessWidget {
                         selected: isSelected,
                         onSelected: saving
                             ? null
-                            : (_) => controller.toggleEmployee(emp.employee),
+                            : (_) => controller.toggleEmployee(emp.employee, emp.employeeName ?? ''),
                         avatar: saving
                             ? SizedBox(
                           width: 14,
@@ -1286,56 +1295,229 @@ class _EmployeeChipsSection extends StatelessWidget {
   }
 }
 
-class _AssignmentSection extends StatelessWidget {
+// ────────────────────────────────────────────────────────────────────────────
+// Employee Picker Sheet
+// Full list of Active employees; assigned ones are visually distinguished.
+// Tapping any row immediately PATCHes ERP via controller.toggleEmployee().
+// ────────────────────────────────────────────────────────────────────────────
+
+class _EmployeePickerSheet extends StatefulWidget {
   final JobCardFormController controller;
-  const _AssignmentSection({required this.controller});
+  const _EmployeePickerSheet({required this.controller});
+
+  @override
+  State<_EmployeePickerSheet> createState() => _EmployeePickerSheetState();
+}
+
+class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withValues(alpha: 0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: _SectionHeader(
-              label: 'Assignment',
-              icon: Icons.person_outline,
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (context, scrollController) {
+        return Column(
+          children: [
+            // ── Drag handle ───────────────────────────────────────────────
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
-          ),
-          Divider(height: 1, color: cs.outlineVariant),
 
-          // Assign To Employee — Link → Employee DocType
-          Obx(() => _EditableFieldTile(
-            icon: Icons.person_outline,
-            label: 'Assign To Employee',
-            value: controller.headerEmployee.value,
-            isSaving: controller.isSavingEmployee.value,
-            onEdit: () => _EditableHeaderSection._pickDocType(
-              context,
-              controller: controller,
-              fieldKey: 'employee',
-              config: JobCardFormController.employeePickerConfig,
-              displayField: 'name',
+            // ── Header ────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.people_outline, size: 20, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Assign Employees',
+                      style: textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Get.back(),
+                    tooltip: 'Close',
+                  ),
+                ],
+              ),
             ),
-          )),
-        ],
-      ),
+
+            // ── Search ────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: false,
+                decoration: InputDecoration(
+                  hintText: 'Search employees…',
+                  prefixIcon: const Icon(Icons.search_outlined, size: 20),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  suffixIcon: _query.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() => _query = '');
+                    },
+                  )
+                      : null,
+                ),
+                onChanged: (v) => setState(() => _query = v.toLowerCase()),
+              ),
+            ),
+
+            Divider(height: 1, color: cs.outlineVariant),
+
+            // ── List ──────────────────────────────────────────────────────
+            Expanded(
+              child: Obx(() {
+                final available = widget.controller.availableEmployees;
+                final jc        = widget.controller.jobCard.value;
+                final assigned  = jc?.employees.map((e) => e.employee).toSet()
+                    ?? <String>{};
+                final saving    = widget.controller.isSavingEmployees.value;
+
+                if (available.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.people_outline,
+                            size: 40, color: cs.onSurfaceVariant),
+                        const SizedBox(height: 10),
+                        Text(
+                          'No employees found.',
+                          style: textTheme.bodyMedium
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: widget.controller.loadAvailableEmployees,
+                          icon: const Icon(Icons.refresh, size: 16),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final filtered = _query.isEmpty
+                    ? available
+                    : available.where((e) {
+                  final name = (e['employee_name'] ?? '').toString()
+                      .toLowerCase();
+                  final id   = (e['name'] ?? '').toString()
+                      .toLowerCase();
+                  return name.contains(_query) || id.contains(_query);
+                }).toList();
+
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No results for "$_query"',
+                      style: textTheme.bodyMedium
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  controller: scrollController,
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, indent: 56, color: cs.outlineVariant),
+                  itemBuilder: (context, i) {
+                    final emp        = filtered[i];
+                    final empId      = (emp['name'] ?? '').toString();
+                    final empName    = (emp['employee_name'] ?? '').toString();
+                    final dept       = (emp['department'] ?? '').toString();
+                    final isAssigned = assigned.contains(empId);
+                    final initial    = empName.isNotEmpty
+                        ? empName[0].toUpperCase()
+                        : '?';
+
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: isAssigned
+                            ? cs.primary
+                            : cs.surfaceContainerHighest,
+                        child: Text(
+                          initial,
+                          style: TextStyle(
+                            color: isAssigned
+                                ? cs.onPrimary
+                                : cs.onSurfaceVariant,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        empName,
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        dept.isNotEmpty ? '$empId · $dept' : empId,
+                        style: textTheme.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      trailing: saving
+                          ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                          : Icon(
+                        isAssigned
+                            ? Icons.check_circle
+                            : Icons.add_circle_outline,
+                        color: isAssigned ? cs.primary : cs.onSurfaceVariant,
+                      ),
+                      onTap: saving
+                          ? null
+                          : () => widget.controller
+                          .toggleEmployee(empId, empName),
+                    );
+                  },
+                );
+              }),
+            ),
+          ],
+        );
+      },
     );
   }
 }

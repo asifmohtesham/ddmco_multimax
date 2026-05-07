@@ -150,4 +150,15 @@ class JobCardProvider {
 
   Future<Response> submitJobCard(String name) async =>
       _apiProvider.submitDocument('Job Card', name);
+
+  /// Fetches all Active employees — used by JobCardFormController
+  /// to populate the employee picker sheet.
+  Future<Response> getActiveEmployees() async {
+    return _apiProvider.getDocumentList(
+      'Employee',
+      filters: {'status': 'Active'},
+      fields: ['name', 'employee_name', 'department'],
+      limit: 0,
+    );
+  }
 }
