@@ -30,10 +30,11 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       : [];
 
   // ── Document state ────────────────────────────────────────────────────────
-  final isLoading        = true.obs;
-  final isAddingTimeLog  = false.obs;
-  final isUpdatingStatus = false.obs;
-  final isEditingTimeLog = false.obs;
+  final isLoading         = true.obs;
+  final isAddingTimeLog   = false.obs;
+  final isUpdatingStatus  = false.obs;
+  final isEditingTimeLog  = false.obs;
+  final isSavingEmployees = false.obs;
 
   // ── Live timer ─────────────────────────────────────────────────────────────
 
@@ -272,10 +273,20 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   void _seedHeaderFields() {
     final jc = jobCard.value;
     if (jc == null) return;
-    headerWorkstation.value  = jc.workstation           ?? '';
-    headerEmployee.value     = jc.primaryEmployee       ?? '';
-    headerEmployeeName.value = jc.primaryEmployeeDisplay ?? '';
-    headerWipWarehouse.value = jc.wipWarehouse          ?? '';
+    final headerWorkstation  = ''.obs;
+    final headerEmployee     = ''.obs;
+    /// Display name of the primary assigned employee (falls back to ID when
+    /// employeeName is absent). Used by the AppBar subtitle.
+    final headerEmployeeName = ''.obs;
+    final headerWipWarehouse = ''.obs;
+
+    /// Per-field saving spinners — keeps the three fields independent.
+    final isSavingWorkstation  = false.obs;
+    final isSavingEmployee     = false.obs;
+    final isSavingWipWarehouse = false.obs;
+
+    /// True while any employee chip toggle PATCH is in-flight.
+    final isSavingEmployees = false.obs;
   }
 
   // ── Header field: per-field save ──────────────────────────────────────────
@@ -353,6 +364,52 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     'wip_warehouse' => 'WIP Warehouse',
     _               => fieldKey,
   };
+
+  // ── Employee chip toggle ──────────────────────────────────────────────────
+
+  /// Toggles [employeeId] in the job card's `employee` Table MultiSelect.
+  ///
+  /// If [employeeId] is already in [jc.employees] it is removed; otherwise
+  /// it is added.  The resulting list is immediately PATCHed to ERP.
+  /// Uses [isSavingEmployees] as the in-flight guard so all chips are
+  /// disabled while the save is pending (prevents concurrent mutations).
+  Future<void> toggleEmployee(String employeeId) async {
+    final jc = jobCard.value;
+    if (jc == null || !jc.isEditable) return;
+
+    // Build the new list: toggle presence of employeeId.
+    final current = List<String>.from(jc.employees.map((e) => e.employee));
+    if (current.contains(employeeId)) {
+      current.remove(employeeId);
+    } else {
+      current.add(employeeId);
+    }
+
+    // Serialise as Table MultiSelect payload.
+    final payload = current.map((e) => <String, dynamic>{'employee': e}).toList();
+
+    isSavingEmployees.value = true;
+    try {
+      final res = await _provider.updateJobCardHeaderField(
+        jobCardName: name,
+        data: {'employee': payload},
+      );
+      if (res.statusCode == 200) {
+        await _fetchDocument();
+        GlobalSnackbar.success(message: 'Employees updated');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to update employees');
+      }
+    } on DioException catch (e) {
+      GlobalSnackbar.error(
+        message: extractDioError(e, 'Update employees failed'),
+      );
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error: $e');
+    } finally {
+      isSavingEmployees.value = false;
+    }
+  }
 
   // ── Prefill ───────────────────────────────────────────────────────────────
 

@@ -112,7 +112,7 @@ class _JobCardFormBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _HeaderCard(jc: jc),
+            _HeaderCard(jc: jc, controller: controller),
             const SizedBox(height: 24),
 
             // ── NEW: Expected schedule dates ────────────────────────────────────
@@ -128,13 +128,7 @@ class _JobCardFormBody extends StatelessWidget {
               final current = controller.jobCard.value ?? jc;
               if (!current.isEditable) return const SizedBox.shrink();
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _EditableHeaderSection(controller: controller),
-                  _AssignmentSection(controller: controller),
-                ],
-              );
+              return _EditableHeaderSection(controller: controller);
             }),
 
             Obx(() {
@@ -170,8 +164,9 @@ class _JobCardFormBody extends StatelessWidget {
 // ────────────────────────────────────────────────────────────────────────────
 
 class _HeaderCard extends StatelessWidget {
-  final JobCard jc;
-  const _HeaderCard({required this.jc});
+  final JobCard                jc;
+  final JobCardFormController  controller;
+  const _HeaderCard({required this.jc, required this.controller});
 
   Color _statusColor(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -269,41 +264,42 @@ class _HeaderCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Divider(height: 1, color: cs.outlineVariant),
-          const SizedBox(height: 14),
-          _DetailRow(
+          const SizedBox(height: 10),
+          // ── Operation Details section header ─────────────────────────────
+          _SectionHeader(
+            label: 'Operation Details',
+            icon: Icons.tune_outlined,
+          ),
+          const SizedBox(height: 10),
+          Divider(height: 1, color: cs.outlineVariant),
+
+          // ── Work Order (read-only tile) ──────────────────────────────────
+          _ReadOnlyFieldTile(
             icon: Icons.work_outline,
             label: 'Work Order',
             value: jc.workOrder,
           ),
-          if ((jc.workstation ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _DetailRow(
-              icon: Icons.precision_manufacturing_outlined,
-              label: 'Workstation',
-              value: jc.workstation!,
-            ),
-          ],
-          if ((jc.primaryEmployeeDisplay ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            if (jc.employees.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              _DetailRow(
-                icon: Icons.people_outline,
-                label: jc.employees.length == 1 ? 'Employee' : 'Employees',
-                value: jc.employees
-                    .map((e) => e.employeeName ?? e.employee)
-                    .join(', '),
-              ),
-            ],
-          ],
-          if ((jc.itemName ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _DetailRow(
-              icon: Icons.inventory_2_outlined,
-              label: 'Item',
-              value: jc.itemName!,
-            ),
-          ],
+          Divider(height: 1, indent: 52, color: cs.outlineVariant),
+
+          // ── BOM No (read-only tile) ──────────────────────────────────────
+          _ReadOnlyFieldTile(
+            icon: Icons.account_tree_outlined,
+            label: 'BOM No',
+            value: jc.bomNo ?? '',
+          ),
+          Divider(height: 1, indent: 52, color: cs.outlineVariant),
+
+          // ── Production Item (two-line read-only tile) ────────────────────
+          _ReadOnlyFieldTile(
+            icon: Icons.inventory_2_outlined,
+            label: 'Production Item',
+            value: jc.productionItem ?? '',
+            subtitle: jc.itemName,
+          ),
+          Divider(height: 1, indent: 52, color: cs.outlineVariant),
+
+          // ── Employees (ChoiceChips — multi-select) ───────────────────────
+          _EmployeeChipsSection(jc: jc, controller: controller),
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1101,6 +1097,190 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Read-only field tile (same visual as _EditableFieldTile, pencil hidden)
+// Used for Work Order, BOM No, and Production Item inside _HeaderCard.
+// ────────────────────────────────────────────────────────────────────────────
+
+class _ReadOnlyFieldTile extends StatelessWidget {
+  final IconData icon;
+  final String   label;
+  final String   value;
+  /// Optional second line — shown in labelSmall/muted style below the value.
+  final String?  subtitle;
+
+  const _ReadOnlyFieldTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isEmpty   = value.isEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isEmpty ? '—' : value,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: isEmpty ? cs.onSurfaceVariant : cs.onSurface,
+                    fontWeight: isEmpty ? FontWeight.normal : FontWeight.w600,
+                  ),
+                ),
+                if ((subtitle ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // No trailing icon — read-only tiles never show a pencil.
+          const SizedBox(width: 40), // preserve alignment with editable tiles
+        ],
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Employee ChoiceChips section
+// Renders one ChoiceChip per jc.employees entry; tapping immediately toggles
+// via controller.toggleEmployee().  While isSavingEmployees, all chips are
+// disabled.  Only shown when jc.isEditable (docstatus == 0).
+// When not editable (submitted), falls back to a plain _ReadOnlyFieldTile.
+// ────────────────────────────────────────────────────────────────────────────
+
+class _EmployeeChipsSection extends StatelessWidget {
+  final JobCard                jc;
+  final JobCardFormController  controller;
+
+  const _EmployeeChipsSection({
+    required this.jc,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    // Submitted / cancelled — plain read-only display.
+    if (!jc.isEditable) {
+      return _ReadOnlyFieldTile(
+        icon:  Icons.people_outline,
+        label: 'Employees',
+        value: jc.employees.isEmpty
+            ? ''
+            : jc.employees
+            .map((e) => e.employeeName ?? e.employee)
+            .join(', '),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.people_outline, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Employees',
+                  style: textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Obx(() {
+                  final saving    = controller.isSavingEmployees.value;
+                  final current   = controller.jobCard.value ?? jc;
+                  final selected  = current.employees
+                      .map((e) => e.employee)
+                      .toSet();
+
+                  if (current.employees.isEmpty) {
+                    return Text(
+                      'No employees assigned',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    );
+                  }
+
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: current.employees.map((emp) {
+                      final isSelected = selected.contains(emp.employee);
+                      return ChoiceChip(
+                        label: Text(
+                          emp.employeeName ?? emp.employee,
+                          style: textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        selected: isSelected,
+                        onSelected: saving
+                            ? null
+                            : (_) => controller.toggleEmployee(emp.employee),
+                        avatar: saving
+                            ? SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: cs.primary,
+                          ),
+                        )
+                            : null,
+                        selectedColor:
+                        cs.primaryContainer,
+                        checkmarkColor: cs.onPrimaryContainer,
+                        labelPadding:
+                        const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 4),
+                      );
+                    }).toList(),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
