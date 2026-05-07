@@ -1224,11 +1224,40 @@ class _EmployeeChipsSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Employees',
-                  style: textTheme.labelSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Employees',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        controller.loadAvailableEmployees();
+                        Get.bottomSheet(
+                          _EmployeePickerSheet(controller: controller),
+                          isScrollControlled: true,
+                          backgroundColor:
+                          Theme.of(context).colorScheme.surface,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(20)),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.edit_outlined,
+                          size: 16,
+                          color: cs.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Obx(() {
