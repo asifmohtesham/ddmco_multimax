@@ -676,14 +676,22 @@ class StockEntryFormController extends GetxController
       );
     } finally {
       isLoading.value = false;
+      isScanning.value = false; // safety: never leave scan-spinner active after a fetch
     }
   }
 
+  @override
   Future<void> reloadDocument() async {
-    await fetchStockEntry();
     isStale.value    = false;
     isScanning.value = false;
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
+    await fetchStockEntry();
+    // Defer the snackbar to the frame after the Obx tree has rebuilt with
+    // the new data.  Calling GlobalSnackbar synchronously on the same frame
+    // that isLoading flips to false races with the Overlay rebuild and can
+    // leave the CircularProgressIndicator on screen indefinitely.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      GlobalSnackbar.success(message: 'Document reloaded successfully');
+    });
   }
 
   // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────────────────
