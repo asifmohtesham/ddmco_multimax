@@ -165,7 +165,11 @@ class StockEntryFormController extends GetxController
   }
 
   /// Remaining qty available for [serial] under the POS Upload cap.
-  double remainingQtyForSerial(String serial) {
+  ///
+  /// Pass [excludeItemName] when computing the ceiling for a row that is
+  /// currently being edited — otherwise that row's saved qty is subtracted
+  /// from the cap and the user sees a lower Max than the serial actually allows.
+  double remainingQtyForSerial(String serial, {String? excludeItemName}) {
     final cap = posQtyCapForSerial(serial);
     if (cap == double.infinity) return double.infinity;
     return (cap - scannedQtyForSerial(serial)).clamp(0.0, cap);
@@ -685,12 +689,12 @@ class StockEntryFormController extends GetxController
     isStale.value    = false;
     isScanning.value = false;
     await fetchStockEntry();
-    // Defer the snackbar to the frame after the Obx tree has rebuilt with
-    // the new data.  Calling GlobalSnackbar synchronously on the same frame
-    // that isLoading flips to false races with the Overlay rebuild and can
-    // leave the CircularProgressIndicator on screen indefinitely.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      GlobalSnackbar.success(message: 'Document reloaded successfully');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!isClosed) {
+          GlobalSnackbar.success(message: 'Document reloaded successfully');
+        }
+      });
     });
   }
 
