@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -281,12 +282,14 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     // with ERP's own remaining-qty calculation. processLossQty is a separate
     // loss-recording field and must NOT be counted as fulfilling production qty.
     final result = jc.totalCompletedQty >= jc.forQuantity;
-    debugPrint(
-      '🔍 [isQtyComplete] ${jc.name} | '
-          'totalCompletedQty=${jc.totalCompletedQty} '
-          'processLossQty=${jc.processLossQty} '
-          'forQuantity=${jc.forQuantity} → $result',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '🔍 [isQtyComplete] ${jc.name} | '
+            'totalCompletedQty=${jc.totalCompletedQty} '
+            'processLossQty=${jc.processLossQty} '
+            'forQuantity=${jc.forQuantity} → $result',
+      );
+    }
     return result;
   }
 
@@ -1071,18 +1074,20 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     // while the guard is active (e.g. programmatic call or race condition).
     final jc = jobCard.value;
 
-    debugPrint(
-      '🟡 [submitJobCard] ${jc?.name} | '
-          'docstatus=${jc?.docstatus} '
-          'isEditable=${jc?.isEditable} '
-          'isCancelled=${jc?.isCancelled} '
-          'isOpen=${jc?.isOpen} '
-          'totalCompletedQty=${jc?.totalCompletedQty} '
-          'processLossQty=${jc?.processLossQty} '
-          'forQuantity=${jc?.forQuantity} '
-          'isQtyComplete=$isQtyComplete '
-          'canSubmit=$canSubmit',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '🟡 [submitJobCard] ${jc?.name} | '
+            'docstatus=${jc?.docstatus} '
+            'isEditable=${jc?.isEditable} '
+            'isCancelled=${jc?.isCancelled} '
+            'isOpen=${jc?.isOpen} '
+            'totalCompletedQty=${jc?.totalCompletedQty} '
+            'processLossQty=${jc?.processLossQty} '
+            'forQuantity=${jc?.forQuantity} '
+            'isQtyComplete=$isQtyComplete '
+            'canSubmit=$canSubmit',
+      );
+    }
 
     if (jc != null && jc.isEditable && !jc.isCancelled && !isQtyComplete) {
       HapticFeedback.lightImpact();
@@ -1136,13 +1141,15 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     if (jc.docstatus == 1) return;
     final completed = jc.totalCompletedQty + jc.processLossQty;
 
-    debugPrint(
-      '🤖 [_autoSubmitIfComplete] ${jc.name} | '
-          'totalCompletedQty=${jc.totalCompletedQty} '
-          'processLossQty=${jc.processLossQty} '
-          'forQuantity=${jc.forQuantity} '
-          'willSubmit=${jc.forQuantity <= 0 || completed >= jc.forQuantity}',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '🤖 [_autoSubmitIfComplete] ${jc.name} | '
+            'totalCompletedQty=${jc.totalCompletedQty} '
+            'processLossQty=${jc.processLossQty} '
+            'forQuantity=${jc.forQuantity} '
+            'willSubmit=${jc.forQuantity <= 0 || completed >= jc.forQuantity}',
+      );
+    }
 
     if (jc.forQuantity > 0 && completed < jc.forQuantity) return;
 
