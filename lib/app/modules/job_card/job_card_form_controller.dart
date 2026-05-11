@@ -277,7 +277,17 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     final jc = jobCard.value;
     if (jc == null) return false;
     if (jc.forQuantity <= 0) return true; // no qty constraint
-    return (jc.totalCompletedQty + jc.processLossQty) >= jc.forQuantity;
+    // Uses totalCompletedQty only — consistent with remainingQty getter and
+    // with ERP's own remaining-qty calculation. processLossQty is a separate
+    // loss-recording field and must NOT be counted as fulfilling production qty.
+    final result = jc.totalCompletedQty >= jc.forQuantity;
+    debugPrint(
+      '🔍 [isQtyComplete] ${jc.name} | '
+          'totalCompletedQty=${jc.totalCompletedQty} '
+          'processLossQty=${jc.processLossQty} '
+          'forQuantity=${jc.forQuantity} → $result',
+    );
+    return result;
   }
 
   void validatePauseQty(String value) {
@@ -1060,6 +1070,20 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     // rather than silently doing nothing when the button is tapped
     // while the guard is active (e.g. programmatic call or race condition).
     final jc = jobCard.value;
+
+    debugPrint(
+      '🟡 [submitJobCard] ${jc?.name} | '
+          'docstatus=${jc?.docstatus} '
+          'isEditable=${jc?.isEditable} '
+          'isCancelled=${jc?.isCancelled} '
+          'isOpen=${jc?.isOpen} '
+          'totalCompletedQty=${jc?.totalCompletedQty} '
+          'processLossQty=${jc?.processLossQty} '
+          'forQuantity=${jc?.forQuantity} '
+          'isQtyComplete=$isQtyComplete '
+          'canSubmit=$canSubmit',
+    );
+
     if (jc != null && jc.isEditable && !jc.isCancelled && !isQtyComplete) {
       HapticFeedback.lightImpact();
       GlobalDialog.showIncompleteJobCard(
@@ -1111,6 +1135,15 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     if (jc == null) return;
     if (jc.docstatus == 1) return;
     final completed = jc.totalCompletedQty + jc.processLossQty;
+
+    debugPrint(
+      '🤖 [_autoSubmitIfComplete] ${jc.name} | '
+          'totalCompletedQty=${jc.totalCompletedQty} '
+          'processLossQty=${jc.processLossQty} '
+          'forQuantity=${jc.forQuantity} '
+          'willSubmit=${jc.forQuantity <= 0 || completed >= jc.forQuantity}',
+    );
+
     if (jc.forQuantity > 0 && completed < jc.forQuantity) return;
 
     try {
