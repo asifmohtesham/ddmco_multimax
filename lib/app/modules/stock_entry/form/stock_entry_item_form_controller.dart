@@ -376,19 +376,28 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final posItem = upload.items.firstWhereOrNull((i) => i.idx == idx);
     if (posItem == null) return null;
 
+    // Use remainingQtyForSerial (cap − scanned) so that isFull triggers
+    // correctly when Qty = Used and Pending = 0.
+    // posItemQtyForSerial returns only the cap; it does NOT subtract
+    // already-scanned qty, so it can never produce 0 for a full serial.
+    debugPrint(
+      '[posDropdownItemFor] serial=$serial '
+          'cap=${posItem.quantity} '
+          'remaining=${_parent.remainingQtyForSerial(serial)}',
+    );
     return SerialDropdownItem(
       serial:    serial,
       itemName:  posItem.itemName,
       qty:       posItem.quantity.toDouble(),
-      remaining: posItemQtyForSerial(serial), // ← FIX: real cap, not stale liveRemaining
+      remaining: _parent.remainingQtyForSerial(serial), // ← FIXED
     );
   }
 
   // ── SerialFieldMixin: POS qty cap for a given serial ──────────────────────
   //
-  // Delegates to _parent.posQtyCapForSerial(serial), which resolves
-  // serial → idx → PosUploadItem.quantity.  Returns double.infinity when
-  // no POS Upload is loaded (badge hidden by the widget).
+  // Returns the *raw* POS Upload qty cap (not reduced by scanned qty).
+  // Used by the widget's cap badge to display the total allocation ceiling.
+  // Do NOT use this for isFull calculation — use remainingQtyForSerial() instead.
   @override
   double posItemQtyForSerial(String serial) =>
       _parent.posQtyCapForSerial(serial);
@@ -589,7 +598,17 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final serial = selectedSerial.value;
     if (serial == null || serial.isEmpty) return null;
     if (_parent.posUpload.value == null) return null;
-    final remaining = _parent.remainingQtyForSerial(serial);
+    // Exclude the row being edited so its already-saved qty is not deducted
+    // from the cap — the user is replacing that qty, not adding on top of it.
+    final remaining = _parent.remainingQtyForSerial(
+      serial,
+      excludeItemName: editingItemName.value,
+    );
+    debugPrint(
+      '[_posSerialCeiling] serial=$serial '
+          'editingRow=${editingItemName.value} '
+          'remaining=$remaining',
+    );
     return remaining == double.infinity ? null : remaining;
   }
 
@@ -614,9 +633,19 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   double get effectiveMaxQty {
     double? ceil;
 
-    // 1) POS serial ceiling (always honoured when present)
+    // 1) POS serial ceiling (always honoured when present).
+    //    Guard is serial != null (not serial > 0) because remaining = 0.0
+    //    is a valid binding ceiling: the serial is fully consumed and the
+    //    user must not be allowed to enter any qty.
     final serial = _posSerialCeiling;
-    if (serial != null && serial > 0) {
+    if (serial != null) {
+      debugPrint(
+        '[effectiveMaxQty] POS serial ceiling=$serial '
+            'batch=${batchBalance.value} rack=${rackBalance.value}',
+      );
+      // When serial ceiling is 0, short-circuit immediately — no other
+      // balance can override a fully-consumed serial.
+      if (serial == 0.0) return 0.0;
       ceil = serial;
     }
 
@@ -779,7 +808,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     final parts = <String>[];
     final serial = _posSerialCeiling;
-    if (serial != null) parts.add('Serial: ${serial.toStringAsFixed(0)}');
+    if (serial != null && serial > 0) parts.add('Serial: ${serial.toStringAsFixed(0)}');
     final batchBal = batchBalance.value;
     if (batchBal > 0) parts.add('Batch: ${batchBal.toStringAsFixed(0)}');
     final rackBal = rackBalance.value;
