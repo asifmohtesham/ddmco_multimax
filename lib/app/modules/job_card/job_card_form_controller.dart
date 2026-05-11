@@ -232,6 +232,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// True when the draft can be submitted by the user:
   ///   - document exists and is still draft (docstatus == 0)
   ///   - not cancelled
+  ///   - not open (must have been started)
+  ///   - completed qty equals WO target qty (no partial submissions)
   ///   - no other operation in-flight
   bool get canSubmit {
     final jc = jobCard.value;
@@ -240,10 +242,12 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     if (jc.isCancelled) return false;
     // Must have been started and have at least one time log recorded.
     if (jc.isOpen) return false;
+    // Remaining qty must be zero — partial Job Cards cannot be submitted.
+    if (!isQtyComplete) return false;
     return !isSubmitting.value &&
-           !isUpdatingStatus.value &&
-           !isAddingTimeLog.value &&
-           !isEditingTimeLog.value;
+        !isUpdatingStatus.value &&
+        !isAddingTimeLog.value &&
+        !isEditingTimeLog.value;
   }
 
   /// True when submit preconditions are partially met but job not yet ready.
@@ -264,6 +268,16 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     if (jc == null || jc.forQuantity <= 0) return 0;
     final rem = jc.forQuantity - jc.totalCompletedQty;
     return rem < 0 ? 0 : rem;
+  }
+
+  /// True when the total completed qty (including process loss) equals
+  /// or exceeds the WO target qty. When forQuantity is 0 or unset,
+  /// the check is skipped and this returns true (no WO qty constraint).
+  bool get isQtyComplete {
+    final jc = jobCard.value;
+    if (jc == null) return false;
+    if (jc.forQuantity <= 0) return true; // no qty constraint
+    return (jc.totalCompletedQty + jc.processLossQty) >= jc.forQuantity;
   }
 
   void validatePauseQty(String value) {
@@ -1042,6 +1056,19 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// Order Operation, and prevents further edits. A confirmation dialog is
   /// always shown so the user cannot accidentally trigger this action.
   Future<void> submitJobCard() async {
+    // Guard: show an informative alert if qty is not yet complete,
+    // rather than silently doing nothing when the button is tapped
+    // while the guard is active (e.g. programmatic call or race condition).
+    final jc = jobCard.value;
+    if (jc != null && jc.isEditable && !jc.isCancelled && !isQtyComplete) {
+      HapticFeedback.lightImpact();
+      GlobalDialog.showIncompleteJobCard(
+        completedQty: jc.totalCompletedQty + jc.processLossQty,
+        targetQty:    jc.forQuantity,
+      );
+      return;
+    }
+
     if (!canSubmit) return;
 
     // Stronger haptic for the final commit action

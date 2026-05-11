@@ -888,6 +888,145 @@ class GlobalDialog {
     );
   }
 
+  /// Hard-block sheet shown when the user taps "Submit Job Card" but the
+  /// completed qty (totalCompletedQty + processLossQty) does not yet equal
+  /// the WO target qty (forQuantity).
+  ///
+  /// Shows a 2-column stat row — Completed vs Target — so the operator
+  /// immediately knows how much work remains.
+  ///
+  /// ```dart
+  /// GlobalDialog.showIncompleteJobCard(
+  ///   completedQty: jc.totalCompletedQty + jc.processLossQty,
+  ///   targetQty:    jc.forQuantity,
+  /// );
+  /// ```
+  static void showIncompleteJobCard({
+    required double completedQty,
+    required double targetQty,
+  }) {
+    final remaining = (targetQty - completedQty).clamp(0.0, targetQty);
+
+    Get.bottomSheet(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.assignment_late_outlined,
+                    color: Colors.red.shade700,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Title ─────────────────────────────────────────────────
+                const Text(
+                  'Incomplete Job Card',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Explanation ───────────────────────────────────────────
+                Text(
+                  'The completed qty must equal the Work Order target qty '
+                      'before this Job Card can be submitted.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+
+                // ── 3-column stat row ─────────────────────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _dialogStatColumn(
+                        'Completed',
+                        '${_fmtQty(completedQty)} pcs',
+                        Colors.grey.shade700,
+                      ),
+                      Container(
+                          width: 1, height: 32, color: Colors.grey.shade300),
+                      _dialogStatColumn(
+                        'Target',
+                        '${_fmtQty(targetQty)} pcs',
+                        Colors.green.shade700,
+                      ),
+                      Container(
+                          width: 1, height: 32, color: Colors.grey.shade300),
+                      _dialogStatColumn(
+                        'Remaining',
+                        '${_fmtQty(remaining)} pcs',
+                        Colors.red.shade700,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Contextual hint ───────────────────────────────────────
+                Text(
+                  'Log ${_fmtQty(remaining)} more unit(s) to complete this Job Card.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.grey.shade500, fontSize: 13),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Dismiss button ────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      'OK, Got It',
+                      style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+    );
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   static Widget _dialogStatColumn(
