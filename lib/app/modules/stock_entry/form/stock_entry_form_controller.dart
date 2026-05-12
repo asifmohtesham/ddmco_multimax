@@ -172,7 +172,19 @@ class StockEntryFormController extends GetxController
   double remainingQtyForSerial(String serial, {String? excludeItemName}) {
     final cap = posQtyCapForSerial(serial);
     if (cap == double.infinity) return double.infinity;
-    return (cap - scannedQtyForSerial(serial)).clamp(0.0, cap);
+    // Forward excludeItemName so the editing row's already-saved qty is not
+    // deducted from the cap — the user is replacing that qty, not adding to it.
+    // Previously this parameter was accepted but silently dropped, causing
+    // "Max" to show cap − editingRowQty instead of cap.
+    debugPrint(
+      '[remainingQtyForSerial] serial=$serial '
+          'cap=$cap '
+          'scanned=${scannedQtyForSerial(serial, excludeItemName: excludeItemName)} '
+          'excludeItemName=$excludeItemName '
+          'result=${(cap - scannedQtyForSerial(serial, excludeItemName: excludeItemName)).clamp(0.0, cap)}',
+    );
+    return (cap - scannedQtyForSerial(serial, excludeItemName: excludeItemName))
+        .clamp(0.0, cap);
   }
 
   // ── MR helpers ───────────────────────────────────────────────────────────────────────────────────
