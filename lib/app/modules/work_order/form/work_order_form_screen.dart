@@ -865,6 +865,9 @@ class _OperationsSection extends StatelessWidget {
   ) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    // Capture the system navigation bar height BEFORE entering the sheet,
+    // where the context is still valid and fully laid-out.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     Get.bottomSheet(
       Container(
@@ -872,7 +875,7 @@ class _OperationsSection extends StatelessWidget {
           color: cs.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 32 + bottomInset), // ← dynamic bottom
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
