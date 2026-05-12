@@ -1,5 +1,6 @@
 // ignore_for_file: lines_longer_than_80_chars
 
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'serial_number_field_delegate.dart';
 
@@ -64,15 +65,14 @@ import 'serial_number_field_delegate.dart';
 ///
 /// [computeLiveRemaining] implements:
 ///
+/// Formula:
 /// ```
-/// liveRemaining = cap
-///               − sumQtyUsedForSerial(serial)   // all committed rows
-///               + savedQtyForRow(editingRowId)   // undo double-count in edit mode
-///               − currentTypedQty               // react to every keystroke
+/// used          = sumQtyUsedForSerial(serial, excludeRowId: editingRowId)
+/// liveRemaining = cap − used − currentTypedQty
 /// ```
 ///
-/// In **add mode** (`editingRowId == null`) `savedQtyForRow` returns 0.0 and
-/// the formula simplifies to `cap − committed − currentTypedQty`.
+/// In **add mode** (`editingRowId == null`) all rows are summed (none excluded)
+/// and the formula simplifies to `cap − sumAll − currentTypedQty`.
 ///
 /// A negative result indicates over-allocation; the widget renders the badge
 /// in the error colour in that case.
@@ -133,14 +133,18 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
   @override
   double posItemQtyForSerial(String serial);
 
-  /// Sum of all committed row qtys in the parent document for [serial].
+  /// Sum of all committed row qtys in the parent document for [serial],
+  /// optionally excluding one row by its alphanumeric document name.
   ///
   /// Walk the parent document's in-memory items list synchronously —
-  /// no API call.  Include the row currently being edited (its saved qty
-  /// will be subtracted by [computeLiveRemaining] via [savedQtyForRow]).
+  /// no API call.
+  ///
+  /// [excludeRowId] — pass the editing row's `item.name` (e.g.
+  /// `"MAT-STE-2026-00123-1"`) to exclude it from the sum so that
+  /// Used = sum of OTHER rows only.  Pass `null` (default) to include all rows.
   ///
   /// Default returns 0.0; override in every concrete adopter.
-  double sumQtyUsedForSerial(String serial) => 0.0;
+  double sumQtyUsedForSerial(String serial, {String? excludeRowId}) => 0.0;
 
   /// The already-saved qty of the row identified by [rowId].
   ///
@@ -233,21 +237,21 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
       return;
     }
 
-    // usedExcludingEditRow: sum of all rows EXCEPT the currently editing row
-    // (sumQtyUsedForSerial passes excludeItemName so the editing row is omitted).
-    final usedExcludingEditRow = sumQtyUsedForSerial(serial);
+    // Used = sum of all rows for this serial EXCLUDING the editing row by name.
+    // In add mode (editingRowId == null) all rows are included.
+    final used = sumQtyUsedForSerial(serial, excludeRowId: editingRowId);
 
-    // savedOfEditRow: the editing row's already-committed qty.
-    // In add mode (editingRowId == null) this is 0.0.
-    // Together: usedExcludingEditRow + savedOfEditRow = total used across ALL rows.
-    final savedOfEditRow =
-    editingRowId != null ? savedQtyForRow(editingRowId) : 0.0;
+    // Pending = cap − Used − currentTypedQty
+    liveRemaining.value = cap - used - currentTypedQty;
 
-    // Pending = Qty − (totalUsed + currentlyTypingQty)
-    //         = cap − (usedExcludingEditRow + savedOfEditRow) − currentTypedQty
-    liveRemaining.value =
-        cap - usedExcludingEditRow - currentTypedQty;
-        // cap - usedExcludingEditRow - savedOfEditRow - currentTypedQty;
+    debugPrint(
+      '[computeLiveRemaining] serial=$serial '
+          'cap=$cap '
+          'excludeRowId=$editingRowId '
+          'used=$used '
+          'currentTypedQty=$currentTypedQty '
+          'pending=${liveRemaining.value}',
+    );
   }
 
   // ── Dirty-check & validation (ported from PosSerialMixin unchanged) ───────

@@ -126,10 +126,13 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   // Walks the current slip's in-memory items list — no API call.
   // PS items carry customInvoiceSerialNumber so we match on that field.
   @override
-  double sumQtyUsedForSerial(String serial) {
-    return (_parent.packingSlip.value?.items ?? [])
-        .where((i) => (i.customInvoiceSerialNumber ?? '0') == serial)
-        .fold(0.0, (sum, i) => sum + i.qty);
+  double sumQtyUsedForSerial(String serial, {String? excludeRowId}) {
+    return _parent.packingSlip.value?.items
+        .where((i) =>
+          i.customInvoiceSerialNumber == serial &&
+          i.name != excludeRowId)
+        .fold(0.0, (sum, i) => sum! + i.qty) ??
+        0.0;
   }
 
   // ── Sheet validation ───────────────────────────────────────────────────────

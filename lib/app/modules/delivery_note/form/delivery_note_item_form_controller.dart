@@ -192,11 +192,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// Excludes the row currently being edited to avoid double-counting
   /// (savedQtyForRow adds it back with the correct value).
   @override
-  double sumQtyUsedForSerial(String serial) =>
-      _parent.scannedQtyForSerial(
-        serial,
-        excludeItemName: editingItemName.value,
-      );
+  double sumQtyUsedForSerial(String serial, {String? excludeRowId}) {
+    return _parent.deliveryNote.value?.items
+        .where((i) =>
+          i.customInvoiceSerialNumber == serial &&
+          i.name != excludeRowId)
+        .fold(0.0, (sum, i) => sum! + i.qty) ??
+        0.0;
+  }
 
   // ── SerialFieldMixin: savedQtyForRow override ─────────────────────────────
   /// Returns the already-saved qty of the row being edited.

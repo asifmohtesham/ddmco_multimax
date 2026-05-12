@@ -408,9 +408,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // Includes the row currently being edited (savedQtyForRow subtracts it
   // back out in computeLiveRemaining to avoid double-counting).
   @override
-  double sumQtyUsedForSerial(String serial) {
-    return (_parent.stockEntry.value?.items ?? [])
-        .where((i) => (i.customInvoiceSerialNumber ?? '0') == serial)
+  double sumQtyUsedForSerial(String serial, {String? excludeRowId}) {
+    final items = _parent.stockEntry.value?.items;
+    if (items == null) return 0.0;
+    return items
+        .where((i) =>
+          i.customInvoiceSerialNumber == serial &&
+          i.name != excludeRowId)
         .fold(0.0, (sum, i) => sum + i.qty);
   }
 
@@ -948,6 +952,33 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isEditingExisting.value = true;
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
+
+    // ── DEBUG: dump the full SE item row being edited ──────────────────────
+    debugPrint(
+      '[SE-Item][_loadExistingItem] editing row:\n'
+          '  name                        : ${item.name}\n'
+          '  itemCode                    : ${item.itemCode}\n'
+          '  itemName                    : ${item.itemName}\n'
+          '  qty                         : ${item.qty}\n'
+          '  basicRate                   : ${item.basicRate}\n'
+          '  batchNo                     : ${item.batchNo}\n'
+          '  rack                        : ${item.rack}\n'
+          '  toRack                      : ${item.toRack}\n'
+          '  sWarehouse                  : ${item.sWarehouse}\n'
+          '  tWarehouse                  : ${item.tWarehouse}\n'
+          '  customInvoiceSerialNumber   : ${item.customInvoiceSerialNumber}\n'
+          '  itemGroup                   : ${item.itemGroup}\n'
+          '  customVariantOf             : ${item.customVariantOf}\n'
+          '  materialRequest             : ${item.materialRequest}\n'
+          '  materialRequestItem         : ${item.materialRequestItem}\n'
+          '  isFinishedItem              : ${item.isFinishedItem}\n'
+          '  docstatus                   : ${item.docstatus}\n'
+          '  owner                       : ${item.owner}\n'
+          '  creation                    : ${item.creation}\n'
+          '  modified                    : ${item.modified}\n'
+          '  modifiedBy                  : ${item.modifiedBy}',
+    );
+    // ── END DEBUG ──────────────────────────────────────────────────────────
 
     // fix(docstatus): docstatus belongs to the parent document, not the item
     // row. Read from parent StockEntry to drive the isQtyReadOnly lock.
