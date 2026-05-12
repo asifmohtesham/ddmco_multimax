@@ -26,17 +26,19 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   String? _sessionEmployeeId;
   bool get hasLinkedEmployee =>
       _sessionEmployeeId != null && _sessionEmployeeId!.isNotEmpty;
-// ✅ FIX: Widen to Map<String, dynamic> to match provider signature
+  // ✅ FIX: Widen to Map<String, dynamic> to match provider signature
   List<Map<String, dynamic>> get _employees => hasLinkedEmployee
       ? [{'employee': _sessionEmployeeId!}]
       : [];
 
-// ── Employee chips ────────────────────────────────────────────────────────
+  // ── Employee chips ────────────────────────────────────────────────────────
   /// All Active employees fetched once on form open; drives the picker sheet.
   final availableEmployees = <Map<String, dynamic>>[].obs;
 
   /// True while a toggle-employee PATCH is in-flight.
   final isSavingEmployees = false.obs;
+
+  bool _disposed = false;
 
   /// Fetches Active employees from ERP and stores in [availableEmployees].
   /// Safe to call multiple times — skips if the list is already populated.
@@ -202,12 +204,19 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   @override
   void onClose() {
+    _disposed = true;
     _ticker?.cancel();
     startTimeController.dispose();
     completeTimeController.dispose();
     completedQtyController.dispose();
     pauseQtyController.dispose();
     super.onClose();
+  }
+
+  // Wrapper to safely set isUpdatingStatus:
+  void _setUpdating(bool value) {
+    if (_disposed) return;
+    isUpdatingStatus.value = value;
   }
 
   // ── Computed guards ───────────────────────────────────────────────────────
@@ -1004,15 +1013,17 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     if (!canUpdateStatus) return;
 
+    // Show loading feedback immediately — before any async work.
+    isUpdatingStatus.value = true;
+
     // ── Conflict check (Start / Resume only) ─────────────────────────────
     // If another Job Card is already Work In Progress for this employee,
     // block the action and show the hard-block sheet.
     if (newStatus == JobCard.statusWorkInProgress) {
-      isUpdatingStatus.value = true;
       final conflict = await _checkForRunningJobCard();
-      isUpdatingStatus.value = false;
 
       if (conflict != null) {
+        isUpdatingStatus.value = false;
         GlobalDialog.showRunningJobCardBlock(
           conflictingName:      (conflict['name']      ?? '').toString(),
           conflictingOperation: (conflict['operation'] ?? '').toString(),
@@ -1030,7 +1041,6 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
-    isUpdatingStatus.value = true;
     try {
       final res = await _provider.updateJobCardStatus(
         jobCardId:    name,

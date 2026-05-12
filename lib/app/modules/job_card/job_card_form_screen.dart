@@ -46,44 +46,39 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
             ? _ErrorState(onRetry: controller.fetchDocument)
             : _JobCardFormBody(controller: controller, jc: jc),
 
-        bottomNavigationBar: controller.isLoading.value || jc == null
-            ? null
-            : Builder(
-              builder: (context) {
-                return Obx(() {
-                  final current = controller.jobCard.value ?? jc;
-                  final mq = MediaQuery.of(context);
-                  return SafeArea(
-                    top: false,
-                    child: IntrinsicHeight(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          border: Border(
-                            top: BorderSide(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant,
-                              width: 1,
-                            ),
-                          ),
-                        ),
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          10,
-                          16,
-                          (mq.padding.bottom > 0 ? mq.padding.bottom : 8),
-                        ),
-                        child: _StatusActionsRow(
-                          jc:         current,
-                          controller: controller,
+        bottomNavigationBar: Obx(() {                    // ← outer Obx reads isLoading.value
+          if (controller.isLoading.value || jc == null) return const SizedBox.shrink();
+          return Builder(
+            builder: (context) {
+              final current = controller.jobCard.value ?? jc;   // ← same inner .value read, now inside the same Obx
+              final mq = MediaQuery.of(context);
+              return SafeArea(
+                top: false,
+                child: IntrinsicHeight(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                          width: 1,
                         ),
                       ),
                     ),
-                  );
-                });
-              },
-        ),
+                    padding: EdgeInsets.fromLTRB(
+                      16, 10, 16,
+                      (mq.padding.bottom > 0 ? mq.padding.bottom : 8),
+                    ),
+                    child: _StatusActionsRow(
+                      jc:         current,
+                      controller: controller,
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        }),
       );
     });
   }
@@ -398,7 +393,10 @@ class _StatusActionsRow extends StatelessWidget {
                     icon: statusLoading
                         ? _spinner(Colors.white)
                         : const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Start', style: TextStyle(fontSize: 15)),
+                    label: Text(
+                      statusLoading ? 'Starting...' : 'Start',
+                      style: const TextStyle(fontSize: 15),
+                    ),
                   ),
                 ),
 
@@ -416,7 +414,10 @@ class _StatusActionsRow extends StatelessWidget {
                     icon: statusLoading
                         ? _spinner(Colors.white)
                         : const Icon(Icons.replay_rounded),
-                    label: const Text('Resume', style: TextStyle(fontSize: 15)),
+                    label: Text(
+                      statusLoading ? 'Resuming...' : 'Resume',
+                      style: const TextStyle(fontSize: 15),
+                    ),
                   ),
                 ),
 
