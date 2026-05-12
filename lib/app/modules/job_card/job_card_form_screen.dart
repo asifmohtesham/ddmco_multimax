@@ -10,6 +10,7 @@ import 'job_card_form_controller.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class JobCardFormScreen extends GetView<JobCardFormController> {
   const JobCardFormScreen({super.key});
@@ -275,19 +276,31 @@ class _HeaderCard extends StatelessWidget {
           const SizedBox(height: 10),
           Divider(height: 1, color: cs.outlineVariant),
 
-          // ── Work Order (read-only tile) ──────────────────────────────────
-          _ReadOnlyFieldTile(
+          // ── Work Order (tappable → navigates to Work Order form) ─────────
+          _LinkedDocTile(
             icon: Icons.work_outline,
             label: 'Work Order',
             value: jc.workOrder,
+            onTap: jc.workOrder.isNotEmpty
+                ? () => Get.toNamed(
+              AppRoutes.WORK_ORDER_FORM,
+              arguments: {'name': jc.workOrder, 'mode': 'view'},
+            )
+                : null,
           ),
           Divider(height: 1, indent: 52, color: cs.outlineVariant),
 
-          // ── BOM No (read-only tile) ──────────────────────────────────────
-          _ReadOnlyFieldTile(
+          // ── BOM No (tappable → navigates to BOM form) ────────────────────
+          _LinkedDocTile(
             icon: Icons.account_tree_outlined,
             label: 'BOM No',
             value: jc.bomNo ?? '',
+            onTap: (jc.bomNo ?? '').isNotEmpty
+                ? () => Get.toNamed(
+              AppRoutes.BOM_FORM,
+              arguments: {'name': jc.bomNo, 'mode': 'view'},
+            )
+                : null,
           ),
           Divider(height: 1, indent: 52, color: cs.outlineVariant),
 
@@ -1174,6 +1187,96 @@ class _ReadOnlyFieldTile extends StatelessWidget {
           // No trailing icon — read-only tiles never show a pencil.
           const SizedBox(width: 40), // preserve alignment with editable tiles
         ],
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Linked document tile — same visual as _ReadOnlyFieldTile, but tappable.
+// Shows a chevron_right trailing icon when [onTap] is non-null (i.e. a value
+// is present).  Used for Work Order and BOM No in _HeaderCard so the user
+// can navigate directly to the linked document.
+// ────────────────────────────────────────────────────────────────────────────
+
+class _LinkedDocTile extends StatelessWidget {
+  final IconData      icon;
+  final String        label;
+  final String        value;
+  /// Provide [onTap] only when [value] is non-empty.
+  /// When null the tile renders identically to _ReadOnlyFieldTile.
+  final VoidCallback? onTap;
+  final String?       subtitle;
+
+  const _LinkedDocTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs        = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isEmpty   = value.isEmpty;
+    final tappable  = onTap != null && !isEmpty;
+
+    return InkWell(
+      onTap:        tappable ? onTap : null,
+      borderRadius: BorderRadius.circular(0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: cs.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isEmpty ? '—' : value,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: isEmpty
+                          ? cs.onSurfaceVariant
+                          : tappable
+                          ? cs.primary
+                          : cs.onSurface,
+                      fontWeight: isEmpty ? FontWeight.normal : FontWeight.w600,
+                    ),
+                  ),
+                  if ((subtitle ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle!,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Trailing: chevron when tappable, fixed spacer otherwise
+            // (preserves alignment with _EditableFieldTile's 40-wide slot).
+            SizedBox(
+              width: 40,
+              child: tappable
+                  ? Icon(Icons.chevron_right,
+                  size: 20, color: cs.onSurfaceVariant)
+                  : null,
+            ),
+          ],
+        ),
       ),
     );
   }
