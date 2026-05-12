@@ -537,6 +537,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     } finally {
       if (isSource) { isValidatingSourceRack.value = false; }
       else          { isValidatingTargetRack.value = false; }
+      // Re-evaluate the sheet save-gate now that rack validation state has
+      // settled (isSourceRackValid / isTargetRackValid are final).
+      // Without this call, isSheetValid.value is never updated after an async
+      // rack scan, leaving the "Update Item" button permanently disabled even
+      // when batch + source rack are both valid.
+      validateSheet();
     }
   }
 
