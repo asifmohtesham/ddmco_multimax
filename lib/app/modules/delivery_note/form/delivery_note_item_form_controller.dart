@@ -148,8 +148,18 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     double? ceil;
     ceil = _applyConstraint(ceil, batchBalance.value);
     ceil = _applyConstraint(ceil, rackBalance.value);
-    if ((selectedSerial.value ?? '').isNotEmpty) {
-      ceil = _applyConstraint(ceil, liveRemaining.value);
+    final serial = selectedSerial.value ?? '';
+    if (serial.isNotEmpty) {
+      // Apply the raw POS Item Qty as a hard cap — independently of how
+      // much the user has already typed (liveRemaining shifts as they type
+      // so it must NOT be used as the cap source here).
+      final posQty = posItemQtyForSerial(serial);
+      if (posQty != double.infinity) {
+        // Remaining already-used slots for this serial (excluding self in edit).
+        final used = sumQtyUsedForSerial(serial, excludeRowId: editingItemName.value);
+        final allowedByPos = (posQty - used).clamp(0.0, posQty);
+        ceil = _applyConstraint(ceil, allowedByPos);
+      }
     }
     return ceil ?? double.infinity;
   }
@@ -898,10 +908,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         balance = mapQty;
       } else {
         await fetchRackBalance(trimmed);
-        // ✅ Re-read from the map AFTER the await instead of trusting rackBalance.value
-        balance = rackStockMapRx[trimmed] ?? 0.0;
+        // Read rackBalance.value (set by fetchRackBalance) instead of the
+        // stale map, which fetchRackBalance does not populate.
+        balance = rackBalance.value;
       }
-      rackBalance.value = balance; // sync the observable last
+      // Sync map so subsequent calls hit the cache path (no double fetch).
+      if (balance > 0) rackStockMapRx[trimmed] = balance;
+      rackBalance.value = balance;
 
       debugPrint('trimmed: $trimmed');
       debugPrint('rackBalance: $balance');
