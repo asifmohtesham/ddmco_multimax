@@ -33,6 +33,7 @@ class JobCardProvider {
         'docstatus',
         'modified',
         'posting_date',
+        'employee',
       ],
       orderBy: 'modified desc',
     );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
@@ -89,12 +90,12 @@ class _JobCardScreenState extends State<JobCardScreen> {
       ));
     }
 
-    // Assigned To
-    if (controller.activeFilters.containsKey('_assign') &&
-        controller.assignedUserLabel.value.isNotEmpty) {
+    // Assigned Employee
+    if (controller.activeFilters.containsKey('Job Card Time Log') &&
+        controller.assignedEmployeeLabel.value.isNotEmpty) {
       chips.add(chip(
-        icon: Icons.person_outline,
-        label: 'Assigned To: ${controller.assignedUserLabel.value}',
+        icon: Icons.badge_outlined,
+        label: 'Employee: ${controller.assignedEmployeeLabel.value}',
         onDeleted: () => controller.setAssignedToFilter(null, null),
       ));
     }
@@ -274,7 +275,134 @@ class _JobCardFilterSheet extends StatelessWidget {
     'Cancelled',
   ];
 
+  /// Opens a bottom-sheet employee picker that draws from
+  /// [JobCardFormController]'s availableEmployees cache (Active employees).
+  /// Falls back to a direct provider fetch if the cache is empty.
+  void _openEmployeePicker(
+      BuildContext context, {
+        required void Function(String empId, String displayName) onSelected,
+      }) {
+    // Reuse the already-loaded employee list from any open JobCardFormController,
+    // or load from JobCardProvider directly.
+    final searchCtrl = TextEditingController();
+    // Fetch employees via the provider directly — avoids coupling to the form controller.
+    final employees  = RxList<Map<String, dynamic>>([]);
+    final isLoading  = true.obs;
 
+    // Fire-and-forget load
+    Get.find<JobCardProvider>().getActiveEmployees().then((res) {
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        employees.assignAll(
+          (res.data['data'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList(),
+        );
+      }
+      isLoading.value = false;
+    }).catchError((_) => isLoading.value = false);
+
+    final filtered = RxList<Map<String, dynamic>>([]);
+    // Mirror employees into filtered once loaded.
+    ever(employees, (list) => filtered.assignAll(list));
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (ctx, scrollCtrl) {
+            final cs = Theme.of(ctx).colorScheme;
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Select Employee',
+                          style: Theme.of(ctx).textTheme.titleLarge),
+                      IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: Get.back),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Search employees...',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onChanged: (val) {
+                      final q = val.toLowerCase();
+                      filtered.assignAll(
+                        q.isEmpty
+                            ? employees
+                            : employees.where((e) =>
+                        (e['name'] ?? '')
+                            .toString()
+                            .toLowerCase()
+                            .contains(q) ||
+                            (e['employee_name'] ?? '')
+                                .toString()
+                                .toLowerCase()
+                                .contains(q)),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Obx(() {
+                      if (isLoading.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (filtered.isEmpty) {
+                        return const Center(child: Text('No employees found'));
+                      }
+                      return ListView.separated(
+                        controller: scrollCtrl,
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) =>
+                        const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final e       = filtered[i];
+                          final empId   = (e['name'] ?? '').toString();
+                          final empName = (e['employee_name'] ?? '').toString();
+                          final display = empName.isNotEmpty ? empName : empId;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Text(display.isNotEmpty
+                                  ? display[0].toUpperCase()
+                                  : '?'),
+                            ),
+                            title: Text(display),
+                            subtitle: Text(empId),
+                            onTap: () {
+                              Get.back();
+                              onSelected(empId, display);
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
 
   void _openUserPicker(
       BuildContext context, {
@@ -424,21 +552,20 @@ class _JobCardFilterSheet extends StatelessWidget {
             }),
             const SizedBox(height: 16),
 
-            // Assigned To (backed by _assign)
+            // Assigned Employee (backed by employee child table)
             Obx(() {
-              final label = controller.assignedUserLabel.value;
+              final label = controller.assignedEmployeeLabel.value;
               return TextFormField(
                 readOnly: true,
-                onTap: () => _openUserPicker(
+                onTap: () => _openEmployeePicker(
                   context,
-                  title: 'Select Assigned To',
-                  onSelected: (userId, display) =>
-                      controller.setAssignedToFilter(userId, display),
+                  onSelected: (empId, display) =>
+                      controller.setAssignedToFilter(empId, display),
                 ),
                 decoration: InputDecoration(
-                  labelText: 'Assigned To',
+                  labelText: 'Assigned Employee',
                   border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.person_outline),
+                  prefixIcon: const Icon(Icons.badge_outlined),
                   suffixIcon: label.isNotEmpty
                       ? IconButton(
                     icon: const Icon(Icons.close, size: 18),

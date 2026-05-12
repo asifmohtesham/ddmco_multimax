@@ -6,15 +6,16 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 
 class JobCardController extends GetxController {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
 
-  // Assigned To (maps to _assign like '%user%')
-  final assignedUserId    = ''.obs;
-  final assignedUserLabel = ''.obs;
+  // Assigned Employee (maps to `employee` child table — employee = 'HR-EMP-XXXXX')
+  final assignedEmployeeId    = ''.obs;
+  final assignedEmployeeLabel = ''.obs;
 
   // Created By (maps to owner = user)
   final createdByUserId    = ''.obs;
@@ -57,8 +58,8 @@ class JobCardController extends GetxController {
     // Preload user list for DocType List pickers
     await fetchUsers();
 
-    // Apply default Assigned To only if caller did not provide one
-    if (!activeFilters.containsKey('_assign')) {
+    // Apply default Assigned Employee only if caller did not provide one
+    if (!activeFilters.containsKey('Job Card Time Log')) {
       await _ensureDefaultAssignedToFilter();
     }
 
@@ -68,15 +69,17 @@ class JobCardController extends GetxController {
 
   Future<void> _ensureDefaultAssignedToFilter() async {
     try {
-      final response = await _apiProvider.getLoggedUser();
-      if (response.statusCode == 200 && response.data['message'] is String) {
-        final userId = response.data['message'] as String;
-        if (userId.isNotEmpty) {
-          // Store as "like" operator array so _buildSearchFilters() passes through
-          activeFilters['_assign'] = ['like', '%$userId%'];
-          assignedUserId.value     = userId;
-          assignedUserLabel.value  = userId; // can be replaced with full name after fetchUsers
-        }
+      // Use the session employee ID stored at login — this is the HR-EMP-XXXXX
+      // value that lives in the `employee` child table, not the user email.
+      final storedEmployeeId =
+          Get.find<StorageService>().getUser()?.employeeId ?? '';
+      if (storedEmployeeId.isNotEmpty) {
+        // Frappe child-table filter: ['ChildDoctype', 'field', 'op', 'value']
+        // 'employee' is a Table MultiSelect on Job Card — its rows live in
+        // tabJob Card Time Log; filtering on tabJob Card.employee does not exist.
+        activeFilters['Job Card Time Log'] = ['employee', '=', storedEmployeeId];
+        assignedEmployeeId.value           = storedEmployeeId;
+        assignedEmployeeLabel.value        = storedEmployeeId;
       }
     } catch (e) {
       if (kDebugMode) {
@@ -85,16 +88,16 @@ class JobCardController extends GetxController {
     }
   }
 
-  void setAssignedToFilter(String? userId, String? label) {
-    if (userId == null || userId.isEmpty) {
-      assignedUserId.value    = '';
-      assignedUserLabel.value = '';
-      activeFilters.remove('_assign');
+  void setAssignedToFilter(String? employeeId, String? label) {
+    if (employeeId == null || employeeId.isEmpty) {
+      assignedEmployeeId.value    = '';
+      assignedEmployeeLabel.value = '';
+      activeFilters.remove('Job Card Time Log');
     } else {
-      assignedUserId.value    = userId;
-      assignedUserLabel.value = label ?? userId;
-      // Store full operator tuple so _buildSearchFilters() passes it through
-      activeFilters['_assign'] = ['like', '%$userId%'];
+      assignedEmployeeId.value    = employeeId;
+      assignedEmployeeLabel.value = label ?? employeeId;
+      // Child-doctype filter: targets tabJob Card Time Log, not tabJob Card.
+      activeFilters['Job Card Time Log'] = ['employee', '=', employeeId];
     }
     fetchJobCards(clear: true);
   }
@@ -232,12 +235,20 @@ class JobCardController extends GetxController {
   //                    name, operation, workstation, status
   //
   ({Map<String, dynamic> filters, Map<String, dynamic>? orFilters})
-      _buildSearchFilters() {
+  _buildSearchFilters() {
     final f = <String, dynamic>{};
     for (final entry in activeFilters.entries) {
+      final key = entry.key;
       final val = entry.value;
-      // Already-encoded operator lists pass through; plain values get '='.
-      f[entry.key] = val is List ? val : ['=', val];
+      if (val is List) {
+        // 3-element list → child-doctype filter: [childDoctype, field, op, value]
+        // Stored as ['field', 'op', 'value']; prepend the key (child doctype name).
+        f[key] = val.length == 3
+            ? [key, val[0], val[1], val[2]]   // → ['Job Card Time Log','employee','=','HR-EMP-XXXXX']
+            : val;                              // 2-element operator list passes through unchanged
+      } else {
+        f[key] = ['=', val];
+      }
     }
 
     Map<String, dynamic>? or;
