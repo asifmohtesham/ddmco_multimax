@@ -141,7 +141,7 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
                               size: 64, color: cs.outlineVariant),
                           const SizedBox(height: 16),
                           Text(
-                            'Set your date range and tap Run Report',
+                            'No Job Cards found for the selected date range.\nAdjust filters and tap Run Report.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: cs.onSurfaceVariant),
                           ),

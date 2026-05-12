@@ -80,12 +80,17 @@ class JobCardSummaryController extends GetxController {
       'production_item' : productionItemController,
       'workstation'     : workstationController,
     };
-    // Pre-fill: first day of current year → today (mirrors ERPNext default)
-    final now    = DateTime.now();
-    final jan1   = DateTime(now.year, 1, 1);
-    fromDateController.text = _fmt(jan1);
+    // Pre-fill: today → today (auto-run on load shows today's cards by default)
+    final now = DateTime.now();
+    fromDateController.text = _fmt(now);
     toDateController.text   = _fmt(now);
     _rebuildActiveFilters();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    runReport(); // Auto-run with today's default date range
   }
 
   @override
@@ -113,7 +118,7 @@ class JobCardSummaryController extends GetxController {
     productionItemController.clear();
     workstationController.clear();
     final now  = DateTime.now();
-    fromDateController.text = _fmt(DateTime(now.year, 1, 1));
+    fromDateController.text = _fmt(now);
     toDateController.text   = _fmt(now);
     _rebuildActiveFilters();
     reportData.clear();
@@ -122,7 +127,7 @@ class JobCardSummaryController extends GetxController {
   void clearFilter(String key) {
     filterControllers[key]?.clear();
     if (key == 'from_date') {
-      filterControllers[key]!.text = _fmt(DateTime(DateTime.now().year, 1, 1));
+      filterControllers[key]!.text = _fmt(DateTime.now());
     }
     if (key == 'to_date') {
       filterControllers[key]!.text = _fmt(DateTime.now());
