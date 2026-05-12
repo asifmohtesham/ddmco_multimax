@@ -1074,9 +1074,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     removeSheetListeners();
     addSheetListeners();
     snapshotState();
-    // captureSerialSnapshot() is called inside snapshotState() via the
-    // SerialFieldMixin hook — baseline for isSerialDirty dirty-detection.
     captureSerialSnapshot();
+
+    // Compute liveRemaining (Used / Pending) immediately so the serial
+    // number field shows correct values as soon as the sheet opens —
+    // without requiring the user to tap +/− first.
+    // validateSheet() is normally only triggered by TEC listeners, so
+    // without this call liveRemaining stays at 0.0 (its reset value)
+    // until the first user interaction.
+    validateSheet();
   }
 
   Future<void> initialise({
