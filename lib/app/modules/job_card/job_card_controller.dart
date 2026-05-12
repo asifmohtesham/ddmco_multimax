@@ -240,12 +240,17 @@ class JobCardController extends GetxController {
     for (final entry in activeFilters.entries) {
       final key = entry.key;
       final val = entry.value;
-      if (val is List) {
-        // 3-element list → child-doctype filter: [childDoctype, field, op, value]
-        // Stored as ['field', 'op', 'value']; prepend the key (child doctype name).
-        f[key] = val.length == 3
-            ? [key, val[0], val[1], val[2]]   // → ['Job Card Time Log','employee','=','HR-EMP-XXXXX']
-            : val;                              // 2-element operator list passes through unchanged
+      if (val is List && val.length == 3) {
+        // Child-table filter — stored as [field, op, value].
+        // Frappe expects the full 4-element tuple:
+        //   ["Job Card Time Log", "employee", "=", "HR-EMP-00013"]
+        // Emit it under a unique sentinel key so ApiProvider passes it
+        // through as a raw filter tuple, not a key=value pair.
+        // Use the child doctype name as key; ApiProvider must emit it as-is.
+        f['__child__$key'] = [key, val[0], val[1], val[2]];
+      } else if (val is List && val.length == 2) {
+        // Standard operator tuple: [op, value]
+        f[key] = val;
       } else {
         f[key] = ['=', val];
       }

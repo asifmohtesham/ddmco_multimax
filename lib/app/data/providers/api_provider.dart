@@ -95,25 +95,22 @@ class ApiProvider {
     // Process Standard Filters (AND)
     if (filters != null && filters.isNotEmpty) {
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        if (entry.value is List && (entry.value as List).length == 2) {
-          return [doctype, entry.key, entry.value[0], entry.value[1]];
+        final val = entry.value;
+        if (val is List) {
+          // 4-element: already a complete Frappe tuple — pass through as-is.
+          // Used for child-table filters: ["Job Card Time Log","employee","=","HR-EMP-00013"]
+          if (val.length == 4) return List<dynamic>.from(val);
+          // 3-element: child-table filter stored as [childDoctype, field, op, value]
+          // where key == childDoctype. Expand to full 4-element tuple.
+          if (val.length == 3) return [entry.key, val[0], val[1], val[2]];
+          // 2-element: standard [operator, value] tuple — prepend doctype + key.
+          if (val.length == 2) return [doctype, entry.key, val[0], val[1]];
         }
-        return [doctype, entry.key, '=', entry.value];
+        // Plain scalar value — equality filter.
+        return [doctype, entry.key, '=', val];
       }).toList();
 
       queryParameters['filters'] = json.encode(filterList);
-    }
-
-    // Process OR Filters (OR)
-    if (orFilters != null && orFilters.isNotEmpty) {
-      final List<List<dynamic>> orFilterList = orFilters.entries.map((entry) {
-        if (entry.value is List && (entry.value as List).length == 2) {
-          return [doctype, entry.key, entry.value[0], entry.value[1]];
-        }
-        return [doctype, entry.key, '=', entry.value];
-      }).toList();
-
-      queryParameters['or_filters'] = json.encode(orFilterList);
     }
 
     try {
