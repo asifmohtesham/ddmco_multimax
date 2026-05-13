@@ -254,9 +254,14 @@ class HomeScreen extends GetView<HomeController> {
             Wrap(
               spacing: 12,
               runSpacing: 12,
-              children: manufacturingItems
-                  .map((cfg) => _buildQuickActionItem(context, cfg, itemWidth))
-                  .toList(),
+              children: manufacturingItems.map((cfg) {
+                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                if (cfg.doctype == null) return tile;
+                return DocTypeGuard(
+                  doctype: cfg.doctype!,
+                  child: tile,
+                );
+              }).toList(),
             ),
           ],
         );
