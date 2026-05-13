@@ -1893,7 +1893,9 @@ class _EditableFieldTile extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Active timer banner — shown while job is Work In Progress
+// Active Timer Banner
+// Shows live elapsed time while job card is Work In Progress.
+// Turns red and shows overtime counter when allotted time is exceeded.
 // ────────────────────────────────────────────────────────────────────────────
 
 class _ActiveTimerBanner extends StatelessWidget {
@@ -1902,84 +1904,169 @@ class _ActiveTimerBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
     return Obx(() {
-      final elapsed = controller.elapsedDisplay.value;
+      final elapsed  = controller.elapsedDisplay.value;
+      final isOver   = controller.isOverTime.value;
+      final overtime = controller.overtimeDisplay.value;
+
       if (elapsed.isEmpty) return const SizedBox.shrink();
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      final cs        = Theme.of(context).colorScheme;
+      final textTheme = Theme.of(context).textTheme;
+
+      // ── Colour scheme: normal = surfaceContainerLow / primary
+      //                  overtime = errorContainer / error  ──────────────
+      final bgColor    = isOver ? cs.errorContainer       : cs.surfaceContainerLow;
+      final borderColor= isOver ? cs.error.withValues(alpha: 0.4)
+          : cs.outlineVariant;
+      final iconColor  = isOver ? cs.onErrorContainer     : cs.primary;
+      final labelColor = isOver ? cs.onErrorContainer     : cs.onSurfaceVariant;
+      final clockColor = isOver ? cs.error                : cs.onSurface;
+
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: cs.primaryContainer,
+          color: bgColor,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+          border: Border.all(color: borderColor),
         ),
         child: Row(
           children: [
-            // Pulsing timer icon
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.6, end: 1.0),
-              duration: const Duration(milliseconds: 900),
-              curve: Curves.easeInOut,
-              builder: (_, v, child) =>
-                  Opacity(opacity: v, child: child),
-              onEnd: () {},
-              child: Icon(Icons.timer_outlined,
-                  size: 22, color: cs.onPrimaryContainer),
+            // ── Pulsing icon ─────────────────────────────────────────────
+            _PulsingIcon(
+              icon:  isOver ? Icons.alarm_outlined : Icons.timer_outlined,
+              color: iconColor,
+              pulse: isOver,
             ),
             const SizedBox(width: 12),
+
+            // ── Labels ───────────────────────────────────────────────────
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Job In Progress',
-                    style: textTheme.labelMedium?.copyWith(
-                      color: cs.onPrimaryContainer,
+                    isOver ? 'Allotted Time Exceeded' : 'Elapsed Time',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: labelColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Elapsed: $elapsed',
-                    style: textTheme.headlineSmall?.copyWith(
-                      color: cs.onPrimaryContainer,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      fontFeatures: [const FontFeature.tabularFigures()],
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        elapsed,
+                        style: textTheme.titleMedium?.copyWith(
+                          color: clockColor,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      if (isOver && overtime.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.error.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            overtime,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: cs.error,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: controller.canUpdateStatus
-                  ? controller.pauseJobCard
-                  : null,
-              style: OutlinedButton.styleFrom(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                side: BorderSide(color: cs.onPrimaryContainer),
+
+            // ── Dismiss button (overtime only) ───────────────────────────
+            if (isOver)
+              IconButton(
+                icon: Icon(Icons.close, size: 18, color: cs.onErrorContainer),
+                tooltip: 'Dismiss alert',
                 visualDensity: VisualDensity.compact,
+                onPressed: controller.clearOvertimeAlert,
               ),
-              icon: Icon(Icons.pause_rounded,
-                  size: 16, color: cs.onPrimaryContainer),
-              label: Text(
-                'Pause',
-                style: textTheme.labelSmall?.copyWith(
-                  color: cs.onPrimaryContainer,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
           ],
         ),
       );
     });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pulsing icon — animates opacity when pulse == true
+// ────────────────────────────────────────────────────────────────────────────
+
+class _PulsingIcon extends StatefulWidget {
+  final IconData icon;
+  final Color    color;
+  final bool     pulse;
+  const _PulsingIcon({
+    required this.icon,
+    required this.color,
+    required this.pulse,
+  });
+
+  @override
+  State<_PulsingIcon> createState() => _PulsingIconState();
+}
+
+class _PulsingIconState extends State<_PulsingIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+  late final Animation<double>   _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _opacity = Tween<double>(begin: 1.0, end: 0.25).animate(
+      CurvedAnimation(parent: _anim, curve: Curves.easeInOut),
+    );
+    if (widget.pulse) _anim.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(_PulsingIcon old) {
+    super.didUpdateWidget(old);
+    if (widget.pulse && !_anim.isAnimating) {
+      _anim.repeat(reverse: true);
+    } else if (!widget.pulse && _anim.isAnimating) {
+      _anim.stop();
+      _anim.value = 1.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: Icon(widget.icon, size: 20, color: widget.color),
+    );
   }
 }
 
