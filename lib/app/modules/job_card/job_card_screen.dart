@@ -12,6 +12,7 @@ import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/job_card/job_card_form_controller.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 class JobCardScreen extends StatefulWidget {
   const JobCardScreen({super.key});
@@ -723,103 +724,127 @@ class _JobCardTile extends StatelessWidget {
     final clr         = _statusColor(context);
     final hasProgress = jc.forQuantity > 0;
 
-    return Material(
-      color: cs.surface,
-      elevation: (jc.isOpen || jc.isWorkInProgress) ? 2 : 0,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
+    return GestureDetector(
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: jc.name));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Copied: ${jc.name}'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+      child: Material(
+        color: cs.surface,
+        elevation: (jc.isOpen || jc.isWorkInProgress) ? 2 : 0,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: 44,
-                    width: 44,
-                    decoration: BoxDecoration(
-                      color: clr.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child:
-                        Icon(Icons.build_outlined, color: clr, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Operation — highlighted
-                        SearchHighlight(
-                          text: jc.operation,
-                          query: searchQuery,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        // Document name — e.g. PO-JOB-00042
-                        SearchHighlight(
-                          text: jc.name,
-                          query: searchQuery,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: cs.primary,
-                            fontWeight: FontWeight.w600,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 3),
-                        // Workstation + qty row — workstation part highlighted
-                        SearchHighlight(
-                          text: '${jc.workstation ?? 'Unassigned'} • '
-                              '${_fmtQty(jc.totalCompletedQty)}/'
-                              '${_fmtQty(jc.forQuantity)} units',
-                          query: searchQuery,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  StatusPill(status: _statusLabelForPill()),
-                ],
-              ),
-              if (hasProgress) ...[
-                const SizedBox(height: 10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Container(
+                      height: 44,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        color: clr.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child:
+                          Icon(Icons.build_outlined, color: clr, size: 22),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: jc.progress,
-                          minHeight: 5,
-                          backgroundColor:
-                              cs.outlineVariant.withValues(alpha: 0.5),
-                          color: clr,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Operation — highlighted
+                          SearchHighlight(
+                            text: jc.operation,
+                            query: searchQuery,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          // Document name — e.g. PO-JOB-00042
+                          SearchHighlight(
+                            text: jc.name,
+                            query: searchQuery,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          // Workstation + qty row — workstation part highlighted
+                          SearchHighlight(
+                            text: '${jc.workstation ?? 'Unassigned'} • '
+                                '${_fmtQty(jc.totalCompletedQty)}/'
+                                '${_fmtQty(jc.forQuantity)} units',
+                            query: searchQuery,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 2),
+                          // Work Order linkage
+                          SearchHighlight(
+                            text: 'Work Order: ${jc.workOrder}',
+                            query: searchQuery,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '${(jc.progress * 100).toInt()}%',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    StatusPill(status: _statusLabelForPill()),
                   ],
                 ),
+                if (hasProgress) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: jc.progress,
+                            minHeight: 5,
+                            backgroundColor:
+                                cs.outlineVariant.withValues(alpha: 0.5),
+                            color: clr,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${(jc.progress * 100).toInt()}%',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
