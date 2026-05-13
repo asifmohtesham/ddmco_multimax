@@ -212,6 +212,7 @@ class HomeScreen extends GetView<HomeController> {
             label: 'BOM',
             icon: Icons.account_tree_outlined,
             color: Colors.teal,
+            doctype: 'BOM',
             onTap: () => Get.toNamed(
               AppRoutes.BOM,
               arguments: {'filters': {'is_active': 1}, 'pageTitle': 'Active BOMs'},
@@ -221,12 +222,14 @@ class HomeScreen extends GetView<HomeController> {
             label: 'Work Order',
             icon: Icons.precision_manufacturing_outlined,
             color: Colors.indigo,
+            doctype: 'Work Order',
             onTap: controller.goToWorkOrder,
           ),
           _QuickActionConfig(
             label: 'Job Card',
             icon: Icons.assignment_ind_outlined,
             color: Colors.deepOrange,
+            doctype: 'Job Card',
             onTap: controller.goToJobCard,
           ),
         ];
