@@ -75,6 +75,7 @@ class ApiProvider {
     int limit = 20,
     int limitStart = 0,
     List<String>? fields,
+    String? groupBy = '',
     Map<String, dynamic>? filters,
     Map<String, dynamic>? orFilters,
     String orderBy = 'modified desc',
@@ -86,6 +87,7 @@ class ApiProvider {
       'limit_page_length': limit,
       'limit_start': limitStart,
       'order_by': orderBy,
+      if (groupBy!.isNotEmpty) 'group_by': groupBy,
     };
 
     if (fields != null) {
@@ -222,6 +224,7 @@ class ApiProvider {
     List<String>? fields,
     int limit = 20,
     String orderBy = 'modified desc',
+    String? groupBy = '',
   }) async {
     final dt = _positional ?? doctype;
     if (dt == null) return [];
@@ -233,6 +236,7 @@ class ApiProvider {
         else 'fields': json.encode(['name']),
         'limit_page_length': limit,
         'order_by': orderBy,
+        if (groupBy!.isNotEmpty) 'group_by': groupBy,
         if (filters != null && filters.isNotEmpty)
           'filters': json.encode(
             filters.entries.map((e) {

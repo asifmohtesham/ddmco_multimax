@@ -13,6 +13,7 @@ class JobCardProvider {
     int limitStart = 0,
     Map<String, dynamic>? filters,
     Map<String, dynamic>? orFilters,
+    String? groupBy = '',
   }) async {
     return _apiProvider.getDocumentList(
       'Job Card',
@@ -36,6 +37,7 @@ class JobCardProvider {
         'employee',
       ],
       orderBy: 'modified desc',
+      groupBy: groupBy
     );
   }
 

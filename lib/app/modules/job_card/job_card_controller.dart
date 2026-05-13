@@ -212,6 +212,7 @@ class JobCardController extends GetxController {
         orFilters: orFilters,
         limit: _pageSize,
         limitStart: _start,
+        groupBy: 'name',
       );
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
