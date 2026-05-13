@@ -762,6 +762,19 @@ class _JobCardTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        const SizedBox(height: 2),
+                        // Document name — e.g. PO-JOB-00042
+                        SearchHighlight(
+                          text: jc.name,
+                          query: searchQuery,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         const SizedBox(height: 3),
                         // Workstation + qty row — workstation part highlighted
                         SearchHighlight(
