@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
@@ -166,12 +167,14 @@ class HomeScreen extends GetView<HomeController> {
             label: 'Stock Entry',
             icon: Icons.compare_arrows_outlined,
             color: Colors.orange,
+            doctype: 'Stock Entry',
             onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
             label: 'Delivery Note',
             icon: Icons.local_shipping_outlined,
             color: Colors.blue,
+            doctype: 'Delivery Note',
             onTap: () {
               controller.setFulfillmentPrefixFilter(['KA', 'ML']);
               _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
@@ -181,18 +184,21 @@ class HomeScreen extends GetView<HomeController> {
             label: 'Purchase Receipt',
             icon: Icons.receipt_long_outlined,
             color: Colors.green,
+            doctype: 'Purchase Receipt',
             onTap: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
             label: 'Packing Slip',
             icon: Icons.assignment_return_outlined,
             color: Colors.purple,
+            doctype: 'Packing Slip',
             onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
             label: 'POS Upload',
             icon: Icons.shopping_bag_outlined,
             color: Colors.deepPurple,
+            doctype: 'POS Upload',
             onTap: () {
               controller.setFulfillmentPrefixFilter([]);
               _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
@@ -233,9 +239,14 @@ class HomeScreen extends GetView<HomeController> {
             Wrap(
               spacing: 12,
               runSpacing: 12,
-              children: operationItems
-                  .map((cfg) => _buildQuickActionItem(context, cfg, itemWidth))
-                  .toList(),
+              children: operationItems.map((cfg) {
+                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                if (cfg.doctype == null) return tile;
+                return DocTypeGuard(
+                  doctype: cfg.doctype!,
+                  child: tile,
+                );
+              }).toList(),
             ),
             const SizedBox(height: 16),
             _buildSectionDivider('Manufacturing'),
@@ -591,11 +602,16 @@ class _QuickActionConfig {
   final Color color;
   final VoidCallback onTap;
 
+  /// When non-null the tile is wrapped in a [DocTypeGuard] and is only
+  /// rendered if the current user has read access to this DocType.
+  final String? doctype;
+
   const _QuickActionConfig({
     required this.label,
     required this.icon,
     required this.color,
     required this.onTap,
+    this.doctype,
   });
 }
 
