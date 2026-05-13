@@ -302,4 +302,47 @@ class JobCardController extends GetxController {
     }
     return stats;
   }
+
+  /// Groups the currently-loaded job cards by their effective date and returns
+  /// per-day planned vs. completed quantity totals, sorted ascending by date.
+  ///
+  /// Effective date priority: postingDate → actualStartDate → expectedStartDate.
+  /// Cards with no resolvable date are excluded from the chart.
+  List<DailyProduction> get dailyProductionData {
+    final Map<String, _DailyAgg> agg = {};
+    for (final card in jobCards) {
+      final dateKey = card.postingDate ??
+          card.actualStartDate?.substring(0, 10) ??
+          card.expectedStartDate?.substring(0, 10);
+      if (dateKey == null) continue;
+      final bucket = agg.putIfAbsent(dateKey, () => _DailyAgg());
+      bucket.planned   += card.forQuantity;
+      bucket.completed += card.totalCompletedQty;
+    }
+    final sorted = agg.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return sorted
+        .map((e) => DailyProduction(date: e.key, planned: e.value.planned, completed: e.value.completed))
+        .toList();
+  }
+}
+
+// ── Internal aggregation helper ──────────────────────────────────────────────
+
+class _DailyAgg {
+  double planned   = 0;
+  double completed = 0;
+}
+
+/// Immutable value object: production totals for a single calendar day.
+/// Used by [_JobCardProductionChart] to render the bar chart.
+class DailyProduction {
+  final String date;       // 'YYYY-MM-DD'
+  final double planned;
+  final double completed;
+  const DailyProduction({
+    required this.date,
+    required this.planned,
+    required this.completed,
+  });
 }
