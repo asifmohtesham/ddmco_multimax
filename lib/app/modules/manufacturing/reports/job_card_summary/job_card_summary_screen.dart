@@ -1,4 +1,4 @@
-import 'dart:ui' show FontFeature;
+import 'dart:ui' as ui show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -165,23 +165,31 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
                   ),
                 )
 
-              // ── Results ───────────────────────────────────────────────────
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                        final row = controller.reportData[index];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _JobCardSummaryTile(row: row),
-                        );
-                      },
-                      childCount: controller.reportData.length,
+              // ── Chart ─────────────────────────────────────────────────────────────────
+              else ...[
+                  SliverToBoxAdapter(
+                    child: _ProductionChart(
+                      data: controller.dailyProductionData,
                     ),
                   ),
-                ),
+
+                  // ── Results ─────────────────────────────────────────────────────────────
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                          final row = controller.reportData[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _JobCardSummaryTile(row: row),
+                          );
+                        },
+                        childCount: controller.reportData.length,
+                      ),
+                    ),
+                  ),
+                ],
             ],
           ),
         );
@@ -429,11 +437,276 @@ class _StatBadge extends StatelessWidget {
               style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: color,
-                fontFeatures: const [FontFeature.tabularFigures()],
+                fontFeatures: const [ui.FontFeature.tabularFigures()],
               ),
             ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Production chart
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _ProductionChart extends StatefulWidget {
+  final List<DailyProduction> data;
+  const _ProductionChart({required this.data});
+
+  @override
+  State<_ProductionChart> createState() => _ProductionChartState();
+}
+
+class _ProductionChartState extends State<_ProductionChart> {
+  bool _expanded = true;
+
+  static const double _barWidth    = 22;
+  static const double _groupGap    = 24;
+  static const double _chartHeight = 130;
+  static const double _labelArea   = 32;
+
+  void _onTap(BuildContext context, DailyProduction d) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('${d.date}  •  Completed: ${_fmt(d.completed)}'),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  String _fmt(double v) => v == v.truncateToDouble()
+      ? v.toInt().toString()
+      : v.toStringAsFixed(1);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final data = widget.data;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row
+          Row(
+            children: [
+              Text(
+                'Completed Qty by Day',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (data.isNotEmpty && _expanded) ...[
+                _LegendDot(color: cs.primary, label: 'Completed'),
+                const SizedBox(width: 6),
+              ],
+              GestureDetector(
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Icon(
+                  _expanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  size: 20,
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          // Chart body
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 220),
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: data.isEmpty
+                ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  'No date data available',
+                  style: TextStyle(
+                      color: cs.onSurfaceVariant, fontSize: 12),
+                ),
+              ),
+            )
+                : _ChartBody(
+              data:           data,
+              barWidth:       _barWidth,
+              groupGap:       _groupGap,
+              chartHeight:    _chartHeight,
+              labelArea:      _labelArea,
+              colorBar:       cs.primary,
+              colorGrid:      cs.outlineVariant.withValues(alpha: 0.3),
+              colorLabel:     cs.onSurfaceVariant,
+              onTap: (d) => _onTap(context, d),
+            ),
+            secondChild: const SizedBox(height: 0),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Scrollable bar body ───────────────────────────────────────────────────────
+
+class _ChartBody extends StatelessWidget {
+  final List<DailyProduction> data;
+  final double barWidth, groupGap, chartHeight, labelArea;
+  final Color  colorBar, colorGrid, colorLabel;
+  final void Function(DailyProduction) onTap;
+
+  const _ChartBody({
+    required this.data,
+    required this.barWidth,
+    required this.groupGap,
+    required this.chartHeight,
+    required this.labelArea,
+    required this.colorBar,
+    required this.colorGrid,
+    required this.colorLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final maxVal     = data.fold<double>(0, (m, d) => d.completed > m ? d.completed : m);
+    final totalWidth = data.length * (barWidth + groupGap);
+
+    return SizedBox(
+      height: chartHeight + labelArea,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: GestureDetector(
+          onTapUp: (details) {
+            final idx = (details.localPosition.dx / (barWidth + groupGap)).floor();
+            if (idx >= 0 && idx < data.length) onTap(data[idx]);
+          },
+          child: CustomPaint(
+            size: Size(totalWidth, chartHeight + labelArea),
+            painter: _BarPainter(
+              data:        data,
+              maxVal:      maxVal == 0 ? 1 : maxVal,
+              barWidth:    barWidth,
+              groupGap:    groupGap,
+              chartHeight: chartHeight,
+              labelArea:   labelArea,
+              colorBar:    colorBar,
+              colorGrid:   colorGrid,
+              colorLabel:  colorLabel,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Painter ───────────────────────────────────────────────────────────────────
+
+class _BarPainter extends CustomPainter {
+  final List<DailyProduction> data;
+  final double maxVal, barWidth, groupGap, chartHeight, labelArea;
+  final Color  colorBar, colorGrid, colorLabel;
+
+  _BarPainter({
+    required this.data,
+    required this.maxVal,
+    required this.barWidth,
+    required this.groupGap,
+    required this.chartHeight,
+    required this.labelArea,
+    required this.colorBar,
+    required this.colorGrid,
+    required this.colorLabel,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paintBar  = Paint()..color = colorBar.withValues(alpha: 0.85);
+    final paintGrid = Paint()
+      ..color       = colorGrid
+      ..strokeWidth = 0.5;
+
+    // Grid lines at 0 %, 50 %, 100 %
+    for (final pct in [0.0, 0.5, 1.0]) {
+      final y = chartHeight - chartHeight * pct;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paintGrid);
+    }
+
+    final tp = TextPainter(textDirection: TextDirection.ltr);
+
+    for (int i = 0; i < data.length; i++) {
+      final d     = data[i];
+      final xBase = i * (barWidth + groupGap);
+      final barH  = (d.completed / maxVal) * chartHeight;
+
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          Rect.fromLTWH(xBase, chartHeight - barH, barWidth, barH),
+          topLeft:  const Radius.circular(3),
+          topRight: const Radius.circular(3),
+        ),
+        paintBar,
+      );
+
+      // Date label
+      String label = d.date;
+      try {
+        final parts = d.date.split('-');
+        if (parts.length == 3) {
+          final dt   = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+          const mons = ['Jan','Feb','Mar','Apr','May','Jun',
+            'Jul','Aug','Sep','Oct','Nov','Dec'];
+          label = '${mons[dt.month - 1]} ${dt.day}';
+        }
+      } catch (_) {}
+
+      tp.text = TextSpan(
+        text: label,
+        style: TextStyle(color: colorLabel, fontSize: 9),
+      );
+      tp.layout();
+      tp.paint(
+        canvas,
+        Offset(xBase + (barWidth - tp.width) / 2, chartHeight + 6),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BarPainter old) =>
+      old.data != data || old.maxVal != maxVal;
+}
+
+// ── Legend dot ────────────────────────────────────────────────────────────────
+
+class _LegendDot extends StatelessWidget {
+  final Color  color;
+  final String label;
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10, height: 10,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
     );
   }

@@ -199,4 +199,30 @@ class JobCardSummaryController extends GetxController {
 
   String _fmt(DateTime d) =>
       DateFormat('yyyy-MM-dd').format(d);
+
+  // ── Chart data ─────────────────────────────────────────────────────────────
+  // Groups reportData rows by posting_date, summing total_completed_qty per day.
+  // `for_quantity` is not in the summary API response, so planned = completed
+  // (single bar per day showing throughput). Sorted ascending by date.
+  List<DailyProduction> get dailyProductionData {
+    final map = <String, double>{};
+    for (final row in reportData) {
+      final date = row['posting_date']?.toString() ?? '';
+      if (date.isEmpty) continue;
+      final qty = (row['total_completed_qty'] as num?)?.toDouble() ?? 0.0;
+      map[date] = (map[date] ?? 0.0) + qty;
+    }
+    final sorted = map.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return sorted
+        .map((e) => DailyProduction(date: e.key, completed: e.value))
+        .toList();
+  }
+}
+
+// ── Value object ──────────────────────────────────────────────────────────────
+class DailyProduction {
+  final String date;       // 'YYYY-MM-DD'
+  final double completed;  // total_completed_qty summed for the day
+  const DailyProduction({required this.date, required this.completed});
 }
