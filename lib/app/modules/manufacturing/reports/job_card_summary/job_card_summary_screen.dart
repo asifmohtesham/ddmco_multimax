@@ -464,8 +464,9 @@ class _ProductionChartState extends State<_ProductionChart> {
 
   static const double _barWidth    = 22;
   static const double _groupGap    = 24;
-  static const double _chartHeight = 130;
+  static const double _chartHeight = 150;
   static const double _labelArea   = 32;
+  static const double _topPadding  = 16;
 
   void _onTap(BuildContext context, DailyProduction d) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -539,6 +540,7 @@ class _ProductionChartState extends State<_ProductionChart> {
               groupGap:       _groupGap,
               chartHeight:    _chartHeight,
               labelArea:      _labelArea,
+              topPadding:     _topPadding,
               colorBar:       cs.primary,
               colorGrid:      cs.outlineVariant.withValues(alpha: 0.3),
               colorLabel:     cs.onSurfaceVariant,
@@ -556,7 +558,7 @@ class _ProductionChartState extends State<_ProductionChart> {
 
 class _ChartBody extends StatelessWidget {
   final List<DailyProduction> data;
-  final double barWidth, groupGap, chartHeight, labelArea;
+  final double barWidth, groupGap, chartHeight, labelArea, topPadding;
   final Color  colorBar, colorGrid, colorLabel;
   final void Function(DailyProduction) onTap;
 
@@ -566,6 +568,7 @@ class _ChartBody extends StatelessWidget {
     required this.groupGap,
     required this.chartHeight,
     required this.labelArea,
+    required this.topPadding,
     required this.colorBar,
     required this.colorGrid,
     required this.colorLabel,
@@ -576,9 +579,10 @@ class _ChartBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxVal     = data.fold<double>(0, (m, d) => d.completed > m ? d.completed : m);
     final totalWidth = data.length * (barWidth + groupGap);
+    final totalHeight = chartHeight + labelArea + topPadding;
 
     return SizedBox(
-      height: chartHeight + labelArea,
+      height: totalHeight,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: GestureDetector(
@@ -587,7 +591,7 @@ class _ChartBody extends StatelessWidget {
             if (idx >= 0 && idx < data.length) onTap(data[idx]);
           },
           child: CustomPaint(
-            size: Size(totalWidth, chartHeight + labelArea),
+            size: Size(totalWidth, totalHeight),
             painter: _BarPainter(
               data:        data,
               maxVal:      maxVal == 0 ? 1 : maxVal,
@@ -595,6 +599,7 @@ class _ChartBody extends StatelessWidget {
               groupGap:    groupGap,
               chartHeight: chartHeight,
               labelArea:   labelArea,
+              topPadding:  topPadding,
               colorBar:    colorBar,
               colorGrid:   colorGrid,
               colorLabel:  colorLabel,
@@ -610,7 +615,7 @@ class _ChartBody extends StatelessWidget {
 
 class _BarPainter extends CustomPainter {
   final List<DailyProduction> data;
-  final double maxVal, barWidth, groupGap, chartHeight, labelArea;
+  final double maxVal, barWidth, groupGap, chartHeight, labelArea, topPadding;
   final Color  colorBar, colorGrid, colorLabel;
 
   _BarPainter({
@@ -620,6 +625,7 @@ class _BarPainter extends CustomPainter {
     required this.groupGap,
     required this.chartHeight,
     required this.labelArea,
+    required this.topPadding,
     required this.colorBar,
     required this.colorGrid,
     required this.colorLabel,
@@ -632,29 +638,53 @@ class _BarPainter extends CustomPainter {
       ..color       = colorGrid
       ..strokeWidth = 0.5;
 
-    // Grid lines at 0 %, 50 %, 100 %
+    // Grid lines at 0 %, 50 %, 100 % — offset down by topPadding
     for (final pct in [0.0, 0.5, 1.0]) {
-      final y = chartHeight - chartHeight * pct;
+      final y = topPadding + chartHeight - chartHeight * pct;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paintGrid);
     }
 
     final tp = TextPainter(textDirection: TextDirection.ltr);
 
     for (int i = 0; i < data.length; i++) {
-      final d     = data[i];
-      final xBase = i * (barWidth + groupGap);
-      final barH  = (d.completed / maxVal) * chartHeight;
+      final d      = data[i];
+      final xBase  = i * (barWidth + groupGap);
+      final barH   = (d.completed / maxVal) * chartHeight;
+      final barTop = topPadding + chartHeight - barH;  // shifted down by topPadding
 
       canvas.drawRRect(
         RRect.fromRectAndCorners(
-          Rect.fromLTWH(xBase, chartHeight - barH, barWidth, barH),
+          Rect.fromLTWH(xBase, barTop, barWidth, barH),
           topLeft:  const Radius.circular(3),
           topRight: const Radius.circular(3),
         ),
         paintBar,
       );
 
-      // Date label
+      // Qty callout — always has topPadding px of guaranteed headroom
+      if (d.completed > 0) {
+        final qtyStr = d.completed == d.completed.truncateToDouble()
+            ? d.completed.toInt().toString()
+            : d.completed.toStringAsFixed(1);
+        tp.text = TextSpan(
+          text: qtyStr,
+          style: TextStyle(
+            color:      colorBar,
+            fontSize:   8,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+        tp.layout();
+        tp.paint(
+          canvas,
+          Offset(
+            xBase + (barWidth - tp.width) / 2,
+            barTop - tp.height - 2,   // guaranteed ≥ 0 because topPadding=16 > label height
+          ),
+        );
+      }
+
+      // Date label — below the full bar area
       String label = d.date;
       try {
         final parts = d.date.split('-');
@@ -673,7 +703,10 @@ class _BarPainter extends CustomPainter {
       tp.layout();
       tp.paint(
         canvas,
-        Offset(xBase + (barWidth - tp.width) / 2, chartHeight + 6),
+        Offset(
+          xBase + (barWidth - tp.width) / 2,
+          topPadding + chartHeight + 6,   // also shifted down by topPadding
+        ),
       );
     }
   }
