@@ -19,17 +19,12 @@ class ItemFormScreen extends GetView<ItemFormController> {
     final cs = Theme.of(context).colorScheme;
     final tabCtrl = Get.find<ItemTabController>();
 
-    // DocTypeFormHeader takes a plain String, so wrap in Obx to
-    // reactively update the title once the item loads.
-    return Obx(() {
-      final docTypeName = controller.docType;
-
-      return Scaffold(
+    return Scaffold(
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             // ── Standard form app bar ──────────────────────────────────
             DocTypeFormHeader(
-              title: docTypeName,
+              title: controller.docType,
               // Item form is read-only — no Reload / Save / Share.
               // In modal mode the back arrow won't exist, so surface
               // an explicit Close button via extraActions instead.
@@ -87,7 +82,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
           }),
         ),
       );
-    });
   }
 
   // ── Overview Tab ──────────────────────────────────────────────────────────
