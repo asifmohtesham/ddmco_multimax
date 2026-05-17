@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
@@ -14,38 +14,46 @@ class BatchFormScreen extends GetView<BatchFormController> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return Obx(() => PopScope(
-      canPop: !controller.isDirty.value,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await controller.confirmDiscard();
-      },
-      child: Scaffold(
-        backgroundColor: colorScheme.surface,
-        appBar: MainAppBar(
-          title: controller.batch.value?.name ?? 'Batch Details',
-          status: controller.batchStatus,
-          isDirty: controller.isDirty.value,
-          isSaving: controller.isSaving.value,
-          onSave: controller.saveBatch,
-          actions: [
-            if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty)
-              _buildExportActions(colorScheme),
-          ],
-        ),
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Obx(() {
+      final title = controller.batch.value?.name ?? 'Batch Details';
+      final canSave = controller.isDirty.value;
+      final isSaving = controller.isSaving.value;
+      final isExporting = controller.isExporting.value;
+      final showExport = controller.isEditMode && controller.generatedBatchId.value.isNotEmpty;
+      final isLoading = controller.isLoading.value;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      return PopScope(
+        canPop: !canSave,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await controller.confirmDiscard();
+        },
+        child: Scaffold(
+          backgroundColor: colorScheme.surface,
+          body: CustomScrollView(
+            slivers: [
+              DocTypeFormHeader(
+                title: title,
+                canSave: canSave,
+                isSaving: isSaving,
+                onSave: controller.saveBatch,
+                extraActions: [
+                  if (showExport) _buildExportActions(colorScheme, isExporting),
+                ],
+              ),
+              if (isLoading)
+                const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                 // --- Label Preview Section ---
                 if (controller.generatedBatchId.value.isNotEmpty)
                   DocSectionCard(
@@ -181,10 +189,13 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 const SizedBox(height: 40),
               ],
             ),
-          );
-        }),
-      ),
-    ));
+          ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -196,9 +207,9 @@ class BatchFormScreen extends GetView<BatchFormController> {
   ///
   /// Accepts [colorScheme] directly so the method remains stateless and
   /// avoids an extra [BuildContext] / [Theme.of] call.
-  Widget _buildExportActions(ColorScheme colorScheme) {
+  Widget _buildExportActions(ColorScheme colorScheme, bool isExporting) {
     return PopupMenuButton<String>(
-      icon: controller.isExporting.value
+      icon: isExporting
           ? SizedBox(
               width: 20,
               height: 20,
