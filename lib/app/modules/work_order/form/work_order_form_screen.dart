@@ -5,8 +5,7 @@ import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/work_order_item_model.dart';
 import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'job_card_creation_sheet.dart';
 import 'work_order_form_controller.dart';
 
@@ -30,19 +29,28 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
         final title = (wo?.name.isEmpty ?? true) || wo?.name == 'New Work Order'
             ? 'New Work Order'
             : wo!.name;
+        final isLoading = controller.isLoading.value;
         return Scaffold(
-          appBar: MainAppBar(
-            title: title,
-            status: wo?.status,
-            onSave: controller.canEdit ? controller.save : null,
-            onReload: controller.mode != 'new' ? controller.reload : null,
-            isSaving: controller.isSaving.value,
-            isDirty: controller.isDirty.value,
-            saveResult: SaveResult.idle,
+          body: CustomScrollView(
+            slivers: [
+              DocTypeFormHeader(
+                title: title,
+                onSave: controller.canEdit ? controller.save : null,
+                onReload: controller.mode != 'new' ? controller.reload : null,
+                isSaving: controller.isSaving.value,
+                canSave: controller.isDirty.value,
+                docStatus: wo?.docstatus ?? 0,
+              ),
+              if (isLoading)
+                const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: _WorkOrderForm(controller: controller),
+                ),
+            ],
           ),
-          body: controller.isLoading.value
-              ? const Center(child: CircularProgressIndicator())
-              : _WorkOrderForm(controller: controller),
         );
       }),
     );
@@ -76,7 +84,7 @@ class _WorkOrderForm extends StatelessWidget {
       final fetchingJC = controller.isFetchingLinkedCards.value;
       final requiredItems = controller.workOrder.value?.requiredItems ?? const [];
 
-      return SingleChildScrollView(
+      return Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
