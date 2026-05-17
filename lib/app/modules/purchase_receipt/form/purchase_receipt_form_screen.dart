@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
@@ -17,56 +16,59 @@ class PurchaseReceiptFormScreen
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() => PopScope(
-          canPop: !controller.isDirty.value,
-          onPopInvokedWithResult: (didPop, result) async {
-            if (didPop) return;
-            await controller.confirmDiscard();
-          },
-          child: DefaultTabController(
-            length: 2,
-            child: Scaffold(
-              appBar: MainAppBar(
-                title:      controller.purchaseReceipt.value?.name ?? 'Loading...',
-                status:     controller.purchaseReceipt.value?.status,
-                isDirty:    controller.isDirty.value,
-                isSaving:   controller.isSaving.value,
-                saveResult: controller.saveResult.value,
-                onSave: (controller.purchaseReceipt.value?.docstatus == 0 &&
-                    controller.isDirty.value)
-                    ? controller.savePurchaseReceipt
-                    : null,
-                onReload: (controller.mode != 'new' && !controller.isDirty.value)
-                    ? controller.reloadDocument
-                    : null,
-                bottom: const TabBar(
-                  tabs: [
-                    Tab(text: 'Details'),
-                    Tab(text: 'Items'),
-                  ],
-                ),
-              ),
-              body: Obx(() {
-                if (controller.isLoading.value) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final receipt = controller.purchaseReceipt.value;
-                if (receipt == null) {
-                  return const Center(
-                      child: Text('Purchase receipt not found.'));
-                }
-                return SafeArea(
-                  child: TabBarView(
-                    children: [
-                      _buildDetailsView(context, receipt),
-                      _buildItemsView(context, receipt),
+    return Obx(() {
+      final receipt    = controller.purchaseReceipt.value;
+      final isDirty    = controller.isDirty.value;
+      final isSaving   = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading  = controller.isLoading.value;
+
+      return PopScope(
+        canPop: !isDirty,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await controller.confirmDiscard();
+        },
+        child: DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            body: NestedScrollView(
+              headerSliverBuilder: (ctx, _) => [
+                DocTypeFormHeader(
+                  title:      receipt?.name ?? 'Loading...',
+                  canSave:    isDirty,
+                  docStatus:  receipt?.docstatus ?? 0,
+                  isSaving:   isSaving,
+                  saveResult: saveResult,
+                  onSave: (receipt?.docstatus == 0 && isDirty)
+                      ? controller.savePurchaseReceipt
+                      : null,
+                  onReload: (controller.mode != 'new' && !isDirty)
+                      ? controller.reloadDocument
+                      : null,
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Details'),
+                      Tab(text: 'Items'),
                     ],
                   ),
-                );
-              }),
+                ),
+              ],
+              body: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : receipt == null
+                      ? const Center(child: Text('Purchase receipt not found.'))
+                      : TabBarView(
+                          children: [
+                            _buildDetailsView(context, receipt),
+                            _buildItemsView(context, receipt),
+                          ],
+                        ),
             ),
           ),
-        ));
+        ),
+      );
+    });
   }
 
   // ── Details tab ────────────────────────────────────────────────────────────────
