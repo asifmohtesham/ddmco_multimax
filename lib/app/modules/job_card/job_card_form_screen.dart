@@ -3,8 +3,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'job_card_form_controller.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
@@ -18,36 +17,34 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final jc    = controller.jobCard.value;
-      final title = jc?.name ?? 'Job Card';
-      // Use the reactive observable so the AppBar subtitle updates live
-      // whenever the employee is changed via the picker, without requiring
-      // a full widget rebuild from jobCard.value.
-      final assignedTo = controller.headerEmployeeName.value.isNotEmpty
-          ? controller.headerEmployeeName.value
-          : (jc?.primaryEmployeeDisplay ?? '');
+      final jc      = controller.jobCard.value;
+      final title   = jc?.name ?? 'Job Card';
+      final isLoading = controller.isLoading.value;
 
       return Scaffold(
-        appBar: MainAppBar(
-          title: title,
-          titleWidget: _JobCardAppBarTitle(
-            title:      title,
-            assignedTo: assignedTo.isEmpty ? null : assignedTo,
+        body: RefreshIndicator(
+          onRefresh: controller.fetchDocument,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              DocTypeFormHeader(title: title),
+              if (isLoading)
+                const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (jc == null)
+                SliverFillRemaining(
+                  child: _ErrorState(onRetry: controller.fetchDocument),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: _JobCardFormBody(controller: controller, jc: jc),
+                ),
+            ],
           ),
-          status: jc?.status,
-          onSave:     null,
-          isSaving:   false,
-          isDirty:    false,
-          saveResult: SaveResult.idle,
         ),
 
-        body: controller.isLoading.value
-            ? const Center(child: CircularProgressIndicator())
-            : jc == null
-            ? _ErrorState(onRetry: controller.fetchDocument)
-            : _JobCardFormBody(controller: controller, jc: jc),
-
-        bottomNavigationBar: Obx(() {                    // ← outer Obx reads isLoading.value
+        bottomNavigationBar: Obx(() {
           if (controller.isLoading.value || jc == null) return const SizedBox.shrink();
           return Builder(
             builder: (context) {
@@ -100,12 +97,9 @@ class _JobCardFormBody extends StatelessWidget {
     // kBottomNavigationBarHeight (56) + typical action row (~64) + safe-area.
     final bottomClearance = MediaQuery.of(context).padding.bottom + 120.0;
 
-    return RefreshIndicator(
-      onRefresh: controller.fetchDocument,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomClearance),
-        child: Column(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomClearance),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _HeaderCard(jc: jc, controller: controller),
@@ -157,7 +151,6 @@ class _JobCardFormBody extends StatelessWidget {
             }),
           ],
         ),
-      ),
     );
   }
 }
