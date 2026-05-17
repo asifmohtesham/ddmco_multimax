@@ -2,8 +2,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
@@ -17,29 +16,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      // ── All reactive reads here ───────────────────────────────
-      final slip     = controller.packingSlip.value;
-      final isDirty  = controller.isDirty.value;
-      final isSaving = controller.isSaving.value;
-
-      final titleWidget = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            slip?.name ?? 'Loading...',
-            style: const TextStyle(fontSize: 13, color: Colors.white70),
-          ),
-          if (slip?.customPoNo != null)
-            Text(
-              slip!.customPoNo!,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-        ],
-      );
-      // ─────────────────────────────────────────────────────────
+      final slip      = controller.packingSlip.value;
+      final isDirty   = controller.isDirty.value;
+      final isSaving  = controller.isSaving.value;
+      final isLoading = controller.isLoading.value;
 
       return PopScope(
-        canPop: !controller.isDirty.value,
+        canPop: !isDirty,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
           await controller.confirmDiscard();
@@ -47,46 +30,38 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
-            appBar: MainAppBar(
-              title:       slip?.name ?? 'Packing Slip',
-              titleWidget: titleWidget,
-              status:      slip?.status,
-              isDirty:     isDirty,
-              isSaving:    isSaving,
-              saveResult:  SaveResult.idle,
-              onSave: (slip?.docstatus == 0 &&
-                  controller.isDirty.value)
-                  ? controller.savePackingSlip
-                  : null,
-              onReload: (controller.mode != 'new' &&
-                  !controller.isDirty.value)
-                  ? controller.reloadDocument
-                  : null,
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Details'),
-                  Tab(text: 'Items'),
-                ],
-              ),
-            ),
-            body: Obx(() {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final slip = controller.packingSlip.value;
-              if (slip == null) {
-                return const Center(
-                    child: Text('Document not found'));
-              }
-              return SafeArea(
-                child: TabBarView(
-                  children: [
-                    _buildDetailsView(slip),
-                    _buildItemsView(slip),
-                  ],
+            body: NestedScrollView(
+              headerSliverBuilder: (ctx, _) => [
+                DocTypeFormHeader(
+                  title:     slip?.name ?? 'Packing Slip',
+                  canSave:   isDirty,
+                  docStatus: slip?.docstatus ?? 0,
+                  isSaving:  isSaving,
+                  onSave: (slip?.docstatus == 0 && isDirty)
+                      ? controller.savePackingSlip
+                      : null,
+                  onReload: (controller.mode != 'new' && !isDirty)
+                      ? controller.reloadDocument
+                      : null,
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Details'),
+                      Tab(text: 'Items'),
+                    ],
+                  ),
                 ),
-              );
-            }),
+              ],
+              body: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : slip == null
+                      ? const Center(child: Text('Document not found'))
+                      : TabBarView(
+                          children: [
+                            _buildDetailsView(slip),
+                            _buildItemsView(slip),
+                          ],
+                        ),
+            ),
           ),
         ),
       );
