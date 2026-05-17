@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'bom_form_controller.dart';
 import 'widgets/bom_items_tab.dart';
@@ -24,57 +24,61 @@ class BomFormScreen extends GetView<BomFormController> {
         }
       },
       child: Obx(() {
-        final bom = controller.bom.value;
+        final bom        = controller.bom.value;
+        final isDirty    = controller.isDirty.value;
+        final isSaving   = controller.isSaving.value;
+        final saveResult = controller.saveResult.value;
+        final isLoading  = controller.isLoading.value;
+
         return DefaultTabController(
           length: 3,
           child: Scaffold(
-            appBar: MainAppBar(
-              title: bom?.name ?? controller.bomName,
-              status: bom?.status,
-              // ── Native save slot — renders SaveIconButton uniformly.
-              onSave:     controller.isDirty.value ? controller.save : null,
-              isSaving:   controller.isSaving.value,
-              isDirty:    controller.isDirty.value,
-              saveResult: controller.saveResult.value,
-              // ── Extra action: Create Work Order (only when BOM is loaded).
-              actions: [
-                if (bom != null)
-                  IconButton(
-                    icon: Icon(
-                      Icons.precision_manufacturing_outlined,
-                      color: Theme.of(context).colorScheme.surface,
-                    ),
-                    tooltip: 'Create Work Order',
-                    onPressed: controller.createWorkOrder,
-                  ),
-              ],
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Items'),
-                  Tab(text: 'Exploded Items'),
-                  Tab(text: 'Costing'),
-                ],
-              ),
-            ),
-            body: controller.isLoading.value
-                ? const Center(child: CircularProgressIndicator())
-                : Column(
-                    children: [
-                      _BomHeaderCard(controller: controller),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            BomItemsTab(items: bom?.items ?? []),
-                            BomExplodedItemsTab(
-                                items: bom?.explodedItems ?? []),
-                            bom != null
-                                ? BomCostingTab(bom: bom)
-                                : const SizedBox.shrink(),
-                          ],
-                        ),
+            body: NestedScrollView(
+              headerSliverBuilder: (ctx, _) => [
+                DocTypeFormHeader(
+                  title:      bom?.name ?? controller.bomName,
+                  canSave:    isDirty,
+                  docStatus:  bom?.docstatus ?? 0,
+                  isSaving:   isSaving,
+                  saveResult: saveResult,
+                  onSave:     isDirty ? controller.save : null,
+                  extraActions: [
+                    if (bom != null)
+                      IconButton(
+                        icon: const Icon(Icons.precision_manufacturing_outlined),
+                        tooltip: 'Create Work Order',
+                        onPressed: controller.createWorkOrder,
                       ),
+                  ],
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Items'),
+                      Tab(text: 'Exploded Items'),
+                      Tab(text: 'Costing'),
                     ],
                   ),
+                ),
+              ],
+              body: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : Column(
+                      children: [
+                        _BomHeaderCard(controller: controller),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              BomItemsTab(items: bom?.items ?? []),
+                              BomExplodedItemsTab(
+                                  items: bom?.explodedItems ?? []),
+                              bom != null
+                                  ? BomCostingTab(bom: bom)
+                                  : const SizedBox.shrink(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         );
       }),
