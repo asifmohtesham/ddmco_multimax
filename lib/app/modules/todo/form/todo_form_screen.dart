@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 
 class ToDoFormScreen extends StatelessWidget {
   const ToDoFormScreen({super.key});
@@ -7,8 +7,14 @@ class ToDoFormScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: MainAppBar(title: 'ToDo Form'),
-      body: const Center(child: Text('ToDo Form Content')),
+      body: CustomScrollView(
+        slivers: [
+          const DocTypeFormHeader(title: 'ToDo Form'),
+          const SliverFillRemaining(
+            child: Center(child: Text('ToDo Form Content')),
+          ),
+        ],
+      ),
     );
   }
 }
