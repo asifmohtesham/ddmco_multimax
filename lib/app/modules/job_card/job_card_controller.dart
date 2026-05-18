@@ -27,6 +27,9 @@ class JobCardController extends GetxController {
   var isFetchingMore = false.obs;
   var hasMore = false.obs;
 
+  // ── Tab mode (0 = My Work, 1 = All) ─────────────────────────
+  final selectedTabIndex = 0.obs;
+
   // ── Search & filter ──────────────────────────────────────────
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
@@ -70,14 +73,13 @@ class JobCardController extends GetxController {
   Future<void> _ensureDefaultAssignedToFilter() async {
     try {
       // Use the session employee ID stored at login — this is the HR-EMP-XXXXX
-      // value that lives in the `employee` child table, not the user email.
+      // value that lives in the `employee` child table on Job Card.
       final storedEmployeeId =
           Get.find<StorageService>().getUser()?.employeeId ?? '';
       if (storedEmployeeId.isNotEmpty) {
-        // Frappe child-table filter: ['ChildDoctype', 'field', 'op', 'value']
-        // 'employee' is a Table MultiSelect on Job Card — its rows live in
-        // tabJob Card Time Log; filtering on tabJob Card.employee does not exist.
-        activeFilters['Job Card Time Log'] = ['employee', '=', storedEmployeeId];
+        // Frappe child-table filter: targets `Job Card Employee` assignment
+        // table — shows cards assigned to the user even before time is logged.
+        activeFilters['Job Card Employee'] = ['employee', '=', storedEmployeeId];
         assignedEmployeeId.value           = storedEmployeeId;
         assignedEmployeeLabel.value        = storedEmployeeId;
       }
@@ -92,12 +94,12 @@ class JobCardController extends GetxController {
     if (employeeId == null || employeeId.isEmpty) {
       assignedEmployeeId.value    = '';
       assignedEmployeeLabel.value = '';
-      activeFilters.remove('Job Card Time Log');
+      activeFilters.remove('Job Card Employee');
     } else {
       assignedEmployeeId.value    = employeeId;
       assignedEmployeeLabel.value = label ?? employeeId;
-      // Child-doctype filter: targets tabJob Card Time Log, not tabJob Card.
-      activeFilters['Job Card Time Log'] = ['employee', '=', employeeId];
+      // Child-doctype filter: targets tabJob Card Employee (assignment table).
+      activeFilters['Job Card Employee'] = ['employee', '=', employeeId];
     }
     fetchJobCards(clear: true);
   }
@@ -114,6 +116,21 @@ class JobCardController extends GetxController {
       activeFilters['owner'] = userId;
     }
     fetchJobCards(clear: true);
+  }
+
+  void setTab(int index) {
+    if (selectedTabIndex.value == index) return;
+    selectedTabIndex.value = index;
+    if (index == 0) {
+      // My Work: restore employee assignment filter
+      _ensureDefaultAssignedToFilter().then((_) => fetchJobCards(clear: true));
+    } else {
+      // All: remove employee filter so supervisors see every card
+      activeFilters.remove('Job Card Employee');
+      assignedEmployeeId.value    = '';
+      assignedEmployeeLabel.value = '';
+      fetchJobCards(clear: true);
+    }
   }
 
   Future<void> fetchUsers() async {

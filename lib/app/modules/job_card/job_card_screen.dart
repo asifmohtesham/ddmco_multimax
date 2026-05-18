@@ -21,20 +21,32 @@ class JobCardScreen extends StatefulWidget {
   State<JobCardScreen> createState() => _JobCardScreenState();
 }
 
-class _JobCardScreenState extends State<JobCardScreen> {
+class _JobCardScreenState extends State<JobCardScreen>
+    with SingleTickerProviderStateMixin {
   final JobCardController controller = Get.find();
   final _scrollController = ScrollController();
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: controller.selectedTabIndex.value,
+    );
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) return;
+      controller.setTab(_tabController.index);
+    });
   }
 
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -92,7 +104,7 @@ class _JobCardScreenState extends State<JobCardScreen> {
     }
 
     // Assigned Employee
-    if (controller.activeFilters.containsKey('Job Card Time Log') &&
+    if (controller.activeFilters.containsKey('Job Card Employee') &&
         controller.assignedEmployeeLabel.value.isNotEmpty) {
       chips.add(chip(
         icon: Icons.badge_outlined,
@@ -140,6 +152,16 @@ class _JobCardScreenState extends State<JobCardScreen> {
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters:  controller.clearFilters,
               onFilterTap: () => _showFilterSheet(context),
+            ),
+
+            SliverToBoxAdapter(
+              child: TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: 'My Work'),
+                  Tab(text: 'All'),
+                ],
+              ),
             ),
 
             Obx(() {

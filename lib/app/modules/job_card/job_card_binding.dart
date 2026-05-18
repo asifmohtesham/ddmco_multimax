@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/job_card/job_card_form_controller.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/providers/work_order_provider.dart';
 
 /// Binding for the Job Card list screen.
 class JobCardBinding extends Bindings {
@@ -22,6 +23,7 @@ class JobCardFormBinding extends Bindings {
   @override
   void dependencies() {
     Get.lazyPut<JobCardProvider>(() => JobCardProvider());
+    Get.lazyPut<WorkOrderProvider>(() => WorkOrderProvider());
     Get.lazyPut<JobCardFormController>(() => JobCardFormController());
   }
 }
