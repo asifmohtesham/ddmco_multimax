@@ -76,6 +76,10 @@ class HomeController extends GetxController {
   /// Count of active (is_active = 1) BOMs fetched on dashboard load.
   var activeBomCount = 0.obs;
 
+  /// Active WIP Job Card for the session employee (null if none).
+  final activeWipJcName      = RxnString();
+  final activeWipJcOperation = RxnString();
+
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
   var isRackScanning = false.obs;
@@ -199,11 +203,32 @@ class HomeController extends GetxController {
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
       activeJobCardsCount.value   = _getCountFromResponse(results[1]);
       activeBomCount.value        = _getCountFromResponse(results[2]);
+
+      await _fetchActiveWipJc();
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
       isLoadingStats.value = false;
     }
+  }
+
+  Future<void> _fetchActiveWipJc() async {
+    final empId = _authController.currentUser.value?.employeeId;
+    if (empId == null || empId.isEmpty) return;
+    try {
+      final res = await _jcProvider.getJobCards(
+        filters: {
+          'status': 'Work In Progress',
+          '__child__Job Card Employee': ['Job Card Employee', 'employee', '=', empId],
+        },
+        limit: 1,
+      );
+      if (res.statusCode == 200) {
+        final list = (res.data['data'] as List?) ?? [];
+        activeWipJcName.value      = list.isNotEmpty ? list.first['name']?.toString() : null;
+        activeWipJcOperation.value = list.isNotEmpty ? list.first['operation']?.toString() : null;
+      }
+    } catch (_) {}
   }
 
   // --- Timeline Logic ---

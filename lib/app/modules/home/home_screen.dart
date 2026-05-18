@@ -121,6 +121,15 @@ class HomeScreen extends GetView<HomeController> {
                             count: controller.activeBomCount.value,
                             onTap: controller.goToBOM,
                           ),
+                          Obx(() {
+                            final jcName = controller.activeWipJcName.value;
+                            final op     = controller.activeWipJcOperation.value;
+                            if (jcName == null) return const SizedBox.shrink();
+                            return _ResumeJobCard(
+                              jcName: jcName,
+                              operation: op,
+                            );
+                          }),
                         ],
                       );
                     }),
@@ -621,6 +630,99 @@ class _QuickActionConfig {
     required this.onTap,
     this.doctype,
   });
+}
+
+// =============================================================================
+// _ResumeJobCard — quick-link to the user's active WIP Job Card
+// =============================================================================
+
+class _ResumeJobCard extends StatelessWidget {
+  final String jcName;
+  final String? operation;
+
+  const _ResumeJobCard({required this.jcName, this.operation});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        elevation: 2,
+        shadowColor: cs.primary.withValues(alpha: 0.15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: InkWell(
+          onTap: () => Get.toNamed(
+            AppRoutes.JOB_CARD_FORM,
+            arguments: {'name': jcName},
+          ),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [
+                  cs.primaryContainer,
+                  cs.primaryContainer.withValues(alpha: 0.5),
+                ],
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.play_circle_outline, color: cs.primary, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Resume Job Card',
+                        style: text.labelSmall?.copyWith(
+                          color: cs.onPrimaryContainer.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        jcName,
+                        style: text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onPrimaryContainer,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if ((operation ?? '').isNotEmpty)
+                        Text(
+                          operation!,
+                          style: text.bodySmall?.copyWith(
+                            color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: cs.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // =============================================================================
