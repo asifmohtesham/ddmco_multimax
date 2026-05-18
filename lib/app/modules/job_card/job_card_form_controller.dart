@@ -10,6 +10,8 @@ import 'package:multimax/app/data/models/job_card_employee_model.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/job_card_time_log_model.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
+import 'package:multimax/app/data/providers/work_order_provider.dart';
+import 'package:multimax/app/data/models/work_order_item_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -18,6 +20,7 @@ import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 
 class JobCardFormController extends GetxController with DioErrorMixin {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
+  final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
 
   // ── Route args ────────────────────────────────────────────────────────────
   late String name;
@@ -109,6 +112,11 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   final isUpdatingStatus  = false.obs;
   final isEditingTimeLog  = false.obs;
 
+  // ── Material Readiness (Item #5) ──────────────────────────────────────────
+  final woRequiredItems            = <WorkOrderItem>[].obs;
+  final woTransferMaterialAgainst  = RxnString();
+  final isLoadingMaterialReadiness = false.obs;
+
   // ── Live timer ─────────────────────────────────────────────────────────────
 
   /// Formatted elapsed time string, e.g. "01:23:45". Empty when no active log.
@@ -194,7 +202,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     completedQtyController.addListener(_validateTimeLogForm);
 
     _prefillStartTime();
-    _fetchDocument();
+    _fetchDocument().then((_) => _fetchMaterialReadiness());
     loadAvailableEmployees().then((_) {
       // Re-enrich after the employee list arrives in case _fetchDocument()
       // completed first and _enrichEmployeeNames() was a no-op.
@@ -336,6 +344,42 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       isLoading.value = false;
     }
   }
+
+  // ── Material Readiness fetch ──────────────────────────────────────────────
+
+  Future<void> _fetchMaterialReadiness() async {
+    final jc = jobCard.value;
+    if (jc == null || jc.workOrder.isEmpty) return;
+    isLoadingMaterialReadiness.value = true;
+    try {
+      final res = await _woProvider.getWorkOrder(jc.workOrder);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final data = res.data['data'];
+        final items = (data['required_items'] as List? ?? [])
+            .map((j) => WorkOrderItem.fromJson(j as Map<String, dynamic>))
+            .toList();
+        woRequiredItems.assignAll(items);
+        woTransferMaterialAgainst.value =
+            data['transfer_material_against'] as String?;
+      }
+    } catch (_) {}
+    finally {
+      isLoadingMaterialReadiness.value = false;
+    }
+  }
+
+  // ── Computed: material readiness ──────────────────────────────────────────
+
+  /// True when the WO requires material transfer against Job Card AND at
+  /// least one item still has pending transfer qty.
+  bool get isMaterialPending {
+    if (woTransferMaterialAgainst.value != 'Job Card') return false;
+    return woRequiredItems.any((i) => !i.isFullyTransferred);
+  }
+
+  /// Count of items not yet fully transferred.
+  int get pendingTransferCount =>
+      woRequiredItems.where((i) => !i.isFullyTransferred).length;
 
   /// Starts or stops the live timer depending on job card state.
   ///

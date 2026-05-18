@@ -103,7 +103,12 @@ class _JobCardFormBody extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _HeaderCard(jc: jc, controller: controller),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
+
+            // ── Material Readiness indicator (Item #5) ──────────────────────────
+            _MaterialReadinessIndicator(controller: controller),
+
+            const SizedBox(height: 12),
 
             // ── NEW: Expected schedule dates ────────────────────────────────────
             _ScheduleDatesRow(controller: controller),
@@ -588,6 +593,62 @@ class _SubmittedBanner extends StatelessWidget {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Material Readiness Indicator (Item #5)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _MaterialReadinessIndicator extends StatelessWidget {
+  final JobCardFormController controller;
+  const _MaterialReadinessIndicator({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (controller.isLoadingMaterialReadiness.value) return const SizedBox.shrink();
+      if (!controller.isMaterialPending) return const SizedBox.shrink();
+
+      final cs      = Theme.of(context).colorScheme;
+      final text    = Theme.of(context).textTheme;
+      final pending = controller.pendingTransferCount;
+      final total   = controller.woRequiredItems.length;
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: cs.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.error.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: cs.error, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Materials not ready',
+                    style: text.labelMedium?.copyWith(
+                      color: cs.onErrorContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    '$pending of $total item${pending == 1 ? '' : 's'} pending transfer',
+                    style: text.bodySmall?.copyWith(color: cs.onErrorContainer),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Add time log section
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -597,9 +658,44 @@ class _AddTimeLogSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Mark Complete quick-action — WIP only, no multi-field form required.
+        Obx(() {
+          final jc      = controller.jobCard.value;
+          final loading = controller.isUpdatingStatus.value;
+          if (jc == null || !jc.isWorkInProgress) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: loading
+                    ? null
+                    : () => controller.updateStatus(JobCard.statusCompleted),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.all(14),
+                  backgroundColor: cs.tertiary,
+                  foregroundColor: cs.onTertiary,
+                ),
+                icon: loading
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: cs.onTertiary),
+                      )
+                    : const Icon(Icons.check_circle_outline),
+                label: const Text(
+                  'Mark Complete',
+                  style: TextStyle(fontSize: 15),
+                ),
+              ),
+            ),
+          );
+        }),
         _SectionHeader(label: 'Add Time Log', icon: Icons.timer_outlined),
         const SizedBox(height: 12),
 
