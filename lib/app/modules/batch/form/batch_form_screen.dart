@@ -125,7 +125,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 DocSectionCard(
                   title: 'Source',
                   children: [
-                    Obx(() => LinkFieldWidget(
+                    LinkFieldWidget(
                       controller: controller.customPurchaseOrderController,
                       labelText: 'Purchase Order',
                       hintText: 'Link PO',
@@ -137,7 +137,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                               controller.isDirty.value = true;
                             }
                           : null,
-                    )),
+                    ),
                   ],
                 ),
 
