@@ -122,6 +122,18 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// Formatted elapsed time string, e.g. "01:23:45". Empty when no active log.
   final elapsedDisplay = ''.obs;
 
+  /// True once elapsed time exceeds totalTimeInMins for the active WIP card.
+  final isOverTime = false.obs;
+
+  /// Formatted over-budget string, e.g. "+00:05:30". Empty when not over time.
+  final overtimeDisplay = ''.obs;
+
+  /// Allotted minutes copied from the loaded document (0 = no constraint).
+  final allottedMins = 0.0.obs;
+
+  /// Guards the one-shot alert so it fires only once per WIP session.
+  bool _overtimeAlertFired = false;
+
   /// The start time of the currently-active (open) time log.
   DateTime? _activeLogStart;
 
@@ -391,9 +403,15 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     _ticker = null;
     _activeLogStart = null;
     elapsedDisplay.value = '';
+    isOverTime.value = false;
+    overtimeDisplay.value = '';
+    _overtimeAlertFired = false;
 
     final jc = jobCard.value;
     if (jc == null || !jc.isWorkInProgress) return;
+
+    // Seed allotted time from the document once per WIP session.
+    allottedMins.value = jc.totalTimeInMins;
 
     // Find the first open time log (no toTime).
     final openLog = jc.timeLogs.cast<JobCardTimeLog?>().firstWhere(
@@ -418,10 +436,58 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     final start = _activeLogStart;
     if (start == null) return;
     final elapsed = DateTime.now().difference(start);
+
+    // ── Normal elapsed display ────────────────────────────────────────────
     final h = elapsed.inHours.toString().padLeft(2, '0');
     final m = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
     final s = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
     elapsedDisplay.value = '$h:$m:$s';
+
+    // ── Over-time detection ───────────────────────────────────────────────
+    final budget = allottedMins.value;
+    if (budget <= 0) return; // no allotted time defined — nothing to track
+
+    final budgetDuration = Duration(
+      seconds: (budget * 60).round(),
+    );
+    final isOver = elapsed > budgetDuration;
+    isOverTime.value = isOver;
+
+    if (isOver) {
+      final over = elapsed - budgetDuration;
+      final oh = over.inHours.toString().padLeft(2, '0');
+      final om = (over.inMinutes % 60).toString().padLeft(2, '0');
+      final os = (over.inSeconds % 60).toString().padLeft(2, '0');
+      overtimeDisplay.value = '+$oh:$om:$os';
+
+      // One-shot alert: fire only the first time threshold is crossed.
+      if (!_overtimeAlertFired) {
+        _overtimeAlertFired = true;
+        _fireOvertimeAlert();
+      }
+    } else {
+      overtimeDisplay.value = '';
+    }
+  }
+
+  /// Fires a haptic + in-app snackbar alert when allotted time is first exceeded.
+  void _fireOvertimeAlert() {
+    HapticFeedback.vibrate(); // repeating buzz pattern
+    final jc = jobCard.value;
+    final opLabel = jc?.operation.isNotEmpty == true ? jc!.operation : 'Job Card';
+    // If GlobalSnackbar.warning has no duration param:
+    GlobalSnackbar.warning(
+      message: '⏰ Allotted time exceeded for "$opLabel". '
+          'Consider pausing or completing the operation.',
+    );
+  }
+
+  /// Called by the UI dismiss button to clear the overtime alert state
+  /// without pausing the job card.
+  void clearOvertimeAlert() {
+    _overtimeAlertFired = true; // prevents re-fire until next _syncTimer()
+    isOverTime.value   = false;
+    overtimeDisplay.value = '';
   }
 
   /// Seed editable header observables from the freshly loaded document.

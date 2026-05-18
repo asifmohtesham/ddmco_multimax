@@ -1,4 +1,4 @@
-import 'dart:ui' show FontFeature;
+import 'dart:ui' as ui show FontFeature, TextDirection;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -12,7 +12,7 @@ import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/job_card/job_card_form_controller.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, TextDirection;
 
 class JobCardScreen extends StatefulWidget {
   const JobCardScreen({super.key});
