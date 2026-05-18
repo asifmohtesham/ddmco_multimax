@@ -142,30 +142,40 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
 // ── Image viewer ──────────────────────────────────────────────────────────────
 
 void _openImageViewer(BuildContext context, String imageUrl) {
-  showDialog<void>(
+  // showGeneralDialog fills the whole screen; showDialog constrains the child
+  // through DialogRoute's centering + width logic, which produces a box.
+  showGeneralDialog<void>(
     context:            context,
-    barrierColor:       Colors.black87,
     barrierDismissible: true,
-    builder: (ctx) => Stack(
-      children: [
-        Center(
-          child: InteractiveViewer(
+    barrierLabel:       '',
+    barrierColor:       Colors.black87,
+    transitionDuration: const Duration(milliseconds: 150),
+    transitionBuilder:  (_, anim, __, child) =>
+        FadeTransition(opacity: anim, child: child),
+    pageBuilder: (ctx, _, __) {
+      final topPad = MediaQuery.of(ctx).padding.top;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          InteractiveViewer(
             minScale: 0.5,
             maxScale: 8.0,
-            child: Image.network(imageUrl, fit: BoxFit.contain),
+            child: Center(
+              child: Image.network(imageUrl, fit: BoxFit.contain),
+            ),
           ),
-        ),
-        Positioned(
-          top:   MediaQuery.of(ctx).padding.top + 8,
-          right: 12,
-          child: IconButton(
-            style: IconButton.styleFrom(backgroundColor: Colors.black54),
-            icon:      const Icon(Icons.close, color: Colors.white),
-            onPressed: () => Navigator.of(ctx).pop(),
+          Positioned(
+            top:   topPad + 8,
+            right: 12,
+            child: IconButton(
+              style: IconButton.styleFrom(backgroundColor: Colors.black54),
+              icon:      const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
           ),
-        ),
-      ],
-    ),
+        ],
+      );
+    },
   );
 }
 
@@ -248,7 +258,7 @@ class _VariantTile extends StatelessWidget {
                   InkWell(
                     onTap: () => Get.toNamed(
                       AppRoutes.ITEM_FORM,
-                      arguments: {'name': itemCode},
+                      arguments: {'itemCode': itemCode},
                     ),
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
