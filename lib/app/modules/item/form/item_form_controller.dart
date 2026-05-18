@@ -33,6 +33,15 @@ class ItemFormController extends GetxController {
   var isLoadingLedger = false.obs;
   var isLoadingBatches = false.obs;
 
+  /// Batch No from the last scan that opened this sheet. Null when the item
+  /// was opened without batch context (e.g. by tapping a list row).
+  var highlightedBatchNo = RxnString();
+
+  static bool isBatchHighlighted(String batchNo, String? highlightedBatchNo) {
+    if (highlightedBatchNo == null || batchNo == 'N/A') return false;
+    return batchNo == highlightedBatchNo;
+  }
+
   // ── Warehouse filter ──────────────────────────────────────────────────────
   /// null = All Warehouses (no filter applied).
   var selectedWarehouse = Rx<String?>(null);
@@ -88,6 +97,7 @@ class ItemFormController extends GetxController {
     if (args != null) {
       if (args is Map && args['itemCode'] != null) {
         itemCode = args['itemCode'];
+        highlightedBatchNo.value = args['batchNo'] as String?;
         _loadCoreData();
       } else if (args is String) {
         itemCode = args;
@@ -116,8 +126,9 @@ class ItemFormController extends GetxController {
     }
   }
 
-  void loadItem(String code) {
+  void loadItem(String code, {String? batchNo}) {
     itemCode = code;
+    highlightedBatchNo.value = batchNo;
     // Reset lazy-load flags so every fresh open of the sheet reloads
     // Stock and Attachments tabs when visited for the first time.
     _stockTabLoaded = false;

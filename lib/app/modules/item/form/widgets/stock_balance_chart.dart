@@ -101,23 +101,41 @@ class StockBalanceChart extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Stack(
+                Row(
                   children: [
-                    Container(
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    FractionallySizedBox(
-                      widthFactor: percentage,
-                      child: Container(
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: barColor.withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(2),
+                    if (isRack) ...[
+                      Text(
+                        stock.warehouse,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: cs.onSurfaceVariant,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Container(
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: percentage,
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: barColor.withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

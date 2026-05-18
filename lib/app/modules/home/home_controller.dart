@@ -370,7 +370,7 @@ class HomeController extends GetxController {
         await _handleRackScan(result.rackId!);
       }
       else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
-        _openItemDetailSheet(result.itemData!.itemCode);
+        _openItemDetailSheet(result.itemData!.itemCode, batchNo: result.batchNo);
       }
       else if (result.type == ScanType.variant_of) {
         barcodeController.clear();
@@ -402,9 +402,9 @@ class HomeController extends GetxController {
     }
   }
 
-  void _openItemDetailSheet(String itemCode) {
+  void _openItemDetailSheet(String itemCode, {String? batchNo}) {
     Get.put(ItemTabController());
-    Get.put(ItemFormController())..loadItem(itemCode);
+    Get.put(ItemFormController())..loadItem(itemCode, batchNo: batchNo);
     barcodeController.clear();
 
     Get.bottomSheet(

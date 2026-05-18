@@ -194,7 +194,7 @@ class _DetailsTabState extends State<_DetailsTab> {
               .length;
           psBanner = _StatusBanner(
             icon: Icons.inventory_outlined,
-            color: Colors.indigo,
+            color: cs.secondary,
             text:
                 '$psCount Packing Slip${psCount == 1 ? '' : 's'} · $psMatched / ${ctrl.resolvedSerials.length} items matched',
           );
@@ -515,20 +515,20 @@ class _ItemsTabState extends State<_ItemsTab> {
                         : Icons.inventory_2_outlined,
                     label:
                         '$dnMatched / $total ${linkedType == LinkedDocType.deliveryNote ? 'DN' : 'SE'}',
-                    color: dnMatched == total ? Colors.green : cs.primary,
+                    color: dnMatched == total ? Colors.green.shade700 : cs.primary,
                   ),
                   if (hasPS)
                     _SummaryChip(
                       icon: Icons.inventory_outlined,
                       label: '$psMatchedCount / $total PS',
                       color: psMatchedCount == total
-                          ? Colors.green
-                          : Colors.indigo,
+                          ? Colors.green.shade700
+                          : cs.secondary,
                     ),
                   // Active filter indicator
                   if (ctrl.activeCaseFilter.value != null)
                     _SummaryChip(
-                      icon: Icons.filter_list,
+                      icon: Icons.inventory_outlined,
                       label: ctrl.activeCaseFilter.value!.label,
                       color: cs.tertiary,
                     ),
@@ -659,10 +659,11 @@ class _ItemCard extends StatelessWidget {
 
     if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
       chips.add(_InfoChip(
-        icon: Icons.qr_code,
-        label: resolvedSerial!,
+        icon: Icons.tag,
+        label: '#${resolvedSerial!}',
         backgroundColor: cs.secondaryContainer,
         foregroundColor: cs.onSecondaryContainer,
+        tooltip: 'Invoice serial: ${resolvedSerial!}',
       ));
     }
 
@@ -683,8 +684,8 @@ class _ItemCard extends StatelessWidget {
       chips.add(_InfoChip(
         icon: Icons.inventory_outlined,
         label: caseLabel,
-        backgroundColor: Colors.indigo.withValues(alpha: 0.10),
-        foregroundColor: Colors.indigo.shade700,
+        backgroundColor: cs.secondaryContainer,
+        foregroundColor: cs.onSecondaryContainer,
         tooltip: 'Packing Slip: ${packingSlipInfo!.psName}',
       ));
     } else if (!isLoadingPS &&
@@ -717,13 +718,13 @@ class _ItemCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
-                  radius: 13,
-                  backgroundColor: cs.secondaryContainer,
+                  radius: 10,
+                  backgroundColor: cs.primaryContainer,
                   child: Text(
                     '$displayIndex',
                     style: TextStyle(
-                      fontSize: 10,
-                      color: cs.onSecondaryContainer,
+                      fontSize: 9,
+                      color: cs.onPrimaryContainer,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -767,7 +768,7 @@ class _ItemCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _Stat(label: 'Qty', value: item.quantity.toString()),
+                _Stat(label: 'Qty', value: PosUploadFormController.fmtQty(item.quantity)),
                 _Stat(
                     label: 'Rate',
                     value: PosUploadFormController.fmtAmount(item.rate)),
@@ -996,7 +997,7 @@ class _Stat extends StatelessWidget {
           value,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: highlight ? cs.primary : null,
+                color: highlight ? cs.tertiary : null,
               ),
         ),
       ],

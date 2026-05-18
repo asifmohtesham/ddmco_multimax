@@ -257,19 +257,6 @@ class PosUploadFormController extends GetxController
       }
       packingSlips.assignAll(slips);
 
-      // Build case options for the filter.
-      caseOptions.assignAll(
-        slips
-            .map((ps) => CaseOption(
-                  psName: ps.name,
-                  fromCaseNo: ps.fromCaseNo,
-                  toCaseNo: ps.toCaseNo,
-                  totalQty: (ps.items ?? [])
-                    .fold(0, (s, i) => s + (i.qty ?? 0)),
-                ))
-            .toList(),
-      );
-
       // Build idx → PackingSlipInfo.
       final psMap = <int, PackingSlipInfo?>{};
       for (final item in upload.items) {
@@ -295,6 +282,32 @@ class PosUploadFormController extends GetxController
         psMap[item.idx] = info;
       }
       resolvedPackingSlips.value = psMap;
+
+      // Build case options only for PSes that have at least one matched POS
+      // Upload item. totalQty is the sum of POS item quantities in each case
+      // (not the PS's internal qty), so the chip number is meaningful to the
+      // user in the context of this document.
+      final matchedPsNames = psMap.values
+          .whereType<PackingSlipInfo>()
+          .map((info) => info.psName)
+          .toSet();
+
+      caseOptions.assignAll(
+        slips
+            .where((ps) => matchedPsNames.contains(ps.name))
+            .map((ps) {
+              final posQty = upload.items
+                  .where((item) => psMap[item.idx]?.psName == ps.name)
+                  .fold<double>(0, (s, item) => s + item.quantity);
+              return CaseOption(
+                psName: ps.name,
+                fromCaseNo: ps.fromCaseNo,
+                toCaseNo: ps.toCaseNo,
+                totalQty: posQty,
+              );
+            })
+            .toList(),
+      );
 
       // Re-apply any active case filter now that PS data is available.
       _applyFilters();

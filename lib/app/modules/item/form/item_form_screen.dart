@@ -382,78 +382,120 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       : 'No batch history found.',
                 );
               }
-              return Column(
-                children: batches.map((batch) {
-                  final dateStr = batch['stock_age_date'];
-                  final ageString = controller.getFormattedStockAge(dateStr);
-                  final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
-                  final qty = batch['balance_qty'];
-                  final warehouse = batch['warehouse'];
+              return Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: batches.asMap().entries.map((entry) {
+                    final isLast = entry.key == batches.length - 1;
+                    final batch = entry.value;
+                    final dateStr = batch['stock_age_date'];
+                    final ageString = controller.getFormattedStockAge(dateStr);
+                    final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
+                    final rawQty = batch['balance_qty'];
+                    final uom = controller.item.value?.stockUom ?? '';
+                    final qtyFormatted = rawQty != null
+                        ? NumberFormat('#,##0.##').format(
+                            rawQty is num ? rawQty : num.tryParse(rawQty.toString()) ?? 0)
+                        : '—';
+                    final warehouse = batch['warehouse'];
+                    final isHighlighted = ItemFormController.isBatchHighlighted(
+                        batchNo, controller.highlightedBatchNo.value);
 
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainer,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: cs.outlineVariant),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                batchNo,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: cs.onSurface,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (warehouse != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: cs.secondaryContainer,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  warehouse,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: cs.onSecondaryContainer,
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: isHighlighted
+                            ? cs.primaryContainer.withValues(alpha: 0.35)
+                            : null,
+                        border: Border(
+                          bottom: isLast
+                              ? BorderSide.none
+                              : BorderSide(color: cs.outlineVariant),
+                          left: isHighlighted
+                              ? BorderSide(color: cs.primary, width: 3)
+                              : BorderSide.none,
+                        ),
+                      ),
+                      padding: EdgeInsets.only(
+                        left: isHighlighted ? 9 : 12,
+                        right: 12,
+                        top: 10,
+                        bottom: 10,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inventory_2_outlined,
+                              size: 13, color: cs.onSurfaceVariant),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  batchNo,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '$qty ${controller.item.value?.stockUom ?? ''}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: cs.primary,
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    if (warehouse != null) ...[
+                                      Text(
+                                        warehouse,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        '  ·  ',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        ageString,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.orange.shade700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Age: $ageString',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.orange.shade700,
+                          const SizedBox(width: 12),
+                          Text(
+                            '$qtyFormatted $uom',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurface,
+                            ),
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
               );
             }),
 
