@@ -209,6 +209,9 @@ class LoginScreen extends GetView<LoginController> {
                           validator: controller.validatePassword,
                           autovalidateMode: AutovalidateMode.onUserInteraction,
                         ),
+                        obscureText: isHidden,
+                        validator: controller.validatePassword,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
                       ),
                       Align(
                         alignment: Alignment.centerRight,
