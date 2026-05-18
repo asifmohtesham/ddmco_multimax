@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -836,7 +837,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       if (res.statusCode == 200) {
         await _fetchDocument();   // also calls fetchLinkedJobCards() internally
         GlobalSnackbar.success(message: 'Work Order $name submitted');
-        // _autoCreateJobCards() removed: ERP creates Job Cards
+        unawaited(_checkAutoCreatedJobCards());
       } else {
         GlobalSnackbar.error(message: 'Failed to submit Work Order');
       }
@@ -846,6 +847,64 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isSubmitting.value = false;
+    }
+  }
+
+  // ── JC auto-creation feedback ─────────────────────────────────────────────
+
+  /// Polls for auto-created Job Cards ~2 s after WO submit and shows a
+  /// SnackBar with an action to navigate to the JC list, or an info message
+  /// when none were created so the user knows to tap "Create Job Cards".
+  Future<void> _checkAutoCreatedJobCards() async {
+    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final res = await _jobCardProvider.getJobCards(
+        filters: {'work_order': ['=', name]},
+        limit: 10,
+      );
+      if (res.statusCode != 200) return;
+      final list = (res.data['data'] as List?) ?? [];
+      final count = list.length;
+
+      if (count > 0) {
+        linkedJobCards.assignAll(list.map((j) => JobCard.fromJson(j)));
+      }
+
+      final ctx = Get.context;
+      if (ctx == null) return;
+
+      if (count > 0) {
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+          content: Text(
+            '$count Job Card${count == 1 ? '' : 's'} created automatically',
+          ),
+          backgroundColor: const Color(0xFF388E3C),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'View',
+            textColor: Colors.white,
+            onPressed: () => Get.toNamed(
+              AppRoutes.JOB_CARD,
+              arguments: {
+                'filters': {'work_order': ['=', name]},
+                'pageTitle': 'Job Cards – $name',
+              },
+            ),
+          ),
+        ));
+      } else {
+        GlobalSnackbar.info(
+          message: 'No Job Cards were auto-created. '
+              'Use "Create Job Cards" to set them up.',
+        );
+      }
+    } catch (_) {
+      // Non-fatal — WO was submitted successfully.
     }
   }
 
