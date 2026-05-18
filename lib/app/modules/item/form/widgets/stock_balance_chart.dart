@@ -123,7 +123,7 @@ class StockBalanceChart extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                NumberFormat.compact().format(stock.quantity),
+                NumberFormat('#,##0.##').format(stock.quantity),
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 22,

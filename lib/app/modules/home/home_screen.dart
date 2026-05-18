@@ -19,18 +19,21 @@ class HomeScreen extends GetView<HomeController> {
     final theme = Theme.of(context);
 
     return AppShellScaffold(
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
+          ),
+          child: Obx(() => BarcodeInputWidget(
+            onScan: controller.onScan,
+            controller: controller.barcodeController,
+            isLoading: controller.isScanning.value,
+            hintText: 'Scan Item / Batch / Rack',
+            activeRoute: AppRoutes.HOME,
+          )),
         ),
-        child: Obx(() => BarcodeInputWidget(
-          onScan: controller.onScan,
-          controller: controller.barcodeController,
-          isLoading: controller.isScanning.value,
-          hintText: 'Scan Item / Batch / Rack',
-          activeRoute: AppRoutes.HOME,
-        )),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
