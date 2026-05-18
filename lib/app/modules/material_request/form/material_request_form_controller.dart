@@ -222,6 +222,7 @@ class MaterialRequestFormController extends GetxController
       status: 'Draft',
       docstatus: 0,
       materialRequestType: 'Material Transfer',
+      totalQty: 0.0,
       items: [],
     );
     isLoading.value = false;
