@@ -77,9 +77,9 @@ class MultimaxApp extends StatelessWidget {
           elevation: 0,
         ),
         tabBarTheme: const TabBarThemeData(
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
+          labelColor: primaryColour,
+          unselectedLabelColor: greyColour,
+          indicatorColor: primaryColour,
           labelStyle: TextStyle(fontWeight: FontWeight.bold),
         ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
