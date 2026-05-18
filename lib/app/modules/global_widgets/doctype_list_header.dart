@@ -197,6 +197,13 @@ class DocTypeListHeader extends StatelessWidget {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  // ── Bottom slot ───────────────────────────────────────────────────────
+  /// Optional widget pinned below the collapsed toolbar — typically a [TabBar].
+  ///
+  /// Its [PreferredSizeWidget.preferredSize.height] is added to both
+  /// `minExtent` and `maxExtent`, keeping it visible at all scroll positions.
+  final PreferredSizeWidget? bottom;
+
   const DocTypeListHeader({
     super.key,
     required this.title,
@@ -213,6 +220,7 @@ class DocTypeListHeader extends StatelessWidget {
     this.onFilterTap,
     this.filterChipsBuilder,
     this.onClearAllFilters,
+    this.bottom,
   });
 
   // ✔ FIX 3: Obx wrapper triggers a widget rebuild whenever activeFilters
@@ -254,6 +262,7 @@ class DocTypeListHeader extends StatelessWidget {
         onFilterTap: onFilterTap,
         filterChipsBuilder: filterChipsBuilder,
         onClearAllFilters: onClearAllFilters,
+        bottom: bottom,
         statusBarHeight: statusBarHeight,
       ),
     );
@@ -292,6 +301,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  /// See [DocTypeListHeader.bottom].
+  final PreferredSizeWidget? bottom;
+
   /// Height of the system status bar on this device / orientation.
   final double statusBarHeight;
 
@@ -308,6 +320,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onFilterTap,
     required this.filterChipsBuilder,
     required this.onClearAllFilters,
+    required this.bottom,
     required this.statusBarHeight,
   });
 
@@ -320,19 +333,21 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       (currentSearch.isNotEmpty || currentFilterCount > 0);
 
   // ── Extents ────────────────────────────────────────────────────────────
-  @override
-  double get minExtent => statusBarHeight + _kToolbar;
+  double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
 
   @override
-  double get maxExtent {
-    final hasSearch  = (searchQuery?.value ?? '').isNotEmpty;
-    final hasFilters = activeFilters?.isNotEmpty ?? false;
-    final chipsActive = filterChipsBuilder != null && (hasSearch || hasFilters);
-    return statusBarHeight +
-        _kToolbar +
-        _kExpandedExtra +
-        (chipsActive ? _kChipRow : 0.0);
-  }
+  double get minExtent => statusBarHeight + _kToolbar + _bottomHeight;
+
+  @override
+  double get maxExtent =>
+      statusBarHeight +
+      _kToolbar +
+      _kExpandedExtra +
+      // Reserve the chip row height whenever a builder is provided so the
+      // list does not jump when the first filter is applied.  The row renders
+      // empty when no chips are active.
+      (filterChipsBuilder != null ? _kChipRow : 0.0) +
+      _bottomHeight;
 
   // ── Build ──────────────────────────────────────────────────────────────
   @override
@@ -378,7 +393,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final largeTitle = Opacity(
       opacity: expandProgress,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 72, 8),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: Align(
           alignment: AlignmentDirectional.bottomStart,
           child: Text(
@@ -460,8 +475,14 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                     child: largeTitle,
                   ),
                   toolbar,
-                  if (chipsNowActive && chipRow != null)
-                    SizedBox(height: _kChipRow, child: chipRow),
+                  if (bottom != null) bottom!,
+                  if (filterChipsBuilder != null)
+                    SizedBox(
+                      height: _kChipRow,
+                      // Empty when no chips are active; space is always
+                      // reserved so the list below does not jump.
+                      child: chipsNowActive ? chipRow : null,
+                    ),
                 ],
               ),
             ),
@@ -662,20 +683,15 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final searchChanged =
         (searchQuery?.value ?? '') != (old.searchQuery?.value ?? '');
 
+    // Callbacks are intentionally excluded — lambda identity is always different
+    // across parent rebuilds, so comparing them would make shouldRebuild always
+    // return true and defeat the purpose of this guard.
     return filtersChanged ||
         searchChanged ||
         statusBarHeight != old.statusBarHeight ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
-        extraActions != old.extraActions ||
         searchDoctype != old.searchDoctype ||
-        searchRoute != old.searchRoute ||
-        searchQuery != old.searchQuery ||
-        onSearchChanged != old.onSearchChanged ||
-        onSearchClear != old.onSearchClear ||
-        activeFilters != old.activeFilters ||
-        onFilterTap != old.onFilterTap ||
-        filterChipsBuilder != old.filterChipsBuilder ||
-        onClearAllFilters != old.onClearAllFilters;
+        searchRoute != old.searchRoute;
   }
 }

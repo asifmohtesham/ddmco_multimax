@@ -11,27 +11,47 @@ import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 /// |------|--------|
 /// | Leading (left) | ← Back arrow (auto-inserted by Flutter) |
 /// | Actions (right) | Reload · Save · Share |
+/// | Bottom (optional) | [TabBar] or other fixed-height widget |
 ///
 /// ## Usage
 ///
 /// ```dart
 /// DocTypeFormHeader(
-///   title:    controller.docName,
-///   onReload: controller.reload,
-///   onSave:   controller.save,
-///   onShare:  controller.share,
-///   isDirty:  controller.isDirty,       // optional — disables Save when false
-///   isSaving: controller.isSaving,      // optional — shows spinner while true
-///   saveResult: controller.saveResult,  // optional — shows success/error flash
+///   title:      controller.docName,
+///   onReload:   controller.reload,
+///   onSave:     controller.save,
+///   onShare:    controller.share,
+///   canSave:    controller.isDirty.value,
+///   docStatus:  controller.docStatus,   // 0 draft · 1 submitted · 2 cancelled
+///   isSaving:   controller.isSaving.value,
+///   saveResult: controller.saveResult.value,
+///   bottom:     TabBar(controller: _tabCtrl, tabs: [...]),
 /// )
 /// ```
 ///
+/// ## Save-button safety
+///
+/// The Save button is active only when **both** conditions hold:
+/// - `canSave == true` (the controller signals un-saved changes)
+/// - `docStatus == 0` (the document is still in draft state)
+///
+/// `canSave` defaults to `false` — a screen that forgets to wire the parameter
+/// gets a permanently-disabled Save button, not a permanently-active one.
+/// `docStatus` defaults to `0` so existing call sites that only wire `canSave`
+/// continue to work without change.
+///
+/// ## Bottom slot
+///
+/// Pass a [PreferredSizeWidget] (typically a [TabBar]) as [bottom] to pin it
+/// below the collapsed toolbar. Its height is added to both `minExtent` and
+/// `maxExtent` so the sliver always reserves the correct amount of space and
+/// the widget is never scrolled away with the large title.
+///
 /// ## Relationship to [DocTypeListHeader]
 ///
-/// This widget is a thin, purpose-built wrapper around [DocTypeListHeader].
-/// It always passes `automaticallyImplyLeading: true` (the default) so
-/// Flutter auto-inserts the back arrow when a predecessor route exists on
-/// the stack — which is always the case for form screens pushed from a list.
+/// This widget is a thin wrapper around [DocTypeListHeader].
+/// It always omits `automaticallyImplyLeading` (defaults to `true`) so Flutter
+/// auto-inserts the back arrow for pushed form routes.
 ///
 /// For **list screens** use [DocTypeListHeader] directly with
 /// `automaticallyImplyLeading: false`; see `docs/app_bar_conventions.md`.
@@ -58,11 +78,25 @@ class DocTypeFormHeader extends StatelessWidget {
 
   // ── Save-button state ───────────────────────────────────────────────
 
-  /// When `true` the Save button is rendered as active (enabled);
-  /// when `false` it is greyed-out and non-interactive.
-  /// Defaults to `true` so the button is always enabled unless explicitly
-  /// signalled otherwise.
-  final bool isDirty;
+  /// Whether the form has unsaved changes.
+  ///
+  /// Defaults to `false` — a screen that forgets to wire this parameter gets a
+  /// disabled Save button rather than a permanently-active one.
+  ///
+  /// The Save button is also force-disabled when [docStatus] ≠ 0, regardless
+  /// of this flag.
+  final bool canSave;
+
+  /// ERPNext document lifecycle status.
+  ///
+  /// | Value | Meaning | Save button |
+  /// |-------|---------|-------------|
+  /// | 0 | Draft | Active when [canSave] is `true` |
+  /// | 1 | Submitted | Always disabled |
+  /// | 2 | Cancelled | Always disabled |
+  ///
+  /// Defaults to `0` (draft).
+  final int docStatus;
 
   /// When `true` the Save icon is replaced with a [CircularProgressIndicator]
   /// and the button is non-interactive.
@@ -71,6 +105,15 @@ class DocTypeFormHeader extends StatelessWidget {
   /// Drives the post-save success / error flash on [SaveIconButton].
   /// Defaults to [SaveResult.idle] (no feedback shown).
   final SaveResult saveResult;
+
+  // ── Bottom slot ──────────────────────────────────────────────────────
+
+  /// Optional widget pinned below the collapsed toolbar — typically a [TabBar].
+  ///
+  /// Its [PreferredSizeWidget.preferredSize.height] is added to both
+  /// `minExtent` and `maxExtent` so the sliver always reserves the right amount
+  /// of space and the widget remains visible regardless of scroll position.
+  final PreferredSizeWidget? bottom;
 
   // ── Escape hatch ─────────────────────────────────────────────────────
 
@@ -84,23 +127,28 @@ class DocTypeFormHeader extends StatelessWidget {
     this.onReload,
     this.onSave,
     this.onShare,
-    this.isDirty    = true,
+    this.canSave    = false,
+    this.docStatus  = 0,
     this.isSaving   = false,
     this.saveResult = SaveResult.idle,
+    this.bottom,
     this.extraActions,
   });
+
+  bool get _canSave => canSave && docStatus == 0;
 
   @override
   Widget build(BuildContext context) {
     return DocTypeListHeader(
-      title: title,
+      title:  title,
+      bottom: bottom,
       // automaticallyImplyLeading is intentionally omitted → defaults to true
       // → Flutter auto-inserts the back arrow for pushed form routes.
       extraActions: [
         // ── Caller-supplied extras (before standard actions) ────────────
         ...(extraActions ?? []),
 
-        // ── 1. Reload ───────────────────────────────────────────────
+        // ── 1. Reload ───────────────────────────────────────────────────
         if (onReload != null)
           IconButton(
             icon:      const Icon(Icons.refresh),
@@ -108,17 +156,17 @@ class DocTypeFormHeader extends StatelessWidget {
             onPressed: onReload,
           ),
 
-        // ── 2. Save (delegates to SaveIconButton for all visual states) ───
+        // ── 2. Save (delegates to SaveIconButton for all visual states) ──
         if (onSave != null)
           SaveIconButton(
             onPressed:  onSave,
             isSaving:   isSaving,
-            isDirty:    isDirty,
+            isDirty:    _canSave,
             saveResult: saveResult,
             tooltip:    'Save',
           ),
 
-        // ── 3. Share ───────────────────────────────────────────────
+        // ── 3. Share ─────────────────────────────────────────────────────
         if (onShare != null)
           IconButton(
             icon:      const Icon(Icons.share_outlined),
