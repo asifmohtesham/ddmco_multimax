@@ -406,7 +406,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                           GenericDocumentCard.buildIconStat(
                             context,
                             Icons.inventory_2_outlined,
-                            '${req.totalQty.toStringAsFixed(0)} qty',
+                            '${req.customTotalQty.toStringAsFixed(0)} qty',
                           ),
                           GenericDocumentCard.buildIconStat(
                             context,

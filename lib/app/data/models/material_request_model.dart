@@ -8,7 +8,7 @@ class MaterialRequest {
   final String materialRequestType;
   final String? owner;
   final String? setWarehouse;
-  final double totalQty;
+  final double customTotalQty;
   final List<MaterialRequestItem> items;
 
   MaterialRequest({
@@ -21,7 +21,7 @@ class MaterialRequest {
     required this.materialRequestType,
     this.owner,
     this.setWarehouse,
-    required this.totalQty,
+    required this.customTotalQty,
     required this.items,
   });
 
@@ -39,7 +39,7 @@ class MaterialRequest {
       materialRequestType: json['material_request_type']?.toString() ?? 'Purchase',
       owner: json['owner']?.toString(),
       setWarehouse: json['set_warehouse']?.toString(),
-      totalQty: double.tryParse(json['total_qty']?.toString() ?? '0') ?? 0.0,
+      customTotalQty: double.tryParse(json['custom_total_qty']?.toString() ?? '0') ?? 0.0,
       items: items,
     );
   }
