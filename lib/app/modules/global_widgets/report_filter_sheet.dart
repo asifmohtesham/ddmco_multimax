@@ -679,10 +679,15 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final cs            = Theme.of(context).colorScheme;
+    final textTheme     = Theme.of(context).textTheme;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
-    return DraggableScrollableSheet(
+    return AnimatedPadding(
+      padding:  EdgeInsets.only(bottom: keyboardHeight),
+      duration: const Duration(milliseconds: 150),
+      curve:    Curves.easeOut,
+      child: DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize:     0.4,
       maxChildSize:     0.95,
@@ -710,7 +715,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
               ),
               const SizedBox(height: 12),
 
-              // ── title ────────────────────────────────────────────────────
+              // ── title ───────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
@@ -803,6 +808,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
           ),
         );
       },
+      ),
     );
   }
 }
