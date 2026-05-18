@@ -49,6 +49,12 @@ class ReportFilterField {
   /// picker sheet (e.g. `'Warehouse'`).  Ignored for all other types.
   final String? linkDoctype;
 
+  /// Optional server-side filters applied when loading the doctype link list.
+  /// Uses the same `Map<String, dynamic>` format as [ApiProvider.getList]:
+  /// `{'fieldname': value}` for equality, `{'fieldname': ['op', value]}` for
+  /// other operators.  Ignored for all non-[ReportFilterType.doctypeLink] types.
+  final Map<String, dynamic>? linkFilters;
+
   const ReportFilterField({
     required this.key,
     required this.label,
@@ -58,6 +64,7 @@ class ReportFilterField {
     this.required = false,
     this.focusNode,
     this.linkDoctype,
+    this.linkFilters,
   });
 }
 
@@ -567,8 +574,9 @@ class _FieldWidgetState extends State<_FieldWidget> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _DoctypeLinkSheet(
-        doctype: doctype,
-        title:   field.label,
+        doctype:  doctype,
+        title:    field.label,
+        filters:  field.linkFilters,
       ),
     );
 
@@ -583,12 +591,14 @@ class _FieldWidgetState extends State<_FieldWidget> {
 // ---------------------------------------------------------------------------
 
 class _DoctypeLinkSheet extends StatefulWidget {
-  final String doctype;
-  final String title;
+  final String                  doctype;
+  final String                  title;
+  final Map<String, dynamic>?   filters;
 
   const _DoctypeLinkSheet({
     required this.doctype,
     required this.title,
+    this.filters,
   });
 
   @override
@@ -630,6 +640,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
         null,
         doctype:  widget.doctype,
         fields:   ['name'],
+        filters:  widget.filters,
         limit:    500,
         orderBy:  'name asc',
       );

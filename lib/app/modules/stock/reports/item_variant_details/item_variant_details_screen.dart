@@ -18,6 +18,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       linkDoctype: 'Item',
       prefixIcon:  Icons.category_outlined,
       required:    true,
+      linkFilters: {'disabled': 0, 'has_variants': 1},
     ),
   ];
 
