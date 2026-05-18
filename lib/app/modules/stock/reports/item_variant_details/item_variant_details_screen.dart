@@ -139,10 +139,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   }
 }
 
-// ── Image viewer ──────────────────────────────────────────────────────────────
+// ── Image gallery viewer ──────────────────────────────────────────────────────
 
-void _openImageViewer(BuildContext context, String imageUrl) {
-  // showGeneralDialog fills the whole screen; showDialog constrains the child
+void _openImageViewer(
+  BuildContext context, {
+  required List<_GalleryItem> items,
+  required int                initialIndex,
+}) {
+  // showGeneralDialog fills the whole screen; showDialog constrains content
   // through DialogRoute's centering + width logic, which produces a box.
   showGeneralDialog<void>(
     context:            context,
@@ -152,30 +156,10 @@ void _openImageViewer(BuildContext context, String imageUrl) {
     transitionDuration: const Duration(milliseconds: 150),
     transitionBuilder:  (_, anim, __, child) =>
         FadeTransition(opacity: anim, child: child),
-    pageBuilder: (ctx, _, __) {
-      final topPad = MediaQuery.of(ctx).padding.top;
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 8.0,
-            child: Center(
-              child: Image.network(imageUrl, fit: BoxFit.contain),
-            ),
-          ),
-          Positioned(
-            top:   topPad + 8,
-            right: 12,
-            child: IconButton(
-              style: IconButton.styleFrom(backgroundColor: Colors.black54),
-              icon:      const Icon(Icons.close, color: Colors.white),
-              onPressed: () => Navigator.of(ctx).pop(),
-            ),
-          ),
-        ],
-      );
-    },
+    pageBuilder: (ctx, _, __) => _ImageGallery(
+      items:        items,
+      initialIndex: initialIndex,
+    ),
   );
 }
 
@@ -241,10 +225,35 @@ class _VariantTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Full-width image banner (tap to zoom) ──────────────
+            // ── Full-width image banner (tap to open gallery) ──────
             if (imageUrl != null)
               InkWell(
-                onTap: () => _openImageViewer(context, imageUrl),
+                onTap: () {
+                  // Collect all variant images in report order so the gallery
+                  // can slide between items; open at the tapped item's index.
+                  final items       = <_GalleryItem>[];
+                  var   startIndex  = 0;
+                  for (final r in controller.reportData) {
+                    final code = r['variant_name']?.toString()
+                        ?? r['item']?.toString() ?? '';
+                    final url  = _imageUrl(
+                        controller.itemDetails[code]?['image'] as String?);
+                    if (url == null) continue;
+                    if (code == itemCode) startIndex = items.length;
+                    items.add(_GalleryItem(
+                      url:      url,
+                      itemCode: code,
+                      itemName: controller.itemDetails[code]?['item_name']
+                              as String? ?? '',
+                    ));
+                  }
+                  if (items.isEmpty) return;
+                  _openImageViewer(
+                    context,
+                    items:        items,
+                    initialIndex: startIndex,
+                  );
+                },
                 child: _ImageBanner(imageUrl: imageUrl),
               ),
 
@@ -605,6 +614,198 @@ class _StockRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Gallery data ───────────────────────────────────────────────────────────────
+
+class _GalleryItem {
+  final String url;
+  final String itemCode;
+  final String itemName;
+  const _GalleryItem({
+    required this.url,
+    required this.itemCode,
+    required this.itemName,
+  });
+}
+
+// ── Full-screen image gallery ─────────────────────────────────────────────────
+
+class _ImageGallery extends StatefulWidget {
+  final List<_GalleryItem> items;
+  final int                initialIndex;
+  const _ImageGallery({required this.items, required this.initialIndex});
+
+  @override
+  State<_ImageGallery> createState() => _ImageGalleryState();
+}
+
+class _ImageGalleryState extends State<_ImageGallery> {
+  late final PageController _page;
+  late int _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.initialIndex;
+    _page    = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _page.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad    = MediaQuery.of(context).padding.top;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    final total     = widget.items.length;
+    final item      = widget.items[_current];
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // ── Swipeable image pages ──────────────────────────────────
+        PageView.builder(
+          controller:    _page,
+          itemCount:     total,
+          onPageChanged: (i) => setState(() => _current = i),
+          itemBuilder:   (_, i) {
+            // ValueKey forces InteractiveViewer to reset its transform
+            // (zoom + pan) when the user swipes to a new page.
+            return InteractiveViewer(
+              key:      ValueKey(i),
+              minScale: 0.5,
+              maxScale: 8.0,
+              child: Center(
+                child: Image.network(
+                  widget.items[i].url,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (_, child, prog) => prog == null
+                      ? child
+                      : const Center(
+                          child: CircularProgressIndicator(
+                              color: Colors.white)),
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(Icons.broken_image_outlined,
+                        size: 64, color: Colors.white54),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+
+        // ── Top bar: counter + close ───────────────────────────────
+        Positioned(
+          top: topPad + 8, left: 0, right: 0,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                _pill('${_current + 1} / $total'),
+                const Spacer(),
+                IconButton(
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black54,
+                    minimumSize:     const Size(48, 48),
+                  ),
+                  icon:      const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ── Bottom caption: item code + name + dots ────────────────
+        Positioned(
+          bottom: bottomPad + 16, left: 16, right: 16,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+            decoration: BoxDecoration(
+              color:        Colors.black54,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisSize:      MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.itemCode,
+                  style: const TextStyle(
+                    color:      Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize:   15,
+                  ),
+                ),
+                if (item.itemName.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    item.itemName,
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 13),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                if (total > 1) ...[
+                  const SizedBox(height: 10),
+                  _PageDots(current: _current, total: total),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _pill(String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color:        Colors.black54,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      text,
+      style: const TextStyle(color: Colors.white, fontSize: 13),
+    ),
+  );
+}
+
+// ── Page dot indicator ─────────────────────────────────────────────────────────
+
+class _PageDots extends StatelessWidget {
+  final int current;
+  final int total;
+  const _PageDots({required this.current, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    // Show dots only when there are few enough to display clearly;
+    // the "N / total" counter in the top pill handles the rest.
+    if (total > 9) return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(total, (i) {
+        final active = i == current;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve:    Curves.easeOut,
+          width:    active ? 20 : 6,
+          height:   6,
+          margin:   const EdgeInsets.symmetric(horizontal: 3),
+          decoration: BoxDecoration(
+            color:        active ? Colors.white : Colors.white38,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
     );
   }
 }
