@@ -159,56 +159,17 @@ class _VariantTile extends StatelessWidget {
     required this.controller,
   });
 
-  static const _skipFields = {'item', 'item_name', 'variant_of'};
+  // Non-attribute report columns that must not render as attribute chips
+  static const _skipFields = {
+    'variant_name', 'item', 'item_name', 'variant_of',
+    'current_stock', 'in_production', 'open_orders',
+    'avg_buying_price_list_rate', 'avg_selling_price_list_rate',
+  };
 
-  // ── Attribute → icon mapping ───────────────────────────────────────────────
-  static IconData _iconForLabel(String label) {
-    final l = label.toLowerCase();
-    if (l.contains('colour') || l.contains('color')) return Icons.palette_outlined;
-    if (l.contains('size'))                           return Icons.straighten;
-    if (l.contains('material') || l.contains('leather') || l.contains('faux')) {
-      return Icons.texture;
-    }
-    if (l.contains('zip'))                            return Icons.lock_outline;
-    if (l.contains('coin'))                           return Icons.toll;
-    if (l.contains('loop'))                           return Icons.loop;
-    if (l.contains('pocket'))                         return Icons.account_balance_wallet_outlined;
-    if (l.contains('card') || l.contains('slot'))     return Icons.credit_card_outlined;
-    if (l.contains('stitch') || l.contains('sewing')) return Icons.waves;
-    if (l.contains('buckle'))                         return Icons.panorama_fish_eye;
-    if (l.contains('snap'))                           return Icons.adjust;
-    if (l.contains('lining'))                         return Icons.layers_outlined;
-    if (l.contains('compartment'))                    return Icons.inbox_outlined;
-    if (l.contains('gusset') || l.contains('expand')) return Icons.open_in_full;
-    if (l.contains('strap') || l.contains('belt'))    return Icons.horizontal_rule;
-    if (l.contains('magnet'))                         return Icons.settings_input_component_outlined;
-    if (l.contains('clasp') || l.contains('hook'))    return Icons.lock_clock_outlined;
-    if (l.contains('rfid') || l.contains('blocking')) return Icons.shield_outlined;
-    if (l.contains('weight'))                         return Icons.monitor_weight_outlined;
-    if (l.contains('dimension') || l.contains('length') || l.contains('width') || l.contains('height')) {
-      return Icons.straighten;
-    }
-    return Icons.label_outlined;
-  }
-
-  // Truthy "yes" values from ERPNext (Select "Yes", Check 1, etc.)
-  static bool _isBoolTrue(dynamic v) {
-    if (v == null) return false;
-    final s = v.toString().toLowerCase().trim();
-    return s == 'yes' || s == '1' || s == 'true';
-  }
-
-  // Values that should not render a chip at all
   static bool _isEmpty(dynamic v) {
     if (v == null) return true;
     final s = v.toString().trim();
     return s.isEmpty || s == '—' || s == '-';
-  }
-
-  static bool _isBoolFalse(dynamic v) {
-    if (v == null) return true;
-    final s = v.toString().toLowerCase().trim();
-    return s == 'no' || s == '0' || s == 'false';
   }
 
   String? _imageUrl(String? path) {
@@ -222,18 +183,22 @@ class _VariantTile extends StatelessWidget {
     final cs   = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    final itemCode = row['item']?.toString()      ?? '—';
-    final itemName = row['item_name']?.toString() ?? '';
+    final itemCode = row['variant_name']?.toString()
+        ?? row['item']?.toString()
+        ?? '—';
 
     final attrCols = columns
         .where((c) => !_skipFields.contains(c['fieldname'] as String? ?? ''))
         .toList();
 
     return Obx(() {
-      final imageUrl   = _imageUrl(controller.itemImages[itemCode]);
-      final stockRows  = controller.stockBalances[itemCode];
+      final details        = controller.itemDetails[itemCode];
+      final itemName       = details?['item_name']  as String? ?? '';
+      final itemGroup      = details?['item_group'] as String? ?? '';
+      final imageUrl       = _imageUrl(details?['image'] as String?);
+      final stockRows      = controller.stockBalances[itemCode];
       final isStockLoading = controller.loadingStock[itemCode] == true;
-      final isExpanded = stockRows != null;
+      final isExpanded     = stockRows != null;
 
       return Card(
         elevation: 1,
@@ -266,14 +231,25 @@ class _VariantTile extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          if (itemName.isNotEmpty && itemName != itemCode)
+                          if (itemName.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
                                 itemName,
                                 style: text.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant),
+                                    color: cs.onSurface),
                                 maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          if (itemGroup.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
+                              child: Text(
+                                itemGroup,
+                                style: text.labelSmall?.copyWith(
+                                    color: cs.onSurfaceVariant),
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -292,23 +268,17 @@ class _VariantTile extends StatelessWidget {
                     spacing:    6,
                     runSpacing: 6,
                     children: [
-                      for (final col in attrCols) ...[
+                      for (final col in attrCols)
                         Builder(builder: (context) {
                           final fieldname = col['fieldname'] as String? ?? '';
                           final label     = col['label']     as String? ?? fieldname;
                           final val       = row[fieldname];
-                          if (_isEmpty(val) || _isBoolFalse(val)) {
-                            return const SizedBox.shrink();
-                          }
-                          final icon    = _iconForLabel(label);
-                          final isBool  = _isBoolTrue(val);
+                          if (_isEmpty(val)) return const SizedBox.shrink();
                           return _AttrChip(
-                            icon:    icon,
-                            value:   isBool ? null : val.toString(),
-                            tooltip: label,
+                            label: label,
+                            value: val.toString(),
                           );
                         }),
-                      ],
                     ],
                   ),
                 ],
@@ -352,7 +322,7 @@ class _VariantTile extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(left: 4),
                       child: Text(
-                        'No stock in any warehouse.',
+                        'No stock in any rack.',
                         style: text.bodySmall
                             ?.copyWith(color: cs.onSurfaceVariant),
                       ),
@@ -360,10 +330,8 @@ class _VariantTile extends StatelessWidget {
                   else
                     for (final r in stockRows)
                       _StockRow(
-                        warehouse: r['warehouse']?.toString() ?? '—',
-                        qty: (r['actual_qty'] as num?)
-                                ?.toStringAsFixed(0) ??
-                            '0',
+                        rack: r['rack']?.toString() ?? '—',
+                        qty:  (r['qty'] as num?)?.toStringAsFixed(0) ?? '0',
                       ),
                 ],
               ],
@@ -438,39 +406,26 @@ class _ItemThumb extends StatelessWidget {
 // ── Attribute chip ─────────────────────────────────────────────────────────────
 
 class _AttrChip extends StatelessWidget {
-  final IconData icon;
-  final String?  value;   // null → boolean (icon-only chip)
-  final String   tooltip;
-  const _AttrChip({required this.icon, this.value, required this.tooltip});
+  final String label;
+  final String value;
+  const _AttrChip({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     final cs   = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    return Tooltip(
-      message: tooltip,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color:        cs.secondaryContainer,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: cs.onSecondaryContainer),
-            if (value != null) ...[
-              const SizedBox(width: 4),
-              Text(
-                value!,
-                style: text.labelSmall?.copyWith(
-                  color:      cs.onSecondaryContainer,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color:        cs.secondaryContainer,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$label: $value',
+        style: text.labelSmall?.copyWith(
+          color:      cs.onSecondaryContainer,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -480,9 +435,9 @@ class _AttrChip extends StatelessWidget {
 // ── Stock row ──────────────────────────────────────────────────────────────────
 
 class _StockRow extends StatelessWidget {
-  final String warehouse;
+  final String rack;
   final String qty;
-  const _StockRow({required this.warehouse, required this.qty});
+  const _StockRow({required this.rack, required this.qty});
 
   @override
   Widget build(BuildContext context) {
@@ -493,11 +448,11 @@ class _StockRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
-          Icon(Icons.warehouse, size: 13, color: cs.onSurfaceVariant),
+          Icon(Icons.shelves, size: 13, color: cs.onSurfaceVariant),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              warehouse,
+              rack,
               style:    text.bodySmall?.copyWith(color: cs.onSurface),
               overflow: TextOverflow.ellipsis,
             ),

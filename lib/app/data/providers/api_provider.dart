@@ -517,47 +517,36 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
-  // getItemImages / getItemBinStock — Item Variant Details tile helpers
+  // getItemDetails — Item Variant Details tile helper
   // ---------------------------------------------------------------------------
 
-  /// Batch-fetches the `image` field for [itemCodes] from the Item doctype.
-  /// Returns a map of item code → relative image path (null when unset).
-  Future<Map<String, String?>> getItemImages(List<String> itemCodes) async {
+  /// Batch-fetches item_name, item_group, and image for [itemCodes].
+  /// Returns a map of item code → {item_name, item_group, image?}.
+  /// The image value is null when the field is unset.
+  Future<Map<String, Map<String, dynamic>>> getItemDetails(
+      List<String> itemCodes) async {
     if (itemCodes.isEmpty) return {};
     try {
       final rows = await getList(
         null,
         doctype: 'Item',
-        fields:  ['name', 'image'],
+        fields:  ['name', 'item_name', 'item_group', 'image'],
         filters: {'name': ['in', itemCodes]},
         limit:   itemCodes.length + 1,
         orderBy: 'name asc',
       );
       return {
         for (final r in rows)
-          r['name'].toString(): (r['image']?.toString().isNotEmpty ?? false)
-              ? r['image'].toString()
-              : null,
+          r['name'].toString(): {
+            'item_name':  r['item_name']?.toString()  ?? '',
+            'item_group': r['item_group']?.toString() ?? '',
+            'image': (r['image']?.toString().isNotEmpty ?? false)
+                ? r['image'].toString()
+                : null,
+          },
       };
     } catch (_) {
       return {};
-    }
-  }
-
-  /// Returns current warehouse stock for [itemCode] from the Bin doctype,
-  /// limited to warehouses with positive stock, sorted by qty descending.
-  Future<List<Map<String, dynamic>>> getItemBinStock(String itemCode) async {
-    try {
-      return await getList(
-        null,
-        doctype: 'Bin',
-        fields:  ['warehouse', 'actual_qty'],
-        filters: {'item_code': itemCode, 'actual_qty': ['>', 0]},
-        limit:   20,
-        orderBy: 'actual_qty desc',
-      );
-    } catch (_) {
-      return [];
     }
   }
 

@@ -18,9 +18,9 @@ class ItemVariantDetailsController extends GetxController {
   final reportColumns = <Map<String, dynamic>>[].obs;
   final activeFilters = <String, String>{}.obs;
 
-  // ── Image cache ────────────────────────────────────────────────────────────
-  /// item_code → relative image path (null = no image set)
-  final itemImages = <String, String?>{}.obs;
+  // ── Item detail cache ─────────────────────────────────────────────────────
+  /// variant_name → {item_name, item_group, image?}
+  final itemDetails = <String, Map<String, dynamic>>{}.obs;
 
   // ── Stock balance cache ────────────────────────────────────────────────────
   /// item_code → [{warehouse, actual_qty}] once fetched; absent = not yet loaded
@@ -32,10 +32,12 @@ class ItemVariantDetailsController extends GetxController {
   void onInit() {
     super.onInit();
     filterControllers = {'item_code': itemCodeController};
+    itemCodeController.addListener(_rebuildActiveFilters);
   }
 
   @override
   void onClose() {
+    itemCodeController.removeListener(_rebuildActiveFilters);
     itemCodeController.dispose();
     super.onClose();
   }
@@ -50,7 +52,7 @@ class ItemVariantDetailsController extends GetxController {
     if (key == 'item_code') {
       reportData.clear();
       reportColumns.clear();
-      itemImages.clear();
+      itemDetails.clear();
       stockBalances.clear();
       loadingStock.clear();
     }
@@ -63,7 +65,7 @@ class ItemVariantDetailsController extends GetxController {
     activeFilters.clear();
     reportData.clear();
     reportColumns.clear();
-    itemImages.clear();
+    itemDetails.clear();
     stockBalances.clear();
     loadingStock.clear();
   }
@@ -79,11 +81,10 @@ class ItemVariantDetailsController extends GetxController {
       return;
     }
 
-    _rebuildActiveFilters();
     isLoading.value = true;
     reportData.clear();
     reportColumns.clear();
-    itemImages.clear();
+    itemDetails.clear();
     stockBalances.clear();
     loadingStock.clear();
 
@@ -91,7 +92,7 @@ class ItemVariantDetailsController extends GetxController {
       final result = await _api.getItemVariantDetails(itemCode);
       reportColumns.assignAll(result.columns);
       reportData.assignAll(result.rows);
-      unawaited(_fetchImages());
+      unawaited(_fetchDetails());
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
@@ -112,7 +113,7 @@ class ItemVariantDetailsController extends GetxController {
     }
     loadingStock[itemCode] = true;
     try {
-      final rows = await _api.getItemBinStock(itemCode);
+      final rows = await _api.getStockBalanceWithDimension(itemCode: itemCode);
       stockBalances[itemCode] = rows;
     } catch (_) {
       stockBalances[itemCode] = [];
@@ -132,13 +133,13 @@ class ItemVariantDetailsController extends GetxController {
     });
   }
 
-  Future<void> _fetchImages() async {
+  Future<void> _fetchDetails() async {
     final codes = reportData
-        .map((r) => r['item']?.toString() ?? '')
+        .map((r) => r['variant_name']?.toString() ?? r['item']?.toString() ?? '')
         .where((c) => c.isNotEmpty)
         .toList();
     if (codes.isEmpty) return;
-    final images = await _api.getItemImages(codes);
-    itemImages.assignAll(images);
+    final details = await _api.getItemDetails(codes);
+    itemDetails.assignAll(details);
   }
 }
