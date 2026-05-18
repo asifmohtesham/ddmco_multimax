@@ -38,21 +38,27 @@ class PosUploadItemsView extends StatelessWidget {
           final serialNumber = posItem.idx.toString();
           final expansionKey = serialNumber;
 
-          final itemsInGroup     = groupedItems[serialNumber] ?? [];
+          final itemsInGroup      = groupedItems[serialNumber] ?? [];
           final currentScannedQty =
               itemsInGroup.fold(0.0, (sum, item) => sum + item.qty);
+
+          // Remaining uses the canonical helper so the value is
+          // always consistent with the block logic and the dialog.
+          final remainingQty =
+              controller.remainingQtyForSerial(serialNumber);
 
           return Obx(() {
             final isExpanded =
                 controller.expandedInvoice.value == expansionKey;
 
             return ItemGroupCard(
-              isExpanded:  isExpanded,
-              serialNo:    posItem.idx,
-              itemName:    posItem.itemName,
-              rate:        posItem.rate,
-              totalQty:    posItem.quantity,
-              scannedQty:  currentScannedQty,
+              isExpanded:   isExpanded,
+              serialNo:     posItem.idx,
+              itemName:     posItem.itemName,
+              rate:         posItem.rate,
+              totalQty:     posItem.quantity,
+              scannedQty:   currentScannedQty,
+              remainingQty: remainingQty,
               onToggle: () =>
                   controller.toggleInvoiceExpand(expansionKey),
               children: itemsInGroup.asMap().entries.map((e) {
@@ -64,6 +70,7 @@ class PosUploadItemsView extends StatelessWidget {
                   key:  controller.itemKeys[item.name],
                   data: ItemCardData.fromStockEntryItem(
                     item,
+                    stockEntryType: entry.stockEntryType ?? entry.purpose,
                     index:      groupIndex,
                     isEditable: isEditable,
                   ),

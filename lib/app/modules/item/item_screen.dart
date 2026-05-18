@@ -5,98 +5,130 @@ import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/item/widgets/item_list_app_bar.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/item/widgets/item_image.dart';
+import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
+import 'package:multimax/app/modules/item/widgets/item_grid_preview_sheet.dart';
 
-class ItemScreen extends StatefulWidget {
+class ItemScreen extends GetView<ItemController> {
   const ItemScreen({super.key});
 
-  @override
-  State<ItemScreen> createState() => _ItemScreenState();
-}
-
-class _ItemScreenState extends State<ItemScreen> {
-  final ItemController controller = Get.find();
-  final _scrollController = ScrollController();
-  final String _baseUrl = Get.find<ApiProvider>().baseUrl;
-
-  @override
-  void initState() {
-    super.initState();
-    // Fix #1: scroll listener removed; infinite scroll is handled by
-    // NotificationListener<ScrollEndNotification> in build() instead,
-    // which only fires once at scroll end, not on every pixel change.
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  // ── build ──────────────────────────────────────────────────────────────────
+  // ── build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
-    // Fix #1: wrap in NotificationListener to fire load-more only once at
-    // scroll end, preventing double-fire from _stockLevelsCache obs updates.
-    return NotificationListener<ScrollEndNotification>(
-      onNotification: (notification) {
-        final metrics = notification.metrics;
-        if (metrics.pixels >= metrics.maxScrollExtent * 0.9 &&
-            controller.hasMore.value &&
-            !controller.isFetchingMore.value) {
-          controller.fetchItems(isLoadMore: true);
-        }
-        return false;
-      },
-      child: Scaffold(
-        backgroundColor: cs.surface,
-        drawer: const AppNavDrawer(),
-        body: RefreshIndicator(
-          onRefresh: () => controller.fetchItems(clear: true),
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              const ItemListAppBar(),
+    return AppShellScaffold(
+      floatingActionButton: Obx(
+        () => controller.isFarFromTop.value
+            ? FloatingActionButton(
+                onPressed: controller.scrollToTop,
+                tooltip: 'Scroll to top',
+                mini: false,
+                child: const Icon(Icons.keyboard_arrow_up),
+              )
+            : const SizedBox.shrink(),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => controller.fetchItems(clear: true),
+        child: CustomScrollView(
+          controller: controller.scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            const ItemListAppBar(),
 
-              Obx(() {
+            // ── Result count pill ────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Obx(() {
                 if (controller.isLoading.value &&
                     controller.displayedItems.isEmpty) {
-                  return const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  );
+                  return const SizedBox.shrink();
                 }
-
-                if (controller.displayedItems.isEmpty) {
-                  return _buildEmptyState(context, cs);
-                }
-
-                // Fix #5: grid view now also has load-more footer
-                if (controller.isGridView.value) {
-                  return _buildGrid(cs);
-                }
-
-                return _buildList();
+                final count = controller.displayedItems.length;
+                final hasMore = controller.hasMore.value;
+                final hasFilters = controller.filterCount > 0 ||
+                    controller.searchQuery.value.isNotEmpty;
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: cs.secondaryContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.inventory_2_outlined,
+                              size: 14,
+                              color: cs.onSecondaryContainer,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              hasMore
+                                  ? '$count+ items'
+                                  : '$count item${count == 1 ? '' : 's'}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: cs.onSecondaryContainer,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (hasFilters) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.filter_alt,
+                                size: 12,
+                                color: cs.onSecondaryContainer
+                                    .withValues(alpha: 0.7),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
               }),
+            ),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
-            ],
-          ),
+            // ── List / grid content ──────────────────────────────────────────
+            Obx(() {
+              if (controller.isLoading.value &&
+                  controller.displayedItems.isEmpty) {
+                return const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (controller.displayedItems.isEmpty) {
+                return _buildEmptyState(context);
+              }
+
+              if (controller.isGridView.value) {
+                return _buildGrid();
+              }
+
+              return _buildList();
+            }),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
         ),
       ),
     );
   }
 
-  // ── grid ───────────────────────────────────────────────────────────────────
+  // ── grid ─────────────────────────────────────────────────────────────────────
 
-  Widget _buildGrid(ColorScheme cs) {
+  Widget _buildGrid() {
     final items = controller.displayedItems;
-    // +1 slot for the load-more footer when more pages exist
     final cellCount = items.length + (controller.hasMore.value ? 1 : 0);
 
     return SliverPadding(
@@ -110,7 +142,6 @@ class _ItemScreenState extends State<ItemScreen> {
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            // Fix #5: last cell is the load-more spinner
             if (index >= items.length) {
               return const Center(
                 child: Padding(
@@ -119,7 +150,7 @@ class _ItemScreenState extends State<ItemScreen> {
                 ),
               );
             }
-            return _buildGridCard(items[index]);
+            return _buildGridCard(context, items[index]);
           },
           childCount: cellCount,
         ),
@@ -127,7 +158,7 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── list ───────────────────────────────────────────────────────────────────
+  // ── list ──────────────────────────────────────────────────────────────────────
 
   Widget _buildList() {
     final itemCount = controller.displayedItems.length +
@@ -143,17 +174,18 @@ class _ItemScreenState extends State<ItemScreen> {
               ),
             );
           }
-          return _buildListCard(controller.displayedItems[index]);
+          return _buildListCard(context, controller.displayedItems[index]);
         },
         childCount: itemCount,
       ),
     );
   }
 
-  // ── empty state ────────────────────────────────────────────────────────────
+  // ── empty state ───────────────────────────────────────────────────────────────
 
-  Widget _buildEmptyState(BuildContext context, ColorScheme cs) {
+  Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final hasFilters = controller.filterCount > 0;
 
     return SliverFillRemaining(
@@ -205,13 +237,12 @@ class _ItemScreenState extends State<ItemScreen> {
     );
   }
 
-  // ── list card ──────────────────────────────────────────────────────────────
+  // ── list card ──────────────────────────────────────────────────────────────────
 
-  Widget _buildListCard(Item item) {
+  Widget _buildListCard(BuildContext context, Item item) {
     return Obx(() {
       final isExpanded = controller.expandedItemName.value == item.name;
       final stockList = controller.getStockFor(item.itemCode);
-      // Fix #8: per-item loading state via _stockLoadingSet
       final isLoadingThisItem = controller.isStockLoading(item.itemCode);
       final theme = Theme.of(context);
       final cs = theme.colorScheme;
@@ -220,14 +251,15 @@ class _ItemScreenState extends State<ItemScreen> {
         title: item.itemName,
         subtitle: item.itemCode,
         status: item.itemGroup,
-        leading: _ItemImage(
+        leading: ItemImage(
           key: ValueKey(item.itemCode),
-          imageUrl: item.image != null ? '$_baseUrl${item.image}' : null,
+          imageUrl: item.image != null
+              ? '${controller.baseUrl}${item.image}'
+              : null,
           size: 56,
         ),
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingThisItem,
-        // Fix #10: long-press navigates directly without needing expansion
         onLongPress: () => Get.toNamed(
           AppRoutes.ITEM_FORM,
           arguments: {'itemCode': item.itemCode},
@@ -240,7 +272,7 @@ class _ItemScreenState extends State<ItemScreen> {
             GenericDocumentCard.buildIconStat(
                 context, Icons.copy, item.variantOf ?? ''),
         ],
-        expandedContent: _ExpandedContent(
+        expandedContent: ItemExpandedContent(
           item: item,
           stockList: stockList,
           isLoading: isLoadingThisItem,
@@ -251,10 +283,11 @@ class _ItemScreenState extends State<ItemScreen> {
     });
   }
 
-  // ── grid card ──────────────────────────────────────────────────────────────
+  // ── grid card ──────────────────────────────────────────────────────────────────
 
-  Widget _buildGridCard(Item item) {
-    final cs = Theme.of(context).colorScheme;
+  Widget _buildGridCard(BuildContext context, Item item) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Card(
       elevation: 0,
@@ -264,9 +297,11 @@ class _ItemScreenState extends State<ItemScreen> {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
-      // Fix #12: tap shows bottom sheet preview; no direct navigation
       child: InkWell(
-        onTap: () => _showGridItemPreview(item),
+        onTap: () => Get.bottomSheet(
+          ItemGridPreviewSheet(item: item),
+          isScrollControlled: true,
+        ),
         onLongPress: () => Get.toNamed(
           AppRoutes.ITEM_FORM,
           arguments: {'itemCode': item.itemCode},
@@ -277,10 +312,11 @@ class _ItemScreenState extends State<ItemScreen> {
             Expanded(
               child: SizedBox(
                 width: double.infinity,
-                child: _ItemImage(
+                child: ItemImage(
                   key: ValueKey('grid_${item.itemCode}'),
-                  imageUrl:
-                      item.image != null ? '$_baseUrl${item.image}' : null,
+                  imageUrl: item.image != null
+                      ? '${controller.baseUrl}${item.image}'
+                      : null,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -292,19 +328,18 @@ class _ItemScreenState extends State<ItemScreen> {
                 children: [
                   Text(
                     item.itemName,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: cs.onSurface),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSurface,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     item.itemCode,
-                    style: TextStyle(
+                    style: theme.textTheme.labelSmall?.copyWith(
                       fontFamily: 'monospace',
-                      fontSize: 11,
                       color: cs.onSurfaceVariant,
                       fontFeatures: const [FontFeature.slashedZero()],
                     ),
@@ -315,320 +350,6 @@ class _ItemScreenState extends State<ItemScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  // Fix #12: bottom sheet preview for grid card tap
-  void _showGridItemPreview(Item item) {
-    final cs = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    controller.fetchStockLevels(item.itemCode);
-
-    Get.bottomSheet(
-      Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: cs.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  _ItemImage(
-                    key: ValueKey('preview_${item.itemCode}'),
-                    imageUrl:
-                        item.image != null ? '$_baseUrl${item.image}' : null,
-                    size: 64,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.itemName,
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.bold)),
-                        Text(item.itemCode,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant)),
-                        Text(item.itemGroup,
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(color: cs.primary)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 24),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.4),
-              child: Obx(() {
-                final stockList = controller.getStockFor(item.itemCode);
-                final isLoading = controller.isStockLoading(item.itemCode);
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: _ExpandedContent(
-                    item: item,
-                    stockList: stockList,
-                    isLoading: isLoading,
-                    colorScheme: cs,
-                    theme: theme,
-                  ),
-                );
-              }),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    Get.back();
-                    Get.toNamed(
-                      AppRoutes.ITEM_FORM,
-                      arguments: {'itemCode': item.itemCode},
-                    );
-                  },
-                  child: const Text('View Full Details'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _ItemImage  (Fix #6: extracted to StatelessWidget with key)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ItemImage extends StatelessWidget {
-  final String? imageUrl;
-  final double? size;
-  final BoxFit fit;
-
-  const _ItemImage({
-    super.key,
-    required this.imageUrl,
-    this.size,
-    this.fit = BoxFit.contain,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          imageUrl!,
-          width: size,
-          height: size,
-          fit: fit,
-          // Fix #11: shimmer-style placeholder during network load
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              width: size,
-              height: size,
-              color: cs.surfaceContainerHighest,
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    value: progress.expectedTotalBytes != null
-                        ? progress.cumulativeBytesLoaded /
-                            progress.expectedTotalBytes!
-                        : null,
-                    color: cs.primary,
-                  ),
-                ),
-              ),
-            );
-          },
-          errorBuilder: (_, __, ___) => _placeholder(cs),
-        ),
-      );
-    }
-    return _placeholder(cs);
-  }
-
-  Widget _placeholder(ColorScheme cs) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          Icons.image_not_supported_outlined,
-          color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-          size: size != null ? size! * 0.5 : 30,
-        ),
-      );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// _ExpandedContent  (Fix #9: theme colours throughout)
-// Shared by list card expanded section and grid preview bottom sheet.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ExpandedContent extends StatelessWidget {
-  final Item item;
-  final List<WarehouseStock>? stockList;
-  final bool isLoading;
-  final ColorScheme colorScheme;
-  final ThemeData theme;
-
-  const _ExpandedContent({
-    required this.item,
-    required this.stockList,
-    required this.isLoading,
-    required this.colorScheme,
-    required this.theme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Description
-        if (item.description != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              item.description!,
-              // Fix #9: theme colour instead of hardcoded Colors.black87
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: cs.onSurfaceVariant),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-
-        // Customer References
-        if (item.customerItems.isNotEmpty) ...[
-          Text(
-            'Customer References',
-            style: theme.textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: cs.onSurface,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...item.customerItems.map(
-            (ci) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(ci.customerName,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant)),
-                  Text(ci.refCode,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Divider(color: cs.outlineVariant),
-          const SizedBox(height: 12),
-        ],
-
-        // Stock Balance
-        Text(
-          'Stock Balance',
-          style: theme.textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Fix #8: show per-item spinner; only show "no data" when fetched
-        if (isLoading)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
-            ),
-          )
-        else if (stockList == null || stockList!.isEmpty)
-          Text(
-            'No stock data available.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
-            ),
-          )
-        else
-          ...stockList!.map(
-            (stock) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${stock.warehouse}'
-                      '${stock.rack != null ? " (${stock.rack})" : ""}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  ),
-                  Text(
-                    '${stock.quantity.toStringAsFixed(2)} '
-                    '${item.stockUom ?? ""}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: stock.quantity > 0
-                          ? Colors.green.shade600
-                          : cs.error,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.tonal(
-            onPressed: () => Get.toNamed(
-              AppRoutes.ITEM_FORM,
-              arguments: {'itemCode': item.itemCode},
-            ),
-            child: const Text('View Full Details'),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -33,7 +33,8 @@ class PurchaseReceipt {
 
   factory PurchaseReceipt.fromJson(Map<String, dynamic> json) {
     var itemsList = json['items'] as List? ?? [];
-    List<PurchaseReceiptItem> items = itemsList.map((i) => PurchaseReceiptItem.fromJson(i)).toList();
+    List<PurchaseReceiptItem> items =
+        itemsList.map((i) => PurchaseReceiptItem.fromJson(i)).toList();
 
     return PurchaseReceipt(
       name: json['name'] ?? '',
@@ -67,15 +68,24 @@ class PurchaseReceiptItem {
   final String? batchNo;
   final String? rack;
   final String warehouse;
-  final String? purchaseOrderItem; // The Unique ID of the row in PO
-  final String? purchaseOrder;     // The Name of the PO Header (Added)
+  final String? purchaseOrderItem; // Unique row ID in the PO items child table
+  final String? purchaseOrder;     // Name of the PO header document
   final String? uom;
   final String? stockUom;
   final double conversionFactor;
-
   final int idx;
   final String? customVariantOf;
-  final double? purchaseOrderQty; // Can still be used if server sends it directly
+  final double? purchaseOrderQty;
+  final int docstatus;
+
+  // ── PO linkage fields ──────────────────────────────────────────────────────
+  // Populated by PurchaseReceiptFormController when the receipt is created
+  // from a Purchase Order.  Stored on the item row so the item-form controller
+  // can display and submit the originating PO reference without re-querying.
+  final String? poName;  // Name of the source Purchase Order (po_name)
+  final String? poItem;  // Row name / ID of the source PO item (po_item)
+  final double? poQty;   // Ordered qty from the PO row (po_qty)
+  final double? poRate;  // Rate from the PO row (po_rate)
 
   PurchaseReceiptItem({
     this.name,
@@ -98,6 +108,11 @@ class PurchaseReceiptItem {
     this.idx = 0,
     this.customVariantOf,
     this.purchaseOrderQty,
+    this.docstatus = 0,
+    this.poName,
+    this.poItem,
+    this.poQty,
+    this.poRate,
   });
 
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
@@ -115,13 +130,20 @@ class PurchaseReceiptItem {
       qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
       purchaseOrderItem: json['purchase_order_item'],
-      purchaseOrder: json['purchase_order'], // Map standard ERPNext field
+      purchaseOrder: json['purchase_order'],
       uom: json['uom'],
       stockUom: json['stock_uom'],
-      conversionFactor: (json['conversion_factor'] as num?)?.toDouble() ?? 1.0,
+      conversionFactor:
+          (json['conversion_factor'] as num?)?.toDouble() ?? 1.0,
       idx: json['idx'] as int? ?? 0,
       customVariantOf: json['custom_variant_of'],
-      purchaseOrderQty: (json['purchase_order_qty'] as num?)?.toDouble(),
+      purchaseOrderQty:
+          (json['purchase_order_qty'] as num?)?.toDouble(),
+      docstatus: json['docstatus'] as int? ?? 0,
+      poName: json['po_name'] as String?,
+      poItem: json['po_item'] as String?,
+      poQty:  (json['po_qty']  as num?)?.toDouble(),
+      poRate: (json['po_rate'] as num?)?.toDouble(),
     );
   }
 
@@ -146,6 +168,11 @@ class PurchaseReceiptItem {
     int? idx,
     String? customVariantOf,
     double? purchaseOrderQty,
+    int? docstatus,
+    String? poName,
+    String? poItem,
+    double? poQty,
+    double? poRate,
   }) {
     return PurchaseReceiptItem(
       name: name ?? this.name,
@@ -168,6 +195,11 @@ class PurchaseReceiptItem {
       idx: idx ?? this.idx,
       customVariantOf: customVariantOf ?? this.customVariantOf,
       purchaseOrderQty: purchaseOrderQty ?? this.purchaseOrderQty,
+      docstatus: docstatus ?? this.docstatus,
+      poName: poName ?? this.poName,
+      poItem: poItem ?? this.poItem,
+      poQty:  poQty  ?? this.poQty,
+      poRate: poRate ?? this.poRate,
     );
   }
 

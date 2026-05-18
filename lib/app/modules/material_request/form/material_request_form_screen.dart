@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
 
@@ -35,8 +35,13 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
               ? 'New Material Request'
               : entry.name);
 
+      final isDirty   = controller.isDirty.value;
+      final isSaving  = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading = controller.isLoading.value;
+
       return PopScope(
-        canPop: !controller.isDirty.value,
+        canPop: !isDirty,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
           await controller.confirmDiscard();
@@ -44,35 +49,35 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
-            appBar: MainAppBar(
-              title:      title,
-              status:     entry?.status,
-              isDirty:    controller.isDirty.value,
-              isSaving:   controller.isSaving.value,
-              saveResult: controller.saveResult.value,
-              onSave:     onSave,
-              onReload:   onReload,
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Details'),
-                  Tab(text: 'Items'),
-                ],
-              ),
+            body: NestedScrollView(
+              headerSliverBuilder: (ctx, _) => [
+                DocTypeFormHeader(
+                  title:      title,
+                  canSave:    isDirty,
+                  docStatus:  entry?.docstatus ?? 0,
+                  isSaving:   isSaving,
+                  saveResult: saveResult,
+                  onSave:     onSave,
+                  onReload:   onReload,
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Details'),
+                      Tab(text: 'Items'),
+                    ],
+                  ),
+                ),
+              ],
+              body: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : entry == null
+                      ? const Center(child: Text('Material request not found.'))
+                      : TabBarView(
+                          children: [
+                            _buildDetailsTab(context),
+                            _buildItemsTab(context, isEditable),
+                          ],
+                        ),
             ),
-            body: Builder(builder: (context) {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (entry == null) {
-                return const Center(child: Text('Material request not found.'));
-              }
-              return TabBarView(
-                children: [
-                  _buildDetailsTab(context),
-                  _buildItemsTab(context, isEditable),
-                ],
-              );
-            }),
           ),
         ),
       );

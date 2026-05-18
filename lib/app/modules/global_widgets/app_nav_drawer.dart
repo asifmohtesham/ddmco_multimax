@@ -22,6 +22,7 @@ List<String> _extractRoutes(List<Widget> widgets) {
     } else if (widget is Column) {
       routes.addAll(_extractRoutes(widget.children));
     }
+    // _NavSubheading is purely decorative — no routes to extract.
   }
   return routes;
 }
@@ -32,7 +33,6 @@ List<String> _extractRoutes(List<Widget> widgets) {
 
 class AppNavDrawerController extends GetxController {
   final isUserMenuOpen  = false.obs;
-  // Persists each _ModuleGroup's open/closed state by title.
   final expandedGroups  = <String, bool>{}.obs;
 
   void toggleUserMenu() => isUserMenuOpen.toggle();
@@ -68,14 +68,13 @@ class AppNavDrawer extends StatelessWidget {
         backgroundColor: Colors.white,
         child: Column(
           children: [
-            // ── User header ─────────────────────────────────────────────────
+            // ── User header ──────────────────────────────────────────────────────────────
             Obx(() {
               final user   = authController.currentUser.value;
               final letter = (user?.name.isNotEmpty == true)
                   ? user!.name[0].toUpperCase()
                   : 'G';
 
-              // Build the subtitle: designation · department (both optional)
               final parts = [
                 if (user?.designation?.isNotEmpty == true) user!.designation!,
                 if (user?.department?.isNotEmpty  == true) user!.department!,
@@ -94,7 +93,7 @@ class AppNavDrawer extends StatelessWidget {
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 18),
                 ),
-                // Show designation · department when available; fall back to email
+                // AFTER — add employeeId row
                 accountEmail: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -106,14 +105,17 @@ class AppNavDrawer extends StatelessWidget {
                     if (parts.isNotEmpty)
                       Text(
                         subtitle,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 11),
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
+                    if (user?.employeeId?.isNotEmpty == true)
+                      Text(
+                        'Employee: ${user!.employeeId}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
                       ),
                   ],
                 ),
                 currentAccountPicture: CircleAvatar(
                   backgroundColor: Colors.white,
-                  // Show real avatar when available; fall back to initial letter
                   backgroundImage: (user?.image?.isNotEmpty == true)
                       ? NetworkImage(user!.image!)
                       : null,
@@ -133,7 +135,7 @@ class AppNavDrawer extends StatelessWidget {
               );
             }),
 
-            // ── Scrollable menu ──────────────────────────────────────────
+            // ── Scrollable menu ────────────────────────────────────────────────────────
             Expanded(
               child: Obx(() {
                 if (drawerController.isUserMenuOpen.value) {
@@ -193,8 +195,6 @@ class AppNavDrawer extends StatelessWidget {
                 return ListView(
                   padding: const EdgeInsets.symmetric(vertical: 12.0),
                   children: [
-                    // Dashboard uses _defaultTap: closes drawer then navigates
-                    // only when not already on /home. No custom onTap needed.
                     _DrawerItem(
                       icon: Icons.dashboard_rounded,
                       title: 'Dashboard',
@@ -231,7 +231,7 @@ class AppNavDrawer extends StatelessWidget {
                           doctype: 'Item',
                           loading: skeleton,
                           child: _DrawerItem(
-                            title: 'Item Master',
+                            title: 'Item',
                             icon: Icons.category_rounded,
                             route: AppRoutes.ITEM,
                             currentRoute: currentRoute,
@@ -286,6 +286,20 @@ class AppNavDrawer extends StatelessWidget {
                             route: AppRoutes.PACKING_SLIP,
                             currentRoute: currentRoute,
                           ),
+                        ),
+                        // ── Stock > Reports ──────────────────────────────────────
+                        const _NavSubheading('Reports'),
+                        _DrawerItem(
+                          title: 'Batch-Wise Balance',
+                          icon: Icons.history_toggle_off_rounded,
+                          route: AppRoutes.BATCH_WISE_BALANCE,
+                          currentRoute: currentRoute,
+                        ),
+                        _DrawerItem(
+                          title:        'Item Variant Details',
+                          icon:         Icons.style_outlined,
+                          route:        AppRoutes.ITEM_VARIANT_DETAILS,
+                          currentRoute: currentRoute,
                         ),
                       ],
                     ),
@@ -356,6 +370,20 @@ class AppNavDrawer extends StatelessWidget {
                             route: AppRoutes.JOB_CARD,
                             currentRoute: currentRoute,
                           ),
+                        ),
+                        // ── Manufacturing > Reports ─────────────────────────────
+                        const _NavSubheading('Reports'),
+                        _DrawerItem(
+                          title: 'BOM Search',
+                          icon: Icons.manage_search_rounded,
+                          route: AppRoutes.BOM_SEARCH,
+                          currentRoute: currentRoute,
+                        ),
+                        _DrawerItem(                                   // ← NEW
+                          title: 'Job Card Summary',
+                          icon: Icons.summarize_outlined,
+                          route: AppRoutes.JOB_CARD_SUMMARY,
+                          currentRoute: currentRoute,
                         ),
                       ],
                     ),
@@ -495,8 +523,6 @@ class _ModuleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Persistent state: use stored value if present, else auto-expand
-    // when a child route is active.
     final initialExpanded =
         drawerController.isGroupExpanded(title, defaultValue: _hasActiveChild);
 
@@ -525,6 +551,52 @@ class _ModuleGroup extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// _NavSubheading — flat category label used inside _ModuleGroup children
+// ---------------------------------------------------------------------------
+
+/// A non-interactive label + hairline divider used to visually group
+/// items inside a [_ModuleGroup] without adding another expand/collapse
+/// interaction level.
+///
+/// Example:
+/// ```dart
+/// const _NavSubheading('Reports'),
+/// _DrawerItem(title: 'Batch-Wise Balance', ...),
+/// ```
+class _NavSubheading extends StatelessWidget {
+  final String label;
+  const _NavSubheading(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 16, 2),
+      child: Row(
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey.shade500,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Divider(
+              height: 1,
+              thickness: 1,
+              color: Colors.grey.shade200,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // _DrawerItem
 // ---------------------------------------------------------------------------
 
@@ -534,10 +606,6 @@ class _DrawerItem extends StatelessWidget {
   final String   route;
   final String   currentRoute;
 
-  /// Optional override. Receives the widget's own [BuildContext] so
-  /// Navigator.of(ctx).pop() is always available without Get.context.
-  /// Provide this only when extra side-effects are needed alongside
-  /// the default close-then-navigate behaviour.
   final void Function(BuildContext ctx)? onTap;
 
   const _DrawerItem({
@@ -550,8 +618,8 @@ class _DrawerItem extends StatelessWidget {
 
   void _defaultTap(BuildContext ctx) {
     HapticFeedback.lightImpact();
-    Navigator.of(ctx).pop();                               // close drawer safely
-    if (route.isNotEmpty && Get.currentRoute != route) {   // same-route guard
+    Navigator.of(ctx).pop();
+    if (route.isNotEmpty && Get.currentRoute != route) {
       Get.toNamed(route);
     }
   }
@@ -581,7 +649,6 @@ class _DrawerItem extends StatelessWidget {
                   ? primaryColor.withValues(alpha: 0.08)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
-              // Left-edge accent bar replaces the trailing dot indicator
               border: Border(
                 left: BorderSide(
                   color: isSelected ? primaryColor : Colors.transparent,
@@ -617,7 +684,6 @@ class _DrawerItem extends StatelessWidget {
                   letterSpacing: 0.2,
                 ),
               ),
-              // Trailing dot removed — left border is the selection indicator
             ),
           ),
         ),

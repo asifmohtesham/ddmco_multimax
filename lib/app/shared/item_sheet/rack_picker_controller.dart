@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'rack_location.dart';
 
 // ── SufficiencyStatus ─────────────────────────────────────────────────────────
@@ -86,6 +90,13 @@ class RackPickerEntry {
 /// On-demand GetX controller that fetches and sorts rack availability data
 /// for display in [RackPickerSheet].
 ///
+/// ## Data source
+/// Uses [ApiProvider.getStockBalanceWithDimension] (Stock Balance report)
+/// with `show_variant_attributes=1` and `show_dimension_wise_stock=1`.
+/// The trailing Total row returned by Frappe is automatically discarded.
+/// Falls back to [fallbackMap] (pre-loaded rackStockMap from the item
+/// sheet) if the live fetch returns empty.
+///
 /// ## Instantiation
 /// Created by the picker button in [ValidatedRackField] via `Get.put()`
 /// with a unique tag so multiple sheets (source + target in SE) can coexist:
@@ -100,7 +111,7 @@ class RackPickerEntry {
 /// ## Usage
 /// ```dart
 /// final ctrl = Get.put(RackPickerController(), tag: tag);
-/// await ctrl.load(
+/// ctrl.load(
 ///   itemCode:     'ITEM-001',
 ///   batchNo:      'BATCH-001',
 ///   warehouse:    'WH-DXB1 - KA',
@@ -114,7 +125,7 @@ class RackPickerController extends GetxController {
 
   // ── Observable state ─────────────────────────────────────────────────────
 
-  /// Whether a Stock Ledger fetch is in progress.
+  /// Whether a Stock Balance fetch is in progress.
   var isLoading = false.obs;
 
   /// Full sorted list of rack entries (all warehouses).
@@ -124,8 +135,9 @@ class RackPickerController extends GetxController {
   /// The rack currently written into the rack field (may be empty).
   var selectedRack = ''.obs;
 
-  /// Non-null when the Stock Ledger fetch failed and the picker fell back
-  /// to [rackStockMap]. Shown as a subtle info banner in the sheet.
+  /// Non-null when the Stock Balance fetch failed or returned empty and the
+  /// picker fell back to [fallbackMap]. Shown as a subtle info banner in
+  /// the sheet.
   var usedFallback = false.obs;
 
   /// Whether to restrict the visible list to racks whose warehouse matches
@@ -167,9 +179,12 @@ class RackPickerController extends GetxController {
 
   // ── load() ─────────────────────────────────────────────────────────────────
 
-  /// Fetches rack availability data and populates [entries].
+  /// Fetches rack availability from the Stock Balance report and populates
+  /// [entries].
   ///
-  /// Call this immediately after `Get.put()`, before showing the sheet.
+  /// Call this immediately after `Get.put()` without awaiting — the sheet
+  /// opens immediately and its [isLoading] spinner resolves when the fetch
+  /// completes.
   ///
   /// Parameters:
   /// - [itemCode]    : ERPNext item code.
@@ -179,7 +194,7 @@ class RackPickerController extends GetxController {
   /// - [currentRack] : Rack already written into the rack field; shown as
   ///                   selected (highlighted) in the picker list.
   /// - [fallbackMap] : [ItemSheetControllerBase.rackStockMap] — used when
-  ///                   Stock Ledger returns an empty map.
+  ///                   the Stock Balance report returns an empty result.
   Future<void> load({
     required String              itemCode,
     required String              batchNo,
@@ -192,37 +207,44 @@ class RackPickerController extends GetxController {
     _batchNo      = batchNo;
     _warehouse    = warehouse;
     _requestedQty = requestedQty;
-    selectedRack.value     = currentRack;
-    usedFallback.value     = false;
+    selectedRack.value      = currentRack;
+    usedFallback.value      = false;
     filterByWarehouse.value = true;   // reset to On on every fresh load
-    isLoading.value        = true;
+    isLoading.value         = true;
 
     try {
-      // ── 1. Primary: Stock Ledger (per-batch per-rack) ───────────────────
-      Map<String, double> stockMap = {};
+      // ── 1. Primary: Stock Balance with Dimension (per-rack qty) ──────────
+      // getStockBalanceWithDimension sends show_variant_attributes=1 and
+      // show_dimension_wise_stock=1, and discards the trailing Total row.
+      // Returns rows: [{'rack': 'KA-WH-DXB1-101A', 'qty': 12.0}, ...]
+      final rows = await _api.getStockBalanceWithDimension(
+        itemCode:  itemCode,
+        warehouse: warehouse.isNotEmpty ? warehouse : null,
+        // batchNo:   batchNo.isNotEmpty   ? batchNo   : null,
+      );
 
-      if (batchNo.isNotEmpty) {
-        stockMap = await _api.getRackBatchStock(
-          itemCode:  itemCode,
-          batchNo:   batchNo,
-          warehouse: warehouse,
-        );
+      // Collapse rows into a {rackId → qty} map (sum duplicate rack entries).
+      final liveMap = <String, double>{};
+      for (final row in rows.whereType<Map<String, dynamic>>()) {
+        final rack = (row['rack'] ?? '').toString().trim();
+        if (rack.isEmpty) continue;
+        final qty = (row['qty'] as num?)?.toDouble() ?? 0.0;
+        liveMap[rack] = (liveMap[rack] ?? 0.0) + qty;
       }
 
-      // ── 2. Fallback: rackStockMap (Stock Balance, already loaded) ───────
-      // Merge strategy: fallbackMap fills the base, stockMap overwrites
-      // where present — giving the most accurate per-batch value per rack.
-      if (stockMap.isEmpty) {
+      // ── 2. Merge / fallback ───────────────────────────────────────────────
+      // If live fetch returned nothing, fall back to the pre-loaded
+      // rackStockMap (already fetched by preloadRackStockMap).
+      Map<String, double> stockMap;
+      if (liveMap.isEmpty) {
         usedFallback.value = true;
         stockMap = Map<String, double>.from(fallbackMap);
       } else {
-        // Merge: start with fallback (broader), overwrite with ledger data.
-        final merged = Map<String, double>.from(fallbackMap);
-        merged.addAll(stockMap);
-        stockMap = merged;
+        // Start with fallback (broader coverage), overwrite with live data.
+        stockMap = Map<String, double>.from(fallbackMap)..addAll(liveMap);
       }
 
-      // ── 3. Build + sort entries ────────────────────────────────────────────
+      // ── 3. Build + sort entries ───────────────────────────────────────────
       final built = stockMap.entries.map((e) {
         return RackPickerEntry(
           rackName:     e.key,
@@ -232,6 +254,19 @@ class RackPickerController extends GetxController {
         );
       }).toList();
 
+      built.sort(_compareEntries);
+      entries.assignAll(built);
+    } catch (_) {
+      // On any error, surface fallback data so the sheet is never fully empty.
+      usedFallback.value = true;
+      final built = fallbackMap.entries.map((e) {
+        return RackPickerEntry(
+          rackName:     e.key,
+          location:     RackLocation.tryParse(e.key),
+          availableQty: e.value,
+          requestedQty: requestedQty,
+        );
+      }).toList();
       built.sort(_compareEntries);
       entries.assignAll(built);
     } finally {
@@ -284,4 +319,52 @@ class RackPickerController extends GetxController {
   /// Count of racks with any stock (including low) in the full list.
   int get withStockCount =>
       entries.where((e) => e.availableQty > 0).length;
+}
+
+/// Static rack-picker lifecycle utility.
+///
+/// Registers a scoped [RackPickerController], presents [RackPickerSheet],
+/// calls [onSelected] with the picked rack, then disposes the controller
+/// after the sheet closes. Used by both [SharedSourceRackField] and
+/// [SharedTargetRackField] to avoid duplicating the lifecycle boilerplate.
+abstract final class RackPickerLauncher {
+  /// Opens a [RackPickerSheet] for [warehouse] + [itemCode] + [batchNo],
+  /// calls [onSelected] with the chosen rack ID, and disposes the scoped
+  /// [RackPickerController] after the sheet closes.
+  ///
+  /// Both [SharedSourceRackField] and [SharedTargetRackField] delegate here
+  /// so the picker-lifecycle boilerplate is not duplicated.
+  static Future<void> open(
+      BuildContext context, {
+        required String warehouse,
+        required String itemCode,
+        required String batchNo,
+        required double requestedQty,
+        required String currentRack,
+        required Map<String, double> fallbackMap,
+        required void Function(String rack) onSelected,
+      }) async {
+    final tag = 'rack_picker_${DateTime.now().microsecondsSinceEpoch}';
+    final ctrl = Get.put(RackPickerController(), tag: tag);
+    unawaited(ctrl.load(
+      itemCode:     itemCode,
+      batchNo:      batchNo,
+      warehouse:    warehouse,
+      requestedQty: requestedQty,
+      currentRack:  currentRack,
+      fallbackMap:  fallbackMap,
+    ));
+    await Get.bottomSheet(
+      RackPickerSheet(
+        pickerTag:  tag,
+        onSelected: onSelected,
+      ),
+      isScrollControlled: true,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Get.isRegistered<RackPickerController>(tag: tag)) {
+        Get.delete<RackPickerController>(tag: tag);
+      }
+    });
+  }
 }

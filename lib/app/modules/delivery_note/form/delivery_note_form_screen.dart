@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
@@ -17,73 +16,60 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() => PopScope(
-          canPop: !controller.isDirty.value,
-          onPopInvokedWithResult: (didPop, result) async {
-            if (didPop) return;
-            await controller.confirmDiscard();
-          },
-          child: DefaultTabController(
-            length: 2,
-            child: Scaffold(
-              appBar: MainAppBar(
-                title:   controller.deliveryNote.value?.name ?? 'Loading...',
-                status:  controller.deliveryNote.value?.status,
-                isDirty: controller.isDirty.value,
-                onReload: (controller.mode != 'new' &&
-                        !controller.isDirty.value)
-                    ? controller.reloadDocument
-                    : null,
-                actions: [
-                  Obx(() {
-                    if (controller.deliveryNote.value?.docstatus == 1) {
-                      return const SizedBox.shrink();
-                    }
-                    final canSave =
-                        controller.isDirty.value &&
-                        (controller.deliveryNote.value?.docstatus == 0);
-                    return SaveIconButton(
-                      isSaving:   controller.isSaving.value,
-                      saveResult: controller.saveResult.value,
-                      isDirty:    canSave,
-                      onPressed:  canSave
-                          ? controller.saveDeliveryNote
-                          : null,
-                    );
-                  }),
-                ],
-                bottom: const TabBar(
-                  tabs: [
-                    Tab(text: 'Details'),
-                    Tab(text: 'Items'),
-                  ],
-                ),
-              ),
-              body: Obx(() {
-                if (controller.isLoading.value &&
-                    controller.deliveryNote.value == null) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final note = controller.deliveryNote.value;
-                if (note == null) {
-                  return const Center(
-                      child: Text('Delivery note not found.'));
-                }
-                return SafeArea(
-                  child: TabBarView(
-                    children: [
-                      _buildDetailsView(note),
-                      _buildItemsView(),
+    return Obx(() {
+      final note       = controller.deliveryNote.value;
+      final isDirty    = controller.isDirty.value;
+      final isSaving   = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading  = controller.isLoading.value;
+
+      return PopScope(
+        canPop: !isDirty,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await controller.confirmDiscard();
+        },
+        child: DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            body: NestedScrollView(
+              headerSliverBuilder: (ctx, _) => [
+                DocTypeFormHeader(
+                  title:      note?.name ?? 'Loading...',
+                  canSave:    isDirty,
+                  docStatus:  note?.docstatus ?? 0,
+                  isSaving:   isSaving,
+                  saveResult: saveResult,
+                  onSave:     isDirty ? controller.saveDeliveryNote : null,
+                  onReload: (controller.mode != 'new' && !isDirty)
+                      ? controller.reloadDocument
+                      : null,
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Details'),
+                      Tab(text: 'Items'),
                     ],
                   ),
-                );
-              }),
+                ),
+              ],
+              body: (isLoading && note == null)
+                  ? const Center(child: CircularProgressIndicator())
+                  : note == null
+                      ? const Center(child: Text('Delivery note not found.'))
+                      : TabBarView(
+                          children: [
+                            _buildDetailsView(context, note),
+                            _buildItemsView(context),
+                          ],
+                        ),
             ),
           ),
-        ));
+        ),
+      );
+    });
   }
 
-  // ── Banner helper ──────────────────────────────────────────────────────────────────
+  // ── Banner helper ─────────────────────────────────────────────────────────────
 
   Widget _buildBanner() {
     return Obx(() => InlineBanner(
@@ -93,9 +79,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         ));
   }
 
-  // ── Details tab ────────────────────────────────────────────────────────────────
+  // ── Details tab ───────────────────────────────────────────────────────────────
 
-  Widget _buildDetailsView(dynamic note) {
+  Widget _buildDetailsView(BuildContext context, dynamic note) {
+    final cs = Theme.of(context).colorScheme;
     final bool isEditable = note.docstatus == 0;
 
     return SingleChildScrollView(
@@ -105,6 +92,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         children: [
           _buildBanner(),
           _buildSectionCard(
+            context: context,
             title: 'General Information',
             children: [
               if (note.name != 'New Delivery Note') ...[
@@ -115,13 +103,14 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Delivery Note ID',
+                          Text('Delivery Note ID',
                               style: TextStyle(
-                                  color: Colors.grey, fontSize: 12)),
+                                  color: cs.onSurfaceVariant, fontSize: 12)),
                           Text(note.name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 16)),
+                                  fontSize: 16,
+                                  color: cs.onSurface)),
                         ],
                       ),
                     ),
@@ -143,7 +132,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 14),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: cs.surface,
                       errorText: controller.customerError.value,
                     ),
                   )),
@@ -151,6 +140,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           ),
           const SizedBox(height: 16),
           _buildSectionCard(
+            context: context,
             title: 'Settings',
             children: [
               Obx(() => DropdownButtonFormField<String>(
@@ -179,17 +169,18 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           const SizedBox(height: 16),
           if (note.poNo != null && note.poNo!.isNotEmpty)
             _buildSectionCard(
+              context: context,
               title: 'References',
               children: [
                 TextFormField(
                   initialValue: note.poNo,
                   readOnly: true,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Purchase Order (PO)',
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
                     prefixIcon: Icon(Icons.receipt_long_outlined,
-                        color: Colors.blueGrey),
-                    contentPadding: EdgeInsets.symmetric(
+                        color: cs.secondary),
+                    contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 14),
                   ),
                 ),
@@ -198,10 +189,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           if (note.poNo != null && note.poNo!.isNotEmpty)
             const SizedBox(height: 16),
           _buildSectionCard(
+            context: context,
             title: 'Schedule',
             children: [
               TextFormField(
-                initialValue: note.postingDate,
                 readOnly: true,
                 decoration: const InputDecoration(
                   labelText: 'Posting Date',
@@ -215,12 +206,17 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           ),
           const SizedBox(height: 16),
           _buildSectionCard(
+            context: context,
             title: 'Summary',
             children: [
-              _buildSummaryRow('Total Quantity',
-                  '${note.totalQty.toStringAsFixed(2)} Items'),
+              _buildSummaryRow(
+                context,
+                'Total Quantity',
+                '${note.totalQty.toStringAsFixed(2)} Items',
+              ),
               const Divider(),
               _buildSummaryRow(
+                context,
                 'Grand Total',
                 '${FormattingHelper.getCurrencySymbol(note.currency)} '
                     '${note.grandTotal.toStringAsFixed(2)}',
@@ -234,9 +230,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     );
   }
 
-  // ── Items tab ───────────────────────────────────────────────────────────────────
+  // ── Items tab ─────────────────────────────────────────────────────────────────
 
-  Widget _buildItemsView() {
+  Widget _buildItemsView(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Obx(() {
       if (controller.setWarehouse.value == null ||
           controller.setWarehouse.value!.isEmpty) {
@@ -245,15 +242,17 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.store_outlined,
-                  size: 64, color: Colors.grey.shade300),
+                  size: 64, color: cs.outlineVariant),
               const SizedBox(height: 16),
-              const Text('Warehouse Not Selected',
+              Text('Warehouse Not Selected',
                   style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16)),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: cs.onSurface)),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                   'Please go to Details tab and set the Source Warehouse.',
-                  style: TextStyle(color: Colors.grey)),
+                  style: TextStyle(color: cs.onSurfaceVariant)),
             ],
           ),
         );
@@ -263,7 +262,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         children: [
           _buildBanner(),
 
-          // ── Filters ────────────────────────────────────────────────────────
+          // ── Filters ──────────────────────────────────────────────────────
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
@@ -282,7 +281,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
           ),
           const Divider(height: 1),
 
-          // ── Item List ─────────────────────────────────────────────────────
+          // ── Item List ────────────────────────────────────────────────────
           Expanded(
             child: Obx(() {
               if (controller.isLoading.value &&
@@ -322,8 +321,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       controller.itemKeys[item.name!] = GlobalKey();
                     }
                     final isHighlighted =
-                        controller.recentlyAddedItemName.value ==
-                            item.name;
+                        controller.recentlyAddedItemCode.value ==
+                            item.itemCode;
 
                     return Dismissible(
                       key: ValueKey(item.name ?? index),
@@ -340,28 +339,37 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
-                        color: Colors.red.shade400,
-                        child: const Icon(Icons.delete_outline,
-                            color: Colors.white, size: 28),
+                        color: cs.errorContainer,
+                        child: Icon(Icons.delete_outline,
+                            color: cs.onErrorContainer, size: 28),
                       ),
-                      child: DocItemCard(
+                      child: Obx(() => DocItemCard(
                         key:  controller.itemKeys[item.name],
                         data: ItemCardData.fromDeliveryNoteItem(
                           item,
                           isEditable:    isEditable,
                           isHighlighted: isHighlighted,
                         ),
+                        onTap: isEditable
+                            ? () => controller.editItem(item)
+                            : null,
+                        onEdit: isEditable
+                            ? () => controller.editItem(item)
+                            : null,
+                        isLoadingEdit:
+                            controller.loadingForItemName.value ==
+                                item.name,
                         onDelete: isEditable
                             ? () => controller
                                 .confirmAndDeleteItem(item)
                             : null,
-                      ),
+                      )),
                     );
                   },
                 );
               }
 
-              // ── POS-grouped list ───────────────────────────────────
+              // ── POS-grouped list ──────────────────────────────────────
               final posItems       = posUpload.items;
               final groupedDnItems = controller.groupedItems;
 
@@ -433,10 +441,10 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                               GlobalKey();
                         }
                         final isHighlighted =
-                            controller.recentlyAddedItemName.value ==
-                                item.name;
+                            controller.recentlyAddedItemCode.value ==
+                                item.itemCode;
 
-                        return DocItemCard(
+                        return Obx(() => DocItemCard(
                           key:  controller.itemKeys[item.name],
                           data: ItemCardData.fromDeliveryNoteItem(
                             item,
@@ -444,11 +452,20 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                             isEditable:    isEditable,
                             isHighlighted: isHighlighted,
                           ),
+                          onTap: isEditable
+                              ? () => controller.editItem(item)
+                              : null,
+                          onEdit: isEditable
+                              ? () => controller.editItem(item)
+                              : null,
+                          isLoadingEdit:
+                              controller.loadingForItemName.value ==
+                                  item.name,
                           onDelete: isEditable
                               ? () => controller
                                   .confirmAndDeleteItem(item)
                               : null,
-                        );
+                        ));
                       }).toList(),
                     ),
                   );
@@ -457,7 +474,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             }),
           ),
 
-          // ── Scanner ────────────────────────────────────────────────────────
+          // ── Scanner ───────────────────────────────────────────────────────
           Obx(() {
             if (controller.deliveryNote.value?.docstatus != 0)
               return const SizedBox.shrink();
@@ -488,24 +505,28 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
   // ── Shared helpers ────────────────────────────────────────────────────────────
 
-  Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
+  Widget _buildSectionCard({
+    required BuildContext context,
+    required String title,
+    required List<Widget> children,
+  }) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
       margin:    EdgeInsets.zero,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
+          side: BorderSide(color: cs.outlineVariant)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
+                    color: cs.onSurface)),
             const SizedBox(height: 16),
             ...children,
           ],
@@ -514,21 +535,24 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value,
+  Widget _buildSummaryRow(BuildContext context, String label, String value,
       {bool isBold = false}) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
           Text(
             value,
             style: TextStyle(
                 fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
                 fontSize:   isBold ? 16 : 14,
-                color:      isBold ? Colors.black87 : Colors.black54),
+                color:      isBold
+                    ? cs.onSurface
+                    : cs.onSurface.withValues(alpha: 0.6)),
           ),
         ],
       ),

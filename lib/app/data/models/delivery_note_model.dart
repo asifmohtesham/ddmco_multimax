@@ -145,6 +145,7 @@ class DeliveryNoteItem {
   final String? image;
   final double? packedQty;
   final double? companyTotalStock;
+  final int docstatus;
 
   DeliveryNoteItem({
     this.name,
@@ -167,6 +168,7 @@ class DeliveryNoteItem {
     this.image,
     this.packedQty,
     this.companyTotalStock,
+    this.docstatus = 0,
   });
 
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
@@ -193,6 +195,7 @@ class DeliveryNoteItem {
       packedQty: DeliveryNote._parseDouble(json['packed_qty']),
       companyTotalStock:
           DeliveryNote._parseDouble(json['company_total_stock']),
+      docstatus: DeliveryNote._parseInt(json['docstatus']),
     );
   }
 
@@ -233,6 +236,7 @@ class DeliveryNoteItem {
     String? image,
     double? packedQty,
     double? companyTotalStock,
+    int? docstatus,
   }) {
     return DeliveryNoteItem(
       name: name ?? this.name,
@@ -256,6 +260,7 @@ class DeliveryNoteItem {
       image: image ?? this.image,
       packedQty: packedQty ?? this.packedQty,
       companyTotalStock: companyTotalStock ?? this.companyTotalStock,
+      docstatus: docstatus ?? this.docstatus,
     );
   }
 }

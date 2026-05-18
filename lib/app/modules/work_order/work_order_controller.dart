@@ -17,16 +17,22 @@ class WorkOrderController extends GetxController {
   final searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
+  /// Optional title override injected via [Get.arguments] from the Dashboard
+  /// quick-access shortcut (e.g. 'In-Process Orders'). Falls back to null so
+  /// WorkOrderScreen renders its default title when navigated from the drawer.
+  String? pageTitle;
+
   Timer? _debounce;
 
   static const int _pageSize = 20;
   int _start = 0;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────────
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
+    _applyRouteArguments();
     fetchWorkOrders(clear: true);
   }
 
@@ -34,6 +40,23 @@ class WorkOrderController extends GetxController {
   void onClose() {
     _debounce?.cancel();
     super.onClose();
+  }
+
+  // ── Route argument injection ─────────────────────────────────────────────────
+
+  void _applyRouteArguments() {
+    final args = Get.arguments;
+    if (args is! Map) return;
+
+    final rawFilters = args['filters'];
+    if (rawFilters is Map<String, dynamic>) {
+      activeFilters.addAll(rawFilters);
+    }
+
+    final title = args['pageTitle'];
+    if (title is String && title.isNotEmpty) {
+      pageTitle = title;
+    }
   }
 
   // ── Search ───────────────────────────────────────────────────────────────────
@@ -47,6 +70,12 @@ class WorkOrderController extends GetxController {
   }
 
   // ── Filter helpers ───────────────────────────────────────────────────────────
+
+  /// Adds or updates a single filter key and re-fetches the list.
+  void setFilter(String key, dynamic value) {
+    activeFilters[key] = value;
+    fetchWorkOrders(clear: true);
+  }
 
   void removeFilter(String key) {
     activeFilters.remove(key);
@@ -77,8 +106,9 @@ class WorkOrderController extends GetxController {
     }
 
     try {
+      final (:filters, :orFilters) = _buildSearchFilters();
       final response = await _provider.getWorkOrders(
-        filters: _buildFilterMap(),
+        filters: filters,
         limit: _pageSize,
         limitStart: _start,
       );
@@ -97,21 +127,35 @@ class WorkOrderController extends GetxController {
     }
   }
 
-  // ── Filter map builder ───────────────────────────────────────────────────────
-  // Produces a flat Map<String,dynamic> compatible with the provider signature.
-  // A name search is injected as a 'like' operator tuple so the API layer can
-  // encode it as ["name","like","%query%"].
-
-  Map<String, dynamic> _buildFilterMap() {
+  // ── Filter / OR-filter builder ────────────────────────────────────────────────
+  //
+  // activeFilters  → AND filters (status, production_item, owner, etc.)
+  // searchQuery    → OR filters across all card-visible fields:
+  //                    name, item_name, bom_no, status
+  //
+  ({Map<String, dynamic> filters, Map<String, dynamic>? orFilters})
+      _buildSearchFilters() {
     final f = <String, dynamic>{};
-    if (searchQuery.value.isNotEmpty) {
-      f['name'] = ['like', '%${searchQuery.value}%'];
+    for (final entry in activeFilters.entries) {
+      final val = entry.value;
+      f[entry.key] = val is List ? val : ['=', val];
     }
-    f.addAll(activeFilters);
-    return f;
+
+    Map<String, dynamic>? or;
+    if (searchQuery.value.isNotEmpty) {
+      final q = '%${searchQuery.value}%';
+      or = {
+        'name':      ['like', q],
+        'item_name': ['like', q],
+        'bom_no':    ['like', q],
+        'status':    ['like', q],
+      };
+    }
+
+    return (filters: f.isEmpty ? {} : f, orFilters: or);
   }
 
-  // ── KPIs ─────────────────────────────────────────────────────────────────────
+  // ── KPIs ────────────────────────────────────────────────────────────────────
 
   int get totalCount => workOrders.length;
 

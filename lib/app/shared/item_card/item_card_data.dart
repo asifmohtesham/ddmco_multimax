@@ -7,93 +7,84 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 /// Canonical, immutable data contract for a single line-item card
 /// across all five DocTypes (PO, PR, SE, DN, PS).
 ///
-/// The shared [DocItemCard] widget (Phase 2) accepts only this type,
-/// enforcing Interface Segregation: no widget ever needs to import
-/// a DocType model directly.
+/// Field-test decisions (C11):
+///   • Rate, Amount     — suppressed globally (null in all factories)
+///   • Warehouse fields — suppressed globally (null in all factories)
+///   • Variant Of       — now mapped in all five factories
 ///
-/// Construction:
-///   Use the named factory constructors to map a DocType item model
-///   to this contract in a single, auditable location.
+/// The fields themselves are retained in the model for potential future
+/// re-use; they are simply not populated by any factory at this time.
+/// Declares which rack chips DocItemCard should render for this row.
 ///
-///   ItemCardData.fromPurchaseOrderItem(item, isEditable: editable)
-///   ItemCardData.fromPurchaseReceiptItem(item, ...)
-///   ItemCardData.fromStockEntryItem(item, ...)
-///   ItemCardData.fromDeliveryNoteItem(item, ...)
-///   ItemCardData.fromPackingSlipItem(item, ...)
+/// The widget uses this enum — never raw null-checks — to decide layout.
+enum RackDisplayMode {
+  /// No rack chips shown (PO, PS, any DocType without rack tracking).
+  none,
+
+  /// Single chip labelled "Target Rack" — receipt flows (PR, SE Material Receipt).
+  targetOnly,
+
+  /// Single chip labelled "Source Rack" — issue / outgoing flows (SE Material Issue, DN).
+  sourceOnly,
+
+  /// Two chips "Source Rack → Target Rack" — transfer flows (SE Material Transfer).
+  sourceAndTarget,
+}
+
 class ItemCardData {
-  // ── Identity ───────────────────────────────────────────────────────────────────────
+  // ── Identity ──────────────────────────────────────────────────────────────
 
-  /// ERPNext row `name` (server-assigned UUID). Used as the stable Dismissible
-  /// key and for controller look-ups. Null for locally-created rows not yet
-  /// saved to the server.
   final String? rowName;
+  final int?    index;
 
-  /// 0-based position within a POS-Upload group.  When non-null the widget
-  /// renders a numbered CircleAvatar badge to the left of the item code.
-  /// Pass null in flat / non-grouped lists to suppress the badge.
-  final int? index;
+  // ── Core item fields ───────────────────────────────────────────────────────
 
-  // ── Core item fields ─────────────────────────────────────────────────────────────────
-
-  final String itemCode;
+  final String  itemCode;
   final String? itemName;
 
-  /// custom_variant_of — shown as a blueGrey chip beneath the item name.
+  /// custom_variant_of — shown as an identity chip beneath the item name.
+  /// Now mapped across ALL DocTypes (C11).
   final String? variantOf;
 
-  // ── Quantity ─────────────────────────────────────────────────────────────────────────
+  // ── Quantity ───────────────────────────────────────────────────────────────
 
-  /// The quantity on this row (qty / basic_qty / packed_qty depending on
-  /// DocType). Always required; drives the Qty meta chip.
-  final double qty;
-
+  final double  qty;
   final String? uom;
 
-  /// The reference quantity this row is being fulfilled against.
-  /// Drives the DocItemProgressBar (Phase 3):
-  ///   PO  → receivedQty  (qty already received against this PO line)
-  ///   PR  → purchaseOrderQty  (the PO qty this receipt line is linked to)
-  ///   SE  → row.requestedQty via copyWithTargetQty (MR entries only)
-  ///   DN  → null  (DN has no per-item target; omit progress bar)
-  ///   PS  → null  (PS has no per-item target; omit progress bar)
+  /// Drives the DocItemProgressBar:
+  ///   PO → receivedQty, PR → purchaseOrderQty, SE/DN/PS → null
   final double? targetQty;
 
-  // ── Pricing ────────────────────────────────────────────────────────────────────────
+  // ── Pricing (retained in model; suppressed in all factories — C11) ─────────
 
-  /// Unit rate.  Optional — SE uses basicRate, PO/PR/DN use rate.
   final double? rate;
-
-  /// Line total (rate × qty).  Shown only when the DocType provides it.
   final double? amount;
 
-  // ── Warehouse / Location ───────────────────────────────────────────────────────────
+  // ── Warehouse / Location (retained; suppressed in all factories — C11) ─────
 
-  /// Source / single warehouse (PR warehouse, SE s_warehouse).
   final String? warehouse;
-
-  /// Destination warehouse (SE t_warehouse only).
   final String? toWarehouse;
 
-  // ── Batch / Rack ─────────────────────────────────────────────────────────────────
+  // ── Batch / Rack ───────────────────────────────────────────────────────────
 
   final String? batchNo;
-
-  /// Source rack (PR rack, SE rack, DN rack).
   final String? rack;
-
-  /// Destination rack (SE to_rack only).
   final String? toRack;
 
-  // ── Behaviour flags ────────────────────────────────────────────────────────────────
+  // ── Label hints ────────────────────────────────────────────────────────────
 
-  /// Whether edit / delete actions are rendered.
-  /// Typically `docstatus == 0`.
+  final String? qtyLabel;
+  final String? rateLabel;       // null in all factories (C11)
+  final String? warehouseLabel;  // null in all factories (C11)
+
+  // ── Behaviour flags ────────────────────────────────────────────────────────
+
   final bool isEditable;
-
-  /// Drives the yellow AnimatedContainer flash for recently-scanned rows.
   final bool isHighlighted;
 
-  // ── Constructor ──────────────────────────────────────────────────────────────────────
+  final RackDisplayMode rackDisplayMode;
+
+  // ── Constructor ───────────────────────────────────────────────────────────
 
   const ItemCardData({
     this.rowName,
@@ -111,44 +102,50 @@ class ItemCardData {
     this.batchNo,
     this.rack,
     this.toRack,
+    this.qtyLabel,
+    this.rateLabel,
+    this.warehouseLabel,
     required this.isEditable,
     this.isHighlighted = false,
+    this.rackDisplayMode = RackDisplayMode.none,
   });
 
-  // ── copyWith helpers ─────────────────────────────────────────────────────────────────
+  // ── copyWith helpers ───────────────────────────────────────────────────────
 
-  /// Returns a copy of this object with [targetQty] replaced.
-  ///
-  /// Used by [MrItemsView] to inject [row.requestedQty] as the
-  /// fulfilment target after the base factory has already run.
+  /// Returns a copy with [targetQty] replaced.
+  /// Used by MrItemsView to inject row.requestedQty after factory construction.
   ItemCardData copyWithTargetQty(double? targetQty) {
     return ItemCardData(
-      rowName:       rowName,
-      index:         index,
-      itemCode:      itemCode,
-      itemName:      itemName,
-      variantOf:     variantOf,
-      qty:           qty,
-      uom:           uom,
-      targetQty:     targetQty,
-      rate:          rate,
-      amount:        amount,
-      warehouse:     warehouse,
-      toWarehouse:   toWarehouse,
-      batchNo:       batchNo,
-      rack:          rack,
-      toRack:        toRack,
-      isEditable:    isEditable,
-      isHighlighted: isHighlighted,
+      rowName:        rowName,
+      index:          index,
+      itemCode:       itemCode,
+      itemName:       itemName,
+      variantOf:      variantOf,
+      qty:            qty,
+      uom:            uom,
+      targetQty:      targetQty,
+      rate:           rate,
+      amount:         amount,
+      warehouse:      warehouse,
+      toWarehouse:    toWarehouse,
+      batchNo:        batchNo,
+      rack:           rack,
+      toRack:         toRack,
+      qtyLabel:       qtyLabel,
+      rateLabel:      rateLabel,
+      warehouseLabel: warehouseLabel,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
+      rackDisplayMode: rackDisplayMode,
     );
   }
 
-  // ── Named factory constructors ──────────────────────────────────────────────────────────
+  // ── Named factory constructors ─────────────────────────────────────────────
 
   /// Maps a [PurchaseOrderItem] to [ItemCardData].
   ///
-  /// [index]      — pass when rendering inside a POS-Upload group.
-  /// [isEditable] — pass `docstatus == 0` from the parent PO.
+  /// C11: rate, amount suppressed (null).
+  /// variantOf now mapped.
   factory ItemCardData.fromPurchaseOrderItem(
     PurchaseOrderItem item, {
     int? index,
@@ -160,27 +157,43 @@ class ItemCardData {
       index:         index,
       itemCode:      item.itemCode,
       itemName:      item.itemName.isNotEmpty ? item.itemName : null,
+      variantOf:     item.customVariantOf,
       qty:           item.qty,
       uom:           item.uom,
-      // receivedQty is the “done” quantity against this PO line.
-      // The progress bar will show receivedQty / qty.
       targetQty:     item.receivedQty,
-      rate:          item.rate,
-      amount:        item.amount,
-      isEditable:    isEditable,
-      isHighlighted: isHighlighted,
+      // rate / amount suppressed — C11 field-test decision
+      rate:          null,
+      amount:        null,
+      // warehouse suppressed — C11 field-test decision
+      warehouse:      null,
+      toWarehouse:    null,
+      qtyLabel:       'Qty',
+      rateLabel:      null,
+      warehouseLabel: null,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
     );
   }
 
   /// Maps a [PurchaseReceiptItem] to [ItemCardData].
   ///
-  /// [isHighlighted] — pass `recentlyAddedItemCode == item.itemCode`.
+  /// C11: rate, amount, warehouse, warehouseLabel suppressed (null).
   factory ItemCardData.fromPurchaseReceiptItem(
     PurchaseReceiptItem item, {
     int? index,
     required bool isEditable,
     bool isHighlighted = false,
   }) {
+    // purchaseOrderQty is populated by the API on persisted docs.
+    // For locally-added rows (new PR from PO), fall back to poQty which is
+    // set by addItemLocally() via the child controller's poQty field.
+    final double? resolvedTargetQty =
+    (item.purchaseOrderQty != null && item.purchaseOrderQty! > 0)
+        ? item.purchaseOrderQty
+        : (item.poQty != null && item.poQty! > 0)
+        ? item.poQty
+        : null;
+
     return ItemCardData(
       rowName:       item.name,
       index:         index,
@@ -189,28 +202,44 @@ class ItemCardData {
       variantOf:     item.customVariantOf,
       qty:           item.qty,
       uom:           item.uom,
-      // purchaseOrderQty is the PO line qty this receipt row is linked to.
-      // The progress bar shows qty / purchaseOrderQty.
-      targetQty:     item.purchaseOrderQty,
-      rate:          item.rate,
-      warehouse:     item.warehouse,
-      batchNo:       item.batchNo,
-      rack:          item.rack,
-      isEditable:    isEditable,
-      isHighlighted: isHighlighted,
+      targetQty:     resolvedTargetQty,
+      // rate / amount suppressed — C11
+      rate:          null,
+      amount:        null,
+      // warehouse suppressed — C11
+      warehouse:      null,
+      toWarehouse:    null,
+      batchNo:        item.batchNo,
+      rack:           item.rack,
+      toRack:         null,
+      rackDisplayMode: item.rack != null && item.rack!.isNotEmpty
+          ? RackDisplayMode.targetOnly
+          : RackDisplayMode.none,
+      qtyLabel:       'Accepted Qty',
+      rateLabel:      null,
+      warehouseLabel: null,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
     );
   }
 
   /// Maps a [StockEntryItem] to [ItemCardData].
   ///
-  /// For Material Request entries, call [copyWithTargetQty] afterwards
-  /// to inject [row.requestedQty] as the fulfilment target.
+  /// C11: basicRate, sWarehouse, tWarehouse, warehouseLabel suppressed (null).
+  /// For Material Request entries call [copyWithTargetQty] afterwards.
   factory ItemCardData.fromStockEntryItem(
     StockEntryItem item, {
+    required String stockEntryType,
     int? index,
     required bool isEditable,
     bool isHighlighted = false,
   }) {
+    final RackDisplayMode mode = _rackModeForStockEntry(
+      stockEntryType: stockEntryType,
+      rack: item.rack,
+      toRack: item.toRack,
+    );
+
     return ItemCardData(
       rowName:       item.name,
       index:         index,
@@ -218,21 +247,53 @@ class ItemCardData {
       itemName:      item.itemName,
       variantOf:     item.customVariantOf,
       qty:           item.qty,
-      rate:          item.basicRate,
-      warehouse:     item.sWarehouse,
-      toWarehouse:   item.tWarehouse,
-      batchNo:       item.batchNo,
-      rack:          item.rack,
-      toRack:        item.toRack,
-      isEditable:    isEditable,
-      isHighlighted: isHighlighted,
+      // rate / warehouse suppressed — C11
+      rate:          null,
+      amount:        null,
+      warehouse:      null,
+      toWarehouse:    null,
+      batchNo:        item.batchNo,
+      rack:           item.rack,
+      toRack:         item.toRack,
+      rackDisplayMode: mode,
+      qtyLabel:       'Qty',
+      rateLabel:      null,
+      warehouseLabel: null,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
     );
+  }
+
+  /// Derives the correct rack display mode from the SE's stockEntryType string.
+  static RackDisplayMode _rackModeForStockEntry({
+    required String  stockEntryType,
+    required String? rack,
+    required String? toRack,
+  }) {
+    final hasRack   = rack   != null && rack.isNotEmpty;
+    final hasToRack = toRack != null && toRack.isNotEmpty;
+
+    switch (stockEntryType) {
+      case 'Material Receipt':
+      case 'Manufacture':       // FG row arrives into target rack
+        return hasRack ? RackDisplayMode.targetOnly : RackDisplayMode.none;
+
+      case 'Material Transfer':
+      case 'Material Transfer for Manufacture':
+        if (!hasRack) return RackDisplayMode.none;
+        return hasToRack
+            ? RackDisplayMode.sourceAndTarget
+            : RackDisplayMode.sourceOnly;
+
+      case 'Material Issue':
+      default:
+        return hasRack ? RackDisplayMode.sourceOnly : RackDisplayMode.none;
+    }
   }
 
   /// Maps a [DeliveryNoteItem] to [ItemCardData].
   ///
-  /// [isHighlighted] — pass the `recentlyAdded` logic result from the
-  ///   controller so the widget remains stateless.
+  /// C11: rate, amount, warehouse, warehouseLabel suppressed (null).
   factory ItemCardData.fromDeliveryNoteItem(
     DeliveryNoteItem item, {
     int? index,
@@ -246,15 +307,31 @@ class ItemCardData {
       itemName:      item.itemName,
       variantOf:     item.customVariantOf,
       qty:           item.qty,
-      batchNo:       item.batchNo,
-      rack:          item.rack,
-      // DN has no per-item target qty — progress bar is omitted.
-      isEditable:    isEditable,
-      isHighlighted: isHighlighted,
+      // rate / amount suppressed — C11
+      rate:          null,
+      amount:        null,
+      // warehouse suppressed — C11
+      warehouse:      null,
+      toWarehouse:    null,
+      batchNo:        item.batchNo,
+      rack:           item.rack,
+      toRack:         null,
+      rackDisplayMode: item.rack != null && item.rack!.isNotEmpty
+          ? RackDisplayMode.sourceOnly
+          : RackDisplayMode.none,
+      qtyLabel:       'Qty',
+      rateLabel:      null,
+      warehouseLabel: null,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
     );
   }
 
   /// Maps a [PackingSlipItem] to [ItemCardData].
+  ///
+  /// Packing Slip Item is a logistics document with no pricing or
+  /// warehouse fields in the ERPNext schema.
+  /// C11: variantOf now mapped.
   factory ItemCardData.fromPackingSlipItem(
     PackingSlipItem item, {
     int? index,
@@ -262,18 +339,18 @@ class ItemCardData {
     bool isHighlighted = false,
   }) {
     return ItemCardData(
-      rowName:       item.name,
-      index:         index,
-      itemCode:      item.itemCode,
-      itemName:      item.itemName,
-      qty:           item.qty,
-      uom:           item.uom,
-      rate:          item.rate,
-      amount:        item.amount,
-      // DN-linked warehouse is available if the PS model exposes it;
-      // currently null — field can be added to the model in Phase 8.
-      isEditable:    isEditable,
-      isHighlighted: isHighlighted,
+      rowName:        item.name,
+      index:          index,
+      itemCode:       item.itemCode,
+      itemName:       item.itemName,
+      variantOf:      item.customVariantOf,
+      qty:            item.qty,
+      uom:            item.uom,
+      qtyLabel:       'Qty',
+      rateLabel:      null,
+      warehouseLabel: null,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/todo/todo_controller.dart';
 import 'package:multimax/app/modules/todo/widgets/todo_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 
 /// DocTypeListAppBar for the **ToDo** DocType.
 ///
@@ -30,37 +31,12 @@ class ToDoListAppBar extends StatelessWidget {
   List<Widget> _buildFilterChips(
       BuildContext context, ToDoController ctrl) {
     final chips = <Widget>[];
-    final colorScheme = Theme.of(context).colorScheme;
     final af = ctrl.activeFilters;
-
-    Widget chip({
-      required IconData icon,
-      required String label,
-      required VoidCallback onDeleted,
-    }) {
-      return Chip(
-        avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-        label: Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSecondaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        backgroundColor: colorScheme.secondaryContainer,
-        deleteIconColor: colorScheme.onSecondaryContainer,
-        onDeleted: onDeleted,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      );
-    }
 
     // Status
     if (af.containsKey('status') &&
         (af['status'] as String?)?.isNotEmpty == true) {
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.label_outline,
         label: 'Status: ${af['status']}',
         onDeleted: () => ctrl.removeFilter('status'),
@@ -70,7 +46,7 @@ class ToDoListAppBar extends StatelessWidget {
     // Priority
     if (af.containsKey('priority') &&
         (af['priority'] as String?)?.isNotEmpty == true) {
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.flag_outlined,
         label: 'Priority: ${af['priority']}',
         onDeleted: () => ctrl.removeFilter('priority'),
@@ -87,7 +63,7 @@ class ToDoListAppBar extends StatelessWidget {
           (val[1] as List).length == 2) {
         display = '${(val[1] as List)[0]} – ${(val[1] as List)[1]}';
       }
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.calendar_today_outlined,
         label: display,
         onDeleted: () => ctrl.removeFilter('date'),
@@ -103,6 +79,7 @@ class ToDoListAppBar extends StatelessWidget {
 
     return DocTypeListHeader(
       title: 'ToDos',
+      automaticallyImplyLeading: false,
 
       // Global ERPNext search
       searchDoctype: 'ToDo',
@@ -117,7 +94,7 @@ class ToDoListAppBar extends StatelessWidget {
       },
 
       // Filter badge + sheet
-      activeFilters: _ToDoFiltersShim(ctrl),
+      activeFilters: ctrl.activeFilters,
       onFilterTap: _openFilterSheet,
 
       // Active filter chips row
@@ -127,22 +104,3 @@ class ToDoListAppBar extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// _ToDoFiltersShim
-// ---------------------------------------------------------------------------
-// Bridges ToDoController.activeFilters (RxMap<String,dynamic>) to the
-// RxMap<String,dynamic> that DocTypeListHeader reads for badge count.
-
-class _ToDoFiltersShim extends RxMap<String, dynamic> {
-  final ToDoController _ctrl;
-  _ToDoFiltersShim(this._ctrl) : super({});
-
-  @override
-  int get length => _ctrl.activeFilters.length;
-
-  @override
-  bool get isEmpty => _ctrl.activeFilters.isEmpty;
-
-  @override
-  bool get isNotEmpty => _ctrl.activeFilters.isNotEmpty;
-}

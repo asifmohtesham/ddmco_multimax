@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -24,8 +25,9 @@ import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 
-enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch }
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
@@ -37,6 +39,7 @@ class HomeController extends GetxController {
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
+  final BomProvider _bomProvider = Get.find<BomProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
@@ -70,6 +73,13 @@ class HomeController extends GetxController {
   var activeJobCardsCount = 0.obs;
   final int targetJobCards = 40;
 
+  /// Count of active (is_active = 1) BOMs fetched on dashboard load.
+  var activeBomCount = 0.obs;
+
+  /// Active WIP Job Card for the session employee (null if none).
+  final activeWipJcName      = RxnString();
+  final activeWipJcOperation = RxnString();
+
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
   var isRackScanning = false.obs;
@@ -95,11 +105,6 @@ class HomeController extends GetxController {
     _initDashboard();
 
     // ── DataWedge hardware-scan worker ────────────────────────────────────
-    // BarcodeInputWidget runs in manual-input-only mode and no longer
-    // attaches its own ever() worker.  Each consuming controller must
-    // subscribe here.  The route guard ensures this handler is a no-op
-    // while the user has navigated to a sub-screen (DN, SE, PR, etc.)
-    // whose controller has its own dedicated worker.
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
       if (code.isEmpty) return;
       if (Get.currentRoute != AppRoutes.HOME) return;
@@ -170,7 +175,6 @@ class HomeController extends GetxController {
 
   void onUserFilterChanged(User user) {
     selectedFilterUser.value = user;
-    // Use Get.back() to close the bottom sheet.
     Get.back();
     fetchDashboardData();
     fetchPerformanceData();
@@ -186,17 +190,45 @@ class HomeController extends GetxController {
         woFilters['owner'] = filterEmail;
         jcFilters['owner'] = filterEmail;
       }
+
+      // BOM count is company-wide (is_active only — not user-scoped).
+      const Map<String, dynamic> bomFilters = {'is_active': 1, 'docstatus': 1};
+
       final results = await Future.wait([
         _woProvider.getWorkOrders(limit: 0, filters: woFilters),
         _jcProvider.getJobCards(limit: 0, filters: jcFilters),
+        _bomProvider.getBOMs(limit: 0, filters: bomFilters),
       ]);
+
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
-      activeJobCardsCount.value = _getCountFromResponse(results[1]);
+      activeJobCardsCount.value   = _getCountFromResponse(results[1]);
+      activeBomCount.value        = _getCountFromResponse(results[2]);
+
+      await _fetchActiveWipJc();
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
       isLoadingStats.value = false;
     }
+  }
+
+  Future<void> _fetchActiveWipJc() async {
+    final empId = _authController.currentUser.value?.employeeId;
+    if (empId == null || empId.isEmpty) return;
+    try {
+      final res = await _jcProvider.getJobCards(
+        filters: {
+          'status': 'Work In Progress',
+          '__child__Job Card Employee': ['Job Card Employee', 'employee', '=', empId],
+        },
+        limit: 1,
+      );
+      if (res.statusCode == 200) {
+        final list = (res.data['data'] as List?) ?? [];
+        activeWipJcName.value      = list.isNotEmpty ? list.first['name']?.toString() : null;
+        activeWipJcOperation.value = list.isNotEmpty ? list.first['operation']?.toString() : null;
+      }
+    } catch (_) {}
   }
 
   // --- Timeline Logic ---
@@ -370,12 +402,12 @@ class HomeController extends GetxController {
     }
   }
 
-  void _openItemDetailSheet(String itemCode) async {
-    final itemFormController = Get.put(ItemFormController());
-    itemFormController.loadItem(itemCode);
+  void _openItemDetailSheet(String itemCode) {
+    Get.put(ItemTabController());
+    Get.put(ItemFormController())..loadItem(itemCode);
     barcodeController.clear();
 
-    await Get.bottomSheet(
+    Get.bottomSheet(
       FractionallySizedBox(
         heightFactor: 0.9,
         child: ClipRRect(
@@ -385,9 +417,10 @@ class HomeController extends GetxController {
       ),
       isScrollControlled: true,
       enableDrag: true,
-      backgroundColor: Colors.white,
-    );
-    Get.delete<ItemFormController>();
+    ).then((_) {
+      Get.delete<ItemTabController>(force: true);
+      Get.delete<ItemFormController>(force: true);
+    });
   }
 
   Future<void> _handleRackScan(String rackCode) async {
@@ -540,13 +573,10 @@ class HomeController extends GetxController {
       case AppRoutes.WORK_ORDER:       activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 8;  break;
       case AppRoutes.JOB_CARD:         activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 9;  break;
       case AppRoutes.BATCH:            activeScreen.value = ActiveScreen.batch;           selectedDrawerIndex.value = 10; break;
+      case AppRoutes.BOM:              activeScreen.value = ActiveScreen.bom;             selectedDrawerIndex.value = 11; break;
     }
   }
 
-  /// Navigates to [route] only when it differs from the current route,
-  /// preventing GetX from tearing down the active controller on same-route taps.
-  /// Drawer closing is handled by the _DrawerItem onTap / _defaultTap at the
-  /// call site — do NOT call Navigator.pop() here.
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
     if (Get.currentRoute != route) {
@@ -566,4 +596,5 @@ class HomeController extends GetxController {
   void goToWorkOrder()       => changeDrawerPage(8,  AppRoutes.WORK_ORDER);
   void goToJobCard()         => changeDrawerPage(9,  AppRoutes.JOB_CARD);
   void goToBatch()           => changeDrawerPage(10, AppRoutes.BATCH);
+  void goToBOM()             => changeDrawerPage(11, AppRoutes.BOM);
 }

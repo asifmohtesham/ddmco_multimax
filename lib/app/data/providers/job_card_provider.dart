@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -5,18 +6,162 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class JobCardProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  // ── List ───────────────────────────────────────────────────────────────────
+
   Future<Response> getJobCards({
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    Map<String, dynamic>? orFilters,
+    String? groupBy = '',
   }) async {
     return _apiProvider.getDocumentList(
       'Job Card',
       limit: limit,
       limitStart: limitStart,
       filters: filters,
-      fields: ['name', 'work_order', 'operation', 'workstation', 'status', 'for_quantity', 'total_completed_qty', 'docstatus', 'modified', 'posting_date'],
+      orFilters: orFilters,
+      fields: [
+        'name',
+        'work_order',
+        'operation',
+        'operation_id',
+        'workstation',
+        'status',
+        'for_quantity',
+        'total_completed_qty',
+        'process_loss_qty',
+        'docstatus',
+        'modified',
+        'posting_date',
+        'employee',
+      ],
       orderBy: 'modified desc',
+      groupBy: groupBy
+    );
+  }
+
+  // ── Single document ──────────────────────────────────────────────────────
+
+  Future<Response> getJobCard(String name) async =>
+      _apiProvider.getDocument('Job Card', name);
+
+  // ── Time log: add ────────────────────────────────────────────────────────
+
+  Future<Response> addTimeLog({
+    required String jobCardId,
+    required String startTime,
+    String? completeTime,
+    required double completedQty,
+    required List<Map<String, dynamic>> employees,
+    required String status,
+  }) async {
+    final Map<String, dynamic> argsMap = {
+      'job_card_id':   jobCardId,
+      'start_time':    startTime,
+      if (completeTime != null) 'complete_time': completeTime,
+      'completed_qty': completedQty,
+      'employees':     employees,
+      'status':        status,
+    };
+    return _apiProvider.callMethodPost(
+      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
+      params: {'args': json.encode(argsMap)},
+    );
+  }
+
+  // ── Time log: update ─────────────────────────────────────────────────────
+
+  Future<Response> updateTimeLog({
+    required String timeLogName,
+    required String toTime,
+    required double completedQty,
+    String? employee,
+  }) async {
+    final Map<String, dynamic> payload = {
+      'to_time':       toTime,
+      'completed_qty': completedQty,
+      if (employee != null && employee.isNotEmpty) 'employee': employee,
+    };
+    return _apiProvider.updateDocument(
+      'Job Card Time Log',
+      timeLogName,
+      payload,
+    );
+  }
+
+  // ── Time log: delete ─────────────────────────────────────────────────────
+
+  Future<Response> deleteTimeLog(String timeLogName) async =>
+      _apiProvider.deleteDocument('Job Card Time Log', timeLogName);
+
+  Future<Response> touchJobCard(String jobCardName) async =>
+      _apiProvider.updateDocument('Job Card', jobCardName, {});
+
+  // ── Status transitions ────────────────────────────────────────────────
+
+  Future<Response> updateJobCardStatus({
+    required String jobCardId,
+    required String status,
+    required String startTime,
+    String? completeTime,
+    double completedQty = 0,
+    required List<Map<String, dynamic>> employees,
+  }) async {
+    final Map<String, dynamic> argsMap = {
+      'job_card_id':   jobCardId,
+      'start_time':    startTime,
+      'complete_time': completeTime ?? '',
+      'completed_qty': completedQty,
+      'employees':     employees,
+      'status':        status,
+    };
+    return _apiProvider.callMethodPost(
+      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
+      params: {'args': json.encode(argsMap)},
+    );
+  }
+
+  // ── Header fields update ───────────────────────────────────────────────
+
+  /// Persist one or more header-level fields on a draft Job Card.
+  ///
+  /// Supported keys: `workstation`, `employee`, `wip_warehouse`.
+  /// Pass only the field(s) that changed; ERPNext ignores unknown keys.
+  Future<Response> updateJobCardHeaderField({
+    required String jobCardName,
+    required Map<String, dynamic> data,
+  }) async =>
+      _apiProvider.updateDocument('Job Card', jobCardName, data);
+
+  // ── Submission ─────────────────────────────────────────────────────────
+
+  // ── Direct status field update ─────────────────────────────────────────
+
+  /// Sets the `status` field directly on the Job Card document via PATCH.
+  ///
+  /// Used after Pause to force `status = 'On Hold'` since `make_time_log`
+  /// with `status: 'Resume Job'` only closes the time log row but does
+  /// not update the parent document's status field to 'On Hold'.
+  ///
+  /// Valid values: `'Open'`, `'Work In Progress'`, `'On Hold'`,
+  ///              `'Completed'`, `'Cancelled'`.
+  Future<Response> setJobCardStatus(String jobCardName, String status) async =>
+      _apiProvider.updateDocument('Job Card', jobCardName, {'status': status});
+
+  // ── Submission ─────────────────────────────────────────────────────────
+
+  Future<Response> submitJobCard(String name) async =>
+      _apiProvider.submitDocument('Job Card', name);
+
+  /// Fetches all Active employees — used by JobCardFormController
+  /// to populate the employee picker sheet.
+  Future<Response> getActiveEmployees() async {
+    return _apiProvider.getDocumentList(
+      'Employee',
+      filters: {'status': 'Active'},
+      fields: ['name', 'employee_name', 'department'],
+      limit: 0,
     );
   }
 }

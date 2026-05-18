@@ -25,53 +25,52 @@ class PurchaseOrder {
 
   factory PurchaseOrder.fromJson(Map<String, dynamic> json) {
     var itemsList = json['items'] as List? ?? [];
-    List<PurchaseOrderItem> items = itemsList.map((i) => PurchaseOrderItem.fromJson(i)).toList();
+    List<PurchaseOrderItem> items =
+        itemsList.map((i) => PurchaseOrderItem.fromJson(i)).toList();
 
     return PurchaseOrder(
-      name: json['name'] ?? '',
-      supplier: json['supplier'] ?? '',
+      name:            json['name'] ?? '',
+      supplier:        json['supplier'] ?? '',
       transactionDate: json['transaction_date'] ?? '',
-      grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0.0,
-      currency: json['currency'] ?? 'USD',
-      status: json['status'] ?? 'Draft',
-      docstatus: json['docstatus'] as int? ?? 0,
-      modified: json['modified'] ?? '',
-      creation: json['creation'] ?? '',
-      items: items,
+      grandTotal:      (json['grand_total'] as num?)?.toDouble() ?? 0.0,
+      currency:        json['currency'] ?? 'USD',
+      status:          json['status'] ?? 'Draft',
+      docstatus:       json['docstatus'] as int? ?? 0,
+      modified:        json['modified'] ?? '',
+      creation:        json['creation'] ?? '',
+      items:           items,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'supplier': supplier,
+      'supplier':         supplier,
       'transaction_date': transactionDate,
-      'currency': currency,
-      'items': items.map((e) => e.toJson()).toList(),
+      'currency':         currency,
+      'items':            items.map((e) => e.toJson()).toList(),
     };
   }
 }
 
 class PurchaseOrderItem {
   final String? name;
-  final String itemCode;
-  final String itemName;
-  final double qty;
-  final double receivedQty;
-  final double rate;
-  final double amount;
+  final String  itemCode;
+  final String  itemName;
+  final double  qty;
+  final double  receivedQty;
+  final double  rate;
+  final double  amount;
   final String? uom;
   final String? description;
-  final String? scheduleDate; // Added Field
+  final String? scheduleDate;
+  final String? customVariantOf;   // C11a — fetched from Item via custom_variant_of
+  // Metadata
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
   PurchaseOrderItem({
-    this.owner,
-    this.creation,
-    this.modified,
-    this.modifiedBy,
     this.name,
     required this.itemCode,
     required this.itemName,
@@ -81,36 +80,43 @@ class PurchaseOrderItem {
     required this.amount,
     this.uom,
     this.description,
-    this.scheduleDate, // Added
+    this.scheduleDate,
+    this.customVariantOf,          // C11a
+    this.owner,
+    this.creation,
+    this.modified,
+    this.modifiedBy,
   });
 
   factory PurchaseOrderItem.fromJson(Map<String, dynamic> json) {
     return PurchaseOrderItem(
-      owner: json['owner'],
-      creation: json['creation'],
-      modified: json['modified'],
-      modifiedBy: json['modified_by'],
-      name: json['name'],
-      itemCode: json['item_code'] ?? '',
-      itemName: json['item_name'] ?? '',
-      qty: (json['qty'] as num?)?.toDouble() ?? 0.0,
-      receivedQty: (json['received_qty'] as num?)?.toDouble() ?? 0.0,
-      rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-      uom: json['uom'],
-      description: json['description'],
-      scheduleDate: json['schedule_date'], // Added
+      name:            json['name'],
+      itemCode:        json['item_code'] ?? '',
+      itemName:        json['item_name'] ?? '',
+      qty:             (json['qty'] as num?)?.toDouble() ?? 0.0,
+      receivedQty:     (json['received_qty'] as num?)?.toDouble() ?? 0.0,
+      rate:            (json['rate'] as num?)?.toDouble() ?? 0.0,
+      amount:          (json['amount'] as num?)?.toDouble() ?? 0.0,
+      uom:             json['uom'],
+      description:     json['description'],
+      scheduleDate:    json['schedule_date'],
+      customVariantOf: json['custom_variant_of'],   // C11a
+      owner:           json['owner'],
+      creation:        json['creation'],
+      modified:        json['modified'],
+      modifiedBy:      json['modified_by'],
     );
   }
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {
-      'item_code': itemCode,
-      'qty': qty,
-      'rate': rate,
-      'uom': uom,
-      'description': description,
-      'schedule_date': scheduleDate, // Added
+      'item_code':     itemCode,
+      'qty':           qty,
+      'rate':          rate,
+      'uom':           uom,
+      'description':   description,
+      'schedule_date': scheduleDate,
+      // customVariantOf intentionally omitted — read-only fetched field
     };
     if (name != null) data['name'] = name;
     return data;

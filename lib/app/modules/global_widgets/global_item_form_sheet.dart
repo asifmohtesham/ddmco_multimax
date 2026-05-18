@@ -2,22 +2,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
-import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 // ---------------------------------------------------------------------------
 // _AnimatedSaveButton
-//
-// Private widget that owns the three-state animated save button:
-//   idle    — FilledButton with save icon; tappable.
-//   loading — orange; spinner; not tappable.
-//   success — green; check_circle; not tappable (sheet closing in 700 ms).
-//   error   — red; error_outline; not tappable (resets to idle after 1.5 s).
-//
-// All colour and icon transitions use AnimatedContainer + AnimatedSwitcher
-// so there is no explicit AnimationController needed.
 // ---------------------------------------------------------------------------
 class _AnimatedSaveButton extends StatelessWidget {
   final Rx<SaveButtonState> saveButtonState;
@@ -43,14 +35,13 @@ class _AnimatedSaveButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final state        = saveButtonState.value;
-      final rxEnabled    = isSaveEnabledRx?.value ?? true;
-      final canTap       = isSaveEnabled &&
-                           rxEnabled &&
-                           !isLoading &&
-                           state == SaveButtonState.idle;
+      final state     = saveButtonState.value;
+      final rxEnabled = isSaveEnabledRx?.value ?? true;
+      final canTap    = isSaveEnabled &&
+                        rxEnabled &&
+                        !isLoading &&
+                        state == SaveButtonState.idle;
 
-      // ── Colour per state ─────────────────────────────────────────────────────
       final Color bgColor;
       switch (state) {
         case SaveButtonState.loading:
@@ -65,33 +56,23 @@ class _AnimatedSaveButton extends StatelessWidget {
               : Theme.of(context).colorScheme.surfaceContainerHighest;
       }
 
-      // ── Icon / content per state ───────────────────────────────────────────
       final Widget child;
       switch (state) {
         case SaveButtonState.loading:
           child = const SizedBox(
             key: ValueKey('loading'),
-            width: 22,
-            height: 22,
+            width: 22, height: 22,
             child: CircularProgressIndicator(
-              color: Colors.white,
-              strokeWidth: 2.5,
-            ),
+              color: Colors.white, strokeWidth: 2.5),
           );
         case SaveButtonState.success:
           child = const Icon(
             key: ValueKey('success'),
-            Icons.check_circle_outline,
-            color: Colors.white,
-            size: 24,
-          );
+            Icons.check_circle_outline, color: Colors.white, size: 24);
         case SaveButtonState.error:
           child = const Icon(
             key: ValueKey('error'),
-            Icons.error_outline,
-            color: Colors.white,
-            size: 24,
-          );
+            Icons.error_outline, color: Colors.white, size: 24);
         case SaveButtonState.idle:
           child = Row(
             key: const ValueKey('idle'),
@@ -99,7 +80,9 @@ class _AnimatedSaveButton extends StatelessWidget {
             children: [
               Icon(
                 Icons.save_outlined,
-                color: canTap ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                color: canTap
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 size: 20,
               ),
               const SizedBox(width: 8),
@@ -108,7 +91,9 @@ class _AnimatedSaveButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: canTap ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: canTap
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -149,6 +134,21 @@ class _AnimatedSaveButton extends StatelessWidget {
   }
 }
 
+/// A fully self-contained item-entry bottom sheet used by every DocType.
+///
+/// ## Qty field
+///
+/// The qty section is driven by [qtyDelegate] (a [QtyFieldDelegate]) and
+/// rendered via [SharedQtyField].  This replaces the former
+/// `QuantityInputWidget` and its five raw sibling params
+/// (`qtyController`, `onIncrement`, `onDecrement`, `qtyInfoText`,
+/// `qtyInfoTooltip`, `isQtyReadOnly`).  All reactive behaviour —
+/// read-only locking, Max-Qty chip, ± stepper, inline error text, and
+/// blur clamping — is handled inside [SharedQtyField] by reading the
+/// delegate's Rx fields directly.
+///
+/// Pass [controller.accentColor] as [qtyAccentColor] so the field
+/// renders with the DocType's brand colour.
 class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
@@ -158,31 +158,31 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String? itemSubtext;
   final List<Widget> customFields;
 
-  final TextEditingController qtyController;
-  final VoidCallback onIncrement;
-  final VoidCallback onDecrement;
-  final String? qtyInfoText;
-  final bool isQtyReadOnly;
+  // ── Qty delegate ──────────────────────────────────────────────────────────
+  /// Drives [SharedQtyField].  Any controller implementing
+  /// [QtyFieldDelegate] (or [QtyFieldWithPlusMinusDelegate]) is accepted.
+  final QtyFieldDelegate qtyDelegate;
 
+  /// Accent colour forwarded to [SharedQtyField] so the field matches the
+  /// DocType's brand colour (e.g. teal for SE, blue for DN).
+  final Color qtyAccentColor;
+
+  // ── Save / delete ──────────────────────────────────────────────────────────
   final Function onSubmit;
   final VoidCallback? onDelete;
 
-  // State driven by parent DocType controller
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
   final bool isLoading;
-
-  // Option-3: animated save button state.
-  // Defaults to idle so callers not yet wired still compile.
   final Rx<SaveButtonState> saveButtonState;
 
-  // Metadata
+  // ── Metadata ───────────────────────────────────────────────────────────────
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
-  // Scan integration
+  // ── Scan footer ────────────────────────────────────────────────────────────
   final Function(String)? onScan;
   final TextEditingController? scanController;
   final bool isScanning;
@@ -198,11 +198,8 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.itemName,
     this.itemSubtext,
     this.customFields = const [],
-    required this.qtyController,
-    required this.onIncrement,
-    required this.onDecrement,
-    this.qtyInfoText,
-    this.isQtyReadOnly = false,
+    required this.qtyDelegate,
+    required this.qtyAccentColor,
     required this.onSubmit,
     this.onDelete,
     this.isSaveEnabled = true,
@@ -216,15 +213,12 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.onScan,
     this.scanController,
     this.isScanning = false,
-  })  : saveButtonState = saveButtonState ?? SaveButtonState.idle.obs {
+  }) : saveButtonState = saveButtonState ?? SaveButtonState.idle.obs {
     _sheetTag = key != null
         ? key.toString()
         : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
   }
 
-  // ---------------------------------------------------------------------------
-  // Static helper — accessible from DocType-specific customFields builders.
-  // ---------------------------------------------------------------------------
   static Widget buildInputGroup({
     required String label,
     required Color color,
@@ -247,6 +241,11 @@ class GlobalItemFormSheet extends StatelessWidget {
           ),
         ),
         Container(
+          // fix(input-group): clip children to the BorderRadius boundary so
+          // that filled TextFormFields (filled:true + OutlineInputBorder) cannot
+          // paint their fillColor outside the rounded corners into the helper-
+          // text reserved slot below the visible border stroke.
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: bgColor ?? color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
@@ -258,26 +257,22 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Internal helpers
-  // ---------------------------------------------------------------------------
-
   ItemFormSheetController get _sheetCtrl =>
       Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
 
-  static void _popSheet(BuildContext context) =>
-      Navigator.of(context).pop();
+  static Future<void> _popSheet(BuildContext context) async {
+    Navigator.of(context).pop();
+  }
 
   Widget _buildMetadataHeader(BuildContext context) {
     if (owner == null &&
         creation == null &&
         modified == null &&
-        modifiedBy == null) {
-      return const SizedBox.shrink();
-    }
-    final theme = Theme.of(context);
+        modifiedBy == null) return const SizedBox.shrink();
+
+    final theme        = Theme.of(context);
     final variantColor = theme.colorScheme.onSurfaceVariant;
-    final style = theme.textTheme.labelSmall?.copyWith(color: variantColor);
+    final style        = theme.textTheme.labelSmall?.copyWith(color: variantColor);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
@@ -285,67 +280,55 @@ class GlobalItemFormSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (owner != null || creation != null)
-            Row(
-              children: [
-                if (owner != null) ...[
-                  Icon(Icons.person_outline, size: 14, color: variantColor),
-                  const SizedBox(width: 4),
-                  Text(owner!,
-                      style:
-                          style?.copyWith(fontWeight: FontWeight.w600)),
-                ],
-                if (owner != null && creation != null)
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6.0),
-                    child: Text('•', style: style),
-                  ),
-                if (creation != null)
-                  Text(
-                    'Created ${FormattingHelper.getRelativeTime(creation)}',
-                    style: style,
-                  ),
+            Row(children: [
+              if (owner != null) ...[
+                Icon(Icons.person_outline, size: 14, color: variantColor),
+                const SizedBox(width: 4),
+                Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
               ],
-            ),
+              if (owner != null && creation != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                  child: Text('•', style: style),
+                ),
+              if (creation != null)
+                Text(
+                  'Created ${FormattingHelper.getRelativeTime(creation)}',
+                  style: style,
+                ),
+            ]),
           if ((modified != null || modifiedBy != null) &&
               (modified != creation || modifiedBy != owner)) ...[
             const SizedBox(height: 4),
-            Row(
-              children: [
-                if (modifiedBy != null) ...[
-                  Icon(Icons.edit_outlined, size: 14, color: variantColor),
-                  const SizedBox(width: 4),
-                  Text(modifiedBy!,
-                      style:
-                          style?.copyWith(fontWeight: FontWeight.w600)),
-                ],
-                if (modifiedBy != null && modified != null)
-                  Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6.0),
-                    child: Text('•', style: style),
-                  ),
-                if (modified != null)
-                  Text(
-                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
-                    style: style,
-                  ),
+            Row(children: [
+              if (modifiedBy != null) ...[
+                Icon(Icons.edit_outlined, size: 14, color: variantColor),
+                const SizedBox(width: 4),
+                Text(modifiedBy!,
+                    style: style?.copyWith(fontWeight: FontWeight.w600)),
               ],
-            ),
+              if (modifiedBy != null && modified != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                  child: Text('•', style: style),
+                ),
+              if (modified != null)
+                Text(
+                  'Modified ${FormattingHelper.getRelativeTime(modified)}',
+                  style: style,
+                ),
+            ]),
           ],
         ],
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Form content — shared between both layout modes.
-  // ---------------------------------------------------------------------------
   List<Widget> _formChildren(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final mediaQuery = MediaQuery.of(context);
-    final bottomPadding = mediaQuery.viewPadding.bottom;
+    final theme            = Theme.of(context);
+    final colorScheme      = theme.colorScheme;
+    final mediaQuery       = MediaQuery.of(context);
+    final bottomPadding    = mediaQuery.viewPadding.bottom;
     final viewInsetsBottom = mediaQuery.viewInsets.bottom;
 
     return [
@@ -366,8 +349,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(6),
@@ -385,9 +367,8 @@ class GlobalItemFormSheet extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   itemName,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: colorScheme.onSurface,
-                  ),
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(color: colorScheme.onSurface),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -418,30 +399,31 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       ),
 
-      QuantityInputWidget(
-        controller: qtyController,
-        onIncrement: onIncrement,
-        onDecrement: onDecrement,
-        isReadOnly: isQtyReadOnly,
-        label: 'Quantity',
-        infoText: qtyInfoText,
+      // ── Quantity input ─────────────────────────────────────────────────────
+      // Driven by QtyFieldDelegate via SharedQtyField.
+      // SharedQtyField reads all reactive state (isQtyReadOnly, qtyError,
+      // qtyInfoText, qtyInfoTooltip, isQtyValid) directly from qtyDelegate
+      // inside its own Obx, so no manual Obx wrapping is needed here.
+      SharedQtyField(
+        c:           qtyDelegate,
+        accentColor: qtyAccentColor,
+        labelText:   'Quantity',
       ),
 
       const SizedBox(height: 32),
 
-      // Option-3: animated save button.
       _AnimatedSaveButton(
-        saveButtonState:  saveButtonState,
-        isSaveEnabled:    isSaveEnabled,
-        isSaveEnabledRx:  isSaveEnabledRx,
-        isLoading:        isLoading,
-        title:            title,
-        onSubmit:         () async {
+        saveButtonState: saveButtonState,
+        isSaveEnabled:   isSaveEnabled,
+        isSaveEnabledRx: isSaveEnabledRx,
+        isLoading:       isLoading,
+        title:           title,
+        onSubmit: () async {
           final result = onSubmit();
           if (result is Future) await result;
         },
-        formKey:          formKey,
-        sheetTag:         _sheetTag,
+        formKey:  formKey,
+        sheetTag: _sheetTag,
       ),
 
       if (onDelete != null) ...[
@@ -449,7 +431,7 @@ class GlobalItemFormSheet extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: TextButton.icon(
-            onPressed: () {
+            onPressed: () async {
               _popSheet(context);
               onDelete!();
             },
@@ -463,23 +445,21 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       ],
 
-      SizedBox(
-        height: math.max(viewInsetsBottom, bottomPadding) + 20,
-      ),
+      SizedBox(height: math.max(viewInsetsBottom, bottomPadding) + 20),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    _sheetCtrl; // register on first build
+    _sheetCtrl;
 
-    final theme = Theme.of(context);
+    final theme       = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final mediaQuery = MediaQuery.of(context);
-    final topPadding = mediaQuery.viewPadding.top;
+    final mediaQuery  = MediaQuery.of(context);
+    final topPadding  = mediaQuery.viewPadding.top;
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
-    // ── Drag handle ────────────────────────────────────────────────────────
+    // Drag handle — sits on the same surface as the sheet body.
     final dragHandle = Container(
       color: colorScheme.surface,
       width: double.infinity,
@@ -495,14 +475,12 @@ class GlobalItemFormSheet extends StatelessWidget {
       ),
     );
 
-    // ── Scan bar (optional, always below form) ──────────────────────────
     final scanBar = onScan != null
         ? Container(
             decoration: BoxDecoration(
-              color: colorScheme.surface,
+              color: colorScheme.surfaceContainer,
               border: Border(
-                top: BorderSide(color: colorScheme.outlineVariant),
-              ),
+                  top: BorderSide(color: colorScheme.outlineVariant)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.05),
@@ -511,8 +489,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ),
               ],
             ),
-            padding: EdgeInsets.fromLTRB(
-                16, 12, 16, bottomPadding + 12),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
             child: BarcodeInputWidget(
               onScan: onScan!,
               controller: scanController,
@@ -523,37 +500,37 @@ class GlobalItemFormSheet extends StatelessWidget {
           )
         : null;
 
-    // ─────────────────────────────────────────────────────────────────────
-    // LAYOUT SWITCH
-    //
-    // scrollController != null → DraggableScrollableSheet path
-    //   The parent provides a finite height (e.g. Stock Entry, Delivery Note).
-    //   Use Expanded + ListView so the form fills and scrolls within that
-    //   bounded space.
-    //
-    // scrollController == null → content-hugging SingleChildScrollView path
-    //   The parent (ConstrainedBox + SingleChildScrollView) provides unbounded
-    //   height to this widget so it can size itself to its content. Using
-    //   Expanded here would crash with "RenderFlex children have non-zero flex
-    //   but incoming height constraints are unbounded".
-    //   Use Column(mainAxisSize: min) + direct children instead.
-    // ─────────────────────────────────────────────────────────────────────
+    // Shared decoration — both branches use identical appearance.
+    final sheetDecoration = BoxDecoration(
+      color: colorScheme.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
+    );
+    final sheetMargin = EdgeInsets.only(top: topPadding + 12);
 
     if (scrollController != null) {
-      // ── Bounded-height path (Stock Entry, Delivery Note) ──────────────────
+      // fix(global-item-sheet): use Flexible(fit: FlexFit.loose) instead of
+      // Expanded so the sheet content-hugs when the ListView is shorter than
+      // the available space, while still allowing full expansion + scrolling
+      // when content overflows (keyboard open, many fields).
+      //
+      // Expanded forces the ListView to fill ALL remaining space in the Column
+      // regardless of mainAxisSize: min — this caused the DN item form sheet
+      // to always expand to full-screen height and leave dead whitespace below
+      // the Remove Item button.
+      //
+      // Removing the flex wrapper entirely is not viable — it would give the
+      // ListView an unbounded height constraint, causing a Flutter layout
+      // error: "Vertical viewport was given unbounded height".
       return Container(
-        margin: EdgeInsets.only(top: topPadding + 12),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(28.0)),
-        ),
+        margin: sheetMargin,
+        decoration: sheetDecoration,
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             dragHandle,
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: Form(
                 key: formKey,
                 child: ListView(
@@ -569,26 +546,30 @@ class GlobalItemFormSheet extends StatelessWidget {
         ),
       );
     } else {
-      // ── Unbounded / content-hugging path (Material Request) ───────────────
-      // No top margin or outer radius here — the parent Material widget in
-      // openItemSheet() already provides the surface colour and border radius.
-      return Form(
-        key: formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            dragHandle,
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _formChildren(context),
+      // Non-scrollable branch: wrap in the same Container so the sheet always
+      // owns its opaque background regardless of the call-site backgroundColor.
+      return Container(
+        margin: sheetMargin,
+        decoration: sheetDecoration,
+        clipBehavior: Clip.antiAlias,
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              dragHandle,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _formChildren(context),
+                ),
               ),
-            ),
-            // if (scanBar != null) scanBar,
-          ],
+              // if (scanBar != null) scanBar,
+            ],
+          ),
         ),
       );
     }

@@ -68,7 +68,12 @@ class PurchaseReceiptPoSelectionSheet extends StatelessWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
-                      onPressed: () => Get.back(),
+                      // Use Navigator.of(context).pop() instead of Get.back().
+                      // Get.back() unconditionally calls Get.closeCurrentSnackbar()
+                      // before popping; when a SnackbarController is queued but not
+                      // yet attached, its late AnimationController throws
+                      // LateInitializationError.
+                      onPressed: () => Navigator.of(context).pop(),
                       style: IconButton.styleFrom(
                         backgroundColor:
                             colorScheme.surfaceContainerHigh,
@@ -210,7 +215,10 @@ class PurchaseReceiptPoSelectionSheet extends StatelessWidget {
                           color: colorScheme.onSurfaceVariant,
                         ),
                         onTap: () {
-                          Get.back();
+                          // Pop sheet first, then initiate creation.
+                          // Navigator.of(context).pop() instead of Get.back()
+                          // — same snackbar-safety reason as the close button.
+                          Navigator.of(context).pop();
                           controller
                               .initiatePurchaseReceiptCreation(
                                   po);

@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/mr_item_row.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
-import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/details_tab.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/standard_items_view.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/mr_items_view.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/pos_upload_items_view.dart';
+import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/work_order_items_view.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/empty_scan_state.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/bottom_scan_bar.dart';
 
@@ -32,10 +33,15 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
           ? 'Loading...'
           : (entry.name?.isNotEmpty == true
               ? entry.name!
-              : 'New ${controller.selectedStockEntryType.value}');
+              : 'New ${controller.stockEntryType.value}');
+
+      final isDirty    = controller.isDirty.value;
+      final isSaving   = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading  = controller.isLoading.value;
 
       return PopScope(
-        canPop: !controller.isDirty.value,
+        canPop: !isDirty,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
           await controller.confirmDiscard();
@@ -43,37 +49,35 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
-            appBar: MainAppBar(
-              title: title,
-              status: entry?.status,
-              isDirty: controller.isDirty.value,
-              isSaving: controller.isSaving.value,
-              saveResult: controller.saveResult.value,
-              onSave: onSave,
-              onReload: onReload,
-              bottom: const TabBar(
-                tabs: [
-                  Tab(text: 'Details'),
-                  Tab(text: 'Items & Scan'),
-                ],
-              ),
+            body: NestedScrollView(
+              headerSliverBuilder: (ctx, _) => [
+                DocTypeFormHeader(
+                  title:      title,
+                  canSave:    isDirty,
+                  docStatus:  entry?.docstatus ?? 0,
+                  isSaving:   isSaving,
+                  saveResult: saveResult,
+                  onSave:     onSave,
+                  onReload:   onReload,
+                  bottom: const TabBar(
+                    tabs: [
+                      Tab(text: 'Details'),
+                      Tab(text: 'Items & Scan'),
+                    ],
+                  ),
+                ),
+              ],
+              body: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : entry == null
+                      ? const Center(child: Text('Stock entry not found.'))
+                      : TabBarView(
+                          children: [
+                            DetailsTab(controller: controller, entry: entry),
+                            _ItemsTab(controller: controller, entry: entry),
+                          ],
+                        ),
             ),
-            body: Builder(builder: (context) {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (entry == null) {
-                return const Center(
-                    child: Text('Stock entry not found.'));
-              }
-              return TabBarView(
-                children: [
-                  DetailsTab(
-                      controller: controller, entry: entry),
-                  _ItemsTab(controller: controller, entry: entry),
-                ],
-              );
-            }),
           ),
         ),
       );
@@ -100,6 +104,13 @@ class _ItemsTab extends StatelessWidget {
           children: [
             Expanded(
               child: Builder(builder: (_) {
+                // Work Order path: BOM items are pre-filled, always show them.
+                if (controller.entrySource == StockEntrySource.workOrder) {
+                  if (_entry.items.isEmpty) return const EmptyScanState();
+                  return WorkOrderItemsView(
+                      controller: controller, entry: _entry);
+                }
+
                 if (_entry.items.isEmpty &&
                     controller.entrySource !=
                         StockEntrySource.posUpload &&
@@ -113,6 +124,10 @@ class _ItemsTab extends StatelessWidget {
                         controller: controller, entry: _entry);
                   case StockEntrySource.materialRequest:
                     return MrItemsView(
+                        controller: controller, entry: _entry);
+                  case StockEntrySource.workOrder:
+                    // Already handled above; unreachable.
+                    return WorkOrderItemsView(
                         controller: controller, entry: _entry);
                   case StockEntrySource.manual:
                   default:

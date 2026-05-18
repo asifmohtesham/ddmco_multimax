@@ -12,17 +12,21 @@ import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/warehouse_picker_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
 
 class MaterialRequestFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin
+    implements QtyFieldDelegate {
   final MaterialRequestProvider _provider =
       Get.find<MaterialRequestProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+  final StorageService _storageService = Get.find<StorageService>();
 
   String name = Get.arguments['name'] ?? '';
   String mode = Get.arguments['mode'] ?? 'view';
@@ -64,7 +68,18 @@ class MaterialRequestFormController extends GetxController
   // ── Item Sheet State ─────────────────────────────────────────────────────
   final itemFormKey = GlobalKey<FormState>();
 
+  /// Backing controller for the qty field in the item bottom-sheet.
+  ///
+  /// Exposed under both names:
+  ///   • [bsQtyController] — used throughout this file and by the sheet UI.
+  ///   • [qtyController]   — satisfies [QtyFieldDelegate] so [GlobalItemFormSheet]
+  ///                         can bind directly via `qtyDelegate: controller`.
   final bsQtyController = TextEditingController();
+
+  /// [QtyFieldDelegate] bridge — delegates to [bsQtyController].
+  @override
+  TextEditingController get qtyController => bsQtyController;
+
   final bsWarehouseController = TextEditingController();
   final bsDateController = TextEditingController();
 
@@ -85,6 +100,30 @@ class MaterialRequestFormController extends GetxController
 
   final TextEditingController barcodeController = TextEditingController();
   final ScrollController scrollController = ScrollController();
+
+  // ── QtyFieldDelegate ─────────────────────────────────────────────────────
+  //
+  // MR uses a lightweight validation model: qty > 0 is the only rule.
+  // There is no batch ceiling, rack balance, or POS serial cap, so:
+  //   • qtyInfoText    returns null  → QtyCapBadge is not rendered.
+  //   • qtyInfoTooltip returns null  → badge tap does nothing.
+  //   • qtyError       is always ''  → no inline error text shown.
+  //   • isQtyValid     mirrors isSheetValid (the existing gate).
+  //
+  // validateSheet() already writes isSheetValid; isQtyValid is kept in sync
+  // inside that method so SharedQtyField's Obx picks up the correct state.
+
+  @override
+  final RxBool isQtyValid = false.obs;
+
+  @override
+  final RxString qtyError = RxString('');
+
+  @override
+  String? get qtyInfoText => null;
+
+  @override
+  final RxnString qtyInfoTooltip = RxnString(null);
 
   // ── Persistent scan worker ──────────────────────────────────────────────────
   Worker? _scanWorker;
@@ -277,6 +316,72 @@ class MaterialRequestFormController extends GetxController
     );
   }
 
+  // ── Item default-warehouse lookup ──────────────────────────────────────────────
+  //
+  // Fetches Item DocType and extracts `default_warehouse` from the
+  // `item_defaults` child-table row that matches the current session company.
+  // Result is applied to [bsWarehouseController] only if the sheet is still
+  // open (guard: isItemSheetOpen) so a fast dismiss never causes stale data.
+  //
+  // Priority chain:
+  //   item_defaults[company == sessionCompany].default_warehouse
+  //     → setWarehouseController.text (header-level fallback)
+  //       → '' (leave blank)
+  //
+  // Called fire-and-forget after the sheet is opened; errors are silently
+  // logged so they never interrupt the user workflow.
+  void _prefillWarehouseFromItemDefaults(String itemCode) {
+    _fetchItemDefaultWarehouse(itemCode).then((warehouse) {
+      if (!isItemSheetOpen.value) return; // sheet was dismissed, skip
+      if (warehouse != null && warehouse.isNotEmpty) {
+        bsWarehouseController.text = warehouse;
+        _initialWh = warehouse;
+      }
+      // If null/empty the existing value (setWarehouseController fallback
+      // set synchronously in openItemSheet) is kept as-is.
+    }).catchError((Object e) {
+      log('[MR] _prefillWarehouseFromItemDefaults error: $e', name: 'MR');
+    });
+  }
+
+  Future<String?> _fetchItemDefaultWarehouse(String itemCode) async {
+    try {
+      final response = await _apiProvider.getDocument('Item', itemCode);
+      if (response.statusCode != 200) return null;
+
+      final data = response.data['data'];
+      if (data == null) return null;
+
+      final List<dynamic> itemDefaults =
+          (data['item_defaults'] as List<dynamic>?) ?? [];
+      if (itemDefaults.isEmpty) return null;
+
+      final String sessionCompany = _storageService.getCompany();
+
+      // Prefer the row matching the current session company.
+      Map<String, dynamic>? matchedRow;
+      for (final entry in itemDefaults) {
+        if (entry is Map<String, dynamic> &&
+            entry['company'] == sessionCompany) {
+          matchedRow = entry;
+          break;
+        }
+      }
+
+      // Fall back to first row if no company match (e.g. single-company setup).
+      matchedRow ??= itemDefaults.first is Map<String, dynamic>
+          ? itemDefaults.first as Map<String, dynamic>
+          : null;
+
+      final warehouse = matchedRow?['default_warehouse'] as String?;
+      return (warehouse != null && warehouse.isNotEmpty) ? warehouse : null;
+    } catch (e) {
+      log('[MR] _fetchItemDefaultWarehouse error for "$itemCode": $e',
+          name: 'MR');
+      return null;
+    }
+  }
+
   // ── Item Sheet ───────────────────────────────────────────────────────────────────
 
   void openItemSheet({
@@ -292,10 +397,13 @@ class MaterialRequestFormController extends GetxController
     bsItemVariantOf.value = null;
     isFormDirty.value = false;
     isSheetValid.value = false;
+    isQtyValid.value = false;
+    qtyError.value = '';
     _initialQty = '';
     _initialWh = '';
 
     if (item != null) {
+      // ── Edit mode: populate from existing item row; no lookup needed ──
       currentItemCode = item.itemCode;
       currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
@@ -312,21 +420,30 @@ class MaterialRequestFormController extends GetxController
 
       validateSheet();
     } else if (newCode != null && newCode.isNotEmpty) {
+      // ── Add mode (item code known, e.g. barcode scan) ────────────────
       currentItemCode = newCode;
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
       bsItemVariantOf.value = variantOf;
-      bsWarehouseController.text = setWarehouseController.text;
-      _initialQty = '';
-      _initialWh = setWarehouseController.text;
+
+      // Seed with header warehouse immediately so the field is never blank
+      // while the async lookup runs.
+      final headerWarehouse = setWarehouseController.text;
+      bsWarehouseController.text = headerWarehouse;
+      _initialWh = headerWarehouse;
+
+      // Fire-and-forget: update warehouse once Item DocType is fetched.
+      _prefillWarehouseFromItemDefaults(newCode);
     } else {
+      // ── Add mode (no item code yet, manual entry) ────────────────────
       currentItemCode = '';
       currentItemName = '';
       currentItemNameKey.value = null;
       bsItemVariantOf.value = null;
-      bsWarehouseController.text = setWarehouseController.text;
-      _initialQty = '';
-      _initialWh = setWarehouseController.text;
+
+      final headerWarehouse = setWarehouseController.text;
+      bsWarehouseController.text = headerWarehouse;
+      _initialWh = headerWarehouse;
     }
 
     isItemSheetOpen.value = true;
@@ -360,6 +477,7 @@ class MaterialRequestFormController extends GetxController
 
   // ── Sheet validation ───────────────────────────────────────────────────────────
 
+  @override
   void validateSheet() {
     final qty = double.tryParse(bsQtyController.text) ?? 0;
     bool valid = qty > 0 && currentItemCode.isNotEmpty;
@@ -372,6 +490,8 @@ class MaterialRequestFormController extends GetxController
     if (currentItemNameKey.value != null && !dirty) valid = false;
 
     isSheetValid.value = valid;
+    // Keep QtyFieldDelegate sub-field in sync with sheet gate.
+    isQtyValid.value = valid;
   }
 
   void adjustSheetQty(int delta) {

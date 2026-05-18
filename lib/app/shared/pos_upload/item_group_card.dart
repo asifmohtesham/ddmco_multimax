@@ -17,6 +17,12 @@ class ItemGroupCard extends StatelessWidget {
   /// prefix on the Rate chip so the value is unambiguous.
   final String? currency;
 
+  /// Remaining qty available for this serial under the POS cap.
+  /// When non-null and finite, a 'Remaining' stat chip is rendered.
+  /// Colour: green when 0 (fully consumed), amber when ≤ 20 % of
+  /// totalQty, otherwise primary.
+  final double? remainingQty;
+
   const ItemGroupCard({
     super.key,
     required this.isExpanded,
@@ -28,6 +34,7 @@ class ItemGroupCard extends StatelessWidget {
     required this.onToggle,
     required this.children,
     this.currency,
+    this.remainingQty,
   });
 
   /// Returns a short display symbol for common ISO codes;
@@ -35,9 +42,9 @@ class ItemGroupCard extends StatelessWidget {
   static String _currencySymbol(String? code) {
     switch (code?.toUpperCase()) {
       case 'AED': return 'AED';
-      case 'USD': return '\$';
-      case 'EUR': return '€';
-      case 'GBP': return '£';
+      case 'USD': return r'$';
+      case 'EUR': return '\u20ac';
+      case 'GBP': return '\u00a3';
       case 'SAR': return 'SAR';
       case 'KWD': return 'KWD';
       case 'QAR': return 'QAR';
@@ -55,12 +62,29 @@ class ItemGroupCard extends StatelessWidget {
 
     // Semantic colour alias — resolved once, used for rail, border,
     // status label, progress ring, and Scanned stat chip.
-    final completionColor = isCompleted ? cs.tertiary : cs.primary;
+    final completionColor =
+        isCompleted ? Colors.green.shade600 : cs.primary;
 
     final currSymbol  = _currencySymbol(currency);
     final rateDisplay = currSymbol.isEmpty
         ? NumberFormat('#,##0.00').format(rate)
         : '$currSymbol ${NumberFormat('#,##0.00').format(rate)}';
+
+    // ── Remaining chip colour logic ────────────────────────────────
+    // resolved here so it sits near the other semantic colours above.
+    Color? remainingColor;
+    String? remainingDisplay;
+    if (remainingQty != null && remainingQty!.isFinite) {
+      remainingDisplay =
+          '${NumberFormat('#,##0.##').format(remainingQty!)} pcs';
+      if (remainingQty! <= 0) {
+        remainingColor = Colors.green.shade600;   // fully consumed
+      } else if (totalQty > 0 && remainingQty! / totalQty <= 0.2) {
+        remainingColor = Colors.amber.shade700;   // ≤ 20 % left → warn
+      } else {
+        remainingColor = cs.primary;
+      }
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
@@ -68,7 +92,7 @@ class ItemGroupCard extends StatelessWidget {
         color: cs.surface,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(
-          color: isCompleted ? cs.tertiary : cs.outlineVariant,
+          color: isCompleted ? Colors.green.shade600 : cs.outlineVariant,
           width: 1,
         ),
       ),
@@ -78,9 +102,7 @@ class ItemGroupCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Completion rail ───────────────────────────────────────────
-            // 4dp coloured left-edge accent. Rounded on the left side
-            // to sit flush inside the card border-radius.
+            // ── Completion rail ──────────────────────────────────────────────
             Container(
               width: 4,
               decoration: BoxDecoration(
@@ -92,11 +114,11 @@ class ItemGroupCard extends StatelessWidget {
               ),
             ),
 
-            // ── Card content ───────────────────────────────────────────────
+            // ── Card content ─────────────────────────────────────────────────
             Expanded(
               child: Column(
                 children: [
-                  // ── Group header (always visible) ──────────────────────
+                  // ── Group header (always visible) ────────────────────────
                   InkWell(
                     onTap: onToggle,
                     borderRadius: const BorderRadius.only(
@@ -111,9 +133,6 @@ class ItemGroupCard extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Serial number + item name — ShureTechMono
-                                // for consistency with stat chips and child
-                                // item cards.
                                 Text(
                                   '$serialNo: $itemName',
                                   style: TextStyle(
@@ -158,38 +177,46 @@ class ItemGroupCard extends StatelessWidget {
                     ),
                   ),
 
-                  // ── Stats row — always visible ─────────────────────────
+                  // ── Stats row — always visible ───────────────────────────
+                  // IG-1: Wrap replaces Row so that a 4th chip (Remaining)
+                  // flows to a second run instead of overflowing the card
+                  // Column's tight height constraint from IntrinsicHeight.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 16, 12),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 6,
                       children: [
                         _buildStatChip(
                           context: context,
                           label: 'Required',
-                          value:
-                              '${NumberFormat('#,##0.##').format(totalQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
                           valueColor: cs.onSurfaceVariant,
                         ),
-                        const SizedBox(width: 12),
                         _buildStatChip(
                           context: context,
                           label: 'Scanned',
-                          value:
-                              '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
                           valueColor: completionColor,
                         ),
-                        const SizedBox(width: 12),
                         _buildStatChip(
                           context: context,
                           label: 'Rate',
                           value: rateDisplay,
                           valueColor: cs.secondary,
                         ),
+                        if (remainingDisplay != null)
+                          _buildStatChip(
+                            context: context,
+                            label: 'Remaining',
+                            value: remainingDisplay,
+                            valueColor: remainingColor!,
+                          ),
                       ],
                     ),
                   ),
 
-                  // ── Collapsible child items ────────────────────────────
+                  // ── Collapsible child items ─────────────────────────────
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
@@ -218,10 +245,6 @@ class ItemGroupCard extends StatelessWidget {
     );
   }
 
-  /// Stat chip: a small label + bold value pair used in the always-visible
-  /// stats row. [valueColor] is passed in so the caller can apply semantic
-  /// colour (completion state, secondary, onSurfaceVariant) without
-  /// this method needing to know about completion logic.
   Widget _buildStatChip({
     required BuildContext context,
     required String label,

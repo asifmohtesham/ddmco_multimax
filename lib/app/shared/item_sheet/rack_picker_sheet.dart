@@ -340,9 +340,13 @@ class RackPickerSheet extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Builder (not Obx) — itemCode/batchNo/warehouse are
-                      // plain String getters set once at construction.
+                      // Guard: absorb any stale rebuild that fires after the
+                      // controller has already been deleted on sheet dismiss.
                       Builder(builder: (_) {
+                        if (!Get.isRegistered<RackPickerController>(
+                            tag: pickerTag)) {
+                          return const SizedBox.shrink();
+                        }
                         final ctrl =
                             Get.find<RackPickerController>(tag: pickerTag);
                         return Wrap(
@@ -383,6 +387,13 @@ class RackPickerSheet extends StatelessWidget {
           // change — no additional Obx wrappers needed.
           Expanded(
             child: Obx(() {
+              // Guard: the sheet may receive one final rebuild notification
+              // after the controller has been deleted on dismiss (race between
+              // pop() and the widget rebuild pipeline). Absorb it silently.
+              if (!Get.isRegistered<RackPickerController>(tag: pickerTag)) {
+                return const SizedBox.shrink();
+              }
+
               final ctrl =
                   Get.find<RackPickerController>(tag: pickerTag);
 

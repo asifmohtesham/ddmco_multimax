@@ -1,276 +1,247 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_controller.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   const BatchWiseBalanceScreen({super.key});
 
+  // ── Filter chip builder ───────────────────────────────────────────────────
+  //
+  // Returns List<Widget> — one InputChip per active filter.
+  // DocTypeListHeader wraps them in a horizontal SingleChildScrollView
+  // internally, so this builder only needs to produce the chip widgets.
+  // InputChip gives the delete icon a full 48dp tap target out of the box.
+
+  List<Widget> _buildFilterChips(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    Widget chip(String key, String label) => InputChip(
+          avatar: Icon(Icons.filter_alt_outlined,
+              size: 14, color: cs.onSecondaryContainer),
+          label: Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: cs.onSecondaryContainer,
+                fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: cs.secondaryContainer,
+          deleteIconColor: cs.onSecondaryContainer,
+          onDeleted: () => controller.clearFilter(key),
+          side: BorderSide.none,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+        );
+
+    final chips = <Widget>[];
+    controller.activeFilters.forEach((key, label) {
+      chips.add(chip(key, label));
+    });
+    return chips;
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: const MainAppBar(title: 'Batch-Wise Balance'),
-      body: Column(
-        children: [
-          // --- Filter Section ---
-          ExpansionTile(
-            title: const Text('Filters', style: TextStyle(fontWeight: FontWeight.w600)),
-            initiallyExpanded: true,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _DateField(
-                            label: 'From',
-                            controller: controller.fromDateController,
-                            onTap: () => controller.selectDate(context, controller.fromDateController),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _DateField(
-                            label: 'To',
-                            controller: controller.toDateController,
-                            onTap: () => controller.selectDate(context, controller.toDateController),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: controller.itemCodeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Item Code',
-                        prefixIcon: Icon(Icons.category_outlined),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: controller.batchNoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Batch No',
-                        prefixIcon: Icon(Icons.qr_code_2),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: controller.warehouseController,
-                      decoration: const InputDecoration(
-                        labelText: 'Warehouse (Optional)',
-                        prefixIcon: Icon(Icons.warehouse_outlined),
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: controller.runReport,
-                        icon: const Icon(Icons.search),
-                        label: const Text('Search History'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                  ],
+      backgroundColor: cs.surfaceContainerLow,
+      body: Obx(() {
+        return RefreshIndicator(
+          onRefresh: controller.runReport,
+          color: cs.primary,
+          backgroundColor: cs.surfaceContainerHighest,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // ── Unified header ──────────────────────────────────────────
+              DocTypeListHeader(
+                title: 'Batch-Wise Balance',
+                automaticallyImplyLeading: false,
+                activeFilters: controller.activeFilters
+                    .map((k, v) => MapEntry(k, v as dynamic))
+                    .obs,
+                onFilterTap: () => showReportFilterSheet(
+                  context: context,
+                  title:       'Batch-Wise Balance Filters',
+                  fields:      controller.filterFields,
+                  controllers: controller.filterControllers,
+                  onRun:       controller.runReport,
+                  onClear:     controller.clearFilters,
                 ),
+                filterChipsBuilder: _buildFilterChips,
+                onClearAllFilters:  controller.clearFilters,
               ),
+
+              // ── Results ────────────────────────────────────────────────
+              if (controller.isLoading.value)
+                const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (controller.reportData.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.history_toggle_off_outlined,
+                            size: 64,
+                            color: cs.outlineVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Enter filters and tap the filter icon to run the report',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 24),
+                          FilledButton.tonalIcon(
+                            onPressed: () => showReportFilterSheet(
+                              context: context,
+                              title:   'Batch-Wise Balance Filters',
+                              fields:  controller.filterFields,
+                              controllers: controller.filterControllers,
+                              onRun:   controller.runReport,
+                              onClear: controller.clearFilters,
+                            ),
+                            icon: const Icon(Icons.filter_alt_outlined),
+                            label: const Text('Set Filters'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final row = controller.reportData[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _BalanceTile(row: row),
+                        );
+                      },
+                      childCount: controller.reportData.length,
+                    ),
+                  ),
+                ),
             ],
           ),
-          const Divider(height: 1),
+        );
+      }),
+    );
+  }
+}
 
-          // --- Report Results ---
-          Expanded(
-            child: Obx(() {
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
+// ── Result tile ──────────────────────────────────────────────────────────────
 
-              if (controller.reportData.isEmpty) {
-                return Center(
+class _BalanceTile extends StatelessWidget {
+  final Map<String, dynamic> row;
+  const _BalanceTile({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs    = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return Material(
+      color: cs.surface,
+      elevation: 1,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.history_toggle_off_outlined,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
-                      const SizedBox(height: 16),
                       Text(
-                        'Enter filters to search history',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                        row['item'] ?? 'Unknown Item',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15),
                       ),
+                      if ((row['item_name'] ?? '') != '' &&
+                          row['item_name'] != row['item'])
+                        Text(
+                          row['item_name'],
+                          style: TextStyle(
+                              color: cs.onSurfaceVariant, fontSize: 12),
+                        ),
                     ],
                   ),
-                );
-              }
-
-              return SafeArea(
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: controller.reportData.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final theme = Theme.of(context);
-                    final row = controller.reportData[index];
-                    return Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        row['item'] ?? 'Unknown Item',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                      if (row['item_name'] != null &&
-                                          row['item_name'] != row['item'])
-                                        Text(
-                                          row['item_name'],
-                                          style: TextStyle(
-                                            color: theme.colorScheme.onSurfaceVariant,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.tertiaryContainer,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: theme.colorScheme.tertiary.withValues(alpha: 0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '${row['balance_qty'] ?? 0}',
-                                    style: TextStyle(
-                                      color: theme.colorScheme.onTertiaryContainer,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Divider(height: 24),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _DetailItem(label: 'Batch', value: row['batch']),
-                                ),
-                                Expanded(
-                                  child: _DetailItem(label: 'Warehouse', value: row['warehouse']),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                if (row['expiry_date'] != null)
-                                  Expanded(
-                                    child: _DetailItem(
-                                      label: 'Expiry',
-                                      value: row['expiry_date'],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
                 ),
-              );
-            }),
-          ),
-        ],
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: cs.tertiary.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '${row['balance_qty'] ?? 0}',
+                    style: TextStyle(
+                        color: cs.onTertiaryContainer,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            Row(
+              children: [
+                Expanded(
+                    child: _Detail(label: 'Batch',     value: row['batch'])),
+                Expanded(
+                    child: _Detail(label: 'Warehouse', value: row['warehouse'])),
+              ],
+            ),
+            if ((row['expiry_date'] ?? '') != '') ...[
+              const SizedBox(height: 8),
+              _Detail(label: 'Expiry', value: row['expiry_date']),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _DetailItem extends StatelessWidget {
-  final String label;
-  final String? value;
-  const _DetailItem({required this.label, this.value});
+class _Detail extends StatelessWidget {
+  final String  label;
+  final dynamic value;
+  const _Detail({required this.label, this.value});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final cs = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
-        ),
+        Text(label,
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
         const SizedBox(height: 2),
         Text(
-          value ?? '-',
+          value?.toString().isNotEmpty == true ? value.toString() : '—',
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
         ),
       ],
-    );
-  }
-}
-
-class _DateField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final VoidCallback onTap;
-  const _DateField({
-    required this.label,
-    required this.controller,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      readOnly: true,
-      onTap: onTap,
-      decoration: InputDecoration(
-        labelText: label,
-        suffixIcon: const Icon(Icons.calendar_today, size: 16),
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      ),
     );
   }
 }

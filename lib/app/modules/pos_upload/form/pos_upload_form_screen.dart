@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
@@ -17,42 +17,44 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
           : controller.name.isNotEmpty
               ? controller.name
               : 'POS Upload';
-      final status = controller.posUpload.value?.status;
+      final isLoading  = controller.isLoading.value;
+      final posUpload  = controller.posUpload.value;
 
       return DefaultTabController(
         length: 2,
         child: Scaffold(
-          appBar: MainAppBar(
-            title: title,
-            status: status,
-            bottom: const TabBar(
-              tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
-            ),
-          ),
-          body: controller.isLoading.value
-              ? const Center(child: CircularProgressIndicator())
-              : controller.posUpload.value == null
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.error_outline,
-                              size: 48,
-                              color: Theme.of(context).colorScheme.error),
-                          const SizedBox(height: 12),
-                          const Text('POS Upload not found.',
-                              style: TextStyle(fontSize: 16)),
-                        ],
-                      ),
-                    )
-                  : SafeArea(
-                      child: TabBarView(
+          body: NestedScrollView(
+            headerSliverBuilder: (ctx, _) => [
+              DocTypeFormHeader(
+                title: title,
+                bottom: const TabBar(
+                  tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
+                ),
+              ),
+            ],
+            body: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : posUpload == null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline,
+                                size: 48,
+                                color: Theme.of(context).colorScheme.error),
+                            const SizedBox(height: 12),
+                            const Text('POS Upload not found.',
+                                style: TextStyle(fontSize: 16)),
+                          ],
+                        ),
+                      )
+                    : TabBarView(
                         children: [
                           _DetailsTab(controller: controller),
                           _ItemsTab(controller: controller),
                         ],
                       ),
-                    ),
+          ),
         ),
       );
     });
@@ -436,7 +438,7 @@ class _ItemsTabState extends State<_ItemsTab> {
                         ? cs.onPrimaryContainer
                         : cs.onSurfaceVariant,
                   ),
-                  label: Text(opt.label),
+                  label: Text('${opt.label} • ${PosUploadFormController.fmtQty(opt.totalQty)}'),
                   selected: isSelected,
                   onSelected: (_) =>
                       ctrl.filterByCase(isSelected ? null : opt),

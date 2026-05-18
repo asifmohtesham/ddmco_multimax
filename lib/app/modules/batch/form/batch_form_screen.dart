@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
@@ -12,76 +14,49 @@ class BatchFormScreen extends GetView<BatchFormController> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return Obx(() => PopScope(
-      canPop: !controller.isDirty.value,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await controller.confirmDiscard();
-      },
-      child: Scaffold(
-        backgroundColor: colorScheme.surface,
-        appBar: MainAppBar(
-          title: controller.batch.value?.name ?? 'Batch Details',
-          status: controller.batchStatus,
-          isDirty: controller.isDirty.value,
-          isSaving: controller.isSaving.value,
-          onSave: controller.saveBatch,
-          actions: [
-            // Export Button
-            if (controller.isEditMode && controller.generatedBatchId.value.isNotEmpty)
-              PopupMenuButton<String>(
-                icon: controller.isExporting.value
-                    ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                        color: colorScheme.onPrimary,
-                        strokeWidth: 2
-                    )
-                )
-                    : const Icon(Icons.share),
-                onSelected: (value) {
-                  if (value == 'png') controller.exportQrAsPng();
-                  if (value == 'pdf') controller.exportQrAsPdf();
-                },
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                  const PopupMenuItem<String>(
-                    value: 'png',
-                    child: ListTile(
-                      leading: Icon(Icons.image, color: Colors.blue),
-                      title: Text('Export PNG'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'pdf',
-                    child: ListTile(
-                      leading: Icon(Icons.picture_as_pdf, color: Colors.red),
-                      title: Text('Export PDF (Vector)'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
+    return Obx(() {
+      final title = controller.batch.value?.name ?? 'Batch Details';
+      final canSave = controller.isDirty.value;
+      final isSaving = controller.isSaving.value;
+      final isExporting = controller.isExporting.value;
+      final showExport = controller.isEditMode && controller.generatedBatchId.value.isNotEmpty;
+      final isLoading = controller.isLoading.value;
+
+      return PopScope(
+        canPop: !canSave,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await controller.confirmDiscard();
+        },
+        child: Scaffold(
+          backgroundColor: colorScheme.surface,
+          body: CustomScrollView(
+            slivers: [
+              DocTypeFormHeader(
+                title: title,
+                canSave: canSave,
+                isSaving: isSaving,
+                onSave: controller.saveBatch,
+                extraActions: [
+                  if (showExport) _buildExportActions(colorScheme, isExporting),
                 ],
               ),
-          ],
-        ),
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              if (isLoading)
+                const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                 // --- Label Preview Section ---
                 if (controller.generatedBatchId.value.isNotEmpty)
-                  _buildSectionCard(
-                    context,
+                  DocSectionCard(
                     title: 'Label Preview',
                     children: [
                       Center(child: _buildLabelPreview(context)),
@@ -89,11 +64,10 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   ),
 
                 // --- Primary Details ---
-                _buildSectionCard(
-                  context,
+                DocSectionCard(
                   title: 'General Information',
                   headerAction: StatusPill(
-                    status: controller.batchStatus, // Kept for inline visibility
+                    status: controller.batchStatus,
                   ),
                   children: [
                     // Status Toggle
@@ -110,7 +84,6 @@ class BatchFormScreen extends GetView<BatchFormController> {
                     // Display Generated Batch ID for new documents
                     if (controller.generatedBatchId.value.isNotEmpty) ...[
                       TextFormField(
-                        // key: ValueKey(controller.generatedBatchId.value),
                         controller: controller.batchIdController,
                         readOnly: controller.isEditMode,
                         decoration: const InputDecoration(
@@ -125,21 +98,14 @@ class BatchFormScreen extends GetView<BatchFormController> {
                     ],
 
                     // Item Code
-                    GestureDetector(
-                      onTap: controller.isEditMode ? null : () => _showItemPicker(context),
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller: controller.itemController,
-                          decoration: const InputDecoration(
-                            labelText: 'Item Code *',
-                            hintText: 'Select Item',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.inventory_2_outlined),
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                          readOnly: true,
-                        ),
-                      ),
+                    LinkFieldWidget(
+                      controller: controller.itemController,
+                      labelText: 'Item Code',
+                      hintText: 'Select Item',
+                      prefixIcon: Icons.inventory_2_outlined,
+                      isRequired: true,
+                      isReadOnly: controller.isEditMode,
+                      onTap: () => _showItemPicker(context),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -156,31 +122,27 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 ),
 
                 // --- Purchase Details ---
-                _buildSectionCard(
-                  context,
+                DocSectionCard(
                   title: 'Source',
                   children: [
-                    GestureDetector(
+                    Obx(() => LinkFieldWidget(
+                      controller: controller.customPurchaseOrderController,
+                      labelText: 'Purchase Order',
+                      hintText: 'Link PO',
+                      prefixIcon: Icons.receipt_long_outlined,
                       onTap: () => _showPOPicker(context),
-                      child: AbsorbPointer(
-                        child: TextFormField(
-                          controller: controller.customPurchaseOrderController,
-                          decoration: const InputDecoration(
-                            labelText: 'Purchase Order',
-                            hintText: 'Link PO',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.receipt_long_outlined),
-                            suffixIcon: Icon(Icons.arrow_drop_down),
-                          ),
-                        ),
-                      ),
-                    ),
+                      onClear: controller.customPurchaseOrderController.text.isNotEmpty
+                          ? () {
+                              controller.customPurchaseOrderController.clear();
+                              controller.isDirty.value = true;
+                            }
+                          : null,
+                    )),
                   ],
                 ),
 
                 // --- Dates & Quantity ---
-                _buildSectionCard(
-                  context,
+                DocSectionCard(
                   title: 'Dates & Packaging',
                   children: [
                     Row(
@@ -227,48 +189,79 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 const SizedBox(height: 40),
               ],
             ),
-          );
-        }),
-      ),
-    ));
+          ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
-  Widget _buildSectionCard(BuildContext context, {required String title, required List<Widget> children, Widget? headerAction}) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 16),
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (headerAction != null) headerAction,
-              ],
-            ),
-            const SizedBox(height: 16),
-            ...children,
-          ],
+  // ---------------------------------------------------------------------------
+  // App-bar helpers
+  // ---------------------------------------------------------------------------
+
+  /// Builds the share/export [PopupMenuButton] shown in the app bar when
+  /// the batch is in edit mode and a batch ID has been generated.
+  ///
+  /// Accepts [colorScheme] directly so the method remains stateless and
+  /// avoids an extra [BuildContext] / [Theme.of] call.
+  Widget _buildExportActions(ColorScheme colorScheme, bool isExporting) {
+    return PopupMenuButton<String>(
+      icon: isExporting
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: colorScheme.onPrimary,
+                strokeWidth: 2,
+              ),
+            )
+          : const Icon(Icons.share),
+      onSelected: (value) {
+        if (value == 'png') controller.exportQrAsPng();
+        if (value == 'pdf') controller.exportQrAsPdf();
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'png',
+          child: ListTile(
+            leading: Icon(Icons.image, color: Colors.blue),
+            title: Text('Export PNG'),
+            contentPadding: EdgeInsets.zero,
+          ),
         ),
-      ),
+        const PopupMenuItem<String>(
+          value: 'pdf',
+          child: ListTile(
+            leading: Icon(Icons.picture_as_pdf, color: Colors.red),
+            title: Text('Export PDF (Vector)'),
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ],
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Body helpers
+  // ---------------------------------------------------------------------------
+
   Widget _buildLabelPreview(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // The label simulates a physical printed label: white background + black
+    // ink are intentional and must stay theme-independent (print-accurate).
+    // Only the border colour and shadow opacity are guarded for dark mode so
+    // the white card remains visually separated from the dark scaffold.
+    const Color labelBackground = Colors.white;
+    const Color labelInk = Colors.black;
+    final Color labelBorder = isDark
+        ? const Color(0xFF424242) // visible separation against dark bg
+        : const Color(0xFFE0E0E0); // equivalent to grey.shade300 in light
+    final double shadowOpacity = isDark ? 0.18 : 0.05;
+
     final String variant = controller.itemVariantOf.value.isNotEmpty
         ? controller.itemVariantOf.value
         : controller.itemController.text;
@@ -283,10 +276,15 @@ class BatchFormScreen extends GetView<BatchFormController> {
       child: Container(
         width: 300,
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.grey.shade300, width: 1),
+          color: labelBackground,
+          border: Border.all(color: labelBorder, width: 1),
           borderRadius: BorderRadius.circular(4),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: shadowOpacity),
+              blurRadius: 4,
+            ),
+          ],
         ),
         padding: const EdgeInsets.all(8.0),
         child: Row(
@@ -299,7 +297,12 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 children: [
                   Text(
                     variant,
-                    style: const TextStyle(fontFamily: 'ShureTechMono', fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black),
+                    style: const TextStyle(
+                      fontFamily: 'ShureTechMono',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: labelInk,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -314,7 +317,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       style: const TextStyle(
                         fontSize: 18,
                         fontFamily: 'ShureTechMono',
-                        color: Colors.black,
+                        color: labelInk,
                         fontFeatures: [FontFeature.slashedZero()],
                       ),
                     ),
@@ -331,13 +334,20 @@ class BatchFormScreen extends GetView<BatchFormController> {
                   AspectRatio(
                     aspectRatio: 1,
                     child: QrImageView(
-                      eyeStyle: QrEyeStyle(color: Theme.of(context).colorScheme.primary, eyeShape: QrEyeShape.circle),
-                      dataModuleStyle: QrDataModuleStyle(color: Theme.of(context).colorScheme.primary),
-                      embeddedImageStyle: QrEmbeddedImageStyle(color: Theme.of(context).colorScheme.primary),
+                      eyeStyle: QrEyeStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        eyeShape: QrEyeShape.circle,
+                      ),
+                      dataModuleStyle: QrDataModuleStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      embeddedImageStyle: QrEmbeddedImageStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       errorCorrectionLevel: QrErrorCorrectLevel.H,
                       data: controller.generatedBatchId.value,
                       version: QrVersions.auto,
-                      padding: EdgeInsets.all(2),
+                      padding: const EdgeInsets.all(2),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -348,7 +358,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                       fontFamily: 'ShureTechMono',
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
-                      fontFeatures: [FontFeature.slashedZero()],
+                      fontFeatures: const [FontFeature.slashedZero()],
                     ),
                     maxLines: 2,
                     textAlign: TextAlign.center,

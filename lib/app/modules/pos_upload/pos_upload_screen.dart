@@ -139,9 +139,10 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // ── Unified header ──────────────────────────────────────────────────────
+            // ── Unified header ─────────────────────────────────────────────────
             DocTypeListHeader(
               title: 'POS Uploads',
+              automaticallyImplyLeading: false,
               searchDoctype: 'POS Invoice',
               searchRoute: AppRoutes.POS_UPLOAD_FORM,
               searchQuery: controller.searchQuery,
@@ -379,7 +380,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           ? FloatingActionButton(
               onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM,
                   arguments: {'name': '', 'mode': 'new'}),
-              tooltip: 'Create POS Upload',
+              tooltip: 'New POS Upload',
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
               child: const Icon(Icons.add),
@@ -387,8 +388,9 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           : FloatingActionButton.extended(
               onPressed: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM,
                   arguments: {'name': '', 'mode': 'new'}),
+              tooltip: 'New POS Upload',
               icon: const Icon(Icons.add),
-              label: const Text('Create'),
+              label: const Text('New POS Upload'),
               backgroundColor: colorScheme.primary,
               foregroundColor: colorScheme.onPrimary,
             )),

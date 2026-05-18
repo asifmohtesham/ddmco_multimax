@@ -1,3 +1,101 @@
+## [Unreleased] — SharedRackField Universal Refactor
+
+> Architectural refactor of `SharedRackField` so any DocType controller can
+> host the widget by implementing a narrow interface — no inheritance of
+> `ItemSheetControllerBase` required.
+
+---
+
+### ♻️ Refactors
+
+#### `SharedRackField` — Universal DocType Support (Commits 1–7)
+
+**Commit 1 — `RackFieldDelegate` interface extracted**
+
+- Created `lib/app/shared/item_sheet/rack_field_delegate.dart`.
+- Defines the minimum contract a controller must satisfy to drive
+  `SharedRackField`: reactive state (`isRackValid`, `isValidatingRack`,
+  `rackError`, `rackStockTooltip`), text/focus controllers, `rackBalanceFor`,
+  `resetRack`, and `validateRack`.
+- Pure Dart — no GetX or Flutter import; implementable by any class.
+
+**Commit 2 — `RackBrowseDelegate` interface extracted**
+
+- Created `lib/app/shared/item_sheet/rack_browse_delegate.dart`.
+- Declares `canBrowseRacks`, `browseRacks`, and `RackPickerResult` contract
+  so picker-capable controllers advertise the capability on the type system
+  without coupling the widget to a concrete controller.
+
+**Commit 3 — `RackFieldWithBrowseDelegate` composite interface**
+
+- Created `lib/app/shared/item_sheet/rack_field_with_browse_delegate.dart`.
+- Combines `RackFieldDelegate` + `RackBrowseDelegate` into a single interface
+  that `SharedRackField` (post Commit 6) depends on.
+- Documents the phased adoption path (Commits 3 → 9).
+
+**Commit 4 — `RackPickerResult` value type**
+
+- Created `lib/app/shared/item_sheet/rack_picker_result.dart`.
+- Immutable data class carrying `rackId` (and optional metadata) returned
+  by `browseRacks()`.
+
+**Commit 5 — `ItemSheetControllerBase` adopts `RackFieldWithBrowseDelegate`**
+
+- Added `implements RackFieldWithBrowseDelegate` to the `abstract class`
+  declaration.
+- Provided default implementations of `rackBalanceFor` (map lookup via
+  `rackStockMap`), `canBrowseRacks` (`false`), `browseRacks` (`null`), and
+  `handleRackPicked` (write `rackId` + call `validateRack`).
+- Zero changes required in any concrete controller (SE, DN, PR, PS, PO).
+
+**Commit 6 — `SharedRackField.c` type widened to `RackFieldWithBrowseDelegate`**
+
+- Changed `final ItemSheetControllerBase c` → `final RackFieldWithBrowseDelegate c`
+  in `lib/app/shared/item_sheet/widgets/shared_rack_field.dart`.
+- `_rackBalance` helper updated to call `c.rackBalanceFor(rack)` via the
+  interface (was already correct post Commit 1 adoption).
+- `balanceOverride` callback pattern preserved — existing DN call site
+  unchanged.
+- `onPickerTap` callback wired through to `_EditModeRack` → `ValidatedRackField`
+  for future picker integration (Commits 7–9).
+- All existing call sites compile without any changes; the concrete controllers
+  satisfy the interface via the base-class adoption in Commit 5.
+
+**Commit 7 — Delivery Note wires concrete `browseRacks()` override**
+
+- `DeliveryNoteItemFormController` now overrides `canBrowseRacks` and
+  `browseRacks()` in `delivery_note_item_form_controller.dart`.
+- `canBrowseRacks` returns `true` when `itemCode` is non-empty. The
+  warehouse filter toggle in `RackPickerSheet` handles warehouse scoping at
+  the UI level — no controller-side warehouse gate needed.
+- `browseRacks()` implements the full `RackPickerController` lifecycle:
+  1. `Get.put(RackPickerController(), tag: 'dn_rack_picker')`
+  2. `ctrl.load(itemCode, batchNo, warehouse, requestedQty, currentRack,
+     fallbackMap: rackStockMapRx)` — non-blocking, sheet opens immediately
+     with spinner while data loads.
+  3. `showModalBottomSheet(…, builder: (_) => RackPickerSheet(…))`
+  4. Map `onSelected` String → `RackPickerResult` (reads `availableQty`
+     from the controller entry list so the snapshot matches what the user saw).
+  5. `Get.delete<RackPickerController>(tag: 'dn_rack_picker')` in a
+     `finally` block — no leak on dismiss or error.
+- Re-entrant call guard: `browseRacks()` returns `null` immediately if
+  `isValidatingRack.value` is already `true`.
+- `handleRackPicked()` is **inherited** from `ItemSheetControllerBase`
+  (write `rackId` → `rackController`, call `validateRack`) — no override
+  needed for DN's single rack field.
+- New imports added: `rack_picker_controller.dart`, `rack_picker_result.dart`,
+  `rack_picker_sheet.dart`.
+
+#### Next steps (planned)
+
+- **Commit 8** — QC pass on DN rack picker end-to-end (call `handleRackPicked`
+  from the DN item sheet orchestrator; verify picker button enabled/disabled
+  state; test dismiss-without-selection path).
+- **Commit 9** — Stock Entry follows with SE-specific source/target rack
+  picker wiring (`sourceRackController` override).
+
+---
+
 ## [1.4.2+11-beta] — 2026-03-25
 
 > Beta release targeting internal QA on the `release/play-store-beta-1` branch.  

@@ -8,12 +8,13 @@ import 'package:flutter/material.dart';
 ///
 /// Lifecycle visual states
 /// ───────────────────────
-/// 1. **Idle** (`!isValid && !isValidating`)  
+/// 1. **Idle** (`!isValid && !isValidating`)
 ///    Field is editable.  Suffix shows a ✓ icon-button to trigger
-///    validation.
-/// 2. **Validating** (`isValidating`)  
+///    validation, or [idleSuffixWidget] if provided (e.g. picker + validate
+///    buttons side-by-side).
+/// 2. **Validating** (`isValidating`)
 ///    Field is read-only.  Suffix shows a spinner.
-/// 3. **Valid** (`isValid && !isValidating`)  
+/// 3. **Valid** (`isValid && !isValidating`)
 ///    Field is read-only.  Suffix shows optional [extraSuffixActions]
 ///    followed by an ✏ edit icon-button to reset.
 ///
@@ -53,12 +54,25 @@ class ValidatedFieldWidget extends StatelessWidget {
   /// field via the keyboard.
   final VoidCallback onValidate;
 
+  /// Called when the user taps the edit (✏) button to re-enter edit mode.
+  /// Should only unlock the field — NOT clear its value.
+  /// When null, falls back to [onReset] (legacy behaviour).
+  final VoidCallback? onEdit;
+
   /// Called when the user taps the edit (✏) button to reset the field.
   final VoidCallback onReset;
 
   /// Additional icon widgets inserted before the edit button when the
-  /// field is in the valid state.  Typical use: an info-tooltip icon.
+  /// field is in the valid state.  Typical use: an info-tooltip icon or
+  /// a picker button to change the selection without clearing first.
   final List<Widget> extraSuffixActions;
+
+  /// Optional widget that **replaces** the plain ✓ validate button in the
+  /// idle (not-yet-valid) state.  Use this to inject a composite suffix
+  /// that combines a picker button with the validate button side-by-side.
+  ///
+  /// When null (default) the standard ✓ [IconButton] is shown.
+  final Widget? idleSuffixWidget;
 
   /// Optional widget rendered directly below the field.  Intended for
   /// a [BalanceChip] but accepts any widget.
@@ -92,10 +106,12 @@ class ValidatedFieldWidget extends StatelessWidget {
     required this.isValid,
     required this.isValidating,
     required this.onValidate,
+    this.onEdit,
     required this.onReset,
     this.helperText,
     this.hasError = false,
     this.extraSuffixActions = const [],
+    this.idleSuffixWidget,
     this.chip,
     this.errorText,
     this.onChanged,
@@ -123,18 +139,21 @@ class ValidatedFieldWidget extends StatelessWidget {
           ...extraSuffixActions,
           IconButton(
             icon: Icon(Icons.edit, color: color),
-            onPressed: onReset,
+            onPressed: onEdit ?? onReset,
             tooltip: 'Edit',
           ),
         ],
       );
     }
 
-    return IconButton(
-      icon: Icon(Icons.check, color: color),
-      onPressed: onValidate,
-      tooltip: 'Validate',
-    );
+    // Idle state: use the caller-supplied composite widget when provided,
+    // otherwise fall back to the plain ✓ validate button.
+    return idleSuffixWidget ??
+        IconButton(
+          icon: Icon(Icons.check, color: color),
+          onPressed: onValidate,
+          tooltip: 'Validate',
+        );
   }
 
   @override

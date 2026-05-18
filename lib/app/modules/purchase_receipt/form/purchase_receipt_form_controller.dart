@@ -22,8 +22,7 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/widgets/shared_batch_field.dart';
-import 'package:multimax/app/shared/item_sheet/widgets/shared_rack_field.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'purchase_receipt_item_form_controller.dart';
 
@@ -39,7 +38,7 @@ class PurchaseReceiptFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
-  // ── Document-level state ────────────────────────────────────────────────
+  // ── Document-level state ─────────────────────────────────────────────
   var isLoading       = true.obs;
   var isSaving        = false.obs;
   var isDirty         = false.obs;
@@ -50,7 +49,7 @@ class PurchaseReceiptFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
-  // ── Save result state machine ─────────────────────────────────────────────
+  // ── Save result state machine ───────────────────────────────────────────
   var saveResult      = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -64,7 +63,7 @@ class PurchaseReceiptFormController extends GetxController
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
 
-  // ── Header form controllers ───────────────────────────────────────────────
+  // ── Header form controllers ──────────────────────────────────────────────
   final supplierController    = TextEditingController();
   final postingDateController = TextEditingController();
   final postingTimeController = TextEditingController();
@@ -77,23 +76,23 @@ class PurchaseReceiptFormController extends GetxController
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  // ── PO linking cache ──────────────────────────────────────────────────────
+  // ── PO linking cache ────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _cachedPoItems = [];
   var poItemQuantities = <String, double>{}.obs;
 
-  // ── EAN context for doc-level scan routing ──────────────────────────────
+  // ── EAN context for doc-level scan routing ────────────────────────────
   String currentScannedEan = '';
 
   // ── UI feedback ─────────────────────────────────────────────────────────────
   var recentlyAddedItemName = ''.obs;
 
-  // ── Persistent scan worker ───────────────────────────────────────────────────
+  // ── Persistent scan worker ────────────────────────────────────────────────────
   Worker? _scanWorker;
+  Timer?  _scanDebounce;
 
   bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
-
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
   void onInit() {
     super.onInit();
@@ -121,6 +120,7 @@ class PurchaseReceiptFormController extends GetxController
   void onClose() {
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
+    _scanDebounce?.cancel();
     log('[PR:onClose] _scanWorker disposed', name: 'PR');
     supplierController.dispose();
     postingDateController.dispose();
@@ -151,13 +151,20 @@ class PurchaseReceiptFormController extends GetxController
   void _onRawScan(String code) {
     log('[PR:_onRawScan] code="$code" route=${Get.currentRoute}', name: 'PR');
     if (code.isEmpty) return;
-    if (Get.currentRoute != AppRoutes.PURCHASE_RECEIPT_FORM) return;
-    final clean = code.trim();
-    barcodeController.text = clean;
-    scanBarcode(clean);
+    final route = Get.currentRoute;
+    final isOnForm  = route == AppRoutes.PURCHASE_RECEIPT_FORM;
+    final isOnSheet = isItemSheetOpen.value;
+    if (!isOnForm && !isOnSheet) return;
+    // Debounce: ignore follow-up firings within 300 ms of a valid scan.
+    _scanDebounce?.cancel();
+    _scanDebounce = Timer(const Duration(milliseconds: 300), () {
+      final clean = code.trim();
+      barcodeController.text = clean;
+      scanBarcode(clean);
+    });
   }
 
-  // ── Data fetching ───────────────────────────────────────────────────────────────
+  // ── Data fetching ────────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
@@ -216,7 +223,6 @@ class PurchaseReceiptFormController extends GetxController
       final response = await _provider.getPurchaseReceipt(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final receipt = PurchaseReceipt.fromJson(response.data['data']);
-        purchaseReceipt.value = receipt;
 
         supplierController.text    = receipt.supplier;
         postingDateController.text = receipt.postingDate;
@@ -231,6 +237,34 @@ class PurchaseReceiptFormController extends GetxController
             .toList();
 
         if (poNames.isNotEmpty) await _fetchLinkedPurchaseOrders(poNames);
+
+        // Re-hydrate poQty on each PR item from the cached PO items.
+        // purchase_order_qty is not stored on the server — the app derives
+        // it by matching purchaseOrderItem (the PO item row name) to the
+        // cached PO items fetched above.
+        final hydratedItems = receipt.items.map((prItem) {
+          if (prItem.purchaseOrderItem == null) return prItem;
+          final qty = poItemQuantities[prItem.purchaseOrderItem!];
+          if (qty == null || qty <= 0) return prItem;
+          return prItem.copyWith(purchaseOrderQty: qty);
+        }).toList();
+
+        purchaseReceipt.value = PurchaseReceipt(
+          name:         receipt.name,
+          postingDate:  receipt.postingDate,
+          modified:     receipt.modified,
+          creation:     receipt.creation,
+          status:       receipt.status,
+          docstatus:    receipt.docstatus,
+          owner:        receipt.owner,
+          postingTime:  receipt.postingTime,
+          setWarehouse: receipt.setWarehouse,
+          supplier:     receipt.supplier,
+          currency:     receipt.currency,
+          totalQty:     receipt.totalQty,
+          grandTotal:   receipt.grandTotal,
+          items:        hydratedItems,
+        );
       } else {
         AppNotification.error('Failed to fetch purchase receipt');
       }
@@ -263,7 +297,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── PO linking ──────────────────────────────────────────────────────────────
+  // ── PO linking ─────────────────────────────────────────────────────────────
 
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
@@ -296,7 +330,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── S4: addItemLocally / updateItemLocally ──────────────────────────────────
+  // ── addItemLocally / updateItemLocally ────────────────────────────────────
 
   void addItemLocally(
     String itemCode,
@@ -400,7 +434,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Item sheet orchestration ──────────────────────────────────────────────────
+  // ── Item sheet orchestration ────────────────────────────────────────────────
 
   Future<void> _openItemSheet({
     required String itemCode,
@@ -425,25 +459,18 @@ class PurchaseReceiptFormController extends GetxController
       editingItem:    editingItem,
     );
 
+    // Inject PO qty so the progress bar and PO Qty chip render on the item card.
+    // Only for new items — editing items already have purchaseOrderQty from server.
+    if (editingItem == null) {
+      linkToPurchaseOrder(itemCode, child);
+    }
+
     if (editingItem != null) ensureItemKey(editingItem);
 
     Future<void> onSubmit() async {
       await child.submit();
       await savePurchaseReceipt();
     }
-
-    child.setupAutoSubmit(
-      enabled:       _storageService.getAutoSubmitEnabled(),
-      delaySeconds:  _storageService.getAutoSubmitDelay(),
-      isSheetOpen:   isItemSheetOpen,
-      isSubmittable: () => purchaseReceipt.value?.docstatus == 0,
-      onAutoSubmit: () async {
-        isAddingItem.value = true;
-        await onSubmit();
-        isAddingItem.value = false;
-        if (Get.isBottomSheetOpen == true) Get.back();
-      },
-    );
 
     isItemSheetOpen.value = true;
     log('[PR:_openItemSheet] isItemSheetOpen → true', name: 'PR');
@@ -458,8 +485,8 @@ class PurchaseReceiptFormController extends GetxController
           controller:       child,
           scrollController: sc,
           onSubmit: () async {
-            await onSubmit();
-            Get.back();
+            final ok = await child.submitWithFeedback();
+            if (ok) Get.back();
           },
           onScan: (code) => scanBarcode(code),
           customFields: [
@@ -468,6 +495,7 @@ class PurchaseReceiptFormController extends GetxController
               accentColor: Colors.purple,
               editMode:    true,
               fieldKey:    'pr_batch_field',
+              showBrowseBatches: true,
             ),
             SharedRackField(
               c:           child,
@@ -475,6 +503,7 @@ class PurchaseReceiptFormController extends GetxController
               label:       'Target Rack',
               hint:        'Rack',
               editMode:    true,
+              balanceOverride: () => null,
             ),
           ],
         ),
@@ -485,12 +514,19 @@ class PurchaseReceiptFormController extends GetxController
     isItemSheetOpen.value = false;
     log('[PR:_openItemSheet] isItemSheetOpen → false', name: 'PR');
     barcodeController.clear();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      child.disposeControllers();
+      Get.delete<PurchaseReceiptItemFormController>(force: true);
+      log('[PR:_openItemSheet] post-frame teardown complete', name: 'PR');
+    });
+
     if (Get.isRegistered<PurchaseReceiptItemFormController>()) {
       Get.delete<PurchaseReceiptItemFormController>();
     }
   }
 
-  // ── Public entry points ───────────────────────────────────────────────────────
+  // ── Public entry points ───────────────────────────────────────────────────
 
   void openSheetForNewItem({
     required String itemCode,
@@ -549,7 +585,7 @@ class PurchaseReceiptFormController extends GetxController
     );
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────────
+  // ── Save ─────────────────────────────────────────────────────────────────────────
   Future<void> savePurchaseReceipt() async {
     if (!isEditable) return;
     if (isSaving.value) return;
@@ -625,7 +661,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── UX helpers ──────────────────────────────────────────────────────────────────
+  // ── UX helpers ────────────────────────────────────────────────────────────────────
   void triggerHighlight(String uniqueId) {
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {

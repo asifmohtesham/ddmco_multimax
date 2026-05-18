@@ -1,7 +1,117 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+
+// ── POS Upload error reason ─────────────────────────────────────────────────
+
+/// Classifies why a POS Upload fetch failed so [GlobalDialog.showPosUploadError]
+/// can display the most actionable message copy to the operator.
+enum PosUploadErrorReason {
+  /// The server returned 404 — the document name was not found.
+  notFound,
+
+  /// Any other failure: network timeout, server error, parse error, etc.
+  networkError,
+}
 
 class GlobalDialog {
+  /// Async confirmation bottom-sheet — resolves to [true] when the user
+  /// taps the confirm button, [false] on cancel or barrier dismiss.
+  ///
+  /// ```dart
+  /// final confirmed = await GlobalDialog.confirm(
+  ///   title: 'Submit Work Order',
+  ///   message: 'This will lock the document. Continue?',
+  ///   confirmText: 'Submit',
+  ///   confirmColor: Colors.blue,
+  /// );
+  /// if (confirmed != true) return;
+  /// ```
+  static Future<bool?> confirm({
+    required String title,
+    required String message,
+    String confirmText = 'Confirm',
+    Color confirmColor = Colors.blue,
+    IconData icon = Icons.check_circle_outline,
+  }) {
+    return Get.bottomSheet<bool>(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: confirmColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: confirmColor, size: 32),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        child: const Text('Cancel',
+                            style: TextStyle(color: Colors.black87)),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: confirmColor,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(confirmText,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   static void showConfirmation({
     required String title,
     required String message,
@@ -135,6 +245,149 @@ class GlobalDialog {
     );
   }
 
+  /// Shows a hard-block dialog when the customer on a Delivery Note (or
+  /// Stock Entry) cannot be resolved in the system.
+  ///
+  /// This is a **non-dismissible** modal — the operator must tap
+  /// **Go to Dashboard** to acknowledge the error.  The CTA calls
+  /// [Get.offAllNamed] with [AppRoutes.DASHBOARD] so the broken document
+  /// screen is fully removed from the navigation stack.
+  ///
+  /// Trigger this **instead of** setting only [customerError] whenever the
+  /// customer is missing and the document was opened from a POS Upload,
+  /// because the customer field is read-only and there is no in-screen
+  /// recovery path.
+  ///
+  /// ```dart
+  /// GlobalDialog.showCustomerNotFound(customer: posUploadCustomer ?? '');
+  /// ```
+  static void showCustomerNotFound({required String customer}) {
+    Get.dialog(
+      Builder(
+        builder: (context) => WillPopScope(
+          onWillPop: () async => false,
+          child: Dialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 28, vertical: 40),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Icon ────────────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.person_off_outlined,
+                      color: Colors.red.shade700,
+                      size: 36,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Title ────────────────────────────────────────────────
+                  const Text(
+                    'Customer Not Found',
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+
+                  // ── Body ────────────────────────────────────────────────
+                  Text(
+                    customer.isNotEmpty
+                        ? 'The customer referenced in this POS Upload could not be found in the system:'
+                        : 'No customer is set on this POS Upload document.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 14, color: Colors.grey.shade700),
+                  ),
+
+                  if (customer.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    // ── Customer name chip ──────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person_outline,
+                              size: 15, color: Colors.red.shade400),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              customer,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.red.shade700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 14),
+
+                  // ── Hint ────────────────────────────────────────────────
+                  Text(
+                    'Please verify the POS Upload document and ensure the '
+                    'customer exists before retrying.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 28),
+
+                  // ── CTA ─────────────────────────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () =>
+                          Get.offAllNamed(AppRoutes.HOME),
+                      icon: const Icon(Icons.home_outlined, size: 20),
+                      label: const Text(
+                        'Go to Dashboard',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.red.shade700,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
+
   /// Shows a bottom-sheet error modal for unrecoverable / load failures.
   ///
   /// Use this **instead of** [GlobalSnackbar.error] when the screen is
@@ -190,72 +443,758 @@ class GlobalDialog {
                       color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
-                if (onRetry != null) ...
-                  [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(12)),
-                              side: BorderSide(
-                                  color: Colors.grey.shade300),
-                            ),
-                            child: const Text('Close',
-                                style:
-                                    TextStyle(color: Colors.black87)),
+                if (onRetry != null) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12)),
+                            side: BorderSide(
+                                color: Colors.grey.shade300),
+                          ),
+                          child: const Text('Close',
+                              style:
+                                  TextStyle(color: Colors.black87)),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            onRetry();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Retry',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12)),
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              onRetry();
-                            },
-                            icon: const Icon(Icons.refresh, size: 18),
-                            label: const Text('Retry',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14),
-                              backgroundColor: Colors.red,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(12)),
-                            ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        side:
+                            BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: const Text('Close',
+                          style: TextStyle(color: Colors.black87)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+    );
+  }
+
+  /// Shows a bottom-sheet when a POS Upload document cannot be fetched.
+  ///
+  /// The [reason] drives the message copy:
+  /// - [PosUploadErrorReason.notFound]     → 404: document missing / renamed
+  /// - [PosUploadErrorReason.networkError] → connectivity / unexpected error
+  ///
+  /// Two-button layout:
+  ///   • **Continue without POS** – dismisses; the SE opens without POS
+  ///     context (serial dropdown will not appear).
+  ///   • **Retry** (shown only when [onRetry] is supplied) – dismisses then
+  ///     re-fires the fetch.
+  ///
+  /// Amber palette signals a recoverable warning, not a hard block —
+  /// the Stock Entry document itself remains accessible.
+  ///
+  /// ```dart
+  /// GlobalDialog.showPosUploadError(
+  ///   posId:   'KX-2O25-5963-1',
+  ///   reason:  PosUploadErrorReason.notFound,
+  ///   onRetry: () => fetchPosUpload(posId),
+  /// );
+  /// ```
+  static void showPosUploadError({
+    required String posId,
+    required PosUploadErrorReason reason,
+    VoidCallback? onRetry,
+  }) {
+    final String title;
+    final String body;
+    final String hint;
+
+    switch (reason) {
+      case PosUploadErrorReason.notFound:
+        title = 'POS Upload Not Found';
+        body  = 'The reference "$posId" was not found on the server.';
+        hint  = 'It may have been deleted, renamed, or the reference '
+                'number may contain a typo. You can continue and the '
+                'invoice serial selector will not be available.';
+        break;
+      case PosUploadErrorReason.networkError:
+        title = 'Could Not Load POS Upload';
+        body  = 'A connection error occurred while fetching "$posId".';
+        hint  = 'Check your network and tap Retry, or continue without '
+                'POS context — the invoice serial selector will not be '
+                'available until the document is loaded.';
+        break;
+    }
+
+    Get.bottomSheet(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    color: Colors.amber,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Title ─────────────────────────────────────────────────
+                Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Primary message ───────────────────────────────────────
+                Text(
+                  body,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+
+                // ── Hint / explanation ────────────────────────────────────
+                Text(
+                  hint,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Reference token chip ──────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tag,
+                          size: 14, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Text(
+                        posId,
+                        style: TextStyle(
+                          fontFamily: 'ShureTechMono',
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Action buttons ────────────────────────────────────────
+                if (onRetry != null) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            side: BorderSide(
+                                color: Colors.grey.shade300),
                           ),
+                          child: const Text(
+                            'Continue without POS',
+                            style: TextStyle(
+                                color: Colors.black87, fontSize: 13),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            onRetry();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text(
+                            'Retry',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14),
+                            backgroundColor: Colors.amber.shade700,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: const Text(
+                        'Continue without POS',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+    );
+  }
+
+  /// Shows a hard-block bottom-sheet when a scan would exceed the POS
+  /// Upload qty cap for the selected Invoice Serial Number.
+  ///
+  /// Displays three stat columns — Allowed / Scanned / Remaining — so
+  /// the operator immediately understands where they stand without
+  /// needing to navigate away from the scan screen.
+  ///
+  /// ```dart
+  /// GlobalDialog.showQtyCapExceeded(
+  ///   serialNo:   3,
+  ///   itemName:   'Widget A',
+  ///   scannedQty: 5.0,
+  ///   capQty:     5.0,
+  /// );
+  /// ```
+  static void showQtyCapExceeded({
+    required int    serialNo,
+    required String itemName,
+    required double scannedQty,
+    required double capQty,
+  }) {
+    Get.bottomSheet(
+      Builder(
+        builder: (context) {
+          final remaining = (capQty - scannedQty).clamp(0.0, capQty);
+          final isFulfilled = remaining <= 0;
+          final remainingColor =
+              isFulfilled ? Colors.red.shade600 : Colors.green.shade600;
+
+          return Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Icon ────────────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.block_outlined,
+                      color: Colors.orange,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Title ────────────────────────────────────────────────
+                  const Text(
+                    'Qty Cap Exceeded',
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // ── Serial + item name ───────────────────────────────────
+                  Text(
+                    'Invoice Serial #$serialNo',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    itemName,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── 3-column data row ────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _dialogStatColumn(
+                          'Allowed',
+                          '${_fmtQty(capQty)} pcs',
+                          Colors.grey.shade700,
+                        ),
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: Colors.grey.shade300,
+                        ),
+                        _dialogStatColumn(
+                          'Scanned',
+                          '${_fmtQty(scannedQty)} pcs',
+                          Colors.orange.shade700,
+                        ),
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: Colors.grey.shade300,
+                        ),
+                        _dialogStatColumn(
+                          'Remaining',
+                          '${_fmtQty(remaining)} pcs',
+                          remainingColor,
                         ),
                       ],
                     ),
-                  ]
-                else ...
-                  [
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                          side:
-                              BorderSide(color: Colors.grey.shade300),
-                        ),
-                        child: const Text('Close',
-                            style: TextStyle(color: Colors.black87)),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Contextual hint ──────────────────────────────────────
+                  Text(
+                    isFulfilled
+                        ? 'This serial is fully fulfilled. No more units can be added.'
+                        : 'You can still scan ${_fmtQty(remaining)} more unit(s) for this serial.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Dismiss button ───────────────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: ElevatedButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text(
+                        'Got It',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+    );
+  }
+
+  /// Hard-block sheet shown when the user taps "Submit Job Card" but the
+  /// completed qty (totalCompletedQty + processLossQty) does not yet equal
+  /// the WO target qty (forQuantity).
+  ///
+  /// Shows a 2-column stat row — Completed vs Target — so the operator
+  /// immediately knows how much work remains.
+  ///
+  /// ```dart
+  /// GlobalDialog.showIncompleteJobCard(
+  ///   completedQty: jc.totalCompletedQty + jc.processLossQty,
+  ///   targetQty:    jc.forQuantity,
+  /// );
+  /// ```
+  static void showIncompleteJobCard({
+    required double completedQty,
+    required double targetQty,
+  }) {
+    final remaining = (targetQty - completedQty).clamp(0.0, targetQty);
+
+    Get.bottomSheet(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.assignment_late_outlined,
+                    color: Colors.red.shade700,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Title ─────────────────────────────────────────────────
+                const Text(
+                  'Incomplete Job Card',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Explanation ───────────────────────────────────────────
+                Text(
+                  'The completed qty must equal the Work Order target qty '
+                      'before this Job Card can be submitted.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+
+                // ── 3-column stat row ─────────────────────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _dialogStatColumn(
+                        'Completed',
+                        '${_fmtQty(completedQty)} pcs',
+                        Colors.grey.shade700,
+                      ),
+                      Container(
+                          width: 1, height: 32, color: Colors.grey.shade300),
+                      _dialogStatColumn(
+                        'Target',
+                        '${_fmtQty(targetQty)} pcs',
+                        Colors.green.shade700,
+                      ),
+                      Container(
+                          width: 1, height: 32, color: Colors.grey.shade300),
+                      _dialogStatColumn(
+                        'Remaining',
+                        '${_fmtQty(remaining)} pcs',
+                        Colors.red.shade700,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Contextual hint ───────────────────────────────────────
+                Text(
+                  'Log ${_fmtQty(remaining)} more unit(s) to complete this Job Card.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.grey.shade500, fontSize: 13),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Dismiss button ────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      'OK, Got It',
+                      style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+    );
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  static Widget _dialogStatColumn(
+      String label, String value, Color valueColor) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'ShureTechMono',
+            color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _fmtQty(double q) =>
+      q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
+
+  /// Hard-block sheet shown when an employee attempts to Start/Resume a
+  /// Job Card while another Job Card is already Work In Progress.
+  ///
+  /// Non-dismissible — the only action is "OK, Got It" which closes the
+  /// sheet. The user must navigate to the conflicting card and pause it.
+  ///
+  /// ```dart
+  /// GlobalDialog.showRunningJobCardBlock(
+  ///   conflictingName:      'PO-JOB00042',
+  ///   conflictingOperation: 'Assembly',
+  /// );
+  /// ```
+  static void showRunningJobCardBlock({
+    required String conflictingName,
+    required String conflictingOperation,
+  }) {
+    Get.bottomSheet(
+      Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Icon ──────────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.pause_circle_outline,
+                    color: Colors.orange,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Title ─────────────────────────────────────────────────
+                const Text(
+                  'Job Card Already Running',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Explanation ───────────────────────────────────────────
+                const Text(
+                  'You must pause the currently running Job Card before starting another.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+
+                // ── Conflicting card chip ─────────────────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.timer_outlined,
+                          size: 18, color: Colors.orange.shade700),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              conflictingName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                            if (conflictingOperation.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                conflictingOperation,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange.shade600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Work In Progress',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── CTA ───────────────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      'OK, Got It',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

@@ -22,9 +22,11 @@ import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart'
 ///     the latest Rx values on every tick. The stable key ensures that
 ///     re-reading those params does NOT remount the widget subtree.
 ///
-///   • Qty +/− buttons call [adjustSheetQty(1/-1)] → [validateSheet()] →
-///     [isSheetValid] updated automatically, enabling "Update Item" only
-///     when the form actually changed.
+///   • Qty ± stepper and inline error text are driven by [qtyDelegate]
+///     (controller implements [QtyFieldDelegate]) via [SharedQtyField].
+///     [adjustSheetQty] is still available on the controller and will be
+///     called by [SharedQtyField] through [QtyFieldWithPlusMinusDelegate]
+///     if the controller is upgraded to that interface in the future.
 ///
 ///   • "Update Item" title + enabled state is driven by [isSheetValid]
 ///     which is false in edit mode until [isFormDirty] is true.
@@ -72,9 +74,12 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
                           : null,
 
         // ── Quantity ─────────────────────────────────────────────────────────
-        qtyController: controller.bsQtyController,
-        onIncrement:   () => controller.adjustSheetQty(1),
-        onDecrement:   () => controller.adjustSheetQty(-1),
+        // Delegate pattern: controller implements QtyFieldDelegate so
+        // GlobalItemFormSheet / SharedQtyField drive all qty reactive state
+        // (text field, ± stepper, inline error, Max chip) from the interface
+        // without requiring raw controller/callback params.
+        qtyDelegate:    controller,
+        qtyAccentColor: Colors.teal,
 
         // ── Save / validation ───────────────────────────────────────────────
         isSaveEnabledRx: controller.isSheetValid,

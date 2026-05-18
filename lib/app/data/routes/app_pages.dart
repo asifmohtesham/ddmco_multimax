@@ -1,7 +1,14 @@
 import 'package:multimax/app/modules/bom/bom_binding.dart';
 import 'package:multimax/app/modules/bom/bom_screen.dart';
+import 'package:multimax/app/modules/bom/form/bom_form_binding.dart';
+import 'package:multimax/app/modules/bom/form/bom_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_binding.dart';
+import 'package:multimax/app/modules/job_card/job_card_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_screen.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_binding.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_screen.dart';
+import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_binding.dart';
+import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
@@ -55,6 +62,10 @@ import 'package:multimax/app/modules/material_request/material_request_binding.d
 import 'package:multimax/app/modules/material_request/material_request_screen.dart';
 import 'package:multimax/app/modules/about/about_binding.dart';
 import 'package:multimax/app/modules/about/about_screen.dart';
+import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_binding.dart';
+import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_screen.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
@@ -171,6 +182,24 @@ class AppPages {
       binding: BomBinding(),
     ),
     GetPage(
+      name: AppRoutes.BOM_FORM,
+      page: () => const BomFormScreen(),
+      binding: BomFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.BOM_SEARCH,
+      page: () => const BomSearchScreen(),
+      binding: BomSearchBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.JOB_CARD_SUMMARY,
+      page: () => const JobCardSummaryScreen(),
+      binding: JobCardSummaryBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
       name: AppRoutes.WORK_ORDER,
       page: () => const WorkOrderScreen(),
       binding: WorkOrderBinding(),
@@ -185,6 +214,12 @@ class AppPages {
       name: AppRoutes.JOB_CARD,
       page: () => const JobCardScreen(),
       binding: JobCardBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.JOB_CARD_FORM,
+      page: () => const JobCardFormScreen(),
+      binding: JobCardFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.BATCH,
@@ -212,6 +247,18 @@ class AppPages {
       name: AppRoutes.ABOUT,
       page: () => const AboutScreen(),
       binding: AboutBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.BATCH_WISE_BALANCE,
+      page: () => const BatchWiseBalanceScreen(),
+      binding: BatchWiseBalanceBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.ITEM_VARIANT_DETAILS,
+      page:       () => const ItemVariantDetailsScreen(),
+      binding:    ItemVariantDetailsBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
   ];
 }

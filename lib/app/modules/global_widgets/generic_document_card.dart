@@ -22,6 +22,27 @@ class GenericDocumentCard extends StatelessWidget {
   final Widget? expandedContent;
   final Widget? leading;
 
+  /// When `true` the trailing chevron renders as a static
+  /// [Icons.chevron_right] (tooltip: 'Open'), clearly communicating that
+  /// [onTap] **navigates** rather than expands the card in-place.
+  ///
+  /// When `false` (default) the original [AnimatedRotation] behaviour is
+  /// preserved: the chevron rotates 180 ° when [isExpanded] is `true` and
+  /// the [expandedContent] panel is shown below the stats row.
+  ///
+  /// ## Choosing the correct value
+  /// | Screen / use-case                    | value  |
+  /// |--------------------------------------|--------|
+  /// | StockEntry list card (expand panel)  | false  |
+  /// | DeliveryNote list card (expand panel)| false  |
+  /// | PackingSlip list card (expand panel) | false  |
+  /// | Any card that only navigates on tap  | true   |
+  ///
+  /// ⚠️ UI/UX contract: never set [navigatesOnTap] to `true` on a card that
+  /// also passes a non-null [expandedContent] — the affordances would
+  /// contradict each other.
+  final bool navigatesOnTap;
+
   const GenericDocumentCard({
     super.key,
     required this.title,
@@ -35,6 +56,7 @@ class GenericDocumentCard extends StatelessWidget {
     this.isLoadingDetails = false,
     this.expandedContent,
     this.leading,
+    this.navigatesOnTap = false,
   });
 
   // Frappe / ERPNext canonical status colours — matches StatusPill exactly.
@@ -57,6 +79,37 @@ class GenericDocumentCard extends StatelessWidget {
       default:
         return Colors.transparent;
     }
+  }
+
+  /// Builds the trailing chevron widget for the stats row.
+  ///
+  /// - [navigatesOnTap] == `true`  → static [Icons.chevron_right], tooltip
+  ///   'Open'. Signals that the card navigates to a detail screen.
+  /// - [navigatesOnTap] == `false` → [AnimatedRotation] on [Icons.expand_more],
+  ///   tooltip 'Show details' / 'Collapse'. Signals in-place expansion.
+  Widget _buildTrailingChevron(ColorScheme colorScheme) {
+    if (navigatesOnTap) {
+      return Tooltip(
+        message: 'Open',
+        child: Icon(
+          Icons.chevron_right,
+          size: 20,
+          color: colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    return Tooltip(
+      message: isExpanded ? 'Collapse' : 'Show details',
+      child: AnimatedRotation(
+        turns: isExpanded ? 0.5 : 0.0,
+        duration: const Duration(milliseconds: 300),
+        child: Icon(
+          Icons.expand_more,
+          size: 20,
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
   }
 
   @override
@@ -147,7 +200,7 @@ class GenericDocumentCard extends StatelessWidget {
                         ],
                       ),
 
-                      // ── Row 1: primary stats + expand chevron ───────────
+                      // ── Row 1: primary stats + trailing chevron ─────────
                       if (stats.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Row(
@@ -160,34 +213,13 @@ class GenericDocumentCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Tooltip(
-                              message:
-                                  isExpanded ? 'Collapse' : 'Show details',
-                              child: AnimatedRotation(
-                                turns: isExpanded ? 0.5 : 0.0,
-                                duration: const Duration(milliseconds: 300),
-                                child: Icon(
-                                  Icons.expand_more,
-                                  size: 20,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
+                            _buildTrailingChevron(colorScheme),
                           ],
                         ),
                       ] else if (isExpanded)
                         Align(
                           alignment: Alignment.centerRight,
-                          child: Tooltip(
-                            message: 'Collapse',
-                            child: AnimatedRotation(
-                              turns: 0.5,
-                              duration: const Duration(milliseconds: 300),
-                              child: Icon(Icons.expand_more,
-                                  size: 20,
-                                  color: colorScheme.onSurfaceVariant),
-                            ),
-                          ),
+                          child: _buildTrailingChevron(colorScheme),
                         ),
 
                       // ── Row 2: audit stats (muted, smaller) ────────────

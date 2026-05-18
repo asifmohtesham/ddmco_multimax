@@ -86,6 +86,17 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 /// }
 /// ```
 mixin AutoFillRackMixin on ItemSheetControllerBase {
+  // ── Abstract contract (satisfied by concrete controllers) ─────────────────
+
+  /// Whether the sheet is in add mode (as opposed to edit mode).
+  /// Concrete controllers set this in [initialise]:
+  ///   `isAddMode = editingItem == null;`
+  bool get isAddMode;
+
+  /// Rack-name → available-qty map populated by the concrete controller's
+  /// [fetchAllRackStocks] call inside [initialise].
+  Map<String, double> get rackStockMap;
+
   // ── Internal listener reference ──────────────────────────────────────────
   VoidCallback? _autoFillQtyListener;
 

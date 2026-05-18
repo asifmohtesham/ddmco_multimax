@@ -9,7 +9,7 @@ import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.d
 // Each of the four key fields — Item Code, Batch No, Purchase Order, Supplier
 // Name — is presented as an InkWell tile that opens a searchable
 // DraggableScrollableSheet picker.  The picker fires a live API search on the
-// controller’s provider so users always see up-to-date values without having
+// controller's provider so users always see up-to-date values without having
 // to pre-load a potentially large list.
 // ---------------------------------------------------------------------------
 
@@ -24,7 +24,7 @@ class BatchFilterBottomSheet extends StatefulWidget {
 class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
   final BatchController _ctrl = Get.find();
 
-  // Local copies — committed only on “Apply”
+  // Local copies — committed only on "Apply"
   final _itemCode = ''.obs;
   final _batchNo = ''.obs;
   final _purchaseOrder = ''.obs;
@@ -67,93 +67,109 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
       isLoading.value = false;
     }();
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
+    Get.bottomSheet(
+      DraggableScrollableSheet(
         initialChildSize: 0.65,
         minChildSize: 0.4,
         maxChildSize: 0.92,
-        builder: (ctx2, scrollController) => Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
+        expand: false,
+        builder: (ctx, scrollController) {
+          final theme = Theme.of(context);
+          final colorScheme = theme.colorScheme;
+          return Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Drag handle — uses outlineVariant token (matches
+                // GlobalFilterBottomSheet and the rest of the app)
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: searchController,
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16),
+                const SizedBox(height: 16),
+                // Title — uses textTheme token instead of raw fontSize
+                Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                onChanged: (val) async {
-                  isLoading.value = true;
-                  results.value = await searcher(val);
-                  isLoading.value = false;
-                },
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: Obx(() {
-                  if (isLoading.value) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (results.isEmpty) {
-                    return const Center(child: Text('No results'));
-                  }
-                  return ListView.separated(
-                    controller: scrollController,
-                    itemCount: results.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final item = results[i];
-                      return ListTile(
-                        title: Text(item.label),
-                        subtitle: item.subtitle != null
-                            ? Text(item.subtitle!,
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey))
-                            : null,
-                        onTap: () {
-                          onSelected(item.value, item.label);
-                          Navigator.of(ctx).pop();
-                        },
-                      );
-                    },
-                  );
-                }),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    hintText: hintText,
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  onChanged: (val) async {
+                    isLoading.value = true;
+                    results.value = await searcher(val);
+                    isLoading.value = false;
+                  },
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: Obx(() {
+                    if (isLoading.value) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (results.isEmpty) {
+                      return const Center(child: Text('No results'));
+                    }
+                    return ListView.separated(
+                      controller: scrollController,
+                      itemCount: results.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final item = results[i];
+                        return ListTile(
+                          title: Text(item.label),
+                          // Subtitle — uses textTheme + colorScheme tokens
+                          subtitle: item.subtitle != null
+                              ? Text(
+                                  item.subtitle!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                )
+                              : null,
+                          onTap: () {
+                            onSelected(item.value, item.label);
+                            Get.back();
+                          },
+                        );
+                      },
+                    );
+                  }),
+                ),
+              ],
+            ),
+          );
+        },
       ),
+      isScrollControlled: true,
     );
   }
 
-  // ── Searcher helpers ──────────────────────────────────────────────────────────
+  // ── Searcher helpers ─────────────────────────────────────────────────────
+  // Silent failure is intentional UX for filter pickers — a failed search
+  // simply shows an empty list without interrupting the user.  Errors are
+  // surfaced to the debug console so they are not completely invisible.
 
   Future<List<_PickerItem>> _searchItems(String q) async {
     try {
@@ -168,7 +184,9 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               subtitle: name != code ? name : null);
         }).toList();
       }
-    } catch (_) {}
+    } catch (e, s) {
+      debugPrint('[BatchFilter] _searchItems error: $e\n$s');
+    }
     return [];
   }
 
@@ -185,7 +203,9 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               subtitle: item.isNotEmpty ? item : null);
         }).toList();
       }
-    } catch (_) {}
+    } catch (e, s) {
+      debugPrint('[BatchFilter] _searchBatches error: $e\n$s');
+    }
     return [];
   }
 
@@ -202,7 +222,9 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               subtitle: supplier.isNotEmpty ? supplier : null);
         }).toList();
       }
-    } catch (_) {}
+    } catch (e, s) {
+      debugPrint('[BatchFilter] _searchPOs error: $e\n$s');
+    }
     return [];
   }
 
@@ -220,11 +242,13 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
                   supplierName != name && name.isNotEmpty ? name : null);
         }).toList();
       }
-    } catch (_) {}
+    } catch (e, s) {
+      debugPrint('[BatchFilter] _searchSuppliers error: $e\n$s');
+    }
     return [];
   }
 
-  // ── Apply / Clear ────────────────────────────────────────────────────────────
+  // ── Apply / Clear ────────────────────────────────────────────────────────
 
   void _apply() {
     final filters = <String, dynamic>{};
@@ -395,7 +419,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
   }
 }
 
-// ── Internal data model for picker results ────────────────────────────────────────
+// ── Internal data model for picker results ────────────────────────────────────
 
 class _PickerItem {
   final String value;

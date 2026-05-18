@@ -64,7 +64,7 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: Get.height * 0.7,
+      height: MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -102,7 +102,13 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
                           return ListTile(
                             title: Text(wh),
                             onTap: () {
-                              Get.back();
+                              // Use Navigator.of(ctx).pop() instead of Get.back().
+                              // Get.back() unconditionally calls
+                              // Get.closeCurrentSnackbar() before popping; when a
+                              // SnackbarController is queued but not yet attached to
+                              // the Overlay, its late AnimationController throws
+                              // LateInitializationError.
+                              Navigator.of(ctx).pop();
                               widget.onSelected(wh);
                             },
                           );

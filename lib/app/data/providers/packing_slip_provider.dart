@@ -44,6 +44,7 @@ class PackingSlipProvider {
   // ── Search helpers for filter pickers ─────────────────────────────────────
 
   /// Delivery Notes for the DN picker (draft + submitted only).
+  /// Sorted by creation desc so the newest DNs appear first on initial open.
   Future<Response> searchDeliveryNotes(String query) async {
     return _apiProvider.getDocumentList(
       'Delivery Note',
@@ -53,7 +54,7 @@ class PackingSlipProvider {
       },
       fields: ['name', 'customer', 'po_no'],
       limit: 20,
-      orderBy: 'modified desc',
+      orderBy: 'creation desc',
     );
   }
 

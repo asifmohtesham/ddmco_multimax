@@ -31,11 +31,13 @@ class CaseOption {
   final String psName;
   final int? fromCaseNo;
   final int? toCaseNo;
+  final double totalQty;
 
   const CaseOption({
     required this.psName,
     this.fromCaseNo,
     this.toCaseNo,
+    this.totalQty = 0,
   });
 
   String get label {
@@ -262,6 +264,8 @@ class PosUploadFormController extends GetxController
                   psName: ps.name,
                   fromCaseNo: ps.fromCaseNo,
                   toCaseNo: ps.toCaseNo,
+                  totalQty: (ps.items ?? [])
+                    .fold(0, (s, i) => s + (i.qty ?? 0)),
                 ))
             .toList(),
       );

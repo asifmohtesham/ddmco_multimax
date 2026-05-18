@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
 import 'package:multimax/app/data/models/item_model.dart';
@@ -16,67 +17,74 @@ class ItemFormScreen extends GetView<ItemFormController> {
   Widget build(BuildContext context) {
     final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
     final cs = Theme.of(context).colorScheme;
+    final tabCtrl = Get.find<ItemTabController>();
 
     return Scaffold(
-      appBar: MainAppBar(
-        title: '',
-        titleWidget: Obx(
-          () => Text(
-            controller.item.value?.itemName ?? 'Item Details',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        leading: isModal
-            ? IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: Get.back,
-              )
-            : null,
-        bottom: TabBar(
-          controller: controller.tabController,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'Stock Levels'),
-            Tab(text: 'Attributes'),
-            Tab(text: 'Attachments'),
-          ],
-        ),
-      ),
-      body: Obx(() {
-        if (controller.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final item = controller.item.value;
-        if (item == null) {
-          return Center(
-            child: _buildEmptyState(
-              context,
-              cs,
-              icon: Icons.error_outline,
-              message: 'Item not found.',
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            // ── Standard form app bar ──────────────────────────────────
+            DocTypeFormHeader(
+              title: controller.docType,
+              // Item form is read-only — no Reload / Save / Share.
+              // In modal mode the back arrow won't exist, so surface
+              // an explicit Close button via extraActions instead.
+              extraActions: isModal
+                  ? [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                  onPressed: Get.back,
+                ),
+              ]
+                  : null,
             ),
-          );
-        }
 
-        return TabBarView(
-          controller: controller.tabController,
-          children: [
-            _buildOverviewTab(context, item, cs),
-            _buildStockLevelsTab(context, cs),
-            _buildAttributesTab(context, item, cs),
-            _buildAttachmentsTab(context, cs),
+            // ── TabBar pinned below the collapsing header ──────────────
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PinnedTabBarDelegate(
+                TabBar(
+                  controller: tabCtrl.tabController,
+                  isScrollable: true,
+                  tabs: const [
+                    Tab(text: 'Overview'),
+                    Tab(text: 'Stock Levels'),
+                    Tab(text: 'Attributes'),
+                    Tab(text: 'Attachments'),
+                  ],
+                ),
+              ),
+            ),
           ],
-        );
-      }),
-    );
+          body: Obx(() {
+            if (controller.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final item = controller.item.value;
+            if (item == null) {
+              return Center(
+                child: _buildEmptyState(
+                  context, cs,
+                  icon: Icons.error_outline,
+                  message: 'Item not found.',
+                ),
+              );
+            }
+            return TabBarView(
+              controller: tabCtrl.tabController,
+              children: [
+                _buildOverviewTab(context, item, cs),
+                _buildStockLevelsTab(context, cs),
+                _buildAttributesTab(context, item, cs),
+                _buildAttachmentsTab(context, cs),
+              ],
+            );
+          }),
+        ),
+      );
   }
 
-  // ── Overview Tab ────────────────────────────────────────────────────────
+  // ── Overview Tab ──────────────────────────────────────────────────────────
 
   Widget _buildOverviewTab(BuildContext context, Item item, ColorScheme cs) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
@@ -222,7 +230,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Stock Levels Tab ────────────────────────────────────────────────────
+  // ── Stock Levels Tab ──────────────────────────────────────────────────────
 
   Widget _buildStockLevelsTab(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);
@@ -236,9 +244,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // ── Warehouse filter chips ─────────────────────────────────
-            // Hidden when there is only one warehouse (filtering adds no
-            // value) or while data is still loading.
+            // ── Warehouse filter chips ────────────────────────────────────
             Obx(() {
               final warehouses = controller.availableWarehouses;
               if (controller.isLoadingStock.value || warehouses.length <= 1) {
@@ -260,7 +266,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        // ── "All" chip ──────────────────────────────────
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: FilterChip(
@@ -284,11 +289,8 @@ class ItemFormScreen extends GetView<ItemFormController> {
                             visualDensity: VisualDensity.compact,
                           ),
                         ),
-                        // ── Per-warehouse chips ─────────────────────────
                         ...warehouses.map((wh) {
                           final isActive = selected == wh;
-                          // Shorten long warehouse names:
-                          // "Main Warehouse - DDMCO" → "Main Warehouse"
                           final label = wh.contains(' - ')
                               ? wh.split(' - ').first.trim()
                               : wh;
@@ -324,7 +326,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               );
             }),
 
-            // 1. Warehouse Balance ─────────────────────────────────────
+            // 1. Warehouse Balance
             Text(
               'Warehouse Balance',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -348,8 +350,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       : 'No stock available in any warehouse.',
                 );
               }
-              // ValueKey forces the chart to repaint when the filter changes,
-              // preventing stale bar animations from a previous selection.
               return StockBalanceChart(
                 key: ValueKey(controller.selectedWarehouse.value),
                 stockLevels: levels,
@@ -358,7 +358,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 2. Batch-Wise Balance ────────────────────────────────────
+            // 2. Batch-Wise Balance
             Text(
               'Batch-Wise Balance',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -459,7 +459,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 3. Stock Ledger (untouched) ──────────────────────────────
+            // 3. Stock Ledger
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -626,7 +626,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Attributes Tab ──────────────────────────────────────────────────────
+  // ── Attributes Tab ────────────────────────────────────────────────────────
 
   Widget _buildAttributesTab(BuildContext context, Item item, ColorScheme cs) {
     final theme = Theme.of(context);
@@ -666,7 +666,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  // ── Attachments Tab ──────────────────────────────────────────────────────
+  // ── Attachments Tab ───────────────────────────────────────────────────────
 
   Widget _buildAttachmentsTab(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);
@@ -935,4 +935,27 @@ class ItemFormScreen extends GetView<ItemFormController> {
       ),
     );
   }
+}
+
+// Pins the TabBar below the collapsing DocTypeFormHeader sliver.
+// minExtent == maxExtent == TabBar.preferredSize.height so it never shrinks.
+class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  const _PinnedTabBarDelegate(this.tabBar);
+
+  @override double get minExtent => tabBar.preferredSize.height;
+  @override double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: Theme.of(context).colorScheme.onSurface,
+      elevation: overlapsContent ? 1.0 : 0.0,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedTabBarDelegate old) =>
+      tabBar != old.tabBar;
 }

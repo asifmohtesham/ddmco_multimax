@@ -2,167 +2,384 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/qty_cap_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_with_plus_minus_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 
 /// Drives the visual state of the animated Save button in the item sheet.
-///
-/// idle    — button is ready; shows save icon in blue/grey.
-/// loading — API call in progress; shows spinner in orange.
-/// success — save confirmed; shows green check for 700 ms then sheet closes.
-/// error   — save failed; shows red error icon for 1 500 ms then resets to idle.
 enum SaveButtonState { idle, loading, success, error }
 
-/// Abstract base controller for every DocType item-sheet.
-///
-/// Owns all state that is identical across Stock Entry, Delivery Note,
-/// Purchase Receipt, and Purchase Order item sheets:
-///   • TextEditingControllers / FocusNode
-///   • Batch & Rack validation (with post-frame-safe focus)
-///   • Stock / rack map fetching
-///   • Qty adjustment helpers
-///   • Dirty-state & sheet-validity flags
-///   • Auto-submit worker (enabled per-DocType via setupAutoSubmit)
-///
-/// Step-1 additions (UniversalItemFormSheet migration):
-///   • [isSheetLoading]     — merged loading flag (validating OR parent saving)
-///   • [qtyInfoText]        — abstract; DocType provides its qty-hint string
-///   • [deleteCurrentItem]  — abstract; DocType resolves item and dispatches
-///   • [isScanning]         — scan-bar active state (promoted from DN parent)
-///   • [scanController]     — scan-bar TEC (promoted from DN parent)
-///   • [isAddMode]          — true when no editingItemName
-///
-/// P2-A: validateBatch: batch with qty=0 is valid (no-stock warning only).
-/// P2-A: isSheetLoading now also merges isValidatingRack.
-/// P2-B: baseValidate: maxQty cap is a soft guard in edit-mode only.
-/// P2-C: fetchAllRackStocks: loop runs to result.length (was length-1).
-///       The Stock Balance report appends a totals row as the last entry in
-///       result[]. That row has rack == null and must be excluded from the
-///       rack-specific stock map. The guard
-///         `if (r != null && r.isNotEmpty && qty > 0)`
-///       handles this correctly without an off-by-one loop bound. See the
-///       fetchAllRackStocks() implementation below for the inline note.
-///
-/// Standardisation S1:
-///   • [isBatchReadOnly]    — promoted from PR/SE; locks batch field after scan/validation.
-///   • [currentScannedEan]  — promoted from PR/SE/DN (was named currentScannedEan8 in SE/DN).
-///   • [validateBatchOnInit] — promoted from PR/SE/DN; identical post-frame helper.
-///   All three child declarations are now dead code and should be removed.
-///
-/// Option-3 (animated save button):
-///   • [saveButtonState]     — drives icon/colour of the Save button widget.
-///   • [submitWithFeedback]  — wraps submit() with idle→loading→success/error flow.
-///                             Returns true on success; parent coordinator guards
-///                             Get.back() on this return value (fixes overlay crash).
-///   • [_resetSaveStateOnEdit] — resets saveButtonState to idle when user edits
-///                               any field after a success or error result.
-///
-/// B-2 fix (revised):
-///   • onClose() removes all TEC listeners synchronously (prevents any
-///     in-flight notifications on the current frame from reaching the
-///     already-logically-closed controller).
-///   • dispose() calls for all TECs, FocusNode, and ScrollController are
-///     deferred to a post-frame callback.  This is critical: GetX calls
-///     onClose() synchronously during Get.delete(), which may fire while
-///     Flutter's layout/draw pipeline is still mid-flight (the bottom-sheet
-///     overlay entry may still be mounted).  If we dispose synchronously,
-///     _AnimatedState.didUpdateWidget on the next sub-frame calls
-///     ChangeNotifier.addListener() on the now-disposed TEC and throws:
-///       "TextEditingController used after being disposed"
-///     Deferring to addPostFrameCallback guarantees the sheet's render
-///     subtree is fully deactivated before any dispose() call executes.
-///
-/// Concrete subclasses only need to implement the abstract members
-/// and call [initBaseListeners] + [captureSnapshot] from their [initialise].
-abstract class ItemSheetControllerBase extends GetxController {
-  // ── Dependencies ─────────────────────────────────────────────
-  final ApiProvider _api = Get.find<ApiProvider>();
+/// Base return type for batch-lookup results.
+class BatchResult {
+  final String batchNo;
+  final double availableQty;
+  final String? expiryDate;
 
-  // ── Form infrastructure ────────────────────────────────────────────
-  final GlobalKey<FormState> formKey               = GlobalKey<FormState>();
-  final ScrollController     sheetScrollController = ScrollController();
+  const BatchResult({
+    required this.batchNo,
+    required this.availableQty,
+    this.expiryDate,
+  });
+}
 
-  final TextEditingController qtyController   = TextEditingController();
+// ──────────────────────────────────────────────────────────────────────────────────
+// ItemSheetControllerBase
+// ──────────────────────────────────────────────────────────────────────────────────
+///
+/// Shared state and behaviour for all item-sheet controllers (Stock Entry,
+/// Delivery Note, Purchase Receipt …).
+///
+/// ## Responsibilities
+///
+///   • Batch validation lifecycle  — [validateBatch], [resetBatch],
+///     [softResetBatch], [validateBatchOnInit], [isBatchValid], [batchError],
+///     [batchInfoTooltip]
+///   • Rack validation lifecycle   — [validateRack], [resetRack],
+///     [softResetRack]
+///   • Balance computation         — [maxQty], [batchBalance], [fetchBatchBalance]
+///   • Save-button state           — [SaveButtonState], [saveButtonState]
+///   • Sheet-valid gate            — [isSheetValid] (RxBool), [validateSheet]
+///   • Dirty-check helpers         — [isDirty], snapshot tracking
+///   • [openBatchPicker]           — canonical picker lifecycle shared by all
+///     concrete controllers.  SE overrides to pre-fetch [batchWiseHistory].
+///
+/// ## TEC Lifecycle
+///
+/// All [TextEditingController], [FocusNode], and [ScrollController] fields
+/// in this class and its subclasses MUST follow the four rules documented in
+/// `tec_lifecycle_rules.dart`.  The disposal contract is:
+///
+///   • [disposeControllers] is the single disposal path — guarded by
+///     [_controllersDisposed] so it is safe to call any number of times.
+///   • [onClose] delegates to [disposeControllers]; it does NOT contain an
+///     independent inline disposal block.
+///   • Subclass [onClose] overrides that own additional TECs (e.g.
+///     [StockEntryItemFormController.sourceRackController]) MUST defer their
+///     disposal via `addPostFrameCallback` (Rule 1) and call `super.onClose()`
+///     AFTER scheduling the deferred callback.
+///   • [addSheetListeners] must always be preceded by [removeSheetListeners]
+///     (Rule 3) — see [prepareForItem] in concrete subclasses.
+///
+/// ## Changelog
+///
+///   isSheetValid     — promoted from computed bool getter to RxBool so
+///                      UniversalItemFormSheet can pass it as isSaveEnabledRx.
+///                      Concrete controllers write this inside validateSheet().
+///   liveRemaining    — concrete RxDouble(0.0); SE writes it in
+///                      validateSheet(); SharedSerialField reads it on
+///                      the base type.
+///   editingItemName  — RxnString; null = add-mode, non-null = edit rowId.
+///   formKey          — shared GlobalKey<FormState>.
+///   itemName/Owner/Creation/Modified/ModifiedBy — shared metadata Rx fields.
+///   qtyInfoText      — abstract String? getter (nullable); each controller
+///                      supplies its own label or null (no chip).
+///   qtyInfoTooltip   — CONCRETE RxnString field (promoted from abstract).
+///                      SE writes it directly inside validateSheet().
+///   adjustQty        — abstract; concrete controllers implement stepper.
+///   deleteCurrentItem — abstract; concrete controllers implement deletion.
+///   sheetScanController/isScanning — scan-bar integration.
+///   isAddMode        — abstract bool (satisfies AutoFillRackMixin contract).
+///   setupAutoSubmit  — wires the auto-close worker; available to all.
+///   initBaseListeners/captureSnapshot — aliases for addSheetListeners /
+///                      snapshotState used by PO and PS controllers.
+///   sheetScrollController — concrete ScrollController exposed so parent
+///                      orchestrators can pass it to UniversalItemFormSheet.
+///   disposeControllers — public teardown helper; now idempotent via
+///                      _controllersDisposed guard (Rule 2).
+///   softResetBatch / softResetRack — reset validity flags without zeroing
+///                      balances (DN-8 fix).
+///   validateBatchOnInit — convenience post-frame wrapper.
+///   validateRack     — base implementation delegates to fetchRackBalance.
+///   RackFieldWithBrowseDelegate — base class implements (Commit 3 of 4).
+///   BatchNoFieldWithBrowseDelegate — base class implements (Commit 7 of 7).
+///   QtyFieldWithPlusMinusDelegate — base class implements (this commit).
+///     isQtyValid     — dedicated RxBool field; written by validateSheet.
+///     qtyError       — RxString(''); written by validateSheet.
+///     isQtyReadOnly  — backed by _isQtyReadOnly; wired to docStatus == 1.
+///     effectiveMaxQty — double.infinity base default; SE/DN/PR override.
+///     docStatus      — RxInt(0); write to lock/unlock the qty field.
+///   fix(item-sheet): defer TextEditingController disposal to post-frame
+///     so the bottom-sheet exit animation completes before controllers are
+///     invalidated.  Prevents "TextEditingController was used after being
+///     disposed" crash triggered by back-nav with keyboard open.
+///   fix(item-sheet): guard disposeControllers against double-dispose
+///     — _controllersDisposed bool + onClose delegates to disposeControllers.
+abstract class ItemSheetControllerBase extends GetxController
+    implements
+        RackFieldWithBrowseDelegate,
+        BatchNoFieldWithBrowseDelegate,
+        QtyFieldWithPlusMinusDelegate {
+  // ── Reactive state ────────────────────────────────────────────────────────
+  final RxBool   isBatchValid          = false.obs;
+  final RxBool   isValidatingBatch     = false.obs;
+  final RxBool   isBatchReadOnly       = false.obs;
+  final RxString batchError            = RxString('');
+  final RxnString batchInfoTooltip     = RxnString(null);
+  final RxBool   isRackValid           = false.obs;
+  final RxBool   isValidatingRack      = false.obs;
+  final RxString rackError             = RxString('');
+  final RxDouble batchBalance          = 0.0.obs;
+  final RxDouble rackBalance           = 0.0.obs;
+  final RxBool   saveButtonVisible     = true.obs;
+  final Rx<SaveButtonState> saveButtonState = SaveButtonState.idle.obs;
+  final RxBool   isSheetLoading        = false.obs;
+
+  /// Whether the sheet scanner is active.
+  final RxBool   isScanning            = false.obs;
+
+  /// Remaining quantity after the entered qty is subtracted from the
+  /// effective ceiling.  Written by [validateSheet] in concrete controllers
+  /// that track a qty ceiling (e.g. SE).  Defaults to 0.0.
+  final RxDouble liveRemaining         = 0.0.obs;
+
+  /// Whether the sheet is valid and the Save button should be enabled.
+  /// Concrete controllers write this inside [validateSheet].
+  final RxBool   isSheetValid          = false.obs;
+
+  /// Tooltip shown in the rack suffix when a rack is selected.
+  final RxnString rackStockTooltip     = RxnString(null);
+
+  // ── QtyFieldWithPlusMinusDelegate concrete fields ────────────────────────
+
+  /// Whether the qty sub-field is valid.
+  ///
+  /// Dedicated [RxBool] — NOT an alias of [isSheetValid].  The sheet-level
+  /// save gate should compose sub-validations:
+  /// ```dart
+  /// isSheetValid.value =
+  ///     isQtyValid.value && isBatchValid.value && isRackValid.value;
+  /// ```
+  /// Concrete [validateSheet] implementations write this field directly.
+  @override
+  final RxBool isQtyValid = false.obs;
+
+  /// Inline error text shown beneath the qty field.
+  ///
+  /// `''` = no error (same contract as [rackError] / [batchError]).
+  /// Concrete [validateSheet] implementations write this field directly.
+  @override
+  final RxString qtyError = RxString('');
+
+  /// Docstatus of the row being viewed / edited.
+  ///
+  /// Write `docStatus.value = row['docstatus']` in [initForEdit].
+  /// The [ever] worker in [onInit] automatically locks the qty field
+  /// when this reaches 1 (submitted).
+  final RxInt docStatus = 0.obs;
+
+  // Backing field for isQtyReadOnly — never expose as a getter literal
+  // (.obs) because that allocates a new Rx on every access, breaking
+  // Obx subscriptions in SharedQtyField.
+  final RxBool _isQtyReadOnly = false.obs;
+
+  /// Whether the qty field and ± buttons are read-only.
+  ///
+  /// Automatically `true` when [docStatus] == 1 (submitted).
+  /// Concrete controllers may also set `_isQtyReadOnly.value = true`
+  /// for DocType-specific pre-conditions (e.g. missing warehouse).
+  @override
+  RxBool get isQtyReadOnly => _isQtyReadOnly;
+
+  /// The effective qty ceiling for the ± buttons and blur-clamp.
+  ///
+  /// Base default: [double.infinity] (uncapped).  SE, DN, and PR
+  /// override this in Commit 6 with their DocType-specific formulas.
+  @override
+  double get effectiveMaxQty => double.infinity;
+
+  // ── Edit-mode identity ───────────────────────────────────────────────────
+  /// null = add-mode; non-null = the rowId / docName being edited.
+  final RxnString editingItemName      = RxnString(null);
+
+  // ── Item metadata (shown in sheet footer) ────────────────────────────────────
+  final RxString  itemName             = ''.obs;
+  final RxnString itemOwner            = RxnString(null);
+  final RxnString itemCreation         = RxnString(null);
+  final RxnString itemModified         = RxnString(null);
+  final RxnString itemModifiedBy       = RxnString(null);
+
+  // ── Form key ────────────────────────────────────────────────────────────────
+  final GlobalKey<FormState> formKey   = GlobalKey<FormState>();
+
+  // ── isAddingItemFlag (used by PO/PS controllers) ───────────────────────────
+  bool isAddingItemFlag = false;
+
+  // ── Text controllers ──────────────────────────────────────────────────────────
   final TextEditingController batchController = TextEditingController();
   final TextEditingController rackController  = TextEditingController();
+
+  /// Backing text controller for the qty field.
+  ///
+  /// Exposed here (and via [QtyFieldDelegate.qtyController]) so
+  /// [SharedQtyField] and all existing listeners ([addSheetListeners],
+  /// [disposeControllers], [onClose]) can access it through a single
+  /// concrete field.
+  @override
+  final TextEditingController qtyController   = TextEditingController();
+
+  /// FocusNode for the rack text field.
   final FocusNode rackFocusNode = FocusNode();
 
-  // ── Core item identity ───────────────────────────────────────────
+  /// ScrollController for the sheet's scrollable body.
+  ///
+  /// Exposed so parent orchestrators (e.g. DeliveryNoteFormController) can
+  /// pass it directly to UniversalItemFormSheet without requiring each
+  /// concrete subclass to declare its own field (Group B — B1 fix).
+  final ScrollController sheetScrollController = ScrollController();
+
   var itemCode = ''.obs;
-  var itemName = ''.obs;
 
-  // ── Validation state ────────────────────────────────────────────
-  var isBatchValid      = false.obs;
-  var isRackValid       = false.obs;
-  var isValidatingBatch = false.obs;
-  var isValidatingRack  = false.obs;
-  var isSheetValid      = false.obs;
-  var isFormDirty       = false.obs;
-  var maxQty            = 0.0.obs;
-  var batchError        = RxnString();
-  var rackError         = RxnString();
-  var batchInfoTooltip  = RxnString();
-  var rackStockTooltip  = RxnString();
-  var rackStockMap      = <String, double>{}.obs;
+  // ── batchWiseHistory defaults ──────────────────────────────────────────────────
+  List<dynamic> get batchWiseHistory       => const [];
+  RxBool        get isLoadingBatchHistory  => false.obs;
+  Future<void>  fetchBatchWiseHistory()    async {}
 
-  // ── S1: Batch read-only toggle (promoted from PR + SE) ─────────────────
-  var isBatchReadOnly = false.obs;
+  // ── maxQty default ────────────────────────────────────────────────────────────────
+  double get maxQty => 0.0;
 
-  // ── S1: EAN-8 scan context (promoted from PR/SE/DN) ───────────────────
-  String currentScannedEan = '';
-
-  // ── Item metadata (for GlobalItemFormSheet footer) ───────────────────
-  var itemOwner      = RxnString();
-  var itemCreation   = RxnString();
-  var itemModified   = RxnString();
-  var itemModifiedBy = RxnString();
-
-  // ── Editing context ─────────────────────────────────────────────
-  var editingItemName = RxnString();
-
-  // ── Add / edit mode ─────────────────────────────────────────────
-  bool isAddMode = true;
-
-  // ── Option-3: animated save button state ────────────────────────────
-  var saveButtonState = SaveButtonState.idle.obs;
-
-  // ── Step-1: merged loading flag ──────────────────────────────────────
-  RxBool isAddingItemFlag = false.obs;
-
-  bool get isSheetLoading =>
-      isValidatingBatch.value ||
-      isValidatingRack.value  ||
-      isAddingItemFlag.value  ||
-      saveButtonState.value == SaveButtonState.loading;
-
-  // ── Step-1: scan-bar state (promoted from DN parent) ──────────────────
-  RxBool isScanning = false.obs;
-  TextEditingController? sheetScanController;
-
-  // ── Step-1: abstract qty info text ──────────────────────────────────
-  String? get qtyInfoText;
-
-  // ── Step-1: abstract delete dispatch ────────────────────────────────
-  Future<void> deleteCurrentItem();
-
-  // ── Snapshot for dirty-checking ──────────────────────────────────────
+  // Dirty-tracking snapshots
   String _snapshotBatch = '';
   String _snapshotRack  = '';
   String _snapshotQty   = '';
 
-  // ── Auto-submit worker ────────────────────────────────────────────
+  // ── Auto-submit worker ──────────────────────────────────────────────────────────
   Worker? _autoSubmitWorker;
 
-  // ── Abstract interface ─────────────────────────────────────────────
+  // ── TEC disposal guard (Rule 2 — tec_lifecycle_rules.dart) ─────────────────
+  //
+  // Set to true the first time disposeControllers() runs.  All subsequent
+  // calls become no-ops, making the disposal path idempotent regardless of
+  // whether GetX's onClose() or a parent-orchestrated cleanup fires first.
+  bool _controllersDisposed = false;
+
+  // ── Abstract interface ───────────────────────────────────────────────────────────
   String? get resolvedWarehouse;
   bool get requiresBatch;
   bool get requiresRack;
+
+  /// The accent colour used by this sheet's UI elements.
+  Color get accentColor;
+
+  @override
   void validateSheet();
   Future<void> submit();
 
-  // ── Option-3: submitWithFeedback ────────────────────────────────────
+  /// Whether the sheet is in add-mode (true) or edit-mode (false).
+  /// Satisfies [AutoFillRackMixin.isAddMode].
+  bool get isAddMode;
+
+  /// Qty-info label shown on the [QtyCapBadge] chip.
+  ///
+  /// Returns `null` to suppress the badge entirely.
+  /// Examples: `'Max: 12'`, `'Max: 6.5 Kg'`, `null`.
+  ///
+  /// Satisfies [QtyCapDelegate.qtyInfoText] (nullable String getter).
+  @override
+  String? get qtyInfoText;
+
+  /// Tooltip backing the qty-info label; null = no tap target rendered.
+  ///
+  /// Concrete field — NOT abstract.  SE writes this directly inside
+  /// validateSheet() so that SharedBatchField observes the same [RxnString]
+  /// reference without any shadowing override.  Subclasses that need their
+  /// own RxnString instance (e.g. PS) may override the getter to return a
+  /// different [RxnString], but must NOT declare a new field with the same
+  /// name — override the getter only.
+  // ignore: prefer_final_fields
+  @override
+  RxnString qtyInfoTooltip = RxnString(null);
+
+  /// Mobile scanner controller backing the scan footer.
+  MobileScannerController? get sheetScanController;
+
+  /// Increment (+1) or decrement (-1) the qty field.
+  ///
+  /// Implementors MUST:
+  /// 1. Clamp `(current + delta)` to `[0.0, effectiveMaxQty]`.
+  /// 2. Write the result back to [qtyController].
+  /// 3. Call [validateSheet] to refresh the save gate.
+  @override
+  void adjustQty(int delta);
+
+  /// Delete the item currently being edited.
+  void deleteCurrentItem();
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────────
+  @override
+  void onInit() {
+    super.onInit();
+    // Lock / unlock the qty field based on docstatus.
+    ever(docStatus, (_) {
+      _isQtyReadOnly.value = docStatus.value == 1;
+    });
+  }
+
+  // ── BatchNoFieldWithBrowseDelegate defaults (Commit 7 of 7) ────────────────
+  //
+  // See the full design note in the previous version of this file.
+  //
+  // BatchNoFieldDelegate members (isBatchValid, isValidatingBatch,
+  // isBatchReadOnly, batchError, batchInfoTooltip, batchController,
+  // resetBatch, validateBatch) are all concrete fields / methods already
+  // declared below — they satisfy the interface automatically.
+
+  @override
+  double batchBalanceFor(String batchNo) => batchBalance.value;
+
+  @override
+  String? get resolvedWarehouseForBatch => resolvedWarehouse;
+
+  @override
+  bool get canBrowseBatches => false;
+
+  @override
+  Future<String?> browseBatches() async {
+    await openBatchPicker();
+    return null;
+  }
+
+  @override
+  List<dynamic> get preloadedBatchRows => const [];
+
+  @override
+  Future<void> handleBatchPicked(String batchNo) async {
+    batchController.text = batchNo;
+    await validateBatch(batchNo);
+  }
+
+  // ── RackFieldWithBrowseDelegate defaults (Commit 3 of 4 — confirmed) ───────
+  //
+  // See the full design note in the previous version of this file.
+
+  @override
+  double rackBalanceFor(String rack) => rackBalance.value;
+
+  @override
+  bool get canBrowseRacks => false;
+
+  @override
+  Future<RackPickerResult?> browseRacks() async => null;
+
+  @override
+  Future<void> handleRackPicked(RackPickerResult result) async {
+    rackController.text = result.rackId;
+    await validateRack(result.rackId);
+  }
+
+  // ── submitWithFeedback ─────────────────────────────────────────────────────────
   Future<bool> submitWithFeedback() async {
+    // Wait for any in-flight batch/rack validation to settle first.
+    if (isValidatingBatch.value || isValidatingRack.value) {
+      GlobalSnackbar.warning(message: 'Validation in progress, please wait.');
+      return false;
+    }
     saveButtonState.value = SaveButtonState.loading;
     try {
       await submit();
@@ -178,329 +395,319 @@ abstract class ItemSheetControllerBase extends GetxController {
     }
   }
 
-  // ── Lifecycle ──────────────────────────────────────────────────────
+  // ── disposeControllers ─────────────────────────────────────────────────────────
+  /// Public teardown helper — the single authoritative disposal path for all
+  /// TECs, FocusNodes, and ScrollControllers owned by this base class.
+  ///
+  /// ## Idempotency (Rule 2 — tec_lifecycle_rules.dart)
+  ///
+  /// This method is guarded by [_controllersDisposed].  It is safe to call
+  /// any number of times and from any combination of:
+  ///   • GetX's automatic [onClose] (called on `Get.delete` / route pop), and
+  ///   • Parent-orchestrated cleanup (e.g. `StockEntryFormController
+  ///     .closeItemSheet()` calling `itemController.disposeControllers()`).
+  ///
+  /// ## Deferred disposal (Rule 1 — tec_lifecycle_rules.dart)
+  ///
+  /// Disposal is scheduled for the next frame via [WidgetsBinding
+  /// .addPostFrameCallback] so the bottom-sheet exit animation frame
+  /// completes before any [TextEditingController] is invalidated.  Flutter's
+  /// `_AnimatedState.didUpdateWidget` calls `controller.addListener()` during
+  /// that frame; disposing before it runs causes:
+  ///
+  ///   "A TextEditingController was used after being disposed."
+  ///
+  /// ## Subclass contract
+  ///
+  /// Subclasses that declare additional TECs (e.g. [sourceRackController],
+  /// [targetRackController] in [StockEntryItemFormController]) MUST:
+  ///   1. Capture their controllers into local variables before calling
+  ///      `super.onClose()`.
+  ///   2. Schedule disposal via `addPostFrameCallback` (Rule 1).
+  ///   3. Call `super.onClose()` — which calls this method — AFTER
+  ///      scheduling the deferred callback.
+  void disposeControllers() {
+    if (_controllersDisposed) return; // ← idempotent guard (Rule 2)
+    _controllersDisposed = true;
 
+    removeSheetListeners(); // ← Rule 3: remove before invalidating controllers
+
+    final textControllers = <TextEditingController>[
+      batchController,
+      rackController,
+      qtyController,
+    ];
+    final scroll = sheetScrollController;
+    final focus  = rackFocusNode;
+
+    // AFTER — double post-frame: first frame = exit animation completes,
+    // second frame = parent list rebuild flushes, THEN dispose is safe.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final c in textControllers) {
+          try { c.dispose(); } catch (_) {}
+        }
+        try { scroll.dispose(); } catch (_) {}
+        try { focus.dispose();  } catch (_) {}
+      });
+    });
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────────
   @override
   void onClose() {
-    // Step 1 — remove all listeners synchronously.
-    // This prevents any in-flight TEC notifications on the current frame
-    // from reaching validateSheet / _resetSaveStateOnEdit after the
-    // controller is logically closed.
-    qtyController.removeListener(validateSheet);
-    qtyController.removeListener(_resetSaveStateOnEdit);
-    batchController.removeListener(validateSheet);
-    batchController.removeListener(_resetSaveStateOnEdit);
-    rackController.removeListener(validateSheet);
-    rackController.removeListener(_resetSaveStateOnEdit);
-
-    // Step 2 — dispose() is deferred to a post-frame callback.
-    //
-    // WHY: GetX calls onClose() synchronously during Get.delete(), which
-    // fires while Flutter's layout/draw pipeline may still be mid-flight
-    // (confirmed by crash stack frames #218-252: PipelineOwner.flushLayout
-    // → _RenderLayoutBuilder → BuildOwner.buildScope). The bottom-sheet
-    // overlay entry is still mounted at this point. On the next sub-frame
-    // _AnimatedState.didUpdateWidget fires on the TextFormField, calls
-    // ChangeNotifier.addListener() on the TEC — if already disposed, this
-    // throws: "TextEditingController used after being disposed".
-    //
-    // addPostFrameCallback fires after RendererBinding.drawFrame() completes
-    // and after the deactivation sweep, guaranteeing the sheet subtree is
-    // fully unmounted before any dispose() call executes.
-    final qtc   = qtyController;
-    final btc   = batchController;
-    final rtc   = rackController;
-    final rfn   = rackFocusNode;
-    final ssc   = sheetScrollController;
-    final asw   = _autoSubmitWorker;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      qtc.dispose();
-      btc.dispose();
-      rtc.dispose();
-      rfn.dispose();
-      ssc.dispose();
-      asw?.dispose();
-    });
-
+    _autoSubmitWorker?.dispose();
+    // Delegate to the single guarded disposal path — never inline dispose here.
+    // See disposeControllers() Dartdoc and tec_lifecycle_rules.dart Rule 2.
+    disposeControllers();
     super.onClose();
   }
 
-  // ── Shared initialisation helper ─────────────────────────────────────
-
-  void initBaseListeners() {
-    qtyController.addListener(validateSheet);
-    batchController.addListener(validateSheet);
-    rackController.addListener(validateSheet);
-
-    qtyController.addListener(_resetSaveStateOnEdit);
-    batchController.addListener(_resetSaveStateOnEdit);
-    rackController.addListener(_resetSaveStateOnEdit);
+  // ── Listener wiring ───────────────────────────────────────────────────────────
+  void removeSheetListeners() {
+    try { batchController.removeListener(validateSheet); } catch (_) {}
+    try { batchController.removeListener(_resetSaveStateOnEdit); } catch (_) {}
+    try { rackController.removeListener(validateSheet);  } catch (_) {}
+    try { rackController.removeListener(_resetSaveStateOnEdit);  } catch (_) {}
+    try { qtyController.removeListener(validateSheet);   } catch (_) {}
+    try { qtyController.removeListener(_resetSaveStateOnEdit);   } catch (_) {}
   }
 
+  void addSheetListeners() {
+    batchController.addListener(validateSheet);
+    rackController.addListener(validateSheet);
+    qtyController.addListener(validateSheet);
+
+    batchController.addListener(_resetSaveStateOnEdit);
+    rackController.addListener(_resetSaveStateOnEdit);
+    qtyController.addListener(_resetSaveStateOnEdit);
+  }
+
+  /// Alias used by PO / PS controllers.
+  void initBaseListeners() => addSheetListeners();
+
+  /// Alias used by PO / PS controllers.
+  void captureSnapshot() => snapshotState();
+
   void _resetSaveStateOnEdit() {
-    if (saveButtonState.value == SaveButtonState.success ||
-        saveButtonState.value == SaveButtonState.error) {
+    if (saveButtonState.value != SaveButtonState.idle) {
       saveButtonState.value = SaveButtonState.idle;
     }
   }
 
-  void captureSnapshot() {
+  // ── setupAutoSubmit ──────────────────────────────────────────────────────────
+  void setupAutoSubmit({required Future<void> Function() onValid}) {
+    _autoSubmitWorker?.dispose();
+    bool _handling = false;
+    _autoSubmitWorker = ever(
+      saveButtonState,
+      (state) async {
+        if (state == SaveButtonState.success && !_handling) {
+          _handling = true;
+          await onValid();
+          _handling = false;
+        }
+      },
+    );
+  }
+
+  /// Backwards-compat alias.
+  void setupAutoSubmitOnValid({required Future<void> Function() onValid}) =>
+      setupAutoSubmit(onValid: onValid);
+
+  // ── Dirty-tracking ─────────────────────────────────────────────────────────────
+  void snapshotState() {
     _snapshotBatch = batchController.text;
     _snapshotRack  = rackController.text;
     _snapshotQty   = qtyController.text;
   }
 
-  bool get isFieldsDirty =>
+  bool get isDirty =>
       batchController.text != _snapshotBatch ||
       rackController.text  != _snapshotRack  ||
       qtyController.text   != _snapshotQty;
 
-  // ── Auto-submit wiring ────────────────────────────────────────────
+  // ── Rack reset ─────────────────────────────────────────────────────────────────
 
-  void setupAutoSubmit({
-    required bool            enabled,
-    required int             delaySeconds,
-    required RxBool          isSheetOpen,
-    required bool Function() isSubmittable,
-    required VoidCallback    onAutoSubmit,
-  }) {
-    _autoSubmitWorker?.dispose();
-    if (!enabled) return;
+  @override
+  void resetRack() {
+    rackController.clear();
+    isRackValid.value      = false;
+    rackError.value        = '';
+    rackBalance.value      = 0.0;
+    rackStockTooltip.value = null;
+  }
 
-    _autoSubmitWorker = ever(isSheetValid, (bool valid) {
-      if (valid && isSheetOpen.value && isSubmittable()) {
-        Future.delayed(Duration(seconds: delaySeconds), () async {
-          if (isSheetValid.value && isSheetOpen.value) {
-            onAutoSubmit();
-          }
-        });
+  void softResetRack() {
+    isRackValid.value      = false;
+    rackError.value        = '';
+    rackStockTooltip.value = null;
+  }
+
+  // ── Batch reset ────────────────────────────────────────────────────────────────
+
+  @override
+  void resetBatch() {
+    isBatchValid.value     = false;
+    isBatchReadOnly.value  = false;
+    batchError.value       = '';
+    batchInfoTooltip.value = null;
+    batchBalance.value     = 0.0;
+    resetRack();
+  }
+
+  void softResetBatch() {
+    isBatchValid.value     = false;
+    isBatchReadOnly.value  = false;
+    batchError.value       = '';
+    batchInfoTooltip.value = null;
+    softResetRack();
+  }
+
+  // ── Fetch helpers ──────────────────────────────────────────────────────────────
+  Future<void> fetchBatchBalance() async {
+    final batch = batchController.text.trim();
+    if (batch.isEmpty || itemCode.value.isEmpty) {
+      batchBalance.value = 0.0;
+      return;
+    }
+    final wh = resolvedWarehouse;
+    try {
+      final rows = await ApiProvider().getBatchWiseBalance(
+        itemCode:  itemCode.value,
+        warehouse: wh,
+        batchNo:   batch,
+      );
+      batchBalance.value = rows.fold(0.0, (s, r) => s + (r['qty'] as num).toDouble());
+    } catch (e) {
+      log('[ItemSheet] fetchBatchBalance error: $e', name: 'ItemSheet');
+    }
+  }
+
+  Future<void> fetchRackBalance(String rack) async {
+    if (rack.isEmpty || itemCode.value.isEmpty) {
+      rackBalance.value = 0.0;
+      return;
+    }
+    final wh = resolvedWarehouse;
+    try {
+      final batch = batchController.text.trim();
+      final rows  = await ApiProvider().getStockBalanceWithDimension(
+        itemCode:  itemCode.value,
+        warehouse: wh,
+        batchNo:   batch.isEmpty ? null : batch,
+      );
+      final match = rows.whereType<Map<String, dynamic>>().firstWhere(
+            (r) => (r['rack'] as String?) == rack,
+        orElse: () => <String, dynamic>{},   // ← empty sentinel; no default qty
+      );
+      // API returns 'bal_qty'; fall back to 'qty' for forward-compat.
+      final raw = match['bal_qty'] ?? match['qty'];
+      rackBalance.value = (raw as num?)?.toDouble() ?? 0.0;
+    } catch (e) {
+      log('[ItemSheet] fetchRackBalance error: $e', name: 'ItemSheet');
+    }
+  }
+
+  // ── openBatchPicker (base) ───────────────────────────────────────────────────────
+  Future<void> openBatchPicker() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+    final selected = await showBatchPickerSheet(
+      ctx,
+      itemCode:    itemCode.value,
+      warehouse:   resolvedWarehouse,
+      accentColor: accentColor,
+    );
+    if (selected == null || selected.isEmpty) return;
+    batchController.text = selected;
+    await validateBatch(selected);
+  }
+
+  Future<void> validateBatch(String batch) async {
+    if (batch.isEmpty) { resetBatch(); return; }
+
+    isValidatingBatch.value = true;
+    batchError.value        = '';
+    batchInfoTooltip.value  = null;
+    isBatchValid.value      = false;
+
+    try {
+      final results = await ApiProvider().getList(
+        'Batch',
+        filters: {'name': batch, 'item': itemCode.value},
+        fields:  ['name', 'expiry_date', 'manufacturing_date'],
+      );
+
+      if (results.isEmpty) {
+        batchError.value = 'Batch "$batch" not found for this item.';
+        return;
       }
+
+      final row        = results.first;
+      final expiryRaw  = row['expiry_date'] as String?;
+      final mfgRaw     = row['manufacturing_date'] as String?;
+
+      if (expiryRaw != null && expiryRaw.isNotEmpty) {
+        final expiry = DateTime.tryParse(expiryRaw);
+        if (expiry != null) {
+          final today = DateTime.now();
+          if (expiry.isBefore(DateTime(today.year, today.month, today.day))) {
+            batchError.value =
+                'Batch expired on ${DateFormat('dd MMM yyyy').format(expiry)}.';
+            return;
+          }
+          if (expiry.isBefore(today.add(const Duration(days: 30)))) {
+            batchError.value =
+                'Batch expires soon: ${DateFormat('dd MMM yyyy').format(expiry)}';
+          }
+        }
+      }
+
+      final parts = <String>[];
+      if (mfgRaw    != null && mfgRaw.isNotEmpty) {
+        final mfg = DateTime.tryParse(mfgRaw);
+        if (mfg != null) parts.add('Mfg: ${DateFormat('dd MMM yyyy').format(mfg)}');
+      }
+      if (expiryRaw != null && expiryRaw.isNotEmpty) {
+        final expiry = DateTime.tryParse(expiryRaw);
+        if (expiry != null) parts.add('Exp: ${DateFormat('dd MMM yyyy').format(expiry)}');
+      }
+      if (parts.isNotEmpty) batchInfoTooltip.value = parts.join('  \u2022  ');
+
+      isBatchValid.value = true;
+      await fetchBatchBalance();
+    } catch (e) {
+      batchError.value = 'Error validating batch: $e';
+    } finally {
+      isValidatingBatch.value = false;
+    }
+  }
+
+  void validateBatchOnInit(String batch) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!isClosed) validateBatch(batch);
     });
   }
 
-  // ── Qty helpers ──────────────────────────────────────────────────────
-
-  void adjustQty(double delta) {
-    double current = double.tryParse(qtyController.text) ?? 0;
-    double next    = current + delta;
-    if (next < 0) next = 0;
-    if (maxQty.value > 0 && next > maxQty.value) next = maxQty.value;
-    qtyController.text =
-        next % 1 == 0 ? next.toInt().toString() : next.toString();
-    validateSheet();
-  }
-
-  // ── P2-A: Batch validation ──────────────────────────────────────────
-
-  Future<void> validateBatch(String batch) async {
-    if (batch.isEmpty) return;
-    batchError.value        = null;
-    batchInfoTooltip.value  = null;
-    isValidatingBatch.value = true;
-
-    try {
-      final batchRes = await _api.getDocumentList(
-        'Batch',
-        filters: {'name': batch, 'item': itemCode.value},
-        fields: ['name', 'custom_packaging_qty'],
-      );
-
-      final batchList = batchRes.data['data'] as List? ?? [];
-      if (batchList.isEmpty) throw Exception('Batch not found');
-
-      final batchData = batchList.first as Map<String, dynamic>;
-      final double pkgQty =
-          (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-      if (pkgQty > 0 && qtyController.text.isEmpty) {
-        qtyController.text =
-            pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
-      }
-
-      final balRes = await _api.getBatchWiseBalance(
-        itemCode.value,
-        batch,
-        warehouse: resolvedWarehouse,
-      );
-
-      double fetchedQty = 0.0;
-      if (balRes.statusCode == 200 && balRes.data['message'] != null) {
-        final result = balRes.data['message']['result'];
-        if (result is List && result.isNotEmpty) {
-          fetchedQty =
-              (result.first['balance_qty'] as num?)?.toDouble() ?? 0.0;
-        }
-      }
-
-      maxQty.value = fetchedQty;
-
-      isBatchValid.value    = true;
-      isBatchReadOnly.value = true; // S1: lock after successful validation
-
-      final sb = StringBuffer('Batch Stock: $fetchedQty');
-      if (rackStockTooltip.value != null) {
-        sb.write('\n\nRack Availability:\n${rackStockTooltip.value}');
-      }
-      batchInfoTooltip.value = sb.toString().trim();
-
-      if (fetchedQty > 0) {
-        batchError.value = null;
-        GlobalSnackbar.info(
-            message: 'Batch found — Stock: ${fetchedQty.toStringAsFixed(0)}');
-      } else {
-        batchError.value = 'Warning: Batch has 0 stock in current warehouse';
-        GlobalSnackbar.warning(
-            message: 'Batch has 0 stock in the selected warehouse');
-      }
-
-      await fetchAllRackStocks();
-
-    } catch (e) {
-      isBatchValid.value     = false;
-      isBatchReadOnly.value  = false; // S1: unlock on failure
-      batchError.value       = 'Invalid Batch';
-      maxQty.value           = 0.0;
-      batchInfoTooltip.value = null;
-      GlobalSnackbar.error(message: 'Batch validation failed');
-      log('[ItemSheet] validateBatch error: $e', name: 'ItemSheet');
-    } finally {
-      isValidatingBatch.value = false;
-      validateSheet();
-    }
-  }
-
-  // ── S1: validateBatchOnInit (promoted from PR/SE/DN) ───────────────────
-
-  void validateBatchOnInit(String batch) {
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => validateBatch(batch));
-  }
-
-  void resetBatch() {
-    isBatchValid.value    = false;
-    isBatchReadOnly.value = false; // S1
-    batchError.value      = null;
-    validateSheet();
-  }
-
-  // ── Rack validation ──────────────────────────────────────────────────
-
+  // ── Rack validation (base) ───────────────────────────────────────────────────────
+  @override
   Future<void> validateRack(String rack) async {
-    if (rack.isEmpty) {
-      isRackValid.value = false;
-      validateSheet();
-      return;
-    }
+    final trimmed = rack.trim();
+    if (trimmed.isEmpty) { resetRack(); return; }
+
     isValidatingRack.value = true;
+    rackError.value        = '';
+    isRackValid.value      = false;
 
     try {
-      final response = await _api.getDocument('Rack', rack);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        isRackValid.value = true;
-        validateSheet();
-        await fetchAllRackStocks();
-      } else {
-        isRackValid.value = false;
-        GlobalSnackbar.error(message: 'Rack not found');
-      }
+      await fetchRackBalance(trimmed);
+      isRackValid.value = true;
     } catch (e) {
-      isRackValid.value = false;
-      GlobalSnackbar.error(message: 'Rack validation failed: $e');
+      rackError.value = 'Error validating rack: $e';
+      log('[ItemSheet] validateRack error: $e', name: 'ItemSheet');
     } finally {
       isValidatingRack.value = false;
-      validateSheet();
     }
-  }
-
-  void resetRack() {
-    isRackValid.value = false;
-    rackError.value   = null;
-    validateSheet();
-  }
-
-  // ── P2-C: Stock / rack-map fetching ──────────────────────────────────────
-  //
-  // IMPORTANT — Stock Balance report total row:
-  // The Stock Balance report (frappe.desk.query_report.run) appends a totals
-  // row as the LAST entry in result[]. That row represents the aggregate
-  // balance across all racks for the queried warehouse/batch and has:
-  //   rack == null  (the 'rack' key is absent or null)
-  // The guard `if (r != null && r.isNotEmpty && qty > 0)` below skips this
-  // row naturally — no off-by-one loop bound (i < result.length - 1) is
-  // needed. Do NOT reintroduce the off-by-one bound; it would silently drop
-  // the last real rack row when the report returns an even number of racks.
-
-  Future<void> fetchAllRackStocks() async {
-    final warehouse = resolvedWarehouse;
-    if (warehouse == null || warehouse.isEmpty) return;
-
-    try {
-      final response = await _api.getStockBalance(
-        itemCode:  itemCode.value,
-        warehouse: warehouse,
-        batchNo:   batchController.text.isNotEmpty ? batchController.text : null,
-      );
-
-      if (response.statusCode == 200 && response.data['message'] != null) {
-        final result = response.data['message']['result'];
-        if (result is List && result.isNotEmpty) {
-          final Map<String, double> tempMap      = {};
-          final List<String>        tooltipLines = [];
-
-          for (int i = 0; i < result.length; i++) {
-            final row = result[i];
-            if (row is! Map) continue;
-            final String? r   = row['rack'] as String?;
-            final double  qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
-            // r == null  →  totals row appended by the Stock Balance report;
-            // skip it so it does not pollute the per-rack stock map.
-            if (r != null && r.isNotEmpty && qty > 0) {
-              tempMap[r] = qty;
-              tooltipLines.add('$r: $qty');
-            }
-          }
-
-          rackStockMap.assignAll(tempMap);
-          rackStockTooltip.value = tooltipLines.isNotEmpty
-              ? tooltipLines.join('\n')
-              : 'No stock in racks';
-        }
-      }
-    } catch (e) {
-      log('[ItemSheet] fetchAllRackStocks error: $e', name: 'ItemSheet');
-    }
-  }
-
-  // ── P2-B: Base validation ─────────────────────────────────────────────
-
-  bool baseValidate() {
-    rackError.value = null;
-
-    final qty = double.tryParse(qtyController.text) ?? 0;
-    if (qty <= 0) return false;
-
-    if (isAddMode && maxQty.value > 0 && qty > maxQty.value) return false;
-
-    if (requiresBatch) {
-      if (batchController.text.isEmpty || !isBatchValid.value) return false;
-    } else {
-      if (batchController.text.isNotEmpty && !isBatchValid.value) return false;
-    }
-
-    if (requiresRack) {
-      if (rackController.text.isEmpty || !isRackValid.value) return false;
-    } else {
-      if (rackController.text.isNotEmpty && !isRackValid.value) return false;
-    }
-
-    final selectedRack = rackController.text;
-    if (isAddMode && selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
-      final available = rackStockMap[selectedRack] ?? 0.0;
-      if (qty > available) {
-        rackError.value = 'Only $available available in $selectedRack';
-        return false;
-      }
-    }
-
-    return true;
   }
 }
