@@ -336,7 +336,13 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
 
   @override
-  double get minExtent => statusBarHeight + _kToolbar + _bottomHeight;
+  double get minExtent =>
+      statusBarHeight +
+      _kToolbar +
+      _bottomHeight +
+      // Chip row is always reserved in maxExtent when the builder is present,
+      // so minExtent must match — otherwise the layout overflows when collapsed.
+      (filterChipsBuilder != null ? _kChipRow : 0.0);
 
   @override
   double get maxExtent =>
