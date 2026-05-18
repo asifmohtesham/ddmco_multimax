@@ -405,8 +405,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                         stats: [
                           GenericDocumentCard.buildIconStat(
                             context,
-                            Icons.assignment_outlined,
-                            req.materialRequestType,
+                            Icons.inventory_2_outlined,
+                            '${req.totalQty.toStringAsFixed(0)} qty',
                           ),
                           GenericDocumentCard.buildIconStat(
                             context,
@@ -420,6 +420,18 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                               Icons.event_outlined,
                               'Due ${FormattingHelper.getRelativeTime(req.scheduleDate)}',
                             ),
+                        ],
+                        auditStats: [
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.person_outline,
+                            _abbreviateOwner(req.owner ?? '—'),
+                          ),
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.edit_outlined,
+                            FormattingHelper.getRelativeTime(req.modified),
+                          ),
                         ],
                         isExpanded: isExpanded,
                         isLoadingDetails: isLoadingDetails && isExpanded,
@@ -676,6 +688,11 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         ),
       ],
     );
+  }
+
+  String _abbreviateOwner(String email) {
+    if (email == '—') return '—';
+    return email.split('@').first;
   }
 
   Widget _miniStat(BuildContext context, String value, String label,
