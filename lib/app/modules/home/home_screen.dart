@@ -89,10 +89,7 @@ class HomeScreen extends GetView<HomeController> {
                   const SizedBox(height: 12),
                   Obx(() {
                     if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
-                      return const SizedBox(
-                        height: 150,
-                        child: Center(child: CircularProgressIndicator()),
-                      );
+                      return const _ManufacturingPulseSkeleton();
                     }
                     return Column(
                       children: [
@@ -893,6 +890,75 @@ class SpeedometerKpiCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// =============================================================================
+// _ManufacturingPulseSkeleton — shimmer placeholder while stats are loading
+// =============================================================================
+
+class _ManufacturingPulseSkeleton extends StatefulWidget {
+  const _ManufacturingPulseSkeleton();
+
+  @override
+  State<_ManufacturingPulseSkeleton> createState() =>
+      _ManufacturingPulseSkeletonState();
+}
+
+class _ManufacturingPulseSkeletonState
+    extends State<_ManufacturingPulseSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _color = ColorTween(
+      begin: Colors.grey.shade100,
+      end: Colors.grey.shade300,
+    ).animate(_anim);
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  Widget _box({double w = double.infinity, double h = 14, double r = 8}) {
+    return AnimatedBuilder(
+      animation: _color,
+      builder: (_, __) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: _color.value,
+          borderRadius: BorderRadius.circular(r),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _box(h: 200, r: 16)),
+            const SizedBox(width: 16),
+            Expanded(child: _box(h: 200, r: 16)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _box(h: 70, r: 16),
+      ],
     );
   }
 }
