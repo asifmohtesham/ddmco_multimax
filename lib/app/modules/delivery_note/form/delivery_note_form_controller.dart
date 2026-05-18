@@ -9,6 +9,7 @@ import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -36,6 +37,7 @@ class DeliveryNoteFormController extends GetxController
   final DeliveryNoteProvider  _provider          = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider     _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider           _apiProvider       = Get.find<ApiProvider>();
+  final WorkOrderProvider     _woProvider        = Get.find<WorkOrderProvider>();
   final ScanService           _scanService       = Get.find<ScanService>();
   final StorageService        _storageService    = Get.find<StorageService>();
   final DataWedgeService      _dataWedgeService  = Get.find<DataWedgeService>();
@@ -334,6 +336,10 @@ class DeliveryNoteFormController extends GetxController
         controller:       child,
         scrollController: child.sheetScrollController,
         customFields: [
+          _CheckWoButton(
+            itemCode: itemCode,
+            fetchWorkOrders: () => fetchWorkOrdersForItem(itemCode),
+          ),
           // Commit 4: migrated from SharedSerialField to
           // SharedInvoiceSerialNumberField (delegate-driven, zero coupling).
           SharedInvoiceSerialNumberField(c: child),
@@ -422,6 +428,26 @@ class DeliveryNoteFormController extends GetxController
       }
       // Network/other errors: don't block the form; save will surface them.
     }
+  }
+
+  // ── Work Order lookup for item (Item #7A) ─────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchWorkOrdersForItem(String itemCode) async {
+    try {
+      final res = await _woProvider.getWorkOrders(
+        filters: {
+          'production_item': itemCode,
+          'status': ['in', 'Not Started,In Process'],
+        },
+        limit: 5,
+      );
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        return (res.data['data'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      }
+    } catch (_) {}
+    return [];
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
@@ -762,6 +788,118 @@ class _MultipleMatchSheet extends StatelessWidget {
                     );
                   },
                 )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Check WO button widget ─────────────────────────────────────────────────────
+// Shows active Work Orders for the item directly in the DN item sheet.
+
+class _CheckWoButton extends StatefulWidget {
+  final String itemCode;
+  final Future<List<Map<String, dynamic>>> Function() fetchWorkOrders;
+  const _CheckWoButton({required this.itemCode, required this.fetchWorkOrders});
+
+  @override
+  State<_CheckWoButton> createState() => _CheckWoButtonState();
+}
+
+class _CheckWoButtonState extends State<_CheckWoButton> {
+  bool _loading   = false;
+  bool _expanded  = false;
+  List<Map<String, dynamic>> _wos = [];
+
+  Future<void> _load() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    final results = await widget.fetchWorkOrders();
+    if (!mounted) return;
+    setState(() {
+      _loading  = false;
+      _expanded = true;
+      _wos      = results;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _expanded ? () => setState(() => _expanded = false) : _load,
+          icon: _loading
+              ? SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+                )
+              : Icon(_expanded ? Icons.expand_less : Icons.precision_manufacturing_outlined, size: 18),
+          label: Text(_expanded ? 'Hide Work Orders' : 'Check Work Orders'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: cs.primary,
+            side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
+            visualDensity: VisualDensity.compact,
+            textStyle: text.labelMedium,
+          ),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 8),
+          if (_wos.isEmpty)
+            Text('No active Work Orders for this item.',
+                style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+          else
+            ..._wos.map((wo) => _WoInfoTile(wo: wo, cs: cs, text: text)),
+        ],
+      ],
+    );
+  }
+}
+
+class _WoInfoTile extends StatelessWidget {
+  final Map<String, dynamic> wo;
+  final ColorScheme cs;
+  final TextTheme text;
+  const _WoInfoTile({required this.wo, required this.cs, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final name   = wo['name']   as String? ?? '';
+    final status = wo['status'] as String? ?? '';
+    final qty    = (wo['qty']   as num?)?.toStringAsFixed(0) ?? '0';
+    final done   = (wo['produced_qty'] as num?)?.toStringAsFixed(0) ?? '0';
+
+    return InkWell(
+      onTap: () => Get.toNamed(
+        AppRoutes.WORK_ORDER_FORM,
+        arguments: {'name': name, 'mode': 'view'},
+      ),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: text.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text('$done / $qty  ·  $status',
+                      style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
           ],
         ),
       ),
