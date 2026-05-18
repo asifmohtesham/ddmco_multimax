@@ -517,6 +517,51 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // getItemImages / getItemBinStock — Item Variant Details tile helpers
+  // ---------------------------------------------------------------------------
+
+  /// Batch-fetches the `image` field for [itemCodes] from the Item doctype.
+  /// Returns a map of item code → relative image path (null when unset).
+  Future<Map<String, String?>> getItemImages(List<String> itemCodes) async {
+    if (itemCodes.isEmpty) return {};
+    try {
+      final rows = await getList(
+        null,
+        doctype: 'Item',
+        fields:  ['name', 'image'],
+        filters: {'name': ['in', itemCodes]},
+        limit:   itemCodes.length + 1,
+        orderBy: 'name asc',
+      );
+      return {
+        for (final r in rows)
+          r['name'].toString(): (r['image']?.toString().isNotEmpty ?? false)
+              ? r['image'].toString()
+              : null,
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Returns current warehouse stock for [itemCode] from the Bin doctype,
+  /// limited to warehouses with positive stock, sorted by qty descending.
+  Future<List<Map<String, dynamic>>> getItemBinStock(String itemCode) async {
+    try {
+      return await getList(
+        null,
+        doctype: 'Bin',
+        fields:  ['warehouse', 'actual_qty'],
+        filters: {'item_code': itemCode, 'actual_qty': ['>', 0]},
+        limit:   20,
+        orderBy: 'actual_qty desc',
+      );
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // getStockBalanceWithDimension
   //
   // Used by:
