@@ -451,6 +451,68 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // getItemVariantDetails
+  // ---------------------------------------------------------------------------
+
+  /// Fetches all variants of [itemCode] (the template/parent item) via the
+  /// ERPNext "Item Variant Details" script report.
+  ///
+  /// Returns both column definitions (dynamic per item template) and row data
+  /// so the UI can render attribute columns generically at runtime.
+  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
+      getItemVariantDetails(String itemCode) async {
+    if (!_dioInitialised) await _initDio();
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Item Variant Details',
+          'filters'               : json.encode({'item': itemCode}),
+          'ignore_prepared_report': 'true',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    } catch (_) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    if (response.statusCode != 200) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    return parseItemVariantDetailsResponse(
+      response.data['message'] as Map<String, dynamic>?,
+    );
+  }
+
+  /// Exposed as a public static method so unit tests can exercise the parsing
+  /// logic without a live HTTP connection or GetX service registration.
+  static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
+      parseItemVariantDetailsResponse(Map<String, dynamic>? message) {
+    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    if (message == null) return empty;
+    try {
+      final rawCols = message['columns'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
+      final columns = rawCols
+          .whereType<Map>()
+          .map((c) => Map<String, dynamic>.from(c))
+          .toList();
+      final rows = rawRows
+          .whereType<Map>()
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList();
+      return (columns: columns, rows: rows);
+    } catch (_) {
+      return empty;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // getStockBalanceWithDimension
   //
   // Used by:
