@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
 
@@ -22,38 +23,13 @@ class ItemListAppBar extends StatelessWidget {
   List<Widget> _buildFilterChips(
       BuildContext context, ItemController controller) {
     final chips = <Widget>[];
-    final cs = Theme.of(context).colorScheme;
 
-    Widget chip({
-      required IconData icon,
-      required String label,
-      required VoidCallback onDeleted,
-    }) {
-      return Chip(
-        avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
-        label: Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: cs.onSecondaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        backgroundColor: cs.secondaryContainer,
-        deleteIconColor: cs.onSecondaryContainer,
-        onDeleted: onDeleted,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      );
-    }
-
-    // Fix #13: showImagesOnly is NOT added to the filter badge chips.
-    // It has its own AppBar icon toggle (see extraActions below).
+    // showImagesOnly is NOT added to the filter badge chips;
+    // it has its own AppBar icon toggle (see extraActions below).
 
     for (final filter in controller.activeFilters) {
       if (filter.value.isEmpty) continue;
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.filter_alt_outlined,
         label: '${filter.label}: ${filter.value}',
         onDeleted: () {
@@ -64,19 +40,6 @@ class ItemListAppBar extends StatelessWidget {
     }
 
     return chips;
-  }
-
-  /// Returns a lightweight [RxMap] whose [length], [isEmpty], and [isNotEmpty]
-  /// reflect [controller.filterCount]. [DocTypeListHeader] only reads these
-  /// three members, so this is the full contract with the shared widget.
-  RxMap<String, dynamic> _buildActiveFiltersMap(ItemController controller) {
-    // Construct a fresh RxMap populated with one sentinel entry per active
-    // filter so that .length == filterCount and .isEmpty == (filterCount == 0).
-    final map = <String, dynamic>{};
-    for (var i = 0; i < controller.filterCount; i++) {
-      map['_$i'] = true;
-    }
-    return RxMap(map);
   }
 
   @override
@@ -127,7 +90,7 @@ class ItemListAppBar extends StatelessWidget {
         controller.fetchItems(clear: true);
       },
 
-      activeFilters: _buildActiveFiltersMap(controller),
+      activeFilters: controller.activeFiltersMap,
       onFilterTap: () => _openFilterSheet(controller),
 
       filterChipsBuilder: (ctx) => _buildFilterChips(ctx, controller),

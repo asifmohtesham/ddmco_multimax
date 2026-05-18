@@ -68,6 +68,12 @@ class ItemController extends GetxController with ItemScrollMixin {
   // ── Filter state ────────────────────────────────────────────────────────────
   final activeFilters = <FilterRow>[].obs;
 
+  /// Length-mirror of [activeFilters] as a [RxMap] so [DocTypeListHeader]
+  /// can subscribe reactively without a synthetic shim rebuilt each frame.
+  /// Keys are positional sentinels (`'_0'`, `'_1'`, …); only `.length` and
+  /// `.isEmpty` are read by the header.
+  final activeFiltersMap = <String, dynamic>{}.obs;
+
   final List<FilterRow> availableFields = [
     FilterRow(field: 'item_code', label: 'Item Code', operator: 'like'),
     FilterRow(field: 'item_name', label: 'Item Name', operator: 'like'),
@@ -106,9 +112,20 @@ class ItemController extends GetxController with ItemScrollMixin {
   /// Fix #13: filterCount no longer includes showImagesOnly.
   int get filterCount => activeFilters.length;
 
+  void _syncFiltersMap() {
+    activeFiltersMap.clear();
+    for (var i = 0; i < activeFilters.length; i++) {
+      activeFiltersMap['_$i'] = true;
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
+
+    // Keep activeFiltersMap in sync so DocTypeListHeader's Obx reacts to
+    // filter changes without a stale RxMap shim rebuilt on every build.
+    ever(activeFilters, (_) => _syncFiltersMap());
 
     // Wire scroll listener — triggers load-more at 90 % scroll depth.
     initScroll(() {

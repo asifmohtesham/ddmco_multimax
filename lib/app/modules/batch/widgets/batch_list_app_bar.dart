@@ -4,6 +4,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
 import 'package:multimax/app/modules/batch/widgets/batch_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 
 /// DocTypeListAppBar for the **Batch** DocType.
 ///
@@ -29,38 +30,10 @@ class BatchListAppBar extends StatelessWidget {
   List<Widget> _buildFilterChips(
       BuildContext context, BatchController ctrl) {
     final chips = <Widget>[];
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final textTheme = theme.textTheme;
-
-    Widget chip({
-      required IconData icon,
-      required String label,
-      required VoidCallback onDeleted,
-    }) {
-      return Chip(
-        avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-        label: Text(
-          label,
-          style: textTheme.labelSmall?.copyWith(
-            color: colorScheme.onSecondaryContainer,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor: colorScheme.secondaryContainer,
-        deleteIconColor: colorScheme.onSecondaryContainer,
-        onDeleted: onDeleted,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      );
-    }
-
     final af = ctrl.activeFilters;
 
     if (af.containsKey('item') && (af['item'] as String).isNotEmpty) {
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.inventory_2_outlined,
         label: 'Item: ${af['item']}',
         onDeleted: () => ctrl.removeFilter('item'),
@@ -73,7 +46,7 @@ class BatchListAppBar extends StatelessWidget {
           ? val.last.toString().replaceAll('%', '')
           : val.toString();
       if (display.isNotEmpty) {
-        chips.add(chip(
+        chips.add(FilterChipWidget(
           icon: Icons.qr_code_outlined,
           label: 'Batch: $display',
           onDeleted: () => ctrl.removeFilter('name'),
@@ -83,7 +56,7 @@ class BatchListAppBar extends StatelessWidget {
 
     if (af.containsKey('custom_purchase_order') &&
         (af['custom_purchase_order'] as String).isNotEmpty) {
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.receipt_long_outlined,
         label: 'PO: ${af['custom_purchase_order']}',
         onDeleted: () => ctrl.removeFilter('custom_purchase_order'),
@@ -92,7 +65,7 @@ class BatchListAppBar extends StatelessWidget {
 
     if (af.containsKey('custom_supplier_name') &&
         (af['custom_supplier_name'] as String).isNotEmpty) {
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.local_shipping_outlined,
         label: 'Supplier: ${af['custom_supplier_name']}',
         onDeleted: () => ctrl.removeFilter('custom_supplier_name'),
@@ -100,7 +73,7 @@ class BatchListAppBar extends StatelessWidget {
     }
 
     if (af.containsKey('disabled')) {
-      chips.add(chip(
+      chips.add(FilterChipWidget(
         icon: Icons.block_outlined,
         label: 'Includes Disabled',
         onDeleted: () => ctrl.removeFilter('disabled'),
