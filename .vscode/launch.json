@@ -1,0 +1,25 @@
+{
+  "configurations": [
+    {
+      "name": "TC15 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700452",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "Pixel 7 USB",
+      "program": "lib/main.dart",
+      "deviceId": "34241FDH200620",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "Pixel 7 Wi-Fi",
+      "program": "lib/main.dart",
+      "deviceId": "192.168.0.186:40091",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}
