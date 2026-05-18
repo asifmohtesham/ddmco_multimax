@@ -45,6 +45,13 @@ class _BomScreenState extends State<BomScreen> {
     }
   }
 
+  void _showQuickWoSheet(BuildContext context, BOM bom) {
+    Get.bottomSheet(
+      _QuickWoSheet(bom: bom),
+      isScrollControlled: true,
+    );
+  }
+
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     final cs = Theme.of(context).colorScheme;
@@ -220,6 +227,7 @@ class _BomScreenState extends State<BomScreen> {
                                 AppRoutes.BOM_FORM,
                                 arguments: {'name': bom.name},
                               ),
+                              onLongPress: () => _showQuickWoSheet(context, bom),
                               onCreateWo: () => Get.toNamed(
                                 AppRoutes.WORK_ORDER_FORM,
                                 arguments: {
@@ -475,6 +483,7 @@ class _BomCard extends StatelessWidget {
   final BOM bom;
   final VoidCallback onTap;
   final VoidCallback onCreateWo;
+  final VoidCallback onLongPress;
   /// Current search query — passed from the parent Obx to avoid extra rebuilds.
   final String searchQuery;
 
@@ -482,6 +491,7 @@ class _BomCard extends StatelessWidget {
     required this.bom,
     required this.onTap,
     required this.onCreateWo,
+    required this.onLongPress,
     required this.searchQuery,
   });
 
@@ -508,6 +518,7 @@ class _BomCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -604,6 +615,136 @@ class _BomCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Quick Work Order creation sheet ───────────────────────────────────────────
+
+class _QuickWoSheet extends StatefulWidget {
+  final BOM bom;
+  const _QuickWoSheet({required this.bom});
+
+  @override
+  State<_QuickWoSheet> createState() => _QuickWoSheetState();
+}
+
+class _QuickWoSheetState extends State<_QuickWoSheet> {
+  late final TextEditingController _qtyController;
+  DateTime _startDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyController = TextEditingController(
+      text: widget.bom.quantity % 1 == 0
+          ? widget.bom.quantity.toInt().toString()
+          : widget.bom.quantity.toStringAsFixed(3),
+    );
+  }
+
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) setState(() => _startDate = picked);
+  }
+
+  void _create() {
+    final qty = double.tryParse(_qtyController.text) ?? widget.bom.quantity;
+    Get.back();
+    Get.toNamed(
+      AppRoutes.WORK_ORDER_FORM,
+      arguments: {
+        'mode': 'new',
+        'name': '',
+        'prefill': {
+          'production_item': widget.bom.item,
+          'item_name':       widget.bom.itemName ?? '',
+          'bom_no':          widget.bom.name,
+          'qty':             qty,
+          'planned_start_date': DateFormat('yyyy-MM-dd').format(_startDate),
+        },
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final mq   = MediaQuery.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, mq.viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: cs.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Create Work Order', style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(
+            widget.bom.itemName?.isNotEmpty == true ? widget.bom.itemName! : widget.bom.item,
+            style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _qtyController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Quantity',
+              border: const OutlineInputBorder(),
+              suffixText: widget.bom.uom ?? '',
+            ),
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: _pickDate,
+            borderRadius: BorderRadius.circular(8),
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Start Date',
+                border: OutlineInputBorder(),
+                suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+              ),
+              child: Text(DateFormat('dd MMM yyyy').format(_startDate)),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _create,
+              child: const Text('Create Work Order'),
+            ),
+          ),
+        ],
       ),
     );
   }
