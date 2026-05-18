@@ -31,12 +31,7 @@ class BomSearchController extends GetxController {
   final item4Focus = FocusNode();
   final item5Focus = FocusNode();
 
-  /// The filter key whose field currently has focus in the sheet.
-  /// Defaults to 'item1' so the first scan always lands there even if
-  /// the user has not tapped a field yet.
-  String _focusedKey = 'item1';
-
-  // ── Ordered list used for focus-advance logic ─────────────────────────
+  // ── Ordered list used for earliest-empty scan routing ────────────────
 
   late final List<String> _scanKeys;
 
@@ -65,20 +60,6 @@ class BomSearchController extends GetxController {
 
     _scanKeys = ['item1', 'item2', 'item3', 'item4', 'item5'];
 
-    // Wire focus nodes → update _focusedKey whenever a field gains focus.
-    final focusMap = {
-      'item1': item1Focus,
-      'item2': item2Focus,
-      'item3': item3Focus,
-      'item4': item4Focus,
-      'item5': item5Focus,
-    };
-    focusMap.forEach((key, node) {
-      node.addListener(() {
-        if (node.hasFocus) _focusedKey = key;
-      });
-    });
-
     // Subscribe to DataWedge scan stream.
     ever(_dw.scannedCode, _handleScan);
   }
@@ -98,54 +79,44 @@ class BomSearchController extends GetxController {
 
   /// Called by the [ever] worker on every non-empty scan from DataWedge.
   ///
-  /// Delegates to [ScanService.processScan] so that:
-  /// - A raw EAN-8 is resolved to its 7-digit Item Code.
-  /// - An EAN-8 with batch suffix (e.g. `12345670-ABC`) resolves the Item Code
-  ///   from the EAN-8 prefix.
-  /// - A plain Batch No resolves to its parent Item Code.
-  ///
-  /// On failure the best-effort item code is written as a fallback so the user
-  /// can still correct it manually, and a warning snackbar is shown.
+  /// Writes the derived item code to the earliest empty item-code slot
+  /// immediately (no network round-trip).  A background call to
+  /// [ScanService.processScan] then silently refines the value if the API
+  /// returns a more precise item code.
   void _handleScan(String code) {
     if (code.isEmpty) return;
-    // Capture the slot that was active at the moment the scan fired,
-    // so async resolution always writes to the correct field even if
-    // the user taps a different field while the API call is in-flight.
-    final targetKey = _focusedKey;
-    _resolveAndWrite(code, targetKey);
+
+    final targetKey = _earliestEmptyScanKey();
+    if (targetKey == null) return; // All five slots are filled.
+
+    final immediateCode = _deriveItemCodeFromRaw(code);
+    filterControllers[targetKey]?.text = immediateCode;
+
+    _refineInBackground(code, targetKey, immediateCode);
   }
 
-  Future<void> _resolveAndWrite(String code, String targetKey) async {
+  /// Returns the key of the first scan slot ([item1]…[item5]) whose text
+  /// field is empty, or [null] when all slots are filled.
+  String? _earliestEmptyScanKey() {
+    for (final key in _scanKeys) {
+      if (filterControllers[key]?.text.trim().isEmpty ?? true) return key;
+    }
+    return null;
+  }
+
+  /// Calls [ScanService.processScan] and updates [targetKey]'s field only when
+  /// the resolved code is more precise than [alreadyWritten].  No snackbar is
+  /// shown on failure — the immediately-written code is already in the field
+  /// and is sufficient for the BOM Search filter.
+  Future<void> _refineInBackground(
+      String code, String targetKey, String alreadyWritten) async {
     isResolving.value = true;
     try {
       final result = await _scan.processScan(code);
-
-      String resolvedCode;
       if (result.isSuccess && result.itemData != null) {
-        resolvedCode = result.itemData!.itemCode;
-      } else {
-        // Fallback: derive the best-effort item code from the raw scan.
-        // For an EAN-8 barcode (pure or with batch suffix), strip the check
-        // digit and use the first 7 characters as the item code — matching
-        // the derivation logic inside ScanService.  For anything else pass
-        // the raw value through so the user can see what arrived and correct
-        // it manually.
-        resolvedCode = _deriveItemCodeFromRaw(code);
-        GlobalSnackbar.warning(
-          title:   'Item Not Resolved',
-          message: result.message ?? 'Could not resolve item for: $code',
-        );
-      }
-
-      filterControllers[targetKey]?.text = resolvedCode;
-
-      // Advance focus to the next empty slot (wrap around if all filled).
-      final currentIndex = _scanKeys.indexOf(targetKey);
-      for (var i = 1; i <= _scanKeys.length; i++) {
-        final nextKey = _scanKeys[(currentIndex + i) % _scanKeys.length];
-        if (filterControllers[nextKey]?.text.trim().isEmpty ?? true) {
-          _focusedKey = nextKey;
-          break;
+        final resolvedCode = result.itemData!.itemCode;
+        if (resolvedCode != alreadyWritten) {
+          filterControllers[targetKey]?.text = resolvedCode;
         }
       }
     } finally {
@@ -192,7 +163,6 @@ class BomSearchController extends GetxController {
     for (final c in filterControllers.values) c.clear();
     activeFilters.clear();
     reportData.clear();
-    _focusedKey = 'item1';
   }
 
   void clearFilter(String key) {
