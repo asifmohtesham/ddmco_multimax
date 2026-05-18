@@ -32,6 +32,7 @@ abstract class AppRoutes {
   static const ABOUT                 = '/about';
   static const BATCH_WISE_BALANCE    = _Paths.BATCH_WISE_BALANCE;
   static const JOB_CARD_SUMMARY      = _Paths.JOB_CARD_SUMMARY;
+  static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
 }
 
 abstract class _Paths {
@@ -65,4 +66,5 @@ abstract class _Paths {
   static const MATERIAL_REQUEST_FORM = '/material-request/form';
   static const BATCH_WISE_BALANCE    = '/stock/batch-wise-balance';
   static const JOB_CARD_SUMMARY      = '/manufacturing/reports/job-card-summary';
+  static const ITEM_VARIANT_DETAILS  = '/stock/reports/item-variant-details';
 }

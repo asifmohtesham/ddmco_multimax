@@ -295,6 +295,12 @@ class AppNavDrawer extends StatelessWidget {
                           route: AppRoutes.BATCH_WISE_BALANCE,
                           currentRoute: currentRoute,
                         ),
+                        _DrawerItem(
+                          title:        'Item Variant Details',
+                          icon:         Icons.style_outlined,
+                          route:        AppRoutes.ITEM_VARIANT_DETAILS,
+                          currentRoute: currentRoute,
+                        ),
                       ],
                     ),
 

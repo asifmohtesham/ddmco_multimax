@@ -64,6 +64,8 @@ import 'package:multimax/app/modules/about/about_binding.dart';
 import 'package:multimax/app/modules/about/about_screen.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_screen.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
@@ -250,6 +252,12 @@ class AppPages {
       name: AppRoutes.BATCH_WISE_BALANCE,
       page: () => const BatchWiseBalanceScreen(),
       binding: BatchWiseBalanceBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.ITEM_VARIANT_DETAILS,
+      page:       () => const ItemVariantDetailsScreen(),
+      binding:    ItemVariantDetailsBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
   ];
