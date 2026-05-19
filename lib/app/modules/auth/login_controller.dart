@@ -84,6 +84,7 @@ class LoginController extends GetxController {
     if (loginFormKey.currentState!.validate()) {
       isLoading.value = true;
       update();
+      bool loggedIn = false;
       try {
         final response = await _apiProvider.loginWithFrappe(
           emailController.text.trim(),
@@ -107,6 +108,7 @@ class LoginController extends GetxController {
             );
             _authController.processSuccessfulLogin(user);
           }
+          loggedIn = true;
         } else if (response.statusCode == 401 ||
             response.statusCode == 403) {
           GlobalSnackbar.error(
@@ -127,8 +129,10 @@ class LoginController extends GetxController {
           message: 'An unexpected error occurred.',
         );
       } finally {
-        isLoading.value = false;
-        update();
+        if (!loggedIn) {
+          isLoading.value = false;
+          update();
+        }
       }
     }
   }
