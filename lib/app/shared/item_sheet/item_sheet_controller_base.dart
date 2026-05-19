@@ -235,6 +235,8 @@ abstract class ItemSheetControllerBase extends GetxController
   final ScrollController sheetScrollController = ScrollController();
 
   var itemCode = ''.obs;
+  final RxString itemGroup = ''.obs;
+  final RxString variantOf = ''.obs;
 
   // ── batchWiseHistory defaults ──────────────────────────────────────────────────
   List<dynamic> get batchWiseHistory       => const [];
