@@ -30,6 +30,10 @@ class LoginController extends GetxController {
   void openConnectSheet(BuildContext context) {
     Get.put(ConnectToInstanceController());
     showConnectToInstanceSheet(context).then((_) async {
+      // The sheet's dismiss animation is still running when its Future resolves.
+      // Delaying Get.delete lets the animation finish so no widget tries
+      // to call Get.find<ConnectToInstanceController>() after deletion.
+      await Future.delayed(const Duration(milliseconds: 350));
       Get.delete<ConnectToInstanceController>(force: true);
       final savedUrl =
           await _dbService.getConfig(DatabaseService.serverUrlKey);

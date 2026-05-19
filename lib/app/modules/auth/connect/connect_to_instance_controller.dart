@@ -60,7 +60,11 @@ class ConnectToInstanceController extends GetxController {
   void onClose() {
     _scanWorker?.dispose();
     _pingDio.close(force: true);
-    serverUrlController.dispose();
+    // serverUrlController is intentionally not disposed here: Get.delete fires
+    // when Navigator.pop() is called, but the sheet's dismiss animation is
+    // still running — disposing the controller while TextField is in the tree
+    // causes "used after disposal" assertion errors. The TextEditingController
+    // is released naturally once _EditableTextState.dispose() completes.
     super.onClose();
   }
 
