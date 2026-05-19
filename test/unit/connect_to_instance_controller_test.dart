@@ -37,6 +37,20 @@ void main() {
         'https://erp.example.com',
       );
     });
+
+    test('strips multiple trailing slashes', () {
+      expect(
+        ConnectToInstanceController.normaliseUrl('https://erp.example.com//'),
+        'https://erp.example.com',
+      );
+    });
+
+    test('returns empty string for empty input', () {
+      expect(
+        ConnectToInstanceController.normaliseUrl(''),
+        '',
+      );
+    });
   });
 
   group('ConnectToInstanceController.looksLikeUrl', () {

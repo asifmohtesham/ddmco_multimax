@@ -3,8 +3,11 @@ import 'package:get/get.dart';
 class ConnectToInstanceController extends GetxController {
   static String normaliseUrl(String raw) {
     String url = raw.trim();
+    if (url.isEmpty) return '';
     if (!url.startsWith('http')) url = 'https://$url';
-    if (url.endsWith('/')) url = url.substring(0, url.length - 1);
+    while (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
     return url;
   }
 
