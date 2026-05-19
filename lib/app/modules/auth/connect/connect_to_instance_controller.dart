@@ -18,6 +18,7 @@ class ConnectToInstanceController extends GetxController {
   final isCheckingConnection = false.obs;
 
   Worker? _scanWorker;
+  late final Dio _pingDio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 5)));
 
   // ── URL utilities ─────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ class ConnectToInstanceController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
+    _pingDio.close(force: true);
     serverUrlController.dispose();
     super.onClose();
   }
@@ -88,10 +90,7 @@ class ConnectToInstanceController extends GetxController {
     isCheckingConnection.value = true;
     update();
     try {
-      _apiProvider.setBaseUrl(url);
-      final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 5);
-      final response = await dio.get('$url/api/method/ping');
+      final response = await _pingDio.get('$url/api/method/ping');
 
       if (response.statusCode == 200) {
         await _confirmAndSave(url);
