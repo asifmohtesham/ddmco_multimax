@@ -89,11 +89,15 @@ class ConnectToInstanceController extends GetxController {
 
     isCheckingConnection.value = true;
     update();
+    // Track whether we navigated away so the finally block skips reactive
+    // updates that would try to find a already-deleted controller.
+    bool navigatedAway = false;
     try {
       final response = await _pingDio.get('$url/api/method/ping');
 
       if (response.statusCode == 200) {
         await _confirmAndSave(url);
+        navigatedAway = true;
         GlobalSnackbar.success(
           title: 'Connected',
           message: 'Successfully connected to $url',
@@ -102,40 +106,38 @@ class ConnectToInstanceController extends GetxController {
         throw Exception('Invalid response (Status: ${response.statusCode})');
       }
     } catch (e) {
-      isCheckingConnection.value = false;
-      update();
       Get.dialog(
-        Builder(
-          builder: (context) => AlertDialog(
-            title: const Text('Connection Failed'),
-            content: Text(
-              'Could not verify connection to the server.\n\n'
-              'Error: $e\n\n'
-              'Do you want to save this URL anyway?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  await _confirmAndSave(url);
-                  GlobalSnackbar.success(
-                    title: 'Saved',
-                    message: 'Server URL saved (Validation skipped)',
-                  );
-                },
-                child: const Text('Save Anyway'),
-              ),
-            ],
+        AlertDialog(
+          title: const Text('Connection Failed'),
+          content: Text(
+            'Could not verify connection to the server.\n\n'
+            'Error: $e\n\n'
+            'Do you want to save this URL anyway?',
           ),
+          actions: [
+            TextButton(
+              onPressed: Get.back,
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Get.back();
+                await _confirmAndSave(url);
+                GlobalSnackbar.success(
+                  title: 'Saved',
+                  message: 'Server URL saved (Validation skipped)',
+                );
+              },
+              child: const Text('Save Anyway'),
+            ),
+          ],
         ),
       );
     } finally {
-      isCheckingConnection.value = false;
-      update();
+      if (!navigatedAway) {
+        isCheckingConnection.value = false;
+        update();
+      }
     }
   }
 
@@ -153,7 +155,6 @@ class ConnectToInstanceController extends GetxController {
     _apiProvider.setBaseUrl(url);
     final urls = await _dbService.getServerUrls();
     recentUrls.assignAll(urls);
-    update();
     AppNavigator.pop();
   }
 }
