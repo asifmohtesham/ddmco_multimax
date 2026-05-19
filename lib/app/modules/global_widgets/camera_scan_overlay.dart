@@ -60,17 +60,24 @@ class _CameraScanOverlayState extends State<CameraScanOverlay> {
                   onClose: () => Navigator.of(context).pop(),
                 );
               }
-              return const SizedBox.shrink();
+              return const ColoredBox(
+                color: Colors.black,
+                child: Center(
+                  child: Icon(Icons.error_outline, color: Colors.white54, size: 48),
+                ),
+              );
             },
           ),
           const _ScanWindowOverlay(),
-          Positioned(
-            top: 48,
-            right: 16,
-            child: SafeArea(
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 32),
-                onPressed: () => Navigator.of(context).pop(),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8, right: 8),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 32),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
             ),
           ),
@@ -149,7 +156,7 @@ class _ScanWindowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ScanWindowPainter _) => false;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // ── Permission-denied view ────────────────────────────────────────────────────
