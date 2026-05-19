@@ -633,11 +633,23 @@ abstract class ItemSheetControllerBase extends GetxController
     isBatchValid.value      = false;
 
     try {
-      final results = await ApiProvider().getList(
+      // Try strict lookup first (batch name + item). Falls back to name-only
+      // when the Batch doctype's item field differs from the DN item_code
+      // (e.g. batch created against a template item while stock is under a
+      // variant, causing a data mismatch in ERPNext).
+      var results = await ApiProvider().getList(
         'Batch',
         filters: {'name': batch, 'item': itemCode.value},
         fields:  ['name', 'expiry_date', 'manufacturing_date'],
       );
+
+      if (results.isEmpty && itemCode.value.isNotEmpty) {
+        results = await ApiProvider().getList(
+          'Batch',
+          filters: {'name': batch},
+          fields:  ['name', 'expiry_date', 'manufacturing_date'],
+        );
+      }
 
       if (results.isEmpty) {
         batchError.value = 'Batch "$batch" not found for this item.';
