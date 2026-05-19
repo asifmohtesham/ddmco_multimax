@@ -1,7 +1,8 @@
 import 'dart:developer';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/modules/global_widgets/camera_scan_overlay.dart';
 
 /// BarcodeInputWidget
 ///
@@ -62,6 +63,57 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       _textController.dispose();
     }
     super.dispose();
+  }
+
+  Widget _buildSuffixIcon(BuildContext context, Color primaryColor) {
+    if (widget.isLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(12.0),
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    }
+    if (widget.isSuccess) {
+      return const Icon(Icons.check_circle, color: Colors.green);
+    }
+    if (widget.hasError) {
+      return const Icon(Icons.error, color: Colors.red);
+    }
+
+    final sendButton = IconButton(
+      icon: Icon(
+        widget.isEmbedded ? Icons.arrow_forward : Icons.send,
+        color: widget.isEmbedded ? primaryColor : null,
+      ),
+      onPressed: () {
+        if (_textController.text.trim().isNotEmpty) {
+          widget.onScan(_textController.text.trim());
+        }
+      },
+    );
+
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    if (!isMobile) return sendButton;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(Icons.camera_alt_outlined, color: primaryColor),
+          tooltip: 'Scan with camera',
+          onPressed: () async {
+            final result = await CameraScanOverlay.show(context);
+            if (result != null && result.isNotEmpty) {
+              widget.onScan(result);
+            }
+          },
+        ),
+        sendButton,
+      ],
+    );
   }
 
   @override
@@ -195,38 +247,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                           color: Colors.grey),
                   filled: widget.isEmbedded,
                   fillColor: Colors.white,
-                  suffixIcon: widget.isLoading
-                      ? const Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2.5)),
-                        )
-                      : (widget.isSuccess
-                          ? const Icon(Icons.check_circle,
-                              color: Colors.green)
-                          : (widget.hasError
-                              ? const Icon(Icons.error,
-                                  color: Colors.red)
-                              : IconButton(
-                                  icon: Icon(
-                                      widget.isEmbedded
-                                          ? Icons.arrow_forward
-                                          : Icons.send,
-                                      color: widget.isEmbedded
-                                          ? primaryColor
-                                          : null),
-                                  onPressed: () {
-                                    if (_textController.text
-                                        .trim()
-                                        .isNotEmpty) {
-                                      widget.onScan(
-                                          _textController.text.trim());
-                                    }
-                                  },
-                                ))),
+                  suffixIcon: _buildSuffixIcon(context, primaryColor),
                 ),
                 onFieldSubmitted: (value) {
                   if (value.trim().isNotEmpty && !widget.isLoading) {
