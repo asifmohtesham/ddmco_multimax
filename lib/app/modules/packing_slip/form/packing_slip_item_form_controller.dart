@@ -232,10 +232,17 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     required PackingSlipFormController parent,
     required String itemCode,
     required String itemName,
+    String itemGroup = '',
+    String variantOf = '',
     PackingSlipItem? editingItem,
   }) {
     _bindParent(parent);
-    _seedItemIdentity(itemCode: itemCode, itemName: itemName);
+    _seedItemIdentity(
+      itemCode:  itemCode,
+      itemName:  itemName,
+      itemGroup: itemGroup,
+      variantOf: variantOf,
+    );
     _seedSerial(parent);
     _populateFields(editingItem: editingItem, parent: parent);
     _finaliseInit();
@@ -254,9 +261,13 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   void _seedItemIdentity({
     required String itemCode,
     required String itemName,
+    String itemGroup = '',
+    String variantOf = '',
   }) {
-    this.itemCode.value = itemCode;
-    this.itemName.value = itemName;
+    this.itemCode.value    = itemCode;
+    this.itemName.value    = itemName;
+    this.itemGroup.value   = itemGroup;
+    this.variantOf.value   = variantOf;
   }
 
   /// (3) Pre-selects the serial from [parent.currentSerial].

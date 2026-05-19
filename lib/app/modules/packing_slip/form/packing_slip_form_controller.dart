@@ -82,7 +82,6 @@ class PackingSlipFormController extends GetxController
   double? currentNetWeight;
   double? currentWeightUom;
   String? currentItemNameKey;
-  String? currentItemVariantOf;
 
   // Metadata shims kept until step-6.
   var bsItemOwner      = RxnString();
@@ -723,7 +722,6 @@ class PackingSlipFormController extends GetxController
             onSubmit:         () => addItemToSlip(),
             onScan:           null,
             isSaveEnabled:    packingSlip.value?.docstatus == 0,
-            itemSubtext:      currentItemVariantOf,
             customFields:     customFields,
           ),
         ),
@@ -848,9 +846,11 @@ class PackingSlipFormController extends GetxController
   PackingSlipItemFormController _wireChildForAdd(DeliveryNoteItem item) {
     final child = Get.put(PackingSlipItemFormController());
     child.initialise(
-      parent:   this,
-      itemCode: item.itemCode,
-      itemName: item.itemName ?? '',
+      parent:    this,
+      itemCode:  item.itemCode,
+      itemName:  item.itemName ?? '',
+      itemGroup: item.itemGroup ?? '',
+      variantOf: item.customVariantOf ?? '',
     );
     child.setupAutoSubmit(onValid: _onAutoSubmitValid);
     return child;
@@ -952,6 +952,8 @@ class PackingSlipFormController extends GetxController
       parent:      this,
       itemCode:    dnItem.itemCode,
       itemName:    dnItem.itemName ?? '',
+      itemGroup:   dnItem.itemGroup ?? '',
+      variantOf:   dnItem.customVariantOf ?? '',
       editingItem: slipItem,
     );
     child.setupAutoSubmit(onValid: _onAutoSubmitValid);
@@ -1010,7 +1012,6 @@ class PackingSlipFormController extends GetxController
     currentSerial        = item.customInvoiceSerialNumber;
     currentNetWeight     = 0.0;
     currentWeightUom     = 0.0;
-    currentItemVariantOf = item.customVariantOf;
   }
 
   /// E1 fix: PackingSlipItemFormController.adjustQty takes int, but delta

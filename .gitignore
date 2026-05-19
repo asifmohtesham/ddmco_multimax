@@ -52,3 +52,4 @@ app.*.map.json
 
 # Design mockups (not source code)
 docs/mockups/
+.superpowers/

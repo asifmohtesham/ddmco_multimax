@@ -119,6 +119,8 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     required String uom,
     required double qty,
     required double rate,
+    String itemGroupValue = '',
+    String variantOfValue = '',
     String? rowId,
     String? scheduleDate,
     String? owner,
@@ -131,8 +133,10 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     editingItemName.value = rowId;
     // isAddMode is a computed getter (rowId == null) — no assignment.
 
-    itemCode.value = code;
-    itemName.value = name;
+    itemCode.value   = code;
+    itemName.value   = name;
+    itemGroup.value  = itemGroupValue;
+    variantOf.value  = variantOfValue;
 
     itemOwner.value      = owner;
     itemCreation.value   = creation;

@@ -494,11 +494,13 @@ class PurchaseOrderFormController extends GetxController {
       if (result.isSuccess && result.itemData != null) {
         final item = result.itemData!;
         _openItemSheet(
-          code: item.itemCode,
-          name: item.itemName,
-          uom:  item.stockUom ?? 'Nos',
-          rate: 0.0,
-          qty:  1.0,
+          code:      item.itemCode,
+          name:      item.itemName,
+          uom:       item.stockUom ?? 'Nos',
+          rate:      0.0,
+          qty:       1.0,
+          itemGroup: item.itemGroup,
+          variantOf: item.variantOf ?? '',
         );
       } else if (result.type == ScanType.multiple &&
           result.candidates != null) {
@@ -507,11 +509,13 @@ class PurchaseOrderFormController extends GetxController {
           MultiItemSelectionSheet(
             items: result.candidates!,
             onItemSelected: (item) => _openItemSheet(
-              code: item.itemCode,
-              name: item.itemName,
-              uom:  item.stockUom ?? 'Nos',
-              rate: 0.0,
-              qty:  1.0,
+              code:      item.itemCode,
+              name:      item.itemName,
+              uom:       item.stockUom ?? 'Nos',
+              rate:      0.0,
+              qty:       1.0,
+              itemGroup: item.itemGroup,
+              variantOf: item.variantOf ?? '',
             ),
           ),
           isScrollControlled: true,
@@ -543,6 +547,8 @@ class PurchaseOrderFormController extends GetxController {
         uom:          item.uom ?? '',
         rate:         item.rate,
         qty:          item.qty,
+        itemGroup:    item.itemGroup ?? '',
+        variantOf:    item.customVariantOf ?? '',
         rowId:        item.name,
         scheduleDate: item.scheduleDate,
         owner:        item.owner,
@@ -585,6 +591,8 @@ class PurchaseOrderFormController extends GetxController {
     required String uom,
     required double rate,
     required double qty,
+    String itemGroup = '',
+    String variantOf = '',
     String? rowId,
     String? scheduleDate,
     String? owner,
@@ -603,17 +611,19 @@ class PurchaseOrderFormController extends GetxController {
     final sheetCtrl = Get.find<PurchaseOrderItemFormController>(tag: kPoItemSheetTag);
     sheetCtrl.initialise(
       parentController: this,
-      code:         code,
-      name:         name,
-      uom:          uom,
-      qty:          qty,
-      rate:         rate,
-      rowId:        rowId,
-      scheduleDate: scheduleDate,
-      owner:        owner,
-      creation:     creation,
-      modified:     modified,
-      modifiedBy:   modifiedBy,
+      code:             code,
+      name:             name,
+      uom:              uom,
+      qty:              qty,
+      rate:             rate,
+      itemGroupValue:   itemGroup,
+      variantOfValue:   variantOf,
+      rowId:            rowId,
+      scheduleDate:     scheduleDate,
+      owner:            owner,
+      creation:         creation,
+      modified:         modified,
+      modifiedBy:       modifiedBy,
     );
 
     isItemSheetOpen.value = true;
