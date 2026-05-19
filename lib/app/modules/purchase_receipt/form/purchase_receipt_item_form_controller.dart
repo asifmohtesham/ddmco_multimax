@@ -171,6 +171,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     String?  batchNo,
     String?  scannedEan,
     String?  variantOfValue,
+    String?  itemGroupValue,
     String?  uomValue,
     PurchaseReceiptItem? editingItem,
   }) {
@@ -188,6 +189,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
         uom:    uomValue ?? 'Nos',
         batchNo: batchNo,
       );
+      this.itemGroup.value = itemGroupValue ?? '';
+      this.variantOf.value = variantOfValue ?? '';
     }
 
     _parent.linkToPurchaseOrder(code, this);
@@ -323,6 +326,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     itemCode.value        = item.itemCode;
     itemName.value        = item.itemName ?? '';
     itemUom.value         = item.uom ?? '';
+    itemGroup.value       = item.itemGroup ?? '';
+    variantOf.value       = item.customVariantOf ?? '';
 
     batchController.text = item.batchNo ?? '';
     rackController.text  = item.rack    ?? '';

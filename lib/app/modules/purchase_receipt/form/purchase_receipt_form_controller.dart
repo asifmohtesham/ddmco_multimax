@@ -442,6 +442,7 @@ class PurchaseReceiptFormController extends GetxController
     String?  batchNo,
     String?  scannedEan,
     String?  variantOf,
+    String?  itemGroup,
     String?  uom,
     PurchaseReceiptItem? editingItem,
   }) async {
@@ -449,14 +450,15 @@ class PurchaseReceiptFormController extends GetxController
 
     final child = Get.put(PurchaseReceiptItemFormController());
     child.initialise(
-      parent:         this,
-      code:           itemCode,
-      name:           itemName,
-      batchNo:        batchNo,
-      scannedEan:     scannedEan,
-      variantOfValue: variantOf,
-      uomValue:       uom,
-      editingItem:    editingItem,
+      parent:          this,
+      code:            itemCode,
+      name:            itemName,
+      batchNo:         batchNo,
+      scannedEan:      scannedEan,
+      variantOfValue:  variantOf,
+      itemGroupValue:  itemGroup,
+      uomValue:        uom,
+      editingItem:     editingItem,
     );
 
     // Inject PO qty so the progress bar and PO Qty chip render on the item card.
@@ -534,6 +536,7 @@ class PurchaseReceiptFormController extends GetxController
     String?  batchNo,
     String?  scannedEan,
     String?  variantOf,
+    String?  itemGroup,
     String?  uom,
   }) {
     _openItemSheet(
@@ -542,6 +545,7 @@ class PurchaseReceiptFormController extends GetxController
       batchNo:    batchNo,
       scannedEan: scannedEan,
       variantOf:  variantOf,
+      itemGroup:  itemGroup,
       uom:        uom,
     );
   }
@@ -555,6 +559,7 @@ class PurchaseReceiptFormController extends GetxController
         itemCode:    item.itemCode,
         itemName:    item.itemName ?? '',
         variantOf:   item.customVariantOf,
+        itemGroup:   item.itemGroup,
         uom:         item.uom,
         editingItem: item,
       );
@@ -762,6 +767,7 @@ class PurchaseReceiptFormController extends GetxController
           batchNo:    result.batchNo,
           scannedEan: currentScannedEan,
           variantOf:  itemData.variantOf,
+          itemGroup:  itemData.itemGroup,
           uom:        itemData.stockUom,
         );
       } else {
