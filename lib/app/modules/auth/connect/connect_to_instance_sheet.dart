@@ -93,16 +93,16 @@ class ConnectToInstanceSheet extends GetView<ConnectToInstanceController> {
                 ),
           ],
           const SizedBox(height: 24),
-          SizedBox(
+          Obx(() => SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: c.isCheckingConnection.value
+              onPressed: controller.isCheckingConnection.value
                   ? null
-                  : c.saveServerConfiguration,
+                  : controller.saveServerConfiguration,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: c.isCheckingConnection.value
+              child: controller.isCheckingConnection.value
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -110,7 +110,7 @@ class ConnectToInstanceSheet extends GetView<ConnectToInstanceController> {
                     )
                   : const Text('Connect'),
             ),
-          ),
+          )),
         ],
       ),
     );
