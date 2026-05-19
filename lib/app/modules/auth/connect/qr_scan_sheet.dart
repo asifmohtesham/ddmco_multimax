@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/core/widgets/keyboard_safe_bottom_sheet.dart';
 
@@ -45,7 +46,7 @@ class _QRScanSheetState extends State<QRScanSheet>
       final value = barcode.rawValue ?? '';
       if (value.startsWith('http')) {
         setState(() => _scanned = true);
-        Navigator.of(context).pop();
+        Get.back();
         widget.onUrlScanned(value);
         return;
       }
@@ -94,7 +95,7 @@ class _QRScanSheetState extends State<QRScanSheet>
         ),
         const SizedBox(height: 16),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Get.back(),
           child: const Text('Cancel'),
         ),
       ],

@@ -51,6 +51,13 @@ void main() {
         '',
       );
     });
+
+    test('prefixes https:// when string starts with http but has no scheme separator', () {
+      expect(
+        ConnectToInstanceController.normaliseUrl('httpfoo.bar'),
+        'https://httpfoo.bar',
+      );
+    });
   });
 
   group('ConnectToInstanceController.looksLikeUrl', () {
@@ -72,6 +79,12 @@ void main() {
 
     test('returns false for empty string', () {
       expect(ConnectToInstanceController.looksLikeUrl(''), isFalse);
+    });
+
+    test('returns true for http-prefixed non-URL (passes startsWith guard)', () {
+      // Documents known behaviour: looksLikeUrl only filters obvious non-URLs;
+      // normaliseUrl is responsible for producing a valid scheme.
+      expect(ConnectToInstanceController.looksLikeUrl('httpfoo'), isTrue);
     });
   });
 }

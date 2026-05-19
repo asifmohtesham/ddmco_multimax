@@ -25,7 +25,9 @@ class ConnectToInstanceController extends GetxController {
   static String normaliseUrl(String raw) {
     String url = raw.trim();
     if (url.isEmpty) return '';
-    if (!url.startsWith('http')) url = 'https://$url';
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
     while (url.endsWith('/')) {
       url = url.substring(0, url.length - 1);
     }
@@ -48,10 +50,12 @@ class ConnectToInstanceController extends GetxController {
 
   Future<void> _loadSavedData() async {
     final savedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
+    if (isClosed) return;
     final targetUrl = savedUrl ?? ApiProvider.defaultBaseUrl;
     serverUrlController.text = targetUrl;
     currentServerUrl = targetUrl;
     final urls = await _dbService.getServerUrls();
+    if (isClosed) return;
     recentUrls.assignAll(urls);
     update();
   }
@@ -84,6 +88,7 @@ class ConnectToInstanceController extends GetxController {
   }
 
   Future<void> saveServerConfiguration() async {
+    if (isCheckingConnection.value) return;
     final rawUrl = serverUrlController.text;
     if (rawUrl.trim().isEmpty) {
       GlobalSnackbar.error(message: 'Server URL cannot be empty');
@@ -127,11 +132,18 @@ class ConnectToInstanceController extends GetxController {
             TextButton(
               onPressed: () async {
                 Get.back();
-                await _confirmAndSave(url);
-                GlobalSnackbar.success(
-                  title: 'Saved',
-                  message: 'Server URL saved (Validation skipped)',
-                );
+                try {
+                  await _confirmAndSave(url);
+                  GlobalSnackbar.success(
+                    title: 'Saved',
+                    message: 'Server URL saved (Validation skipped)',
+                  );
+                } catch (e) {
+                  GlobalSnackbar.error(
+                    title: 'Save Failed',
+                    message: 'Could not save server URL: $e',
+                  );
+                }
               },
               child: const Text('Save Anyway'),
             ),
