@@ -41,7 +41,6 @@ class UniversalItemFormSheet extends StatelessWidget {
   final List<Widget> customFields;
   final Future<void> Function() onSubmit;
   final void Function(String)? onScan;
-  final String? itemSubtext;
   final bool isSaveEnabled;
   final ScrollController? scrollController;
 
@@ -51,7 +50,6 @@ class UniversalItemFormSheet extends StatelessWidget {
     required this.customFields,
     required this.onSubmit,
     this.onScan,
-    this.itemSubtext,
     this.isSaveEnabled = true,
     this.scrollController,
   });
@@ -70,7 +68,8 @@ class UniversalItemFormSheet extends StatelessWidget {
         title:            isEditing ? 'Update Item' : 'Add Item',
         itemCode:         controller.itemCode.value,
         itemName:         controller.itemName.value,
-        itemSubtext:      itemSubtext,
+        variantOf:        controller.variantOf.value,
+        itemGroup:        controller.itemGroup.value,
 
         // ── Metadata footer ───────────────────────────────────────────────
         owner:      controller.itemOwner.value,
