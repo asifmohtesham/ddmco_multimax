@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -56,10 +55,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
 
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
-
-  /// PO sheet has no embedded scanner.
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   /// ±1 stepper, unbounded ceiling (PO has no stock cap).
   /// Commit 9: signature kept as `int` — base abstract is `void adjustQty(int delta)`.

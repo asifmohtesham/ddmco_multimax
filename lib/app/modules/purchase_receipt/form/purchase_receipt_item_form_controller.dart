@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -132,9 +131,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
 
   @override
   bool get isAddMode => editingItemName.value == null;
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
   @override

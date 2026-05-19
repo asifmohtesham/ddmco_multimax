@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -54,9 +53,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
 
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   @override
   void adjustQty(int delta) {

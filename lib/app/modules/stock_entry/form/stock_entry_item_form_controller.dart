@@ -3,7 +3,6 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -221,9 +220,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   @override
   bool get isAddMode => editingItemName.value == null;
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   // ── RackFieldWithBrowseDelegate: picker flow (Commit 9) ──────────────────
 

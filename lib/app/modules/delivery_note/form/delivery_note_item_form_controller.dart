@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 
@@ -115,9 +114,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   bool get isAddMode => !isExistingItem.value;
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
   @override
