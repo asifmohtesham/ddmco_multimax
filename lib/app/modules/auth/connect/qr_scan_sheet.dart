@@ -11,28 +11,40 @@ class QRScanSheet extends StatefulWidget {
   State<QRScanSheet> createState() => _QRScanSheetState();
 }
 
-class _QRScanSheetState extends State<QRScanSheet> {
+class _QRScanSheetState extends State<QRScanSheet>
+    with WidgetsBindingObserver {
   late final MobileScannerController _scannerController;
   bool _scanned = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scannerController = MobileScannerController();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive) {
+      _scannerController.stop();
+    } else if (state == AppLifecycleState.resumed) {
+      _scannerController.start();
+    }
+  }
+
+  @override
   void dispose() {
-    _scannerController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _scannerController.dispose().ignore();
     super.dispose();
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (_scanned) return;
+    if (_scanned || !mounted) return;
     for (final barcode in capture.barcodes) {
       final value = barcode.rawValue ?? '';
       if (value.startsWith('http')) {
-        _scanned = true;
+        setState(() => _scanned = true);
         Navigator.of(context).pop();
         widget.onUrlScanned(value);
         return;
