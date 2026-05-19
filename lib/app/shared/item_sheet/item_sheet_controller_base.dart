@@ -1,4 +1,6 @@
 import 'dart:developer';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -298,8 +300,34 @@ abstract class ItemSheetControllerBase extends GetxController
   @override
   RxnString qtyInfoTooltip = RxnString(null);
 
-  /// Mobile scanner controller backing the scan footer.
-  MobileScannerController? get sheetScanController;
+  // ── Camera state ──────────────────────────────────────────────────────────
+
+  /// Whether the camera viewfinder panel is currently expanded.
+  final isCameraExpanded = false.obs;
+
+  MobileScannerController? _sheetScanController;
+
+  /// The live scanner controller. Non-null on Android/iOS from [onInit] onward
+  /// (`autoStart: false` so the camera is off until the panel mounts).
+  /// Always null on desktop/web. Disposed in [disposeControllers].
+  MobileScannerController? get sheetScanController => _sheetScanController;
+
+  /// True when running on Android or iOS (camera hardware available).
+  bool get isMobile => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+  /// Expand or collapse the camera viewfinder panel.
+  /// No-op on desktop / web.
+  void toggleCamera() {
+    if (!isMobile) return;
+    isCameraExpanded.value = !isCameraExpanded.value;
+  }
+
+  /// Camera-scan entry point.
+  ///
+  /// Called by [GlobalItemFormSheet] when [CameraViewfinderPanel] detects a
+  /// barcode.  Base implementation is a no-op; [BarcodeAwareMixin] overrides
+  /// this to forward through [onBarcodeScanned] → [handleScan].
+  Future<void> onCameraBarcode(String raw) async {}
 
   /// Increment (+1) or decrement (-1) the qty field.
   ///
@@ -317,6 +345,13 @@ abstract class ItemSheetControllerBase extends GetxController
   @override
   void onInit() {
     super.onInit();
+    // Create the scanner controller upfront on mobile (autoStart: false keeps
+    // the camera off until the CameraViewfinderPanel widget mounts).
+    // This ensures sheetScanController is never null at widget-build time on
+    // mobile, so GlobalItemFormSheet renders the camera toggle immediately.
+    if (isMobile) {
+      _sheetScanController = MobileScannerController(autoStart: false);
+    }
     // Lock / unlock the qty field based on docstatus.
     ever(docStatus, (_) {
       _isQtyReadOnly.value = docStatus.value == 1;
@@ -433,6 +468,10 @@ abstract class ItemSheetControllerBase extends GetxController
     _controllersDisposed = true;
 
     removeSheetListeners(); // ← Rule 3: remove before invalidating controllers
+
+    // Dispose camera controller immediately (not a TEC; no frame dependency).
+    _sheetScanController?.dispose();
+    _sheetScanController = null;
 
     final textControllers = <TextEditingController>[
       batchController,
