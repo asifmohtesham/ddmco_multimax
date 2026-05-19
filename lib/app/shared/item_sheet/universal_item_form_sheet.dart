@@ -101,11 +101,15 @@ class UniversalItemFormSheet extends StatelessWidget {
             : null,
 
         // ── Scan footer ─────────────────────────────────────────────────
-        onScan:         onScan,
-        // MobileScannerController is not a TextEditingController; pass null.
-        // Sheets that embed a live camera scanner wire it inside customFields.
-        scanController: null,
-        isScanning:     controller.isScanning.value,
+        onScan:             onScan,
+        scanController:     null,
+        isScanning:         controller.isScanning.value,
+
+        // ── Camera panel ────────────────────────────────────────────────
+        onCameraScan:         (raw) => controller.onCameraBarcode(raw),
+        isCameraExpanded:     controller.isCameraExpanded,
+        onToggleCamera:       controller.toggleCamera,
+        mobileScanController: controller.sheetScanController,
 
         // ── DocType-specific fields ───────────────────────────────────────
         customFields: customFields,
