@@ -148,16 +148,37 @@ class AuthenticationController extends GetxController {
               onPressed: () async {
                 Navigator.of(context).pop();
                 isLoading.value = true;
+                Get.dialog(
+                  const PopScope(
+                    canPop: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(height: 16),
+                          Text(
+                            'Logging out…',
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  barrierDismissible: false,
+                  barrierColor: Colors.black54,
+                );
                 try {
                   await _apiProvider.logoutApiCall();
                   await _clearSessionAndLocalData();
                   Get.offAllNamed(AppRoutes.LOGIN);
                 } catch (e) {
-                  GlobalSnackbar.error(
-                      title: 'Logout Error',
-                      message: 'Could not log out.');
-                } finally {
+                  Get.back();
                   isLoading.value = false;
+                  GlobalSnackbar.error(
+                    title: 'Logout Error',
+                    message: 'Could not log out.',
+                  );
                 }
               },
             ),
