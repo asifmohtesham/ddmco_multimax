@@ -87,8 +87,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   final RxString itemCodeRx       = ''.obs;
   final RxString itemNameRx       = ''.obs;
   final RxString itemUomRx        = ''.obs;
-  final RxString itemGroupRx      = ''.obs;
-  final RxString currentVariantOf = ''.obs;
 
   final RxBool isExistingItem = false.obs;
   final RxInt  editingIndex   = (-1).obs;
@@ -316,7 +314,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   RxString get itemCodeValue  => itemCodeRx;
   RxString get itemNameValue  => itemNameRx;
   RxString get itemUomValue   => itemUomRx;
-  RxString get itemGroupValue => itemGroupRx;
 
   // ── AutoFillRackMixin wiring ───────────────────────────────────────────────
   String  get mixinItemCode  => itemCode.value;
@@ -528,12 +525,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required String itemGroup,
     required String variantOf,
   }) {
-    this.itemCode.value    = itemCode;
-    itemCodeRx.value       = itemCode;
-    itemNameRx.value       = itemName;
-    itemUomRx.value        = uom;
-    itemGroupRx.value      = itemGroup;
-    currentVariantOf.value = variantOf;
+    this.itemCode.value  = itemCode;
+    itemCodeRx.value     = itemCode;
+    itemNameRx.value     = itemName;
+    itemUomRx.value      = uom;
+    this.itemGroup.value = itemGroup;
+    this.variantOf.value = variantOf;
   }
 
   /// Responsibility: pre-populate (or clear) the three text-field controllers
@@ -623,12 +620,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required DeliveryNoteItem item,
     required String variantOf,
   }) {
-    this.itemCode.value    = item.itemCode;
-    itemCodeRx.value       = item.itemCode;
-    itemNameRx.value       = item.itemName  ?? '';
-    itemUomRx.value        = item.uom       ?? '';
-    itemGroupRx.value      = item.itemGroup ?? '';
-    currentVariantOf.value = variantOf;
+    this.itemCode.value  = item.itemCode;
+    itemCodeRx.value     = item.itemCode;
+    itemNameRx.value     = item.itemName  ?? '';
+    itemUomRx.value      = item.uom       ?? '';
+    this.itemGroup.value = item.itemGroup ?? '';
+    this.variantOf.value = variantOf;
   }
 
   /// Responsibility: reset batch/rack validation state, then pre-populate
@@ -806,8 +803,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// reactive field state. Normalises optional fields (rack, variantOf)
   /// to null when blank.
   DeliveryNoteItem _buildItem({required double qty}) {
-    final rack      = rackController.text.trim();
-    final variantOf = currentVariantOf.value.trim();
+    final rack         = rackController.text.trim();
+    final variantOfStr = variantOf.value.trim();
 
     return DeliveryNoteItem(
       itemCode:                  itemCode.value,
@@ -816,9 +813,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       qty:                       qty,
       rate:                      0.0,
       batchNo:                   batchController.text.trim(),
-      rack:                      rack.isEmpty      ? null : rack,
-      itemGroup:                 itemGroupRx.value,
-      customVariantOf:           variantOf.isEmpty ? null : variantOf,
+      rack:                      rack.isEmpty            ? null : rack,
+      itemGroup:                 itemGroup.value,
+      customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
     );
   }
