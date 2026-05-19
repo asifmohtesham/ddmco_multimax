@@ -155,7 +155,8 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String title;
   final String itemCode;
   final String itemName;
-  final String? itemSubtext;
+  final String? variantOf;
+  final String? itemGroup;
   final List<Widget> customFields;
 
   // ── Qty delegate ──────────────────────────────────────────────────────────
@@ -196,7 +197,8 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.title,
     required this.itemCode,
     required this.itemName,
-    this.itemSubtext,
+    this.variantOf,
+    this.itemGroup,
     this.customFields = const [],
     required this.qtyDelegate,
     required this.qtyAccentColor,
@@ -348,21 +350,44 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '$itemCode'
-                    '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontFamily: 'ShureTechMono',
-                      fontSize: 16,
-                      color: colorScheme.onSurfaceVariant,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        variantOf != null && variantOf!.isNotEmpty
+                            ? '$itemCode · $variantOf'
+                            : itemCode,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontFamily: 'ShureTechMono',
+                          fontSize: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (itemGroup != null && itemGroup!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          itemGroup!,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
