@@ -87,7 +87,7 @@ A `GetView<ConnectToInstanceController>`. Opened via a top-level `showConnectToI
 6. 16px gap
 7. "Recent" section (hidden when `recentUrls` is empty):
    - Small uppercase label "RECENT"
-   - `ListView` of URL tiles: URL text on left, `✕` `IconButton` on right. Tap URL tile → `c.fillUrl(url)`. Tap `✕` → `c.removeRecentUrl(url)`. Show maximum 5 items.
+   - `Column` + `.map()` of URL tiles (not `ListView` — avoids nested-scroll conflict with `KeyboardSafeBottomSheet`): URL text on left, `✕` `IconButton` on right. Tap URL tile → `c.fillUrl(url)`. Tap `✕` → `c.removeRecentUrl(url)`. Show maximum 5 items (`recentUrls.take(5)`).
 8. 24px gap
 9. Full-width `ElevatedButton` "Connect" → `c.saveServerConfiguration()`. Shows `CircularProgressIndicator` when `c.isCheckingConnection`.
 
@@ -97,9 +97,9 @@ A `GetView<ConnectToInstanceController>`. Opened via a top-level `showConnectToI
 
 **File:** `lib/app/modules/auth/connect/qr_scan_sheet.dart`
 
-A stateless widget opened via `showKeyboardSafeBottomSheet` (full-height, `isScrollControlled: true`). Receives `void Function(String url) onUrlScanned` callback.
+A `StatefulWidget` opened via `showKeyboardSafeBottomSheet` (full-height, `isScrollControlled: true`). Receives `void Function(String url) onUrlScanned` callback.
 
-Uses `MobileScanner` from the `mobile_scanner` package (already in `pubspec.yaml`). `MobileScannerController` is created in a `StatefulWidget` wrapper and disposed on close.
+Uses `MobileScanner` from the `mobile_scanner` package (already in `pubspec.yaml`). `MobileScannerController` is created in `initState` and disposed in `dispose`.
 
 On each barcode detect event: if the raw value starts with `http` it is treated as a URL → call `onUrlScanned(value)` then `Navigator.pop()`. Otherwise ignore.
 
