@@ -106,6 +106,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
           tooltip: 'Scan with camera',
           onPressed: () async {
             final result = await CameraScanOverlay.show(context);
+            if (!mounted) return;
             if (result != null && result.isNotEmpty) {
               widget.onScan(result);
             }
