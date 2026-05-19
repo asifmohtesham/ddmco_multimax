@@ -80,6 +80,7 @@ class ConnectToInstanceController extends GetxController {
   Future<void> removeRecentUrl(String url) async {
     await _dbService.removeServerUrl(url);
     recentUrls.remove(url);
+    update();
   }
 
   Future<void> saveServerConfiguration() async {
