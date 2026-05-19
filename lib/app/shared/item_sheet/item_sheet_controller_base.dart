@@ -350,7 +350,7 @@ abstract class ItemSheetControllerBase extends GetxController
     // This ensures sheetScanController is never null at widget-build time on
     // mobile, so GlobalItemFormSheet renders the camera toggle immediately.
     if (isMobile) {
-      _sheetScanController = MobileScannerController(autoStart: false);
+      _sheetScanController = MobileScannerController();
     }
     // Lock / unlock the qty field based on docstatus.
     ever(docStatus, (_) {
