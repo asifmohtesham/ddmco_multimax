@@ -1176,7 +1176,6 @@ class StockEntryFormController extends GetxController
             scrollController: sc,
             onSubmit:         addItem,
             onScan:           null,
-            itemSubtext:      currentVariantOf,
             isSaveEnabled:    isEditable,
             customFields: [
               SharedInvoiceSerialNumberField(

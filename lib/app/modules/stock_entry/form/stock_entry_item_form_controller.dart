@@ -690,7 +690,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── State ──────────────────────────────────────────────────────────────────
   var uom              = ''.obs;
-  var itemGroup        = ''.obs;
   var isBatchedItem    = false.obs;
   var isSerialisedItem = false.obs;
   var isEditingExisting = false.obs;
@@ -885,11 +884,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     required String group,
     required bool   hasBatch,
     required bool   hasSerial,
+    String variantOf       = '',
   }) {
     itemCode.value         = code;
     itemName.value         = name;
     uom.value              = uomValue;
     itemGroup.value        = group;
+    this.variantOf.value   = variantOf;
     isBatchedItem.value    = hasBatch;
     isSerialisedItem.value = hasSerial;
   }
@@ -989,6 +990,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     // fix(docstatus): docstatus belongs to the parent document, not the item
     // row. Read from parent StockEntry to drive the isQtyReadOnly lock.
     docStatus.value = _parent.stockEntry.value?.docstatus ?? 0;
+    variantOf.value = item.customVariantOf ?? '';
 
     // Seed finished-item flag so validateSheet() can relax the
     // batch-balance gate for the Manufacture FG row.
@@ -1052,6 +1054,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     required String itemGroup,
     required bool   hasBatch,
     required bool   hasSerial,
+    String variantOf              = '',
     StockEntryItem? existingItem,
     List<Map<String, dynamic>> mrReferenceItems = const [],
     String? scannedBatch,
@@ -1061,6 +1064,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       name:      itemName,
       uomValue:  uom,
       group:     itemGroup,
+      variantOf: variantOf,
       hasBatch:  hasBatch,
       hasSerial: hasSerial,
     );
@@ -1127,6 +1131,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       itemName:         itemName,
       uom:              uomValue,
       itemGroup:        group,
+      variantOf:        variantOf,
       hasBatch:         hasBatch,
       hasSerial:        hasSerial,
       existingItem:     editingItem,
