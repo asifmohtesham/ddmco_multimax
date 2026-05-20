@@ -783,6 +783,7 @@ class _ItemCardState extends State<_ItemCard> {
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
                 child: _expanded
                     ? _buildPsItemsPanel(context)
                     : const SizedBox.shrink(),
