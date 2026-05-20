@@ -255,6 +255,7 @@ class PosUploadFormController extends GetxController
           slips.add(PackingSlip.fromJson(resp.data['data']));
         }
       }
+      slips.removeWhere((ps) => ps.docstatus == 2);   // exclude Cancelled
       packingSlips.assignAll(slips);
 
       // Build idx → PackingSlipInfo.
@@ -284,9 +285,8 @@ class PosUploadFormController extends GetxController
       resolvedPackingSlips.value = psMap;
 
       // Build case options only for PSes that have at least one matched POS
-      // Upload item. totalQty is the sum of POS item quantities in each case
-      // (not the PS's internal qty), so the chip number is meaningful to the
-      // user in the context of this document.
+      // Upload item. totalQty is the sum of the PS's own item quantities, so
+      // the chip shows how many units are packed in that case.
       final matchedPsNames = psMap.values
           .whereType<PackingSlipInfo>()
           .map((info) => info.psName)
@@ -296,14 +296,13 @@ class PosUploadFormController extends GetxController
         slips
             .where((ps) => matchedPsNames.contains(ps.name))
             .map((ps) {
-              final posQty = upload.items
-                  .where((item) => psMap[item.idx]?.psName == ps.name)
-                  .fold<double>(0, (s, item) => s + item.quantity);
+              final psQty = ps.items
+                  .fold<double>(0, (s, psItem) => s + psItem.qty);
               return CaseOption(
                 psName: ps.name,
                 fromCaseNo: ps.fromCaseNo,
                 toCaseNo: ps.toCaseNo,
-                totalQty: posQty,
+                totalQty: psQty,
               );
             })
             .toList(),
