@@ -428,6 +428,7 @@ class PosUploadFormController extends GetxController
   @override
   Future<void> reloadDocument() async {
     await fetchPosUpload();
+    await fetchLinkedDocument();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 }

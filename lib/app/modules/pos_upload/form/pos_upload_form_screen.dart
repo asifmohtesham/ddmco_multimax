@@ -575,6 +575,14 @@ class _ItemCard extends StatefulWidget {
 class _ItemCardState extends State<_ItemCard> {
   bool _expanded = false;
 
+  @override
+  void didUpdateWidget(_ItemCard old) {
+    super.didUpdateWidget(old);
+    if (old.psItems.isNotEmpty && widget.psItems.isEmpty) {
+      _expanded = false;
+    }
+  }
+
   bool get _showProgressBar =>
       widget.resolvedSerial != null &&
       widget.resolvedSerial!.isNotEmpty &&
