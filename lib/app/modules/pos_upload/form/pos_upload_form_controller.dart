@@ -267,17 +267,11 @@ class PosUploadFormController extends GetxController
       }
       resolvedPackingSlips.value = psMap;
 
-      // Build case options only for PSes that have at least one matched POS
-      // Upload item. totalQty is the sum of the PS's own item quantities, so
-      // the chip shows how many units are packed in that case.
-      final matchedPsNames = psMap.values
-          .whereType<PackingSlipInfo>()
-          .map((info) => info.psName)
-          .toSet();
-
+      // Build a case option for every non-cancelled PS. totalQty is the sum
+      // of the PS's own item quantities so the chip shows how many units are
+      // packed in that case.
       caseOptions.assignAll(
         slips
-            .where((ps) => matchedPsNames.contains(ps.name))
             .map((ps) {
               final psQty = ps.items
                   .fold<double>(0, (s, psItem) => s + psItem.qty);
