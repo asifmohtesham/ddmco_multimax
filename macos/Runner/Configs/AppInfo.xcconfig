@@ -8,7 +8,7 @@
 PRODUCT_NAME = multimax
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.ddmco.ddmcoMultimax
+PRODUCT_BUNDLE_IDENTIFIER = com.ddmco.multimax
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2025 com.ddmco. All rights reserved.
