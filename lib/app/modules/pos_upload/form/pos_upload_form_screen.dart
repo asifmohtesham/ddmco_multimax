@@ -583,14 +583,14 @@ class _ItemCardState extends State<_ItemCard> {
   double get _packedQty =>
       widget.psItems.fold(0.0, (s, e) => s + e.item.qty);
 
-  double? get _progressRatio {
+  double? _progressRatioFor(double packedQty) {
     final dq = widget.dnQty;
     if (dq == null || dq == 0) return null;
-    return (_packedQty / dq).clamp(0.0, 1.0);
+    return (packedQty / dq).clamp(0.0, 1.0);
   }
 
-  String get _progressLabel {
-    final packed = PosUploadFormController.fmtQty(_packedQty);
+  String _progressLabelFor(double packedQty) {
+    final packed = PosUploadFormController.fmtQty(packedQty);
     final dq = widget.dnQty;
     final total = (dq != null && dq > 0)
         ? PosUploadFormController.fmtQty(dq)
@@ -604,6 +604,7 @@ class _ItemCardState extends State<_ItemCard> {
     final cs = theme.colorScheme;
 
     final matchStatus = _resolveMatchStatus();
+    final packedQty = _showProgressBar ? _packedQty : 0.0;
 
     final chips = <Widget>[];
 
@@ -695,16 +696,18 @@ class _ItemCardState extends State<_ItemCard> {
                         if (_showProgressBar) ...[
                           const SizedBox(height: 4),
                           LinearProgressIndicator(
-                            value: _progressRatio,
+                            value: _progressRatioFor(packedQty),
                             borderRadius: BorderRadius.circular(2),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            _progressLabel,
+                            _progressLabelFor(packedQty),
                             style: theme.textTheme.labelSmall
                                 ?.copyWith(color: cs.onSurfaceVariant),
                           ),
                         ] else if (matchStatus != null) ...[
+                          // Falls through to matchStatus (e.g. "Matched") while PS is loading
+                          // or when psItems is empty for this item.
                           const SizedBox(height: 2),
                           Row(
                             children: [
