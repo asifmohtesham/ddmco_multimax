@@ -52,6 +52,19 @@ class CaseOption {
   int get hashCode => psName.hashCode;
 }
 
+class PsItemEntry {
+  final String psName;
+  final int? fromCaseNo;
+  final int? toCaseNo;
+  final PackingSlipItem item;
+  const PsItemEntry({
+    required this.psName,
+    this.fromCaseNo,
+    this.toCaseNo,
+    required this.item,
+  });
+}
+
 class PosUploadFormController extends GetxController
     with OptimisticLockingMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
@@ -100,6 +113,28 @@ class PosUploadFormController extends GetxController
 
   static String fmtQty(double? v) =>
       v == null ? '0' : v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
+
+  static List<PsItemEntry> matchPsItems({
+    required List<PackingSlip> slips,
+    required String posUploadName,
+    required int itemIdx,
+  }) {
+    final entries = <PsItemEntry>[];
+    for (final ps in slips) {
+      if (ps.customPoNo != posUploadName) continue;
+      for (final psItem in ps.items) {
+        if (psItem.customInvoiceSerialNumber == itemIdx.toString()) {
+          entries.add(PsItemEntry(
+            psName: ps.name,
+            fromCaseNo: ps.fromCaseNo,
+            toCaseNo: ps.toCaseNo,
+            item: psItem,
+          ));
+        }
+      }
+    }
+    return entries;
+  }
 
   @override
   void onInit() {
