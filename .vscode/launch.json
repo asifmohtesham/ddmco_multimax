@@ -20,6 +20,13 @@
       "deviceId": "192.168.0.186:40091",
       "request": "launch",
       "type": "dart"
+    },
+    {
+      "name": "Mueen Barmawer USB",
+      "program": "lib/main.dart",
+      "deviceId": "R8MFEMYT8PIFWWZ5",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
