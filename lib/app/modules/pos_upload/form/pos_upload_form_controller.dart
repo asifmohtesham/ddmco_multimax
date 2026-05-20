@@ -232,6 +232,7 @@ class PosUploadFormController extends GetxController
 
   Future<void> _fetchStockEntry(PosUpload upload) async {
     isLoadingLinked.value = true;
+    // resolvedDnQty and resolvedPsItems are not applicable to Stock Entry linked uploads.
     linkedDocType.value = LinkedDocType.stockEntry;
     try {
       final listResp = await _seProvider.getStockEntries(
