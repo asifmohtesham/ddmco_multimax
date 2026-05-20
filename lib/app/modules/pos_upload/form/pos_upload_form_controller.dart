@@ -214,10 +214,14 @@ class PosUploadFormController extends GetxController
           );
           _buildDnQtyMap(
             posItems: upload.items,
-            matchQty: (idx) => dn.items
-                .firstWhereOrNull(
-                    (i) => i.customInvoiceSerialNumber == idx.toString())
-                ?.qty,
+            matchQty: (idx) {
+              final serial = idx.toString();
+              final matches = dn.items
+                  .where((i) => i.customInvoiceSerialNumber == serial)
+                  .toList();
+              if (matches.isEmpty) return null;
+              return matches.fold<double>(0, (sum, i) => sum + i.qty);
+            },
           );
         }
         isLoadingLinked.value = false;
