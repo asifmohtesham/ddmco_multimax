@@ -823,7 +823,7 @@ class _ItemCardState extends State<_ItemCard> {
 
     final String caseLabel;
     if (entry.fromCaseNo != null && entry.toCaseNo != null) {
-      caseLabel = 'Cases ${entry.fromCaseNo}–${entry.toCaseNo}';
+      caseLabel = 'Cases ${entry.fromCaseNo} – ${entry.toCaseNo}';
     } else if (entry.fromCaseNo != null) {
       caseLabel = 'Case ${entry.fromCaseNo}';
     } else {
