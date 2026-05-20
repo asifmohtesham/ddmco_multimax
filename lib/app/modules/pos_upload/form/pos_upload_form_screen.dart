@@ -508,7 +508,8 @@ class _ItemsTabState extends State<_ItemsTab> {
               onRefresh: ctrl.reloadDocument,
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                padding: EdgeInsets.fromLTRB(
+                    16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
                 itemCount: items.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
