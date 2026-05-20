@@ -77,11 +77,6 @@ class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _amountCtrl;
   late final TextEditingController _qtyCtrl;
 
-  // Cached permission flags (fix #6)
-  late final bool _canEditStatus;
-  late final bool _canEditAmount;
-  late final bool _canEditQty;
-
   /// All possible status values a POS Upload can have.
   /// Must be kept in sync with ERPNext so the DropdownButtonFormField
   /// never receives a value that isn't in this list (prevents assertion crash).
@@ -104,11 +99,6 @@ class _DetailsTabState extends State<_DetailsTab> {
         text: PosUploadFormController.fmtAmount(upload?.totalAmount));
     _qtyCtrl = TextEditingController(
         text: PosUploadFormController.fmtQty(upload?.totalQty));
-
-    // Cache permission flags once (fix #6)
-    _canEditStatus = ctrl.canEditStatus;
-    _canEditAmount = ctrl.canEditAmount;
-    _canEditQty = ctrl.canEditQty;
 
     // Sync text controllers when the document is reloaded (fix #2)
     ever(ctrl.posUpload, (PosUpload? updated) {
@@ -136,8 +126,6 @@ class _DetailsTabState extends State<_DetailsTab> {
     return Obx(() {
       final upload = ctrl.posUpload.value;
       if (upload == null) return const SizedBox.shrink();
-
-      final canSave = _canEditStatus || _canEditAmount || _canEditQty;
 
       // Ensure the current status is always present in the list so the
       // DropdownButtonFormField never throws an assertion error for an
@@ -196,7 +184,7 @@ class _DetailsTabState extends State<_DetailsTab> {
             icon: Icons.inventory_outlined,
             color: cs.secondary,
             text:
-                '$psCount Packing Slip${psCount == 1 ? '' : 's'} · $psMatched / ${ctrl.resolvedSerials.length} items matched',
+                '$psCount Packing Slip${psCount == 1 ? '' : 's'} · $psMatched / ${ctrl.resolvedSerials.length} items packed',
           );
         }
       }
@@ -248,94 +236,42 @@ class _DetailsTabState extends State<_DetailsTab> {
                 decoration: InputDecoration(
                   labelText: 'Status',
                   border: const OutlineInputBorder(),
-                  filled: !_canEditStatus,
-                  fillColor: !_canEditStatus ? cs.surfaceContainerHighest : null,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
                 ),
                 items: statusItems
                     .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                     .toList(),
-                onChanged: _canEditStatus
-                    ? (v) {
-                        if (v != null) ctrl.updateStatus(v);
-                      }
-                    : null,
+                onChanged: null,
               ),
               const SizedBox(height: 16),
 
               // Fix #14 — formatted amounts
               TextFormField(
                 controller: _amountCtrl,
-                readOnly: !_canEditAmount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Total Amount',
                   border: const OutlineInputBorder(),
-                  filled: !_canEditAmount,
-                  fillColor:
-                      !_canEditAmount ? cs.surfaceContainerHighest : null,
-                  suffixIcon: !_canEditAmount
-                      ? const Icon(Icons.lock, size: 16, color: Colors.grey)
-                      : null,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 16),
 
               TextFormField(
                 controller: _qtyCtrl,
-                readOnly: !_canEditQty,
-                keyboardType: TextInputType.number,
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Total Quantity',
                   border: const OutlineInputBorder(),
-                  filled: !_canEditQty,
-                  fillColor:
-                      !_canEditQty ? cs.surfaceContainerHighest : null,
-                  suffixIcon: !_canEditQty
-                      ? const Icon(Icons.lock, size: 16, color: Colors.grey)
-                      : null,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 24),
-
-              if (canSave)
-                Obx(() => SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: ctrl.isSaving.value
-                            ? null
-                            : () {
-                                final data = <String, dynamic>{};
-                                if (_canEditAmount) {
-                                  // Strip formatting before parsing (fix #14)
-                                  final raw = _amountCtrl.text
-                                      .replaceAll(',', '');
-                                  data['total_amount'] =
-                                      double.tryParse(raw) ?? 0.0;
-                                }
-                                if (_canEditQty) {
-                                  final raw =
-                                      _qtyCtrl.text.replaceAll(',', '');
-                                  data['total_qty'] =
-                                      double.tryParse(raw) ?? 0.0;
-                                }
-                                if (data.isNotEmpty) {
-                                  ctrl.updatePosUpload(data);
-                                }
-                              },
-                        style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.all(16)),
-                        child: ctrl.isSaving.value
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white))
-                            : const Text('Update',
-                                style: TextStyle(fontSize: 16)),
-                      ),
-                    )),
             ],
           ),
         ),
