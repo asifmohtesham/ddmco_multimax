@@ -574,6 +574,30 @@ class _ItemCardState extends State<_ItemCard> {
   // ignore: unused_field, prefer_final_fields
   bool _expanded = false;
 
+  bool get _showProgressBar =>
+      widget.resolvedSerial != null &&
+      widget.resolvedSerial!.isNotEmpty &&
+      !widget.isLoadingPS &&
+      widget.psItems.isNotEmpty;
+
+  double get _packedQty =>
+      widget.psItems.fold(0.0, (s, e) => s + e.item.qty);
+
+  double? get _progressRatio {
+    final dq = widget.dnQty;
+    if (dq == null || dq == 0) return null;
+    return (_packedQty / dq).clamp(0.0, 1.0);
+  }
+
+  String get _progressLabel {
+    final packed = PosUploadFormController.fmtQty(_packedQty);
+    final dq = widget.dnQty;
+    final total = (dq != null && dq > 0)
+        ? PosUploadFormController.fmtQty(dq)
+        : '–';
+    return '$packed Packed / $total DN Qty';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -668,12 +692,23 @@ class _ItemCardState extends State<_ItemCard> {
                           style: theme.textTheme.bodyLarge
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
-                        if (matchStatus != null) ...[
+                        if (_showProgressBar) ...[
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: _progressRatio,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _progressLabel,
+                            style: theme.textTheme.labelSmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ] else if (matchStatus != null) ...[
                           const SizedBox(height: 2),
                           Row(
                             children: [
-                              Icon(matchStatus.icon,
-                                  size: 12, color: matchStatus.color),
+                              Icon(matchStatus.icon, size: 12, color: matchStatus.color),
                               const SizedBox(width: 3),
                               Text(
                                 matchStatus.label,
