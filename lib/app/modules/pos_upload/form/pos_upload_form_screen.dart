@@ -514,6 +514,7 @@ class _ItemsTabState extends State<_ItemsTab> {
                 itemBuilder: (context, index) {
                   final item = items[index];
                   return Obx(() => _ItemCard(
+                        key: ValueKey(item.idx),
                         item: item,
                         displayIndex: item.idx,
                         isLoadingLinked: ctrl.isLoadingLinked.value,
@@ -554,6 +555,7 @@ class _ItemCard extends StatefulWidget {
   final List<PsItemEntry> psItems;
 
   const _ItemCard({
+    super.key,
     required this.item,
     required this.displayIndex,
     required this.isLoadingLinked,
@@ -571,7 +573,6 @@ class _ItemCard extends StatefulWidget {
 }
 
 class _ItemCardState extends State<_ItemCard> {
-  // ignore: unused_field, prefer_final_fields
   bool _expanded = false;
 
   bool get _showProgressBar =>
@@ -654,13 +655,16 @@ class _ItemCardState extends State<_ItemCard> {
 
     return Card(
       elevation: 0,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: cs.outlineVariant),
       ),
       color: cs.surfaceContainerLowest,
       child: InkWell(
-        onTap: null, // wired in Task 5
+        onTap: widget.psItems.isNotEmpty
+            ? () => setState(() => _expanded = !_expanded)
+            : null,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -688,10 +692,29 @@ class _ItemCardState extends State<_ItemCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.item.itemName,
-                          style: theme.textTheme.bodyLarge
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.item.itemName,
+                                style: theme.textTheme.bodyLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            if (widget.psItems.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              AnimatedRotation(
+                                turns: _expanded ? 0.5 : 0.0,
+                                duration: const Duration(milliseconds: 200),
+                                child: Icon(
+                                  Icons.expand_more,
+                                  size: 18,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         if (_showProgressBar) ...[
                           const SizedBox(height: 4),
@@ -755,10 +778,112 @@ class _ItemCardState extends State<_ItemCard> {
                 const SizedBox(height: 10),
                 Wrap(spacing: 6, runSpacing: 6, children: chips),
               ],
+
+              // ── Expanded PS items panel ─────────────────────────────────
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: _expanded
+                    ? _buildPsItemsPanel(context)
+                    : const SizedBox.shrink(),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPsItemsPanel(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (int i = 0; i < widget.psItems.length; i++) ...[
+            if (i > 0) const Divider(height: 16, thickness: 0.5),
+            _buildPsItemRow(context, widget.psItems[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPsItemRow(BuildContext context, PsItemEntry entry) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final psItem = entry.item;
+
+    final String caseLabel;
+    if (entry.fromCaseNo != null && entry.toCaseNo != null) {
+      caseLabel = 'Cases ${entry.fromCaseNo}–${entry.toCaseNo}';
+    } else if (entry.fromCaseNo != null) {
+      caseLabel = 'Case ${entry.fromCaseNo}';
+    } else {
+      caseLabel = entry.psName;
+    }
+
+    final subParts = <String>[psItem.itemCode];
+    if (psItem.customVariantOf != null && psItem.customVariantOf!.isNotEmpty) {
+      subParts.add(psItem.customVariantOf!);
+    }
+    if (psItem.customCountryOfOrigin != null &&
+        psItem.customCountryOfOrigin!.isNotEmpty) {
+      subParts.add(psItem.customCountryOfOrigin!);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Case chip
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: cs.secondaryContainer,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            caseLabel,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: cs.onSecondaryContainer,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Item name + qty
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                psItem.itemName,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              PosUploadFormController.fmtQty(psItem.qty),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: cs.tertiary),
+            ),
+          ],
+        ),
+        // Subline: code · variant · country
+        Text(
+          subParts.join(' · '),
+          style: theme.textTheme.labelSmall
+              ?.copyWith(color: cs.onSurfaceVariant),
+        ),
+      ],
     );
   }
 
