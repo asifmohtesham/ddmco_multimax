@@ -76,6 +76,7 @@ class _DetailsTab extends StatefulWidget {
 class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _amountCtrl;
   late final TextEditingController _qtyCtrl;
+  late final Worker _posUploadWorker;
 
   /// All possible status values a POS Upload can have.
   /// Must be kept in sync with ERPNext so the DropdownButtonFormField
@@ -101,7 +102,7 @@ class _DetailsTabState extends State<_DetailsTab> {
         text: PosUploadFormController.fmtQty(upload?.totalQty));
 
     // Sync text controllers when the document is reloaded (fix #2)
-    ever(ctrl.posUpload, (PosUpload? updated) {
+    _posUploadWorker = ever(ctrl.posUpload, (PosUpload? updated) {
       if (updated == null) return;
       if (!_amountCtrl.text.contains(updated.totalAmount?.toString() ?? '')) {
         _amountCtrl.text =
@@ -115,6 +116,7 @@ class _DetailsTabState extends State<_DetailsTab> {
   void dispose() {
     _amountCtrl.dispose();
     _qtyCtrl.dispose();
+    _posUploadWorker.dispose();
     super.dispose();
   }
 
