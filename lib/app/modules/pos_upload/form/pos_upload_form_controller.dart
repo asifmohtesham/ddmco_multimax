@@ -5,12 +5,10 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
-import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 enum LinkedDocType { deliveryNote, stockEntry, none }
@@ -60,10 +58,6 @@ class PosUploadFormController extends GetxController
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final StockEntryProvider _seProvider = Get.find<StockEntryProvider>();
   final PackingSlipProvider _psProvider = Get.find<PackingSlipProvider>();
-  final AuthenticationController _authController =
-      Get.find<AuthenticationController>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
-
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
 
@@ -99,16 +93,6 @@ class PosUploadFormController extends GetxController
   /// All Packing Slips fetched for the linked DN.
   final packingSlips = <PackingSlip>[].obs;
 
-  // ── Permissions (cached after first load) ──────────────────────────────────
-  final Map<String, int> _fieldLevels = {};
-  final Map<int, Set<String>> _levelWriteRoles = {};
-  var permissionsLoaded = false.obs;
-
-  // Cached per-field edit flags set once permissions are loaded.
-  bool _canEditStatus = false;
-  bool _canEditAmount = false;
-  bool _canEditQty = false;
-
   // ── Number formatter ───────────────────────────────────────────────────────
   static final _numFmt = NumberFormat('#,##0.00');
 
@@ -128,7 +112,7 @@ class PosUploadFormController extends GetxController
 
   Future<void> _loadData() async {
     isLoading.value = true;
-    await Future.wait([fetchPosUpload(), fetchDocTypePermissions()]);
+    await fetchPosUpload();
     isLoading.value = false;
     fetchLinkedDocument();
   }
@@ -379,54 +363,6 @@ class PosUploadFormController extends GetxController
   Future<void> updateStatus(String newStatus) async {
     await updatePosUpload({'status': newStatus});
   }
-
-  // ── Permissions ────────────────────────────────────────────────────────────
-
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response =
-          await _apiProvider.getDocument('DocType', 'POS Upload');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        _fieldLevels['status'] = 0;
-        if (data['fields'] != null) {
-          for (var field in data['fields']) {
-            _fieldLevels[field['fieldname'].toString()] =
-                field['permlevel'] as int? ?? 0;
-          }
-        }
-        if (data['permissions'] != null) {
-          for (var perm in data['permissions']) {
-            final role = perm['role'].toString();
-            final level = perm['permlevel'] as int? ?? 0;
-            if (perm['write'] == 1) {
-              _levelWriteRoles.putIfAbsent(level, () => {}).add(role);
-            }
-          }
-        }
-        // Cache results once — permissions don't change during the session.
-        _canEditStatus = _canEdit('status');
-        _canEditAmount = _canEdit('total_amount');
-        _canEditQty = _canEdit('total_qty');
-        permissionsLoaded.value = true;
-      }
-    } catch (_) {}
-  }
-
-  bool _canEdit(String fieldName) {
-    if (_authController.hasRole('System Manager')) return true;
-    final level = _fieldLevels[fieldName] ?? 0;
-    final allowed = _levelWriteRoles[level] ?? {};
-    return _authController.hasAnyRole(allowed.toList());
-  }
-
-  // Public getters so the UI reads the cached values.
-  bool get canEditStatus => _canEditStatus;
-  bool get canEditAmount => _canEditAmount;
-  bool get canEditQty => _canEditQty;
-
-  // Keep old method name for any other callers.
-  bool canEdit(String fieldName) => _canEdit(fieldName);
 
   // ── Save ───────────────────────────────────────────────────────────────────
 
