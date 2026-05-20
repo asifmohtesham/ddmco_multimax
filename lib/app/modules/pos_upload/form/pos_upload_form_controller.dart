@@ -52,6 +52,9 @@ class CaseOption {
   int get hashCode => psName.hashCode;
 }
 
+/// Carries a matched Packing Slip item for a single POS Upload item.
+/// Unlike [PackingSlipInfo] (which holds only case-range metadata),
+/// this class includes the full [PackingSlipItem] row for display in the expanded tile.
 class PsItemEntry {
   final String psName;
   final int? fromCaseNo;

@@ -10,8 +10,8 @@ PackingSlipItem _item(String serial, double qty) => PackingSlipItem(
   qty: qty,
   uom: 'Nos',
   batchNo: '',
-  netWeight: 0,
-  weightUom: 0,
+  netWeight: 0.0,
+  weightUom: 0.0,
   customInvoiceSerialNumber: serial,
 );
 
@@ -114,6 +114,19 @@ void main() {
         itemIdx: 1,
       );
       expect(result, isEmpty);
+    });
+
+    test('returns two entries when same serial appears twice in one PS', () {
+      final slips = [
+        _ps('PS-001', 'ML-001', 1, 3, [_item('3', 10), _item('3', 5)]),
+      ];
+      final result = PosUploadFormController.matchPsItems(
+        slips: slips,
+        posUploadName: 'ML-001',
+        itemIdx: 3,
+      );
+      expect(result, hasLength(2));
+      expect(result.map((e) => e.item.qty), containsAll([10.0, 5.0]));
     });
   });
 }
