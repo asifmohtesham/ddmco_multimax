@@ -34,7 +34,7 @@ dependencies:
   # Scales the collapsed toolbar title font down before wrapping so
   # the full DocType name always fits without ellipsis.
   auto_size_text: ^3.0.0
-  mobile_scanner: any
+  mobile_scanner: ^7.2.0
   shared_preferences: ^2.5.5
 
 dev_dependencies:
