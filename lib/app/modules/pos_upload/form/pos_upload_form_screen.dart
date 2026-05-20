@@ -346,7 +346,20 @@ class _ItemsTabState extends State<_ItemsTab> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: options.length + 1, // +1 for "All" chip
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (context, i) => i == 0
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 1,
+                          height: 26,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    )
+                  : const SizedBox(width: 8),
               itemBuilder: (context, i) {
                 if (i == 0) {
                   // "All" chip
@@ -395,13 +408,11 @@ class _ItemsTabState extends State<_ItemsTab> {
           );
         }),
 
-        // ── Progress summary strip (fix #11 — wrapped in Card surface) ────
+        // ── Progress summary strip ─────────────────────────────────────────────
         Obx(() {
           final isLoadingLinked = ctrl.isLoadingLinked.value;
           final isLoadingPS = ctrl.isLoadingPackingSlips.value;
           final linkedType = ctrl.linkedDocType.value;
-          final hasLinkedDoc = ctrl.resolvedSerials.isNotEmpty;
-          final hasPS = ctrl.resolvedPackingSlips.isNotEmpty;
 
           if (isLoadingLinked || isLoadingPS) {
             return Padding(
@@ -423,15 +434,8 @@ class _ItemsTabState extends State<_ItemsTab> {
             );
           }
 
-          if (!hasLinkedDoc) return const SizedBox.shrink();
-
-          final dnMatched = ctrl.resolvedSerials.values
-              .where((v) => v != null && v.isNotEmpty)
-              .length;
-          final total = ctrl.resolvedSerials.length;
-          final psMatchedCount = ctrl.resolvedPackingSlips.values
-              .where((v) => v != null)
-              .length;
+          final activeCase = ctrl.activeCaseFilter.value;
+          if (activeCase == null) return const SizedBox.shrink();
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -443,34 +447,10 @@ class _ItemsTabState extends State<_ItemsTab> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: cs.outlineVariant),
               ),
-              child: Wrap(
-                spacing: 20,
-                runSpacing: 4,
-                children: [
-                  _SummaryChip(
-                    icon: linkedType == LinkedDocType.deliveryNote
-                        ? Icons.local_shipping_outlined
-                        : Icons.inventory_2_outlined,
-                    label:
-                        '$dnMatched / $total ${linkedType == LinkedDocType.deliveryNote ? 'DN' : 'SE'}',
-                    color: dnMatched == total ? Colors.green.shade700 : cs.primary,
-                  ),
-                  if (hasPS)
-                    _SummaryChip(
-                      icon: Icons.inventory_outlined,
-                      label: '$psMatchedCount / $total PS',
-                      color: psMatchedCount == total
-                          ? Colors.green.shade700
-                          : cs.secondary,
-                    ),
-                  // Active filter indicator
-                  if (ctrl.activeCaseFilter.value != null)
-                    _SummaryChip(
-                      icon: Icons.inventory_outlined,
-                      label: ctrl.activeCaseFilter.value!.label,
-                      color: cs.tertiary,
-                    ),
-                ],
+              child: _SummaryChip(
+                icon: Icons.inventory_outlined,
+                label: activeCase.label,
+                color: cs.tertiary,
               ),
             ),
           );
