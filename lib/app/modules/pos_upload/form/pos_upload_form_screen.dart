@@ -515,7 +515,6 @@ class _ItemsTabState extends State<_ItemsTab> {
                   final item = items[index];
                   return Obx(() => _ItemCard(
                         item: item,
-                        // Fix #4 — O(1) display index from item.idx
                         displayIndex: item.idx,
                         isLoadingLinked: ctrl.isLoadingLinked.value,
                         isLoadingPS:
@@ -525,6 +524,8 @@ class _ItemsTabState extends State<_ItemsTab> {
                         packingSlipInfo:
                             ctrl.resolvedPackingSlips[item.idx],
                         hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
+                        dnQty: ctrl.resolvedDnQty[item.idx],
+                        psItems: ctrl.resolvedPsItems[item.idx] ?? [],
                       ));
                 },
               ),
@@ -540,7 +541,7 @@ class _ItemsTabState extends State<_ItemsTab> {
 // Item Card  — Fix #1: typed PosUploadItem, no more dynamic
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ItemCard extends StatelessWidget {
+class _ItemCard extends StatefulWidget {
   final PosUploadItem item;
   final int displayIndex;
   final bool isLoadingLinked;
@@ -549,6 +550,8 @@ class _ItemCard extends StatelessWidget {
   final String? resolvedSerial;
   final PackingSlipInfo? packingSlipInfo;
   final bool hasLinkedDoc;
+  final double? dnQty;
+  final List<PsItemEntry> psItems;
 
   const _ItemCard({
     required this.item,
@@ -559,30 +562,38 @@ class _ItemCard extends StatelessWidget {
     required this.resolvedSerial,
     required this.packingSlipInfo,
     required this.hasLinkedDoc,
+    required this.dnQty,
+    required this.psItems,
   });
+
+  @override
+  State<_ItemCard> createState() => _ItemCardState();
+}
+
+class _ItemCardState extends State<_ItemCard> {
+  // ignore: unused_field, prefer_final_fields
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    // ── Match status (fix #10 — visible label, not tooltip-only) ─────────
     final matchStatus = _resolveMatchStatus();
 
-    // ── Chips ─────────────────────────────────────────────────────────────
     final chips = <Widget>[];
 
-    if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
+    if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       chips.add(_InfoChip(
         icon: Icons.tag,
-        label: '#${resolvedSerial!}',
+        label: '#${widget.resolvedSerial!}',
         backgroundColor: cs.secondaryContainer,
         foregroundColor: cs.onSecondaryContainer,
-        tooltip: 'Invoice serial: ${resolvedSerial!}',
+        tooltip: 'Invoice serial: ${widget.resolvedSerial!}',
       ));
     }
 
-    if (isLoadingPS && linkedDocType == LinkedDocType.deliveryNote) {
+    if (widget.isLoadingPS && widget.linkedDocType == LinkedDocType.deliveryNote) {
       chips.add(_InfoChip(
         icon: Icons.hourglass_top_rounded,
         label: 'PS…',
@@ -590,23 +601,23 @@ class _ItemCard extends StatelessWidget {
         foregroundColor: Colors.blue.shade700,
         isSpinner: true,
       ));
-    } else if (packingSlipInfo != null) {
-      final from = packingSlipInfo!.fromCaseNo;
-      final to = packingSlipInfo!.toCaseNo;
+    } else if (widget.packingSlipInfo != null) {
+      final from = widget.packingSlipInfo!.fromCaseNo;
+      final to = widget.packingSlipInfo!.toCaseNo;
       final caseLabel = (from != null && to != null)
           ? 'Cases $from – $to'
-          : (from != null ? 'Case $from' : packingSlipInfo!.psName);
+          : (from != null ? 'Case $from' : widget.packingSlipInfo!.psName);
       chips.add(_InfoChip(
         icon: Icons.inventory_outlined,
         label: caseLabel,
         backgroundColor: cs.secondaryContainer,
         foregroundColor: cs.onSecondaryContainer,
-        tooltip: 'Packing Slip: ${packingSlipInfo!.psName}',
+        tooltip: 'Packing Slip: ${widget.packingSlipInfo!.psName}',
       ));
-    } else if (!isLoadingPS &&
-        linkedDocType == LinkedDocType.deliveryNote &&
-        resolvedSerial != null &&
-        resolvedSerial!.isNotEmpty) {
+    } else if (!widget.isLoadingPS &&
+        widget.linkedDocType == LinkedDocType.deliveryNote &&
+        widget.resolvedSerial != null &&
+        widget.resolvedSerial!.isNotEmpty) {
       chips.add(_InfoChip(
         icon: Icons.inventory_outlined,
         label: 'No PS',
@@ -623,106 +634,111 @@ class _ItemCard extends StatelessWidget {
         side: BorderSide(color: cs.outlineVariant),
       ),
       color: cs.surfaceContainerLowest,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ──────────────────────────────────────────────────
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 10,
-                  backgroundColor: cs.primaryContainer,
-                  child: Text(
-                    '$displayIndex',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: cs.onPrimaryContainer,
-                      fontWeight: FontWeight.bold,
+      child: InkWell(
+        onTap: null, // wired in Task 5
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ──────────────────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 10,
+                    backgroundColor: cs.primaryContainer,
+                    child: Text(
+                      '${widget.displayIndex}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: cs.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.itemName,
-                        style: theme.textTheme.bodyLarge
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      // Fix #10 — visible status label below item name
-                      if (matchStatus != null) ...[
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Icon(matchStatus.icon,
-                                size: 12, color: matchStatus.color),
-                            const SizedBox(width: 3),
-                            Text(
-                              matchStatus.label,
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(color: matchStatus.color),
-                            ),
-                          ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.item.itemName,
+                          style: theme.textTheme.bodyLarge
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
+                        if (matchStatus != null) ...[
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(matchStatus.icon,
+                                  size: 12, color: matchStatus.color),
+                              const SizedBox(width: 3),
+                              Text(
+                                matchStatus.label,
+                                style: theme.textTheme.labelSmall
+                                    ?.copyWith(color: matchStatus.color),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
 
-            // ── Stats ────────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _Stat(label: 'Qty', value: PosUploadFormController.fmtQty(item.quantity)),
-                _Stat(
-                    label: 'Rate',
-                    value: PosUploadFormController.fmtAmount(item.rate)),
-                _Stat(
-                  label: 'Amount',
-                  value:
-                      PosUploadFormController.fmtAmount(item.amount),
-                  highlight: true,
-                  colorScheme: cs,
-                ),
-              ],
-            ),
+              // ── Stats ────────────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _Stat(
+                    label: 'Qty',
+                    value: PosUploadFormController.fmtQty(widget.item.quantity),
+                  ),
+                  _Stat(
+                      label: 'Rate',
+                      value: PosUploadFormController.fmtAmount(widget.item.rate)),
+                  _Stat(
+                    label: 'Amount',
+                    value: PosUploadFormController.fmtAmount(widget.item.amount),
+                    highlight: true,
+                    colorScheme: cs,
+                  ),
+                ],
+              ),
 
-            // ── Chips ────────────────────────────────────────────────────
-            if (chips.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: chips),
+              // ── Chips ────────────────────────────────────────────────────
+              if (chips.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(spacing: 6, runSpacing: 6, children: chips),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
   _MatchStatus? _resolveMatchStatus() {
-    if (!hasLinkedDoc) return null;
-    if (isLoadingLinked) {
+    if (!widget.hasLinkedDoc) return null;
+    if (widget.isLoadingLinked) {
       return _MatchStatus(
           icon: Icons.hourglass_top,
           label: 'Checking…',
           color: Colors.orange);
     }
-    if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
+    if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       return _MatchStatus(
           icon: Icons.check_circle,
           label: 'Matched',
           color: Colors.green.shade700);
     }
-    if (resolvedSerial != null) {
+    if (widget.resolvedSerial != null) {
       return _MatchStatus(
           icon: Icons.check_circle_outline,
           label: 'Matched – no serial',
