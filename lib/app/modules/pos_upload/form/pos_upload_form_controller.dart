@@ -208,13 +208,16 @@ class PosUploadFormController extends GetxController
           _buildSerialMap(
             posItems: upload.items,
             matchSerial: (idx) => dn.items
-                .firstWhereOrNull((i) => i.idx == idx)
+                .firstWhereOrNull(
+                    (i) => i.customInvoiceSerialNumber == idx.toString())
                 ?.customInvoiceSerialNumber,
           );
           _buildDnQtyMap(
             posItems: upload.items,
-            matchQty: (idx) =>
-                dn.items.firstWhereOrNull((i) => i.idx == idx)?.qty,
+            matchQty: (idx) => dn.items
+                .firstWhereOrNull(
+                    (i) => i.customInvoiceSerialNumber == idx.toString())
+                ?.qty,
           );
         }
         isLoadingLinked.value = false;
