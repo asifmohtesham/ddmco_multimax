@@ -16,7 +16,7 @@
 
 | Item | Current State | Required State |
 |---|---|---|
-| iOS bundle ID | `com.ddmco.ddmcoMultimax` | `com.ddmco.multimax` (match Android/Play Store) |
+| iOS bundle ID | `com.ddmco.Multimax` | `com.ddmco.multimax` (match Android/Play Store) |
 | iOS display name | `Ddmco Multimax` | `Multimax` |
 | `CFBundleName` | `multimax` | `Multimax` |
 | DataWedge on iOS | Silent fail (already caught) | No change needed |
@@ -33,7 +33,7 @@
 **Files:**
 - Modify: `ios/Runner.xcodeproj/project.pbxproj` (lines ~373, 552, 574)
 
-The Xcode project uses `com.ddmco.ddmcoMultimax`. The Play Store and Android app use `com.ddmco.multimax`. They must match for a unified identity and to avoid App Review confusion.
+The Xcode project uses `com.ddmco.Multimax`. The Play Store and Android app use `com.ddmco.multimax`. They must match for a unified identity and to avoid App Review confusion.
 
 - [ ] **Step 1: Open project.pbxproj and replace bundle ID**
 
@@ -41,20 +41,20 @@ File: `ios/Runner.xcodeproj/project.pbxproj`
 
 Find every occurrence of:
 ```
-PRODUCT_BUNDLE_IDENTIFIER = com.ddmco.ddmcoMultimax;
+PRODUCT_BUNDLE_IDENTIFIER = com.ddmco.Multimax;
 ```
 Replace with:
 ```
 PRODUCT_BUNDLE_IDENTIFIER = com.ddmco.multimax;
 ```
 
-There are two occurrences (Debug and Release build configs for the Runner target). Leave the `RunnerTests` bundle IDs as `com.ddmco.multimax.RunnerTests` (update those too from `com.ddmco.ddmcoMultimax.RunnerTests`).
+There are two occurrences (Debug and Release build configs for the Runner target). Leave the `RunnerTests` bundle IDs as `com.ddmco.multimax.RunnerTests` (update those too from `com.ddmco.Multimax.RunnerTests`).
 
 Run this replace-all command to do it in one shot:
 ```powershell
 (Get-Content ios\Runner.xcodeproj\project.pbxproj) `
-  -replace 'com\.ddmco\.ddmcoMultimax\.RunnerTests', 'com.ddmco.multimax.RunnerTests' `
-  -replace 'com\.ddmco\.ddmcoMultimax', 'com.ddmco.multimax' |
+  -replace 'com\.ddmco\.Multimax\.RunnerTests', 'com.ddmco.multimax.RunnerTests' `
+  -replace 'com\.ddmco\.Multimax', 'com.ddmco.multimax' |
   Set-Content ios\Runner.xcodeproj\project.pbxproj
 ```
 
@@ -72,7 +72,7 @@ Expected output (4 lines total):
 ...PRODUCT_BUNDLE_IDENTIFIER = com.ddmco.multimax.RunnerTests;
 ```
 
-No line should still say `ddmcoMultimax`.
+No line should still say `Multimax`.
 
 - [ ] **Step 3: Commit**
 
