@@ -108,6 +108,12 @@ class PosUploadFormController extends GetxController
   /// All Packing Slips fetched for the linked DN.
   final packingSlips = <PackingSlip>[].obs;
 
+  /// idx → DN item qty (null = item not found in DN)
+  final resolvedDnQty = <int, double?>{}.obs;
+
+  /// idx → PS items matching this POS Upload item (empty list = none matched)
+  final resolvedPsItems = <int, List<PsItemEntry>>{}.obs;
+
   // ── Number formatter ───────────────────────────────────────────────────────
   static final _numFmt = NumberFormat('#,##0.00');
 
@@ -204,6 +210,11 @@ class PosUploadFormController extends GetxController
             matchSerial: (idx) => dn.items
                 .firstWhereOrNull((i) => i.idx == idx)
                 ?.customInvoiceSerialNumber,
+          );
+          _buildDnQtyMap(
+            posItems: upload.items,
+            matchQty: (idx) =>
+                dn.items.firstWhereOrNull((i) => i.idx == idx)?.qty,
           );
         }
         isLoadingLinked.value = false;
@@ -305,6 +316,17 @@ class PosUploadFormController extends GetxController
       }
       resolvedPackingSlips.value = psMap;
 
+      // Build idx → list-of-matching-PS-items using the static matching method.
+      final psItemsMap = <int, List<PsItemEntry>>{};
+      for (final item in upload.items) {
+        psItemsMap[item.idx] = matchPsItems(
+          slips: slips,
+          posUploadName: upload.name,
+          itemIdx: item.idx,
+        );
+      }
+      resolvedPsItems.value = psItemsMap;
+
       // Build a case option for every non-cancelled PS. totalQty is the sum
       // of the PS's own item quantities so the chip shows how many units are
       // packed in that case.
@@ -342,6 +364,17 @@ class PosUploadFormController extends GetxController
       map[item.idx] = matchSerial(item.idx);
     }
     resolvedSerials.value = map;
+  }
+
+  void _buildDnQtyMap({
+    required List<PosUploadItem> posItems,
+    required double? Function(int idx) matchQty,
+  }) {
+    final map = <int, double?>{};
+    for (final item in posItems) {
+      map[item.idx] = matchQty(item.idx);
+    }
+    resolvedDnQty.value = map;
   }
 
   // ── Search + Case filter ───────────────────────────────────────────────────
