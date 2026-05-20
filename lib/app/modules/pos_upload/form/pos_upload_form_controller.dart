@@ -63,7 +63,6 @@ class PosUploadFormController extends GetxController
 
   // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
-  var isSaving = false.obs;
   var posUpload = Rx<PosUpload?>(null);
 
   // ── Search / filter ────────────────────────────────────────────────────────
@@ -358,40 +357,11 @@ class PosUploadFormController extends GetxController
     filteredItems.assignAll(result);
   }
 
-  // ── Status update ──────────────────────────────────────────────────────────
-
-  Future<void> updateStatus(String newStatus) async {
-    await updatePosUpload({'status': newStatus});
-  }
-
   // ── Save ───────────────────────────────────────────────────────────────────
 
   @override
   Future<void> reloadDocument() async {
     await fetchPosUpload();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
-  }
-
-  Future<void> updatePosUpload(Map<String, dynamic> data) async {
-    if (isSaving.value) return;
-    if (checkStaleAndBlock()) return;
-    isSaving.value = true;
-    if (posUpload.value?.modified != null) {
-      data['modified'] = posUpload.value!.modified;
-    }
-    try {
-      final response = await _provider.updatePosUpload(name, data);
-      if (response.statusCode == 200) {
-        GlobalSnackbar.success(message: 'POS Upload updated successfully');
-        await fetchPosUpload();
-      } else {
-        GlobalSnackbar.error(message: 'Failed to update POS Upload');
-      }
-    } catch (e) {
-      if (handleVersionConflict(e)) return;
-      GlobalSnackbar.error(message: 'Update failed: $e');
-    } finally {
-      isSaving.value = false;
-    }
   }
 }

@@ -104,10 +104,7 @@ class _DetailsTabState extends State<_DetailsTab> {
     // Sync text controllers when the document is reloaded (fix #2)
     _posUploadWorker = ever(ctrl.posUpload, (PosUpload? updated) {
       if (updated == null) return;
-      if (!_amountCtrl.text.contains(updated.totalAmount?.toString() ?? '')) {
-        _amountCtrl.text =
-            PosUploadFormController.fmtAmount(updated.totalAmount);
-      }
+      _amountCtrl.text = PosUploadFormController.fmtAmount(updated.totalAmount);
       _qtyCtrl.text = PosUploadFormController.fmtQty(updated.totalQty);
     });
   }
