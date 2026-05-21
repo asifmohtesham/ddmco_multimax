@@ -405,7 +405,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
               // Touch map length so Obx listens to customer map updates.
               // ignore: unused_local_variable
-              final _dummyListener = controller.posCustomerMap.length;
+              final dummyListener = controller.posCustomerMap.length;
 
               final grouped = controller.groupedPackingSlips;
               final groupKeys = grouped.keys.toList();
@@ -631,6 +631,43 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   /// | auditStats[1] | owner (if non-empty)     |
   /// | expandedContent | [_buildExpandedContent]|
   Widget _buildSlipCard(BuildContext context, dynamic slip) {
+    final cardKey = GlobalKey();
+
+    void showContextMenu() {
+      final box = cardKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null) return;
+      final offset = box.localToGlobal(Offset.zero);
+      final size = box.size;
+      final rect = RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height,
+        offset.dx + size.width,
+        offset.dy + size.height + 8,
+      );
+      showMenu<String>(
+        context: context,
+        position: rect,
+        items: [
+          PopupMenuItem<String>(
+            value: 'fetch_all',
+            child: Row(
+              children: [
+                const Icon(Icons.local_shipping_outlined, size: 18),
+                const SizedBox(width: 10),
+                Text('Fetch all for ${slip.deliveryNote as String}'),
+              ],
+            ),
+          ),
+        ],
+      ).then((val) {
+        if (val == 'fetch_all') {
+          controller.applyFilters({
+            'delivery_note': slip.deliveryNote as String,
+          });
+        }
+      });
+    }
+
     final caseRange =
         'Pkg ${slip.fromCaseNo ?? "?"}\u2013${slip.toCaseNo ?? "?"}';
 
@@ -667,6 +704,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           controller.detailedSlip.value?.name != slip.name;
 
       return GenericDocumentCard(
+        key: cardKey,
         title: slip.name as String,
         subtitle: slip.deliveryNote as String,
         status: slip.status as String,
@@ -675,6 +713,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         isExpanded: isExpanded,
         isLoadingDetails: isLoadingDetails && isExpanded,
         onTap: () => controller.toggleExpand(slip.name as String),
+        onLongPress: (slip.deliveryNote as String).isNotEmpty
+            ? showContextMenu
+            : null,
         expandedContent: isExpanded
             ? _buildExpandedContent(context, slip.name as String)
             : null,
@@ -703,7 +744,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
       final caseRange =
           'Pkg ${detailed.fromCaseNo ?? "?"}\u2013${detailed.toCaseNo ?? "?"}';
-      final itemCount = detailed.items?.length ?? 0;
+      final itemCount = detailed.items.length;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
