@@ -39,6 +39,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
   final _scrollController = ScrollController();
   final _isFarFromTop = false.obs;
 
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _fetchSnackBar;
+  Worker? _fetchSnackBarWorker;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +50,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
   @override
   void dispose() {
+    _fetchSnackBarWorker?.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -644,6 +648,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         offset.dx + size.width,
         offset.dy + size.height + 8,
       );
+      final messenger = ScaffoldMessenger.of(context);
       showMenu<String>(
         context: context,
         position: rect,
@@ -661,9 +666,36 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         ],
       ).then((val) {
         if (val == 'fetch_all') {
-          controller.applyFilters({
-            'delivery_note': slip.deliveryNote as String,
+          final dn = slip.deliveryNote as String;
+
+          _fetchSnackBarWorker?.dispose();
+          _fetchSnackBar?.close();
+
+          _fetchSnackBar = messenger.showSnackBar(
+            SnackBar(
+              duration: const Duration(seconds: 30),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Fetching all slips for $dn'),
+                  const SizedBox(height: 6),
+                  const LinearProgressIndicator(),
+                ],
+              ),
+            ),
+          );
+
+          _fetchSnackBarWorker = ever(controller.isLoading, (bool loading) {
+            if (!loading) {
+              _fetchSnackBar?.close();
+              _fetchSnackBar = null;
+              _fetchSnackBarWorker?.dispose();
+              _fetchSnackBarWorker = null;
+            }
           });
+
+          controller.applyFilters({'delivery_note': dn});
         }
       });
     }
