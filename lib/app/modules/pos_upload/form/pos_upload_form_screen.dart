@@ -514,21 +514,28 @@ class _ItemsTabState extends State<_ItemsTab> {
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  return Obx(() => _ItemCard(
-                        key: ValueKey(item.idx),
-                        item: item,
-                        displayIndex: item.idx,
-                        isLoadingLinked: ctrl.isLoadingLinked.value,
-                        isLoadingPS:
-                            ctrl.isLoadingPackingSlips.value,
-                        linkedDocType: ctrl.linkedDocType.value,
-                        resolvedSerial: ctrl.resolvedSerials[item.idx],
-                        packingSlipInfo:
-                            ctrl.resolvedPackingSlips[item.idx],
-                        hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
-                        dnQty: ctrl.resolvedDnQty[item.idx],
-                        psItems: ctrl.resolvedPsItems[item.idx] ?? [],
-                      ));
+                  return Obx(() {
+                        final allPsItems = ctrl.resolvedPsItems[item.idx] ?? [];
+                        final cf = ctrl.activeCaseFilter.value;
+                        final visiblePsItems = cf == null
+                            ? allPsItems
+                            : allPsItems
+                                .where((e) => e.psName == cf.psName)
+                                .toList();
+                        return _ItemCard(
+                          key: ValueKey(item.idx),
+                          item: item,
+                          displayIndex: item.idx,
+                          isLoadingLinked: ctrl.isLoadingLinked.value,
+                          isLoadingPS: ctrl.isLoadingPackingSlips.value,
+                          linkedDocType: ctrl.linkedDocType.value,
+                          resolvedSerial: ctrl.resolvedSerials[item.idx],
+                          packingSlipInfo: ctrl.resolvedPackingSlips[item.idx],
+                          hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
+                          dnQty: ctrl.resolvedDnQty[item.idx],
+                          psItems: visiblePsItems,
+                        );
+                      });
                 },
               ),
             );

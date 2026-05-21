@@ -418,12 +418,12 @@ class PosUploadFormController extends GetxController
           .toList();
     }
 
-    // Case filter (only meaningful after PS data is resolved)
+    // Case filter — use resolvedPsItems (all PS matches) not resolvedPackingSlips (first-match only).
     final caseFilter = activeCaseFilter.value;
-    if (caseFilter != null && resolvedPackingSlips.isNotEmpty) {
+    if (caseFilter != null && resolvedPsItems.isNotEmpty) {
       result = result.where((i) {
-        final psInfo = resolvedPackingSlips[i.idx];
-        return psInfo?.psName == caseFilter.psName;
+        final entries = resolvedPsItems[i.idx] ?? [];
+        return entries.any((e) => e.psName == caseFilter.psName);
       }).toList();
     }
 
