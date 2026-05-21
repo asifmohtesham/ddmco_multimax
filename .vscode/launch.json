@@ -34,6 +34,13 @@
       "deviceId": "23045524700218",
       "request": "launch",
       "type": "dart"
+    },
+    {
+      "name": "Adnan K AWCX6R4131003991 USB",
+      "program": "lib/main.dart",
+      "deviceId": "AWCX6R4131003991",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
