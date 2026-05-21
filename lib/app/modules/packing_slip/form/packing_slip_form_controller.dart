@@ -307,37 +307,54 @@ class PackingSlipFormController extends GetxController
     if (mode != 'new') _updateOriginalState(packingSlip.value!);
   }
 
-  // ── dn_detail back-fill ────────────────────────────────────────────────────
+  // ── dn_detail refresh ─────────────────────────────────────────────────────
 
-  /// Resolves missing [dnDetail] values on in-memory packing slip items by
-  /// matching against the just-loaded [dn]'s items.
+  /// Ensures every in-memory packing slip item has a [dnDetail] that
+  /// corresponds to an actual row in the just-loaded [dn].
   ///
-  /// The Frappe REST API occasionally returns [dn_detail] as null for existing
-  /// packing slip items (e.g. after a DN amendment or restricted field
-  /// permissions). [PackingSlipItem.fromJson] stores those as empty strings,
-  /// which causes ERPNext's [validate_items] to reject the next save with
-  /// "Row N: Please provide a valid Delivery Note Item reference".
+  /// Two cases are handled:
+  ///   • **Empty** – the Frappe REST API returned [dn_detail] as null (e.g.
+  ///     field-permission restriction).  Stored as '' by [PackingSlipItem.fromJson].
+  ///   • **Stale** – the stored value is non-empty but no longer exists as a
+  ///     row name in [dn] (e.g. the DN was amended and items were re-keyed).
+  ///     Frappe silently clears stale Link values during document hydration, so
+  ///     [validate_items] receives null and throws "Row N: Please provide a
+  ///     valid Delivery Note Item reference."
   ///
-  /// Match criteria (all must hold for an unambiguous resolution):
-  ///   1. DN item [name] is non-null and non-empty.
-  ///   2. [itemCode] equals the slip item's [itemCode].
-  ///   3. [customInvoiceSerialNumber] (or the sentinel '0') matches.
-  ///   4. [batchNo] matches when the slip item has a non-empty batch.
+  /// A [dnDetail] is considered **valid** if it appears in the set of names
+  /// returned by the current DN GET response. If it is missing or stale we
+  /// attempt an unambiguous re-match using:
+  ///   1. [itemCode] equals the slip item's [itemCode].
+  ///   2. [customInvoiceSerialNumber] (or sentinel '0') matches.
+  ///   3. [batchNo] matches when the slip item carries a non-empty batch.
   ///
-  /// Intentionally does NOT call [_updateOriginalState] after patching so
-  /// the back-filled rows remain part of the "dirty" delta the next time the
-  /// user commits a change — the correct [dn_detail] values then ride along
-  /// to the server as part of that save.
-  void _backfillMissingDnDetails(DeliveryNote dn) {
+  /// Intentionally does NOT call [_updateOriginalState] after patching — the
+  /// corrected values ride along on the next user-triggered save, keeping the
+  /// dirty-state logic intact.
+  void _refreshDnDetails(DeliveryNote dn) {
     final slip = packingSlip.value;
     if (slip == null) return;
-    final hasMissing = slip.items.any((i) => i.dnDetail.isEmpty);
-    if (!hasMissing) return;
+
+    // Build lookup of valid DN item names from the current fetch.
+    final validNames = {
+      for (final d in dn.items)
+        if (d.name != null && d.name!.isNotEmpty) d.name!,
+    };
+
+    // Determine which slip items need resolution.
+    final needsRefresh = slip.items.any(
+      (i) => i.dnDetail.isEmpty || !validNames.contains(i.dnDetail),
+    );
+    if (!needsRefresh) return;
 
     bool changed = false;
     final patched = slip.items.map((item) {
-      if (item.dnDetail.isNotEmpty) return item;
+      // Already a valid, current DN item reference — keep it.
+      if (item.dnDetail.isNotEmpty && validNames.contains(item.dnDetail)) {
+        return item;
+      }
 
+      // Resolve by matching itemCode + serial (+ batch when present).
       final itemSerial = item.customInvoiceSerialNumber ?? '0';
       final match = dn.items.firstWhereOrNull((d) {
         if (d.name == null || d.name!.isEmpty) return false;
@@ -372,7 +389,7 @@ class PackingSlipFormController extends GetxController
         _hydrateLinkedDeliveryNote(response.data['data']);
         _fetchPosUploadIfPresent(linkedDeliveryNote.value!);
         _backfillCustomerFromDn(linkedDeliveryNote.value!);
-        _backfillMissingDnDetails(linkedDeliveryNote.value!);
+        _refreshDnDetails(linkedDeliveryNote.value!);
       }
     } catch (e) {
       _onFetchLinkedDeliveryNoteError(e);
