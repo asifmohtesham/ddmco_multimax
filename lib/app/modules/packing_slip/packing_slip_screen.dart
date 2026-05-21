@@ -695,7 +695,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
             }
           });
 
-          controller.applyFilters({'delivery_note': dn});
+          controller.fetchAllForDeliveryNote(dn);
         }
       });
     }
