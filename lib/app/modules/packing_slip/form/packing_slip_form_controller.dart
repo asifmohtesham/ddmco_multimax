@@ -307,6 +307,54 @@ class PackingSlipFormController extends GetxController
     if (mode != 'new') _updateOriginalState(packingSlip.value!);
   }
 
+  // ── dn_detail back-fill ────────────────────────────────────────────────────
+
+  /// Resolves missing [dnDetail] values on in-memory packing slip items by
+  /// matching against the just-loaded [dn]'s items.
+  ///
+  /// The Frappe REST API occasionally returns [dn_detail] as null for existing
+  /// packing slip items (e.g. after a DN amendment or restricted field
+  /// permissions). [PackingSlipItem.fromJson] stores those as empty strings,
+  /// which causes ERPNext's [validate_items] to reject the next save with
+  /// "Row N: Please provide a valid Delivery Note Item reference".
+  ///
+  /// Match criteria (all must hold for an unambiguous resolution):
+  ///   1. DN item [name] is non-null and non-empty.
+  ///   2. [itemCode] equals the slip item's [itemCode].
+  ///   3. [customInvoiceSerialNumber] (or the sentinel '0') matches.
+  ///   4. [batchNo] matches when the slip item has a non-empty batch.
+  ///
+  /// Intentionally does NOT call [_updateOriginalState] after patching so
+  /// the back-filled rows remain part of the "dirty" delta the next time the
+  /// user commits a change — the correct [dn_detail] values then ride along
+  /// to the server as part of that save.
+  void _backfillMissingDnDetails(DeliveryNote dn) {
+    final slip = packingSlip.value;
+    if (slip == null) return;
+    final hasMissing = slip.items.any((i) => i.dnDetail.isEmpty);
+    if (!hasMissing) return;
+
+    bool changed = false;
+    final patched = slip.items.map((item) {
+      if (item.dnDetail.isNotEmpty) return item;
+
+      final itemSerial = item.customInvoiceSerialNumber ?? '0';
+      final match = dn.items.firstWhereOrNull((d) {
+        if (d.name == null || d.name!.isEmpty) return false;
+        if (d.itemCode != item.itemCode) return false;
+        if ((d.customInvoiceSerialNumber ?? '0') != itemSerial) return false;
+        if (item.batchNo.isNotEmpty && d.batchNo != item.batchNo) return false;
+        return true;
+      });
+
+      if (match == null) return item;
+      changed = true;
+      return item.copyWith(dnDetail: match.name!);
+    }).toList();
+
+    if (changed) packingSlip.value = slip.copyWith(items: patched);
+  }
+
   // ── Fetch error handler ────────────────────────────────────────────────────
 
   /// Called when an exception is thrown during the linked DN fetch.
@@ -324,6 +372,7 @@ class PackingSlipFormController extends GetxController
         _hydrateLinkedDeliveryNote(response.data['data']);
         _fetchPosUploadIfPresent(linkedDeliveryNote.value!);
         _backfillCustomerFromDn(linkedDeliveryNote.value!);
+        _backfillMissingDnDetails(linkedDeliveryNote.value!);
       }
     } catch (e) {
       _onFetchLinkedDeliveryNoteError(e);
@@ -1301,18 +1350,35 @@ class PackingSlipFormController extends GetxController
 
   // ── Error handler ──────────────────────────────────────────────────────────
 
+  /// Extracts the human-readable message from a Frappe exception string.
+  ///
+  /// Frappe formats exceptions as `ExceptionClassName: message`. This method
+  /// returns everything after the first `: ` so the user sees, e.g.,
+  /// "Row 1: Please provide a valid Delivery Note Item reference" rather
+  /// than the full class-prefixed string.
+  String _parseFrappeException(String raw) {
+    final idx = raw.indexOf(': ');
+    return idx >= 0 ? raw.substring(idx + 2).trim() : raw.trim();
+  }
+
   /// Handles exceptions thrown during [savePackingSlip].
   ///
-  /// Version-conflict exceptions are forwarded to [handleVersionConflict]
-  /// (the mixin method that shows the stale-document dialog). All other
-  /// exceptions fall through to a generic error snackbar.
-  ///
-  /// Mirrors [StockEntryFormController._handleSaveDioError] — PS does not
-  /// currently parse DioException response bodies, so a single catch is
-  /// sufficient. Promote to [DioException]-specific handling when
-  /// server-side validation errors need richer feedback.
+  /// Priority:
+  ///   1. Version-conflict (TimestampMismatchError / 409) → stale-doc dialog.
+  ///   2. Frappe validation error in response body → human-readable snackbar.
+  ///   3. Fallback → generic error snackbar.
   void _handleSaveError(Object e) {
     if (handleVersionConflict(e)) return;
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map) {
+        final raw = data['exception']?.toString() ?? '';
+        if (raw.isNotEmpty) {
+          GlobalSnackbar.error(message: _parseFrappeException(raw));
+          return;
+        }
+      }
+    }
     GlobalSnackbar.error(message: 'Save failed: $e');
   }
 
