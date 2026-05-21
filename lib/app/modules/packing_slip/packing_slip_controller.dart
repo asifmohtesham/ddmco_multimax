@@ -113,7 +113,7 @@ class PackingSlipController extends GetxController {
         writeRoles.assignAll(newRoles.toList());
       }
     } catch (e) {
-      print('Error fetching Packing Slip permissions: $e');
+      // non-fatal: writeRoles retains its default value
     }
   }
 
@@ -266,7 +266,7 @@ class PackingSlipController extends GetxController {
         posCustomerMap.refresh();
       }
     } catch (e) {
-      print('Error fetching POS customers: $e');
+      // non-fatal: customer names degrade gracefully
     }
   }
 
@@ -385,7 +385,7 @@ class PackingSlipController extends GetxController {
         }
       }
     } catch (e) {
-      print('Error determining next case no: $e');
+      // non-fatal: nextCaseNo defaults to 1
     }
 
     Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
@@ -395,6 +395,36 @@ class PackingSlipController extends GetxController {
       'customPoNo': dn.poNo,
       'nextCaseNo': nextCaseNo,
     });
+  }
+
+  Future<void> fetchAllForDeliveryNote(String dn) async {
+    activeFilters.value = {'delivery_note': dn};
+    isLoading.value = true;
+    packingSlips.clear();
+    _currentPage = 0;
+    hasMore.value = false;
+
+    try {
+      final response = await _provider.getPackingSlips(
+        limit: 500,
+        limitStart: 0,
+        filters: {'delivery_note': dn},
+        orderBy: '${sortField.value} ${sortOrder.value}',
+      );
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final newSlips = (response.data['data'] as List)
+            .map((json) => PackingSlip.fromJson(json))
+            .toList();
+        packingSlips.value = newSlips;
+        _fetchAssociatedCustomers(newSlips);
+      } else {
+        AppNotification.error('Failed to fetch packing slips');
+      }
+    } catch (e) {
+      AppNotification.error(e.toString());
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   void openCreateDialog() {
