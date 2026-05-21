@@ -40,7 +40,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   docStatus:  note?.docstatus ?? 0,
                   isSaving:   isSaving,
                   saveResult: saveResult,
-                  onSave:     isDirty ? controller.saveDeliveryNote : null,
+                  onSave:     (note?.docstatus == 0) ? controller.saveDeliveryNote : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
