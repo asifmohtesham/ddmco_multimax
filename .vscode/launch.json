@@ -27,6 +27,13 @@
       "deviceId": "R8MFEMYT8PIFWWZ5",
       "request": "launch",
       "type": "dart"
+    },
+    {
+      "name": "TC15 23045524700218 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700218",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
