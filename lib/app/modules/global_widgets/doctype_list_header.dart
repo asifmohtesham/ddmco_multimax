@@ -235,8 +235,8 @@ class DocTypeListHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     if (activeFilters != null || searchQuery != null) {
       return Obx(() {
-        final _ = activeFilters?.length;    // ignore: unused_local_variable
-        final __ = searchQuery?.value;      // ignore: unused_local_variable
+        final unused1 = activeFilters?.length;    // ignore: unused_local_variable
+        final unused2 = searchQuery?.value;       // ignore: unused_local_variable
         return _buildSliver(context);
       });
     }
@@ -307,7 +307,14 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// Height of the system status bar on this device / orientation.
   final double statusBarHeight;
 
-  const _DocTypeListHeaderDelegate({
+  // Snapshots captured at construction time so shouldRebuild can detect
+  // in-place mutations to the shared RxMap / RxString objects. Without these,
+  // both `this` and `old` delegates read the same post-mutation value and
+  // filtersChanged / searchChanged are always false.
+  final int _filterCount;
+  final String _searchValue;
+
+  _DocTypeListHeaderDelegate({
     required this.title,
     required this.extraActions,
     required this.automaticallyImplyLeading,
@@ -322,7 +329,8 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onClearAllFilters,
     required this.bottom,
     required this.statusBarHeight,
-  });
+  })  : _filterCount = activeFilters?.length ?? 0,
+        _searchValue = searchQuery?.value ?? '';
 
   // ── Chip presence ──────────────────────────────────────────────────────────
   bool _chipsActiveFor({
@@ -684,16 +692,11 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   // ── shouldRebuild ──────────────────────────────────────────────────────────
   @override
   bool shouldRebuild(covariant _DocTypeListHeaderDelegate old) {
-    final filtersChanged =
-        (activeFilters?.length ?? 0) != (old.activeFilters?.length ?? 0);
-    final searchChanged =
-        (searchQuery?.value ?? '') != (old.searchQuery?.value ?? '');
-
     // Callbacks are intentionally excluded — lambda identity is always different
     // across parent rebuilds, so comparing them would make shouldRebuild always
     // return true and defeat the purpose of this guard.
-    return filtersChanged ||
-        searchChanged ||
+    return _filterCount != old._filterCount ||
+        _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
