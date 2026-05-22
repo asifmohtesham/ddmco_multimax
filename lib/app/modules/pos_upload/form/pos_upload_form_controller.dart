@@ -1,6 +1,11 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:excel/excel.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -448,5 +453,100 @@ class PosUploadFormController extends GetxController
     await fetchPosUpload();
     await fetchLinkedDocument();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
+  // ── Excel export ───────────────────────────────────────────────────────────
+
+  Future<void> sharePackingSlipExcel({required bool compact}) async {
+    final upload = posUpload.value;
+    if (upload == null || packingSlips.isEmpty) {
+      GlobalSnackbar.error(message: 'No packing slip data available');
+      return;
+    }
+
+    Get.dialog(
+      const Center(child: CircularProgressIndicator()),
+      barrierDismissible: false,
+    );
+
+    try {
+      final itemNameByIdx = <String, String>{
+        for (final item in upload.items) item.idx.toString(): item.itemName,
+      };
+
+      final excelFile = Excel.createExcel();
+      excelFile.rename('Sheet1', upload.name);
+      final sheet = excelFile[upload.name];
+
+      final headers = compact
+          ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
+          : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
+
+      for (int c = 0; c < headers.length; c++) {
+        sheet
+            .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
+            .value = TextCellValue(headers[c]);
+      }
+
+      int row = 1;
+      for (final ps in packingSlips.where((p) => p.customPoNo == upload.name)) {
+        final caseCell = psCaseCell(ps);
+        for (final psItem in ps.items) {
+          final posItemName =
+              itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
+          final serial =
+              int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+
+          void setCell(int col, CellValue v) => sheet
+              .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
+              .value = v;
+
+          if (compact) {
+            setCell(0, caseCell);
+            setCell(1, IntCellValue(serial));
+            setCell(2, TextCellValue(posItemName));
+            setCell(3, DoubleCellValue(psItem.qty));
+            setCell(4, TextCellValue(psItem.customCountryOfOrigin ?? ''));
+          } else {
+            setCell(0, caseCell);
+            setCell(1, IntCellValue(serial));
+            setCell(2, TextCellValue(psItem.customVariantOf ?? ''));
+            setCell(3, TextCellValue(psItem.itemCode));
+            setCell(4, TextCellValue(posItemName));
+            setCell(5, DoubleCellValue(psItem.qty));
+            setCell(6, TextCellValue(psItem.customCountryOfOrigin ?? ''));
+          }
+          row++;
+        }
+      }
+
+      final fileBytes = excelFile.encode();
+      if (fileBytes == null) {
+        if (Get.isDialogOpen == true) Get.back();
+        GlobalSnackbar.error(message: 'Failed to encode Excel file');
+        return;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final safeName = upload.name.replaceAll('/', '_');
+      final filePath = '${tempDir.path}/${safeName}_packing_slip.xlsx';
+      await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
+
+      if (Get.isDialogOpen == true) Get.back();
+
+      await Share.shareXFiles(
+        [
+          XFile(
+            filePath,
+            mimeType:
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          ),
+        ],
+        subject: '${upload.name} – Packing Slip',
+      );
+    } catch (e) {
+      if (Get.isDialogOpen == true) Get.back();
+      GlobalSnackbar.error(message: 'Share failed: $e');
+    }
   }
 }
