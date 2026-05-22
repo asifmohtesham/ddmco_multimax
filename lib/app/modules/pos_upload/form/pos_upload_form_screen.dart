@@ -62,11 +62,16 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
     });
   }
 
+  static List<String> _columnNames(bool compact) => compact
+      ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
+      : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
+
   void _showShareSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) {
         var compact = true;
+        String? sortByColumn;
         return StatefulBuilder(
           builder: (ctx, setState) => SafeArea(
             child: Padding(
@@ -88,8 +93,30 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                           : 'Case · Serial · Variant · Code · Item · Qty · Country',
                     ),
                     value: compact,
-                    onChanged: (v) => setState(() => compact = v),
+                    onChanged: (v) => setState(() {
+                      compact = v;
+                      sortByColumn = null;
+                    }),
                     contentPadding: EdgeInsets.zero,
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String?>(
+                    value: sortByColumn,
+                    decoration: const InputDecoration(
+                      labelText: 'Sort by',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('None (natural order)'),
+                      ),
+                      ..._columnNames(compact).map(
+                        (name) => DropdownMenuItem(value: name, child: Text(name)),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => sortByColumn = v),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
@@ -97,7 +124,10 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                     label: const Text('Share as Excel'),
                     onPressed: () {
                       Navigator.of(ctx).pop();
-                      controller.sharePackingSlipExcel(compact: compact);
+                      controller.sharePackingSlipExcel(
+                        compact: compact,
+                        sortByColumn: sortByColumn,
+                      );
                     },
                   ),
                 ],
