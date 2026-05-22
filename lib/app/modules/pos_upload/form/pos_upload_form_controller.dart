@@ -474,9 +474,11 @@ class PosUploadFormController extends GetxController
         for (final item in upload.items) item.idx.toString(): item.itemName,
       };
 
+      final safeName = upload.name.replaceAll('/', '_');
+
       final excelFile = Excel.createExcel();
-      excelFile.rename('Sheet1', upload.name);
-      final sheet = excelFile[upload.name];
+      excelFile.rename('Sheet1', safeName);
+      final sheet = excelFile[safeName];
 
       final headers = compact
           ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
@@ -489,6 +491,10 @@ class PosUploadFormController extends GetxController
       }
 
       int row = 1;
+
+      void setCell(int col, CellValue v) => sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
+          .value = v;
       for (final ps in packingSlips.where((p) => p.customPoNo == upload.name)) {
         final caseCell = psCaseCell(ps);
         for (final psItem in ps.items) {
@@ -496,10 +502,6 @@ class PosUploadFormController extends GetxController
               itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
           final serial =
               int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
-
-          void setCell(int col, CellValue v) => sheet
-              .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-              .value = v;
 
           if (compact) {
             setCell(0, caseCell);
@@ -528,7 +530,6 @@ class PosUploadFormController extends GetxController
       }
 
       final tempDir = await getTemporaryDirectory();
-      final safeName = upload.name.replaceAll('/', '_');
       final filePath = '${tempDir.path}/${safeName}_packing_slip.xlsx';
       await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
