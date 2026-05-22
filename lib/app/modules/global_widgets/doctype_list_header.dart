@@ -695,12 +695,16 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // Callbacks are intentionally excluded — lambda identity is always different
     // across parent rebuilds, so comparing them would make shouldRebuild always
     // return true and defeat the purpose of this guard.
+    // extraActions length IS compared: when buttons are conditionally shown or
+    // hidden (e.g. Share appears after packing slips load), the count changes
+    // and the delegate must rebuild immediately rather than waiting for a scroll.
     return _filterCount != old._filterCount ||
         _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         searchDoctype != old.searchDoctype ||
-        searchRoute != old.searchRoute;
+        searchRoute != old.searchRoute ||
+        (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0);
   }
 }
