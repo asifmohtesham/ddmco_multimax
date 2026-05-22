@@ -593,11 +593,13 @@ class PosUploadFormController extends GetxController
       // ── Sort rows; move sort column to Column A ───────────────────────
       final sortedRows = rowMap.values.toList();
       if (sortByColumn != null) {
-        sortedRows.sort((a, b) => _rowComparator(sortByColumn, a, b));
         final sortIdx = columns.indexWhere((c) => c.$1 == sortByColumn);
-        if (sortIdx > 0) {
-          final col = columns.removeAt(sortIdx);
-          columns.insert(0, col);
+        if (sortIdx >= 0) {
+          sortedRows.sort((a, b) => _rowComparator(sortByColumn, a, b));
+          if (sortIdx > 0) {
+            final col = columns.removeAt(sortIdx);
+            columns.insert(0, col);
+          }
         }
       }
 
