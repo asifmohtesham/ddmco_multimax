@@ -151,6 +151,15 @@ class PosUploadFormController extends GetxController
     return entries;
   }
 
+  // String key used for row-aggregation grouping (mirrors psCaseCell logic).
+  static String _psCaseKey(PackingSlip ps) {
+    if (ps.fromCaseNo == null) return ps.name;
+    if (ps.toCaseNo != null && ps.toCaseNo != ps.fromCaseNo) {
+      return '${ps.fromCaseNo}-${ps.toCaseNo}';
+    }
+    return '${ps.fromCaseNo}';
+  }
+
   /// Returns the Excel cell value for the "Case #" column in the packing slip export.
   /// Single case → IntCellValue; range → TextCellValue("N-M"); no case → TextCellValue(ps.name).
   static CellValue psCaseCell(PackingSlip ps) {
@@ -490,36 +499,78 @@ class PosUploadFormController extends GetxController
             .value = TextCellValue(headers[c]);
       }
 
-      int row = 1;
+      // ── Aggregate: sum Qty for rows with identical non-qty columns ──────
+      final rowMap = <String, ({
+        CellValue caseCell,
+        int serial,
+        String variantOf,
+        String itemCode,
+        String itemName,
+        double qty,
+        String country,
+      })>{};
 
-      void setCell(int col, CellValue v) => sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-          .value = v;
       for (final ps in packingSlips.where((p) => p.customPoNo == upload.name)) {
         final caseCell = psCaseCell(ps);
+        final caseKey  = _psCaseKey(ps);
         for (final psItem in ps.items) {
           final posItemName =
               itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
-          final serial =
-              int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+          final serial   = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+          final variantOf = psItem.customVariantOf ?? '';
+          final itemCode  = psItem.itemCode;
+          final country   = psItem.customCountryOfOrigin ?? '';
 
-          if (compact) {
-            setCell(0, caseCell);
-            setCell(1, IntCellValue(serial));
-            setCell(2, TextCellValue(posItemName));
-            setCell(3, DoubleCellValue(psItem.qty));
-            setCell(4, TextCellValue(psItem.customCountryOfOrigin ?? ''));
-          } else {
-            setCell(0, caseCell);
-            setCell(1, IntCellValue(serial));
-            setCell(2, TextCellValue(psItem.customVariantOf ?? ''));
-            setCell(3, TextCellValue(psItem.itemCode));
-            setCell(4, TextCellValue(posItemName));
-            setCell(5, DoubleCellValue(psItem.qty));
-            setCell(6, TextCellValue(psItem.customCountryOfOrigin ?? ''));
-          }
-          row++;
+          final key = compact
+              ? '$caseKey\x00$serial\x00$posItemName\x00$country'
+              : '$caseKey\x00$serial\x00$variantOf\x00$itemCode\x00$posItemName\x00$country';
+
+          final existing = rowMap[key];
+          rowMap[key] = existing == null
+              ? (
+                  caseCell: caseCell,
+                  serial: serial,
+                  variantOf: variantOf,
+                  itemCode: itemCode,
+                  itemName: posItemName,
+                  qty: psItem.qty,
+                  country: country,
+                )
+              : (
+                  caseCell: existing.caseCell,
+                  serial: existing.serial,
+                  variantOf: existing.variantOf,
+                  itemCode: existing.itemCode,
+                  itemName: existing.itemName,
+                  qty: existing.qty + psItem.qty,
+                  country: existing.country,
+                );
         }
+      }
+
+      // ── Write aggregated rows ─────────────────────────────────────────
+      int row = 1;
+      void setCell(int col, CellValue v) => sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
+          .value = v;
+
+      for (final r in rowMap.values) {
+        if (compact) {
+          setCell(0, r.caseCell);
+          setCell(1, IntCellValue(r.serial));
+          setCell(2, TextCellValue(r.itemName));
+          setCell(3, DoubleCellValue(r.qty));
+          setCell(4, TextCellValue(r.country));
+        } else {
+          setCell(0, r.caseCell);
+          setCell(1, IntCellValue(r.serial));
+          setCell(2, TextCellValue(r.variantOf));
+          setCell(3, TextCellValue(r.itemCode));
+          setCell(4, TextCellValue(r.itemName));
+          setCell(5, DoubleCellValue(r.qty));
+          setCell(6, TextCellValue(r.country));
+        }
+        row++;
       }
 
       final fileBytes = excelFile.encode();
