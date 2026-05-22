@@ -1,3 +1,4 @@
+import 'package:excel/excel.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
@@ -143,6 +144,16 @@ class PosUploadFormController extends GetxController
       }
     }
     return entries;
+  }
+
+  /// Returns the Excel cell value for the "Case #" column in the packing slip export.
+  /// Single case → IntCellValue; range → TextCellValue("N-M"); no case → TextCellValue(ps.name).
+  static CellValue psCaseCell(PackingSlip ps) {
+    if (ps.fromCaseNo == null) return TextCellValue(ps.name);
+    if (ps.toCaseNo != null && ps.toCaseNo != ps.fromCaseNo) {
+      return TextCellValue('${ps.fromCaseNo}-${ps.toCaseNo}');
+    }
+    return IntCellValue(ps.fromCaseNo!);
   }
 
   @override
