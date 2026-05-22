@@ -62,6 +62,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
     });
   }
 
+  // Must match the column names in PosUploadFormController.sharePackingSlipExcel's columns list.
   static List<String> _columnNames(bool compact) => compact
       ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
       : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
