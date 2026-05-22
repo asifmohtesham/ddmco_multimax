@@ -102,6 +102,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String?>(
+                    // ignore: deprecated_member_use
                     value: sortByColumn,
                     decoration: const InputDecoration(
                       labelText: 'Sort by',
@@ -310,6 +311,7 @@ class _DetailsTabState extends State<_DetailsTab> {
 
               // Status dropdown — value is always guaranteed to be in statusItems
               DropdownButtonFormField<String>(
+                // ignore: deprecated_member_use
                 value: upload.status,
                 isExpanded: true,
                 decoration: InputDecoration(
