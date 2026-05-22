@@ -87,7 +87,6 @@ typedef _PSRow = ({
   String    country,
 });
 
-// ignore: unused_element
 typedef _PSCol = (String, CellValue Function(_PSRow));
 
 class PosUploadFormController extends GetxController
@@ -186,7 +185,6 @@ class PosUploadFormController extends GetxController
     return IntCellValue(ps.fromCaseNo!);
   }
 
-  // ignore: unused_element
   static int _rowComparator(String col, _PSRow a, _PSRow b) {
     switch (col) {
       case 'Case #':
@@ -507,7 +505,7 @@ class PosUploadFormController extends GetxController
 
   // ── Excel export ───────────────────────────────────────────────────────────
 
-  Future<void> sharePackingSlipExcel({required bool compact}) async {
+  Future<void> sharePackingSlipExcel({required bool compact, String? sortByColumn}) async {
     final upload = posUpload.value;
     if (upload == null || packingSlips.isEmpty) {
       GlobalSnackbar.error(message: 'No packing slip data available');
@@ -530,26 +528,27 @@ class PosUploadFormController extends GetxController
       excelFile.rename('Sheet1', safeName);
       final sheet = excelFile[safeName];
 
-      final headers = compact
-          ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
-          : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
+      // ── Column list — order determines Excel column positions ─────────
+      var columns = compact
+          ? <_PSCol>[
+              ('Case #',            (r) => r.caseCell),
+              ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+              ('Item Name',         (r) => TextCellValue(r.itemName)),
+              ('Qty',               (r) => DoubleCellValue(r.qty)),
+              ('Country of Origin', (r) => TextCellValue(r.country)),
+            ]
+          : <_PSCol>[
+              ('Case #',            (r) => r.caseCell),
+              ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+              ('Variant Of',        (r) => TextCellValue(r.variantOf)),
+              ('Item Code',         (r) => TextCellValue(r.itemCode)),
+              ('Item Name',         (r) => TextCellValue(r.itemName)),
+              ('Qty',               (r) => DoubleCellValue(r.qty)),
+              ('Country of Origin', (r) => TextCellValue(r.country)),
+            ];
 
-      for (int c = 0; c < headers.length; c++) {
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
-            .value = TextCellValue(headers[c]);
-      }
-
-      // ── Aggregate: sum Qty for rows with identical non-qty columns ──────
-      final rowMap = <String, ({
-        CellValue caseCell,
-        int serial,
-        String variantOf,
-        String itemCode,
-        String itemName,
-        double qty,
-        String country,
-      })>{};
+      // ── Aggregate: sum Qty for rows with identical non-qty columns ────
+      final rowMap = <String, _PSRow>{};
 
       for (final ps in packingSlips.where((p) => p.customPoNo == upload.name)) {
         final caseCell = psCaseCell(ps);
@@ -557,7 +556,7 @@ class PosUploadFormController extends GetxController
         for (final psItem in ps.items) {
           final posItemName =
               itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
-          final serial   = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+          final serial    = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
           final variantOf = psItem.customVariantOf ?? '';
           final itemCode  = psItem.itemCode;
           final country   = psItem.customCountryOfOrigin ?? '';
@@ -569,47 +568,55 @@ class PosUploadFormController extends GetxController
           final existing = rowMap[key];
           rowMap[key] = existing == null
               ? (
-                  caseCell: caseCell,
-                  serial: serial,
+                  caseCell:  caseCell,
+                  caseKey:   caseKey,
+                  serial:    serial,
                   variantOf: variantOf,
-                  itemCode: itemCode,
-                  itemName: posItemName,
-                  qty: psItem.qty,
-                  country: country,
+                  itemCode:  itemCode,
+                  itemName:  posItemName,
+                  qty:       psItem.qty,
+                  country:   country,
                 )
               : (
-                  caseCell: existing.caseCell,
-                  serial: existing.serial,
+                  caseCell:  existing.caseCell,
+                  caseKey:   existing.caseKey,
+                  serial:    existing.serial,
                   variantOf: existing.variantOf,
-                  itemCode: existing.itemCode,
-                  itemName: existing.itemName,
-                  qty: existing.qty + psItem.qty,
-                  country: existing.country,
+                  itemCode:  existing.itemCode,
+                  itemName:  existing.itemName,
+                  qty:       existing.qty + psItem.qty,
+                  country:   existing.country,
                 );
         }
       }
 
-      // ── Write aggregated rows ─────────────────────────────────────────
+      // ── Sort rows; move sort column to Column A ───────────────────────
+      final sortedRows = rowMap.values.toList();
+      if (sortByColumn != null) {
+        sortedRows.sort((a, b) => _rowComparator(sortByColumn, a, b));
+        final sortIdx = columns.indexWhere((c) => c.$1 == sortByColumn);
+        if (sortIdx > 0) {
+          final col = columns.removeAt(sortIdx);
+          columns.insert(0, col);
+        }
+      }
+
+      // ── Header row ────────────────────────────────────────────────────
+      for (int c = 0; c < columns.length; c++) {
+        sheet
+            .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
+            .value = TextCellValue(columns[c].$1);
+      }
+
+      // ── Data rows ─────────────────────────────────────────────────────
       int row = 1;
       void setCell(int col, CellValue v) => sheet
           .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
           .value = v;
 
-      for (final r in rowMap.values) {
-        if (compact) {
-          setCell(0, r.caseCell);
-          setCell(1, IntCellValue(r.serial));
-          setCell(2, TextCellValue(r.itemName));
-          setCell(3, DoubleCellValue(r.qty));
-          setCell(4, TextCellValue(r.country));
-        } else {
-          setCell(0, r.caseCell);
-          setCell(1, IntCellValue(r.serial));
-          setCell(2, TextCellValue(r.variantOf));
-          setCell(3, TextCellValue(r.itemCode));
-          setCell(4, TextCellValue(r.itemName));
-          setCell(5, DoubleCellValue(r.qty));
-          setCell(6, TextCellValue(r.country));
+      for (final r in sortedRows) {
+        for (int c = 0; c < columns.length; c++) {
+          setCell(c, columns[c].$2(r));
         }
         row++;
       }
