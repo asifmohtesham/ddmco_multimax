@@ -74,6 +74,22 @@ class PsItemEntry {
   });
 }
 
+// Stable names for the anonymous row record and column tuple used in
+// sharePackingSlipExcel and _rowComparator.
+typedef _PSRow = ({
+  CellValue caseCell,
+  String    caseKey,
+  int       serial,
+  String    variantOf,
+  String    itemCode,
+  String    itemName,
+  double    qty,
+  String    country,
+});
+
+// ignore: unused_element
+typedef _PSCol = (String, CellValue Function(_PSRow));
+
 class PosUploadFormController extends GetxController
     with OptimisticLockingMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
@@ -168,6 +184,31 @@ class PosUploadFormController extends GetxController
       return TextCellValue('${ps.fromCaseNo}-${ps.toCaseNo}');
     }
     return IntCellValue(ps.fromCaseNo!);
+  }
+
+  // ignore: unused_element
+  static int _rowComparator(String col, _PSRow a, _PSRow b) {
+    switch (col) {
+      case 'Case #':
+        final an = int.tryParse(a.caseKey.split('-').first);
+        final bn = int.tryParse(b.caseKey.split('-').first);
+        if (an != null && bn != null) return an.compareTo(bn);
+        return a.caseKey.compareTo(b.caseKey);
+      case 'Invoice Serial #':
+        return a.serial.compareTo(b.serial);
+      case 'Qty':
+        return a.qty.compareTo(b.qty);
+      case 'Item Name':
+        return a.itemName.toLowerCase().compareTo(b.itemName.toLowerCase());
+      case 'Variant Of':
+        return a.variantOf.toLowerCase().compareTo(b.variantOf.toLowerCase());
+      case 'Item Code':
+        return a.itemCode.toLowerCase().compareTo(b.itemCode.toLowerCase());
+      case 'Country of Origin':
+        return a.country.toLowerCase().compareTo(b.country.toLowerCase());
+      default:
+        return 0;
+    }
   }
 
   @override
