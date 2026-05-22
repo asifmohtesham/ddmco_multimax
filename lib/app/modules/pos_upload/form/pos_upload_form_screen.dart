@@ -19,6 +19,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
               : 'POS Upload';
       final isLoading  = controller.isLoading.value;
       final posUpload  = controller.posUpload.value;
+      final hasPackingSlips = controller.packingSlips.isNotEmpty;
 
       return DefaultTabController(
         length: 2,
@@ -27,6 +28,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
             headerSliverBuilder: (ctx, _) => [
               DocTypeFormHeader(
                 title: title,
+                onShare: hasPackingSlips ? () => _showShareSheet(context) : null,
                 bottom: const TabBar(
                   tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
                 ),
@@ -58,6 +60,53 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
         ),
       );
     });
+  }
+
+  void _showShareSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        var compact = true;
+        return StatefulBuilder(
+          builder: (ctx, setState) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Export Packing Slip',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text('Compact'),
+                    subtitle: Text(
+                      compact
+                          ? 'Case · Serial · Item · Qty · Country'
+                          : 'Case · Serial · Variant · Code · Item · Qty · Country',
+                    ),
+                    value: compact,
+                    onChanged: (v) => setState(() => compact = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.table_view_outlined),
+                    label: const Text('Share as Excel'),
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      controller.sharePackingSlipExcel(compact: compact);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
