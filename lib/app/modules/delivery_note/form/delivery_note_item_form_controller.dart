@@ -143,7 +143,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     ceil = _applyConstraint(ceil, batchBalance.value);
     ceil = _applyConstraint(ceil, rackBalance.value);
     final serial = selectedSerial.value ?? '';
-    if (serial.isNotEmpty) {
+    if (serial.isNotEmpty && !allowFullSerials.value) {
       // Apply the raw POS Item Qty as a hard cap — independently of how
       // much the user has already typed (liveRemaining shifts as they type
       // so it must NOT be used as the cap source here).
