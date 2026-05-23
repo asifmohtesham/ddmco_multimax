@@ -518,6 +518,9 @@ class PosUploadFormController extends GetxController
       const Center(child: CircularProgressIndicator()),
       barrierDismissible: false,
     );
+    // Yield to the event loop so Flutter can render the dialog before the
+    // synchronous encode / zip work blocks the main thread.
+    await Future.delayed(Duration.zero);
 
     try {
       final itemNameByIdx = <String, String>{
