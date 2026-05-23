@@ -210,7 +210,7 @@ class _DocTypeImageUploadState extends State<DocTypeImageUpload> {
         docname: widget.docname,
         fieldname: widget.fieldname,
       );
-      widget.onUploaded();
+      if (mounted) widget.onUploaded();
     } catch (e) {
       GlobalSnackbar.error(message: _errorMessage(e));
     } finally {
@@ -227,7 +227,7 @@ class _DocTypeImageUploadState extends State<DocTypeImageUpload> {
         widget.docname,
         {widget.fieldname: null},
       );
-      widget.onUploaded();
+      if (mounted) widget.onUploaded();
     } catch (e) {
       GlobalSnackbar.error(message: _errorMessage(e));
     } finally {
