@@ -27,7 +27,13 @@ class JobCardFormScreen extends GetView<JobCardFormController> {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              DocTypeFormHeader(title: title),
+              DocTypeFormHeader(
+                title:       title,
+                docType:     'Job Card',
+                statusLabel: jc?.status,
+                docStatus:   jc?.docstatus ?? 0,
+                onReload:    controller.fetchDocument,
+              ),
               if (isLoading)
                 const SliverFillRemaining(
                   child: Center(child: CircularProgressIndicator()),

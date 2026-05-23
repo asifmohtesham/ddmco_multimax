@@ -35,10 +35,12 @@ class BatchFormScreen extends GetView<BatchFormController> {
           body: CustomScrollView(
             slivers: [
               DocTypeFormHeader(
-                title: title,
-                canSave: canSave,
-                isSaving: isSaving,
-                onSave: controller.saveBatch,
+                title:        title,
+                docType:      'Batch',
+                statusLabel:  controller.batchStatus,
+                canSave:      canSave,
+                isSaving:     isSaving,
+                onSave:       controller.saveBatch,
                 extraActions: [
                   if (showExport) _buildExportActions(colorScheme, isExporting),
                 ],

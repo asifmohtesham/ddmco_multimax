@@ -20,69 +20,59 @@ class ItemFormScreen extends GetView<ItemFormController> {
     final cs = Theme.of(context).colorScheme;
     final tabCtrl = Get.find<ItemTabController>();
 
-    return Scaffold(
+    return Obx(() {
+      final item      = controller.item.value;
+      final isLoading = controller.isLoading.value;
+
+      return Scaffold(
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            // ── Standard form app bar ──────────────────────────────────
             DocTypeFormHeader(
-              title: controller.docType,
-              // Item form is read-only — no Reload / Save / Share.
-              // In modal mode the back arrow won't exist, so surface
-              // an explicit Close button via extraActions instead.
+              title:   item?.name ?? controller.itemCode,
+              docType: 'Item',
               extraActions: isModal
                   ? [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Close',
-                  onPressed: Get.back,
-                ),
-              ]
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Close',
+                        onPressed: Get.back,
+                      ),
+                    ]
                   : null,
-            ),
-
-            // ── TabBar pinned below the collapsing header ──────────────
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _PinnedTabBarDelegate(
-                TabBar(
-                  controller: tabCtrl.tabController,
-                  isScrollable: true,
-                  tabs: const [
-                    Tab(text: 'Overview'),
-                    Tab(text: 'Stock Levels'),
-                    Tab(text: 'Attributes'),
-                    Tab(text: 'Attachments'),
-                  ],
-                ),
+              bottom: TabBar(
+                controller: tabCtrl.tabController,
+                isScrollable: true,
+                tabs: const [
+                  Tab(text: 'Overview'),
+                  Tab(text: 'Stock Levels'),
+                  Tab(text: 'Attributes'),
+                  Tab(text: 'Attachments'),
+                ],
               ),
             ),
           ],
-          body: Obx(() {
-            if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final item = controller.item.value;
-            if (item == null) {
-              return Center(
-                child: _buildEmptyState(
-                  context, cs,
-                  icon: Icons.error_outline,
-                  message: 'Item not found.',
-                ),
-              );
-            }
-            return TabBarView(
-              controller: tabCtrl.tabController,
-              children: [
-                _buildOverviewTab(context, item, cs),
-                _buildStockLevelsTab(context, cs),
-                _buildAttributesTab(context, item, cs),
-                _buildAttachmentsTab(context, cs),
-              ],
-            );
-          }),
+          body: (isLoading && item == null)
+              ? const Center(child: CircularProgressIndicator())
+              : item == null
+                  ? Center(
+                      child: _buildEmptyState(
+                        context, cs,
+                        icon: Icons.error_outline,
+                        message: 'Item not found.',
+                      ),
+                    )
+                  : TabBarView(
+                      controller: tabCtrl.tabController,
+                      children: [
+                        _buildOverviewTab(context, item, cs),
+                        _buildStockLevelsTab(context, cs),
+                        _buildAttributesTab(context, item, cs),
+                        _buildAttachmentsTab(context, cs),
+                      ],
+                    ),
         ),
       );
+    });
   }
 
   // ── Overview Tab ──────────────────────────────────────────────────────────
@@ -945,27 +935,4 @@ class ItemFormScreen extends GetView<ItemFormController> {
       ),
     );
   }
-}
-
-// Pins the TabBar below the collapsing DocTypeFormHeader sliver.
-// minExtent == maxExtent == TabBar.preferredSize.height so it never shrinks.
-class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar tabBar;
-  const _PinnedTabBarDelegate(this.tabBar);
-
-  @override double get minExtent => tabBar.preferredSize.height;
-  @override double get maxExtent => tabBar.preferredSize.height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Material(
-      color: Theme.of(context).colorScheme.onSurface,
-      elevation: overlapsContent ? 1.0 : 0.0,
-      child: tabBar,
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _PinnedTabBarDelegate old) =>
-      tabBar != old.tabBar;
 }
