@@ -34,7 +34,9 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
           body: CustomScrollView(
             slivers: [
               DocTypeFormHeader(
-                title: title,
+                title:       title,
+                docType:     'Work Order',
+                statusLabel: wo?.status,
                 onSave: controller.canEdit ? controller.save : null,
                 onReload: controller.mode != 'new' ? controller.reload : null,
                 isSaving: controller.isSaving.value,

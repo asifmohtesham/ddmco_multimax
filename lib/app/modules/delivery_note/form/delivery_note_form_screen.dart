@@ -35,7 +35,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      note?.name ?? 'Loading...',
+                  title:       note?.name ?? 'Loading...',
+                  docType:     'Delivery Note',
+                  statusLabel: note?.status,
                   canSave:    isDirty,
                   docStatus:  note?.docstatus ?? 0,
                   isSaving:   isSaving,

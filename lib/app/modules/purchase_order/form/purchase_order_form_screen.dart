@@ -33,7 +33,9 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      po?.name ?? 'Loading...',
+                  title:       po?.name ?? 'Loading...',
+                  docType:     'Purchase Order',
+                  statusLabel: po?.status,
                   canSave:    isDirty && controller.isEditable,
                   docStatus:  po?.docstatus ?? 0,
                   isSaving:   isSaving,
