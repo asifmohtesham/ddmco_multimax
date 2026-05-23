@@ -43,6 +43,7 @@ void main() {
       required String dnDetail,
       required String itemCode,
       String serial = '1',
+      String batchNo = '',
     }) =>
         PackingSlipItem(
           name: 'PS-ROW-1',
@@ -51,7 +52,7 @@ void main() {
           itemName: 'Test Item',
           qty: 1.0,
           uom: 'Nos',
-          batchNo: '',
+          batchNo: batchNo,
           netWeight: 0.0,
           weightUom: 0.0,
           customInvoiceSerialNumber: serial,
@@ -61,6 +62,7 @@ void main() {
       required String name,
       required String itemCode,
       String serial = '1',
+      String? batchNo,
     }) =>
         DeliveryNoteItem(
           name: name,
@@ -69,6 +71,7 @@ void main() {
           rate: 10.0,
           customInvoiceSerialNumber: serial,
           docstatus: 1,
+          batchNo: batchNo,
         );
 
     test('returns changed=false when all dn_detail values are already valid', () {
@@ -139,6 +142,44 @@ void main() {
         name: 'PS-001', deliveryNote: 'DN-001', modified: '', creation: '',
         docstatus: 0, status: 'Draft',
         items: [_slipItem(dnDetail: '', itemCode: 'ITEM-A')],
+      );
+
+      final result = refreshDnDetails(slip, dn);
+
+      expect(result.changed, isFalse);
+      expect(result.items.first.dnDetail, isEmpty);
+    });
+
+    test('returns changed=true and patches empty dn_detail matching by itemCode and batch', () {
+      final dn = DeliveryNote(
+        name: 'DN-001', customer: '', grandTotal: 0, postingDate: '',
+        modified: '', creation: '', status: 'Submitted', currency: 'AED',
+        totalQty: 5, docstatus: 1,
+        items: [_dnItem(name: 'row-batch', itemCode: 'ITEM-A', batchNo: 'BATCH-X')],
+      );
+      final slip = PackingSlip(
+        name: 'PS-001', deliveryNote: 'DN-001', modified: '', creation: '',
+        docstatus: 0, status: 'Draft',
+        items: [_slipItem(dnDetail: '', itemCode: 'ITEM-A', batchNo: 'BATCH-X')],
+      );
+
+      final result = refreshDnDetails(slip, dn);
+
+      expect(result.changed, isTrue);
+      expect(result.items.first.dnDetail, equals('row-batch'));
+    });
+
+    test('returns changed=false when batch does not match', () {
+      final dn = DeliveryNote(
+        name: 'DN-001', customer: '', grandTotal: 0, postingDate: '',
+        modified: '', creation: '', status: 'Submitted', currency: 'AED',
+        totalQty: 5, docstatus: 1,
+        items: [_dnItem(name: 'row-batch', itemCode: 'ITEM-A', batchNo: 'BATCH-Y')],
+      );
+      final slip = PackingSlip(
+        name: 'PS-001', deliveryNote: 'DN-001', modified: '', creation: '',
+        docstatus: 0, status: 'Draft',
+        items: [_slipItem(dnDetail: '', itemCode: 'ITEM-A', batchNo: 'BATCH-X')],
       );
 
       final result = refreshDnDetails(slip, dn);
