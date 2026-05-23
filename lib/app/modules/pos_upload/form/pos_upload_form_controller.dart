@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -624,15 +626,38 @@ class PosUploadFormController extends GetxController
         row++;
       }
 
-      final fileBytes = excelFile.encode();
-      if (fileBytes == null) {
+      // ── Consolas font on every cell ───────────────────────────────────
+      final consolasStyle = CellStyle(fontFamily: 'Consolas');
+      for (int r = 0; r <= sortedRows.length; r++) {
+        for (int c = 0; c < columns.length; c++) {
+          sheet
+              .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
+              .cellStyle = consolasStyle;
+        }
+      }
+
+      // ── Autofit column widths ─────────────────────────────────────────
+      for (int c = 0; c < columns.length; c++) {
+        sheet.setColumnAutoFit(c);
+      }
+
+      final rawBytes = excelFile.encode();
+      if (rawBytes == null) {
         if (Get.isDialogOpen == true) Get.back();
         GlobalSnackbar.error(message: 'Failed to encode Excel file');
         return;
       }
 
+      final fileBytes = _injectExcelTable(
+        rawBytes,
+        columns.map((col) => col.$1).toList(),
+        sortedRows.length,
+      );
+
+      final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
+      final fileName = 'POS Upload - $safeName - $timestamp';
       final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/${safeName}_packing_slip.xlsx';
+      final filePath = '${tempDir.path}/$fileName.xlsx';
       await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
       if (Get.isDialogOpen == true) Get.back();
@@ -652,4 +677,92 @@ class PosUploadFormController extends GetxController
       GlobalSnackbar.error(message: 'Share failed: $e');
     }
   }
+
+  // ── Excel post-processing helpers ───────────────────────────────────────
+
+  // Injects a structured Excel Table into an already-encoded xlsx file.
+  // The table covers the header row (row 0) plus [dataRowCount] data rows.
+  static List<int> _injectExcelTable(
+    List<int> xlsxBytes,
+    List<String> columnNames,
+    int dataRowCount,
+  ) {
+    final archive = ZipDecoder().decodeBytes(xlsxBytes);
+    final colCount = columnNames.length;
+    final lastCol = _excelColLetter(colCount - 1);
+    final ref = 'A1:$lastCol${dataRowCount + 1}';
+
+    final colsBuffer = StringBuffer();
+    for (int i = 0; i < colCount; i++) {
+      colsBuffer
+          .write('<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"/>');
+    }
+
+    final tableXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+        ' id="1" name="PackingSlipTable" displayName="PackingSlipTable"'
+        ' ref="$ref" totalsRowShown="0">'
+        '<autoFilter ref="$ref"/>'
+        '<tableColumns count="$colCount">$colsBuffer</tableColumns>'
+        '<tableStyleInfo name="TableStyleMedium9" showFirstColumn="0"'
+        ' showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>'
+        '</table>';
+
+    const relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1"'
+        ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table"'
+        ' Target="../tables/table1.xml"/>'
+        '</Relationships>';
+
+    // Patch worksheet: add <tableParts> before </worksheet>
+    final wsFile = archive.findFile('xl/worksheets/sheet1.xml');
+    if (wsFile != null) {
+      wsFile.decompress();
+      var wsXml = utf8.decode(wsFile.content as List<int>);
+      wsXml = wsXml.replaceFirst(
+        '</worksheet>',
+        '<tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>',
+      );
+      archive.addFile(ArchiveFile.string('xl/worksheets/sheet1.xml', wsXml));
+    }
+
+    // Patch [Content_Types].xml
+    final ctFile = archive.findFile('[Content_Types].xml');
+    if (ctFile != null) {
+      ctFile.decompress();
+      var ctXml = utf8.decode(ctFile.content as List<int>);
+      ctXml = ctXml.replaceFirst(
+        '</Types>',
+        '<Override PartName="/xl/tables/table1.xml"'
+            ' ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>'
+            '</Types>',
+      );
+      archive.addFile(ArchiveFile.string('[Content_Types].xml', ctXml));
+    }
+
+    archive.addFile(ArchiveFile.string('xl/tables/table1.xml', tableXml));
+    archive.addFile(ArchiveFile.string(
+        'xl/worksheets/_rels/sheet1.xml.rels', relsXml));
+
+    return ZipEncoder().encode(archive) ?? xlsxBytes;
+  }
+
+  // Converts a 0-based column index to an Excel column letter (0→A, 25→Z, 26→AA).
+  static String _excelColLetter(int index) {
+    var result = '';
+    var n = index + 1;
+    while (n > 0) {
+      final remainder = (n - 1) % 26;
+      result = String.fromCharCode(65 + remainder) + result;
+      n = (n - 1) ~/ 26;
+    }
+    return result;
+  }
+
+  static String _xmlEscape(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
 }

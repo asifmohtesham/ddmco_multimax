@@ -35,7 +35,9 @@ class PurchaseReceiptFormScreen
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      receipt?.name ?? 'Loading...',
+                  title:       receipt?.name ?? 'Loading...',
+                  docType:     'Purchase Receipt',
+                  statusLabel: receipt?.status,
                   canSave:    isDirty,
                   docStatus:  receipt?.docstatus ?? 0,
                   isSaving:   isSaving,

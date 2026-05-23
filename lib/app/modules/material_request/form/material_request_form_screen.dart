@@ -52,7 +52,9 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      title,
+                  title:       title,
+                  docType:     'Material Request',
+                  statusLabel: entry?.status,
                   canSave:    isDirty,
                   docStatus:  entry?.docstatus ?? 0,
                   isSaving:   isSaving,

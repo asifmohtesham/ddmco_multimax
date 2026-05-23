@@ -9,6 +9,7 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_image_upload.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -95,47 +96,14 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (item.image != null)
-            GestureDetector(
-              onTap: () =>
-                  _openFullScreenImage(context, '$baseUrl${item.image}'),
-              child: Container(
-                height: 200,
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainer,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.outlineVariant),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Hero(
-                  tag: 'item_image_${item.itemCode}',
-                  child: Image.network(
-                    '$baseUrl${item.image}',
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: progress.expectedTotalBytes != null
-                              ? progress.cumulativeBytesLoaded /
-                                  progress.expectedTotalBytes!
-                              : null,
-                          color: cs.primary,
-                          strokeWidth: 2,
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.image_not_supported_outlined,
-                      size: 50,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          DocTypeImageUpload(
+            doctype: 'Item',
+            docname: item.itemCode,
+            fieldname: 'image',
+            imageUrl: item.image,
+            baseUrl: baseUrl,
+            onUploaded: () { controller.fetchItemDetails(); },
+          ),
 
           _buildSectionCard(
             context: context,

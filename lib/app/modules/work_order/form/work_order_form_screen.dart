@@ -34,12 +34,15 @@ class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
           body: CustomScrollView(
             slivers: [
               DocTypeFormHeader(
-                title: title,
+                title:       title,
+                docType:     'Work Order',
+                statusLabel: wo?.status,
                 onSave: controller.canEdit ? controller.save : null,
                 onReload: controller.mode != 'new' ? controller.reload : null,
-                isSaving: controller.isSaving.value,
-                canSave: controller.isDirty.value,
-                docStatus: wo?.docstatus ?? 0,
+                isSaving:   controller.isSaving.value,
+                saveResult: controller.saveResult.value,
+                canSave:    controller.isDirty.value,
+                docStatus:  wo?.docstatus ?? 0,
               ),
               if (isLoading)
                 const SliverFillRemaining(

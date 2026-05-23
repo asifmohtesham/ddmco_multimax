@@ -140,6 +140,16 @@ class DocItemCard extends StatelessWidget {
                     ],
                   ),
 
+                  // ── Packed qty progress (DN only) ────────────────────
+                  if (data.packedQty != null && data.qty > 0) ...[
+                    const SizedBox(height: 8),
+                    _PackedProgressBar(
+                      packedQty: data.packedQty!,
+                      dnQty:     data.qty,
+                      uom:       data.uom,
+                    ),
+                  ],
+
                   // ── Row 2: Variant Of chip (full width) ──────────────
                   if (hasVariant) ...[
                     const SizedBox(height: 6),
@@ -674,6 +684,81 @@ class _ArrowPairRow extends StatelessWidget {
           ),
           Expanded(child: target!),
         ],
+      ],
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// _PackedProgressBar
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Slim packed-qty progress bar rendered below the item headline in
+/// DocItemCard. Shows how much of the DN line qty has been packed.
+class _PackedProgressBar extends StatelessWidget {
+  final double  packedQty;
+  final double  dnQty;
+  final String? uom;
+
+  static final _fmt = NumberFormat('#,##0.##');
+
+  const _PackedProgressBar({
+    required this.packedQty,
+    required this.dnQty,
+    this.uom,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs      = Theme.of(context).colorScheme;
+    final percent = (packedQty / dnQty).clamp(0.0, 1.0);
+    final isFullyPacked = packedQty >= dnQty;
+
+    final Color barColor = isFullyPacked ? Colors.green.shade600 : cs.tertiary;
+    final String uomSuffix = uom != null ? ' $uom' : '';
+    final String label = isFullyPacked
+        ? 'Fully packed'
+        : 'Packed: ${_fmt.format(packedQty)}$uomSuffix'
+          ' / ${_fmt.format(dnQty)}$uomSuffix';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize:   11,
+                  color:      barColor,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${(percent * 100).toInt()}%',
+              style: TextStyle(
+                fontSize:   11,
+                fontWeight: FontWeight.bold,
+                color:      barColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value:           percent,
+            minHeight:       5,
+            backgroundColor: cs.surfaceContainerHighest,
+            valueColor:      AlwaysStoppedAnimation<Color>(barColor),
+          ),
+        ),
       ],
     );
   }

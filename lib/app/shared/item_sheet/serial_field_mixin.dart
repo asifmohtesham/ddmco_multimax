@@ -117,6 +117,17 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
 
   void notifySerialItemsChanged() => serialItemsStamp.value++;
 
+  /// Whether the user has overridden the Full-serial lock for this sheet session.
+  ///
+  /// When `true`:
+  ///   - Full serials are selectable in the dropdown (widget un-disables them).
+  ///   - The POS qty cap is bypassed in `effectiveMaxQty` so the user can enter
+  ///     any qty (batch and rack balance caps remain enforced).
+  ///
+  /// Reset to `false` at every sheet open via `_seedNewItemModeFlags` /
+  /// `_seedEditModeFlags` (DN) and `initForNewItem` / `_loadExistingItem` (SE).
+  final allowFullSerials = false.obs;
+
   // ── Abstract hooks (concrete controller must provide) ────────────────────
 
   /// Ordered list of valid serial numbers for the dropdown.

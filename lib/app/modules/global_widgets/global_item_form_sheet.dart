@@ -240,21 +240,38 @@ class GlobalItemFormSheet extends StatelessWidget {
     required Color color,
     required Widget child,
     Color? bgColor,
+    Widget? labelTrailing,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-              letterSpacing: 0.5,
-            ),
-          ),
+          child: labelTrailing == null
+              ? Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    labelTrailing,
+                  ],
+                ),
         ),
         Container(
           // fix(input-group): clip children to the BorderRadius boundary so

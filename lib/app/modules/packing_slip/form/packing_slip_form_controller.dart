@@ -24,6 +24,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_num
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 class PackingSlipFormController extends GetxController
     with OptimisticLockingMixin {
@@ -43,6 +44,17 @@ class PackingSlipFormController extends GetxController
   var isSaving     = false.obs;
   var isScanning   = false.obs;
   var isDirty      = false.obs;
+  var saveResult     = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
+
   var isAddingItem = false.obs;
   String _originalJson = '';
 
@@ -114,6 +126,7 @@ class PackingSlipFormController extends GetxController
   @override
   void onClose() {
     _scanWorker?.dispose();
+    _saveResultTimer?.cancel();
     barcodeController.dispose();
     super.onClose();
   }
@@ -369,7 +382,10 @@ class PackingSlipFormController extends GetxController
       return item.copyWith(dnDetail: match.name!);
     }).toList();
 
-    if (changed) packingSlip.value = slip.copyWith(items: patched);
+    if (changed) {
+      packingSlip.value = slip.copyWith(items: patched);
+      _checkForChanges();
+    }
   }
 
   // ── Fetch error handler ────────────────────────────────────────────────────
@@ -1342,8 +1358,10 @@ class PackingSlipFormController extends GetxController
       name = saved.name;
       mode = 'edit';
       GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
+      _setSaveResult(SaveResult.success);
     } else {
       GlobalSnackbar.error(message: 'Failed to save Packing Slip');
+      _setSaveResult(SaveResult.error);
     }
   }
 
@@ -1360,8 +1378,10 @@ class PackingSlipFormController extends GetxController
       packingSlip.value = saved;
       _updateOriginalState(saved);
       GlobalSnackbar.success(message: 'Packing Slip Saved');
+      _setSaveResult(SaveResult.success);
     } else {
       GlobalSnackbar.error(message: 'Failed to save Packing Slip');
+      _setSaveResult(SaveResult.error);
     }
   }
 
@@ -1385,6 +1405,7 @@ class PackingSlipFormController extends GetxController
   ///   2. Frappe validation error in response body → human-readable snackbar.
   ///   3. Fallback → generic error snackbar.
   void _handleSaveError(Object e) {
+    _setSaveResult(SaveResult.error);
     if (handleVersionConflict(e)) return;
     if (e is DioException) {
       final data = e.response?.data;

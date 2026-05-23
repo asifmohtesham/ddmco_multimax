@@ -1,13 +1,6 @@
 {
   "configurations": [
     {
-      "name": "TC15 USB",
-      "program": "lib/main.dart",
-      "deviceId": "23045524700452",
-      "request": "launch",
-      "type": "dart"
-    },
-    {
       "name": "Pixel 7 USB",
       "program": "lib/main.dart",
       "deviceId": "34241FDH200620",
@@ -18,6 +11,13 @@
       "name": "Pixel 7 Wi-Fi",
       "program": "lib/main.dart",
       "deviceId": "192.168.0.186:40091",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "TC15 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700452",
       "request": "launch",
       "type": "dart"
     },
@@ -39,6 +39,20 @@
       "name": "Adnan K AWCX6R4131003991 USB",
       "program": "lib/main.dart",
       "deviceId": "AWCX6R4131003991",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "JB 00751909060cd099 USB",
+      "program": "lib/main.dart",
+      "deviceId": "00751909060cd099",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "AA 22204524700538 USB",
+      "program": "lib/main.dart",
+      "deviceId": "22204524700538",
       "request": "launch",
       "type": "dart"
     }

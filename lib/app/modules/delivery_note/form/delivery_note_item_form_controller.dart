@@ -143,7 +143,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     ceil = _applyConstraint(ceil, batchBalance.value);
     ceil = _applyConstraint(ceil, rackBalance.value);
     final serial = selectedSerial.value ?? '';
-    if (serial.isNotEmpty) {
+    if (serial.isNotEmpty && !allowFullSerials.value) {
       // Apply the raw POS Item Qty as a hard cap — independently of how
       // much the user has already typed (liveRemaining shifts as they type
       // so it must NOT be used as the cap source here).
@@ -510,6 +510,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     editingIndex.value    = -1;
     editingItemName.value = null;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+    allowFullSerials.value = false;
   }
 
   /// Responsibility: write all item-identity reactive variables so the
@@ -608,6 +609,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     editingIndex.value    = index;
     editingItemName.value = item.name;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+    allowFullSerials.value = false;
   }
 
   /// Responsibility: write all item-identity reactive variables from the

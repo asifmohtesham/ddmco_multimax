@@ -18,14 +18,16 @@ class SaveIconButton extends StatefulWidget {
   final bool isDirty;
   final SaveResult saveResult;
   final String tooltip;
+  final bool showFilledWhenDirty;
 
   const SaveIconButton({
     super.key,
     required this.onPressed,
-    this.isSaving    = false,
-    this.isDirty     = true,
-    this.saveResult  = SaveResult.idle,
-    this.tooltip     = 'Save',
+    this.isSaving             = false,
+    this.isDirty              = true,
+    this.saveResult           = SaveResult.idle,
+    this.tooltip              = 'Save',
+    this.showFilledWhenDirty  = false,
   });
 
   @override
@@ -92,12 +94,26 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     }
 
     // ── Default save icon ─────────────────────────────────────────────────
-    // IconButton renders at reduced opacity automatically when onPressed == null.
+    // Filled variant: navy background when dirty and caller opts in.
+    // No explicit icon color: argument is ever set — that is the fix from
+    // commit 48e1596b and must not regress.
+    if (widget.showFilledWhenDirty && widget.isDirty) {
+      return IconButton(
+        style: IconButton.styleFrom(
+          backgroundColor: const Color(0xFF25286F),
+          foregroundColor: Colors.white,
+        ),
+        icon:      const Icon(Icons.save),
+        tooltip:   widget.tooltip,
+        onPressed: widget.onPressed,
+      );
+    }
+
+    // Plain / disabled — no explicit color:
     return IconButton(
       icon:      const Icon(Icons.save),
       tooltip:   widget.tooltip,
       onPressed: widget.isDirty ? widget.onPressed : null,
-      color:     cs.onPrimary,
     );
   }
 }
