@@ -93,6 +93,7 @@ typedef _PSCol = (String, CellValue Function(_PSRow));
 
 class _PackingSlipExcelParams {
   final String docName;
+  final String docDate;
   final Map<String, String> itemNameByIdx;
   final List<PackingSlip> packingSlips;
   final bool compact;
@@ -100,6 +101,7 @@ class _PackingSlipExcelParams {
 
   const _PackingSlipExcelParams({
     required this.docName,
+    required this.docDate,
     required this.itemNameByIdx,
     required this.packingSlips,
     required this.compact,
@@ -187,33 +189,52 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     }
   }
 
+  // ── Document header (rows 0–3, row 3 is blank) ───────────────────────
+  const tableStartRow = 4;
+
+  CellIndex idx(int c, int r) =>
+      CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r);
+
+  sheet.cell(idx(0, 0))
+    ..value = TextCellValue('Packing Slip')
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 20, bold: true);
+
+  sheet.cell(idx(0, 1))
+    ..value = TextCellValue(p.docName)
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 13);
+
+  String formattedDate;
+  try {
+    formattedDate =
+        DateFormat('dd MMM yyyy').format(DateTime.parse(p.docDate));
+  } catch (_) {
+    formattedDate = p.docDate;
+  }
+  sheet.cell(idx(0, 2))
+    ..value = TextCellValue(formattedDate)
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
+
+  // ── Table column headers ──────────────────────────────────────────────
+  final bodyStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
+
   for (int c = 0; c < columns.length; c++) {
-    sheet
-        .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
-        .value = TextCellValue(columns[c].$1);
+    sheet.cell(idx(c, tableStartRow))
+      ..value = TextCellValue(columns[c].$1)
+      ..cellStyle = bodyStyle;
   }
 
-  int row = 1;
-  void setCell(int col, CellValue v) => sheet
-      .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-      .value = v;
-
+  // ── Data rows ─────────────────────────────────────────────────────────
+  int row = tableStartRow + 1;
   for (final r in sortedRows) {
     for (int c = 0; c < columns.length; c++) {
-      setCell(c, columns[c].$2(r));
+      sheet.cell(idx(c, row))
+        ..value = columns[c].$2(r)
+        ..cellStyle = bodyStyle;
     }
     row++;
   }
 
-  final consolasStyle = CellStyle(fontFamily: 'Consolas');
-  for (int r = 0; r <= sortedRows.length; r++) {
-    for (int c = 0; c < columns.length; c++) {
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
-          .cellStyle = consolasStyle;
-    }
-  }
-
+  // ── Autofit ───────────────────────────────────────────────────────────
   for (int c = 0; c < columns.length; c++) {
     sheet.setColumnAutoFit(c);
   }
@@ -223,6 +244,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     rawBytes,
     columns.map((col) => col.$1).toList(),
     sortedRows.length,
+    tableStartRow: tableStartRow,
   );
 }
 
@@ -656,6 +678,7 @@ class PosUploadFormController extends GetxController
 
     final params = _PackingSlipExcelParams(
       docName: upload.name,
+      docDate: upload.date,
       itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
       },
@@ -685,12 +708,15 @@ class PosUploadFormController extends GetxController
   static List<int> _injectExcelTable(
     List<int> xlsxBytes,
     List<String> columnNames,
-    int dataRowCount,
-  ) {
+    int dataRowCount, {
+    int tableStartRow = 0,
+  }) {
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
     final colCount = columnNames.length;
     final lastCol = _excelColLetter(colCount - 1);
-    final ref = 'A1:$lastCol${dataRowCount + 1}';
+    // tableStartRow is 0-based; Excel refs are 1-based.
+    final firstExcelRow = tableStartRow + 1;
+    final ref = 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount}';
 
     final colsBuffer = StringBuffer();
     for (int i = 0; i < colCount; i++) {

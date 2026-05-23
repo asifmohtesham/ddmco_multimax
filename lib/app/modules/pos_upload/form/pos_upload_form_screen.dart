@@ -132,18 +132,18 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     icon: isExporting
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: Theme.of(ctx).colorScheme.onPrimary,
                             ),
                           )
                         : const Icon(Icons.table_view_outlined),
                     label: Text(isExporting ? 'Exporting…' : 'Share as Excel'),
                     onPressed: isExporting
-                        ? null
+                        ? () {}
                         : () async {
                             setState(() => isExporting = true);
                             try {
