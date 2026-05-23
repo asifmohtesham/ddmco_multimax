@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
@@ -75,6 +76,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
       builder: (ctx) {
         var compact = true;
         String? sortByColumn;
+        var isExporting = false;
         return StatefulBuilder(
           builder: (ctx, setState) => SafeArea(
             child: Padding(
@@ -96,10 +98,12 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                           : 'Case · Serial · Variant · Code · Item · Qty · Country',
                     ),
                     value: compact,
-                    onChanged: (v) => setState(() {
-                      compact = v;
-                      sortByColumn = null;
-                    }),
+                    onChanged: isExporting
+                        ? null
+                        : (v) => setState(() {
+                              compact = v;
+                              sortByColumn = null;
+                            }),
                     contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 8),
@@ -117,22 +121,56 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         child: Text('None (natural order)'),
                       ),
                       ..._columnNames(compact).map(
-                        (name) => DropdownMenuItem(value: name, child: Text(name)),
+                        (name) =>
+                            DropdownMenuItem(value: name, child: Text(name)),
                       ),
                     ],
-                    onChanged: (v) => setState(() => sortByColumn = v),
+                    onChanged: isExporting
+                        ? null
+                        : (v) => setState(() => sortByColumn = v),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    icon: const Icon(Icons.table_view_outlined),
-                    label: const Text('Share as Excel'),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      controller.sharePackingSlipExcel(
-                        compact: compact,
-                        sortByColumn: sortByColumn,
-                      );
-                    },
+                    icon: isExporting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.table_view_outlined),
+                    label: Text(isExporting ? 'Exporting…' : 'Share as Excel'),
+                    onPressed: isExporting
+                        ? null
+                        : () async {
+                            setState(() => isExporting = true);
+                            try {
+                              final filePath =
+                                  await controller.buildPackingSlipExcel(
+                                compact: compact,
+                                sortByColumn: sortByColumn,
+                              );
+                              if (ctx.mounted) Navigator.of(ctx).pop();
+                              await Share.shareXFiles(
+                                [
+                                  XFile(
+                                    filePath,
+                                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                  ),
+                                ],
+                                subject:
+                                    '${controller.posUpload.value?.name} – Packing Slip',
+                              );
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                setState(() => isExporting = false);
+                              }
+                              GlobalSnackbar.error(
+                                  message: 'Export failed: $e');
+                            }
+                          },
                   ),
                 ],
               ),

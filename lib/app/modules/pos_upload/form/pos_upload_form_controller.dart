@@ -1,13 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -90,6 +88,143 @@ typedef _PSRow = ({
 });
 
 typedef _PSCol = (String, CellValue Function(_PSRow));
+
+// ── compute() plumbing ──────────────────────────────────────────────────────
+
+class _PackingSlipExcelParams {
+  final String docName;
+  final Map<String, String> itemNameByIdx;
+  final List<PackingSlip> packingSlips;
+  final bool compact;
+  final String? sortByColumn;
+
+  const _PackingSlipExcelParams({
+    required this.docName,
+    required this.itemNameByIdx,
+    required this.packingSlips,
+    required this.compact,
+    this.sortByColumn,
+  });
+}
+
+// Top-level function — required by compute(). Runs in a background isolate.
+// Returns the final xlsx bytes (Consolas font, autofit, Excel Table injected).
+List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
+  final safeName = p.docName.replaceAll('/', '_');
+  final excelFile = Excel.createExcel();
+  excelFile.rename('Sheet1', safeName);
+  final sheet = excelFile[safeName];
+
+  var columns = p.compact
+      ? <_PSCol>[
+          ('Case #',            (r) => r.caseCell),
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Country of Origin', (r) => TextCellValue(r.country)),
+        ]
+      : <_PSCol>[
+          ('Case #',            (r) => r.caseCell),
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
+          ('Item Code',         (r) => TextCellValue(r.itemCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Country of Origin', (r) => TextCellValue(r.country)),
+        ];
+
+  final rowMap = <String, _PSRow>{};
+  for (final ps in p.packingSlips) {
+    final caseCell = PosUploadFormController.psCaseCell(ps);
+    final caseKey  = PosUploadFormController._psCaseKey(ps);
+    for (final psItem in ps.items) {
+      final posItemName =
+          p.itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
+      final serial    = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+      final variantOf = psItem.customVariantOf ?? '';
+      final itemCode  = psItem.itemCode;
+      final country   = psItem.customCountryOfOrigin ?? '';
+
+      final key = p.compact
+          ? '$caseKey\x00$serial\x00$posItemName\x00$country'
+          : '$caseKey\x00$serial\x00$variantOf\x00$itemCode\x00$posItemName\x00$country';
+
+      final existing = rowMap[key];
+      rowMap[key] = existing == null
+          ? (
+              caseCell:  caseCell,
+              caseKey:   caseKey,
+              serial:    serial,
+              variantOf: variantOf,
+              itemCode:  itemCode,
+              itemName:  posItemName,
+              qty:       psItem.qty,
+              country:   country,
+            )
+          : (
+              caseCell:  existing.caseCell,
+              caseKey:   existing.caseKey,
+              serial:    existing.serial,
+              variantOf: existing.variantOf,
+              itemCode:  existing.itemCode,
+              itemName:  existing.itemName,
+              qty:       existing.qty + psItem.qty,
+              country:   existing.country,
+            );
+    }
+  }
+
+  final sortedRows = rowMap.values.toList();
+  if (p.sortByColumn != null) {
+    final sortIdx = columns.indexWhere((c) => c.$1 == p.sortByColumn);
+    if (sortIdx >= 0) {
+      sortedRows.sort(
+          (a, b) => PosUploadFormController._rowComparator(p.sortByColumn!, a, b));
+      if (sortIdx > 0) {
+        final col = columns.removeAt(sortIdx);
+        columns.insert(0, col);
+      }
+    }
+  }
+
+  for (int c = 0; c < columns.length; c++) {
+    sheet
+        .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
+        .value = TextCellValue(columns[c].$1);
+  }
+
+  int row = 1;
+  void setCell(int col, CellValue v) => sheet
+      .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
+      .value = v;
+
+  for (final r in sortedRows) {
+    for (int c = 0; c < columns.length; c++) {
+      setCell(c, columns[c].$2(r));
+    }
+    row++;
+  }
+
+  final consolasStyle = CellStyle(fontFamily: 'Consolas');
+  for (int r = 0; r <= sortedRows.length; r++) {
+    for (int c = 0; c < columns.length; c++) {
+      sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
+          .cellStyle = consolasStyle;
+    }
+  }
+
+  for (int c = 0; c < columns.length; c++) {
+    sheet.setColumnAutoFit(c);
+  }
+
+  final rawBytes = excelFile.encode()!;
+  return PosUploadFormController._injectExcelTable(
+    rawBytes,
+    columns.map((col) => col.$1).toList(),
+    sortedRows.length,
+  );
+}
 
 class PosUploadFormController extends GetxController
     with OptimisticLockingMixin {
@@ -507,178 +642,40 @@ class PosUploadFormController extends GetxController
 
   // ── Excel export ───────────────────────────────────────────────────────────
 
-  Future<void> sharePackingSlipExcel({required bool compact, String? sortByColumn}) async {
+  // Builds the xlsx and writes it to the temp directory.
+  // Returns the file path on success; throws on failure.
+  // The caller is responsible for opening the share sheet and handling errors.
+  Future<String> buildPackingSlipExcel({
+    required bool compact,
+    String? sortByColumn,
+  }) async {
     final upload = posUpload.value;
     if (upload == null || packingSlips.isEmpty) {
-      GlobalSnackbar.error(message: 'No packing slip data available');
-      return;
+      throw Exception('No packing slip data available');
     }
 
-    Get.dialog(
-      const Center(child: CircularProgressIndicator()),
-      barrierDismissible: false,
-    );
-    // Yield to the event loop so Flutter can render the dialog before the
-    // synchronous encode / zip work blocks the main thread.
-    await Future.delayed(Duration.zero);
-
-    try {
-      final itemNameByIdx = <String, String>{
+    final params = _PackingSlipExcelParams(
+      docName: upload.name,
+      itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
-      };
+      },
+      packingSlips:
+          packingSlips.where((p) => p.customPoNo == upload.name).toList(),
+      compact: compact,
+      sortByColumn: sortByColumn,
+    );
 
-      final safeName = upload.name.replaceAll('/', '_');
+    // Runs in a background isolate — caller's UI stays responsive.
+    final fileBytes = await compute(_buildPackingSlipExcel, params);
 
-      final excelFile = Excel.createExcel();
-      excelFile.rename('Sheet1', safeName);
-      final sheet = excelFile[safeName];
+    final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
+    final safeName  = upload.name.replaceAll('/', '_');
+    final fileName  = 'POS Upload - $safeName - $timestamp';
+    final tempDir   = await getTemporaryDirectory();
+    final filePath  = '${tempDir.path}/$fileName.xlsx';
+    await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
-      // ── Column list — order determines Excel column positions ─────────
-      var columns = compact
-          ? <_PSCol>[
-              ('Case #',            (r) => r.caseCell),
-              ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
-              ('Item Name',         (r) => TextCellValue(r.itemName)),
-              ('Qty',               (r) => DoubleCellValue(r.qty)),
-              ('Country of Origin', (r) => TextCellValue(r.country)),
-            ]
-          : <_PSCol>[
-              ('Case #',            (r) => r.caseCell),
-              ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
-              ('Variant Of',        (r) => TextCellValue(r.variantOf)),
-              ('Item Code',         (r) => TextCellValue(r.itemCode)),
-              ('Item Name',         (r) => TextCellValue(r.itemName)),
-              ('Qty',               (r) => DoubleCellValue(r.qty)),
-              ('Country of Origin', (r) => TextCellValue(r.country)),
-            ];
-
-      // ── Aggregate: sum Qty for rows with identical non-qty columns ────
-      final rowMap = <String, _PSRow>{};
-
-      for (final ps in packingSlips.where((p) => p.customPoNo == upload.name)) {
-        final caseCell = psCaseCell(ps);
-        final caseKey  = _psCaseKey(ps);
-        for (final psItem in ps.items) {
-          final posItemName =
-              itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
-          final serial    = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
-          final variantOf = psItem.customVariantOf ?? '';
-          final itemCode  = psItem.itemCode;
-          final country   = psItem.customCountryOfOrigin ?? '';
-
-          final key = compact
-              ? '$caseKey\x00$serial\x00$posItemName\x00$country'
-              : '$caseKey\x00$serial\x00$variantOf\x00$itemCode\x00$posItemName\x00$country';
-
-          final existing = rowMap[key];
-          rowMap[key] = existing == null
-              ? (
-                  caseCell:  caseCell,
-                  caseKey:   caseKey,
-                  serial:    serial,
-                  variantOf: variantOf,
-                  itemCode:  itemCode,
-                  itemName:  posItemName,
-                  qty:       psItem.qty,
-                  country:   country,
-                )
-              : (
-                  caseCell:  existing.caseCell,
-                  caseKey:   existing.caseKey,
-                  serial:    existing.serial,
-                  variantOf: existing.variantOf,
-                  itemCode:  existing.itemCode,
-                  itemName:  existing.itemName,
-                  qty:       existing.qty + psItem.qty,
-                  country:   existing.country,
-                );
-        }
-      }
-
-      // ── Sort rows; move sort column to Column A ───────────────────────
-      final sortedRows = rowMap.values.toList();
-      if (sortByColumn != null) {
-        // Guard: only sort if the column actually exists in this format.
-        final sortIdx = columns.indexWhere((c) => c.$1 == sortByColumn);
-        if (sortIdx >= 0) {
-          sortedRows.sort((a, b) => _rowComparator(sortByColumn, a, b));
-          if (sortIdx > 0) {
-            final col = columns.removeAt(sortIdx);
-            columns.insert(0, col);
-          }
-        }
-      }
-
-      // ── Header row ────────────────────────────────────────────────────
-      for (int c = 0; c < columns.length; c++) {
-        sheet
-            .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0))
-            .value = TextCellValue(columns[c].$1);
-      }
-
-      // ── Data rows ─────────────────────────────────────────────────────
-      int row = 1;
-      void setCell(int col, CellValue v) => sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-          .value = v;
-
-      for (final r in sortedRows) {
-        for (int c = 0; c < columns.length; c++) {
-          setCell(c, columns[c].$2(r));
-        }
-        row++;
-      }
-
-      // ── Consolas font on every cell ───────────────────────────────────
-      final consolasStyle = CellStyle(fontFamily: 'Consolas');
-      for (int r = 0; r <= sortedRows.length; r++) {
-        for (int c = 0; c < columns.length; c++) {
-          sheet
-              .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r))
-              .cellStyle = consolasStyle;
-        }
-      }
-
-      // ── Autofit column widths ─────────────────────────────────────────
-      for (int c = 0; c < columns.length; c++) {
-        sheet.setColumnAutoFit(c);
-      }
-
-      final rawBytes = excelFile.encode();
-      if (rawBytes == null) {
-        if (Get.isDialogOpen == true) Get.back();
-        GlobalSnackbar.error(message: 'Failed to encode Excel file');
-        return;
-      }
-
-      final fileBytes = _injectExcelTable(
-        rawBytes,
-        columns.map((col) => col.$1).toList(),
-        sortedRows.length,
-      );
-
-      final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
-      final fileName = 'POS Upload - $safeName - $timestamp';
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/$fileName.xlsx';
-      await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
-
-      if (Get.isDialogOpen == true) Get.back();
-
-      await Share.shareXFiles(
-        [
-          XFile(
-            filePath,
-            mimeType:
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          ),
-        ],
-        subject: '${upload.name} – Packing Slip',
-      );
-    } catch (e) {
-      if (Get.isDialogOpen == true) Get.back();
-      GlobalSnackbar.error(message: 'Share failed: $e');
-    }
+    return filePath;
   }
 
   // ── Excel post-processing helpers ───────────────────────────────────────
