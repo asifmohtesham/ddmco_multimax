@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'bom_form_controller.dart';
 import 'widgets/bom_items_tab.dart';
 import 'widgets/bom_exploded_items_tab.dart';
@@ -36,12 +35,14 @@ class BomFormScreen extends GetView<BomFormController> {
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      bom?.name ?? controller.bomName,
-                  canSave:    isDirty,
-                  docStatus:  bom?.docstatus ?? 0,
-                  isSaving:   isSaving,
-                  saveResult: saveResult,
-                  onSave:     isDirty ? controller.save : null,
+                  title:       bom?.name ?? controller.bomName,
+                  docType:     'Bill of Materials',
+                  statusLabel: bom?.status,
+                  canSave:     isDirty,
+                  docStatus:   bom?.docstatus ?? 0,
+                  isSaving:    isSaving,
+                  saveResult:  saveResult,
+                  onSave:      isDirty ? controller.save : null,
                   extraActions: [
                     if (bom != null)
                       IconButton(
@@ -134,7 +135,6 @@ class _BomHeaderCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                StatusPill(status: bom.status),
               ],
             ),
             const SizedBox(height: 10),
