@@ -16,10 +16,11 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final slip      = controller.packingSlip.value;
-      final isDirty   = controller.isDirty.value;
-      final isSaving  = controller.isSaving.value;
-      final isLoading = controller.isLoading.value;
+      final slip       = controller.packingSlip.value;
+      final isDirty    = controller.isDirty.value;
+      final isSaving   = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading  = controller.isLoading.value;
 
       return PopScope(
         canPop: !isDirty,
@@ -33,10 +34,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:     slip?.name ?? 'Packing Slip',
-                  canSave:   isDirty,
-                  docStatus: slip?.docstatus ?? 0,
-                  isSaving:  isSaving,
+                  title:       slip?.name ?? 'Packing Slip',
+                  docType:     'Packing Slip',
+                  statusLabel: slip?.status,
+                  canSave:     isDirty,
+                  docStatus:   slip?.docstatus ?? 0,
+                  isSaving:    isSaving,
+                  saveResult:  saveResult,
                   onSave: slip?.docstatus == 0
                       ? controller.savePackingSlip
                       : null,
