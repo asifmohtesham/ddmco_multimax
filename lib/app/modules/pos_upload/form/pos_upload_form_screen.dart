@@ -27,7 +27,9 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
           body: NestedScrollView(
             headerSliverBuilder: (ctx, _) => [
               DocTypeFormHeader(
-                title: title,
+                title:       title,
+                docType:     'POS Upload',
+                statusLabel: posUpload?.status,
                 onShare: hasPackingSlips ? () => _showShareSheet(context) : null,
                 bottom: const TabBar(
                   tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
