@@ -32,8 +32,9 @@ void main() {
       // Widget renders without error
       expect(find.byType(IconButton), findsOneWidget);
       final btn = tester.widget<IconButton>(find.byType(IconButton));
-      // style is set (the filled override)
-      expect(btn.style, isNotNull);
+      // style is set (the filled override) with correct colours
+      expect(btn.style?.backgroundColor?.resolve({}), const Color(0xFF25286F));
+      expect(btn.style?.foregroundColor?.resolve({}), Colors.white);
     });
 
     testWidgets('shows plain IconButton when showFilledWhenDirty is true but not dirty', (tester) async {
