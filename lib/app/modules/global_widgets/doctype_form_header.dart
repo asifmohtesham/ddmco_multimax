@@ -407,6 +407,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
            isSaving       != old.isSaving       ||
            saveResult     != old.saveResult     ||
            statusBarHeight != old.statusBarHeight ||
+           bottom         != old.bottom         ||
            (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
            (onReload != null) != (old.onReload != null) ||
            (onSave   != null) != (old.onSave   != null) ||

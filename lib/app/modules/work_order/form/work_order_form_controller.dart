@@ -26,6 +26,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/data/enums/save_result.dart';
 
 class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioErrorMixin {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
@@ -61,6 +62,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   // ── Rx state ──────────────────────────────────────────────────────────────
   final isLoading = true.obs;
   final isSaving = false.obs;
+  final saveResult = SaveResult.idle.obs;
   final isDirty = false.obs;
   final isFetchingBom = false.obs;
   final isFetchingWarehouses = false.obs;
@@ -776,15 +778,19 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   Future<void> save() async {
     if (isSaving.value || !canSave) return;
     isSaving.value = true;
+    saveResult.value = SaveResult.idle;
     try {
       if (mode == 'new') {
         await _createWorkOrder();
       } else {
         await _updateWorkOrder();
       }
+      saveResult.value = SaveResult.success;
     } on DioException catch (e) {
+      saveResult.value = SaveResult.error;
       GlobalSnackbar.error(message: _extractErrorMessage(e, 'Save failed'));
     } catch (e) {
+      saveResult.value = SaveResult.error;
       GlobalSnackbar.error(message: 'Error: $e');
     } finally {
       isSaving.value = false;
