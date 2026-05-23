@@ -209,7 +209,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
             // Collapsed middle: two-line caption + doc name (fades in on collapse)
             Positioned.fill(
               child: Offstage(
-                offstage: collapseProgress == 0.0,
+                offstage: collapseProgress < 0.001,
                 child: Opacity(
                   opacity: collapseProgress,
                   child: Column(
@@ -407,6 +407,9 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
            isSaving       != old.isSaving       ||
            saveResult     != old.saveResult     ||
            statusBarHeight != old.statusBarHeight ||
-           (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0);
+           (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
+           (onReload != null) != (old.onReload != null) ||
+           (onSave   != null) != (old.onSave   != null) ||
+           (onShare  != null) != (old.onShare  != null);
   }
 }
