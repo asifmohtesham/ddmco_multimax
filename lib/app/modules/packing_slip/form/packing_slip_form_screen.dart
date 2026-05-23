@@ -37,7 +37,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   canSave:   isDirty,
                   docStatus: slip?.docstatus ?? 0,
                   isSaving:  isSaving,
-                  onSave: (slip?.docstatus == 0 && isDirty)
+                  onSave: slip?.docstatus == 0
                       ? controller.savePackingSlip
                       : null,
                   onReload: (controller.mode != 'new' && !isDirty)
