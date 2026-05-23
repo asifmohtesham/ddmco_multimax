@@ -225,7 +225,7 @@ class _DocTypeImageUploadState extends State<DocTypeImageUpload> {
       await Get.find<ApiProvider>().updateDocument(
         widget.doctype,
         widget.docname,
-        {'image': null},
+        {widget.fieldname: null},
       );
       widget.onUploaded();
     } catch (e) {
