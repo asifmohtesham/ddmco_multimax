@@ -510,6 +510,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     editingIndex.value    = -1;
     editingItemName.value = null;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+    allowFullSerials.value = false;
   }
 
   /// Responsibility: write all item-identity reactive variables so the
@@ -608,6 +609,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     editingIndex.value    = index;
     editingItemName.value = item.name;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+    allowFullSerials.value = false;
   }
 
   /// Responsibility: write all item-identity reactive variables from the
