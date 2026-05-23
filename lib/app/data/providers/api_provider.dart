@@ -521,7 +521,9 @@ class ApiProvider {
   /// logic without a live HTTP connection.
   static String? parseUploadFileResponse(Map<String, dynamic>? data) {
     if (data == null) return null;
-    final fileUrl = data['message']?['file_url'];
+    final message = data['message'];
+    if (message is! Map) return null;
+    final fileUrl = message['file_url'];
     return fileUrl is String ? fileUrl : null;
   }
 

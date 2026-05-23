@@ -30,5 +30,10 @@ void main() {
       final data = <String, dynamic>{'message': {'file_url': 42}};
       expect(ApiProvider.parseUploadFileResponse(data), isNull);
     });
+
+    test('T-6: returns null when message is a String, not a Map', () {
+      final data = <String, dynamic>{'message': 'Insufficient Permission'};
+      expect(ApiProvider.parseUploadFileResponse(data), isNull);
+    });
   });
 }
