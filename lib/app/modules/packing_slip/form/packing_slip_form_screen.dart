@@ -374,7 +374,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (dnItem.idx != null)
+                    if (dnItem.idx != null && dnItem.idx! > 0)
                       Text(
                         'Row #${dnItem.idx}',
                         style: TextStyle(
