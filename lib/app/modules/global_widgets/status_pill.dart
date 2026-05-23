@@ -109,6 +109,7 @@ class StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, textColour) = colourForStatus(status);
     return Container(
+      constraints: compact ? const BoxConstraints(minHeight: 14) : null,
       padding: compact
           ? const EdgeInsets.symmetric(horizontal: 6, vertical: 2)
           : const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
