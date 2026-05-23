@@ -55,6 +55,10 @@ class ItemCardData {
   ///   PO → receivedQty, PR → purchaseOrderQty, SE/DN/PS → null
   final double? targetQty;
 
+  /// Packed qty from packing slips (DN only). Drives a packed progress bar
+  /// rendered immediately below the item headline in DocItemCard.
+  final double? packedQty;
+
   // ── Pricing (retained in model; suppressed in all factories — C11) ─────────
 
   final double? rate;
@@ -95,6 +99,7 @@ class ItemCardData {
     required this.qty,
     this.uom,
     this.targetQty,
+    this.packedQty,
     this.rate,
     this.amount,
     this.warehouse,
@@ -124,6 +129,7 @@ class ItemCardData {
       qty:            qty,
       uom:            uom,
       targetQty:      targetQty,
+      packedQty:      packedQty,
       rate:           rate,
       amount:         amount,
       warehouse:      warehouse,
@@ -307,6 +313,7 @@ class ItemCardData {
       itemName:      item.itemName,
       variantOf:     item.customVariantOf,
       qty:           item.qty,
+      packedQty:     item.packedQty,
       // rate / amount suppressed — C11
       rate:          null,
       amount:        null,

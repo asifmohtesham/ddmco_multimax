@@ -415,17 +415,22 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
                   final cumulativeQty = dnItemsForThisPosItem.fold(
                       0.0, (sum, item) => sum + item.qty);
+                  final cumulativePackedQty = dnItemsForThisPosItem.fold(
+                      0.0, (sum, item) => sum + (item.packedQty ?? 0.0));
 
                   return Container(
                     key: controller.itemKeys[expansionKey],
                     child: ItemGroupCard(
-                      isExpanded: currentExpandedKey == expansionKey,
-                      serialNo:   posItem.idx,
-                      itemName:   posItem.itemName,
-                      rate:       posItem.rate,
-                      totalQty:   posItem.quantity,
-                      scannedQty: cumulativeQty,
-                      currency:   currency,
+                      isExpanded:      currentExpandedKey == expansionKey,
+                      serialNo:        posItem.idx,
+                      itemName:        posItem.itemName,
+                      rate:            posItem.rate,
+                      totalQty:        posItem.quantity,
+                      scannedQty:      cumulativeQty,
+                      currency:        currency,
+                      totalQtyLabel:   'POS Qty',
+                      scannedQtyLabel: 'DN Qty',
+                      packedQty:       cumulativePackedQty,
                       onToggle: () =>
                           controller.toggleInvoiceExpand(expansionKey),
                       children: dnItemsForThisPosItem

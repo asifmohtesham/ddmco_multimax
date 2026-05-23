@@ -23,6 +23,15 @@ class ItemGroupCard extends StatelessWidget {
   /// totalQty, otherwise primary.
   final double? remainingQty;
 
+  /// Override label for the totalQty chip (default: 'Required').
+  final String totalQtyLabel;
+
+  /// Override label for the scannedQty chip (default: 'Scanned').
+  final String scannedQtyLabel;
+
+  /// When non-null, a 'Packed Qty' stat chip is rendered after the scanned chip.
+  final double? packedQty;
+
   const ItemGroupCard({
     super.key,
     required this.isExpanded,
@@ -35,6 +44,9 @@ class ItemGroupCard extends StatelessWidget {
     required this.children,
     this.currency,
     this.remainingQty,
+    this.totalQtyLabel = 'Required',
+    this.scannedQtyLabel = 'Scanned',
+    this.packedQty,
   });
 
   /// Returns a short display symbol for common ISO codes;
@@ -59,6 +71,7 @@ class ItemGroupCard extends StatelessWidget {
     final percent =
         (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
+
 
     // Semantic colour alias — resolved once, used for rail, border,
     // status label, progress ring, and Scanned stat chip.
@@ -189,16 +202,23 @@ class ItemGroupCard extends StatelessWidget {
                       children: [
                         _buildStatChip(
                           context: context,
-                          label: 'Required',
+                          label: totalQtyLabel,
                           value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
                           valueColor: cs.onSurfaceVariant,
                         ),
                         _buildStatChip(
                           context: context,
-                          label: 'Scanned',
+                          label: scannedQtyLabel,
                           value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
                           valueColor: completionColor,
                         ),
+                        if (packedQty != null)
+                          _buildStatChip(
+                            context: context,
+                            label: 'Packed Qty',
+                            value: '${NumberFormat('#,##0.##').format(packedQty!)} pcs',
+                            valueColor: cs.tertiary,
+                          ),
                         _buildStatChip(
                           context: context,
                           label: 'Rate',
