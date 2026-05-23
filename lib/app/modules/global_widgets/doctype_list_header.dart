@@ -204,6 +204,17 @@ class DocTypeListHeader extends StatelessWidget {
   /// `minExtent` and `maxExtent`, keeping it visible at all scroll positions.
   final PreferredSizeWidget? bottom;
 
+  // ── Actions key ──────────────────────────────────────────────────────
+  /// Opaque key that changes whenever the semantic content of [extraActions]
+  /// changes (e.g. save-button enabled state, saving spinner, save result).
+  ///
+  /// Because [shouldRebuild] can only compare [extraActions] by length (widget
+  /// instances are always new objects), callers that embed stateful widgets in
+  /// [extraActions] — such as [DocTypeFormHeader] — must pass a key derived
+  /// from those widgets' inputs.  When the key changes, the delegate rebuilds
+  /// immediately rather than waiting for the next scroll event.
+  final Object? extraActionsKey;
+
   const DocTypeListHeader({
     super.key,
     required this.title,
@@ -221,6 +232,7 @@ class DocTypeListHeader extends StatelessWidget {
     this.filterChipsBuilder,
     this.onClearAllFilters,
     this.bottom,
+    this.extraActionsKey,
   });
 
   // ✔ FIX 3: Obx wrapper triggers a widget rebuild whenever activeFilters
@@ -252,6 +264,7 @@ class DocTypeListHeader extends StatelessWidget {
       delegate: _DocTypeListHeaderDelegate(
         title: title,
         extraActions: extraActions,
+        extraActionsKey: extraActionsKey,
         automaticallyImplyLeading: automaticallyImplyLeading,
         searchDoctype: searchDoctype,
         searchRoute: searchRoute,
@@ -288,6 +301,8 @@ const int _kAutoSizeMaxLines = 2;
 class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final String title;
   final List<Widget>? extraActions;
+  /// See [DocTypeListHeader.extraActionsKey].
+  final Object? extraActionsKey;
   final bool automaticallyImplyLeading;
   final String? searchDoctype;
   final String? searchRoute;
@@ -317,6 +332,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   _DocTypeListHeaderDelegate({
     required this.title,
     required this.extraActions,
+    required this.extraActionsKey,
     required this.automaticallyImplyLeading,
     required this.searchDoctype,
     required this.searchRoute,
@@ -698,6 +714,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // extraActions length IS compared: when buttons are conditionally shown or
     // hidden (e.g. Share appears after packing slips load), the count changes
     // and the delegate must rebuild immediately rather than waiting for a scroll.
+    // extraActionsKey IS compared: callers like DocTypeFormHeader pass a record
+    // of (canSave, isSaving, saveResult, hasOnSave) so that button state
+    // changes (e.g. isDirty true → enabled icon) trigger an immediate rebuild
+    // rather than being deferred until the next scroll layout pass.
     return _filterCount != old._filterCount ||
         _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
@@ -705,6 +725,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         searchDoctype != old.searchDoctype ||
         searchRoute != old.searchRoute ||
-        (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0);
+        (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
+        extraActionsKey != old.extraActionsKey;
   }
 }

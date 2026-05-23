@@ -142,6 +142,9 @@ class DocTypeFormHeader extends StatelessWidget {
     return DocTypeListHeader(
       title:  title,
       bottom: bottom,
+      // Encodes all save-button state so shouldRebuild detects changes
+      // immediately — without this, the delegate only rebuilds on scroll.
+      extraActionsKey: (_canSave, isSaving, saveResult, onSave != null),
       // automaticallyImplyLeading is intentionally omitted → defaults to true
       // → Flutter auto-inserts the back arrow for pushed form routes.
       extraActions: [

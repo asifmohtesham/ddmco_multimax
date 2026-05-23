@@ -93,11 +93,12 @@ class _SaveIconButtonState extends State<SaveIconButton> {
 
     // ── Default save icon ─────────────────────────────────────────────────
     // IconButton renders at reduced opacity automatically when onPressed == null.
+    // No explicit color — uses the ambient icon theme so the icon is always
+    // readable against the white surface background of DocTypeListHeader.
     return IconButton(
       icon:      const Icon(Icons.save),
       tooltip:   widget.tooltip,
       onPressed: widget.isDirty ? widget.onPressed : null,
-      color:     cs.onPrimary,
     );
   }
 }
