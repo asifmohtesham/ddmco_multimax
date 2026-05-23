@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:get/get.dart' hide Response, FormData;
+import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/services/database_service.dart';
@@ -514,6 +515,57 @@ class ApiProvider {
     } catch (_) {
       return empty;
     }
+  }
+
+  /// Exposed as a public static method so unit tests can exercise the parsing
+  /// logic without a live HTTP connection.
+  static String? parseUploadFileResponse(Map<String, dynamic>? data) {
+    if (data == null) return null;
+    final fileUrl = data['message']?['file_url'];
+    return fileUrl is String ? fileUrl : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FILE UPLOAD
+  // ---------------------------------------------------------------------------
+
+  /// Uploads [filePath] to Frappe and links it to [fieldname] on
+  /// [doctype]/[docname].
+  ///
+  /// Returns the relative file_url (e.g. "/files/image.jpg") on success.
+  /// Throws [DioException] on HTTP error; throws [Exception] when the server
+  /// response does not contain a file_url (malformed response).
+  Future<String> uploadFile({
+    required String filePath,
+    required String doctype,
+    required String docname,
+    required String fieldname,
+    bool isPrivate = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    final formData = FormData.fromMap({
+      'file'      : await MultipartFile.fromFile(filePath, filename: p.basename(filePath)),
+      'doctype'   : doctype,
+      'docname'   : docname,
+      'fieldname' : fieldname,
+      'is_private': isPrivate ? '1' : '0',
+      'folder'    : 'Home/Attachments',
+    });
+    final response = await _dio.post('/api/method/upload_file', data: formData);
+    if (response.statusCode != 200) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        message: 'Upload failed with status ${response.statusCode}',
+      );
+    }
+    final fileUrl = parseUploadFileResponse(
+      response.data as Map<String, dynamic>?,
+    );
+    if (fileUrl == null || fileUrl.isEmpty) {
+      throw Exception('Server returned no file_url');
+    }
+    return fileUrl;
   }
 
   // ---------------------------------------------------------------------------
