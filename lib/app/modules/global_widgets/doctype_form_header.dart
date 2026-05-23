@@ -1,129 +1,85 @@
+import 'dart:math' as math;
+import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
-import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:flutter/foundation.dart'; // clampDouble
+import 'package:flutter/services.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
-/// A unified sliver header for every DocType **form** screen.
+export 'package:multimax/app/data/enums/save_result.dart';
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+
+/// Height of the collapsed two-line toolbar (caption + doc name).
+const double _kCollapsedToolbar = 64.0;
+
+/// Height of the single-line expanded toolbar row.
+const double _kExpandedToolbar = 56.0;
+
+/// Height of the large-title area (doctype label + doc name + status row).
+const double _kExpandedExtra = 96.0;
+
+/// Total height of expanded content = toolbar + large area.
+const double _kMaxContent = _kExpandedToolbar + _kExpandedExtra; // 152dp
+
+/// Minimum font size for AutoSizeText in the collapsed toolbar doc-name line.
+const double _kAutoSizeMinFont = 11.0;
+
+// ── Public widget ─────────────────────────────────────────────────────────────
+
+/// A standalone sliver header for DocType **form** screens.
 ///
-/// Enforces the form-screen app-bar convention defined in
-/// `docs/app_bar_conventions.md`:
+/// Produces exactly one [SliverPersistentHeader].
 ///
-/// | Slot | Widget |
-/// |------|--------|
-/// | Leading (left) | ← Back arrow (auto-inserted by Flutter) |
-/// | Actions (right) | Reload · Save · Share |
-/// | Bottom (optional) | [TabBar] or other fixed-height widget |
-///
-/// ## Usage
-///
-/// ```dart
-/// DocTypeFormHeader(
-///   title:      controller.docName,
-///   onReload:   controller.reload,
-///   onSave:     controller.save,
-///   onShare:    controller.share,
-///   canSave:    controller.isDirty.value,
-///   docStatus:  controller.docStatus,   // 0 draft · 1 submitted · 2 cancelled
-///   isSaving:   controller.isSaving.value,
-///   saveResult: controller.saveResult.value,
-///   bottom:     TabBar(controller: _tabCtrl, tabs: [...]),
-/// )
+/// **Expanded state** (user at top):
+/// ```
+/// ┌──────────────────────────────────────────────────┐
+/// │  ←  [faded title]             ↻  💾  ↗          │  56dp toolbar
+/// ├──────────────────────────────────────────────────┤
+/// │  WORK ORDER                                      │  11sp maroon label
+/// │  WO-2024-00123                                   │  24sp bold doc name
+/// │  [Draft]  ● Unsaved changes                      │  pill + amber indicator
+/// └──────────────────────────────────────────────────┘
 /// ```
 ///
-/// ## Save-button safety
+/// **Collapsed state** (scrolled):
+/// ```
+/// ┌──────────────────────────────────────────────────┐
+/// │  ←  WORK ORDER  [Draft]        ↻  💾  ↗         │  10sp maroon cap + pill
+/// │     WO-2024-00123                                │  15sp bold navy name
+/// └──────────────────────────────────────────────────┘  64dp total
+/// ```
 ///
-/// The Save button is active only when **both** conditions hold:
-/// - `canSave == true` (the controller signals un-saved changes)
-/// - `docStatus == 0` (the document is still in draft state)
-///
-/// `canSave` defaults to `false` — a screen that forgets to wire the parameter
-/// gets a permanently-disabled Save button, not a permanently-active one.
-/// `docStatus` defaults to `0` so existing call sites that only wire `canSave`
-/// continue to work without change.
-///
-/// ## Bottom slot
-///
-/// Pass a [PreferredSizeWidget] (typically a [TabBar]) as [bottom] to pin it
-/// below the collapsed toolbar. Its height is added to both `minExtent` and
-/// `maxExtent` so the sliver always reserves the correct amount of space and
-/// the widget is never scrolled away with the large title.
-///
-/// ## Relationship to [DocTypeListHeader]
-///
-/// This widget is a thin wrapper around [DocTypeListHeader].
-/// It always omits `automaticallyImplyLeading` (defaults to `true`) so Flutter
-/// auto-inserts the back arrow for pushed form routes.
-///
-/// For **list screens** use [DocTypeListHeader] directly with
-/// `automaticallyImplyLeading: false`; see `docs/app_bar_conventions.md`.
+/// [docType] and [statusLabel] are nullable so existing call sites that omit
+/// them compile and render without the label or pill (no breaking change).
 class DocTypeFormHeader extends StatelessWidget {
-  // ── Required ───────────────────────────────────────────────────────────
-
-  /// The document name shown as the collapsing app-bar title
-  /// (e.g. `"WO-00123"`, `"BOM-3000015-001"`).
   final String title;
 
-  // ── Action callbacks ─────────────────────────────────────────────────
+  /// e.g. `'Work Order'` — shown as uppercase maroon label.
+  /// Null → no label rendered.
+  final String? docType;
 
-  /// Called when the Reload icon is tapped.
-  /// Pass `null` to hide the Reload button entirely.
+  /// e.g. `'Draft'` — drives [StatusPill].
+  /// Null → no pill rendered.
+  final String? statusLabel;
+
   final VoidCallback? onReload;
-
-  /// Called when the Save icon is tapped.
-  /// Pass `null` to hide the Save button entirely.
   final VoidCallback? onSave;
-
-  /// Called when the Share icon is tapped.
-  /// Pass `null` to hide the Share button entirely.
   final VoidCallback? onShare;
 
-  // ── Save-button state ───────────────────────────────────────────────
-
-  /// Whether the form has unsaved changes.
-  ///
-  /// Defaults to `false` — a screen that forgets to wire this parameter gets a
-  /// disabled Save button rather than a permanently-active one.
-  ///
-  /// The Save button is also force-disabled when [docStatus] ≠ 0, regardless
-  /// of this flag.
   final bool canSave;
-
-  /// ERPNext document lifecycle status.
-  ///
-  /// | Value | Meaning | Save button |
-  /// |-------|---------|-------------|
-  /// | 0 | Draft | Active when [canSave] is `true` |
-  /// | 1 | Submitted | Always disabled |
-  /// | 2 | Cancelled | Always disabled |
-  ///
-  /// Defaults to `0` (draft).
   final int docStatus;
-
-  /// When `true` the Save icon is replaced with a [CircularProgressIndicator]
-  /// and the button is non-interactive.
   final bool isSaving;
-
-  /// Drives the post-save success / error flash on [SaveIconButton].
-  /// Defaults to [SaveResult.idle] (no feedback shown).
   final SaveResult saveResult;
 
-  // ── Bottom slot ──────────────────────────────────────────────────────
-
-  /// Optional widget pinned below the collapsed toolbar — typically a [TabBar].
-  ///
-  /// Its [PreferredSizeWidget.preferredSize.height] is added to both
-  /// `minExtent` and `maxExtent` so the sliver always reserves the right amount
-  /// of space and the widget remains visible regardless of scroll position.
   final PreferredSizeWidget? bottom;
-
-  // ── Escape hatch ─────────────────────────────────────────────────────
-
-  /// Additional action widgets inserted **before** Reload · Save · Share.
-  /// Use sparingly — the three standard actions should cover most cases.
   final List<Widget>? extraActions;
 
   const DocTypeFormHeader({
     super.key,
     required this.title,
+    this.docType,
+    this.statusLabel,
     this.onReload,
     this.onSave,
     this.onShare,
@@ -139,44 +95,318 @@ class DocTypeFormHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DocTypeListHeader(
-      title:  title,
-      bottom: bottom,
-      // Encodes all save-button state so shouldRebuild detects changes
-      // immediately — without this, the delegate only rebuilds on scroll.
-      extraActionsKey: (_canSave, isSaving, saveResult, onSave != null),
-      // automaticallyImplyLeading is intentionally omitted → defaults to true
-      // → Flutter auto-inserts the back arrow for pushed form routes.
-      extraActions: [
-        // ── Caller-supplied extras (before standard actions) ────────────
-        ...(extraActions ?? []),
-
-        // ── 1. Reload ───────────────────────────────────────────────────
-        if (onReload != null)
-          IconButton(
-            icon:      const Icon(Icons.refresh),
-            tooltip:   'Reload',
-            onPressed: onReload,
-          ),
-
-        // ── 2. Save (delegates to SaveIconButton for all visual states) ──
-        if (onSave != null)
-          SaveIconButton(
-            onPressed:  onSave,
-            isSaving:   isSaving,
-            isDirty:    _canSave,
-            saveResult: saveResult,
-            tooltip:    'Save',
-          ),
-
-        // ── 3. Share ─────────────────────────────────────────────────────
-        if (onShare != null)
-          IconButton(
-            icon:      const Icon(Icons.share_outlined),
-            tooltip:   'Share',
-            onPressed: onShare,
-          ),
-      ],
+    final statusBarHeight = MediaQuery.paddingOf(context).top;
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: _DocTypeFormHeaderDelegate(
+        title:           title,
+        docType:         docType,
+        statusLabel:     statusLabel,
+        onReload:        onReload,
+        onSave:          onSave,
+        onShare:         onShare,
+        canSave:         _canSave,
+        isSaving:        isSaving,
+        saveResult:      saveResult,
+        bottom:          bottom,
+        extraActions:    extraActions,
+        statusBarHeight: statusBarHeight,
+      ),
     );
+  }
+}
+
+// ── Delegate ──────────────────────────────────────────────────────────────────
+
+class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String title;
+  final String? docType;
+  final String? statusLabel;
+  final VoidCallback? onReload;
+  final VoidCallback? onSave;
+  final VoidCallback? onShare;
+  final bool canSave;
+  final bool isSaving;
+  final SaveResult saveResult;
+  final PreferredSizeWidget? bottom;
+  final List<Widget>? extraActions;
+  final double statusBarHeight;
+
+  const _DocTypeFormHeaderDelegate({
+    required this.title,
+    required this.docType,
+    required this.statusLabel,
+    required this.onReload,
+    required this.onSave,
+    required this.onShare,
+    required this.canSave,
+    required this.isSaving,
+    required this.saveResult,
+    required this.bottom,
+    required this.extraActions,
+    required this.statusBarHeight,
+  });
+
+  double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
+
+  @override
+  double get minExtent => statusBarHeight + _kCollapsedToolbar + _bottomHeight;
+
+  @override
+  double get maxExtent => statusBarHeight + _kMaxContent + _bottomHeight;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final shrinkRange = maxExtent - minExtent; // 88dp
+    final collapseProgress = shrinkRange > 0
+        ? clampDouble(shrinkOffset / shrinkRange, 0.0, 1.0)
+        : 1.0;
+    final expandProgress = 1.0 - collapseProgress;
+
+    final theme       = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // ── System UI ────────────────────────────────────────────────────────────
+    final surfaceLuminance = colorScheme.surface.computeLuminance();
+    final iconBrightness   = surfaceLuminance > 0.5 ? Brightness.dark : Brightness.light;
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor:          Colors.transparent,
+      statusBarIconBrightness: iconBrightness,
+      statusBarBrightness:     iconBrightness == Brightness.dark
+          ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness: iconBrightness,
+    );
+
+    // ── Actions (same in both states) ────────────────────────────────────────
+    final actions = _buildActions(context);
+
+    // ── Toolbar (animated height 56dp → 64dp) ─────────────────────────────────
+    final toolbarHeight = _kExpandedToolbar + 8.0 * collapseProgress;
+
+    final toolbar = SizedBox(
+      height: toolbarHeight,
+      child: NavigationToolbar(
+        leading: _buildLeading(context),
+        middle: Stack(
+          children: [
+            // Expanded middle: faded doc name (opacity fades out on collapse)
+            Positioned.fill(
+              child: Opacity(
+                opacity: expandProgress,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: AutoSizeText(
+                    title,
+                    style: theme.textTheme.titleLarge,
+                    maxLines: 2,
+                    minFontSize: _kAutoSizeMinFont,
+                    overflow: TextOverflow.clip,
+                    softWrap: true,
+                  ),
+                ),
+              ),
+            ),
+            // Collapsed middle: two-line caption + doc name (fades in on collapse)
+            Positioned.fill(
+              child: Offstage(
+                offstage: collapseProgress == 0.0,
+                child: Opacity(
+                  opacity: collapseProgress,
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (docType != null)
+                          Text(
+                            docType!.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.7,
+                              color: Color(0xFF870E18),
+                              height: 1.0,
+                            ),
+                          ),
+                        if (docType != null && statusLabel != null)
+                          const SizedBox(width: 5),
+                        if (statusLabel != null)
+                          StatusPill(status: statusLabel!, compact: true),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    AutoSizeText(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF25286F),
+                        height: 1.3,
+                      ),
+                      maxLines: 1,
+                      minFontSize: _kAutoSizeMinFont,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        trailing: actions,
+        centerMiddle: false,
+        middleSpacing: 8,
+      ),
+    );
+
+    // ── Large title area (96dp, fades with expandProgress) ───────────────────
+    final largeArea = Opacity(
+      opacity: expandProgress,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            if (docType != null)
+              Text(
+                docType!.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.77, // 0.07em × 11sp
+                  color: Color(0xFF870E18),
+                  height: 1.0,
+                ),
+              ),
+            if (docType != null) const SizedBox(height: 4),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF171717),
+                height: 1.15,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (statusLabel != null) StatusPill(status: statusLabel!),
+                if (statusLabel != null && canSave) const SizedBox(width: 8),
+                if (canSave) ...[
+                  const Text(
+                    '● ',
+                    style: TextStyle(
+                      color: Color(0xFFDB7706),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
+                    ),
+                  ),
+                  const Text(
+                    'Unsaved changes',
+                    style: TextStyle(
+                      color: Color(0xFFDB7706),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Material(
+        color: colorScheme.surface,
+        elevation: overlapsContent ? 1.0 : 0.0,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(height: statusBarHeight), // status-bar shield
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: math.max(0.0, _kExpandedExtra * expandProgress),
+                    child: largeArea,
+                  ),
+                  toolbar,
+                  if (bottom != null) bottom!,
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Leading ───────────────────────────────────────────────────────────────
+  Widget? _buildLeading(BuildContext context) {
+    final parentRoute = ModalRoute.of(context);
+    final canPop      = parentRoute?.canPop ?? false;
+    if (canPop) {
+      return IconButton(
+        icon:      const Icon(Icons.arrow_back),
+        tooltip:   MaterialLocalizations.of(context).backButtonTooltip,
+        onPressed: () => Navigator.maybeOf(context)?.maybePop(),
+      );
+    }
+    return null;
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  Widget? _buildActions(BuildContext context) {
+    final items = <Widget>[
+      ...(extraActions ?? []),
+      if (onReload != null)
+        IconButton(
+          icon:      const Icon(Icons.refresh),
+          tooltip:   'Reload',
+          onPressed: onReload,
+        ),
+      if (onSave != null)
+        SaveIconButton(
+          onPressed:           onSave,
+          isSaving:            isSaving,
+          isDirty:             canSave,
+          saveResult:          saveResult,
+          tooltip:             'Save',
+          showFilledWhenDirty: true,
+        ),
+      if (onShare != null)
+        IconButton(
+          icon:      const Icon(Icons.share_outlined),
+          tooltip:   'Share',
+          onPressed: onShare,
+        ),
+    ];
+    if (items.isEmpty) return null;
+    return Row(mainAxisSize: MainAxisSize.min, children: items);
+  }
+
+  // ── shouldRebuild ─────────────────────────────────────────────────────────
+  @override
+  bool shouldRebuild(covariant _DocTypeFormHeaderDelegate old) {
+    return title          != old.title          ||
+           docType        != old.docType        ||
+           statusLabel    != old.statusLabel    ||
+           canSave        != old.canSave        ||
+           isSaving       != old.isSaving       ||
+           saveResult     != old.saveResult     ||
+           statusBarHeight != old.statusBarHeight ||
+           (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0);
   }
 }
