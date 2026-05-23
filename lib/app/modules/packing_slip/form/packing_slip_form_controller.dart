@@ -369,7 +369,10 @@ class PackingSlipFormController extends GetxController
       return item.copyWith(dnDetail: match.name!);
     }).toList();
 
-    if (changed) packingSlip.value = slip.copyWith(items: patched);
+    if (changed) {
+      packingSlip.value = slip.copyWith(items: patched);
+      _checkForChanges();
+    }
   }
 
   // ── Fetch error handler ────────────────────────────────────────────────────
