@@ -643,7 +643,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     //    Guard is serial != null (not serial > 0) because remaining = 0.0
     //    is a valid binding ceiling: the serial is fully consumed and the
     //    user must not be allowed to enter any qty.
-    final serial = _posSerialCeiling;
+    final serial = allowFullSerials.value ? null : _posSerialCeiling;
     if (serial != null) {
       debugPrint(
         '[effectiveMaxQty] POS serial ceiling=$serial '
@@ -935,6 +935,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     // Reset serial selection so a freshly opened sheet never inherits the
     // serial from a previous sheet session.
     selectedSerial.value = null;
+    allowFullSerials.value = false;
   }
 
   /// Populates sheet state from an existing [StockEntryItem] (edit mode).
@@ -952,6 +953,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     List<Map<String, dynamic>> mrReferenceItems,
   ) {
     if (isClosed) return;
+    allowFullSerials.value = false;
     isEditingExisting.value = true;
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
