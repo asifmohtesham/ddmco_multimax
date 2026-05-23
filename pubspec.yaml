@@ -25,6 +25,7 @@ dependencies:
   flutter_html:
   share_plus: ^7.0.0
   excel: ^4.0.6
+  archive: ^3.6.1
   qr_flutter:
   pdf:
   barcode_widget: ^2.0.4
