@@ -374,6 +374,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (dnItem.idx != null)
+                      Text(
+                        'Row #${dnItem.idx}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.indigo.shade400),
+                      ),
                     if (dnItem.batchNo != null)
                       Text(
                         'Batch: ${dnItem.batchNo}',
