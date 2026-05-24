@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Flutter mobile app ("KA-ML Fulfillment") for supply-chain operations against a Frappe/ERPNext backend at `https://erp.multimax.cloud`. Covers stock, purchase orders, delivery notes, work orders, job cards, packing slips, and manufacturing. Primary platform is Android (USB/WiFi device), but configured for iOS, desktop, and web.
+Flutter mobile app ("KA-ML Fulfillment") for supply-chain operations against a Frappe/ERPNext backend at `https://erp.domain.com`. Covers stock, purchase orders, delivery notes, work orders, job cards, packing slips, and manufacturing. Primary platform is Android (USB/WiFi device), but configured for iOS, desktop, and web.
 
 ## Common Commands
 
