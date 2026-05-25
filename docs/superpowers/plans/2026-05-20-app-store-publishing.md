@@ -314,12 +314,12 @@ This is the most critical section for an enterprise app. App Review cannot test 
 
 Navigate to: App Store Connect → Multimax → **App Review Information**
 
-| Field | Value |
-|---|---|
-| Sign-In Required | Yes |
-| Demo Account Username | *(provide a real read-only ERPNext test account on erp.multimax.cloud)* |
-| Demo Account Password | *(the password for that account)* |
-| Notes for App Review | "This is an internal warehouse management app. The login screen connects to a private ERPNext instance at erp.multimax.cloud. Please use the demo credentials above to log in. The app requires a valid ERPNext session to function — all data is pulled from the ERP backend over HTTPS." |
+| Field | Value                                                                                                                                                                                                                                                                                  |
+|---|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Sign-In Required | Yes                                                                                                                                                                                                                                                                                    |
+| Demo Account Username | *(provide a real read-only ERPNext test account on erp.domain.com)*                                                                                                                                                                                                                    |
+| Demo Account Password | *(the password for that account)*                                                                                                                                                                                                                                                      |
+| Notes for App Review | "This is an internal warehouse management app. The login screen connects to a private ERPNext instance at erp.domain.com. Please use the demo credentials above to log in. The app requires a valid ERPNext session to function — all data is pulled from the ERP backend over HTTPS." |
 
 > **IMPORTANT:** Create a dedicated demo/reviewer account in ERPNext before submission. The account should have read permissions on at least Stock Entry, Purchase Order, and Delivery Note doctypes so reviewers can navigate the app.
 
@@ -575,7 +575,7 @@ Testers open the **TestFlight** app on their iPhone → find Multimax → **Inst
 - [ ] **Step 4: Validate core flows on real device**
 
 Test on a real iPhone (not simulator) before App Store submission:
-- [ ] Login to `erp.multimax.cloud` succeeds
+- [ ] Login to `erp.domain.com` succeeds
 - [ ] Home dashboard loads modules
 - [ ] Camera barcode scanner opens and scans
 - [ ] Stock Entry form submits without error

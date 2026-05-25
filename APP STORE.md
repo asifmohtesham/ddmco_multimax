@@ -79,22 +79,22 @@ warehouse,stock,erpnext,frappe,delivery,purchase,barcode,scanner,manufacturing,p
 
 **Sign-In Required:** Yes
 
-| Field | Value |
-|---|---|
-| Demo Username | *(ERPNext test account at erp.multimax.cloud)* |
-| Demo Password | *(password for that account)* |
+| Field | Value                                      |
+|---|--------------------------------------------|
+| Demo Username | *(ERPNext test account at erp.domain.com)* |
+| Demo Password | *(password for that account)*              |
 
 **Notes for Reviewer:**
 ```
 This is an internal warehouse management app for the DDMCO / Multimax organisation.
 
-SIGN-IN: The app requires ERPNext credentials. Please use the demo account entered above. The login screen has a URL field — it is pre-filled with https://erp.multimax.cloud; leave it as-is.
+SIGN-IN: The app requires ERPNext credentials. Please use the demo account entered above. The login screen has a URL field — it is pre-filled with https://erp.domain.com; leave it as-is.
 
 WHAT TO EXPLORE: After signing in, the Dashboard shows a Quick Access grid (Stock Entry, Delivery Note, Purchase Receipt, Packing Slip) and a Manufacturing section (Work Orders, Job Cards, BOM). Tap any tile to browse that module.
 
 CAMERA: The app requests camera access for barcode scanning. Tap any barcode input field on a form to test it.
 
-NOTE: The app communicates exclusively with https://erp.multimax.cloud over HTTPS. No user data is stored on device beyond the server URL and session cookie.
+NOTE: The app communicates exclusively with https://erp.domain.com over HTTPS. No user data is stored on device beyond the server URL and session cookie.
 ```
 
 ---
