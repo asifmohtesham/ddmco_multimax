@@ -1178,10 +1178,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     if (rowId != null) {
       _parent.updateItemLocally(
         rowId, qty, batch, srcRack, tgtRack, sWh, tWh, serial,
+        bypassPosCap: allowFullSerials.value,
       );
     } else {
       _parent.addItemLocally(
         qty, batch, srcRack, tgtRack, sWh, tWh, serial,
+        bypassPosCap: allowFullSerials.value,
       );
     }
   }

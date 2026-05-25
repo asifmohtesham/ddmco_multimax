@@ -985,6 +985,7 @@ class StockEntryFormController extends GetxController
     //    and returns false if validation or submit() itself throws.
     final success = await child.submitWithFeedback();
     if (!success) return; // button already shows error state for 1.5 s then resets
+    child.notifySerialItemsChanged();
 
     // Guard: prevent double-close if auto-submit and manual tap race.
     if (_isClosingSheet) return;
