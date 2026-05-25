@@ -446,11 +446,12 @@ abstract class ItemSheetControllerBase extends GetxController
   ///
   /// ## Deferred disposal (Rule 1 — tec_lifecycle_rules.dart)
   ///
-  /// Disposal is scheduled for the next frame via [WidgetsBinding
-  /// .addPostFrameCallback] so the bottom-sheet exit animation frame
-  /// completes before any [TextEditingController] is invalidated.  Flutter's
-  /// `_AnimatedState.didUpdateWidget` calls `controller.addListener()` during
-  /// that frame; disposing before it runs causes:
+  /// Disposal is scheduled via `Future.delayed(400 ms)` so both the
+  /// sheet exit animation (~300 ms) and any concurrent keyboard-dismissal
+  /// animation (~300 ms) finish before any [TextEditingController] is
+  /// invalidated.  `_EditableTextState.dispose()` calls `removeListener()`
+  /// only after the animation completes; disposing earlier causes it to
+  /// throw in debug mode:
   ///
   ///   "A TextEditingController was used after being disposed."
   ///
@@ -460,7 +461,7 @@ abstract class ItemSheetControllerBase extends GetxController
   /// [targetRackController] in [StockEntryItemFormController]) MUST:
   ///   1. Capture their controllers into local variables before calling
   ///      `super.onClose()`.
-  ///   2. Schedule disposal via `addPostFrameCallback` (Rule 1).
+  ///   2. Schedule disposal via `Future.delayed(400ms)` (Rule 1).
   ///   3. Call `super.onClose()` — which calls this method — AFTER
   ///      scheduling the deferred callback.
   void disposeControllers() {
@@ -481,16 +482,19 @@ abstract class ItemSheetControllerBase extends GetxController
     final scroll = sheetScrollController;
     final focus  = rackFocusNode;
 
-    // AFTER — double post-frame: first frame = exit animation completes,
-    // second frame = parent list rebuild flushes, THEN dispose is safe.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        for (final c in textControllers) {
-          try { c.dispose(); } catch (_) {}
-        }
-        try { scroll.dispose(); } catch (_) {}
-        try { focus.dispose();  } catch (_) {}
-      });
+    // Delay TEC disposal by 400 ms — must outlast both the sheet exit
+    // animation (~300 ms) and any concurrent keyboard-dismissal animation
+    // (~300 ms) that may still be running when the controller is deleted.
+    // The earlier double-post-frame (~32 ms) was insufficient: when the
+    // keyboard was open, MediaQuery.viewInsets changes drove widget
+    // rebuilds past frame 3, and _EditableTextState.dispose() called
+    // removeListener() on an already-disposed TEC, crashing in debug mode.
+    Future.delayed(const Duration(milliseconds: 400), () {
+      for (final c in textControllers) {
+        try { c.dispose(); } catch (_) {}
+      }
+      try { scroll.dispose(); } catch (_) {}
+      try { focus.dispose();  } catch (_) {}
     });
   }
 

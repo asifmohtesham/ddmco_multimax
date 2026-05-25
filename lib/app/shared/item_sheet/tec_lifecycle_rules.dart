@@ -38,16 +38,25 @@ import 'package:get/get.dart';
 ///
 /// ---
 ///
-/// ## Rule 1 — Always defer TEC disposal to `addPostFrameCallback`
+/// ## Rule 1 — Always defer TEC disposal past the exit animation
 ///
 /// **Never** call [TextEditingController.dispose], [FocusNode.dispose], or
 /// [ScrollController.dispose] **synchronously** inside `onClose()` or any
 /// other teardown method.
 ///
-/// Flutter's `_AnimatedState.didUpdateWidget` invokes
-/// `controller.addListener()` during the layout pass of the exit-animation
-/// frame, which runs **after** `onClose()` has already returned.  Disposing
-/// before that frame completes guarantees the crash.
+/// A bottom sheet exit animation takes ~300 ms.  When the keyboard is open
+/// at dismiss time the keyboard-dismissal animation also takes ~300 ms and
+/// runs concurrently.  During both animations Flutter rebuilds the widget
+/// tree in response to `MediaQuery.viewInsets` changes;
+/// `_EditableTextState.dispose()` calls `removeListener()` only after the
+/// animation fully completes (~18 frames at 60 fps).  Disposing before that
+/// point causes `removeListener()` to throw in debug mode:
+///
+///   "A TextEditingController was used after being disposed."
+///
+/// A `double post-frame callback (~32 ms)` is **not** sufficient.
+/// Use `Future.delayed(const Duration(milliseconds: 400))` instead,
+/// which gives both animations time to finish before disposal.
 ///
 /// **✅ Correct:**
 /// ```dart
@@ -197,7 +206,7 @@ import 'package:get/get.dart';
 ///
 /// | Class / Method | Rules | Implementation |
 /// |---|---|---|
-/// | `ItemSheetControllerBase.disposeControllers` | 1, 2, 3 | `addPostFrameCallback` + `_controllersDisposed` guard + `removeSheetListeners()` call |
+/// | `ItemSheetControllerBase.disposeControllers` | 1, 2, 3 | `Future.delayed(400ms)` + `_controllersDisposed` guard + `removeSheetListeners()` call |
 /// | `ItemSheetControllerBase.onClose` | 2 | Delegates to `disposeControllers()`; no inline dispose |
 /// | `StockEntryItemFormController.onClose` | 1 | `sourceRackController` / `targetRackController` disposed via `addPostFrameCallback` |
 /// | `StockEntryItemFormController.prepareForItem` | 3 | Calls `removeSheetListeners()` before `addSheetListeners()` |

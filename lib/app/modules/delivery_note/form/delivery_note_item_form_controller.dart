@@ -1048,11 +1048,4 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   Future<void> ensureReadyForOpen() async {}
 
-  @override
-  void onClose() {
-    removeSheetListeners();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      super.onClose();
-    });
-  }
 }

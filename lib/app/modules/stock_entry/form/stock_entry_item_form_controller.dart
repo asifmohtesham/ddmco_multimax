@@ -123,11 +123,11 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///
 /// refactor(se-item-form): override disposeControllers() + simplify onClose()
 ///   • disposeControllers() override disposes sourceRackController and
-///     targetRackController via try/catch, then delegates to
-///     super.disposeControllers() for the base-class trio.
-///   • onClose() simplified to `super.onClose()` — the base class already
-///     defers disposeControllers() to addPostFrameCallback (Rule 1), so all
-///     five TECs share a single deferred + idempotent disposal path.
+///     targetRackController via Future.delayed(400ms), matching the delay
+///     used by the base class for its trio — all five TECs outlast the sheet
+///     and keyboard-dismissal animations before disposal.
+///   • onClose() simplified to `super.onClose()` — the base class handles
+///     disposeControllers() with the correct 400ms deferral (Rule 1).
 ///
 /// fix(se-item-form): drop inaccessible _resetSaveStateOnEdit refs
 ///   • _resetSaveStateOnEdit is file-private to item_sheet_controller_base.dart.
@@ -441,8 +441,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Dual-rack state ──────────────────────────────────────────────────────────
   //
   // Rule 1 (tec_lifecycle_rules.dart): These TECs are disposed via
-  // disposeControllers() which is called inside addPostFrameCallback
-  // in the base onClose() — never synchronously.
+  // disposeControllers() using Future.delayed(400ms) — outlasting the
+  // sheet exit animation and keyboard-dismissal animation.
   @override final TextEditingController sourceRackController = TextEditingController();
   @override final RxBool isSourceRackValid       = false.obs;
   @override final RxBool isValidatingSourceRack  = false.obs;
@@ -545,36 +545,20 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// Overrides [ItemSheetControllerBase.disposeControllers] to include
   /// the dual-rack TECs owned by this subclass.
   ///
-  /// ## Rule 1 — tec_lifecycle_rules.dart
-  ///
-  /// This method is called by the base [onClose] from inside an
-  /// `addPostFrameCallback`, so disposal is always deferred past the
-  /// exit-animation frame — identical to the previous two-callback
-  /// approach but expressed as a single override point.
-  ///
-  /// [super.disposeControllers] handles the base-class trio
-  /// (`batchController`, `rackController`, `qtyController`) through
-  /// its own idempotent + guarded try/catch blocks (Rule 2).
+  /// The base class handles the trio (batchController, rackController,
+  /// qtyController) via `Future.delayed(400ms)`.  This override captures
+  /// [sourceRackController] and [targetRackController] BEFORE calling
+  /// `super` (which sets [_controllersDisposed] and removes listeners)
+  /// and schedules their disposal with the same 400 ms delay.
   @override
   void disposeControllers() {
-    // Rule 1 (tec_lifecycle_rules.dart): capture TECs into locals BEFORE
-    // calling super — super sets _controllersDisposed and removes listeners.
-    // Disposal is deferred to the next frame so the exit animation
-    // completes before _AnimatedState.didUpdateWidget fires addListener().
-    // Capture local references — the controller fields may be nulled
-    // or garbage-collected before the callback fires.
-    final tecs = <TextEditingController>[
-      batchController,
-      qtyController,
-      rackController,
-      // add any others here
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final tec in tecs) {
-        tec.dispose();
-      }
-    });
+    final src = sourceRackController;
+    final tgt = targetRackController;
     super.disposeControllers();
+    Future.delayed(const Duration(milliseconds: 400), () {
+      try { src.dispose(); } catch (_) {}
+      try { tgt.dispose(); } catch (_) {}
+    });
   }
 
   /// Overrides [ItemSheetControllerBase.removeSheetListeners] to also remove
