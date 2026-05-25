@@ -860,14 +860,15 @@ class StockEntryFormController extends GetxController
   void updateItemLocally(
     String uniqueId, double qty, String? batch,
     String? sourceRack, String? targetRack,
-    String? sWarehouse, String? tWarehouse, String? serial,
-  ) {
+    String? sWarehouse, String? tWarehouse, String? serial, {
+    bool bypassPosCap = false,
+  }) {
     final items = stockEntry.value?.items.toList() ?? [];
     final idx   = items.indexWhere((i) => i.name == uniqueId);
     if (idx == -1) return;
 
     final resolvedSerial = serial ?? '0';
-    if (resolvedSerial != '0' && posUpload.value != null) {
+    if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
       final cap           = posQtyCapForSerial(resolvedSerial);
       final othersQty     = scannedQtyForSerial(resolvedSerial,
           excludeItemName: uniqueId);
@@ -916,11 +917,12 @@ class StockEntryFormController extends GetxController
 
   void addItemLocally(
     double qty, String? batch, String? sourceRack, String? targetRack,
-    String? sWarehouse, String? tWarehouse, String? serial,
-  ) {
+    String? sWarehouse, String? tWarehouse, String? serial, {
+    bool bypassPosCap = false,
+  }) {
     final resolvedSerial = serial ?? '0';
 
-    if (resolvedSerial != '0' && posUpload.value != null) {
+    if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
       final items       = stockEntry.value?.items.toList() ?? [];
       final cap         = posQtyCapForSerial(resolvedSerial);
       final alreadyUsed = scannedQtyForSerial(resolvedSerial);
