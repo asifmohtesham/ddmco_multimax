@@ -187,6 +187,8 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
               child: TextFormField(
                 controller: _textController,
                 readOnly: widget.isLoading,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: InputDecoration(
                   labelText: 'Barcode',
                   floatingLabelBehavior: FloatingLabelBehavior.always,
