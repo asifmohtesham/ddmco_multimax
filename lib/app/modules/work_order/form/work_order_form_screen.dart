@@ -512,7 +512,7 @@ class _WorkOrderForm extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: (submitting || creatingJC)
                         ? null
-                        : controller.submitWorkOrder,
+                        : controller.submitDocument,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       backgroundColor: cs.tertiary,

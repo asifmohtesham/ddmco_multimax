@@ -42,7 +42,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   isSaving:    isSaving,
                   saveResult:  saveResult,
                   onSave: slip?.docstatus == 0
-                      ? controller.savePackingSlip
+                      ? controller.saveDocument
                       : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
@@ -435,7 +435,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               key:       ValueKey(currentItem!.name),
               direction: DismissDirection.endToStart,
               confirmDismiss: (_) async {
-                controller.confirmAndDeleteItem(currentItem);
+                controller.deleteItem(currentItem);
                 return false;
               },
               background: Container(

@@ -40,7 +40,7 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 statusLabel:  controller.batchStatus,
                 canSave:      canSave,
                 isSaving:     isSaving,
-                onSave:       controller.saveBatch,
+                onSave:       controller.saveDocument,
                 extraActions: [
                   if (showExport) _buildExportActions(colorScheme, isExporting),
                 ],

@@ -43,7 +43,7 @@ class PurchaseReceiptFormScreen
                   isSaving:   isSaving,
                   saveResult: saveResult,
                   onSave: (receipt?.docstatus == 0 && isDirty)
-                      ? controller.savePurchaseReceipt
+                      ? controller.saveDocument
                       : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
@@ -295,7 +295,7 @@ class PurchaseReceiptFormScreen
                             : DismissDirection.none,
                         confirmDismiss: (_) async {
                           if (controller.isEditable) {
-                            controller.confirmAndDeleteItem(item);
+                            controller.deleteItem(item);
                           }
                           return false;
                         },
@@ -315,7 +315,7 @@ class PurchaseReceiptFormScreen
                               : null,
                           onDelete: controller.isEditable
                               ? () =>
-                                  controller.confirmAndDeleteItem(item)
+                                  controller.deleteItem(item)
                               : null,
                         ),
                       );

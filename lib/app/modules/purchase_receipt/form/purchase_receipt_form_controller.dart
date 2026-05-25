@@ -108,7 +108,7 @@ class PurchaseReceiptFormController extends GetxController
     if (mode == 'new') {
       _initNewPurchaseReceipt();
     } else {
-      fetchPurchaseReceipt();
+      fetchDocument();
     }
   }
 
@@ -132,7 +132,7 @@ class PurchaseReceiptFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchPurchaseReceipt();
+    await fetchDocument();
     isStale.value    = false;
     isScanning.value = false;
     AppNotification.success('Document reloaded successfully');
@@ -217,7 +217,7 @@ class PurchaseReceiptFormController extends GetxController
     isDirty.value   = true;
   }
 
-  Future<void> fetchPurchaseReceipt() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getPurchaseReceipt(name);
@@ -330,9 +330,9 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  // ── addItemLocally / updateItemLocally ────────────────────────────────────
+  // ── addItem / updateItem ────────────────────────────────────
 
-  void addItemLocally(
+  void addItem(
     String itemCode,
     String itemName,
     double qty,
@@ -388,7 +388,7 @@ class PurchaseReceiptFormController extends GetxController
     isDirty.value = true;
   }
 
-  void updateItemLocally(
+  void updateItem(
     String itemName,
     double qty,
     String batch,
@@ -471,7 +471,7 @@ class PurchaseReceiptFormController extends GetxController
 
     Future<void> onSubmit() async {
       await child.submit();
-      await savePurchaseReceipt();
+      await saveDocument();
     }
 
     isItemSheetOpen.value = true;
@@ -569,7 +569,7 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
-  void confirmAndDeleteItem(PurchaseReceiptItem item) {
+  void deleteItem(PurchaseReceiptItem item) {
     if (!isEditable) return;
 
     if (isItemSheetOpen.value) {
@@ -585,13 +585,13 @@ class PurchaseReceiptFormController extends GetxController
         purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
         AppNotification.success('Item removed');
-        await savePurchaseReceipt();
+        await saveDocument();
       },
     );
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────────────
-  Future<void> savePurchaseReceipt() async {
+  Future<void> saveDocument() async {
     if (!isEditable) return;
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
@@ -623,7 +623,7 @@ class PurchaseReceiptFormController extends GetxController
           final created = response.data['data'];
           name = created['name'];
           mode = 'edit';
-          await fetchPurchaseReceipt();
+          await fetchDocument();
           _setSaveResult(SaveResult.success);
           AppNotification.success('Purchase Receipt created: $name');
         } else {
@@ -635,7 +635,7 @@ class PurchaseReceiptFormController extends GetxController
         final response = await _provider.updatePurchaseReceipt(name, data);
         if (response.statusCode == 200) {
           _setSaveResult(SaveResult.success);
-          await fetchPurchaseReceipt();
+          await fetchDocument();
         } else {
           _setSaveResult(SaveResult.error);
           AppNotification.error('Failed to update: '

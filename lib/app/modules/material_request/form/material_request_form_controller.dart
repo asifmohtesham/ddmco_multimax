@@ -146,7 +146,7 @@ class MaterialRequestFormController extends GetxController
     if (mode == 'new') {
       _initNewRequest();
     } else {
-      fetchMaterialRequest();
+      fetchDocument();
     }
   }
 
@@ -167,7 +167,7 @@ class MaterialRequestFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchMaterialRequest();
+    await fetchDocument();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
@@ -230,7 +230,7 @@ class MaterialRequestFormController extends GetxController
     isDirty.value = true;
   }
 
-  Future<void> fetchMaterialRequest() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getMaterialRequest(name);
@@ -608,7 +608,7 @@ class MaterialRequestFormController extends GetxController
 
   // ── Save document ───────────────────────────────────────────────────────────────
 
-  Future<void> saveMaterialRequest() async {
+  Future<void> saveDocument() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
 
@@ -644,7 +644,7 @@ class MaterialRequestFormController extends GetxController
           final created = response.data['data'];
           name = created['name'];
           mode = 'edit';
-          await fetchMaterialRequest();
+          await fetchDocument();
           saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Created');
         } else {
@@ -654,7 +654,7 @@ class MaterialRequestFormController extends GetxController
       } else {
         final response = await _provider.updateMaterialRequest(name, data);
         if (response.statusCode == 200) {
-          await fetchMaterialRequest();
+          await fetchDocument();
           saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Updated');
         } else {

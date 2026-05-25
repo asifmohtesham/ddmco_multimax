@@ -190,7 +190,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     if (qty == null) return;
 
     await _dismissKeyboardAndClose();
-    await _parent.addItemToSlipWithQty(qty);
+    await _parent.addItemWithQty(qty);
   }
 
   // ── Private SRP helpers ────────────────────────────────────────────────────

@@ -827,7 +827,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   bool get hasLinkedJobCards => linkedJobCards.isNotEmpty;
 
   // ── Submit ────────────────────────────────────────────────────────────────
-  Future<void> submitWorkOrder() async {
+  Future<void> submitDocument() async {
     if (!canSubmit) return;
     final confirmed = await GlobalDialog.confirm(
       title: 'Submit Work Order',

@@ -119,7 +119,7 @@ class PackingSlipFormController extends GetxController
     if (mode == 'new') {
       _initNewPackingSlip();
     } else {
-      fetchPackingSlip();
+      fetchDocument();
     }
   }
 
@@ -263,7 +263,7 @@ class PackingSlipFormController extends GetxController
 
   // ── Orchestrator ───────────────────────────────────────────────────────────
 
-  Future<void> fetchPackingSlip() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getPackingSlip(name);
@@ -622,7 +622,7 @@ class PackingSlipFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchPackingSlip();
+    await fetchDocument();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
@@ -801,7 +801,7 @@ class PackingSlipFormController extends GetxController
             key:              ValueKey(child.editingItemName.value ?? 'new'),
             controller:       child,
             scrollController: sc,
-            onSubmit:         () => addItemToSlip(),
+            onSubmit:         () => addItem(),
             onScan:           null,
             isSaveEnabled:    packingSlip.value?.docstatus == 0,
             customFields:     customFields,
@@ -858,7 +858,7 @@ class PackingSlipFormController extends GetxController
   /// - [currentItemNameKey] is cleared — no existing item is being targeted.
   /// - Metadata shims are cleared — they carry no meaning for a new item.
   /// - [_populateItemDetails] copies DN item fields into the current-item
-  ///   context fields consumed by [_openItemSheet] and [addItemToSlipWithQty].
+  ///   context fields consumed by [_openItemSheet] and [addItemWithQty].
   void _resetSessionForAdd(DeliveryNoteItem item) {
     itemFormKey        = GlobalKey<FormState>();
     isEditing.value    = false;
@@ -948,7 +948,7 @@ class PackingSlipFormController extends GetxController
   Future<void> _onAutoSubmitValid() async {
     isAddingItem.value = true;
     await Future.delayed(const Duration(milliseconds: 500));
-    await addItemToSlip();
+    await addItem();
     isAddingItem.value = false;
   }
 
@@ -1004,9 +1004,9 @@ class PackingSlipFormController extends GetxController
   /// - [itemFormKey] is recreated so the sheet gets a clean form state.
   /// - [isEditing] is set true — this session targets an existing item.
   /// - [currentItemNameKey] is set to the slip item's name so
-  ///   [addItemToSlipWithQty] can locate the correct list entry.
+  ///   [addItemWithQty] can locate the correct list entry.
   /// - Metadata shims are populated from the existing item so they are
-  ///   preserved on the round-trip through [addItemToSlipWithQty].
+  ///   preserved on the round-trip through [addItemWithQty].
   /// - [_populateItemDetails] copies DN item fields into the current-item
   ///   context fields consumed by [_openItemSheet].
   void _resetSessionForEdit(PackingSlipItem slipItem, DeliveryNoteItem dnItem) {
@@ -1067,7 +1067,7 @@ class PackingSlipFormController extends GetxController
   // Delete
   // ---------------------------------------------------------------------------
 
-  void confirmAndDeleteItem(PackingSlipItem item) {
+  void deleteItem(PackingSlipItem item) {
     if (isItemSheetOpen.value) {
       if (Get.isBottomSheetOpen == true) Get.back();
     }
@@ -1080,7 +1080,7 @@ class PackingSlipFormController extends GetxController
         packingSlip.value = packingSlip.value?.copyWith(items: items);
         _checkForChanges();
         GlobalSnackbar.success(message: 'Item removed');
-        if (isDirty.value) await savePackingSlip();
+        if (isDirty.value) await saveDocument();
       },
     );
   }
@@ -1110,11 +1110,11 @@ class PackingSlipFormController extends GetxController
   ///
   /// All other fields are preserved from the existing item — only [qty] is
   /// written. This is the edit-path mutation, equivalent to
-  /// [StockEntryFormController.updateItemLocally] and
-  /// [DeliveryNoteFormController.updateItemLocally].
+  /// [StockEntryFormController.updateItem] and
+  /// [DeliveryNoteFormController.updateItem].
   ///
   /// Returns silently if no item with [nameKey] exists in the current list.
-  void updateItemLocally(String nameKey, double qty) {
+  void updateItem(String nameKey, double qty) {
     final items = packingSlip.value?.items.toList() ?? [];
     final index = items.indexWhere((i) => i.name == nameKey);
     if (index == -1) return;
@@ -1149,7 +1149,7 @@ class PackingSlipFormController extends GetxController
   /// path — they always create unique rows.
   ///
   /// Returns silently if no matching row is found (caller must fall through
-  /// to [addItemLocally]).
+  /// to [_addItemToList]).
   bool _mergeItemQty(List<PackingSlipItem> items, double qty) {
     final index = items.indexWhere((i) => i.dnDetail == currentItemDnDetail);
     if (index == -1) return false;
@@ -1179,10 +1179,10 @@ class PackingSlipFormController extends GetxController
   /// Appends a brand-new [PackingSlipItem] to [items] built from the current
   /// session context fields.
   ///
-  /// Equivalent to [StockEntryFormController.addItemLocally] and
-  /// [DeliveryNoteFormController.addItemLocally]: constructs the item from
+  /// Equivalent to [StockEntryFormController._addItemToList] and
+  /// [DeliveryNoteFormController._addItemToList]: constructs the item from
   /// the controller's context state and appends it to the list.
-  void addItemLocally(List<PackingSlipItem> items, double qty) {
+  void _addItemToList(List<PackingSlipItem> items, double qty) {
     items.add(PackingSlipItem(
       name:        '',
       dnDetail:    currentItemDnDetail!,
@@ -1219,7 +1219,7 @@ class PackingSlipFormController extends GetxController
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       packingSlip.value = packingSlip.value?.copyWith(items: items);
       _checkForChanges();
-      if (isDirty.value) await savePackingSlip();
+      if (isDirty.value) await saveDocument();
     });
   }
 
@@ -1230,13 +1230,13 @@ class PackingSlipFormController extends GetxController
   /// Three paths — edit, add-merge, add-create — are each delegated to a
   /// single-responsibility mutation function.
   ///
-  /// Mirrors the structural split of [StockEntryFormController.updateItemLocally]
-  /// (edit path) and [StockEntryFormController.addItemLocally] (add path).
-  Future<void> addItemToSlipWithQty(double qty) async {
+  /// Mirrors the structural split of [StockEntryFormController.updateItem]
+  /// (edit path) and [StockEntryFormController._addItemToList] (add path).
+  Future<void> addItemWithQty(double qty) async {
     if (qty <= 0) return;
 
     if (isEditing.value && currentItemNameKey != null) {
-      updateItemLocally(currentItemNameKey!, qty);
+      updateItem(currentItemNameKey!, qty);
       Get.key.currentState?.pop();
       _applyAndPersist(packingSlip.value?.items.toList() ?? []);
       return;
@@ -1244,7 +1244,7 @@ class PackingSlipFormController extends GetxController
 
     final items = packingSlip.value?.items.toList() ?? [];
     final merged = _mergeItemQty(items, qty);
-    if (!merged) addItemLocally(items, qty);
+    if (!merged) _addItemToList(items, qty);
     Get.key.currentState?.pop();
     _applyAndPersist(items);
   }
@@ -1252,11 +1252,11 @@ class PackingSlipFormController extends GetxController
   /// Entry point called by the sheet's submit button and auto-submit.
   ///
   /// Parses the qty from [bsQtyController], pops the sheet on zero-qty,
-  /// then delegates to [addItemToSlipWithQty].
+  /// then delegates to [addItemWithQty].
   ///
   /// Mirrors [StockEntryFormController.addItem] as the thin coordinator
   /// that reads form state and hands off to the mutation layer.
-  Future<void> addItemToSlip() async {
+  Future<void> addItem() async {
     // Read qty from the child controller's field — that is what the user typed into.
     final child = Get.find<PackingSlipItemFormController>();
     final qty = double.tryParse(child.qtyController.text) ?? 0.0;
@@ -1264,7 +1264,7 @@ class PackingSlipFormController extends GetxController
       Get.key.currentState?.pop();
       return;
     }
-    await addItemToSlipWithQty(qty);
+    await addItemWithQty(qty);
   }
 
   // ---------------------------------------------------------------------------
@@ -1289,7 +1289,7 @@ class PackingSlipFormController extends GetxController
           items.removeWhere((i) => i.name == currentItemNameKey);
           packingSlip.value = packingSlip.value?.copyWith(items: items);
           _checkForChanges();
-          if (isDirty.value) await savePackingSlip();
+          if (isDirty.value) await saveDocument();
         });
       },
     );
@@ -1347,7 +1347,7 @@ class PackingSlipFormController extends GetxController
   /// transitions [mode] to `'edit'`, and shows the creation snackbar.
   ///
   /// Single responsibility: the create path and its post-save state
-  /// mutations. Mirrors [StockEntryFormController._createEntry].
+  /// mutations. Mirrors [StockEntryFormController._createDocument].
   Future<void> _createDocument(Map<String, dynamic> data) async {
     final response =
     await _apiProvider.createDocument('Packing Slip', data);
@@ -1369,7 +1369,7 @@ class PackingSlipFormController extends GetxController
   /// and shows the save snackbar.
   ///
   /// Single responsibility: the update path and its post-save state
-  /// mutations. Mirrors [StockEntryFormController._updateEntry].
+  /// mutations. Mirrors [StockEntryFormController._updateDocument].
   Future<void> _updateDocument(Map<String, dynamic> data) async {
     final response =
     await _apiProvider.updateDocument('Packing Slip', name, data);
@@ -1398,7 +1398,7 @@ class PackingSlipFormController extends GetxController
     return idx >= 0 ? raw.substring(idx + 2).trim() : raw.trim();
   }
 
-  /// Handles exceptions thrown during [savePackingSlip].
+  /// Handles exceptions thrown during [saveDocument].
   ///
   /// Priority:
   ///   1. Version-conflict (TimestampMismatchError / 409) → stale-doc dialog.
@@ -1424,7 +1424,7 @@ class PackingSlipFormController extends GetxController
 
   /// Persists the current packing slip to the server.
   ///
-  /// Guard order mirrors [StockEntryFormController.saveStockEntry]:
+  /// Guard order mirrors [StockEntryFormController.saveDocument]:
   ///   1. Dirty guard — skip if nothing has changed (except on new docs).
   ///   2. Concurrent-save guard — skip if a save is already in flight.
   ///   3. Stale-document guard — block if the document has been modified
@@ -1434,7 +1434,7 @@ class PackingSlipFormController extends GetxController
   /// [_buildItemsPayload], API calls to [_createDocument] / [_updateDocument],
   /// and error handling to [_handleSaveError]. The orchestrator contains no
   /// field access, no JSON construction, and no snackbar calls.
-  Future<void> savePackingSlip() async {
+  Future<void> saveDocument() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;

@@ -148,9 +148,9 @@ class PurchaseOrderFormController extends GetxController {
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
 
     if (mode == 'new') {
-      _initNewPurchaseOrder();
+      _initDocument();
     } else {
-      fetchPO();
+      fetchDocument();
     }
   }
 
@@ -216,7 +216,7 @@ class PurchaseOrderFormController extends GetxController {
   // Document init / fetch
   // ---------------------------------------------------------------------------
 
-  void _initNewPurchaseOrder() {
+  void _initDocument() {
     isLoading.value = false;
     final now = DateTime.now();
     purchaseOrder.value = PurchaseOrder(
@@ -237,7 +237,7 @@ class PurchaseOrderFormController extends GetxController {
     _originalStatus     = 'Draft';
   }
 
-  Future<void> fetchPO() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getPurchaseOrder(name);
@@ -255,21 +255,21 @@ class PurchaseOrderFormController extends GetxController {
           title:   'Could not load Purchase Order',
           message: 'The server returned an unexpected response. '
               'Check your connection and try again.',
-          onRetry: fetchPO,
+          onRetry: fetchDocument,
         );
       }
     } catch (e) {
       GlobalDialog.showError(
         title:   'Could not load Purchase Order',
         message: e.toString(),
-        onRetry: fetchPO,
+        onRetry: fetchDocument,
       );
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> reloadDocument() => fetchPO();
+  Future<void> reloadDocument() => fetchDocument();
 
   void _updateOriginalState(PurchaseOrder po) {
     _originalJson   = jsonEncode(po.toJson());
@@ -438,24 +438,24 @@ class PurchaseOrderFormController extends GetxController {
   // Item mutations — called by PurchaseOrderItemFormController.submit()
   // ---------------------------------------------------------------------------
 
-  void addItemLocally(PurchaseOrderItem newItem) {
+  void addItem(PurchaseOrderItem newItem) {
     final items = purchaseOrder.value?.items.toList() ?? [];
     items.add(newItem);
     _applyItems(items);
     ensureItemKey(newItem);
     if (newItem.name != null) triggerHighlight(newItem.name!);
     _checkForChanges();
-    savePurchaseOrder();
+    saveDocument();
   }
 
-  void updateItemLocally(PurchaseOrderItem updatedItem) {
+  void updateItem(PurchaseOrderItem updatedItem) {
     final items = purchaseOrder.value?.items.toList() ?? [];
     final idx   = items.indexWhere((i) => i.name == updatedItem.name);
     if (idx == -1) return;
     items[idx] = updatedItem;
     _applyItems(items);
     _checkForChanges();
-    savePurchaseOrder();
+    saveDocument();
   }
 
   void _applyItems(List<PurchaseOrderItem> items) {
@@ -566,7 +566,7 @@ class PurchaseOrderFormController extends GetxController {
   // Delete item
   // ---------------------------------------------------------------------------
 
-  void confirmAndDeleteItem(PurchaseOrderItem item) {
+  void deleteItem(PurchaseOrderItem item) {
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
       message: 'Are you sure you want to remove ${item.itemCode} from this order?',
@@ -575,7 +575,7 @@ class PurchaseOrderFormController extends GetxController {
         items.removeWhere((i) => i.name == item.name);
         _applyItems(items);
         _checkForChanges();
-        savePurchaseOrder();
+        saveDocument();
         GlobalSnackbar.success(message: 'Item removed');
       },
     );
@@ -648,7 +648,7 @@ class PurchaseOrderFormController extends GetxController {
   // Save
   // ---------------------------------------------------------------------------
 
-  Future<void> savePurchaseOrder() async {
+  Future<void> saveDocument() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
     isSaving.value = true;
@@ -675,7 +675,7 @@ class PurchaseOrderFormController extends GetxController {
           title:   'Could not save Purchase Order',
           message: 'The server returned an unexpected response. '
               'Check your connection and try again.',
-          onRetry: savePurchaseOrder,
+          onRetry: saveDocument,
         );
         _setSaveResult(SaveResult.error);
       }
@@ -683,7 +683,7 @@ class PurchaseOrderFormController extends GetxController {
       GlobalDialog.showError(
         title:   'Could not load Purchase Order',
         message: e.toString(),
-        onRetry: savePurchaseOrder,
+        onRetry: saveDocument,
       );
       _setSaveResult(SaveResult.error);
     } finally {

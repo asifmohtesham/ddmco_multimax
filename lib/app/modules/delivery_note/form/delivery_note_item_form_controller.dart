@@ -242,7 +242,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       _parent.deliveryNote.refresh();
       _parent.checkForChanges();           // Mark document dirty
       if (_parent.mode == 'edit') {
-        _parent.saveDeliveryNote();        // Execute PUT request
+        _parent.saveDocument();        // Execute PUT request
       }
     });
   }
@@ -842,7 +842,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       debugPrint('_scheduleParentRefresh');
       notifySerialItemsChanged();
       if (_parent.mode == 'edit') {
-        _parent.saveDeliveryNote();
+        _parent.saveDocument();
       }
     });
   }

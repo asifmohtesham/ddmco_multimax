@@ -118,7 +118,7 @@ class DeliveryNoteFormController extends GetxController
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
-      fetchDeliveryNote();
+      fetchDocument();
     }
   }
 
@@ -227,7 +227,7 @@ class DeliveryNoteFormController extends GetxController
     isLoading.value = false;
   }
 
-  Future<void> fetchDeliveryNote() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getDeliveryNote(name);
@@ -252,7 +252,7 @@ class DeliveryNoteFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchDeliveryNote();
+    await fetchDocument();
     isStale.value = false;
     showBanner('Document reloaded successfully', type: BannerType.success);
   }
@@ -451,7 +451,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
-  Future<void> saveDeliveryNote() async {
+  Future<void> saveDocument() async {
     if (isSaving.value) return;
     isSaving.value = true;
     try {
@@ -604,7 +604,7 @@ class DeliveryNoteFormController extends GetxController
       }
     });
     _scrollToItem(newItem.name ?? newItem.itemCode);
-    if (mode == 'edit') await saveDeliveryNote();
+    if (mode == 'edit') await saveDocument();
   }
 
   Future<void> updateItem(DeliveryNoteItem updatedItem) async {
@@ -615,7 +615,7 @@ class DeliveryNoteFormController extends GetxController
       deliveryNote.refresh();
       checkForChanges();
     }
-    if (mode == 'edit') await saveDeliveryNote();
+    if (mode == 'edit') await saveDocument();
   }
 
   /// Private factory — single source of truth for item construction.
@@ -652,7 +652,7 @@ class DeliveryNoteFormController extends GetxController
     );
   }
 
-  Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
+  Future<void> deleteItem(DeliveryNoteItem item) async {
     final confirmed = await GlobalDialog.confirm(
       title:        'Remove Item',
       message:      'Remove "${item.itemName}" from this delivery note?',
@@ -664,7 +664,7 @@ class DeliveryNoteFormController extends GetxController
     deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
     deliveryNote.refresh();
     checkForChanges();
-    if (mode == 'edit') await saveDeliveryNote();
+    if (mode == 'edit') await saveDocument();
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {

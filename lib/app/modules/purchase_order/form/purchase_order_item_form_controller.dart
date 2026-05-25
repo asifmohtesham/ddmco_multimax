@@ -211,7 +211,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     final item = _parent.purchaseOrder.value?.items
         .firstWhereOrNull((i) => i.name == editingItemName.value);
     if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
+    _parent.deleteItem(item);
   }
 
   // ── submit ────────────────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
         modified:     existing.modified,
         modifiedBy:   existing.modifiedBy,
       );
-      _parent.updateItemLocally(updated);
+      _parent.updateItem(updated);
     } else {
       final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = PurchaseOrderItem(
@@ -257,7 +257,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
         uom:          '',
         scheduleDate: scheduleDate,
       );
-      _parent.addItemLocally(newItem);
+      _parent.addItem(newItem);
     }
     Get.back();
   }

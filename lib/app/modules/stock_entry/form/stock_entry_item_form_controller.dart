@@ -30,8 +30,8 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • POS wiring re-done: availableSerialNos derives from
 ///     _parent.posUploadSerialOptions; serial ceiling reads
 ///     _parent.remainingQtyForSerial(selectedSerial.value).
-///   • deleteCurrentItem delegates to _parent.confirmAndDeleteItem().
-///   • submit() delegates to _parent.updateItemLocally() / addItemLocally()
+///   • deleteCurrentItem delegates to _parent.deleteItem().
+///   • submit() delegates to _parent.updateItem() / addItem()
 ///     with the correct signatures.
 ///   • autoFillRackController / onAutoFillRackSelected wired to the
 ///     dual-rack sourceRackController / validateDualRack per mixin docs.
@@ -843,7 +843,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final item = _parent.stockEntry.value?.items
         .firstWhereOrNull((i) => i.name == rowId);
     if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
+    _parent.deleteItem(item);
   }
 
   // ── MR link ───────────────────────────────────────────────────────────────────
@@ -1176,12 +1176,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     final rowId = editingItemName.value;
     if (rowId != null) {
-      _parent.updateItemLocally(
+      _parent.updateItem(
         rowId, qty, batch, srcRack, tgtRack, sWh, tWh, serial,
         bypassPosCap: allowFullSerials.value,
       );
     } else {
-      _parent.addItemLocally(
+      _parent.addItem(
         qty, batch, srcRack, tgtRack, sWh, tWh, serial,
         bypassPosCap: allowFullSerials.value,
       );

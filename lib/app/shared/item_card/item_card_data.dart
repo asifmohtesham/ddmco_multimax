@@ -192,7 +192,7 @@ class ItemCardData {
   }) {
     // purchaseOrderQty is populated by the API on persisted docs.
     // For locally-added rows (new PR from PO), fall back to poQty which is
-    // set by addItemLocally() via the child controller's poQty field.
+    // set by addItem() via the child controller's poQty field.
     final double? resolvedTargetQty =
     (item.purchaseOrderQty != null && item.purchaseOrderQty! > 0)
         ? item.purchaseOrderQty

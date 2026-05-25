@@ -25,7 +25,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final bool isEditable = entry?.docstatus == 0;
 
       final VoidCallback? onSave =
-          isEditable ? controller.saveStockEntry : null;
+          isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload =
           controller.mode != 'new' ? controller.reloadDocument : null;
 

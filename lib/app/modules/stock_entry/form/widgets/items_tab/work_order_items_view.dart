@@ -40,7 +40,7 @@ class WorkOrderItemsView extends StatelessWidget {
           ),
           onTap:    isEditable ? () => controller.editItem(item) : null,
           onDelete: isEditable
-              ? () => controller.confirmAndDeleteItem(item)
+              ? () => controller.deleteItem(item)
               : null,
         );
       },

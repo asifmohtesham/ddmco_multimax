@@ -515,7 +515,7 @@ class _StatusActionsRow extends StatelessWidget {
 
           // Preconditions met — show the active submit button.
           return FilledButton.tonalIcon(
-            onPressed: canSubmit ? controller.submitJobCard : null,
+            onPressed: canSubmit ? controller.submitDocument : null,
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.all(14),
             ),

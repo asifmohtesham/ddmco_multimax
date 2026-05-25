@@ -26,7 +26,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
       //
       // saveResult: wired to controller.saveResult so SaveIconButton shows
       //             the animated success ✓ / error ✗ feedback after each save.
-      final VoidCallback? onSave   = isEditable ? controller.saveMaterialRequest : null;
+      final VoidCallback? onSave   = isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload = controller.mode != 'new' ? controller.reloadDocument : null;
 
       final String title = entry == null

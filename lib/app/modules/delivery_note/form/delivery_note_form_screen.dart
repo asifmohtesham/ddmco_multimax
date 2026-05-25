@@ -42,7 +42,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   docStatus:  note?.docstatus ?? 0,
                   isSaving:   isSaving,
                   saveResult: saveResult,
-                  onSave:     (note?.docstatus == 0) ? controller.saveDeliveryNote : null,
+                  onSave:     (note?.docstatus == 0) ? controller.saveDocument : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
@@ -334,7 +334,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       confirmDismiss: (_) async {
                         if (isEditable) {
                           await controller
-                              .confirmAndDeleteItem(item);
+                              .deleteItem(item);
                         }
                         return false;
                       },
@@ -363,7 +363,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                                 item.name,
                         onDelete: isEditable
                             ? () => controller
-                                .confirmAndDeleteItem(item)
+                                .deleteItem(item)
                             : null,
                       )),
                     );
@@ -470,7 +470,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                                   item.name,
                           onDelete: isEditable
                               ? () => controller
-                                  .confirmAndDeleteItem(item)
+                                  .deleteItem(item)
                               : null,
                         ));
                       }).toList(),

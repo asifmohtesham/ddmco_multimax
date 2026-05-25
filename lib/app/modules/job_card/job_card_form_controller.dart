@@ -140,7 +140,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// Internal periodic ticker.
   Timer? _ticker;
 
-  /// True while submitJobCard() network call is in-flight.
+  /// True while submitDocument() network call is in-flight.
   final isSubmitting = false.obs;
 
   final jobCard = Rx<JobCard?>(null);
@@ -1188,7 +1188,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// Submitting locks the document (docstatus → 1), updates the parent Work
   /// Order Operation, and prevents further edits. A confirmation dialog is
   /// always shown so the user cannot accidentally trigger this action.
-  Future<void> submitJobCard() async {
+  Future<void> submitDocument() async {
     // Guard: show an informative alert if qty is not yet complete,
     // rather than silently doing nothing when the button is tapped
     // while the guard is active (e.g. programmatic call or race condition).
@@ -1196,7 +1196,7 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
     if (kDebugMode) {
       debugPrint(
-        '🟡 [submitJobCard] ${jc?.name} | '
+        '🟡 [submitDocument] ${jc?.name} | '
             'docstatus=${jc?.docstatus} '
             'isEditable=${jc?.isEditable} '
             'isCancelled=${jc?.isCancelled} '

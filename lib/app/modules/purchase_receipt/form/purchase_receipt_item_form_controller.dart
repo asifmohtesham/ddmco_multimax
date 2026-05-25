@@ -248,7 +248,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
       (i) => i?.name == rowId, orElse: () => null,
     );
     if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
+    _parent.deleteItem(item);
   }
 
   // ── submit ────────────────────────────────────────────────────────────────────
@@ -260,11 +260,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     final warehouse = resolvedWarehouse ?? '';
 
     if (editingItemName.value != null) {
-      parent.updateItemLocally(
+      parent.updateItem(
         editingItemName.value!, qty, batch, rack, warehouse,
       );
     } else {
-      parent.addItemLocally(
+      parent.addItem(
         itemCode.value, itemName.value, qty, batch, rack, warehouse,
         uom:       itemUom.value,
         poItemId:  poItemId.value,
@@ -273,7 +273,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
         poRate:    poRate.value ?? 0.0,
       );
     }
-    await parent.savePurchaseReceipt();
+    await parent.saveDocument();
   }
 
   // ── Init helpers ──────────────────────────────────────────────────────────────
