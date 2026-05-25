@@ -26,6 +26,8 @@ class BarcodeInputWidget extends StatefulWidget {
   final bool isLoading;
   final bool isSuccess;
   final bool hasError;
+  /// Accepted for API compatibility. Not currently rendered; wire to
+  /// [InputDecoration.hintText] in the future if a placeholder is desired.
   final String hintText;
   final String? activeRoute;
   final bool isEmbedded;
