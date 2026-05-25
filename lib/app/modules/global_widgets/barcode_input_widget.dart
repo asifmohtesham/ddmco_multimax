@@ -160,6 +160,9 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       padding: padding,
       decoration: decoration,
       child: SafeArea(
+        top: false,
+        left: false,
+        right: false,
         bottom: !widget.isEmbedded,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
