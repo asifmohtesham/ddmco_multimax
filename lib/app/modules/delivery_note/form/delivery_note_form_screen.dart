@@ -32,6 +32,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -505,6 +506,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
             );
           }),
+          SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
         ],
       );
     });

@@ -49,6 +49,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -143,7 +144,7 @@ class _ItemsTab extends StatelessWidget {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
           child: BottomScanBar(controller: controller),
         ),
       ],

@@ -31,6 +31,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -289,6 +290,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 controller:  controller.barcodeController,
                 activeRoute: AppRoutes.PACKING_SLIP_FORM,
               )),
+        Builder(builder: (ctx) =>
+            SizedBox(height: MediaQuery.viewInsetsOf(ctx).bottom)),
       ],
     );
   }

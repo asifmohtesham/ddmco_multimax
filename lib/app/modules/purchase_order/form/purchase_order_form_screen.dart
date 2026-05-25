@@ -30,6 +30,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -184,6 +185,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             hintText:    'Scan Item Code',
             activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
           )),
+        SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );
   }

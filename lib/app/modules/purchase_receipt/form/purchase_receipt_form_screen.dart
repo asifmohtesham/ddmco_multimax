@@ -32,6 +32,7 @@ class PurchaseReceiptFormScreen
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -330,6 +331,7 @@ class PurchaseReceiptFormScreen
                 controller:  controller.barcodeController,
                 activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
               )),
+        SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );
   }

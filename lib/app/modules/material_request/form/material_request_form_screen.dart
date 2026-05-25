@@ -49,6 +49,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -361,7 +362,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
             child: Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
