@@ -154,20 +154,6 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
         ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
         : const EdgeInsets.symmetric(horizontal: 20, vertical: 0);
 
-    String? helperText = widget.hintText;
-    Color? helperColor = Colors.grey;
-
-    if (widget.isLoading) {
-      helperText = 'Processing...';
-      helperColor = Colors.blue;
-    } else if (widget.isSuccess) {
-      helperText = 'Scan Validated';
-      helperColor = Colors.green;
-    } else if (widget.hasError) {
-      helperText = 'Scan Failed';
-      helperColor = Colors.red;
-    }
-
     return Container(
       padding: padding,
       decoration: decoration,
@@ -199,14 +185,6 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 decoration: InputDecoration(
                   labelText: 'Barcode',
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
-                  helperText: helperText,
-                  helperStyle: TextStyle(
-                    color: helperColor,
-                    fontWeight:
-                        (widget.isSuccess || widget.hasError)
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                  ),
                   labelStyle: TextStyle(
                     color:
                         widget.isEmbedded ? Colors.grey.shade700 : null,
