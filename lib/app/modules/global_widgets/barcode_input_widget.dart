@@ -189,7 +189,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 readOnly: widget.isLoading,
                 decoration: InputDecoration(
                   labelText: 'Barcode',
-                  floatingLabelBehavior: FloatingLabelBehavior.auto,
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
                   labelStyle: TextStyle(
                     color:
                         widget.isEmbedded ? Colors.grey.shade700 : null,
