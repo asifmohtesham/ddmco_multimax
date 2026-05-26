@@ -477,6 +477,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.clear();
     isSourceRackValid.value      = false;
     isValidatingSourceRack.value = false;
+    itemSourceWarehouse.value    = null;
   }
 
   @override
@@ -484,6 +485,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     targetRackController.clear();
     isTargetRackValid.value      = false;
     isValidatingTargetRack.value = false;
+    itemTargetWarehouse.value    = null;
   }
 
   @override
@@ -918,6 +920,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isTargetRackValid.value      = false;
     isValidatingTargetRack.value = false;
     isLoadingRackBalance.value   = false;
+    itemSourceWarehouse.value    = null;
+    itemTargetWarehouse.value    = null;
     _batchWiseHistory.clear();
     // Reset serial selection so a freshly opened sheet never inherits the
     // serial from a previous sheet session.
