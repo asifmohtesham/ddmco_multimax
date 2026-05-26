@@ -13,6 +13,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
@@ -507,19 +508,19 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           await fetchRackBalance(rack);
         }
         isLoadingRackBalance.value = false;
-        // FIX: only mark source rack valid when balance is non-negative
         if (rackBalance.value < 0) {
-          isSourceRackValid.value = rackBalance.value >= 0;
-          if (rackBalance.value < 0) {
-            rackError.value =
-            'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
-          }
+          isSourceRackValid.value   = false;
+          itemSourceWarehouse.value = null;
+          rackError.value =
+              'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
         } else {
-          isSourceRackValid.value = true;
-          rackError.value = '';          // cleared on success (existing commit-7 rule)
+          isSourceRackValid.value   = true;
+          itemSourceWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
+          rackError.value = '';
         }
       } else {
-        isTargetRackValid.value = true;
+        isTargetRackValid.value   = true;
+        itemTargetWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
         // Only clear rackError if source rack has no active error.
         // Preserving source-side negative-balance error message.
         if (isSourceRackValid.value) {
@@ -530,6 +531,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       rackError.value = 'Rack validation error: $e';
       log('[SE-Item] validateDualRack error: $e', name: 'SE-Item');
       isLoadingRackBalance.value = false;
+      if (isSource) itemSourceWarehouse.value = null;
+      else          itemTargetWarehouse.value  = null;
     } finally {
       if (isSource) { isValidatingSourceRack.value = false; }
       else          { isValidatingTargetRack.value = false; }
