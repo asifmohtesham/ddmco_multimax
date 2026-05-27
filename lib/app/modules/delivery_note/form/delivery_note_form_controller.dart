@@ -91,6 +91,7 @@ class DeliveryNoteFormController extends GetxController
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
+  final _derivedWarehousePlaceholder = RxnString();
 
   // ── Customer-level error ──────────────────────────────────────────────────
   var customerError = RxnString();
@@ -388,7 +389,7 @@ class DeliveryNoteFormController extends GetxController
           ),
           DerivedWarehouseLabel(
             itemWarehouse:    child.itemWarehouse,
-            derivedWarehouse: RxnString(),
+            derivedWarehouse: _derivedWarehousePlaceholder,
             headerWarehouse:  setWarehouse,
           ),
         ],
