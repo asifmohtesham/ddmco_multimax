@@ -560,39 +560,10 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ),
               // ── Scan footer row ────────────────────────────────────────────
               Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainer,
-                  border: Border(
-                      top: BorderSide(color: colorScheme.outlineVariant)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                padding: EdgeInsets.fromLTRB(8, 12, 16, bottomPadding + 12),
+                color: colorScheme.surface,
+                padding: EdgeInsets.only(bottom: bottomPadding),
                 child: Row(
                   children: [
-                    if (onCameraScan != null &&
-                        isCameraExpanded != null &&
-                        onToggleCamera != null &&
-                        isMobile)
-                      Obx(
-                        () => IconButton(
-                          icon: Icon(
-                            isCameraExpanded!.value
-                                ? Icons.camera_alt
-                                : Icons.camera_alt_outlined,
-                            color: colorScheme.primary,
-                          ),
-                          tooltip: isCameraExpanded!.value
-                              ? 'Close camera'
-                              : 'Open camera',
-                          onPressed: onToggleCamera,
-                        ),
-                      ),
                     Expanded(
                       child: BarcodeInputWidget(
                         onScan: onScan ?? onCameraScan!,

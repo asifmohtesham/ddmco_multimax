@@ -86,10 +86,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
     }
 
     final sendButton = IconButton(
-      icon: Icon(
-        widget.isEmbedded ? Icons.arrow_forward : Icons.send,
-        color: widget.isEmbedded ? primaryColor : null,
-      ),
+      icon: const Icon(Icons.send),
       onPressed: () {
         if (_textController.text.trim().isNotEmpty) {
           widget.onScan(_textController.text.trim());
@@ -124,13 +121,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;
 
-    final decoration = widget.isEmbedded
-        ? BoxDecoration(
-      color: primaryColor.withValues(alpha: 0.06),
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: primaryColor.withValues(alpha: 0.1)),
-    )
-        : BoxDecoration(
+    final decoration = BoxDecoration(
       color: Colors.white,
       boxShadow: [
         BoxShadow(
@@ -141,23 +132,8 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
       ],
     );
 
-    final padding = widget.isEmbedded
-        ? const EdgeInsets.all(12.0)
-        : const EdgeInsets.all(16.0);
-
-    final inputBorder = widget.isEmbedded
-        ? OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(color: Colors.grey.shade300),
-    )
-        : OutlineInputBorder(borderRadius: BorderRadius.circular(30));
-
-    final contentPadding = widget.isEmbedded
-        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 14)
-        : const EdgeInsets.symmetric(horizontal: 20, vertical: 0);
-
     return Container(
-      padding: padding,
+      padding: const EdgeInsets.all(16.0),
       decoration: decoration,
       child: SafeArea(
         top: false,
@@ -167,22 +143,6 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (widget.isEmbedded)
-              Container(
-                margin: const EdgeInsets.only(right: 12),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: primaryColor.withValues(alpha: 0.2)),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2))
-                    ]),
-                child: Icon(Icons.qr_code_scanner, color: primaryColor, size: 24),
-              ),
             Expanded(
               child: TextFormField(
                 controller: _textController,
@@ -192,47 +152,23 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
                 decoration: InputDecoration(
                   labelText: 'Barcode',
                   floatingLabelBehavior: FloatingLabelBehavior.always,
-                  labelStyle: TextStyle(
-                    color:
-                        widget.isEmbedded ? Colors.grey.shade700 : null,
-                    fontWeight:
-                        widget.isEmbedded ? FontWeight.w500 : null,
-                  ),
-                  border: inputBorder,
-                  enabledBorder: widget.isEmbedded
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30)),
+                  enabledBorder: widget.hasError
                       ? OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(
-                              color: widget.hasError
-                                  ? Colors.red
-                                  : Colors.transparent))
-                      : (widget.hasError
-                          ? OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                              borderSide:
-                                  const BorderSide(color: Colors.red))
-                          : null),
-                  focusedBorder: widget.isEmbedded
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.red))
+                      : null,
+                  focusedBorder: widget.hasError
                       ? OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(
-                              color: widget.hasError
-                                  ? Colors.red
-                                  : primaryColor,
-                              width: 1.5))
-                      : (widget.hasError
-                          ? OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                              borderSide: const BorderSide(
-                                  color: Colors.red, width: 2))
-                          : null),
-                  contentPadding: contentPadding,
-                  prefixIcon: widget.isEmbedded
-                      ? null
-                      : const Icon(Icons.qr_code_scanner,
-                          color: Colors.grey),
-                  filled: widget.isEmbedded,
-                  fillColor: Colors.white,
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(
+                              color: Colors.red, width: 2))
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 0),
+                  prefixIcon: const Icon(Icons.qr_code_scanner,
+                      color: Colors.grey),
                   suffixIcon: _buildSuffixIcon(context, primaryColor),
                 ),
                 onFieldSubmitted: (value) {
