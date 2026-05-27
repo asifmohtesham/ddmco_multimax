@@ -28,7 +28,6 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
 
 // Child sheet controller
@@ -335,11 +334,6 @@ class DeliveryNoteFormController extends GetxController
         controller:       child,
         scrollController: child.sheetScrollController,
         customFields: [
-          DerivedWarehouseLabel(
-            itemWarehouse:    child.itemWarehouse,
-            derivedWarehouse: RxnString(),
-            headerWarehouse:  setWarehouse,
-          ),
           _CheckWoButton(
             itemCode: itemCode,
             fetchWorkOrders: () => fetchWorkOrdersForItem(itemCode),
@@ -391,6 +385,11 @@ class DeliveryNoteFormController extends GetxController
                 }
               });
             },
+          ),
+          DerivedWarehouseLabel(
+            itemWarehouse:    child.itemWarehouse,
+            derivedWarehouse: RxnString(),
+            headerWarehouse:  setWarehouse,
           ),
         ],
         onSubmit: () async {
@@ -620,41 +619,6 @@ class DeliveryNoteFormController extends GetxController
       checkForChanges();
     }
     if (mode == 'edit') await saveDocument();
-  }
-
-  /// Private factory — single source of truth for item construction.
-  DeliveryNoteItem _buildItem({
-    required String   itemCode,
-    required String   itemName,
-    required double   qty,
-    required String   rack,
-    required String   batch,
-    String?           serial,
-    // Fields preserved from an existing item (null = fresh add)
-    String?           existingName,
-    double            rate        = 0.0,
-    String            uom         = 'Nos',
-    String?           owner,
-    String?           creation,
-    String?           modified,
-    String?           modifiedBy,
-  }) {
-    return DeliveryNoteItem(
-      name:                      existingName,
-      itemCode:                  itemCode,
-      itemName:                  itemName,
-      qty:                       qty,
-      rate:                      rate,
-      rack:                      rack.isEmpty  ? null : rack,
-      batchNo:                   batch.isEmpty ? null : batch,
-      uom:                       uom,
-      warehouse:                 RackLocation.tryParse(rack)?.warehouseName,
-      customInvoiceSerialNumber: serial,
-      owner:                     owner,
-      creation:                  creation,
-      modified:                  modified,
-      modifiedBy:                modifiedBy,
-    );
   }
 
   Future<void> deleteItem(DeliveryNoteItem item) async {
