@@ -146,6 +146,7 @@ class DeliveryNoteItem {
   final double? packedQty;
   final double? companyTotalStock;
   final int docstatus;
+  final String? warehouse;
 
   DeliveryNoteItem({
     this.name,
@@ -169,6 +170,7 @@ class DeliveryNoteItem {
     this.packedQty,
     this.companyTotalStock,
     this.docstatus = 0,
+    this.warehouse,
   });
 
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
@@ -196,6 +198,7 @@ class DeliveryNoteItem {
       companyTotalStock:
           DeliveryNote._parseDouble(json['company_total_stock']),
       docstatus: DeliveryNote._parseInt(json['docstatus']),
+      warehouse: json['warehouse'] as String?,
     );
   }
 
@@ -211,6 +214,9 @@ class DeliveryNoteItem {
     };
     if (name != null && !name!.startsWith('local_')) {
       data['name'] = name;
+    }
+    if (warehouse != null) {
+      data['warehouse'] = warehouse;
     }
     return data;
   }
@@ -237,6 +243,7 @@ class DeliveryNoteItem {
     double? packedQty,
     double? companyTotalStock,
     int? docstatus,
+    String? warehouse,
   }) {
     return DeliveryNoteItem(
       name: name ?? this.name,
@@ -261,6 +268,7 @@ class DeliveryNoteItem {
       packedQty: packedQty ?? this.packedQty,
       companyTotalStock: companyTotalStock ?? this.companyTotalStock,
       docstatus: docstatus ?? this.docstatus,
+      warehouse: warehouse ?? this.warehouse,
     );
   }
 }
