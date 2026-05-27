@@ -278,6 +278,46 @@ class ApiProvider {
     return [];
   }
 
+  /// Parses a Frappe `/api/resource/Rack` response into rack name strings.
+  ///
+  /// Expects `data['data']` to be a `List` of maps each with a `'name'` key.
+  /// Skips null entries, non-Map entries, and entries with a null or empty name.
+  /// Returns an empty list on any shape mismatch or null input.
+  static List<String> parseRacksByWarehouseResponse(dynamic data) {
+    if (data == null) return [];
+    final rawList = data['data'];
+    if (rawList is! List) return [];
+    final result = <String>[];
+    for (final item in rawList) {
+      if (item is! Map) continue;
+      final name = item['name'];
+      if (name is String && name.isNotEmpty) {
+        result.add(name);
+      }
+    }
+    return result;
+  }
+
+  /// Fetches all rack names in [warehouse] from the Rack DocType API.
+  ///
+  /// Calls `GET /api/resource/Rack?filters=[["Rack","warehouse","=",wh]]&fields=["name"]&limit_page_length=0`.
+  /// Returns an empty list when [warehouse] is empty or on any API error.
+  Future<List<String>> getRacksByWarehouse(String warehouse) async {
+    if (warehouse.isEmpty) return [];
+    try {
+      if (!_dioInitialised) await _initDio();
+      final response = await _dio.get('/api/resource/Rack', queryParameters: {
+        'fields':            json.encode(['name']),
+        'filters':           json.encode([['Rack', 'warehouse', '=', warehouse]]),
+        'limit_page_length': 0,
+        'order_by':          'name asc',
+      });
+      return parseRacksByWarehouseResponse(response.data);
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
     if (!_dioInitialised) await _initDio();
 
