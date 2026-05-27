@@ -223,8 +223,11 @@ class SourceRackFieldAdapter implements RackFieldWithBrowseDelegate {
 /// the target side (chip only shows when `balance > 0 || forceShow`).
 ///
 /// ## Picker lifecycle
-/// Mirrors [SourceRackFieldAdapter.browseRacks] but scoped to
-/// [_d.targetRackWarehouse] and wired to [_d.onTargetRackChanged].
+/// Opens the rack picker via [RackPickerController.loadForTarget], which
+/// fetches all Rack DocType records for [_d.targetRackWarehouse] rather
+/// than querying Stock Balance. This intentionally differs from
+/// [SourceRackFieldAdapter.browseRacks], which uses [RackPickerController.load]
+/// (Stock Balance path) for the source side.
 class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
   final DualRackDelegate _d;
 
@@ -294,8 +297,13 @@ class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
       _d.itemCode.value.isNotEmpty &&
           (_d.targetRackWarehouse?.value?.isNotEmpty ?? false);
 
-  /// Opens the rack picker scoped to [_d.targetRackWarehouse].
-  /// See [SourceRackFieldAdapter.browseRacks] for the full rationale.
+  /// Opens the rack picker for a target (destination) rack.
+  ///
+  /// Uses [RackPickerController.loadForTarget] to fetch all Rack DocType
+  /// records in [_d.targetRackWarehouse] from the Frappe API, rather than
+  /// querying the Stock Balance report. Sets [isTargetMode] on the controller
+  /// so [RackPickerSheet] suppresses the sufficiency bar and replaces the
+  /// sufficiency badge with a simple rack count.
   @override
   Future<RackPickerResult?> browseRacks() async {
     if (!canBrowseRacks) return null;
@@ -304,13 +312,9 @@ class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
     final tag       = 'tgt_rack_${DateTime.now().microsecondsSinceEpoch}';
     final ctrl      = Get.put(RackPickerController(), tag: tag);
 
-    unawaited(ctrl.load(
-      itemCode:     _d.itemCode.value,
-      batchNo:      _d.batchController.text.trim(),
-      warehouse:    warehouse,
-      requestedQty: double.tryParse(_d.qtyController.text) ?? 0.0,
-      currentRack:  _d.targetRackController.text.trim(),
-      fallbackMap:  const {},
+    unawaited(ctrl.loadForTarget(
+      warehouse:   warehouse,
+      currentRack: _d.targetRackController.text.trim(),
     ));
 
     RackPickerResult? result;
@@ -319,12 +323,6 @@ class TargetRackFieldAdapter implements RackFieldWithBrowseDelegate {
       RackPickerSheet(
         pickerTag:  tag,
         onSelected: (rack) {
-          // availableQty is 0.0 here because RackPickerSheet.onSelected receives
-          // only the rack String, not the full entry.  The post-pick call to
-          // handleRackPicked → onSourceRackChanged / onTargetRackChanged triggers
-          // the controller's validateRack pipeline which fetches and populates the
-          // authoritative live balance before availableQty is ever read.
-          // See RackPickerResult.availableQty Dartdoc for the full rationale.
           result = RackPickerResult(rackId: rack, availableQty: 0.0);
         },
       ),

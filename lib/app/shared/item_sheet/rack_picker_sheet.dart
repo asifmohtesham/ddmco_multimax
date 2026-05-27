@@ -477,7 +477,7 @@ class RackPickerSheet extends StatelessWidget {
                 slivers: [
 
                   // Fallback banner
-                  if (ctrl.usedFallback.value)
+                  if (ctrl.usedFallback.value && !isTargetMode)
                     SliverToBoxAdapter(
                       child: Container(
                         width: double.infinity,
