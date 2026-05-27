@@ -120,11 +120,13 @@ class _SufficiencyBar extends StatelessWidget {
 class _RackPickerTile extends StatelessWidget {
   final RackPickerEntry entry;
   final bool isSelected;
+  final bool isTargetMode;
   final VoidCallback onTap;
 
   const _RackPickerTile({
     required this.entry,
     required this.isSelected,
+    required this.isTargetMode,
     required this.onTap,
   });
 
@@ -133,7 +135,7 @@ class _RackPickerTile extends StatelessWidget {
     final theme       = Theme.of(context);
     final cs          = theme.colorScheme;
     final statusColor = _statusColor(entry.status);
-    final isDisabled  = entry.status == SufficiencyStatus.empty;
+    final isDisabled  = isTargetMode ? false : entry.status == SufficiencyStatus.empty;
 
     final bgColor = isSelected
         ? cs.primary.withOpacity(0.08)
@@ -218,11 +220,12 @@ class _RackPickerTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                _SufficiencyBar(
-                  availableQty: entry.availableQty,
-                  requestedQty: entry.requestedQty,
-                  status: entry.status,
-                ),
+                if (!isTargetMode)
+                  _SufficiencyBar(
+                    availableQty: entry.availableQty,
+                    requestedQty: entry.requestedQty,
+                    status: entry.status,
+                  ),
                 if (isSelected) ...[
                   const SizedBox(width: 8),
                   Icon(Icons.check_circle, color: cs.primary, size: 18),
@@ -413,7 +416,9 @@ class RackPickerSheet extends StatelessWidget {
                           color: cs.onSurfaceVariant.withOpacity(0.4)),
                       const SizedBox(height: 12),
                       Text(
-                        'No racks found with stock',
+                        ctrl.isTargetMode.value
+                            ? 'No racks found'
+                            : 'No racks found with stock',
                         style: TextStyle(
                           color: cs.onSurfaceVariant,
                           fontSize: 14,
@@ -431,6 +436,7 @@ class RackPickerSheet extends StatelessWidget {
               final hasWarehouse = ctrl.warehouse.isNotEmpty;
               final suf          = ctrl.visibleSufficientCount;
               final tot          = visible.length;
+              final isTargetMode = ctrl.isTargetMode.value;
 
               // ── Filtered-empty state ──────────────────────────────────────
               // The full list has racks but the warehouse filter hides them
@@ -509,23 +515,26 @@ class RackPickerSheet extends StatelessWidget {
                           _sectionLabel(
                               'AVAILABLE RACKS', cs.onSurfaceVariant),
                           const Spacer(),
-                          // Sufficient badge
+                          // Sufficient badge (source) / rack count (target)
                           Container(
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: suf > 0
-                                  ? Colors.green.shade600
-                                      .withOpacity(0.1)
-                                  : cs.surfaceContainerHighest,
+                              color: isTargetMode
+                                  ? cs.surfaceContainerHighest
+                                  : suf > 0
+                                      ? Colors.green.shade600.withOpacity(0.1)
+                                      : cs.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '$suf\u202f/\u202f$tot sufficient',
+                              isTargetMode
+                                  ? '$tot racks'
+                                  : '$suf\u202f/\u202f$tot sufficient',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
-                                color: suf > 0
+                                color: !isTargetMode && suf > 0
                                     ? Colors.green.shade700
                                     : cs.onSurfaceVariant,
                               ),
@@ -588,8 +597,9 @@ class RackPickerSheet extends StatelessWidget {
                           final isSelected =
                               selectedRack == entry.rackName;
                           return _RackPickerTile(
-                            entry:      entry,
-                            isSelected: isSelected,
+                            entry:        entry,
+                            isSelected:   isSelected,
+                            isTargetMode: isTargetMode,
                             onTap: () {
                               ctrl.selectRack(entry.rackName);
                               onSelected(entry.rackName);
