@@ -13,6 +13,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.da
 // Picker
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
+import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
 // Data layer
@@ -91,6 +92,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   final RxInt  editingIndex   = (-1).obs;
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
+  final RxnString itemWarehouse = RxnString();
 
   // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
   /// Stores the 8-digit EAN8 barcode of the current item, set at sheet-open
@@ -106,7 +108,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // ── Base abstract overrides ────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
-      _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
+      itemWarehouse.value ?? _parent.setWarehouse.value;
 
   @override bool  get requiresBatch => true;
   @override bool  get requiresRack  => false;
@@ -544,6 +546,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void _resetValidationState() {
     resetBatch();
     resetRack();
+    itemWarehouse.value   = null;
     // selectedSerial is intentionally NOT reset here.
     // - initForNewItem: serial is cleared in _seedFieldControllers() below.
     // - initForEdit:    serial is seeded in _resolveAndSeedSerial() AFTER
@@ -583,10 +586,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     _seedLiveRemainingFromItem(item: item);
     _resetValidationState();
-    // Re-seed rack text after _resetValidationState() which calls resetRack()
-    // and clears rackController. The validation round-trip happens later in
-    // _triggerEditValidations(), so the text must survive until then.
+    // Re-seed rack text and itemWarehouse after _resetValidationState() which
+    // calls resetRack() and clears both rackController and itemWarehouse.
     rackController.text = existingRack;
+    itemWarehouse.value = item.warehouse;
 
     _resolveAndSeedSerial(item: item);
     _wireListenersAndSnapshot();
@@ -812,6 +815,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       rate:                      0.0,
       batchNo:                   batchController.text.trim(),
       rack:                      rack.isEmpty            ? null : rack,
+      warehouse:                 itemWarehouse.value,
       itemGroup:                 itemGroup.value,
       customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
@@ -1023,9 +1027,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// with the authoritative result.
   @override
   void applyRackScan(String code) {
-    softResetRack();      // zero isRackValid before listener fires
+    itemWarehouse.value = RackLocation.tryParse(code)?.warehouseName;
+    softResetRack();
     rackController.text = code;
-    unawaited(validateRack(code)); // API round-trip — sets isRackValid + rackBalance
+    unawaited(validateRack(code));
   }
 
   void clearAll() {
@@ -1034,6 +1039,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     qtyController.clear();
     resetBatch();
     resetRack();
+    itemWarehouse.value   = null;
     selectedSerial.value  = null;
     liveRemaining.value   = 0.0;
     rackStockMapRx.clear();
