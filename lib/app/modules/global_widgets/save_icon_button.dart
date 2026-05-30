@@ -72,7 +72,7 @@ class _SaveIconButtonState extends State<SaveIconButton> {
         dimension: 20,
         child: Center(              // ← centres within the IconButton tap zone
           child: CircularProgressIndicator(
-            color:       cs.onPrimary,
+            color:       cs.primary,
             strokeWidth: 2.5,
           ),
         ),

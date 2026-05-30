@@ -8,69 +8,71 @@ class StatusPill extends StatelessWidget {
 
   const StatusPill({super.key, required this.status, this.compact = false});
 
-  // ── Frappe UI design tokens (ERPNext v16 verbatim) ────────────────────────
-  // surface-red-2 / ink-red-4
-  static const _redBg    = Color(0xFFFFE7E7);
-  static const _redText  = Color(0xFFCC2929);
-  // surface-blue-2 / ink-blue-2
-  static const _blueBg   = Color(0xFFE6F4FF);
-  static const _blueText = Color(0xFF0289F7);
-  // surface-amber-1 / ink-amber-3
-  static const _amberBg   = Color(0xFFFDFAED);
-  static const _amberText = Color(0xFFDB7706);
-  // yellow/100 / yellow/700
+  // ── Frappe v15 indicator-pill tokens ─────────────────────────────────────
+  // Resolved from: --bg-{colour} / --text-on-{colour} in _colors.scss +
+  // css_variables.scss.  Colour names match the $indicator-colors list in
+  // indicator.scss — there is no "amber" pill class in Frappe.
+  //
+  // --bg-red   (red-100)    / --text-on-red   (red-700)
+  static const _redBg    = Color(0xFFFFF0F0);
+  static const _redText  = Color(0xFFB52A2A);
+  // --bg-blue  (blue-100)   / --text-on-blue  (blue-700)
+  static const _blueBg   = Color(0xFFEDF6FD);
+  static const _blueText = Color(0xFF0070CC);
+  // --bg-orange (orange-100) / --text-on-orange (orange-700)
+  static const _orangeBg   = Color(0xFFFFF1E7);
+  static const _orangeText = Color(0xFFBD3E0C);
+  // --bg-yellow (yellow-100) / --text-on-yellow (yellow-700)
   static const _yellowBg   = Color(0xFFFFF7D3);
   static const _yellowText = Color(0xFFAB6E05);
-  // surface-green-2 / ink-green-3
-  static const _greenBg   = Color(0xFFE4FAEB);
-  static const _greenText = Color(0xFF278F5E);
-  // surface-gray-2 / ink-gray-6  (default for unknown statuses)
+  // --bg-green (green-100)  / --text-on-green (green-800)
+  static const _greenBg   = Color(0xFFE4F5E9);
+  static const _greenText = Color(0xFF16794C);
+  // --bg-gray  (gray-100)   / --text-on-gray  (gray-700)  — default
   static const _grayBg   = Color(0xFFF3F3F3);
   static const _grayText = Color(0xFF525252);
 
   /// Returns `(background, textColour)` for the given ERPNext status string.
   ///
-  /// Colour sources:
-  /// - Red:    indicator.js docstatus==0/2; work_order_list.js; guess_style danger
-  /// - Blue:   indicator.js docstatus==1; work_order_list.js
-  /// - Amber:  delivery_note_list.js; purchase_order_list.js; work_order_list.js;
-  ///           material_request_list.js; stock_entry_list.js; indicator.js __unsaved
-  /// - Yellow: delivery_note_list.js; purchase_receipt_list.js;
-  ///           material_request_list.js
-  /// - Green:  all list views; guess_style success
-  /// - Gray:   guess_style (no keyword match); explicit list view returns
+  /// Tokens sourced from Frappe v15 `_colors.scss` / `css_variables.scss`.
+  /// Status→colour mapping sourced from `indicator.js` and per-DocType
+  /// `*_list.js` files in frappe/frappe and frappe/erpnext (version-15 branch).
   static (Color, Color) colourForStatus(String status) {
     switch (status) {
-      // ── Red ───────────────────────────────────────────────────────────────
+      // ── Red: docstatus=0 Draft, docstatus=2 Cancelled, danger keywords ───
       case 'Draft':
       case 'Cancelled':
+      case 'Canceled': // US spelling used in stock_entry_list.js
       case 'Open':
-      case 'Not Started':
       case 'Stopped':
       case 'Rejected':
       case 'Expired':
       case 'Overdue':
         return (_redBg, _redText);
 
-      // ── Blue ──────────────────────────────────────────────────────────────
+      // ── Blue: docstatus=1 Submitted, Enabled, job_card Material Transferred
       case 'Submitted':
+      case 'Enabled':
       case 'Stock Reserved':
+      case 'Material Transferred':
         return (_blueBg, _blueText);
 
-      // ── Amber (orange) ────────────────────────────────────────────────────
+      // ── Orange: __unsaved (Not Saved), warning / in-progress states ───────
+      case 'Not Saved':
+      case 'Not Started': // work_order_list.js: submitted-but-not-started
       case 'To Bill':
       case 'On Hold':
       case 'Hold':
       case 'In Process':
+      case 'Work In Progress': // job_card_list.js
       case 'Pending':
-      case 'Not Saved':
       case 'To Receive and Bill':
       case 'To Receive':
       case 'Stock Partially Reserved':
       case 'Material Returned from WIP':
-        return (_amberBg, _amberText);
+        return (_orangeBg, _orangeText);
 
-      // ── Yellow ────────────────────────────────────────────────────────────
+      // ── Yellow: partially-fulfilled states ────────────────────────────────
       case 'Partially Billed':
       case 'Partly Billed':
       case 'In Transit':
@@ -78,12 +80,11 @@ class StatusPill extends StatelessWidget {
       case 'Partially Received':
         return (_yellowBg, _yellowText);
 
-      // ── Green ─────────────────────────────────────────────────────────────
+      // ── Green: terminal / successful states ───────────────────────────────
       case 'Completed':
       case 'Active':
       case 'Paid':
       case 'Settled':
-      case 'Enabled':
       case 'Closed':
       case 'Ordered':
       case 'Transferred':
@@ -92,7 +93,7 @@ class StatusPill extends StatelessWidget {
       case 'Goods Transferred':
         return (_greenBg, _greenText);
 
-      // ── Gray (default) ────────────────────────────────────────────────────
+      // ── Gray: return / neutral / unknown (guess_style default) ───────────
       case 'In Progress':
       case 'Disabled':
       case 'Passive':

@@ -149,6 +149,10 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
 
+  /// Mirrors `frappe.get_indicator`: returns `'Not Saved'` (orange pill) when
+  /// the document is dirty and editable, otherwise the stored [statusLabel].
+  String? get _effectiveStatusLabel => canSave ? 'Not Saved' : statusLabel;
+
   @override
   double get minExtent => statusBarHeight + _kCollapsedToolbar + _bottomHeight;
 
@@ -222,27 +226,27 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                         if (docType != null)
                           Text(
                             docType!.toUpperCase(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.7,
-                              color: Color(0xFF870E18),
+                              color: colorScheme.primary,
                               height: 1.0,
                             ),
                           ),
-                        if (docType != null && statusLabel != null)
+                        if (docType != null && _effectiveStatusLabel != null)
                           const SizedBox(width: 5),
-                        if (statusLabel != null)
-                          StatusPill(status: statusLabel!, compact: true),
+                        if (_effectiveStatusLabel != null)
+                          StatusPill(status: _effectiveStatusLabel!, compact: true),
                       ],
                     ),
                     const SizedBox(height: 3),
                     AutoSizeText(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF25286F),
+                        color: colorScheme.secondary,
                         height: 1.3,
                       ),
                       maxLines: 1,
@@ -274,50 +278,27 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
             if (docType != null)
               Text(
                 docType!.toUpperCase(),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 0.77, // 0.07em × 11sp
-                  color: Color(0xFF870E18),
+                  letterSpacing: 0.77,
+                  color: colorScheme.primary,
                   height: 1.0,
                 ),
               ),
             if (docType != null) const SizedBox(height: 4),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF171717),
+                color: colorScheme.onSurface,
                 height: 1.15,
               ),
             ),
             const SizedBox(height: 6),
-            Row(
-              children: [
-                if (statusLabel != null) StatusPill(status: statusLabel!),
-                if (statusLabel != null && canSave) const SizedBox(width: 8),
-                if (canSave) ...[
-                  const Text(
-                    '● ',
-                    style: TextStyle(
-                      color: Color(0xFFDB7706),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
-                    ),
-                  ),
-                  const Text(
-                    'Unsaved changes',
-                    style: TextStyle(
-                      color: Color(0xFFDB7706),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            if (_effectiveStatusLabel != null)
+              StatusPill(status: _effectiveStatusLabel!),
           ],
         ),
       ),
