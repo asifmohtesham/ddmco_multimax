@@ -469,7 +469,7 @@ class DeliveryNoteFormController extends GetxController
       if (mode == 'new') {
         response = await _apiProvider.createDocument('Delivery Note', payload);
       } else {
-        response = await _apiProvider.updateDocument('Delivery Note', name, payload);
+        response = await _apiProvider.updateDocument('Delivery Note', note.name, payload);
       }
 
       if (response.statusCode == 200 && response.data['data'] != null) {
