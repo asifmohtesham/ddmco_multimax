@@ -510,7 +510,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           await fetchRackBalance(rack);
         }
         isLoadingRackBalance.value = false;
-        if (rackBalance.value < 0) {
+        if (rackBalance.value <= 0) {
           isSourceRackValid.value   = false;
           itemSourceWarehouse.value = null;
           rackError.value =
@@ -750,13 +750,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     // rackOk: only enforce source-rack if the current item/context requires it.
     final rackOk = !showSourceRack ||
-        (isSourceRackValid.value && rackBalance.value >= 0);
+        (isSourceRackValid.value && rackBalance.value > 0);
     // Re-assert the rack error message so it persists across subsequent
     // field edits (qty, target rack) that trigger validateSheet.
-    if (!rackOk && rackBalance.value < 0) {
+    if (!rackOk && showSourceRack && sourceRackController.text.isNotEmpty && rackBalance.value <= 0) {
       rackError.value =
-      'Rack balance is negative (${rackBalance.value.toStringAsFixed(0)}). '
-          'Cannot issue from this rack.';
+      'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
       debugPrint('SE-Item rackError set to: ${rackError.value}');
       debugPrint('SE-Item isSourceRackValid: ${isSourceRackValid.value}');
     }
