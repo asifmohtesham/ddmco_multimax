@@ -38,6 +38,13 @@ class AuthenticationController extends GetxController {
       if (response.statusCode == 200 && response.data?['message'] != null) {
         final loggedInUserEmail = response.data['message'];
 
+        // Frappe returns "Guest" when the session has expired. Treat this as
+        // unauthenticated — do not proceed with a Guest user or prefetch.
+        if (loggedInUserEmail == 'Guest') {
+          await _clearSessionAndLocalData();
+          return;
+        }
+
         final userDetailsResponse =
             await _apiProvider.getUserDetails(loggedInUserEmail);
         if (userDetailsResponse.statusCode == 200 &&
@@ -88,6 +95,9 @@ class AuthenticationController extends GetxController {
           }
 
           if (Get.isRegistered<PermissionService>()) {
+            // Clear before prefetch so stale cache entries from an expired
+            // session (e.g. a prior Guest prefetch) cannot block fresh fetches.
+            Get.find<PermissionService>().clearCache();
             await Get.find<PermissionService>().prefetchAll(kAppPermissions);
           }
         } else {
