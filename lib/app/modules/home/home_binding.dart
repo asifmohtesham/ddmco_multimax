@@ -11,17 +11,14 @@ import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
-import 'package:multimax/app/data/services/permission_service.dart';
-
 class HomeBinding extends Bindings {
   @override
   void dependencies() {
-    // DataWedgeService & ScanService are registered permanently in main()
-    // before runApp — do NOT put them here to avoid re-instantiation on
-    // every HOME route push (which would cancel the EventChannel stream).
+    // DataWedgeService, ScanService, and PermissionService are registered
+    // permanently in main() before runApp — do NOT put them here to avoid
+    // re-instantiation on every HOME route push.
 
     Get.put(StorageService(), permanent: true);
-    Get.put(PermissionService());
 
     // Providers
     Get.lazyPut<BomProvider>(() => BomProvider());

@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -24,6 +25,10 @@ Future<void> main() async {
   // Initialise services & global controllers.
   await Get.putAsync<DatabaseService>(() => DatabaseService().init());
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
+
+  // Permission service must be registered before AuthenticationController so
+  // fetchUserDetails can call prefetchAll on login / app restart.
+  Get.put<PermissionService>(PermissionService(), permanent: true);
 
   // Hardware scan services — registered here (not in HomeBinding) so that
   // the EventChannel stream listener is live before the first scan can

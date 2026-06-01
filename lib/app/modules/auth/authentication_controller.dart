@@ -3,10 +3,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/core/utils/app_navigator.dart';
+import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
@@ -83,6 +85,10 @@ class AuthenticationController extends GetxController {
 
           if (Get.isRegistered<StorageService>()) {
             await Get.find<StorageService>().saveUser(user);
+          }
+
+          if (Get.isRegistered<PermissionService>()) {
+            await Get.find<PermissionService>().prefetchAll(kAppPermissions);
           }
         } else {
           await _clearSessionAndLocalData();
@@ -192,6 +198,9 @@ class AuthenticationController extends GetxController {
     await _apiProvider.clearSessionCookies();
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
+    }
+    if (Get.isRegistered<PermissionService>()) {
+      Get.find<PermissionService>().clearCache();
     }
     currentUser.value = null;
     isAuthenticated.value = false;
