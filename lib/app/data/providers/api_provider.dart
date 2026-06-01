@@ -197,6 +197,33 @@ class ApiProvider {
     );
   }
 
+  /// Checks whether the current session user has [permType] access to [doctype].
+  /// Calls `frappe.client.has_permission` — the server enforces the check.
+  /// Returns the raw [Response]; parse it with [parseHasPermissionResponse].
+  Future<Response> hasPermission(String doctype, String permType) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.get(
+      '/api/method/frappe.client.has_permission',
+      queryParameters: {'doctype': doctype, 'perm_type': permType},
+    );
+  }
+
+  /// Parses a `frappe.client.has_permission` response into a [bool].
+  ///
+  /// Expected shape: `{"message": {"has_permission": 1}}`.
+  /// Returns `false` for any malformed, null, or denied response.
+  /// Exposed as a public static method so unit tests can exercise this
+  /// logic without a live HTTP connection.
+  static bool parseHasPermissionResponse(dynamic data) {
+    if (data is! Map) return false;
+    final message = data['message'];
+    if (message is! Map) return false;
+    final hp = message['has_permission'];
+    if (hp is bool) return hp;
+    if (hp is int)  return hp == 1;
+    return false;
+  }
+
   // ---------------------------------------------------------------------------
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
