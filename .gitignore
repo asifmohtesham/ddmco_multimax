@@ -44,6 +44,14 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Release signing — never commit
+android/key.properties
+android/multimax
+android/app/*.jks
+android/app/*.keystore
+*.jks
+*.keystore
+
 # Claude Code internal config
 .claude/
 
