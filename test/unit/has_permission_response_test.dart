@@ -3,54 +3,51 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 
 void main() {
   group('ApiProvider.parseHasPermissionResponse', () {
-    test('T-1: returns true when has_permission is int 1', () {
+    // The probe uses frappe.client.get_list which returns {"message": [...]}.
+    // A List value for "message" (even empty) means the user has access.
+
+    test('T-1: returns true when message is an empty list', () {
       expect(
-        ApiProvider.parseHasPermissionResponse(
-            {'message': {'has_permission': 1}}),
+        ApiProvider.parseHasPermissionResponse({'message': []}),
         isTrue,
       );
     });
 
-    test('T-2: returns false when has_permission is int 0', () {
+    test('T-2: returns true when message is a list with items', () {
       expect(
-        ApiProvider.parseHasPermissionResponse(
-            {'message': {'has_permission': 0}}),
-        isFalse,
-      );
-    });
-
-    test('T-3: returns true when has_permission is bool true', () {
-      expect(
-        ApiProvider.parseHasPermissionResponse(
-            {'message': {'has_permission': true}}),
+        ApiProvider.parseHasPermissionResponse({
+          'message': [
+            {'name': 'BATCH-0001'},
+          ],
+        }),
         isTrue,
       );
     });
 
-    test('T-4: returns false when has_permission is bool false', () {
-      expect(
-        ApiProvider.parseHasPermissionResponse(
-            {'message': {'has_permission': false}}),
-        isFalse,
-      );
-    });
-
-    test('T-5: returns false when data is null', () {
+    test('T-3: returns false when data is null', () {
       expect(ApiProvider.parseHasPermissionResponse(null), isFalse);
     });
 
-    test('T-6: returns false when data is not a Map', () {
+    test('T-4: returns false when data is not a Map', () {
       expect(ApiProvider.parseHasPermissionResponse('OK'), isFalse);
     });
 
-    test('T-7: returns false when message key is absent', () {
+    test('T-5: returns false when message key is absent', () {
       expect(
         ApiProvider.parseHasPermissionResponse({'other': 'data'}),
         isFalse,
       );
     });
 
-    test('T-8: returns false when message is a String, not a Map', () {
+    test('T-6: returns false when message is a Map, not a List', () {
+      expect(
+        ApiProvider.parseHasPermissionResponse(
+            {'message': {'has_permission': 1}}),
+        isFalse,
+      );
+    });
+
+    test('T-7: returns false when message is a String', () {
       expect(
         ApiProvider.parseHasPermissionResponse(
             {'message': 'Insufficient Permission'}),
@@ -58,10 +55,16 @@ void main() {
       );
     });
 
-    test('T-9: returns false when has_permission key is absent', () {
+    test('T-8: returns false when message is null', () {
       expect(
-        ApiProvider.parseHasPermissionResponse(
-            {'message': {'other': 'data'}}),
+        ApiProvider.parseHasPermissionResponse({'message': null}),
+        isFalse,
+      );
+    });
+
+    test('T-9: returns false when message is an int', () {
+      expect(
+        ApiProvider.parseHasPermissionResponse({'message': 0}),
         isFalse,
       );
     });

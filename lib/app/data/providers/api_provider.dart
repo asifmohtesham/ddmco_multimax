@@ -197,31 +197,37 @@ class ApiProvider {
     );
   }
 
-  /// Checks whether the current session user has [permType] access to [doctype].
-  /// Calls `frappe.client.has_permission` — the server enforces the check.
-  /// Returns the raw [Response]; parse it with [parseHasPermissionResponse].
+  /// Probes whether the current session user can list [doctype].
+  ///
+  /// Uses `frappe.client.get_list` with `limit=1` as a permission probe:
+  /// HTTP 200 (even empty list) → has access; HTTP 403 → denied.
+  /// `frappe.client.has_permission` requires a `docname` positional arg in
+  /// Frappe v15 and cannot check DocType-level access without it.
+  /// [permType] is accepted for API compatibility but not sent to the server —
+  /// list access is the binding check for both read and report in standard ERPNext.
   Future<Response> hasPermission(String doctype, String permType) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get(
-      '/api/method/frappe.client.has_permission',
-      queryParameters: {'doctype': doctype, 'perm_type': permType},
+      '/api/method/frappe.client.get_list',
+      queryParameters: {
+        'doctype': doctype,
+        'limit_page_length': 1,
+        'fields': '["name"]',
+      },
     );
   }
 
-  /// Parses a `frappe.client.has_permission` response into a [bool].
+  /// Parses a `frappe.client.get_list` permission-probe response into a [bool].
   ///
-  /// Expected shape: `{"message": {"has_permission": 1}}`.
-  /// Returns `false` for any malformed, null, or denied response.
+  /// Expected shape: `{"message": [...]}` — a List (possibly empty) means
+  /// the user has access; anything else (null, non-Map, missing key) means denied.
+  /// HTTP 403 is handled upstream as a [DioException]; this method only sees
+  /// the successful-200 body.
   /// Exposed as a public static method so unit tests can exercise this
   /// logic without a live HTTP connection.
   static bool parseHasPermissionResponse(dynamic data) {
     if (data is! Map) return false;
-    final message = data['message'];
-    if (message is! Map) return false;
-    final hp = message['has_permission'];
-    if (hp is bool) return hp;
-    if (hp is int)  return hp == 1;
-    return false;
+    return data['message'] is List;
   }
 
   // ---------------------------------------------------------------------------
