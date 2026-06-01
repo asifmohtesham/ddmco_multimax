@@ -55,6 +55,13 @@
       "deviceId": "22204524700538",
       "request": "launch",
       "type": "dart"
+    },
+    {
+      "name": "ES RFCT50ZQXWK USB",
+      "program": "lib/main.dart",
+      "deviceId": "RFCT50ZQXWK",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
