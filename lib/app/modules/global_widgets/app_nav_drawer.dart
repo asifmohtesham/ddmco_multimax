@@ -291,27 +291,44 @@ class AppNavDrawer extends StatelessWidget {
                           ),
                         ),
                         // ── Stock > Reports ──────────────────────────────────────
-                        const _NavSubheading('Reports'),
-                        DocTypeGuard(
-                          doctype: 'Batch',
-                          permType: 'report',
-                          child: _DrawerItem(
-                            title: 'Batch-Wise Balance',
-                            icon: Icons.history_toggle_off_rounded,
-                            route: AppRoutes.BATCH_WISE_BALANCE,
-                            currentRoute: currentRoute,
-                          ),
-                        ),
-                        DocTypeGuard(
-                          doctype: 'Item',
-                          permType: 'report',
-                          child: _DrawerItem(
-                            title:        'Item Variant Details',
-                            icon:         Icons.style_outlined,
-                            route:        AppRoutes.ITEM_VARIANT_DETAILS,
-                            currentRoute: currentRoute,
-                          ),
-                        ),
+                        Builder(builder: (_) {
+                          final svc = Get.find<PermissionService>();
+                          return Obx(() {
+                            final anyReport = [
+                              svc.hasAccess('Batch', permType: 'report'),
+                              svc.hasAccess('Item',  permType: 'report'),
+                            ].any((v) => v != false);
+                            if (!anyReport) return const SizedBox.shrink();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const _NavSubheading('Reports'),
+                                DocTypeGuard(
+                                  doctype: 'Batch',
+                                  permType: 'report',
+                                  loading: skeleton,
+                                  child: _DrawerItem(
+                                    title: 'Batch-Wise Balance',
+                                    icon: Icons.history_toggle_off_rounded,
+                                    route: AppRoutes.BATCH_WISE_BALANCE,
+                                    currentRoute: currentRoute,
+                                  ),
+                                ),
+                                DocTypeGuard(
+                                  doctype: 'Item',
+                                  permType: 'report',
+                                  loading: skeleton,
+                                  child: _DrawerItem(
+                                    title:        'Item Variant Details',
+                                    icon:         Icons.style_outlined,
+                                    route:        AppRoutes.ITEM_VARIANT_DETAILS,
+                                    currentRoute: currentRoute,
+                                  ),
+                                ),
+                              ],
+                            );
+                          });
+                        }),
                       ],
                     ),
 
@@ -385,27 +402,44 @@ class AppNavDrawer extends StatelessWidget {
                           ),
                         ),
                         // ── Manufacturing > Reports ─────────────────────────────
-                        const _NavSubheading('Reports'),
-                        DocTypeGuard(
-                          doctype: 'BOM',
-                          permType: 'report',
-                          child: _DrawerItem(
-                            title: 'BOM Search',
-                            icon: Icons.manage_search_rounded,
-                            route: AppRoutes.BOM_SEARCH,
-                            currentRoute: currentRoute,
-                          ),
-                        ),
-                        DocTypeGuard(
-                          doctype: 'Job Card',
-                          permType: 'report',
-                          child: _DrawerItem(
-                            title: 'Job Card Summary',
-                            icon: Icons.summarize_outlined,
-                            route: AppRoutes.JOB_CARD_SUMMARY,
-                            currentRoute: currentRoute,
-                          ),
-                        ),
+                        Builder(builder: (_) {
+                          final svc = Get.find<PermissionService>();
+                          return Obx(() {
+                            final anyReport = [
+                              svc.hasAccess('BOM',      permType: 'report'),
+                              svc.hasAccess('Job Card', permType: 'report'),
+                            ].any((v) => v != false);
+                            if (!anyReport) return const SizedBox.shrink();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const _NavSubheading('Reports'),
+                                DocTypeGuard(
+                                  doctype: 'BOM',
+                                  permType: 'report',
+                                  loading: skeleton,
+                                  child: _DrawerItem(
+                                    title: 'BOM Search',
+                                    icon: Icons.manage_search_rounded,
+                                    route: AppRoutes.BOM_SEARCH,
+                                    currentRoute: currentRoute,
+                                  ),
+                                ),
+                                DocTypeGuard(
+                                  doctype: 'Job Card',
+                                  permType: 'report',
+                                  loading: skeleton,
+                                  child: _DrawerItem(
+                                    title: 'Job Card Summary',
+                                    icon: Icons.summarize_outlined,
+                                    route: AppRoutes.JOB_CARD_SUMMARY,
+                                    currentRoute: currentRoute,
+                                  ),
+                                ),
+                              ],
+                            );
+                          });
+                        }),
                       ],
                     ),
 
