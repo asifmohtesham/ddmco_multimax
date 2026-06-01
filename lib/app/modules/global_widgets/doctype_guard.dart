@@ -4,13 +4,19 @@ import 'package:multimax/app/data/services/permission_service.dart';
 
 class DocTypeGuard extends StatelessWidget {
   final String doctype;
+
+  /// The Frappe permission type to check. Defaults to `'read'`.
+  /// Use `'report'` for report links (mirrors ERPNext's server enforcement).
+  final String permType;
+
   final Widget child;
   final Widget? fallback;
-  final Widget? loading; // Added loading widget slot
+  final Widget? loading;
 
   const DocTypeGuard({
     super.key,
     required this.doctype,
+    this.permType = 'read',
     required this.child,
     this.fallback,
     this.loading,
@@ -21,19 +27,15 @@ class DocTypeGuard extends StatelessWidget {
     final PermissionService service = Get.find<PermissionService>();
 
     return Obx(() {
-      final hasAccess = service.hasAccess(doctype);
+      final hasAccess = service.hasAccess(doctype, permType: permType);
 
-      // 1. Loading State
+      // Loading state — null only when the entry was not pre-fetched
       if (hasAccess == null) {
         return loading ?? const SizedBox.shrink();
       }
 
-      // 2. Access Granted
-      if (hasAccess == true) {
-        return child;
-      }
+      if (hasAccess == true) return child;
 
-      // 3. Access Denied
       return fallback ?? const SizedBox.shrink();
     });
   }
