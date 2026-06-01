@@ -21,7 +21,7 @@ class DocTypeGuard extends StatelessWidget {
     final PermissionService service = Get.find<PermissionService>();
 
     return Obx(() {
-      final hasAccess = service.hasReadAccess(doctype);
+      final hasAccess = service.hasAccess(doctype);
 
       // 1. Loading State
       if (hasAccess == null) {
