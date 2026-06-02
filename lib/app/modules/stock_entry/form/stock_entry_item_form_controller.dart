@@ -3,7 +3,6 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -14,6 +13,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
 import 'package:multimax/app/shared/item_sheet/dual_rack_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
@@ -31,8 +31,8 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///   • POS wiring re-done: availableSerialNos derives from
 ///     _parent.posUploadSerialOptions; serial ceiling reads
 ///     _parent.remainingQtyForSerial(selectedSerial.value).
-///   • deleteCurrentItem delegates to _parent.confirmAndDeleteItem().
-///   • submit() delegates to _parent.updateItemLocally() / addItemLocally()
+///   • deleteCurrentItem delegates to _parent.deleteItem().
+///   • submit() delegates to _parent.updateItem() / addItem()
 ///     with the correct signatures.
 ///   • autoFillRackController / onAutoFillRackSelected wired to the
 ///     dual-rack sourceRackController / validateDualRack per mixin docs.
@@ -124,11 +124,11 @@ import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
 ///
 /// refactor(se-item-form): override disposeControllers() + simplify onClose()
 ///   • disposeControllers() override disposes sourceRackController and
-///     targetRackController via try/catch, then delegates to
-///     super.disposeControllers() for the base-class trio.
-///   • onClose() simplified to `super.onClose()` — the base class already
-///     defers disposeControllers() to addPostFrameCallback (Rule 1), so all
-///     five TECs share a single deferred + idempotent disposal path.
+///     targetRackController via Future.delayed(400ms), matching the delay
+///     used by the base class for its trio — all five TECs outlast the sheet
+///     and keyboard-dismissal animations before disposal.
+///   • onClose() simplified to `super.onClose()` — the base class handles
+///     disposeControllers() with the correct 400ms deferral (Rule 1).
 ///
 /// fix(se-item-form): drop inaccessible _resetSaveStateOnEdit refs
 ///   • _resetSaveStateOnEdit is file-private to item_sheet_controller_base.dart.
@@ -221,9 +221,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   @override
   bool get isAddMode => editingItemName.value == null;
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   // ── RackFieldWithBrowseDelegate: picker flow (Commit 9) ──────────────────
 
@@ -445,8 +442,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   // ── Dual-rack state ──────────────────────────────────────────────────────────
   //
   // Rule 1 (tec_lifecycle_rules.dart): These TECs are disposed via
-  // disposeControllers() which is called inside addPostFrameCallback
-  // in the base onClose() — never synchronously.
+  // disposeControllers() using Future.delayed(400ms) — outlasting the
+  // sheet exit animation and keyboard-dismissal animation.
   @override final TextEditingController sourceRackController = TextEditingController();
   @override final RxBool isSourceRackValid       = false.obs;
   @override final RxBool isValidatingSourceRack  = false.obs;
@@ -480,6 +477,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     sourceRackController.clear();
     isSourceRackValid.value      = false;
     isValidatingSourceRack.value = false;
+    itemSourceWarehouse.value    = null;
   }
 
   @override
@@ -487,6 +485,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     targetRackController.clear();
     isTargetRackValid.value      = false;
     isValidatingTargetRack.value = false;
+    itemTargetWarehouse.value    = null;
   }
 
   @override
@@ -511,19 +510,19 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           await fetchRackBalance(rack);
         }
         isLoadingRackBalance.value = false;
-        // FIX: only mark source rack valid when balance is non-negative
-        if (rackBalance.value < 0) {
-          isSourceRackValid.value = rackBalance.value >= 0;
-          if (rackBalance.value < 0) {
-            rackError.value =
-            'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
-          }
+        if (rackBalance.value <= 0) {
+          isSourceRackValid.value   = false;
+          itemSourceWarehouse.value = null;
+          rackError.value =
+              'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
         } else {
-          isSourceRackValid.value = true;
-          rackError.value = '';          // cleared on success (existing commit-7 rule)
+          isSourceRackValid.value   = true;
+          itemSourceWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
+          rackError.value = '';
         }
       } else {
-        isTargetRackValid.value = true;
+        isTargetRackValid.value   = true;
+        itemTargetWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
         // Only clear rackError if source rack has no active error.
         // Preserving source-side negative-balance error message.
         if (isSourceRackValid.value) {
@@ -534,6 +533,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       rackError.value = 'Rack validation error: $e';
       log('[SE-Item] validateDualRack error: $e', name: 'SE-Item');
       isLoadingRackBalance.value = false;
+      if (isSource) itemSourceWarehouse.value = null;
+      else          itemTargetWarehouse.value  = null;
     } finally {
       if (isSource) { isValidatingSourceRack.value = false; }
       else          { isValidatingTargetRack.value = false; }
@@ -549,36 +550,20 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// Overrides [ItemSheetControllerBase.disposeControllers] to include
   /// the dual-rack TECs owned by this subclass.
   ///
-  /// ## Rule 1 — tec_lifecycle_rules.dart
-  ///
-  /// This method is called by the base [onClose] from inside an
-  /// `addPostFrameCallback`, so disposal is always deferred past the
-  /// exit-animation frame — identical to the previous two-callback
-  /// approach but expressed as a single override point.
-  ///
-  /// [super.disposeControllers] handles the base-class trio
-  /// (`batchController`, `rackController`, `qtyController`) through
-  /// its own idempotent + guarded try/catch blocks (Rule 2).
+  /// The base class handles the trio (batchController, rackController,
+  /// qtyController) via `Future.delayed(400ms)`.  This override captures
+  /// [sourceRackController] and [targetRackController] BEFORE calling
+  /// `super` (which sets [_controllersDisposed] and removes listeners)
+  /// and schedules their disposal with the same 400 ms delay.
   @override
   void disposeControllers() {
-    // Rule 1 (tec_lifecycle_rules.dart): capture TECs into locals BEFORE
-    // calling super — super sets _controllersDisposed and removes listeners.
-    // Disposal is deferred to the next frame so the exit animation
-    // completes before _AnimatedState.didUpdateWidget fires addListener().
-    // Capture local references — the controller fields may be nulled
-    // or garbage-collected before the callback fires.
-    final tecs = <TextEditingController>[
-      batchController,
-      qtyController,
-      rackController,
-      // add any others here
-    ];
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      for (final tec in tecs) {
-        tec.dispose();
-      }
-    });
+    final src = sourceRackController;
+    final tgt = targetRackController;
     super.disposeControllers();
+    Future.delayed(const Duration(milliseconds: 400), () {
+      try { src.dispose(); } catch (_) {}
+      try { tgt.dispose(); } catch (_) {}
+    });
   }
 
   /// Overrides [ItemSheetControllerBase.removeSheetListeners] to also remove
@@ -647,7 +632,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     //    Guard is serial != null (not serial > 0) because remaining = 0.0
     //    is a valid binding ceiling: the serial is fully consumed and the
     //    user must not be allowed to enter any qty.
-    final serial = _posSerialCeiling;
+    final serial = allowFullSerials.value ? null : _posSerialCeiling;
     if (serial != null) {
       debugPrint(
         '[effectiveMaxQty] POS serial ceiling=$serial '
@@ -690,7 +675,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   // ── State ──────────────────────────────────────────────────────────────────
   var uom              = ''.obs;
-  var itemGroup        = ''.obs;
   var isBatchedItem    = false.obs;
   var isSerialisedItem = false.obs;
   var isEditingExisting = false.obs;
@@ -766,13 +750,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     // rackOk: only enforce source-rack if the current item/context requires it.
     final rackOk = !showSourceRack ||
-        (isSourceRackValid.value && rackBalance.value >= 0);
+        (isSourceRackValid.value && rackBalance.value > 0);
     // Re-assert the rack error message so it persists across subsequent
     // field edits (qty, target rack) that trigger validateSheet.
-    if (!rackOk && rackBalance.value < 0) {
+    if (!rackOk && showSourceRack && sourceRackController.text.isNotEmpty && rackBalance.value <= 0) {
       rackError.value =
-      'Rack balance is negative (${rackBalance.value.toStringAsFixed(0)}). '
-          'Cannot issue from this rack.';
+      'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
       debugPrint('SE-Item rackError set to: ${rackError.value}');
       debugPrint('SE-Item isSourceRackValid: ${isSourceRackValid.value}');
     }
@@ -848,7 +831,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final item = _parent.stockEntry.value?.items
         .firstWhereOrNull((i) => i.name == rowId);
     if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
+    _parent.deleteItem(item);
   }
 
   // ── MR link ───────────────────────────────────────────────────────────────────
@@ -885,11 +868,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     required String group,
     required bool   hasBatch,
     required bool   hasSerial,
+    String variantOf       = '',
   }) {
     itemCode.value         = code;
     itemName.value         = name;
     uom.value              = uomValue;
     itemGroup.value        = group;
+    this.variantOf.value   = variantOf;
     isBatchedItem.value    = hasBatch;
     isSerialisedItem.value = hasSerial;
   }
@@ -934,10 +919,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isTargetRackValid.value      = false;
     isValidatingTargetRack.value = false;
     isLoadingRackBalance.value   = false;
+    itemSourceWarehouse.value    = null;
+    itemTargetWarehouse.value    = null;
     _batchWiseHistory.clear();
     // Reset serial selection so a freshly opened sheet never inherits the
     // serial from a previous sheet session.
     selectedSerial.value = null;
+    allowFullSerials.value = false;
   }
 
   /// Populates sheet state from an existing [StockEntryItem] (edit mode).
@@ -955,6 +943,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     List<Map<String, dynamic>> mrReferenceItems,
   ) {
     if (isClosed) return;
+    allowFullSerials.value = false;
     isEditingExisting.value = true;
     editingOriginalBatch    = item.batchNo;
     editingItemName.value   = item.name;
@@ -989,6 +978,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     // fix(docstatus): docstatus belongs to the parent document, not the item
     // row. Read from parent StockEntry to drive the isQtyReadOnly lock.
     docStatus.value = _parent.stockEntry.value?.docstatus ?? 0;
+    variantOf.value = item.customVariantOf ?? '';
 
     // Seed finished-item flag so validateSheet() can relax the
     // batch-balance gate for the Manufacture FG row.
@@ -1052,6 +1042,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     required String itemGroup,
     required bool   hasBatch,
     required bool   hasSerial,
+    String variantOf              = '',
     StockEntryItem? existingItem,
     List<Map<String, dynamic>> mrReferenceItems = const [],
     String? scannedBatch,
@@ -1061,6 +1052,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       name:      itemName,
       uomValue:  uom,
       group:     itemGroup,
+      variantOf: variantOf,
       hasBatch:  hasBatch,
       hasSerial: hasSerial,
     );
@@ -1127,6 +1119,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       itemName:         itemName,
       uom:              uomValue,
       itemGroup:        group,
+      variantOf:        variantOf,
       hasBatch:         hasBatch,
       hasSerial:        hasSerial,
       existingItem:     editingItem,
@@ -1173,12 +1166,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     final rowId = editingItemName.value;
     if (rowId != null) {
-      _parent.updateItemLocally(
+      _parent.updateItem(
         rowId, qty, batch, srcRack, tgtRack, sWh, tWh, serial,
+        bypassPosCap: allowFullSerials.value,
       );
     } else {
-      _parent.addItemLocally(
+      _parent.addItem(
         qty, batch, srcRack, tgtRack, sWh, tWh, serial,
+        bypassPosCap: allowFullSerials.value,
       );
     }
   }

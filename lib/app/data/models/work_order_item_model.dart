@@ -82,7 +82,7 @@ class WorkOrderItem {
   bool get isFullyConsumed => consumedQty >= requiredQty;
 
   /// Converts this required item into the arguments map consumed by
-  /// [StockEntryFormController._initNewStockEntry()] for the workOrder source.
+  /// [StockEntryFormController._initDocument()] for the workOrder source.
   /// [targetWarehouse] is the Work Order's wip_warehouse field.
   Map<String, dynamic> toStockEntryItemPayload({required String targetWarehouse}) {
     return {

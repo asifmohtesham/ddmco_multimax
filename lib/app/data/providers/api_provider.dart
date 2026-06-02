@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:get/get.dart' hide Response, FormData;
+import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/services/database_service.dart';
@@ -11,7 +12,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
-  static const String defaultBaseUrl = "https://erp.multimax.cloud";
+  static const String defaultBaseUrl = "https://erp.domain.com";
 
   bool _dioInitialised = false;
   late Dio _dio;
@@ -196,6 +197,39 @@ class ApiProvider {
     );
   }
 
+  /// Probes whether the current session user can list [doctype].
+  ///
+  /// Uses `frappe.client.get_list` with `limit=1` as a permission probe:
+  /// HTTP 200 (even empty list) → has access; HTTP 403 → denied.
+  /// `frappe.client.has_permission` requires a `docname` positional arg in
+  /// Frappe v15 and cannot check DocType-level access without it.
+  /// [permType] is accepted for API compatibility but not sent to the server —
+  /// list access is the binding check for both read and report in standard ERPNext.
+  Future<Response> hasPermission(String doctype, String permType) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.get(
+      '/api/method/frappe.client.get_list',
+      queryParameters: {
+        'doctype': doctype,
+        'limit_page_length': 1,
+        'fields': '["name"]',
+      },
+    );
+  }
+
+  /// Parses a `frappe.client.get_list` permission-probe response into a [bool].
+  ///
+  /// Expected shape: `{"message": [...]}` — a List (possibly empty) means
+  /// the user has access; anything else (null, non-Map, missing key) means denied.
+  /// HTTP 403 is handled upstream as a [DioException]; this method only sees
+  /// the successful-200 body.
+  /// Exposed as a public static method so unit tests can exercise this
+  /// logic without a live HTTP connection.
+  static bool parseHasPermissionResponse(dynamic data) {
+    if (data is! Map) return false;
+    return data['message'] is List;
+  }
+
   // ---------------------------------------------------------------------------
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
@@ -275,6 +309,46 @@ class ApiProvider {
       print('Error fetching list for $doctype: $e');
     }
     return [];
+  }
+
+  /// Parses a Frappe `/api/resource/Rack` response into rack name strings.
+  ///
+  /// Expects `data['data']` to be a `List` of maps each with a `'name'` key.
+  /// Skips null entries, non-Map entries, and entries with a null or empty name.
+  /// Returns an empty list on any shape mismatch or null input.
+  static List<String> parseRacksByWarehouseResponse(dynamic data) {
+    if (data == null) return [];
+    final rawList = data['data'];
+    if (rawList is! List) return [];
+    final result = <String>[];
+    for (final item in rawList) {
+      if (item is! Map) continue;
+      final name = item['name'];
+      if (name is String && name.isNotEmpty) {
+        result.add(name);
+      }
+    }
+    return result;
+  }
+
+  /// Fetches all rack names in [warehouse] from the Rack DocType API.
+  ///
+  /// Calls `GET /api/resource/Rack?filters=[["Rack","warehouse","=",wh]]&fields=["name"]&limit_page_length=0`.
+  /// Returns an empty list when [warehouse] is empty or on any API error.
+  Future<List<String>> getRacksByWarehouse(String warehouse) async {
+    if (warehouse.isEmpty) return [];
+    try {
+      if (!_dioInitialised) await _initDio();
+      final response = await _dio.get('/api/resource/Rack', queryParameters: {
+        'fields':            json.encode(['name']),
+        'filters':           json.encode([['Rack', 'warehouse', '=', warehouse]]),
+        'limit_page_length': 0,
+        'order_by':          'name asc',
+      });
+      return parseRacksByWarehouseResponse(response.data);
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
@@ -513,6 +587,93 @@ class ApiProvider {
       return (columns: columns, rows: rows);
     } catch (_) {
       return empty;
+    }
+  }
+
+  /// Exposed as a public static method so unit tests can exercise the parsing
+  /// logic without a live HTTP connection.
+  static String? parseUploadFileResponse(Map<String, dynamic>? data) {
+    if (data == null) return null;
+    final message = data['message'];
+    if (message is! Map) return null;
+    final fileUrl = message['file_url'];
+    return fileUrl is String ? fileUrl : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FILE UPLOAD
+  // ---------------------------------------------------------------------------
+
+  /// Uploads [filePath] to Frappe and links it to [fieldname] on
+  /// [doctype]/[docname].
+  ///
+  /// Returns the relative file_url (e.g. "/files/image.jpg") on success.
+  /// Throws [DioException] on HTTP error; throws [Exception] when the server
+  /// response does not contain a file_url (malformed response).
+  Future<String> uploadFile({
+    required String filePath,
+    required String doctype,
+    required String docname,
+    required String fieldname,
+    bool isPrivate = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    final formData = FormData.fromMap({
+      'file'      : await MultipartFile.fromFile(filePath, filename: p.basename(filePath)),
+      'doctype'   : doctype,
+      'docname'   : docname,
+      'fieldname' : fieldname,
+      'is_private': isPrivate ? '1' : '0',
+      'folder'    : 'Home/Attachments',
+    });
+    final response = await _dio.post('/api/method/upload_file', data: formData);
+    if (response.statusCode != 200) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        message: 'Upload failed with status ${response.statusCode}',
+      );
+    }
+    final fileUrl = parseUploadFileResponse(
+      response.data as Map<String, dynamic>?,
+    );
+    if (fileUrl == null || fileUrl.isEmpty) {
+      throw Exception('Server returned no file_url');
+    }
+    return fileUrl;
+  }
+
+  // ---------------------------------------------------------------------------
+  // getItemDetails — Item Variant Details tile helper
+  // ---------------------------------------------------------------------------
+
+  /// Batch-fetches item_name, item_group, and image for [itemCodes].
+  /// Returns a map of item code → {item_name, item_group, image?}.
+  /// The image value is null when the field is unset.
+  Future<Map<String, Map<String, dynamic>>> getItemDetails(
+      List<String> itemCodes) async {
+    if (itemCodes.isEmpty) return {};
+    try {
+      final rows = await getList(
+        null,
+        doctype: 'Item',
+        fields:  ['name', 'item_name', 'item_group', 'image'],
+        filters: {'name': ['in', itemCodes]},
+        limit:   itemCodes.length + 1,
+        orderBy: 'name asc',
+      );
+      return {
+        for (final r in rows)
+          r['name'].toString(): {
+            'item_name':  r['item_name']?.toString()  ?? '',
+            'item_group': r['item_group']?.toString() ?? '',
+            'image': (r['image']?.toString().isNotEmpty ?? false)
+                ? r['image'].toString()
+                : null,
+          },
+      };
+    } catch (_) {
+      return {};
     }
   }
 

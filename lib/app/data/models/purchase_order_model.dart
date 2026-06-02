@@ -64,6 +64,7 @@ class PurchaseOrderItem {
   final String? description;
   final String? scheduleDate;
   final String? customVariantOf;   // C11a — fetched from Item via custom_variant_of
+  final String? itemGroup;
   // Metadata
   final String? owner;
   final String? creation;
@@ -82,6 +83,7 @@ class PurchaseOrderItem {
     this.description,
     this.scheduleDate,
     this.customVariantOf,          // C11a
+    this.itemGroup,
     this.owner,
     this.creation,
     this.modified,
@@ -101,6 +103,7 @@ class PurchaseOrderItem {
       description:     json['description'],
       scheduleDate:    json['schedule_date'],
       customVariantOf: json['custom_variant_of'],   // C11a
+      itemGroup:       json['item_group']?.toString() ?? '',
       owner:           json['owner'],
       creation:        json['creation'],
       modified:        json['modified'],

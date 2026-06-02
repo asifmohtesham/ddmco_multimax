@@ -85,6 +85,7 @@ class MaterialRequestFormController extends GetxController
 
   var bsMaxQty = 0.0.obs;
   var bsItemVariantOf = RxnString();
+  var bsItemGroup     = RxnString();
 
   var isFormDirty = false.obs;
   var isSheetValid = false.obs;
@@ -145,7 +146,7 @@ class MaterialRequestFormController extends GetxController
     if (mode == 'new') {
       _initNewRequest();
     } else {
-      fetchMaterialRequest();
+      fetchDocument();
     }
   }
 
@@ -166,7 +167,7 @@ class MaterialRequestFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchMaterialRequest();
+    await fetchDocument();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
@@ -222,13 +223,14 @@ class MaterialRequestFormController extends GetxController
       status: 'Draft',
       docstatus: 0,
       materialRequestType: 'Material Transfer',
+      customTotalQty: 0.0,
       items: [],
     );
     isLoading.value = false;
     isDirty.value = true;
   }
 
-  Future<void> fetchMaterialRequest() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getMaterialRequest(name);
@@ -389,12 +391,14 @@ class MaterialRequestFormController extends GetxController
     String? newCode,
     String? newName,
     String? variantOf,
+    String? itemGroup,
   }) {
     bsQtyController.clear();
     bsDateController.text = scheduleDateController.text;
     bsWarehouseController.clear();
     bsMaxQty.value = 0;
     bsItemVariantOf.value = null;
+    bsItemGroup.value     = null;
     isFormDirty.value = false;
     isSheetValid.value = false;
     isQtyValid.value = false;
@@ -408,6 +412,7 @@ class MaterialRequestFormController extends GetxController
       currentItemName = item.itemName ?? item.itemCode;
       currentItemNameKey.value = item.name;
       bsItemVariantOf.value = variantOf ?? item.variantOf;
+      bsItemGroup.value     = itemGroup  ?? item.itemGroup;
 
       final qtyStr = item.qty % 1 == 0
           ? item.qty.toInt().toString()
@@ -425,6 +430,7 @@ class MaterialRequestFormController extends GetxController
       currentItemName = newName ?? newCode;
       currentItemNameKey.value = null;
       bsItemVariantOf.value = variantOf;
+      bsItemGroup.value     = itemGroup;
 
       // Seed with header warehouse immediately so the field is never blank
       // while the async lookup runs.
@@ -584,9 +590,10 @@ class MaterialRequestFormController extends GetxController
       final result = await _scanService.processScan(code);
       if (result.isSuccess && result.itemData != null) {
         openItemSheet(
-          newCode: result.itemData!.itemCode,
-          newName: result.itemData!.itemName,
+          newCode:   result.itemData!.itemCode,
+          newName:   result.itemData!.itemName,
           variantOf: result.itemData!.variantOf,
+          itemGroup: result.itemData!.itemGroup,
         );
       } else {
         GlobalSnackbar.error(message: result.message ?? 'Item not found');
@@ -601,7 +608,7 @@ class MaterialRequestFormController extends GetxController
 
   // ── Save document ───────────────────────────────────────────────────────────────
 
-  Future<void> saveMaterialRequest() async {
+  Future<void> saveDocument() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
 
@@ -637,7 +644,7 @@ class MaterialRequestFormController extends GetxController
           final created = response.data['data'];
           name = created['name'];
           mode = 'edit';
-          await fetchMaterialRequest();
+          await fetchDocument();
           saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Created');
         } else {
@@ -647,7 +654,7 @@ class MaterialRequestFormController extends GetxController
       } else {
         final response = await _provider.updateMaterialRequest(name, data);
         if (response.statusCode == 200) {
-          await fetchMaterialRequest();
+          await fetchDocument();
           saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Updated');
         } else {

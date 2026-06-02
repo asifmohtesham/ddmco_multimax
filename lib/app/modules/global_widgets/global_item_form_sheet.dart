@@ -7,6 +7,10 @@ import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:multimax/app/modules/global_widgets/camera_viewfinder_panel.dart';
 
 // ---------------------------------------------------------------------------
 // _AnimatedSaveButton
@@ -155,7 +159,8 @@ class GlobalItemFormSheet extends StatelessWidget {
   final String title;
   final String itemCode;
   final String itemName;
-  final String? itemSubtext;
+  final String? variantOf;
+  final String? itemGroup;
   final List<Widget> customFields;
 
   // ── Qty delegate ──────────────────────────────────────────────────────────
@@ -187,6 +192,12 @@ class GlobalItemFormSheet extends StatelessWidget {
   final TextEditingController? scanController;
   final bool isScanning;
 
+  // ── Camera panel ───────────────────────────────────────────────────────────
+  final void Function(String)? onCameraScan;
+  final RxBool? isCameraExpanded;
+  final VoidCallback? onToggleCamera;
+  final MobileScannerController? mobileScanController;
+
   late final String _sheetTag;
 
   GlobalItemFormSheet({
@@ -196,7 +207,8 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.title,
     required this.itemCode,
     required this.itemName,
-    this.itemSubtext,
+    this.variantOf,
+    this.itemGroup,
     this.customFields = const [],
     required this.qtyDelegate,
     required this.qtyAccentColor,
@@ -213,6 +225,10 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.onScan,
     this.scanController,
     this.isScanning = false,
+    this.onCameraScan,
+    this.isCameraExpanded,
+    this.onToggleCamera,
+    this.mobileScanController,
   }) : saveButtonState = saveButtonState ?? SaveButtonState.idle.obs {
     _sheetTag = key != null
         ? key.toString()
@@ -224,21 +240,38 @@ class GlobalItemFormSheet extends StatelessWidget {
     required Color color,
     required Widget child,
     Color? bgColor,
+    Widget? labelTrailing,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-              letterSpacing: 0.5,
-            ),
-          ),
+          child: labelTrailing == null
+              ? Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    labelTrailing,
+                  ],
+                ),
         ),
         Container(
           // fix(input-group): clip children to the BorderRadius boundary so
@@ -268,7 +301,9 @@ class GlobalItemFormSheet extends StatelessWidget {
     if (owner == null &&
         creation == null &&
         modified == null &&
-        modifiedBy == null) return const SizedBox.shrink();
+        modifiedBy == null) {
+      return const SizedBox.shrink();
+    }
 
     final theme        = Theme.of(context);
     final variantColor = theme.colorScheme.onSurfaceVariant;
@@ -348,21 +383,44 @@ class GlobalItemFormSheet extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '$itemCode'
-                    '${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontFamily: 'ShureTechMono',
-                      fontSize: 16,
-                      color: colorScheme.onSurfaceVariant,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        variantOf != null && variantOf!.isNotEmpty
+                            ? '$itemCode · $variantOf'
+                            : itemCode,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontFamily: 'ShureTechMono',
+                          fontSize: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (itemGroup != null && itemGroup!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          itemGroup!,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -475,28 +533,50 @@ class GlobalItemFormSheet extends StatelessWidget {
       ),
     );
 
-    final scanBar = onScan != null
-        ? Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainer,
-              border: Border(
-                  top: BorderSide(color: colorScheme.outlineVariant)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
+    final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    final bool showScanFooter =
+        onScan != null || (onCameraScan != null && isMobile);
+
+    final scanBar = showScanFooter
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Camera viewfinder panel (expandable) ──────────────────────
+              if (onCameraScan != null &&
+                  isCameraExpanded != null &&
+                  mobileScanController != null &&
+                  isMobile)
+                Obx(
+                  () => AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child: isCameraExpanded!.value
+                        ? CameraViewfinderPanel(
+                            controller: mobileScanController!,
+                            onBarcode: onCameraScan!,
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                 ),
-              ],
-            ),
-            padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPadding + 12),
-            child: BarcodeInputWidget(
-              onScan: onScan!,
-              controller: scanController,
-              isLoading: isScanning,
-              hintText: 'Scan Rack / Batch / Item',
-              isEmbedded: true,
-            ),
+              // ── Scan footer row ────────────────────────────────────────────
+              Container(
+                color: colorScheme.surface,
+                padding: EdgeInsets.only(bottom: bottomPadding),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: BarcodeInputWidget(
+                        onScan: onScan ?? onCameraScan!,
+                        controller: scanController,
+                        isLoading: isScanning,
+                        hintText: 'Scan Rack / Batch / Item',
+                        isEmbedded: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           )
         : null;
 
@@ -541,7 +621,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                 ),
               ),
             ),
-            // if (scanBar != null) scanBar,
+            if (scanBar != null) scanBar,
           ],
         ),
       );
@@ -567,7 +647,7 @@ class GlobalItemFormSheet extends StatelessWidget {
                   children: _formChildren(context),
                 ),
               ),
-              // if (scanBar != null) scanBar,
+              if (scanBar != null) scanBar,
             ],
           ),
         ),

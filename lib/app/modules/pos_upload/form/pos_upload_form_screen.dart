@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
@@ -19,6 +20,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
               : 'POS Upload';
       final isLoading  = controller.isLoading.value;
       final posUpload  = controller.posUpload.value;
+      final hasPackingSlips = controller.packingSlips.isNotEmpty;
 
       return DefaultTabController(
         length: 2,
@@ -26,7 +28,10 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
           body: NestedScrollView(
             headerSliverBuilder: (ctx, _) => [
               DocTypeFormHeader(
-                title: title,
+                title:       title,
+                docType:     'POS Upload',
+                statusLabel: posUpload?.status,
+                onShare: hasPackingSlips ? () => _showShareSheet(context) : null,
                 bottom: const TabBar(
                   tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
                 ),
@@ -59,6 +64,122 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
       );
     });
   }
+
+  // Must match the column names in PosUploadFormController.sharePackingSlipExcel's columns list.
+  static List<String> _columnNames(bool compact) => compact
+      ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
+      : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
+
+  void _showShareSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        var compact = true;
+        String? sortByColumn;
+        var isExporting = false;
+        return StatefulBuilder(
+          builder: (ctx, setState) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Export Packing Slip',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text('Compact'),
+                    subtitle: Text(
+                      compact
+                          ? 'Case · Serial · Item · Qty · Country'
+                          : 'Case · Serial · Variant · Code · Item · Qty · Country',
+                    ),
+                    value: compact,
+                    onChanged: isExporting
+                        ? null
+                        : (v) => setState(() {
+                              compact = v;
+                              sortByColumn = null;
+                            }),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String?>(
+                    // ignore: deprecated_member_use
+                    value: sortByColumn,
+                    decoration: const InputDecoration(
+                      labelText: 'Sort by',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('None (natural order)'),
+                      ),
+                      ..._columnNames(compact).map(
+                        (name) =>
+                            DropdownMenuItem(value: name, child: Text(name)),
+                      ),
+                    ],
+                    onChanged: isExporting
+                        ? null
+                        : (v) => setState(() => sortByColumn = v),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    icon: isExporting
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(ctx).colorScheme.onPrimary,
+                            ),
+                          )
+                        : const Icon(Icons.table_view_outlined),
+                    label: Text(isExporting ? 'Exporting…' : 'Share as Excel'),
+                    onPressed: isExporting
+                        ? () {}
+                        : () async {
+                            setState(() => isExporting = true);
+                            try {
+                              final filePath =
+                                  await controller.buildPackingSlipExcel(
+                                compact: compact,
+                                sortByColumn: sortByColumn,
+                              );
+                              if (ctx.mounted) Navigator.of(ctx).pop();
+                              await Share.shareXFiles(
+                                [
+                                  XFile(
+                                    filePath,
+                                    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                  ),
+                                ],
+                                subject:
+                                    '${controller.posUpload.value?.name} – Packing Slip',
+                              );
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                setState(() => isExporting = false);
+                              }
+                              GlobalSnackbar.error(
+                                  message: 'Export failed: $e');
+                            }
+                          },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,11 +197,7 @@ class _DetailsTab extends StatefulWidget {
 class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _amountCtrl;
   late final TextEditingController _qtyCtrl;
-
-  // Cached permission flags (fix #6)
-  late final bool _canEditStatus;
-  late final bool _canEditAmount;
-  late final bool _canEditQty;
+  late final Worker _posUploadWorker;
 
   /// All possible status values a POS Upload can have.
   /// Must be kept in sync with ERPNext so the DropdownButtonFormField
@@ -105,18 +222,10 @@ class _DetailsTabState extends State<_DetailsTab> {
     _qtyCtrl = TextEditingController(
         text: PosUploadFormController.fmtQty(upload?.totalQty));
 
-    // Cache permission flags once (fix #6)
-    _canEditStatus = ctrl.canEditStatus;
-    _canEditAmount = ctrl.canEditAmount;
-    _canEditQty = ctrl.canEditQty;
-
     // Sync text controllers when the document is reloaded (fix #2)
-    ever(ctrl.posUpload, (PosUpload? updated) {
+    _posUploadWorker = ever(ctrl.posUpload, (PosUpload? updated) {
       if (updated == null) return;
-      if (!_amountCtrl.text.contains(updated.totalAmount?.toString() ?? '')) {
-        _amountCtrl.text =
-            PosUploadFormController.fmtAmount(updated.totalAmount);
-      }
+      _amountCtrl.text = PosUploadFormController.fmtAmount(updated.totalAmount);
       _qtyCtrl.text = PosUploadFormController.fmtQty(updated.totalQty);
     });
   }
@@ -125,6 +234,7 @@ class _DetailsTabState extends State<_DetailsTab> {
   void dispose() {
     _amountCtrl.dispose();
     _qtyCtrl.dispose();
+    _posUploadWorker.dispose();
     super.dispose();
   }
 
@@ -136,8 +246,6 @@ class _DetailsTabState extends State<_DetailsTab> {
     return Obx(() {
       final upload = ctrl.posUpload.value;
       if (upload == null) return const SizedBox.shrink();
-
-      final canSave = _canEditStatus || _canEditAmount || _canEditQty;
 
       // Ensure the current status is always present in the list so the
       // DropdownButtonFormField never throws an assertion error for an
@@ -194,9 +302,9 @@ class _DetailsTabState extends State<_DetailsTab> {
               .length;
           psBanner = _StatusBanner(
             icon: Icons.inventory_outlined,
-            color: Colors.indigo,
+            color: cs.secondary,
             text:
-                '$psCount Packing Slip${psCount == 1 ? '' : 's'} · $psMatched / ${ctrl.resolvedSerials.length} items matched',
+                '$psCount Packing Slip${psCount == 1 ? '' : 's'} · $psMatched / ${ctrl.resolvedSerials.length} items packed',
           );
         }
       }
@@ -243,99 +351,48 @@ class _DetailsTabState extends State<_DetailsTab> {
 
               // Status dropdown — value is always guaranteed to be in statusItems
               DropdownButtonFormField<String>(
+                // ignore: deprecated_member_use
                 value: upload.status,
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: 'Status',
                   border: const OutlineInputBorder(),
-                  filled: !_canEditStatus,
-                  fillColor: !_canEditStatus ? cs.surfaceContainerHighest : null,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
                 ),
                 items: statusItems
                     .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                     .toList(),
-                onChanged: _canEditStatus
-                    ? (v) {
-                        if (v != null) ctrl.updateStatus(v);
-                      }
-                    : null,
+                onChanged: null,
               ),
               const SizedBox(height: 16),
 
               // Fix #14 — formatted amounts
               TextFormField(
                 controller: _amountCtrl,
-                readOnly: !_canEditAmount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Total Amount',
                   border: const OutlineInputBorder(),
-                  filled: !_canEditAmount,
-                  fillColor:
-                      !_canEditAmount ? cs.surfaceContainerHighest : null,
-                  suffixIcon: !_canEditAmount
-                      ? const Icon(Icons.lock, size: 16, color: Colors.grey)
-                      : null,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 16),
 
               TextFormField(
                 controller: _qtyCtrl,
-                readOnly: !_canEditQty,
-                keyboardType: TextInputType.number,
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Total Quantity',
                   border: const OutlineInputBorder(),
-                  filled: !_canEditQty,
-                  fillColor:
-                      !_canEditQty ? cs.surfaceContainerHighest : null,
-                  suffixIcon: !_canEditQty
-                      ? const Icon(Icons.lock, size: 16, color: Colors.grey)
-                      : null,
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  suffixIcon: const Icon(Icons.lock, size: 16, color: Colors.grey),
                 ),
               ),
               const SizedBox(height: 24),
-
-              if (canSave)
-                Obx(() => SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: ctrl.isSaving.value
-                            ? null
-                            : () {
-                                final data = <String, dynamic>{};
-                                if (_canEditAmount) {
-                                  // Strip formatting before parsing (fix #14)
-                                  final raw = _amountCtrl.text
-                                      .replaceAll(',', '');
-                                  data['total_amount'] =
-                                      double.tryParse(raw) ?? 0.0;
-                                }
-                                if (_canEditQty) {
-                                  final raw =
-                                      _qtyCtrl.text.replaceAll(',', '');
-                                  data['total_qty'] =
-                                      double.tryParse(raw) ?? 0.0;
-                                }
-                                if (data.isNotEmpty) {
-                                  ctrl.updatePosUpload(data);
-                                }
-                              },
-                        style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.all(16)),
-                        child: ctrl.isSaving.value
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white))
-                            : const Text('Update',
-                                style: TextStyle(fontSize: 16)),
-                      ),
-                    )),
             ],
           ),
         ),
@@ -408,7 +465,20 @@ class _ItemsTabState extends State<_ItemsTab> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: options.length + 1, // +1 for "All" chip
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (context, i) => i == 0
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 1,
+                          height: 26,
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    )
+                  : const SizedBox(width: 8),
               itemBuilder: (context, i) {
                 if (i == 0) {
                   // "All" chip
@@ -457,13 +527,11 @@ class _ItemsTabState extends State<_ItemsTab> {
           );
         }),
 
-        // ── Progress summary strip (fix #11 — wrapped in Card surface) ────
+        // ── Progress summary strip ─────────────────────────────────────────────
         Obx(() {
           final isLoadingLinked = ctrl.isLoadingLinked.value;
           final isLoadingPS = ctrl.isLoadingPackingSlips.value;
           final linkedType = ctrl.linkedDocType.value;
-          final hasLinkedDoc = ctrl.resolvedSerials.isNotEmpty;
-          final hasPS = ctrl.resolvedPackingSlips.isNotEmpty;
 
           if (isLoadingLinked || isLoadingPS) {
             return Padding(
@@ -485,15 +553,8 @@ class _ItemsTabState extends State<_ItemsTab> {
             );
           }
 
-          if (!hasLinkedDoc) return const SizedBox.shrink();
-
-          final dnMatched = ctrl.resolvedSerials.values
-              .where((v) => v != null && v.isNotEmpty)
-              .length;
-          final total = ctrl.resolvedSerials.length;
-          final psMatchedCount = ctrl.resolvedPackingSlips.values
-              .where((v) => v != null)
-              .length;
+          final activeCase = ctrl.activeCaseFilter.value;
+          if (activeCase == null) return const SizedBox.shrink();
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -505,34 +566,10 @@ class _ItemsTabState extends State<_ItemsTab> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: cs.outlineVariant),
               ),
-              child: Wrap(
-                spacing: 20,
-                runSpacing: 4,
-                children: [
-                  _SummaryChip(
-                    icon: linkedType == LinkedDocType.deliveryNote
-                        ? Icons.local_shipping_outlined
-                        : Icons.inventory_2_outlined,
-                    label:
-                        '$dnMatched / $total ${linkedType == LinkedDocType.deliveryNote ? 'DN' : 'SE'}',
-                    color: dnMatched == total ? Colors.green : cs.primary,
-                  ),
-                  if (hasPS)
-                    _SummaryChip(
-                      icon: Icons.inventory_outlined,
-                      label: '$psMatchedCount / $total PS',
-                      color: psMatchedCount == total
-                          ? Colors.green
-                          : Colors.indigo,
-                    ),
-                  // Active filter indicator
-                  if (ctrl.activeCaseFilter.value != null)
-                    _SummaryChip(
-                      icon: Icons.filter_list,
-                      label: ctrl.activeCaseFilter.value!.label,
-                      color: cs.tertiary,
-                    ),
-                ],
+              child: _SummaryChip(
+                icon: Icons.inventory_outlined,
+                label: activeCase.label,
+                color: cs.tertiary,
               ),
             ),
           );
@@ -593,24 +630,34 @@ class _ItemsTabState extends State<_ItemsTab> {
               onRefresh: ctrl.reloadDocument,
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                padding: EdgeInsets.fromLTRB(
+                    16, 4, 16, 24 + MediaQuery.of(context).padding.bottom),
                 itemCount: items.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  return Obx(() => _ItemCard(
-                        item: item,
-                        // Fix #4 — O(1) display index from item.idx
-                        displayIndex: item.idx,
-                        isLoadingLinked: ctrl.isLoadingLinked.value,
-                        isLoadingPS:
-                            ctrl.isLoadingPackingSlips.value,
-                        linkedDocType: ctrl.linkedDocType.value,
-                        resolvedSerial: ctrl.resolvedSerials[item.idx],
-                        packingSlipInfo:
-                            ctrl.resolvedPackingSlips[item.idx],
-                        hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
-                      ));
+                  return Obx(() {
+                        final allPsItems = ctrl.resolvedPsItems[item.idx] ?? [];
+                        final cf = ctrl.activeCaseFilter.value;
+                        final visiblePsItems = cf == null
+                            ? allPsItems
+                            : allPsItems
+                                .where((e) => e.psName == cf.psName)
+                                .toList();
+                        return _ItemCard(
+                          key: ValueKey(item.idx),
+                          item: item,
+                          displayIndex: item.idx,
+                          isLoadingLinked: ctrl.isLoadingLinked.value,
+                          isLoadingPS: ctrl.isLoadingPackingSlips.value,
+                          linkedDocType: ctrl.linkedDocType.value,
+                          resolvedSerial: ctrl.resolvedSerials[item.idx],
+                          packingSlipInfo: ctrl.resolvedPackingSlips[item.idx],
+                          hasLinkedDoc: ctrl.resolvedSerials.isNotEmpty,
+                          dnQty: ctrl.resolvedDnQty[item.idx],
+                          psItems: visiblePsItems,
+                        );
+                      });
                 },
               ),
             );
@@ -625,7 +672,7 @@ class _ItemsTabState extends State<_ItemsTab> {
 // Item Card  — Fix #1: typed PosUploadItem, no more dynamic
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ItemCard extends StatelessWidget {
+class _ItemCard extends StatefulWidget {
   final PosUploadItem item;
   final int displayIndex;
   final bool isLoadingLinked;
@@ -634,8 +681,11 @@ class _ItemCard extends StatelessWidget {
   final String? resolvedSerial;
   final PackingSlipInfo? packingSlipInfo;
   final bool hasLinkedDoc;
+  final double? dnQty;
+  final List<PsItemEntry> psItems;
 
   const _ItemCard({
+    super.key,
     required this.item,
     required this.displayIndex,
     required this.isLoadingLinked,
@@ -644,29 +694,70 @@ class _ItemCard extends StatelessWidget {
     required this.resolvedSerial,
     required this.packingSlipInfo,
     required this.hasLinkedDoc,
+    required this.dnQty,
+    required this.psItems,
   });
+
+  @override
+  State<_ItemCard> createState() => _ItemCardState();
+}
+
+class _ItemCardState extends State<_ItemCard> {
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(_ItemCard old) {
+    super.didUpdateWidget(old);
+    if (old.psItems.isNotEmpty && widget.psItems.isEmpty) {
+      _expanded = false;
+    }
+  }
+
+  bool get _showProgressBar =>
+      widget.resolvedSerial != null &&
+      widget.resolvedSerial!.isNotEmpty &&
+      !widget.isLoadingPS &&
+      widget.psItems.isNotEmpty;
+
+  double get _packedQty =>
+      widget.psItems.fold(0.0, (s, e) => s + e.item.qty);
+
+  double? _progressRatioFor(double packedQty) {
+    final dq = widget.dnQty;
+    if (dq == null || dq == 0) return null;
+    return (packedQty / dq).clamp(0.0, 1.0);
+  }
+
+  String _progressLabelFor(double packedQty) {
+    final packed = PosUploadFormController.fmtQty(packedQty);
+    final dq = widget.dnQty;
+    final total = (dq != null && dq > 0)
+        ? PosUploadFormController.fmtQty(dq)
+        : '–';
+    return '$packed Packed / $total DN Qty';
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    // ── Match status (fix #10 — visible label, not tooltip-only) ─────────
     final matchStatus = _resolveMatchStatus();
+    final packedQty = _showProgressBar ? _packedQty : 0.0;
 
-    // ── Chips ─────────────────────────────────────────────────────────────
     final chips = <Widget>[];
 
-    if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
+    if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       chips.add(_InfoChip(
-        icon: Icons.qr_code,
-        label: resolvedSerial!,
+        icon: Icons.tag,
+        label: '#${widget.resolvedSerial!}',
         backgroundColor: cs.secondaryContainer,
         foregroundColor: cs.onSecondaryContainer,
+        tooltip: 'Invoice serial: ${widget.resolvedSerial!}',
       ));
     }
 
-    if (isLoadingPS && linkedDocType == LinkedDocType.deliveryNote) {
+    if (widget.isLoadingPS && widget.linkedDocType == LinkedDocType.deliveryNote) {
       chips.add(_InfoChip(
         icon: Icons.hourglass_top_rounded,
         label: 'PS…',
@@ -674,23 +765,23 @@ class _ItemCard extends StatelessWidget {
         foregroundColor: Colors.blue.shade700,
         isSpinner: true,
       ));
-    } else if (packingSlipInfo != null) {
-      final from = packingSlipInfo!.fromCaseNo;
-      final to = packingSlipInfo!.toCaseNo;
+    } else if (widget.packingSlipInfo != null) {
+      final from = widget.packingSlipInfo!.fromCaseNo;
+      final to = widget.packingSlipInfo!.toCaseNo;
       final caseLabel = (from != null && to != null)
           ? 'Cases $from – $to'
-          : (from != null ? 'Case $from' : packingSlipInfo!.psName);
+          : (from != null ? 'Case $from' : widget.packingSlipInfo!.psName);
       chips.add(_InfoChip(
         icon: Icons.inventory_outlined,
         label: caseLabel,
-        backgroundColor: Colors.indigo.withValues(alpha: 0.10),
-        foregroundColor: Colors.indigo.shade700,
-        tooltip: 'Packing Slip: ${packingSlipInfo!.psName}',
+        backgroundColor: cs.secondaryContainer,
+        foregroundColor: cs.onSecondaryContainer,
+        tooltip: 'Packing Slip: ${widget.packingSlipInfo!.psName}',
       ));
-    } else if (!isLoadingPS &&
-        linkedDocType == LinkedDocType.deliveryNote &&
-        resolvedSerial != null &&
-        resolvedSerial!.isNotEmpty) {
+    } else if (!widget.isLoadingPS &&
+        widget.linkedDocType == LinkedDocType.deliveryNote &&
+        widget.resolvedSerial != null &&
+        widget.resolvedSerial!.isNotEmpty) {
       chips.add(_InfoChip(
         icon: Icons.inventory_outlined,
         label: 'No PS',
@@ -702,111 +793,254 @@ class _ItemCard extends StatelessWidget {
 
     return Card(
       elevation: 0,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: cs.outlineVariant),
       ),
       color: cs.surfaceContainerLowest,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ──────────────────────────────────────────────────
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 13,
-                  backgroundColor: cs.secondaryContainer,
-                  child: Text(
-                    '$displayIndex',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: cs.onSecondaryContainer,
-                      fontWeight: FontWeight.bold,
+      child: InkWell(
+        onTap: widget.psItems.isNotEmpty
+            ? () => setState(() => _expanded = !_expanded)
+            : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ──────────────────────────────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 10,
+                    backgroundColor: cs.primaryContainer,
+                    child: Text(
+                      '${widget.displayIndex}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: cs.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.itemName,
-                        style: theme.textTheme.bodyLarge
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      // Fix #10 — visible status label below item name
-                      if (matchStatus != null) ...[
-                        const SizedBox(height: 2),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(matchStatus.icon,
-                                size: 12, color: matchStatus.color),
-                            const SizedBox(width: 3),
-                            Text(
-                              matchStatus.label,
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(color: matchStatus.color),
+                            Expanded(
+                              child: Text(
+                                widget.item.itemName,
+                                style: theme.textTheme.bodyLarge
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
                             ),
+                            if (widget.psItems.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              AnimatedRotation(
+                                turns: _expanded ? 0.5 : 0.0,
+                                duration: const Duration(milliseconds: 200),
+                                child: Icon(
+                                  Icons.expand_more,
+                                  size: 18,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
+                        if (_showProgressBar) ...[
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: _progressRatioFor(packedQty),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _progressLabelFor(packedQty),
+                            style: theme.textTheme.labelSmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ] else if (matchStatus != null) ...[
+                          // Falls through to matchStatus (e.g. "Matched") while PS is loading
+                          // or when psItems is empty for this item.
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(matchStatus.icon, size: 12, color: matchStatus.color),
+                              const SizedBox(width: 3),
+                              Text(
+                                matchStatus.label,
+                                style: theme.textTheme.labelSmall
+                                    ?.copyWith(color: matchStatus.color),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
 
-            // ── Stats ────────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _Stat(label: 'Qty', value: item.quantity.toString()),
-                _Stat(
-                    label: 'Rate',
-                    value: PosUploadFormController.fmtAmount(item.rate)),
-                _Stat(
-                  label: 'Amount',
-                  value:
-                      PosUploadFormController.fmtAmount(item.amount),
-                  highlight: true,
-                  colorScheme: cs,
-                ),
-              ],
-            ),
+              // ── Stats ────────────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _Stat(
+                    label: 'Qty',
+                    value: PosUploadFormController.fmtQty(widget.item.quantity),
+                  ),
+                  _Stat(
+                      label: 'Rate',
+                      value: PosUploadFormController.fmtAmount(widget.item.rate)),
+                  _Stat(
+                    label: 'Amount',
+                    value: PosUploadFormController.fmtAmount(widget.item.amount),
+                    highlight: true,
+                    colorScheme: cs,
+                  ),
+                ],
+              ),
 
-            // ── Chips ────────────────────────────────────────────────────
-            if (chips.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: chips),
+              // ── Chips ────────────────────────────────────────────────────
+              if (chips.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(spacing: 6, runSpacing: 6, children: chips),
+              ],
+
+              // ── Expanded PS items panel ─────────────────────────────────
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: _expanded
+                    ? _buildPsItemsPanel(context)
+                    : const SizedBox.shrink(),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildPsItemsPanel(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (int i = 0; i < widget.psItems.length; i++) ...[
+            if (i > 0) const Divider(height: 16, thickness: 0.5),
+            _buildPsItemRow(context, widget.psItems[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPsItemRow(BuildContext context, PsItemEntry entry) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final psItem = entry.item;
+
+    final String caseLabel;
+    if (entry.fromCaseNo != null && entry.toCaseNo != null) {
+      caseLabel = 'Cases ${entry.fromCaseNo} – ${entry.toCaseNo}';
+    } else if (entry.fromCaseNo != null) {
+      caseLabel = 'Case ${entry.fromCaseNo}';
+    } else {
+      caseLabel = entry.psName;
+    }
+
+    final subParts = <String>[psItem.itemCode];
+    if (psItem.customVariantOf != null && psItem.customVariantOf!.isNotEmpty) {
+      subParts.add(psItem.customVariantOf!);
+    }
+    if (psItem.customCountryOfOrigin != null &&
+        psItem.customCountryOfOrigin!.isNotEmpty) {
+      subParts.add(psItem.customCountryOfOrigin!);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Case chip
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: cs.secondaryContainer,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            caseLabel,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: cs.onSecondaryContainer,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Item name + qty
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                psItem.itemName,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              PosUploadFormController.fmtQty(psItem.qty),
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: cs.tertiary),
+            ),
+          ],
+        ),
+        // Subline: code · variant · country
+        Text(
+          subParts.join(' · '),
+          style: theme.textTheme.labelSmall
+              ?.copyWith(color: cs.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
   _MatchStatus? _resolveMatchStatus() {
-    if (!hasLinkedDoc) return null;
-    if (isLoadingLinked) {
+    if (!widget.hasLinkedDoc) return null;
+    if (widget.isLoadingLinked) {
       return _MatchStatus(
           icon: Icons.hourglass_top,
           label: 'Checking…',
           color: Colors.orange);
     }
-    if (resolvedSerial != null && resolvedSerial!.isNotEmpty) {
+    if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       return _MatchStatus(
           icon: Icons.check_circle,
           label: 'Matched',
           color: Colors.green.shade700);
     }
-    if (resolvedSerial != null) {
+    if (widget.resolvedSerial != null) {
       return _MatchStatus(
           icon: Icons.check_circle_outline,
           label: 'Matched – no serial',
@@ -996,7 +1230,7 @@ class _Stat extends StatelessWidget {
           value,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: highlight ? cs.primary : null,
+                color: highlight ? cs.tertiary : null,
               ),
         ),
       ],

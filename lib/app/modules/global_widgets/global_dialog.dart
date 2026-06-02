@@ -397,7 +397,7 @@ class GlobalDialog {
   /// GlobalDialog.showError(
   ///   title: 'Could not load Stock Entry',
   ///   message: 'Check your connection and try again.',
-  ///   onRetry: fetchStockEntry,
+  ///   onRetry: fetchDocument,
   /// );
   /// ```
   ///

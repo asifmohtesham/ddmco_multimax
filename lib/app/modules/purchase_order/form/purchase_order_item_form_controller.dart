@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -56,10 +55,6 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
 
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
-
-  /// PO sheet has no embedded scanner.
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   /// ±1 stepper, unbounded ceiling (PO has no stock cap).
   /// Commit 9: signature kept as `int` — base abstract is `void adjustQty(int delta)`.
@@ -119,6 +114,8 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     required String uom,
     required double qty,
     required double rate,
+    String itemGroupValue = '',
+    String variantOfValue = '',
     String? rowId,
     String? scheduleDate,
     String? owner,
@@ -131,8 +128,10 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     editingItemName.value = rowId;
     // isAddMode is a computed getter (rowId == null) — no assignment.
 
-    itemCode.value = code;
-    itemName.value = name;
+    itemCode.value   = code;
+    itemName.value   = name;
+    itemGroup.value  = itemGroupValue;
+    variantOf.value  = variantOfValue;
 
     itemOwner.value      = owner;
     itemCreation.value   = creation;
@@ -212,7 +211,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
     final item = _parent.purchaseOrder.value?.items
         .firstWhereOrNull((i) => i.name == editingItemName.value);
     if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
+    _parent.deleteItem(item);
   }
 
   // ── submit ────────────────────────────────────────────────────────────────────
@@ -244,7 +243,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
         modified:     existing.modified,
         modifiedBy:   existing.modifiedBy,
       );
-      _parent.updateItemLocally(updated);
+      _parent.updateItem(updated);
     } else {
       final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
       final newItem = PurchaseOrderItem(
@@ -258,7 +257,7 @@ class PurchaseOrderItemFormController extends ItemSheetControllerBase {
         uom:          '',
         scheduleDate: scheduleDate,
       );
-      _parent.addItemLocally(newItem);
+      _parent.addItem(newItem);
     }
     Get.back();
   }

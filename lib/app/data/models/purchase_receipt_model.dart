@@ -75,6 +75,7 @@ class PurchaseReceiptItem {
   final double conversionFactor;
   final int idx;
   final String? customVariantOf;
+  final String? itemGroup;
   final double? purchaseOrderQty;
   final int docstatus;
 
@@ -107,6 +108,7 @@ class PurchaseReceiptItem {
     this.conversionFactor = 1.0,
     this.idx = 0,
     this.customVariantOf,
+    this.itemGroup,
     this.purchaseOrderQty,
     this.docstatus = 0,
     this.poName,
@@ -137,6 +139,7 @@ class PurchaseReceiptItem {
           (json['conversion_factor'] as num?)?.toDouble() ?? 1.0,
       idx: json['idx'] as int? ?? 0,
       customVariantOf: json['custom_variant_of'],
+      itemGroup: json['item_group']?.toString() ?? '',
       purchaseOrderQty:
           (json['purchase_order_qty'] as num?)?.toDouble(),
       docstatus: json['docstatus'] as int? ?? 0,
@@ -167,6 +170,7 @@ class PurchaseReceiptItem {
     double? conversionFactor,
     int? idx,
     String? customVariantOf,
+    String? itemGroup,
     double? purchaseOrderQty,
     int? docstatus,
     String? poName,
@@ -194,6 +198,7 @@ class PurchaseReceiptItem {
       conversionFactor: conversionFactor ?? this.conversionFactor,
       idx: idx ?? this.idx,
       customVariantOf: customVariantOf ?? this.customVariantOf,
+      itemGroup: itemGroup ?? this.itemGroup,
       purchaseOrderQty: purchaseOrderQty ?? this.purchaseOrderQty,
       docstatus: docstatus ?? this.docstatus,
       poName: poName ?? this.poName,

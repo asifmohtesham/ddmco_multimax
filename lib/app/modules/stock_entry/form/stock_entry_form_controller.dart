@@ -269,15 +269,15 @@ class StockEntryFormController extends GetxController
     initScanWiring();
     _initDependencies();
     if (mode == 'new') {
-      _initNewStockEntry();
+      _initDocument();
     } else {
-      fetchStockEntry();
+      fetchDocument();
     }
   }
 
   void _initDependencies() {
     fetchWarehouses();
-    fetchStockEntryTypes();
+    fetchDocumentTypes();
 
     // Doc-level scan worker: fires only when no item sheet is open.
     // Sheet-level scans are owned by BarcodeAwareMixin on the child controller.
@@ -291,8 +291,8 @@ class StockEntryFormController extends GetxController
 
     // customReferenceNoController listener removed.
     // The reference number is read-only in the UI (set once from route arguments).
-    // fetchPosUpload() is called directly in _initNewStockEntry() and
-    // fetchStockEntry() where needed. No runtime listener is required.
+    // fetchPosUpload() is called directly in _initDocument() and
+    // fetchDocument() where needed. No runtime listener is required.
   }
 
   @override
@@ -354,7 +354,7 @@ class StockEntryFormController extends GetxController
 
   // ── New entry init ───────────────────────────────────────────────────────────────────────────────────
 
-  Future<void> _initNewStockEntry() async {
+  Future<void> _initDocument() async {
     isLoading.value = true;
     final type = argStockEntryType    ?? 'Material Transfer';
     final ref  = argCustomReferenceNo ?? '';
@@ -476,7 +476,7 @@ class StockEntryFormController extends GetxController
         if (!isEditable)            return;
         isAddingItem.value = true;
         await Future.delayed(Duration(seconds: autoDelaySecs));
-        await addItem();
+        await _handleItemFormSubmit();
         isAddingItem.value = false;
       },
     );
@@ -640,7 +640,7 @@ class StockEntryFormController extends GetxController
 
   // ── Fetch document ───────────────────────────────────────────────────────────────────────────────────
 
-  Future<void> fetchStockEntry() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getStockEntry(name);
@@ -681,14 +681,14 @@ class StockEntryFormController extends GetxController
           title:   'Could not load Stock Entry',
           message: 'The server returned an unexpected response. '
               'Check your connection and try again.',
-          onRetry: fetchStockEntry,
+          onRetry: fetchDocument,
         );
       }
     } catch (e) {
       GlobalDialog.showError(
         title:   'Could not load Stock Entry',
         message: e.toString(),
-        onRetry: fetchStockEntry,
+        onRetry: fetchDocument,
       );
     } finally {
       isLoading.value = false;
@@ -700,7 +700,7 @@ class StockEntryFormController extends GetxController
   Future<void> reloadDocument() async {
     isStale.value    = false;
     isScanning.value = false;
-    await fetchStockEntry();
+    await fetchDocument();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!isClosed) {
@@ -857,17 +857,18 @@ class StockEntryFormController extends GetxController
 
   // ── Item CRUD ───────────────────────────────────────────────────────────────────────────────────
 
-  void updateItemLocally(
+  void updateItem(
     String uniqueId, double qty, String? batch,
     String? sourceRack, String? targetRack,
-    String? sWarehouse, String? tWarehouse, String? serial,
-  ) {
+    String? sWarehouse, String? tWarehouse, String? serial, {
+    bool bypassPosCap = false,
+  }) {
     final items = stockEntry.value?.items.toList() ?? [];
     final idx   = items.indexWhere((i) => i.name == uniqueId);
     if (idx == -1) return;
 
     final resolvedSerial = serial ?? '0';
-    if (resolvedSerial != '0' && posUpload.value != null) {
+    if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
       final cap           = posQtyCapForSerial(resolvedSerial);
       final othersQty     = scannedQtyForSerial(resolvedSerial,
           excludeItemName: uniqueId);
@@ -914,13 +915,14 @@ class StockEntryFormController extends GetxController
     stockEntry.update((val) => val?.items.assignAll(items));
   }
 
-  void addItemLocally(
+  void addItem(
     double qty, String? batch, String? sourceRack, String? targetRack,
-    String? sWarehouse, String? tWarehouse, String? serial,
-  ) {
+    String? sWarehouse, String? tWarehouse, String? serial, {
+    bool bypassPosCap = false,
+  }) {
     final resolvedSerial = serial ?? '0';
 
-    if (resolvedSerial != '0' && posUpload.value != null) {
+    if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
       final items       = stockEntry.value?.items.toList() ?? [];
       final cap         = posQtyCapForSerial(resolvedSerial);
       final alreadyUsed = scannedQtyForSerial(resolvedSerial);
@@ -973,7 +975,7 @@ class StockEntryFormController extends GetxController
   // ── addItem coordinator ──────────────────────────────────────────────────────────────────────────────────
   bool _isClosingSheet = false;
 
-  Future<void> addItem() async {
+  Future<void> _handleItemFormSubmit() async {
     _autoSubmitTimer?.cancel();
     final child = Get.find<StockEntryItemFormController>();
 
@@ -983,6 +985,7 @@ class StockEntryFormController extends GetxController
     //    and returns false if validation or submit() itself throws.
     final success = await child.submitWithFeedback();
     if (!success) return; // button already shows error state for 1.5 s then resets
+    child.notifySerialItemsChanged();
 
     // Guard: prevent double-close if auto-submit and manual tap race.
     if (_isClosingSheet) return;
@@ -1011,7 +1014,7 @@ class StockEntryFormController extends GetxController
     bool saved = false;
     if (mode == 'new') {
       try {
-        await saveStockEntry();
+        await saveDocument();
         saved = true;
       } catch (_) {
         saved = false;
@@ -1019,7 +1022,7 @@ class StockEntryFormController extends GetxController
     } else {
       isDirty.value = true;
       try {
-        await saveStockEntry();
+        await saveDocument();
         saved = true;
       } catch (_) {
         saved = false;
@@ -1044,7 +1047,7 @@ class StockEntryFormController extends GetxController
 
   // ── Delete ───────────────────────────────────────────────────────────────────────────────────
 
-  void confirmAndDeleteItem(StockEntryItem item) {
+  void deleteItem(StockEntryItem item) {
     if (isItemSheetOpen.value) {
       if (Get.isBottomSheetOpen == true) Get.back();
     }
@@ -1174,9 +1177,8 @@ class StockEntryFormController extends GetxController
             key:              ValueKey(child.editingItemName.value ?? 'new'),
             controller:       child,
             scrollController: sc,
-            onSubmit:         addItem,
+            onSubmit:         _handleItemFormSubmit,
             onScan:           null,
-            itemSubtext:      currentVariantOf,
             isSaveEnabled:    isEditable,
             customFields: [
               SharedInvoiceSerialNumberField(
@@ -1274,7 +1276,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  Future<void> fetchStockEntryTypes() async {
+  Future<void> fetchDocumentTypes() async {
     isFetchingTypes.value = true;
     try {
       final response = await _provider.getStockEntryTypes();
@@ -1427,12 +1429,12 @@ class StockEntryFormController extends GetxController
 
   // ── Create / update ───────────────────────────────────────────────────────
 
-  Future<void> _createEntry(Map<String, dynamic> data) async {
+  Future<void> _createDocument(Map<String, dynamic> data) async {
     final res = await _provider.createStockEntry(data);
     if (res.statusCode == 200) {
       name = res.data['data']['name'];
       mode = 'edit';
-      await fetchStockEntry();
+      await fetchDocument();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
     } else {
@@ -1442,7 +1444,7 @@ class StockEntryFormController extends GetxController
     }
   }
 
-  Future<void> _updateEntry(Map<String, dynamic> data) async {
+  Future<void> _updateDocument(Map<String, dynamic> data) async {
     final res = await _provider.updateStockEntry(name, data);
     if (res.statusCode == 200) {
       if (res.data['data'] != null) {
@@ -1450,7 +1452,7 @@ class StockEntryFormController extends GetxController
       }
       _setSaveResult(SaveResult.success);
       isDirty.value = false;
-      await fetchStockEntry();
+      await fetchDocument();
     } else {
       _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(
@@ -1475,9 +1477,9 @@ class StockEntryFormController extends GetxController
     GlobalSnackbar.error(message: msg);
   }
 
-  // ── saveStockEntry (orchestrator only, ~15 lines) ─────────────────────────
+  // ── saveDocument (orchestrator only, ~15 lines) ─────────────────────────
 
-  Future<void> saveStockEntry() async {
+  Future<void> saveDocument() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
     if (!_validateHeaderForSave()) return;
@@ -1487,9 +1489,9 @@ class StockEntryFormController extends GetxController
       ..['items'] = _buildItemsPayload();
     try {
       if (mode == 'new') {
-        await _createEntry(data);
+        await _createDocument(data);
       } else {
-        await _updateEntry(data);
+        await _updateDocument(data);
       }
     } on DioException catch (e) {
       _handleSaveDioError(e);

@@ -30,16 +30,19 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      po?.name ?? 'Loading...',
+                  title:       po?.name ?? 'Loading...',
+                  docType:     'Purchase Order',
+                  statusLabel: po?.status,
                   canSave:    isDirty && controller.isEditable,
                   docStatus:  po?.docstatus ?? 0,
                   isSaving:   isSaving,
                   saveResult: saveResult,
                   onSave: (isDirty && controller.isEditable)
-                      ? controller.savePurchaseOrder
+                      ? controller.saveDocument
                       : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
@@ -182,6 +185,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             hintText:    'Scan Item Code',
             activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
           )),
+        SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );
   }
@@ -214,7 +218,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
         confirmDismiss: (_) async {
           bool confirmed = false;
           await Future.microtask(() {
-            controller.confirmAndDeleteItem(item);
+            controller.deleteItem(item);
             confirmed = false;
           });
           return confirmed;
@@ -234,7 +238,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
               ? () => controller.editItem(item)
               : null,
           onDelete: controller.isEditable
-              ? () => controller.confirmAndDeleteItem(item)
+              ? () => controller.deleteItem(item)
               : null,
         ),
       );

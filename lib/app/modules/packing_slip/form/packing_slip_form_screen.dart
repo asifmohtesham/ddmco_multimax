@@ -16,10 +16,11 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final slip      = controller.packingSlip.value;
-      final isDirty   = controller.isDirty.value;
-      final isSaving  = controller.isSaving.value;
-      final isLoading = controller.isLoading.value;
+      final slip       = controller.packingSlip.value;
+      final isDirty    = controller.isDirty.value;
+      final isSaving   = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading  = controller.isLoading.value;
 
       return PopScope(
         canPop: !isDirty,
@@ -30,15 +31,19 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:     slip?.name ?? 'Packing Slip',
-                  canSave:   isDirty,
-                  docStatus: slip?.docstatus ?? 0,
-                  isSaving:  isSaving,
-                  onSave: (slip?.docstatus == 0 && isDirty)
-                      ? controller.savePackingSlip
+                  title:       slip?.name ?? 'Packing Slip',
+                  docType:     'Packing Slip',
+                  statusLabel: slip?.status,
+                  canSave:     isDirty,
+                  docStatus:   slip?.docstatus ?? 0,
+                  isSaving:    isSaving,
+                  saveResult:  saveResult,
+                  onSave: slip?.docstatus == 0
+                      ? controller.saveDocument
                       : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
@@ -285,6 +290,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 controller:  controller.barcodeController,
                 activeRoute: AppRoutes.PACKING_SLIP_FORM,
               )),
+        Builder(builder: (ctx) =>
+            SizedBox(height: MediaQuery.viewInsetsOf(ctx).bottom)),
       ],
     );
   }
@@ -374,6 +381,13 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (dnItem.idx != null && dnItem.idx! > 0)
+                      Text(
+                        'Row #${dnItem.idx}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.indigo.shade400),
+                      ),
                     if (dnItem.batchNo != null)
                       Text(
                         'Batch: ${dnItem.batchNo}',
@@ -424,7 +438,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               key:       ValueKey(currentItem!.name),
               direction: DismissDirection.endToStart,
               confirmDismiss: (_) async {
-                controller.confirmAndDeleteItem(currentItem);
+                controller.deleteItem(currentItem);
                 return false;
               },
               background: Container(

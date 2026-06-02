@@ -1,12 +1,13 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/utils/app_navigator.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/auth/connect/connect_to_instance_controller.dart';
+import 'package:multimax/app/modules/auth/connect/connect_to_instance_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class LoginController extends GetxController {
@@ -18,110 +19,37 @@ class LoginController extends GetxController {
   final GlobalKey<FormState> loginFormKey = GlobalKey<FormState>();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  final TextEditingController serverUrlController = TextEditingController();
 
-  var currentServerUrl = ''.obs;
-  var isCheckingConnection = false.obs;
   var isLoading = false.obs;
   var showServerGuide = false.obs;
 
-  // ValueNotifier — pure Flutter, avoids GetX reactive layer on TextFormField.
   final isPasswordHidden = ValueNotifier<bool>(true);
 
-  @override
-  void onInit() {
-    super.onInit();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSavedServerUrl());
-  }
+  // ── Connect-sheet lifecycle ───────────────────────────────────────────────
 
-  Future<void> _loadSavedServerUrl() async {
-    final savedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
-    final targetUrl = savedUrl ?? ApiProvider.defaultBaseUrl;
-    serverUrlController.text = targetUrl;
-    currentServerUrl.value = targetUrl;
-    _apiProvider.setBaseUrl(targetUrl);
-  }
-
-  Future<void> saveServerConfiguration() async {
-    String url = serverUrlController.text.trim();
-    if (url.isEmpty) {
-      GlobalSnackbar.error(message: 'Server URL cannot be empty');
-      return;
-    }
-
-    if (!url.startsWith('http')) url = 'https://$url';
-    if (url.endsWith('/')) url = url.substring(0, url.length - 1);
-
-    isCheckingConnection.value = true;
-    update();
-    try {
-      _apiProvider.setBaseUrl(url);
-      final dio = Dio();
-      dio.options.connectTimeout = const Duration(seconds: 5);
-      final response = await dio.get('$url/api/method/ping');
-
-      if (response.statusCode == 200) {
-        await _confirmAndSave(url);
-        GlobalSnackbar.success(
-            title: 'Connected', message: 'Successfully connected to $url');
+  void openConnectSheet(BuildContext context) {
+    Get.put(ConnectToInstanceController());
+    showConnectToInstanceSheet(context).then((_) async {
+      // The sheet's dismiss animation is still running when its Future resolves.
+      // Delaying Get.delete lets the animation finish so no widget tries
+      // to call Get.find<ConnectToInstanceController>() after deletion.
+      await Future.delayed(const Duration(milliseconds: 350));
+      Get.delete<ConnectToInstanceController>(force: true);
+      final savedUrl =
+          await _dbService.getConfig(DatabaseService.serverUrlKey);
+      if (savedUrl != null && savedUrl.isNotEmpty) {
         showServerGuide.value = false;
         update();
-      } else {
-        throw Exception(
-            'Invalid response from server (Status: ${response.statusCode})');
       }
-    } catch (e) {
-      isCheckingConnection.value = false;
-      update();
-      Get.dialog(
-        Builder(
-          builder: (context) => AlertDialog(
-            title: const Text('Connection Failed'),
-            content: Text(
-              'Could not verify connection to the server.\n\n'
-              'Error: $e\n\n'
-              'Do you want to save this URL anyway?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  await _confirmAndSave(url);
-                  GlobalSnackbar.success(
-                      title: 'Saved',
-                      message: 'Server URL saved (Validation skipped)');
-                  showServerGuide.value = false;
-                  update();
-                },
-                child: const Text('Save Anyway'),
-              ),
-            ],
-          ),
-        ),
-      );
-    } finally {
-      isCheckingConnection.value = false;
-      update();
-    }
+    });
   }
 
-  Future<void> _confirmAndSave(String url) async {
-    await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
-    serverUrlController.text = url;
-    currentServerUrl.value = url;
-    _apiProvider.setBaseUrl(url);
-    AppNavigator.pop();
-  }
+  // ── Auth ──────────────────────────────────────────────────────────────────
 
   @override
   void onClose() {
     emailController.dispose();
     passwordController.dispose();
-    serverUrlController.dispose();
     isPasswordHidden.dispose();
     super.onClose();
   }
@@ -141,7 +69,8 @@ class LoginController extends GetxController {
       isPasswordHidden.value = !isPasswordHidden.value;
 
   Future<void> loginUser() async {
-    final storedUrl = await _dbService.getConfig(DatabaseService.serverUrlKey);
+    final storedUrl =
+        await _dbService.getConfig(DatabaseService.serverUrlKey);
 
     if (storedUrl == null || storedUrl.isEmpty) {
       showServerGuide.value = true;
@@ -155,6 +84,7 @@ class LoginController extends GetxController {
     if (loginFormKey.currentState!.validate()) {
       isLoading.value = true;
       update();
+      bool loggedIn = false;
       try {
         final response = await _apiProvider.loginWithFrappe(
           emailController.text.trim(),
@@ -165,10 +95,11 @@ class LoginController extends GetxController {
             response.data?['message'] == 'Logged In') {
           await _authController.fetchUserDetails();
           if (_authController.currentUser.value != null) {
-            _authController
-                .processSuccessfulLogin(_authController.currentUser.value!);
+            _authController.processSuccessfulLogin(
+                _authController.currentUser.value!);
           } else {
-            final String fullName = response.data?['full_name'] ?? 'User';
+            final String fullName =
+                response.data?['full_name'] ?? 'User';
             final user = User(
               id: emailController.text.trim(),
               name: fullName,
@@ -177,29 +108,39 @@ class LoginController extends GetxController {
             );
             _authController.processSuccessfulLogin(user);
           }
-        } else if (response.statusCode == 401 || response.statusCode == 403) {
+          loggedIn = true;
+        } else if (response.statusCode == 401 ||
+            response.statusCode == 403) {
           GlobalSnackbar.error(
-              title: 'Login Failed',
-              message: response.data?['message'] ?? 'Invalid credentials.');
+            title: 'Login Failed',
+            message:
+                response.data?['message'] ?? 'Invalid credentials.',
+          );
         } else {
           GlobalSnackbar.error(
-              title: 'Login Error',
-              message:
-                  response.data?['message'] ?? 'An unknown error occurred.');
+            title: 'Login Error',
+            message: response.data?['message'] ??
+                'An unknown error occurred.',
+          );
         }
       } catch (e) {
         GlobalSnackbar.error(
-            title: 'Login Error', message: 'An unexpected error occurred.');
+          title: 'Login Error',
+          message: 'An unexpected error occurred.',
+        );
       } finally {
-        isLoading.value = false;
-        update();
+        if (!loggedIn) {
+          isLoading.value = false;
+          update();
+        }
       }
     }
   }
 
   Future<void> resetPassword() async {
     if (emailController.text.isEmpty) {
-      GlobalSnackbar.error(message: 'Please enter your email address first');
+      GlobalSnackbar.error(
+          message: 'Please enter your email address first');
       return;
     }
     isLoading.value = true;

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -133,9 +132,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
   @override
   bool get isAddMode => editingItemName.value == null;
 
-  @override
-  MobileScannerController? get sheetScanController => null;
-
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
   @override
   double get effectiveMaxQty {
@@ -171,6 +167,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     String?  batchNo,
     String?  scannedEan,
     String?  variantOfValue,
+    String?  itemGroupValue,
     String?  uomValue,
     PurchaseReceiptItem? editingItem,
   }) {
@@ -188,6 +185,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
         uom:    uomValue ?? 'Nos',
         batchNo: batchNo,
       );
+      this.itemGroup.value = itemGroupValue ?? '';
+      this.variantOf.value = variantOfValue ?? '';
     }
 
     _parent.linkToPurchaseOrder(code, this);
@@ -249,7 +248,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
       (i) => i?.name == rowId, orElse: () => null,
     );
     if (item == null) return;
-    _parent.confirmAndDeleteItem(item);
+    _parent.deleteItem(item);
   }
 
   // ── submit ────────────────────────────────────────────────────────────────────
@@ -261,11 +260,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     final warehouse = resolvedWarehouse ?? '';
 
     if (editingItemName.value != null) {
-      parent.updateItemLocally(
+      parent.updateItem(
         editingItemName.value!, qty, batch, rack, warehouse,
       );
     } else {
-      parent.addItemLocally(
+      parent.addItem(
         itemCode.value, itemName.value, qty, batch, rack, warehouse,
         uom:       itemUom.value,
         poItemId:  poItemId.value,
@@ -274,7 +273,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
         poRate:    poRate.value ?? 0.0,
       );
     }
-    await parent.savePurchaseReceipt();
+    await parent.saveDocument();
   }
 
   // ── Init helpers ──────────────────────────────────────────────────────────────
@@ -323,6 +322,8 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     itemCode.value        = item.itemCode;
     itemName.value        = item.itemName ?? '';
     itemUom.value         = item.uom ?? '';
+    itemGroup.value       = item.itemGroup ?? '';
+    variantOf.value       = item.customVariantOf ?? '';
 
     batchController.text = item.batchNo ?? '';
     rackController.text  = item.rack    ?? '';

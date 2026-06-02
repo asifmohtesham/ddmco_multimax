@@ -32,16 +32,19 @@ class PurchaseReceiptFormScreen
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      receipt?.name ?? 'Loading...',
+                  title:       receipt?.name ?? 'Loading...',
+                  docType:     'Purchase Receipt',
+                  statusLabel: receipt?.status,
                   canSave:    isDirty,
                   docStatus:  receipt?.docstatus ?? 0,
                   isSaving:   isSaving,
                   saveResult: saveResult,
                   onSave: (receipt?.docstatus == 0 && isDirty)
-                      ? controller.savePurchaseReceipt
+                      ? controller.saveDocument
                       : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
@@ -293,7 +296,7 @@ class PurchaseReceiptFormScreen
                             : DismissDirection.none,
                         confirmDismiss: (_) async {
                           if (controller.isEditable) {
-                            controller.confirmAndDeleteItem(item);
+                            controller.deleteItem(item);
                           }
                           return false;
                         },
@@ -313,7 +316,7 @@ class PurchaseReceiptFormScreen
                               : null,
                           onDelete: controller.isEditable
                               ? () =>
-                                  controller.confirmAndDeleteItem(item)
+                                  controller.deleteItem(item)
                               : null,
                         ),
                       );
@@ -328,6 +331,7 @@ class PurchaseReceiptFormScreen
                 controller:  controller.barcodeController,
                 activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
               )),
+        SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );
   }

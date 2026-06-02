@@ -113,6 +113,7 @@ class PackingSlipItem {
   final double weightUom;
   final String? customInvoiceSerialNumber;
   final String? customVariantOf;
+  final String? itemGroup;
   final String? customCountryOfOrigin;
   // Metadata
   final String? owner;
@@ -132,6 +133,7 @@ class PackingSlipItem {
     required this.weightUom,
     this.customInvoiceSerialNumber,
     this.customVariantOf,
+    this.itemGroup,
     this.customCountryOfOrigin,
     this.owner,
     this.creation,
@@ -152,6 +154,7 @@ class PackingSlipItem {
       weightUom: (json['weight_uom'] as num?)?.toDouble() ?? 0.0,
       customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
       customVariantOf: json['custom_variant_of'],
+      itemGroup: json['item_group']?.toString() ?? '',
       customCountryOfOrigin: json['custom_country_of_origin'],
       owner: json['owner'],
       creation: json['creation'],
@@ -190,6 +193,7 @@ class PackingSlipItem {
     double? weightUom,
     String? customInvoiceSerialNumber,
     String? customVariantOf,
+    String? itemGroup,
     String? customCountryOfOrigin,
     String? owner,
     String? creation,
@@ -208,6 +212,7 @@ class PackingSlipItem {
       weightUom:                  weightUom  ?? this.weightUom,
       customInvoiceSerialNumber:  customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
       customVariantOf:            customVariantOf           ?? this.customVariantOf,
+      itemGroup:                  itemGroup                 ?? this.itemGroup,
       customCountryOfOrigin:      customCountryOfOrigin     ?? this.customCountryOfOrigin,
       owner:                      owner      ?? this.owner,
       creation:                   creation   ?? this.creation,

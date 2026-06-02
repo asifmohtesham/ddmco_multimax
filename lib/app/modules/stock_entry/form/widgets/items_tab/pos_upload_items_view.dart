@@ -78,7 +78,7 @@ class PosUploadItemsView extends StatelessWidget {
                       ? () => controller.editItem(item)
                       : null,
                   onDelete: isEditable
-                      ? () => controller.confirmAndDeleteItem(item)
+                      ? () => controller.deleteItem(item)
                       : null,
                 );
               }).toList(),

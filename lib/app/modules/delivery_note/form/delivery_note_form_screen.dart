@@ -32,15 +32,18 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      note?.name ?? 'Loading...',
+                  title:       note?.name ?? 'Loading...',
+                  docType:     'Delivery Note',
+                  statusLabel: note?.status,
                   canSave:    isDirty,
                   docStatus:  note?.docstatus ?? 0,
                   isSaving:   isSaving,
                   saveResult: saveResult,
-                  onSave:     isDirty ? controller.saveDeliveryNote : null,
+                  onSave:     (note?.docstatus == 0) ? controller.saveDocument : null,
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
@@ -332,7 +335,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                       confirmDismiss: (_) async {
                         if (isEditable) {
                           await controller
-                              .confirmAndDeleteItem(item);
+                              .deleteItem(item);
                         }
                         return false;
                       },
@@ -361,7 +364,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                                 item.name,
                         onDelete: isEditable
                             ? () => controller
-                                .confirmAndDeleteItem(item)
+                                .deleteItem(item)
                             : null,
                       )),
                     );
@@ -415,17 +418,22 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
                   final cumulativeQty = dnItemsForThisPosItem.fold(
                       0.0, (sum, item) => sum + item.qty);
+                  final cumulativePackedQty = dnItemsForThisPosItem.fold(
+                      0.0, (sum, item) => sum + (item.packedQty ?? 0.0));
 
                   return Container(
                     key: controller.itemKeys[expansionKey],
                     child: ItemGroupCard(
-                      isExpanded: currentExpandedKey == expansionKey,
-                      serialNo:   posItem.idx,
-                      itemName:   posItem.itemName,
-                      rate:       posItem.rate,
-                      totalQty:   posItem.quantity,
-                      scannedQty: cumulativeQty,
-                      currency:   currency,
+                      isExpanded:      currentExpandedKey == expansionKey,
+                      serialNo:        posItem.idx,
+                      itemName:        posItem.itemName,
+                      rate:            posItem.rate,
+                      totalQty:        posItem.quantity,
+                      scannedQty:      cumulativeQty,
+                      currency:        currency,
+                      totalQtyLabel:   'POS Qty',
+                      scannedQtyLabel: 'DN Qty',
+                      packedQty:       cumulativePackedQty,
                       onToggle: () =>
                           controller.toggleInvoiceExpand(expansionKey),
                       children: dnItemsForThisPosItem
@@ -463,7 +471,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                                   item.name,
                           onDelete: isEditable
                               ? () => controller
-                                  .confirmAndDeleteItem(item)
+                                  .deleteItem(item)
                               : null,
                         ));
                       }).toList(),
@@ -498,6 +506,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               activeRoute: AppRoutes.DELIVERY_NOTE_FORM,
             );
           }),
+          SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
         ],
       );
     });

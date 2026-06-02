@@ -405,8 +405,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                         stats: [
                           GenericDocumentCard.buildIconStat(
                             context,
-                            Icons.assignment_outlined,
-                            req.materialRequestType,
+                            Icons.inventory_2_outlined,
+                            '${req.customTotalQty.toStringAsFixed(0)} qty',
                           ),
                           GenericDocumentCard.buildIconStat(
                             context,
@@ -420,6 +420,18 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                               Icons.event_outlined,
                               'Due ${FormattingHelper.getRelativeTime(req.scheduleDate)}',
                             ),
+                        ],
+                        auditStats: [
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.person_outline,
+                            _abbreviateOwner(req.owner ?? '—'),
+                          ),
+                          GenericDocumentCard.buildIconStat(
+                            context,
+                            Icons.edit_outlined,
+                            FormattingHelper.getRelativeTime(req.modified),
+                          ),
                         ],
                         isExpanded: isExpanded,
                         isLoadingDetails: isLoadingDetails && isExpanded,
@@ -467,31 +479,38 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             const SizedBox(height: 12),
           ],
 
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _infoCell(
-                  context,
-                  label: 'TRANSACTION DATE',
-                  value: detailed.transactionDate,
-                  icon: Icons.calendar_today_outlined,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _infoCell(
+                    context,
+                    label: 'TRANSACTION DATE',
+                    value: detailed.transactionDate,
+                    icon: Icons.calendar_today_outlined,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _infoCell(
-                  context,
-                  label: 'REQUIRED BY',
-                  value: detailed.scheduleDate.isNotEmpty
-                      ? detailed.scheduleDate
-                      : '—',
-                  icon: Icons.event_outlined,
-                  valueColor: colorScheme.primary,
-                  alignRight: true,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _infoCell(
+                    context,
+                    label: 'REQUIRED BY',
+                    value: detailed.scheduleDate.isNotEmpty
+                        ? detailed.scheduleDate
+                        : '—',
+                    icon: Icons.event_outlined,
+                    valueColor: colorScheme.primary,
+                    alignRight: true,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
 
           const SizedBox(height: 12),
@@ -516,25 +535,12 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  detailed.owner ?? '—',
+                  _abbreviateOwner(detailed.owner ?? '—'),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: colorScheme.onSurfaceVariant),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(
-                FormattingHelper.getRelativeTime(detailed.modified),
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: colorScheme.outline),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
               if (detailed.docstatus == 0) ...[
                 RoleGuard(
                   roles: controller.writeRoles.toList(),
@@ -598,25 +604,46 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
 
   Widget _buildItemsSummary(BuildContext context, MaterialRequest detailed) {
     final totalQty = detailed.items.fold(0.0, (sum, i) => sum + i.qty);
+    final orderedQty =
+        detailed.items.fold(0.0, (sum, i) => sum + i.orderedQty);
     final fulfilledCount =
         detailed.items.where((i) => i.orderedQty >= i.qty).length;
     final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _miniStat(context, '${detailed.items.length}', 'Lines'),
-          const SizedBox(width: 16),
-          _miniStat(context, totalQty.toStringAsFixed(0), 'Total Qty'),
-          const SizedBox(width: 16),
-          _miniStat(
-            context,
-            '$fulfilledCount',
-            'Ordered',
-            color: fulfilledCount == detailed.items.length
-                ? Colors.green
-                : colorScheme.primary,
+          Row(
+            children: [
+              _miniStat(context, '${detailed.items.length}', 'Lines'),
+              const SizedBox(width: 16),
+              _miniStat(context, totalQty.toStringAsFixed(0), 'Total Qty'),
+              const SizedBox(width: 16),
+              _miniStat(
+                context,
+                '$fulfilledCount',
+                'Ordered',
+                color: fulfilledCount == detailed.items.length
+                    ? Colors.green
+                    : colorScheme.primary,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: totalQty > 0
+                  ? (orderedQty / totalQty).clamp(0.0, 1.0)
+                  : 0.0,
+              minHeight: 4,
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                orderedQty >= totalQty ? Colors.green : colorScheme.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -676,6 +703,11 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         ),
       ],
     );
+  }
+
+  String _abbreviateOwner(String email) {
+    if (email == '—') return '—';
+    return email.split('@').first;
   }
 
   Widget _miniStat(BuildContext context, String value, String label,

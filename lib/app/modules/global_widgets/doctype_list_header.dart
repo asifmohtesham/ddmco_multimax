@@ -204,6 +204,17 @@ class DocTypeListHeader extends StatelessWidget {
   /// `minExtent` and `maxExtent`, keeping it visible at all scroll positions.
   final PreferredSizeWidget? bottom;
 
+  // ── Actions key ──────────────────────────────────────────────────────
+  /// Opaque key that changes whenever the semantic content of [extraActions]
+  /// changes (e.g. save-button enabled state, saving spinner, save result).
+  ///
+  /// Because [shouldRebuild] can only compare [extraActions] by length (widget
+  /// instances are always new objects), callers that embed stateful widgets in
+  /// [extraActions] — such as [DocTypeFormHeader] — must pass a key derived
+  /// from those widgets' inputs.  When the key changes, the delegate rebuilds
+  /// immediately rather than waiting for the next scroll event.
+  final Object? extraActionsKey;
+
   const DocTypeListHeader({
     super.key,
     required this.title,
@@ -221,6 +232,7 @@ class DocTypeListHeader extends StatelessWidget {
     this.filterChipsBuilder,
     this.onClearAllFilters,
     this.bottom,
+    this.extraActionsKey,
   });
 
   // ✔ FIX 3: Obx wrapper triggers a widget rebuild whenever activeFilters
@@ -235,8 +247,8 @@ class DocTypeListHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     if (activeFilters != null || searchQuery != null) {
       return Obx(() {
-        final _ = activeFilters?.length;    // ignore: unused_local_variable
-        final __ = searchQuery?.value;      // ignore: unused_local_variable
+        final unused1 = activeFilters?.length;    // ignore: unused_local_variable
+        final unused2 = searchQuery?.value;       // ignore: unused_local_variable
         return _buildSliver(context);
       });
     }
@@ -252,6 +264,7 @@ class DocTypeListHeader extends StatelessWidget {
       delegate: _DocTypeListHeaderDelegate(
         title: title,
         extraActions: extraActions,
+        extraActionsKey: extraActionsKey,
         automaticallyImplyLeading: automaticallyImplyLeading,
         searchDoctype: searchDoctype,
         searchRoute: searchRoute,
@@ -288,6 +301,8 @@ const int _kAutoSizeMaxLines = 2;
 class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final String title;
   final List<Widget>? extraActions;
+  /// See [DocTypeListHeader.extraActionsKey].
+  final Object? extraActionsKey;
   final bool automaticallyImplyLeading;
   final String? searchDoctype;
   final String? searchRoute;
@@ -307,9 +322,17 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// Height of the system status bar on this device / orientation.
   final double statusBarHeight;
 
-  const _DocTypeListHeaderDelegate({
+  // Snapshots captured at construction time so shouldRebuild can detect
+  // in-place mutations to the shared RxMap / RxString objects. Without these,
+  // both `this` and `old` delegates read the same post-mutation value and
+  // filtersChanged / searchChanged are always false.
+  final int _filterCount;
+  final String _searchValue;
+
+  _DocTypeListHeaderDelegate({
     required this.title,
     required this.extraActions,
+    required this.extraActionsKey,
     required this.automaticallyImplyLeading,
     required this.searchDoctype,
     required this.searchRoute,
@@ -322,7 +345,8 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onClearAllFilters,
     required this.bottom,
     required this.statusBarHeight,
-  });
+  })  : _filterCount = activeFilters?.length ?? 0,
+        _searchValue = searchQuery?.value ?? '';
 
   // ── Chip presence ──────────────────────────────────────────────────────────
   bool _chipsActiveFor({
@@ -336,7 +360,13 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
 
   @override
-  double get minExtent => statusBarHeight + _kToolbar + _bottomHeight;
+  double get minExtent =>
+      statusBarHeight +
+      _kToolbar +
+      _bottomHeight +
+      // Chip row is always reserved in maxExtent when the builder is present,
+      // so minExtent must match — otherwise the layout overflows when collapsed.
+      (filterChipsBuilder != null ? _kChipRow : 0.0);
 
   @override
   double get maxExtent =>
@@ -678,20 +708,24 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   // ── shouldRebuild ──────────────────────────────────────────────────────────
   @override
   bool shouldRebuild(covariant _DocTypeListHeaderDelegate old) {
-    final filtersChanged =
-        (activeFilters?.length ?? 0) != (old.activeFilters?.length ?? 0);
-    final searchChanged =
-        (searchQuery?.value ?? '') != (old.searchQuery?.value ?? '');
-
     // Callbacks are intentionally excluded — lambda identity is always different
     // across parent rebuilds, so comparing them would make shouldRebuild always
     // return true and defeat the purpose of this guard.
-    return filtersChanged ||
-        searchChanged ||
+    // extraActions length IS compared: when buttons are conditionally shown or
+    // hidden (e.g. Share appears after packing slips load), the count changes
+    // and the delegate must rebuild immediately rather than waiting for a scroll.
+    // extraActionsKey IS compared: callers like DocTypeFormHeader pass a record
+    // of (canSave, isSaving, saveResult, hasOnSave) so that button state
+    // changes (e.g. isDirty true → enabled icon) trigger an immediate rebuild
+    // rather than being deferred until the next scroll layout pass.
+    return _filterCount != old._filterCount ||
+        _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         searchDoctype != old.searchDoctype ||
-        searchRoute != old.searchRoute;
+        searchRoute != old.searchRoute ||
+        (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
+        extraActionsKey != old.extraActionsKey;
   }
 }

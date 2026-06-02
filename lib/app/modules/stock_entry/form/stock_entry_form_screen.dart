@@ -25,7 +25,7 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final bool isEditable = entry?.docstatus == 0;
 
       final VoidCallback? onSave =
-          isEditable ? controller.saveStockEntry : null;
+          isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload =
           controller.mode != 'new' ? controller.reloadDocument : null;
 
@@ -49,10 +49,13 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      title,
+                  title:       title,
+                  docType:     'Stock Entry',
+                  statusLabel: entry?.status,
                   canSave:    isDirty,
                   docStatus:  entry?.docstatus ?? 0,
                   isSaving:   isSaving,
@@ -141,7 +144,7 @@ class _ItemsTab extends StatelessWidget {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
           child: BottomScanBar(controller: controller),
         ),
       ],

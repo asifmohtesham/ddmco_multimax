@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
@@ -19,141 +18,127 @@ class HomeScreen extends GetView<HomeController> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: MainAppBar(
-        title: "Dashboard",
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh, color: Theme.of(context).colorScheme.onPrimary,),
-            tooltip: 'Refresh Data',
-            onPressed: () {
-              controller.fetchDashboardData();
-              controller.fetchPerformanceData();
-            },
+    return AppShellScaffold(
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
           ),
-          IconButton(
-            icon: Icon(Icons.notifications_outlined, color: Theme.of(context).colorScheme.onPrimary,),
-            tooltip: 'Notifications',
-            onPressed: () {
-              GlobalSnackbar.info(title: 'Notifications', message: 'No new notifications');
-            },
-          ),
-        ],
+          child: Obx(() => BarcodeInputWidget(
+            onScan: controller.onScan,
+            controller: controller.barcodeController,
+            isLoading: controller.isScanning.value,
+            hintText: 'Scan Item / Batch / Rack',
+            activeRoute: AppRoutes.HOME,
+          )),
+        ),
       ),
-      drawer: const AppNavDrawer(),
-      body: Column(
-        children: [
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await controller.fetchDashboardData();
-                await controller.fetchPerformanceData();
-              },
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildUserContextCard(context),
-                    const SizedBox(height: 24),
-
-                    // 1. Quick Access Grid
-                    Text('Quick Access', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    _buildQuickAccessGrid(context),
-
-                    const SizedBox(height: 24),
-
-                    // 2. Timeline
-                    Obx(() => PerformanceTimelineCard(
-                      viewMode: controller.timelineViewMode.value,
-                      onToggleView: controller.toggleTimelineView,
-                      data: controller.timelineData,
-                      isLoading: controller.isLoadingTimeline.value,
-                      selectedDate: controller.timelineViewMode.value != 'Weekly'
-                          ? controller.selectedDailyDate.value
-                          : null,
-                      selectedRange: controller.timelineViewMode.value == 'Weekly'
-                          ? controller.selectedWeeklyRange.value
-                          : null,
-                      onDateChanged: controller.onDailyDateChanged,
-                      onRangeChanged: controller.onWeeklyRangeChanged,
-                    )),
-
-                    const SizedBox(height: 24),
-
-                    // 3. KPIs — Manufacturing Pulse
-                    Text('Manufacturing Pulse', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    Obx(() {
-                      if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
-                        return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
-                      }
-                      return Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SpeedometerKpiCard(
-                                  title: 'Work Orders',
-                                  actual: controller.activeWorkOrdersCount.value,
-                                  target: controller.targetWorkOrders,
-                                  icon: Icons.precision_manufacturing_outlined,
-                                  onTap: controller.goToWorkOrder,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: SpeedometerKpiCard(
-                                  title: 'Job Cards',
-                                  actual: controller.activeJobCardsCount.value,
-                                  target: controller.targetJobCards,
-                                  icon: Icons.assignment_ind_outlined,
-                                  onTap: controller.goToJobCard,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          BomCountCard(
-                            count: controller.activeBomCount.value,
-                            onTap: controller.goToBOM,
-                          ),
-                          Obx(() {
-                            final jcName = controller.activeWipJcName.value;
-                            final op     = controller.activeWipJcOperation.value;
-                            if (jcName == null) return const SizedBox.shrink();
-                            return _ResumeJobCard(
-                              jcName: jcName,
-                              operation: op,
-                            );
-                          }),
-                        ],
-                      );
-                    }),
-                  ],
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await controller.fetchDashboardData();
+          await controller.fetchPerformanceData();
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            DocTypeListHeader(
+              title: 'Dashboard',
+              automaticallyImplyLeading: false,
+              extraActions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh Data',
+                  onPressed: () {
+                    controller.fetchDashboardData();
+                    controller.fetchPerformanceData();
+                  },
                 ),
+              ],
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _buildUserContextCard(context),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Quick Access',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildQuickAccessGrid(context),
+                  const SizedBox(height: 24),
+                  Obx(() => PerformanceTimelineCard(
+                    viewMode: controller.timelineViewMode.value,
+                    onToggleView: controller.toggleTimelineView,
+                    data: controller.timelineData,
+                    isLoading: controller.isLoadingTimeline.value,
+                    selectedDate: controller.timelineViewMode.value != 'Weekly'
+                        ? controller.selectedDailyDate.value
+                        : null,
+                    selectedRange: controller.timelineViewMode.value == 'Weekly'
+                        ? controller.selectedWeeklyRange.value
+                        : null,
+                    onDateChanged: controller.onDailyDateChanged,
+                    onRangeChanged: controller.onWeeklyRangeChanged,
+                  )),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Manufacturing Pulse',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Obx(() {
+                    if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
+                      return const _ManufacturingPulseSkeleton();
+                    }
+                    return Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SpeedometerKpiCard(
+                                title: 'Work Orders',
+                                actual: controller.activeWorkOrdersCount.value,
+                                target: controller.targetWorkOrders,
+                                icon: Icons.precision_manufacturing_outlined,
+                                onTap: controller.goToWorkOrder,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SpeedometerKpiCard(
+                                title: 'Job Cards',
+                                actual: controller.activeJobCardsCount.value,
+                                target: controller.targetJobCards,
+                                icon: Icons.assignment_ind_outlined,
+                                onTap: controller.goToJobCard,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        BomCountCard(
+                          count: controller.activeBomCount.value,
+                          onTap: controller.goToBOM,
+                        ),
+                        Obx(() {
+                          final jcName = controller.activeWipJcName.value;
+                          final op = controller.activeWipJcOperation.value;
+                          if (jcName == null) return const SizedBox.shrink();
+                          return _ResumeJobCard(jcName: jcName, operation: op);
+                        }),
+                      ],
+                    );
+                  }),
+                  const SizedBox(height: 80),
+                ]),
               ),
             ),
-          ),
-
-          // Persistent Scan Input
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, -2))],
-            ),
-            child: Obx(() => BarcodeInputWidget(
-              onScan: controller.onScan,
-              controller: controller.barcodeController,
-              isLoading: controller.isScanning.value,
-              hintText: 'Scan Item / Batch / Rack',
-              activeRoute: AppRoutes.HOME,
-            )),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -908,6 +893,75 @@ class SpeedometerKpiCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// =============================================================================
+// _ManufacturingPulseSkeleton — shimmer placeholder while stats are loading
+// =============================================================================
+
+class _ManufacturingPulseSkeleton extends StatefulWidget {
+  const _ManufacturingPulseSkeleton();
+
+  @override
+  State<_ManufacturingPulseSkeleton> createState() =>
+      _ManufacturingPulseSkeletonState();
+}
+
+class _ManufacturingPulseSkeletonState
+    extends State<_ManufacturingPulseSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _color = ColorTween(
+      begin: Colors.grey.shade100,
+      end: Colors.grey.shade300,
+    ).animate(_anim);
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  Widget _box({double w = double.infinity, double h = 14, double r = 8}) {
+    return AnimatedBuilder(
+      animation: _color,
+      builder: (_, __) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: _color.value,
+          borderRadius: BorderRadius.circular(r),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _box(h: 200, r: 16)),
+            const SizedBox(width: 16),
+            Expanded(child: _box(h: 200, r: 16)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _box(h: 70, r: 16),
+      ],
     );
   }
 }

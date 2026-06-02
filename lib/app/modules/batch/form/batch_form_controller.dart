@@ -25,9 +25,9 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 ///   populates all form controllers.
 ///
 /// Uses [OptimisticLockingMixin] to guard against concurrent edits:
-/// - [checkStaleAndBlock] is called at the start of [saveBatch].
+/// - [checkStaleAndBlock] is called at the start of [saveDocument].
 /// - [handleVersionConflict] is called in the catch block.
-/// - [reloadDocument] is implemented to delegate to [fetchBatch].
+/// - [reloadDocument] is implemented to delegate to [fetchDocument].
 class BatchFormController extends GetxController with OptimisticLockingMixin {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
@@ -35,13 +35,13 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   String name = '';
 
   /// Form mode: `'new'` or `'edit'`.  Switches to `'edit'` after a
-  /// successful [saveBatch] in new mode.
+  /// successful [saveDocument] in new mode.
   String mode = 'new';
 
   /// `true` during any API fetch (initial load or reload).
   var isLoading = true.obs;
 
-  /// `true` while [saveBatch] is in flight.
+  /// `true` while [saveDocument] is in flight.
   var isSaving = false.obs;
 
   /// `true` while [exportQrAsPng] or [exportQrAsPdf] is in flight.
@@ -55,7 +55,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   /// Used by [_checkForChanges] to detect mutations.
   String _originalJson = '';
 
-  /// Guard flag set to `true` while [fetchBatch] is populating controllers
+  /// Guard flag set to `true` while [fetchDocument] is populating controllers
   /// programmatically.  Prevents the controller change listeners from
   /// incorrectly marking the form as dirty during a fetch.
   bool _isFetching = false;
@@ -165,7 +165,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     isDisabled.listen((_) => _checkForChanges());
 
     if (isEditMode) {
-      fetchBatch();
+      fetchDocument();
     } else {
       _initNewBatch();
     }
@@ -231,11 +231,11 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
 
   // ── OptimisticLockingMixin implementation ─────────────────────────────
 
-  /// Required by [OptimisticLockingMixin].  Delegates to [fetchBatch] and
+  /// Required by [OptimisticLockingMixin].  Delegates to [fetchDocument] and
   /// shows a success notification when the reload completes.
   @override
   Future<void> reloadDocument() async {
-    await fetchBatch();
+    await fetchDocument();
     AppNotification.success('Document reloaded successfully');
   }
 
@@ -248,7 +248,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   /// programmatically.  [_fetchItemDetails] is awaited before snapshotting
   /// [_originalJson] so that [itemBarcode] and [itemVariantOf] are already
   /// populated — preventing a spurious dirty state on first render.
-  Future<void> fetchBatch() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     _isFetching = true;
     try {
@@ -433,8 +433,8 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   ///
   /// On conflict the catch block delegates to [handleVersionConflict]
   /// ([OptimisticLockingMixin]) which shows the conflict dialog and returns
-  /// `true`, causing [saveBatch] to return without showing a generic error.
-  Future<void> saveBatch() async {
+  /// `true`, causing [saveDocument] to return without showing a generic error.
+  Future<void> saveDocument() async {
     if (!isDirty.value && isEditMode) return;
 
     if (checkStaleAndBlock()) return;
@@ -460,7 +460,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
         final response = await _provider.updateBatch(name, data);
         if (response.statusCode == 200) {
           AppNotification.success('Batch updated successfully');
-          await fetchBatch();
+          await fetchDocument();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }
@@ -477,7 +477,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
           AppNotification.success('Batch created: ${data['name']}');
           name = data['name'];
           mode = 'edit';
-          await fetchBatch();
+          await fetchDocument();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');
         }

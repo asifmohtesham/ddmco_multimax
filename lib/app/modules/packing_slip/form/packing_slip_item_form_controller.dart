@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
@@ -54,9 +53,6 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
 
   @override
   RxnString get qtyInfoTooltip => RxnString(null);
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   @override
   void adjustQty(int delta) {
@@ -194,7 +190,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     if (qty == null) return;
 
     await _dismissKeyboardAndClose();
-    await _parent.addItemToSlipWithQty(qty);
+    await _parent.addItemWithQty(qty);
   }
 
   // ── Private SRP helpers ────────────────────────────────────────────────────
@@ -232,10 +228,17 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     required PackingSlipFormController parent,
     required String itemCode,
     required String itemName,
+    String itemGroup = '',
+    String variantOf = '',
     PackingSlipItem? editingItem,
   }) {
     _bindParent(parent);
-    _seedItemIdentity(itemCode: itemCode, itemName: itemName);
+    _seedItemIdentity(
+      itemCode:  itemCode,
+      itemName:  itemName,
+      itemGroup: itemGroup,
+      variantOf: variantOf,
+    );
     _seedSerial(parent);
     _populateFields(editingItem: editingItem, parent: parent);
     _finaliseInit();
@@ -254,9 +257,13 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
   void _seedItemIdentity({
     required String itemCode,
     required String itemName,
+    String itemGroup = '',
+    String variantOf = '',
   }) {
-    this.itemCode.value = itemCode;
-    this.itemName.value = itemName;
+    this.itemCode.value    = itemCode;
+    this.itemName.value    = itemName;
+    this.itemGroup.value   = itemGroup;
+    this.variantOf.value   = variantOf;
   }
 
   /// (3) Pre-selects the serial from [parent.currentSerial].

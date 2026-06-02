@@ -28,6 +28,7 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
 
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
@@ -90,9 +91,7 @@ class DeliveryNoteFormController extends GetxController
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
-
-  // ── Item warehouse (derived from rack) ────────────────────────────────────
-  var bsItemWarehouse = RxnString();
+  final _derivedWarehousePlaceholder = RxnString();
 
   // ── Customer-level error ──────────────────────────────────────────────────
   var customerError = RxnString();
@@ -118,7 +117,7 @@ class DeliveryNoteFormController extends GetxController
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
-      fetchDeliveryNote();
+      fetchDocument();
     }
   }
 
@@ -227,7 +226,7 @@ class DeliveryNoteFormController extends GetxController
     isLoading.value = false;
   }
 
-  Future<void> fetchDeliveryNote() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getDeliveryNote(name);
@@ -252,7 +251,7 @@ class DeliveryNoteFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchDeliveryNote();
+    await fetchDocument();
     isStale.value = false;
     showBanner('Document reloaded successfully', type: BannerType.success);
   }
@@ -388,6 +387,11 @@ class DeliveryNoteFormController extends GetxController
               });
             },
           ),
+          DerivedWarehouseLabel(
+            itemWarehouse:    child.itemWarehouse,
+            derivedWarehouse: _derivedWarehousePlaceholder,
+            headerWarehouse:  setWarehouse,
+          ),
         ],
         onSubmit: () async {
           final ok = await child.submitWithFeedback();
@@ -451,7 +455,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
-  Future<void> saveDeliveryNote() async {
+  Future<void> saveDocument() async {
     if (isSaving.value) return;
     isSaving.value = true;
     try {
@@ -465,7 +469,7 @@ class DeliveryNoteFormController extends GetxController
       if (mode == 'new') {
         response = await _apiProvider.createDocument('Delivery Note', payload);
       } else {
-        response = await _apiProvider.updateDocument('Delivery Note', name, payload);
+        response = await _apiProvider.updateDocument('Delivery Note', note.name, payload);
       }
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -604,7 +608,7 @@ class DeliveryNoteFormController extends GetxController
       }
     });
     _scrollToItem(newItem.name ?? newItem.itemCode);
-    if (mode == 'edit') await saveDeliveryNote();
+    if (mode == 'edit') await saveDocument();
   }
 
   Future<void> updateItem(DeliveryNoteItem updatedItem) async {
@@ -615,44 +619,10 @@ class DeliveryNoteFormController extends GetxController
       deliveryNote.refresh();
       checkForChanges();
     }
-    if (mode == 'edit') await saveDeliveryNote();
+    if (mode == 'edit') await saveDocument();
   }
 
-  /// Private factory — single source of truth for item construction.
-  DeliveryNoteItem _buildItem({
-    required String   itemCode,
-    required String   itemName,
-    required double   qty,
-    required String   rack,
-    required String   batch,
-    String?           serial,
-    // Fields preserved from an existing item (null = fresh add)
-    String?           existingName,
-    double            rate        = 0.0,
-    String            uom         = 'Nos',
-    String?           owner,
-    String?           creation,
-    String?           modified,
-    String?           modifiedBy,
-  }) {
-    return DeliveryNoteItem(
-      name:                      existingName,
-      itemCode:                  itemCode,
-      itemName:                  itemName,
-      qty:                       qty,
-      rate:                      rate,
-      rack:                      rack.isEmpty  ? null : rack,
-      batchNo:                   batch.isEmpty ? null : batch,
-      uom:                       uom,
-      customInvoiceSerialNumber: serial,
-      owner:                     owner,
-      creation:                  creation,
-      modified:                  modified,
-      modifiedBy:                modifiedBy,
-    );
-  }
-
-  Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
+  Future<void> deleteItem(DeliveryNoteItem item) async {
     final confirmed = await GlobalDialog.confirm(
       title:        'Remove Item',
       message:      'Remove "${item.itemName}" from this delivery note?',
@@ -664,7 +634,7 @@ class DeliveryNoteFormController extends GetxController
     deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
     deliveryNote.refresh();
     checkForChanges();
-    if (mode == 'edit') await saveDeliveryNote();
+    if (mode == 'edit') await saveDocument();
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {

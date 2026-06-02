@@ -316,6 +316,14 @@ class _EditModeRack extends StatelessWidget {
               onPickerTap:    w.onPickerTap,
             ),
           ),
+          if (hasError && c.rackController.text.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 12),
+              child: Text(
+                c.rackError.value,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+            ),
           // DN-9: forceShow: validating || isValid — chip stays visible after
           // validation completes even when rackBalance is momentarily 0.0.
           if (showChip)

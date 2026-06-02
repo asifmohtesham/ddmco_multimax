@@ -3,10 +3,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/core/utils/app_navigator.dart';
+import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
@@ -35,6 +37,13 @@ class AuthenticationController extends GetxController {
       final response = await _apiProvider.getLoggedUser();
       if (response.statusCode == 200 && response.data?['message'] != null) {
         final loggedInUserEmail = response.data['message'];
+
+        // Frappe returns "Guest" when the session has expired. Treat this as
+        // unauthenticated — do not proceed with a Guest user or prefetch.
+        if (loggedInUserEmail == 'Guest') {
+          await _clearSessionAndLocalData();
+          return;
+        }
 
         final userDetailsResponse =
             await _apiProvider.getUserDetails(loggedInUserEmail);
@@ -83,6 +92,13 @@ class AuthenticationController extends GetxController {
 
           if (Get.isRegistered<StorageService>()) {
             await Get.find<StorageService>().saveUser(user);
+          }
+
+          if (Get.isRegistered<PermissionService>()) {
+            // Clear before prefetch so stale cache entries from an expired
+            // session (e.g. a prior Guest prefetch) cannot block fresh fetches.
+            Get.find<PermissionService>().clearCache();
+            await Get.find<PermissionService>().prefetchAll(kAppPermissions);
           }
         } else {
           await _clearSessionAndLocalData();
@@ -148,16 +164,37 @@ class AuthenticationController extends GetxController {
               onPressed: () async {
                 Navigator.of(context).pop();
                 isLoading.value = true;
+                Get.dialog(
+                  const PopScope(
+                    canPop: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(height: 16),
+                          Text(
+                            'Logging out…',
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  barrierDismissible: false,
+                  barrierColor: Colors.black54,
+                );
                 try {
                   await _apiProvider.logoutApiCall();
                   await _clearSessionAndLocalData();
                   Get.offAllNamed(AppRoutes.LOGIN);
                 } catch (e) {
-                  GlobalSnackbar.error(
-                      title: 'Logout Error',
-                      message: 'Could not log out.');
-                } finally {
+                  Get.back();
                   isLoading.value = false;
+                  GlobalSnackbar.error(
+                    title: 'Logout Error',
+                    message: 'Could not log out.',
+                  );
                 }
               },
             ),
@@ -171,6 +208,9 @@ class AuthenticationController extends GetxController {
     await _apiProvider.clearSessionCookies();
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
+    }
+    if (Get.isRegistered<PermissionService>()) {
+      Get.find<PermissionService>().clearCache();
     }
     currentUser.value = null;
     isAuthenticated.value = false;

@@ -31,8 +31,8 @@ import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart'
 ///   • "Update Item" title + enabled state is driven by [isSheetValid]
 ///     which is false in edit mode until [isFormDirty] is true.
 ///
-///   • [itemSubtext] = [bsItemVariantOf] so the header shows
-///     "ITEM-CODE • variant_of" exactly like Stock Entry & Delivery Note.
+///   • [variantOf] = [bsItemVariantOf] and [itemGroup] = [bsItemGroup] so
+///     the B2 header shows the code·variant pill and group chip.
 class MaterialRequestItemFormSheet extends StatelessWidget {
   final MaterialRequestFormController controller;
 
@@ -41,9 +41,8 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final isEditing  = controller.currentItemNameKey.value != null;
-      final docStatus  = controller.materialRequest.value?.docstatus ?? 0;
-      final variantOf  = controller.bsItemVariantOf.value;
+      final isEditing = controller.currentItemNameKey.value != null;
+      final docStatus = controller.materialRequest.value?.docstatus ?? 0;
 
       return GlobalItemFormSheet(
         // ── Stable key ─────────────────────────────────────────────────────────
@@ -63,15 +62,12 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
         formKey:          controller.itemFormKey,
         scrollController: null,
 
-        // ── Header ─────────────────────────────────────────────────────────
-        title:        isEditing ? 'Update Item' : 'Add Item',
-        itemCode:     controller.currentItemCode,
-        itemName:     controller.currentItemName,
-        // variantOf is reactive: bsItemVariantOf is set in openItemSheet()
-        // and may update asynchronously (e.g. after a scan resolves).
-        itemSubtext:  (variantOf != null && variantOf.isNotEmpty)
-                          ? variantOf
-                          : null,
+        // ── Header ──────────────────────────────────────────────────────────
+        title:    isEditing ? 'Update Item' : 'Add Item',
+        itemCode:  controller.currentItemCode,
+        itemName:  controller.currentItemName,
+        variantOf: controller.bsItemVariantOf.value,
+        itemGroup: controller.bsItemGroup.value,
 
         // ── Quantity ─────────────────────────────────────────────────────────
         // Delegate pattern: controller implements QtyFieldDelegate so

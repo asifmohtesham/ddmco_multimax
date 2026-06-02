@@ -2,7 +2,7 @@ name: multimax
 description: "Manage stock, order, packing and delivery."
 publish_to: 'none'
 
-version: 1.4.1+8
+version: 2.0.3+12
 
 environment:
   sdk: ^3.8.1
@@ -24,6 +24,8 @@ dependencies:
   percent_indicator:
   flutter_html:
   share_plus: ^7.0.0
+  excel: ^4.0.6
+  archive: ^3.6.1
   qr_flutter:
   pdf:
   barcode_widget: ^2.0.4
@@ -34,8 +36,9 @@ dependencies:
   # Scales the collapsed toolbar title font down before wrapping so
   # the full DocType name always fits without ellipsis.
   auto_size_text: ^3.0.0
-  mobile_scanner: any
+  mobile_scanner: ^7.2.0
   shared_preferences: ^2.5.5
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

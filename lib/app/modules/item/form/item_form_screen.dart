@@ -9,6 +9,7 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_image_upload.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -19,69 +20,59 @@ class ItemFormScreen extends GetView<ItemFormController> {
     final cs = Theme.of(context).colorScheme;
     final tabCtrl = Get.find<ItemTabController>();
 
-    return Scaffold(
+    return Obx(() {
+      final item      = controller.item.value;
+      final isLoading = controller.isLoading.value;
+
+      return Scaffold(
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            // ── Standard form app bar ──────────────────────────────────
             DocTypeFormHeader(
-              title: controller.docType,
-              // Item form is read-only — no Reload / Save / Share.
-              // In modal mode the back arrow won't exist, so surface
-              // an explicit Close button via extraActions instead.
+              title:   item?.name ?? controller.itemCode,
+              docType: 'Item',
               extraActions: isModal
                   ? [
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Close',
-                  onPressed: Get.back,
-                ),
-              ]
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Close',
+                        onPressed: Get.back,
+                      ),
+                    ]
                   : null,
-            ),
-
-            // ── TabBar pinned below the collapsing header ──────────────
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _PinnedTabBarDelegate(
-                TabBar(
-                  controller: tabCtrl.tabController,
-                  isScrollable: true,
-                  tabs: const [
-                    Tab(text: 'Overview'),
-                    Tab(text: 'Stock Levels'),
-                    Tab(text: 'Attributes'),
-                    Tab(text: 'Attachments'),
-                  ],
-                ),
+              bottom: TabBar(
+                controller: tabCtrl.tabController,
+                isScrollable: true,
+                tabs: const [
+                  Tab(text: 'Overview'),
+                  Tab(text: 'Stock Levels'),
+                  Tab(text: 'Attributes'),
+                  Tab(text: 'Attachments'),
+                ],
               ),
             ),
           ],
-          body: Obx(() {
-            if (controller.isLoading.value) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final item = controller.item.value;
-            if (item == null) {
-              return Center(
-                child: _buildEmptyState(
-                  context, cs,
-                  icon: Icons.error_outline,
-                  message: 'Item not found.',
-                ),
-              );
-            }
-            return TabBarView(
-              controller: tabCtrl.tabController,
-              children: [
-                _buildOverviewTab(context, item, cs),
-                _buildStockLevelsTab(context, cs),
-                _buildAttributesTab(context, item, cs),
-                _buildAttachmentsTab(context, cs),
-              ],
-            );
-          }),
+          body: (isLoading && item == null)
+              ? const Center(child: CircularProgressIndicator())
+              : item == null
+                  ? Center(
+                      child: _buildEmptyState(
+                        context, cs,
+                        icon: Icons.error_outline,
+                        message: 'Item not found.',
+                      ),
+                    )
+                  : TabBarView(
+                      controller: tabCtrl.tabController,
+                      children: [
+                        _buildOverviewTab(context, item, cs),
+                        _buildStockLevelsTab(context, cs),
+                        _buildAttributesTab(context, item, cs),
+                        _buildAttachmentsTab(context, cs),
+                      ],
+                    ),
         ),
       );
+    });
   }
 
   // ── Overview Tab ──────────────────────────────────────────────────────────
@@ -95,47 +86,14 @@ class ItemFormScreen extends GetView<ItemFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (item.image != null)
-            GestureDetector(
-              onTap: () =>
-                  _openFullScreenImage(context, '$baseUrl${item.image}'),
-              child: Container(
-                height: 200,
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainer,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cs.outlineVariant),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Hero(
-                  tag: 'item_image_${item.itemCode}',
-                  child: Image.network(
-                    '$baseUrl${item.image}',
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: progress.expectedTotalBytes != null
-                              ? progress.cumulativeBytesLoaded /
-                                  progress.expectedTotalBytes!
-                              : null,
-                          color: cs.primary,
-                          strokeWidth: 2,
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.image_not_supported_outlined,
-                      size: 50,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          DocTypeImageUpload(
+            doctype: 'Item',
+            docname: item.itemCode,
+            fieldname: 'image',
+            imageUrl: item.image,
+            baseUrl: baseUrl,
+            onUploaded: () { controller.fetchItemDetails(); },
+          ),
 
           _buildSectionCard(
             context: context,
@@ -382,78 +340,120 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       : 'No batch history found.',
                 );
               }
-              return Column(
-                children: batches.map((batch) {
-                  final dateStr = batch['stock_age_date'];
-                  final ageString = controller.getFormattedStockAge(dateStr);
-                  final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
-                  final qty = batch['balance_qty'];
-                  final warehouse = batch['warehouse'];
+              return Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: batches.asMap().entries.map((entry) {
+                    final isLast = entry.key == batches.length - 1;
+                    final batch = entry.value;
+                    final dateStr = batch['stock_age_date'];
+                    final ageString = controller.getFormattedStockAge(dateStr);
+                    final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
+                    final rawQty = batch['balance_qty'];
+                    final uom = controller.item.value?.stockUom ?? '';
+                    final qtyFormatted = rawQty != null
+                        ? NumberFormat('#,##0.##').format(
+                            rawQty is num ? rawQty : num.tryParse(rawQty.toString()) ?? 0)
+                        : '—';
+                    final warehouse = batch['warehouse'];
+                    final isHighlighted = ItemFormController.isBatchHighlighted(
+                        batchNo, controller.highlightedBatchNo.value);
 
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainer,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: cs.outlineVariant),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                batchNo,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: cs.onSurface,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (warehouse != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: cs.secondaryContainer,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  warehouse,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: cs.onSecondaryContainer,
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: isHighlighted
+                            ? cs.primaryContainer.withValues(alpha: 0.35)
+                            : null,
+                        border: Border(
+                          bottom: isLast
+                              ? BorderSide.none
+                              : BorderSide(color: cs.outlineVariant),
+                          left: isHighlighted
+                              ? BorderSide(color: cs.primary, width: 3)
+                              : BorderSide.none,
+                        ),
+                      ),
+                      padding: EdgeInsets.only(
+                        left: isHighlighted ? 9 : 12,
+                        right: 12,
+                        top: 10,
+                        bottom: 10,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inventory_2_outlined,
+                              size: 13, color: cs.onSurfaceVariant),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  batchNo,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '$qty ${controller.item.value?.stockUom ?? ''}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: cs.primary,
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    if (warehouse != null) ...[
+                                      Text(
+                                        warehouse,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        '  ·  ',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        ageString,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.orange.shade700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Age: $ageString',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.orange.shade700,
+                          const SizedBox(width: 12),
+                          Text(
+                            '$qtyFormatted $uom',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurface,
+                            ),
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
               );
             }),
 
@@ -935,27 +935,4 @@ class ItemFormScreen extends GetView<ItemFormController> {
       ),
     );
   }
-}
-
-// Pins the TabBar below the collapsing DocTypeFormHeader sliver.
-// minExtent == maxExtent == TabBar.preferredSize.height so it never shrinks.
-class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar tabBar;
-  const _PinnedTabBarDelegate(this.tabBar);
-
-  @override double get minExtent => tabBar.preferredSize.height;
-  @override double get maxExtent => tabBar.preferredSize.height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Material(
-      color: Theme.of(context).colorScheme.onSurface,
-      elevation: overlapsContent ? 1.0 : 0.0,
-      child: tabBar,
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _PinnedTabBarDelegate old) =>
-      tabBar != old.tabBar;
 }

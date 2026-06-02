@@ -5,6 +5,8 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/data/constants/permission_entries.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 
 // ---------------------------------------------------------------------------
 // Route extraction helper
@@ -17,6 +19,8 @@ List<String> _extractRoutes(List<Widget> widgets) {
       routes.add(widget.route);
     } else if (widget is DocTypeGuard) {
       routes.addAll(_extractRoutes([widget.child]));
+    } else if (widget is _GuardedSection) {
+      routes.addAll(_extractRoutes(widget.children));
     } else if (widget is Padding) {
       routes.addAll(_extractRoutes([?widget.child]));
     } else if (widget is Column) {
@@ -226,6 +230,7 @@ class AppNavDrawer extends StatelessWidget {
                       icon: Icons.inventory_2_rounded,
                       currentRoute: currentRoute,
                       drawerController: drawerController,
+                      guardEntries: kStockPermissions,
                       children: [
                         DocTypeGuard(
                           doctype: 'Item',
@@ -288,18 +293,34 @@ class AppNavDrawer extends StatelessWidget {
                           ),
                         ),
                         // ── Stock > Reports ──────────────────────────────────────
-                        const _NavSubheading('Reports'),
-                        _DrawerItem(
-                          title: 'Batch-Wise Balance',
-                          icon: Icons.history_toggle_off_rounded,
-                          route: AppRoutes.BATCH_WISE_BALANCE,
-                          currentRoute: currentRoute,
-                        ),
-                        _DrawerItem(
-                          title:        'Item Variant Details',
-                          icon:         Icons.style_outlined,
-                          route:        AppRoutes.ITEM_VARIANT_DETAILS,
-                          currentRoute: currentRoute,
+                        _GuardedSection(
+                          doctypes: ['Batch', 'Item'],
+                          permType: 'report',
+                          children: [
+                            const _NavSubheading('Reports'),
+                            DocTypeGuard(
+                              doctype: 'Batch',
+                              permType: 'report',
+                              loading: skeleton,
+                              child: _DrawerItem(
+                                title: 'Batch-Wise Balance',
+                                icon: Icons.history_toggle_off_rounded,
+                                route: AppRoutes.BATCH_WISE_BALANCE,
+                                currentRoute: currentRoute,
+                              ),
+                            ),
+                            DocTypeGuard(
+                              doctype: 'Item',
+                              permType: 'report',
+                              loading: skeleton,
+                              child: _DrawerItem(
+                                title:        'Item Variant Details',
+                                icon:         Icons.style_outlined,
+                                route:        AppRoutes.ITEM_VARIANT_DETAILS,
+                                currentRoute: currentRoute,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -310,6 +331,7 @@ class AppNavDrawer extends StatelessWidget {
                       icon: Icons.shopping_bag_rounded,
                       currentRoute: currentRoute,
                       drawerController: drawerController,
+                      guardEntries: kBuyingPermissions,
                       children: [
                         DocTypeGuard(
                           doctype: 'Purchase Order',
@@ -340,6 +362,7 @@ class AppNavDrawer extends StatelessWidget {
                       icon: Icons.precision_manufacturing_rounded,
                       currentRoute: currentRoute,
                       drawerController: drawerController,
+                      guardEntries: kManufacturingPermissions,
                       children: [
                         DocTypeGuard(
                           doctype: 'BOM',
@@ -372,18 +395,34 @@ class AppNavDrawer extends StatelessWidget {
                           ),
                         ),
                         // ── Manufacturing > Reports ─────────────────────────────
-                        const _NavSubheading('Reports'),
-                        _DrawerItem(
-                          title: 'BOM Search',
-                          icon: Icons.manage_search_rounded,
-                          route: AppRoutes.BOM_SEARCH,
-                          currentRoute: currentRoute,
-                        ),
-                        _DrawerItem(                                   // ← NEW
-                          title: 'Job Card Summary',
-                          icon: Icons.summarize_outlined,
-                          route: AppRoutes.JOB_CARD_SUMMARY,
-                          currentRoute: currentRoute,
+                        _GuardedSection(
+                          doctypes: ['BOM', 'Job Card'],
+                          permType: 'report',
+                          children: [
+                            const _NavSubheading('Reports'),
+                            DocTypeGuard(
+                              doctype: 'BOM',
+                              permType: 'report',
+                              loading: skeleton,
+                              child: _DrawerItem(
+                                title: 'BOM Search',
+                                icon: Icons.manage_search_rounded,
+                                route: AppRoutes.BOM_SEARCH,
+                                currentRoute: currentRoute,
+                              ),
+                            ),
+                            DocTypeGuard(
+                              doctype: 'Job Card',
+                              permType: 'report',
+                              loading: skeleton,
+                              child: _DrawerItem(
+                                title: 'Job Card Summary',
+                                icon: Icons.summarize_outlined,
+                                route: AppRoutes.JOB_CARD_SUMMARY,
+                                currentRoute: currentRoute,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -394,6 +433,7 @@ class AppNavDrawer extends StatelessWidget {
                       icon: Icons.storefront_rounded,
                       currentRoute: currentRoute,
                       drawerController: drawerController,
+                      guardEntries: kSellingPermissions,
                       children: [
                         DocTypeGuard(
                           doctype: 'POS Upload',
@@ -500,11 +540,15 @@ class _SkeletonDrawerItemState extends State<_SkeletonDrawerItem>
 // ---------------------------------------------------------------------------
 
 class _ModuleGroup extends StatelessWidget {
-  final String                 title;
-  final IconData               icon;
-  final List<Widget>           children;
-  final String                 currentRoute;
+  final String title;
+  final IconData icon;
+  final List<Widget> children;
+  final String currentRoute;
   final AppNavDrawerController drawerController;
+
+  /// Every `(doctype, permType)` guarded within this group.
+  /// The group hides itself when none are accessible.
+  final List<PermEntry> guardEntries;
 
   const _ModuleGroup({
     required this.title,
@@ -512,6 +556,7 @@ class _ModuleGroup extends StatelessWidget {
     required this.children,
     required this.currentRoute,
     required this.drawerController,
+    required this.guardEntries,
   });
 
   bool get _hasActiveChild {
@@ -523,30 +568,75 @@ class _ModuleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initialExpanded =
-        drawerController.isGroupExpanded(title, defaultValue: _hasActiveChild);
+    final service = Get.find<PermissionService>();
 
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        initiallyExpanded: initialExpanded,
-        onExpansionChanged: (v) =>
-            drawerController.setGroupExpanded(title, v),
-        leading: Icon(icon, color: Colors.grey.shade700, size: 22),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-            color: Colors.black87,
+    return Obx(() {
+      // Visible when at least one entry is accessible (true) or still
+      // loading (null). Hides only when every entry is confirmed false.
+      final anyAccessible = guardEntries.any(
+        (e) => service.hasAccess(e.doctype, permType: e.permType) != false,
+      );
+      if (!anyAccessible) return const SizedBox.shrink();
+
+      final initialExpanded =
+          drawerController.isGroupExpanded(title, defaultValue: _hasActiveChild);
+
+      return Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initialExpanded,
+          onExpansionChanged: (v) =>
+              drawerController.setGroupExpanded(title, v),
+          leading: Icon(icon, color: Colors.grey.shade700, size: 22),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: Colors.black87,
+            ),
           ),
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          iconColor:  Theme.of(context).primaryColor,
+          textColor:  Theme.of(context).primaryColor,
+          children: children,
         ),
-        childrenPadding: const EdgeInsets.only(bottom: 8),
-        iconColor:  Theme.of(context).primaryColor,
-        textColor:  Theme.of(context).primaryColor,
+      );
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _GuardedSection
+// ---------------------------------------------------------------------------
+
+/// A section that hides its [children] when every [doctype]+[permType]
+/// combination is confirmed inaccessible. The [children] are stored as
+/// a plain list so [_extractRoutes] can discover routes inside them.
+class _GuardedSection extends StatelessWidget {
+  final List<String> doctypes;
+  final String permType;
+  final List<Widget> children;
+
+  const _GuardedSection({
+    required this.doctypes,
+    required this.permType,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final svc = Get.find<PermissionService>();
+    return Obx(() {
+      final anyAccessible = doctypes.any(
+        (d) => svc.hasAccess(d, permType: permType) != false,
+      );
+      if (!anyAccessible) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
-      ),
-    );
+      );
+    });
   }
 }
 

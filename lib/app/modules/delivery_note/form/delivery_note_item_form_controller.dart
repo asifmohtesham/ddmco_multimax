@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 
@@ -14,6 +13,7 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.da
 // Picker
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
+import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
 // Data layer
@@ -87,13 +87,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   final RxString itemCodeRx       = ''.obs;
   final RxString itemNameRx       = ''.obs;
   final RxString itemUomRx        = ''.obs;
-  final RxString itemGroupRx      = ''.obs;
-  final RxString currentVariantOf = ''.obs;
 
   final RxBool isExistingItem = false.obs;
   final RxInt  editingIndex   = (-1).obs;
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
+  final RxnString itemWarehouse = RxnString();
 
   // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
   /// Stores the 8-digit EAN8 barcode of the current item, set at sheet-open
@@ -109,7 +108,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   // ── Base abstract overrides ────────────────────────────────────────────────
   @override
   String? get resolvedWarehouse =>
-      _parent.bsItemWarehouse.value ?? _parent.setWarehouse.value;
+      itemWarehouse.value ?? _parent.setWarehouse.value;
 
   @override bool  get requiresBatch => true;
   @override bool  get requiresRack  => false;
@@ -117,9 +116,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override
   bool get isAddMode => !isExistingItem.value;
-
-  @override
-  MobileScannerController? get sheetScanController => null;
 
   // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
   @override
@@ -149,7 +145,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     ceil = _applyConstraint(ceil, batchBalance.value);
     ceil = _applyConstraint(ceil, rackBalance.value);
     final serial = selectedSerial.value ?? '';
-    if (serial.isNotEmpty) {
+    if (serial.isNotEmpty && !allowFullSerials.value) {
       // Apply the raw POS Item Qty as a hard cap — independently of how
       // much the user has already typed (liveRemaining shifts as they type
       // so it must NOT be used as the cap source here).
@@ -248,7 +244,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       _parent.deliveryNote.refresh();
       _parent.checkForChanges();           // Mark document dirty
       if (_parent.mode == 'edit') {
-        _parent.saveDeliveryNote();        // Execute PUT request
+        _parent.saveDocument();        // Execute PUT request
       }
     });
   }
@@ -316,7 +312,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   RxString get itemCodeValue  => itemCodeRx;
   RxString get itemNameValue  => itemNameRx;
   RxString get itemUomValue   => itemUomRx;
-  RxString get itemGroupValue => itemGroupRx;
 
   // ── AutoFillRackMixin wiring ───────────────────────────────────────────────
   String  get mixinItemCode  => itemCode.value;
@@ -517,6 +512,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     editingIndex.value    = -1;
     editingItemName.value = null;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+    allowFullSerials.value = false;
   }
 
   /// Responsibility: write all item-identity reactive variables so the
@@ -528,12 +524,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required String itemGroup,
     required String variantOf,
   }) {
-    this.itemCode.value    = itemCode;
-    itemCodeRx.value       = itemCode;
-    itemNameRx.value       = itemName;
-    itemUomRx.value        = uom;
-    itemGroupRx.value      = itemGroup;
-    currentVariantOf.value = variantOf;
+    this.itemCode.value  = itemCode;
+    itemCodeRx.value     = itemCode;
+    itemNameRx.value     = itemName;
+    itemUomRx.value      = uom;
+    this.itemGroup.value = itemGroup;
+    this.variantOf.value = variantOf;
   }
 
   /// Responsibility: pre-populate (or clear) the three text-field controllers
@@ -550,6 +546,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   void _resetValidationState() {
     resetBatch();
     resetRack();
+    itemWarehouse.value   = null;
     // selectedSerial is intentionally NOT reset here.
     // - initForNewItem: serial is cleared in _seedFieldControllers() below.
     // - initForEdit:    serial is seeded in _resolveAndSeedSerial() AFTER
@@ -589,10 +586,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
     _seedLiveRemainingFromItem(item: item);
     _resetValidationState();
-    // Re-seed rack text after _resetValidationState() which calls resetRack()
-    // and clears rackController. The validation round-trip happens later in
-    // _triggerEditValidations(), so the text must survive until then.
+    // Re-seed rack text and itemWarehouse after _resetValidationState() which
+    // calls resetRack() and clears both rackController and itemWarehouse.
     rackController.text = existingRack;
+    itemWarehouse.value = item.warehouse;
 
     _resolveAndSeedSerial(item: item);
     _wireListenersAndSnapshot();
@@ -615,6 +612,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     editingIndex.value    = index;
     editingItemName.value = item.name;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
+    allowFullSerials.value = false;
   }
 
   /// Responsibility: write all item-identity reactive variables from the
@@ -623,12 +621,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required DeliveryNoteItem item,
     required String variantOf,
   }) {
-    this.itemCode.value    = item.itemCode;
-    itemCodeRx.value       = item.itemCode;
-    itemNameRx.value       = item.itemName  ?? '';
-    itemUomRx.value        = item.uom       ?? '';
-    itemGroupRx.value      = item.itemGroup ?? '';
-    currentVariantOf.value = variantOf;
+    this.itemCode.value  = item.itemCode;
+    itemCodeRx.value     = item.itemCode;
+    itemNameRx.value     = item.itemName  ?? '';
+    itemUomRx.value      = item.uom       ?? '';
+    this.itemGroup.value = item.itemGroup ?? '';
+    this.variantOf.value = variantOf;
   }
 
   /// Responsibility: reset batch/rack validation state, then pre-populate
@@ -806,8 +804,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// reactive field state. Normalises optional fields (rack, variantOf)
   /// to null when blank.
   DeliveryNoteItem _buildItem({required double qty}) {
-    final rack      = rackController.text.trim();
-    final variantOf = currentVariantOf.value.trim();
+    final rack         = rackController.text.trim();
+    final variantOfStr = variantOf.value.trim();
 
     return DeliveryNoteItem(
       itemCode:                  itemCode.value,
@@ -816,9 +814,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       qty:                       qty,
       rate:                      0.0,
       batchNo:                   batchController.text.trim(),
-      rack:                      rack.isEmpty      ? null : rack,
-      itemGroup:                 itemGroupRx.value,
-      customVariantOf:           variantOf.isEmpty ? null : variantOf,
+      rack:                      rack.isEmpty            ? null : rack,
+      warehouse:                 itemWarehouse.value,
+      itemGroup:                 itemGroup.value,
+      customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
     );
   }
@@ -847,7 +846,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       debugPrint('_scheduleParentRefresh');
       notifySerialItemsChanged();
       if (_parent.mode == 'edit') {
-        _parent.saveDeliveryNote();
+        _parent.saveDocument();
       }
     });
   }
@@ -1028,9 +1027,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// with the authoritative result.
   @override
   void applyRackScan(String code) {
-    softResetRack();      // zero isRackValid before listener fires
+    itemWarehouse.value = RackLocation.tryParse(code)?.warehouseName;
+    softResetRack();
     rackController.text = code;
-    unawaited(validateRack(code)); // API round-trip — sets isRackValid + rackBalance
+    unawaited(validateRack(code));
   }
 
   void clearAll() {
@@ -1039,6 +1039,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     qtyController.clear();
     resetBatch();
     resetRack();
+    itemWarehouse.value   = null;
     selectedSerial.value  = null;
     liveRemaining.value   = 0.0;
     rackStockMapRx.clear();
@@ -1053,11 +1054,4 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   Future<void> ensureReadyForOpen() async {}
 
-  @override
-  void onClose() {
-    removeSheetListeners();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      super.onClose();
-    });
-  }
 }

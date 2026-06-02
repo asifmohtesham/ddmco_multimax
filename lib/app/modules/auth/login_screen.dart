@@ -2,108 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:flutter/services.dart';
-import 'package:multimax/app/core/widgets/keyboard_safe_bottom_sheet.dart';
 
 class LoginScreen extends GetView<LoginController> {
   const LoginScreen({super.key});
 
   Widget _buildLogo() {
     return Icon(Icons.business_sharp, size: 100, color: Colors.grey[400]);
-  }
-
-  void _showServerConfigSheet(BuildContext context) {
-    showKeyboardSafeBottomSheet(
-      context: context,
-      child: GetBuilder<LoginController>(
-        builder: (c) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              // lets the content move above the keyboard instead of overflowing
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Connect to Instance',
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Enter the URL of your ERP instance.',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  if (c.currentServerUrl.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Current: ${c.currentServerUrl.value}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: c.serverUrlController,
-                    decoration: InputDecoration(
-                      labelText: 'Server URL',
-                      hintText: 'https://erp.domain.com',
-                      prefixIcon: const Icon(Icons.link),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.content_paste),
-                        tooltip: 'Paste from clipboard',
-                        onPressed: () async {
-                          final data = await Clipboard.getData(Clipboard.kTextPlain);
-                          final text = data?.text?.trim();
-                          if (text != null && text.isNotEmpty) {
-                            c.serverUrlController
-                              ..text = text
-                              ..selection = TextSelection.fromPosition(
-                                TextPosition(offset: text.length),
-                              );
-                          }
-                        },
-                      ),
-                    ),
-                    keyboardType: TextInputType.url,
-                    textInputAction: TextInputAction.done,
-                    autofocus: true,
-                    autocorrect: false,
-                    onSubmitted: (_) => c.saveServerConfiguration(),
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: c.isCheckingConnection.value
-                          ? null
-                          : c.saveServerConfiguration,
-                      style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16)),
-                      child: c.isCheckingConnection.value
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Connect'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      isScrollControlled: true,
-    );
   }
 
   Widget _buildSettingsIcon(BuildContext context) {
@@ -129,11 +33,7 @@ class LoginScreen extends GetView<LoginController> {
                 color: showGuide ? Colors.orange : Colors.grey,
               ),
               tooltip: 'Server Configuration',
-              onPressed: () {
-                // still safe to unfocus here if you like, but the helper
-                // already does it before opening the sheet.
-                _showServerConfigSheet(context);
-              },
+              onPressed: () => c.openConnectSheet(context),
             ),
           ],
         );
@@ -209,9 +109,6 @@ class LoginScreen extends GetView<LoginController> {
                           validator: controller.validatePassword,
                           autovalidateMode: AutovalidateMode.onUserInteraction,
                         ),
-                        obscureText: isHidden,
-                        validator: controller.validatePassword,
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
                       ),
                       Align(
                         alignment: Alignment.centerRight,

@@ -1,89 +1,67 @@
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
 class PermissionService extends GetxService {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  final AuthenticationController _authController = Get.find<AuthenticationController>();
 
-  // Cache: DocType -> List of Roles allowed to read
-  final Map<String, List<String>> _readPermissionsCache = {};
-
-  // Track in-flight requests to prevent duplicate API calls
+  // Cache key: "$doctype:$permType"  e.g. "Stock Entry:read", "Batch:report"
   final Set<String> _pendingFetches = {};
-
-  // Observable map to trigger UI updates when permissions are loaded
   final RxMap<String, bool> _accessCache = <String, bool>{}.obs;
 
-  /// Checks if the current user has read access to the given [doctype].
-  /// Returns null if loading, true/false otherwise.
-  bool? hasReadAccess(String doctype) {
-    if (_accessCache.containsKey(doctype)) {
-      return _accessCache[doctype];
-    }
-
-    // Trigger fetch if not already cached and not currently fetching
-    if (!_pendingFetches.contains(doctype)) {
-      _fetchDocTypePermissions(doctype);
-    }
-
-    return null; // Loading state
+  /// Returns `null` while loading, `true` if permitted, `false` if denied.
+  ///
+  /// Triggers a lazy fetch if the result is not yet cached.
+  bool? hasAccess(String doctype, {String permType = 'read'}) {
+    final key = '$doctype:$permType';
+    if (_accessCache.containsKey(key)) return _accessCache[key];
+    if (!_pendingFetches.contains(key)) _fetchPermission(doctype, permType);
+    return null;
   }
 
-  /// Clears all cached permission data, forcing re-verification on next access.
+  /// Fires all [entries] in parallel and awaits completion.
+  ///
+  /// Call this after the user is confirmed logged in, before navigating
+  /// to the home screen. After this returns every entry in [entries] is
+  /// present in the cache — [hasAccess] will never return `null` for them.
+  Future<void> prefetchAll(
+    List<({String doctype, String permType})> entries,
+  ) async {
+    await Future.wait(
+      entries.map((e) => _fetchPermission(e.doctype, e.permType)),
+    );
+  }
+
+  /// Clears all cached results and any in-flight tracking.
+  ///
+  /// Call on logout or session change so stale permissions don't bleed
+  /// into the next session.
   void clearCache() {
-    _readPermissionsCache.clear();
     _accessCache.clear();
     _pendingFetches.clear();
-    print('Permissions cache cleared.');
   }
 
-  Future<void> _fetchDocTypePermissions(String doctype) async {
-    if (_readPermissionsCache.containsKey(doctype)) return;
-
-    _pendingFetches.add(doctype);
-
+  Future<void> _fetchPermission(String doctype, String permType) async {
+    final key = '$doctype:$permType';
+    if (_accessCache.containsKey(key)) return;
+    if (_pendingFetches.contains(key)) return;
+    _pendingFetches.add(key);
     try {
-      final response = await _apiProvider.getDocument('DocType', doctype);
-
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        final List<dynamic> permissions = data['permissions'] ?? [];
-
-        final allowedRoles = <String>{};
-
-        // System Manager always has access
-        allowedRoles.add('System Manager');
-
-        for (var p in permissions) {
-          if ((p['read'] == 1) && (p['permlevel'] == 0)) {
-            allowedRoles.add(p['role']);
-          }
-        }
-
-        _readPermissionsCache[doctype] = allowedRoles.toList();
-
-        // Determine access for current user immediately
-        final hasAccess = _authController.hasAnyRole(allowedRoles.toList());
-        _accessCache[doctype] = hasAccess;
-      } else {
-        _accessCache[doctype] = false;
-      }
+      final response = await _apiProvider.hasPermission(doctype, permType);
+      _accessCache[key] =
+          ApiProvider.parseHasPermissionResponse(response.data);
     } on DioException catch (e) {
-      // Handle 403: If user can't read DocType definition, assume they are standard user and Allow Access
-      if (e.response?.statusCode == 403) {
-        // print('Permission Warning: 403 Forbidden reading DocType "$doctype". Defaulting to ALLOW.');
-        _accessCache[doctype] = true;
-      } else {
-        print('Error fetching permissions for $doctype: $e');
-        _accessCache[doctype] = false;
+      // 403 = session expired; all other errors = network/server failure.
+      // Fail-closed in every case — never default to true.
+      _accessCache[key] = false;
+      if (e.response?.statusCode != 403) {
+        print('PermissionService: check failed for $key — ${e.message}');
       }
     } catch (e) {
-      print('Error fetching permissions for $doctype: $e');
-      _accessCache[doctype] = false;
+      _accessCache[key] = false;
+      print('PermissionService: check failed for $key — $e');
     } finally {
-      _pendingFetches.remove(doctype);
+      _pendingFetches.remove(key);
     }
   }
 }

@@ -105,7 +105,7 @@ class MrItemsView extends StatelessWidget {
                                 realItem.name != null &&
                                 isEditable
                             ? () =>
-                                controller.confirmAndDeleteItem(realItem)
+                                controller.deleteItem(realItem)
                             : null,
                       );
                     },

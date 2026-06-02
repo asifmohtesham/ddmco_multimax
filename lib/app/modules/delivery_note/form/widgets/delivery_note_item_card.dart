@@ -109,7 +109,7 @@ class DeliveryNoteItemCard extends StatelessWidget {
                               children: [
                                 IconButton(
                                   icon: Icon(Icons.delete, color: theme.colorScheme.error),
-                                  onPressed: () => controller.confirmAndDeleteItem(item),
+                                  onPressed: () => controller.deleteItem(item),
                                 ),
                               ],
                             ),

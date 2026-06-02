@@ -116,7 +116,7 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
   ///
   /// Full rows are dimmed (opacity 0.4) and non-selectable.
   List<DropdownMenuItem<String>> _buildItems(
-      List<SerialDropdownItem> items) {
+      List<SerialDropdownItem> items, {bool allowFull = false}) {
     return items.map((item) {
       final badge = _IndexBadge(
         serial: item.serial,
@@ -171,9 +171,9 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
 
       return DropdownMenuItem<String>(
         value: item.serial,
-        enabled: !item.isFull,
+        enabled: !item.isFull || allowFull,
         child: Opacity(
-          opacity: item.isFull ? 0.4 : 1.0,
+          opacity: (item.isFull && !allowFull) ? 0.4 : 1.0,
           child: tile,
         ),
       );
@@ -220,6 +220,11 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
       // whenever liveRemaining changes.
       final dropdownItems = c.serialDropdownItems;
 
+      final allowFull = (c is SerialFieldMixin)
+          ? (c as SerialFieldMixin).allowFullSerials.value
+          : false;
+      final anyFull = dropdownItems.any((i) => i.isFull);
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -227,6 +232,9 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
           GlobalItemFormSheet.buildInputGroup(
             label: label,
             color: accentColor,
+            labelTrailing: anyFull && c is SerialFieldMixin
+                ? _AllowFullToggle(c: c as SerialFieldMixin, accentColor: accentColor)
+                : null,
             child: DropdownButtonFormField<String>(
               value: serial,
               decoration: InputDecoration(
@@ -240,7 +248,7 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
                 // at the field's bottom border with no colour tail.
                 isDense: true,
               ),
-              items: _buildItems(dropdownItems),
+              items: _buildItems(dropdownItems, allowFull: allowFull),
               selectedItemBuilder: (_) => _buildSelectedItems(dropdownItems),
               onChanged: (value) => c.selectedSerial.value = value,
             ),
@@ -367,5 +375,40 @@ class _PosCapChip extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Inline toggle rendered in the "Invoice Serial No" label row when at
+/// least one serial in the dropdown is Full. Toggles [SerialFieldMixin.allowFullSerials].
+class _AllowFullToggle extends StatelessWidget {
+  final SerialFieldMixin c;
+  final Color accentColor;
+
+  const _AllowFullToggle({required this.c, required this.accentColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Allow Full',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Transform.scale(
+              scale: 0.7,
+              child: Switch(
+                value: c.allowFullSerials.value,
+                onChanged: (v) => c.allowFullSerials.value = v,
+                activeThumbColor: accentColor,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ));
   }
 }

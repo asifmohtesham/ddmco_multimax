@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 
@@ -49,6 +51,12 @@ class ReportFilterField {
   /// picker sheet (e.g. `'Warehouse'`).  Ignored for all other types.
   final String? linkDoctype;
 
+  /// Optional server-side filters applied when loading the doctype link list.
+  /// Uses the same `Map<String, dynamic>` format as [ApiProvider.getList]:
+  /// `{'fieldname': value}` for equality, `{'fieldname': ['op', value]}` for
+  /// other operators.  Ignored for all non-[ReportFilterType.doctypeLink] types.
+  final Map<String, dynamic>? linkFilters;
+
   const ReportFilterField({
     required this.key,
     required this.label,
@@ -58,6 +66,7 @@ class ReportFilterField {
     this.required = false,
     this.focusNode,
     this.linkDoctype,
+    this.linkFilters,
   });
 }
 
@@ -567,8 +576,9 @@ class _FieldWidgetState extends State<_FieldWidget> {
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _DoctypeLinkSheet(
-        doctype: doctype,
-        title:   field.label,
+        doctype:  doctype,
+        title:    field.label,
+        filters:  field.linkFilters,
       ),
     );
 
@@ -583,12 +593,14 @@ class _FieldWidgetState extends State<_FieldWidget> {
 // ---------------------------------------------------------------------------
 
 class _DoctypeLinkSheet extends StatefulWidget {
-  final String doctype;
-  final String title;
+  final String                  doctype;
+  final String                  title;
+  final Map<String, dynamic>?   filters;
 
   const _DoctypeLinkSheet({
     required this.doctype,
     required this.title,
+    this.filters,
   });
 
   @override
@@ -596,49 +608,63 @@ class _DoctypeLinkSheet extends StatefulWidget {
 }
 
 class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
-  final _searchCtrl    = TextEditingController();
-  final _searchFocus   = FocusNode();
-  final _apiProvider   = ApiProvider();
+  final _searchCtrl  = TextEditingController();
+  final _searchFocus = FocusNode();
+  final _apiProvider = ApiProvider();
+  Timer? _debounce;
 
-  List<String> _allItems    = [];
-  List<String> _filtered    = [];
-  bool         _loading     = true;
+  List<String> _items   = [];
+  bool         _loading = true;
   String?      _errorMsg;
 
   @override
   void initState() {
     super.initState();
-    _loadItems();
+    _fetchItems('');
     _searchCtrl.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
 
-  Future<void> _loadItems() async {
+  void _onSearchChanged() {
+    final q = _searchCtrl.text.trim();
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _fetchItems(q),
+    );
+  }
+
+  Future<void> _fetchItems(String q) async {
     setState(() {
       _loading  = true;
       _errorMsg = null;
     });
     try {
+      final filters = <String, dynamic>{
+        ...?widget.filters,
+        if (q.isNotEmpty) 'name': ['like', '%$q%'],
+      };
       final rows = await _apiProvider.getList(
         null,
-        doctype:  widget.doctype,
-        fields:   ['name'],
-        limit:    500,
-        orderBy:  'name asc',
+        doctype: widget.doctype,
+        fields:  ['name'],
+        filters: filters.isEmpty ? null : filters,
+        limit:   50,
+        orderBy: 'name asc',
       );
       final names = rows.map((r) => r['name'].toString()).toList();
       if (mounted) {
         setState(() {
-          _allItems = names;
-          _filtered = names;
-          _loading  = false;
+          _items   = names;
+          _loading = false;
         });
       }
     } catch (e) {
@@ -651,23 +677,17 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
     }
   }
 
-  void _onSearchChanged() {
-    final q = _searchCtrl.text.trim().toLowerCase();
-    setState(() {
-      _filtered = q.isEmpty
-          ? _allItems
-          : _allItems
-              .where((n) => n.toLowerCase().contains(q))
-              .toList();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    final cs            = Theme.of(context).colorScheme;
+    final textTheme     = Theme.of(context).textTheme;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
-    return DraggableScrollableSheet(
+    return AnimatedPadding(
+      padding:  EdgeInsets.only(bottom: keyboardHeight),
+      duration: const Duration(milliseconds: 150),
+      curve:    Curves.easeOut,
+      child: DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize:     0.4,
       maxChildSize:     0.95,
@@ -695,7 +715,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
               ),
               const SizedBox(height: 12),
 
-              // ── title ────────────────────────────────────────────────────
+              // ── title ───────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
@@ -758,29 +778,28 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                     : _errorMsg != null
                         ? _ErrorState(
                             message: _errorMsg!,
-                            onRetry: _loadItems,
+                            onRetry: () => _fetchItems(_searchCtrl.text.trim()),
                           )
-                        : _filtered.isEmpty
+                        : _items.isEmpty
                             ? Center(
                                 child: Text(
-                                  'No results for "${_searchCtrl.text}"',
-                                  style: TextStyle(
-                                      color: cs.onSurfaceVariant),
+                                  _searchCtrl.text.trim().isEmpty
+                                      ? 'No ${widget.doctype} records found'
+                                      : 'No results for "${_searchCtrl.text}"',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
                                 ),
                               )
                             : ListView.builder(
                                 controller: scrollCtrl,
-                                itemCount:  _filtered.length,
+                                itemCount:  _items.length,
                                 itemBuilder: (_, i) {
-                                  final name = _filtered[i];
+                                  final name = _items[i];
                                   return ListTile(
-                                    dense:   true,
-                                    title:   Text(name),
-                                    onTap:   () =>
-                                        Navigator.of(ctx).pop(name),
+                                    dense:    true,
+                                    title:    Text(name),
+                                    onTap:    () => Navigator.of(ctx).pop(name),
                                     trailing: const Icon(
-                                        Icons.chevron_right,
-                                        size: 18),
+                                        Icons.chevron_right, size: 18),
                                   );
                                 },
                               ),
@@ -789,6 +808,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
           ),
         );
       },
+      ),
     );
   }
 }

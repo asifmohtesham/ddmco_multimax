@@ -96,23 +96,6 @@ class SharedDualRackSection extends StatelessWidget {
             accentColor: Colors.purple,
           ),
 
-        Obx(() {
-          final err = controller.rackError.value;
-          final isNegative = controller.rackBalance.value < 0 &&
-              controller.sourceRackController.text.isNotEmpty;
-          if (err == null || err.isEmpty || !isNegative) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(top: 4, left: 12),
-            child: Text(
-              err,
-              style: const TextStyle(
-                color: Colors.red,
-                fontSize: 12,
-              ),
-            ),
-          );
-        }),
-
         // ── Target Rack ───────────────────────────────────────────────────
         // Shown only for SE types that require a destination rack.
         if (controller.showTargetRack)

@@ -90,12 +90,12 @@ class RackPickerEntry {
 /// On-demand GetX controller that fetches and sorts rack availability data
 /// for display in [RackPickerSheet].
 ///
-/// ## Data source
-/// Uses [ApiProvider.getStockBalanceWithDimension] (Stock Balance report)
-/// with `show_variant_attributes=1` and `show_dimension_wise_stock=1`.
-/// The trailing Total row returned by Frappe is automatically discarded.
-/// Falls back to [fallbackMap] (pre-loaded rackStockMap from the item
-/// sheet) if the live fetch returns empty.
+/// ## Data sources
+/// - **Source rack** (`load()`): queries [ApiProvider.getStockBalanceWithDimension]
+///   and falls back to [fallbackMap] when the live fetch returns nothing.
+/// - **Target rack** (`loadForTarget()`): queries [ApiProvider.getRacksByWarehouse]
+///   (Rack DocType) to list all racks in the warehouse regardless of stock level.
+///   Sets [isTargetMode] to `true`; the sheet suppresses stock-centric UI.
 ///
 /// ## Instantiation
 /// Created by the picker button in [ValidatedRackField] via `Get.put()`
@@ -119,6 +119,8 @@ class RackPickerEntry {
 ///   currentRack:  'KA-WH-DXB1-101A',
 ///   fallbackMap:  rackStockMap,         // from ItemSheetControllerBase
 /// );
+/// // For a destination rack (no stock context needed):
+/// ctrl.loadForTarget(warehouse: 'WH-DXB1 - KA', currentRack: 'KA-WH-DXB1-202B');
 /// ```
 class RackPickerController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
@@ -144,6 +146,12 @@ class RackPickerController extends GetxController {
   /// the document-level [warehouse]. Defaults to `true` (On).
   /// Disabled automatically when [warehouse] is empty.
   var filterByWarehouse = true.obs;
+
+  /// `true` when the picker was opened for a target (destination) rack via
+  /// [loadForTarget]. Drives UI changes in [RackPickerSheet]: hides the
+  /// sufficiency bar, changes the empty-state message, and replaces the
+  /// sufficiency badge with a simple rack count.
+  var isTargetMode = false.obs;
 
   // ── Input context (set by load()) ────────────────────────────────────
 
@@ -274,6 +282,50 @@ class RackPickerController extends GetxController {
     }
   }
 
+  /// Fetches all rack names in [warehouse] from the Rack DocType API and
+  /// populates [entries] with zero-qty entries (all [SufficiencyStatus.unknown],
+  /// all tappable). Sets [isTargetMode] to `true`.
+  ///
+  /// If [warehouse] is empty, [entries] is cleared immediately with no API call.
+  /// On any API error, [entries] is cleared and [isLoading] is reset.
+  Future<void> loadForTarget({
+    required String warehouse,
+    required String currentRack,
+  }) async {
+    isTargetMode.value      = true;
+    _warehouse              = warehouse;
+    _itemCode               = '';
+    _batchNo                = '';
+    _requestedQty           = 0.0;
+    selectedRack.value      = currentRack;
+    filterByWarehouse.value = true;
+    usedFallback.value      = false;
+
+    if (warehouse.isEmpty) {
+      entries.clear();
+      return;
+    }
+
+    isLoading.value = true;
+    try {
+      final names = await _api.getRacksByWarehouse(warehouse);
+      final built = names.map((name) {
+        return RackPickerEntry(
+          rackName:     name,
+          location:     RackLocation.tryParse(name),
+          availableQty: 0.0,
+          requestedQty: 0.0,
+        );
+      }).toList();
+      built.sort(_compareEntriesByLocation);
+      entries.assignAll(built);
+    } catch (_) {
+      entries.clear();
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // ── Sorting ─────────────────────────────────────────────────────────────────
 
   /// Sort order:
@@ -292,6 +344,19 @@ class RackPickerController extends GetxController {
     if (qtyComp != 0) return qtyComp;
 
     // ── Tie-break: physical location (aisle asc, shelf asc) ──
+    final aAisle = a.location?.aisleNumber ?? 9999;
+    final bAisle = b.location?.aisleNumber ?? 9999;
+    final aisleComp = aAisle.compareTo(bAisle);
+    if (aisleComp != 0) return aisleComp;
+
+    final aShelf = a.location?.shelfLetter ?? 'Z';
+    final bShelf = b.location?.shelfLetter ?? 'Z';
+    return aShelf.compareTo(bShelf);
+  }
+
+  /// Sort order for target mode: aisle number ascending, then shelf letter
+  /// ascending. Used by [loadForTarget] where sufficiency and qty are irrelevant.
+  static int _compareEntriesByLocation(RackPickerEntry a, RackPickerEntry b) {
     final aAisle = a.location?.aisleNumber ?? 9999;
     final bAisle = b.location?.aisleNumber ?? 9999;
     final aisleComp = aAisle.compareTo(bAisle);

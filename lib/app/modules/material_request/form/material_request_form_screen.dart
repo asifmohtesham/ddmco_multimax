@@ -26,7 +26,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
       //
       // saveResult: wired to controller.saveResult so SaveIconButton shows
       //             the animated success ✓ / error ✗ feedback after each save.
-      final VoidCallback? onSave   = isEditable ? controller.saveMaterialRequest : null;
+      final VoidCallback? onSave   = isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload = controller.mode != 'new' ? controller.reloadDocument : null;
 
       final String title = entry == null
@@ -49,10 +49,13 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         child: DefaultTabController(
           length: 2,
           child: Scaffold(
+            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
-                  title:      title,
+                  title:       title,
+                  docType:     'Material Request',
+                  statusLabel: entry?.status,
                   canSave:    isDirty,
                   docStatus:  entry?.docstatus ?? 0,
                   isSaving:   isSaving,
@@ -359,7 +362,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           Positioned(
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
             child: Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
