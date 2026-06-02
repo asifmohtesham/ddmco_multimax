@@ -14,11 +14,13 @@ jobs:
 
     steps:
       - name: Check branch
+        env:
+          BASE_REF: ${{ github.event.base_ref }}
         run: |
-          if [[ "${{ github.event.base_ref }}" != refs/heads/release/play-store* ]]; then
-            echo "Tag not from a release/play-store branch (base_ref=${{ github.event.base_ref }}), skipping."
-            exit 1
-          fi
+          case "$BASE_REF" in
+            refs/heads/release/play-store*) ;;
+            *) echo "Tag not from a release/play-store branch (base_ref=$BASE_REF), skipping."; exit 1 ;;
+          esac
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
