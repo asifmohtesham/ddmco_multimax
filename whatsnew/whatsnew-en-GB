@@ -1,0 +1,5 @@
+• Role-based access: modules and reports now hidden automatically based on your account permissions
+• Delivery Notes: warehouse derived automatically from rack scan per item
+• Stock Entries: target rack picker now pulls live rack data from the server
+• Form headers now show an unsaved changes indicator
+• Bug fixes across stock entry validation and delivery note document handling
