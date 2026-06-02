@@ -1,15 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/data/providers/customer_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 
 class DeliveryNoteController extends GetxController {
   final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
+  final UserProvider _userProvider = Get.find<UserProvider>();
+  final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
+  final CustomerProvider _customerProvider = Get.find<CustomerProvider>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -26,11 +37,24 @@ class DeliveryNoteController extends GetxController {
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
 
-  // For POS Upload selection dialog
+  var searchQuery = ''.obs;
+
   var isFetchingPosUploads = false.obs;
   var posUploadsForSelection = <PosUpload>[].obs;
   var posUploadSearchQuery = ''.obs;
   List<PosUpload> _allFetchedPosUploads = [];
+
+  var users = <User>[].obs;
+  var isFetchingUsers = false.obs;
+
+  var warehouses = <String>[].obs;
+  var isFetchingWarehouses = false.obs;
+
+  var customers = <CustomerEntry>[].obs;
+  var isFetchingCustomers = false.obs;
+
+  // Role-gated write access — mirrors StockEntryController
+  var writeRoles = <String>['System Manager'].obs;
 
   DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
@@ -38,6 +62,10 @@ class DeliveryNoteController extends GetxController {
   void onInit() {
     super.onInit();
     fetchDeliveryNotes();
+    fetchUsers();
+    fetchWarehouses();
+    fetchCustomers();
+    fetchDocTypePermissions();
   }
 
   @override
@@ -48,7 +76,32 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  // ... (Existing Fetch, Filter logic unchanged) ...
+  // ---------------------------------------------------------------------------
+  // Permissions
+  // ---------------------------------------------------------------------------
+
+  Future<void> fetchDocTypePermissions() async {
+    try {
+      final response = await _apiProvider.getDocument('DocType', 'Delivery Note');
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        final List<dynamic> perms = data['permissions'] ?? [];
+        final newRoles = <String>{'System Manager'};
+        for (var p in perms) {
+          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
+            newRoles.add(p['role']);
+          }
+        }
+        writeRoles.assignAll(newRoles.toList());
+      }
+    } catch (e) {
+      print('Error fetching permissions: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Filter / Sort
+  // ---------------------------------------------------------------------------
 
   void applyFilters(Map<String, dynamic> filters) {
     activeFilters.value = filters;
@@ -57,6 +110,12 @@ class DeliveryNoteController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
+    searchQuery.value = '';
+    fetchDeliveryNotes(isLoadMore: false, clear: true);
+  }
+
+  void removeFilter(String key) {
+    activeFilters.remove(key);
     fetchDeliveryNotes(isLoadMore: false, clear: true);
   }
 
@@ -66,7 +125,21 @@ class DeliveryNoteController extends GetxController {
     fetchDeliveryNotes(isLoadMore: false, clear: true);
   }
 
-  Future<void> fetchDeliveryNotes({bool isLoadMore = false, bool clear = false}) async {
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (searchQuery.value == val) {
+        fetchDeliveryNotes(clear: true);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fetch
+  // ---------------------------------------------------------------------------
+
+  Future<void> fetchDeliveryNotes(
+      {bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
     } else {
@@ -79,21 +152,23 @@ class DeliveryNoteController extends GetxController {
     }
 
     try {
+      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      if (searchQuery.value.isNotEmpty) {
+        queryFilters['name'] = ['like', '%${searchQuery.value}%'];
+      }
+
       final response = await _provider.getDeliveryNotes(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: queryFilters,
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newNotes = data.map((json) => DeliveryNote.fromJson(json)).toList();
-
-        if (newNotes.length < _limit) {
-          hasMore.value = false;
-        }
-
+        final newNotes =
+        data.map((json) => DeliveryNote.fromJson(json)).toList();
+        if (newNotes.length < _limit) hasMore.value = false;
         if (isLoadMore) {
           deliveryNotes.addAll(newNotes);
         } else {
@@ -101,10 +176,19 @@ class DeliveryNoteController extends GetxController {
         }
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch delivery notes');
+        GlobalDialog.showError(
+          title: 'Could not load Delivery Notes',
+          message: 'The server returned an unexpected response. '
+              'Check your connection and try again.',
+          onRetry: () => fetchDeliveryNotes(isLoadMore: isLoadMore, clear: clear),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load Delivery Notes',
+        message: e.toString(),
+        onRetry: () => fetchDeliveryNotes(isLoadMore: isLoadMore, clear: clear),
+      );
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -114,11 +198,57 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
-  Future<void> _fetchAndCacheNoteDetails(String name) async {
-    if (_detailedNotesCache.containsKey(name)) {
-      return;
+  Future<void> fetchUsers() async {
+    if (users.isNotEmpty) return;
+    isFetchingUsers.value = true;
+    try {
+      final response = await _userProvider.getUsers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        users.value = data.map((json) => User.fromJson(json)).toList();
+      }
+    } catch (_) {
+      // non-fatal — picker shows empty list
+    } finally {
+      isFetchingUsers.value = false;
     }
+  }
 
+  Future<void> fetchWarehouses() async {
+    if (warehouses.isNotEmpty) return;
+    isFetchingWarehouses.value = true;
+    try {
+      final response = await _warehouseProvider.getWarehouses();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        warehouses.value = data.map((e) => e['name'].toString()).toList();
+      }
+    } catch (_) {
+      // non-fatal — picker shows empty list
+    } finally {
+      isFetchingWarehouses.value = false;
+    }
+  }
+
+  Future<void> fetchCustomers() async {
+    if (customers.isNotEmpty) return;
+    isFetchingCustomers.value = true;
+    try {
+      final response = await _customerProvider.getCustomers();
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        customers.value =
+            data.map((json) => CustomerEntry.fromJson(json)).toList();
+      }
+    } catch (_) {
+      // non-fatal — picker shows empty list
+    } finally {
+      isFetchingCustomers.value = false;
+    }
+  }
+
+  Future<void> _fetchAndCacheNoteDetails(String name) async {
+    if (_detailedNotesCache.containsKey(name)) return;
     isLoadingDetails.value = true;
     try {
       final response = await _provider.getDeliveryNote(name);
@@ -126,10 +256,19 @@ class DeliveryNoteController extends GetxController {
         final note = DeliveryNote.fromJson(response.data['data']);
         _detailedNotesCache[name] = note;
       } else {
-        Get.snackbar('Error', 'Failed to fetch note details');
+        GlobalDialog.showError(
+          title: 'Could not load DN details',
+          message: 'Failed to fetch details for $name. '
+              'Check your connection and try again.',
+          onRetry: () => _fetchAndCacheNoteDetails(name),
+        );
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      GlobalDialog.showError(
+        title: 'Could not load DN details',
+        message: e.toString(),
+        onRetry: () => _fetchAndCacheNoteDetails(name),
+      );
     } finally {
       isLoadingDetails.value = false;
     }
@@ -144,28 +283,27 @@ class DeliveryNoteController extends GetxController {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // POS Upload selection
+  // ---------------------------------------------------------------------------
+
   Future<void> fetchPosUploadsForSelection() async {
     isFetchingPosUploads.value = true;
     try {
       final response = await _posUploadProvider.getPosUploads(limit: 100);
-
       final List<PosUpload> fetchedUploads = [];
       if (response.statusCode == 200 && response.data['data'] != null) {
-        fetchedUploads.addAll((response.data['data'] as List).map((json) {
-          return PosUpload.fromJson(json);
-        }).toList());
+        fetchedUploads.addAll(
+            (response.data['data'] as List)
+                .map((json) => PosUpload.fromJson(json)));
       }
-
-      // Filter locally
-      _allFetchedPosUploads = fetchedUploads.where((upload) {
-        final status = upload.status;
-        return status == 'Pending' || status == 'In Progress';
-      }).toList();
-
+      _allFetchedPosUploads = fetchedUploads
+          .where((u) => u.status == 'Pending' || u.status == 'In Progress')
+          .toList();
       posUploadsForSelection.assignAll(_allFetchedPosUploads);
       posUploadSearchQuery.value = '';
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch POS Uploads for selection: $e');
+      AppNotification.error('Failed to fetch POS Uploads: $e');
     } finally {
       isFetchingPosUploads.value = false;
     }
@@ -176,10 +314,12 @@ class DeliveryNoteController extends GetxController {
     if (query.isEmpty) {
       posUploadsForSelection.assignAll(_allFetchedPosUploads);
     } else {
+      final q = query.toLowerCase();
       posUploadsForSelection.value = _allFetchedPosUploads
-          .where((upload) => upload.name.toLowerCase().contains(query.toLowerCase()) ||
-          upload.customer.toLowerCase().contains(query.toLowerCase()) ||
-          upload.status.toLowerCase().contains(query.toLowerCase()))
+          .where((u) =>
+      u.name.toLowerCase().contains(q) ||
+          u.customer.toLowerCase().contains(q) ||
+          u.status.toLowerCase().contains(q))
           .toList();
     }
   }
@@ -187,9 +327,8 @@ class DeliveryNoteController extends GetxController {
   Future<void> createNewDeliveryNote(PosUpload? selectedPosUpload) async {
     if (selectedPosUpload != null) {
       try {
-        final existingDraft = deliveryNotes.firstWhereOrNull((note) =>
-        note.poNo == selectedPosUpload.name && note.docstatus == 0);
-
+        final existingDraft = deliveryNotes.firstWhereOrNull(
+                (n) => n.poNo == selectedPosUpload.name && n.docstatus == 0);
         if (existingDraft != null) {
           Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
             'name': existingDraft.name,
@@ -199,13 +338,12 @@ class DeliveryNoteController extends GetxController {
           });
           return;
         }
-
         final response = await _provider.getDeliveryNotes(
             limit: 1,
-            filters: {'po_no': selectedPosUpload.name, 'docstatus': 0}
-        );
-
-        if (response.statusCode == 200 && response.data['data'] != null && (response.data['data'] as List).isNotEmpty) {
+            filters: {'po_no': selectedPosUpload.name, 'docstatus': 0});
+        if (response.statusCode == 200 &&
+            response.data['data'] != null &&
+            (response.data['data'] as List).isNotEmpty) {
           final noteData = response.data['data'][0];
           Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
             'name': noteData['name'],
@@ -215,11 +353,9 @@ class DeliveryNoteController extends GetxController {
           });
           return;
         }
-
       } catch (e) {
         print('Error checking for existing draft: $e');
       }
-
       Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
         'name': '',
         'mode': 'new',
@@ -227,14 +363,17 @@ class DeliveryNoteController extends GetxController {
         'posUploadName': selectedPosUpload.name,
       });
     } else {
-      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': '', 'mode': 'new'});
+      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+          arguments: {'name': '', 'mode': 'new'});
     }
   }
 
-  // Moved from Screen
+  // ---------------------------------------------------------------------------
+  // Create dialog (POS Upload selection bottom sheet)
+  // ---------------------------------------------------------------------------
+
   void openCreateDialog() {
     fetchPosUploadsForSelection();
-
     Get.bottomSheet(
       SafeArea(
         child: DraggableScrollableSheet(
@@ -255,19 +394,17 @@ class DeliveryNoteController extends GetxController {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Select POS Upload',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
+                        Text('Select POS Upload',
+                            style: Theme.of(context).textTheme.titleLarge),
                         IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Get.back(),
-                        ),
+                            icon: const Icon(Icons.close),
+                            onPressed: Get.back),
                       ],
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0, vertical: 8.0),
                     child: TextField(
                       onChanged: filterPosUploads,
                       decoration: InputDecoration(
@@ -279,7 +416,8 @@ class DeliveryNoteController extends GetxController {
                         ),
                         filled: true,
                         fillColor: Colors.grey[100],
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                        contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16),
                       ),
                     ),
                   ),
@@ -288,60 +426,64 @@ class DeliveryNoteController extends GetxController {
                       if (isFetchingPosUploads.value) {
                         return const Center(child: CircularProgressIndicator());
                       }
-
                       if (posUploadsForSelection.isEmpty) {
                         return Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+                              Icon(Icons.search_off,
+                                  size: 64, color: Colors.grey[300]),
                               const SizedBox(height: 16),
-                              const Text('No POS Uploads found.', style: TextStyle(color: Colors.grey)),
+                              const Text('No POS Uploads found.',
+                                  style: TextStyle(color: Colors.grey)),
                             ],
                           ),
                         );
                       }
-
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: posUploadsForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        separatorBuilder: (_, __) => const Divider(
+                            height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final posUpload = posUploadsForSelection[index];
-                          // Simple logic for status color for display
-                          Color statusColor = posUpload.status == 'Pending' ? Colors.orange : Colors.blue;
-
+                          final statusColor = posUpload.status == 'Pending'
+                              ? Colors.orange
+                              : Colors.blue;
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            title: Text(posUpload.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 4),
+                            title: Text(posUpload.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.person_outline, size: 14, color: Colors.grey),
-                                    const SizedBox(width: 4),
-                                    Expanded(child: Text(posUpload.customer, overflow: TextOverflow.ellipsis)),
-                                  ],
-                                ),
+                                Row(children: [
+                                  const Icon(Icons.person_outline,
+                                      size: 14, color: Colors.grey),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                      child: Text(posUpload.customer,
+                                          overflow: TextOverflow.ellipsis)),
+                                ]),
                                 const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 8, height: 8,
+                                Row(children: [
+                                  Container(
+                                      width: 8,
+                                      height: 8,
                                       decoration: BoxDecoration(
-                                        color: statusColor,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(posUpload.status, style: const TextStyle(fontSize: 12)),
-                                  ],
-                                ),
+                                          color: statusColor,
+                                          shape: BoxShape.circle)),
+                                  const SizedBox(width: 6),
+                                  Text(posUpload.status,
+                                      style: const TextStyle(fontSize: 12)),
+                                ]),
                               ],
                             ),
-                            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                            trailing: const Icon(Icons.chevron_right,
+                                color: Colors.grey),
                             onTap: () {
                               Get.back();
                               createNewDeliveryNote(posUpload);
@@ -372,7 +514,6 @@ class DeliveryNoteController extends GetxController {
                         },
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          side: BorderSide(color: Theme.of(context).primaryColor),
                         ),
                         child: const Text('Skip & Create Blank Note'),
                       ),

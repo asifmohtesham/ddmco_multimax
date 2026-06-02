@@ -1,47 +1,204 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
+import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:multimax/app/modules/global_widgets/camera_viewfinder_panel.dart';
 
+// ---------------------------------------------------------------------------
+// _AnimatedSaveButton
+// ---------------------------------------------------------------------------
+class _AnimatedSaveButton extends StatelessWidget {
+  final Rx<SaveButtonState> saveButtonState;
+  final bool isSaveEnabled;
+  final RxBool? isSaveEnabledRx;
+  final bool isLoading;
+  final String title;
+  final Future<void> Function() onSubmit;
+  final GlobalKey<FormState> formKey;
+  final String sheetTag;
+
+  const _AnimatedSaveButton({
+    required this.saveButtonState,
+    required this.isSaveEnabled,
+    this.isSaveEnabledRx,
+    required this.isLoading,
+    required this.title,
+    required this.onSubmit,
+    required this.formKey,
+    required this.sheetTag,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final state     = saveButtonState.value;
+      final rxEnabled = isSaveEnabledRx?.value ?? true;
+      final canTap    = isSaveEnabled &&
+                        rxEnabled &&
+                        !isLoading &&
+                        state == SaveButtonState.idle;
+
+      final Color bgColor;
+      switch (state) {
+        case SaveButtonState.loading:
+          bgColor = Colors.orange.shade700;
+        case SaveButtonState.success:
+          bgColor = Colors.green.shade600;
+        case SaveButtonState.error:
+          bgColor = Colors.red.shade600;
+        case SaveButtonState.idle:
+          bgColor = canTap
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.surfaceContainerHighest;
+      }
+
+      final Widget child;
+      switch (state) {
+        case SaveButtonState.loading:
+          child = const SizedBox(
+            key: ValueKey('loading'),
+            width: 22, height: 22,
+            child: CircularProgressIndicator(
+              color: Colors.white, strokeWidth: 2.5),
+          );
+        case SaveButtonState.success:
+          child = const Icon(
+            key: ValueKey('success'),
+            Icons.check_circle_outline, color: Colors.white, size: 24);
+        case SaveButtonState.error:
+          child = const Icon(
+            key: ValueKey('error'),
+            Icons.error_outline, color: Colors.white, size: 24);
+        case SaveButtonState.idle:
+          child = Row(
+            key: const ValueKey('idle'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.save_outlined,
+                color: canTap
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: canTap
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          );
+      }
+
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        width: double.infinity,
+        height: 52,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: canTap
+                ? () async {
+                    if (formKey.currentState!.validate()) {
+                      FocusScope.of(context).unfocus();
+                      await onSubmit();
+                    }
+                  }
+                : null,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
+/// A fully self-contained item-entry bottom sheet used by every DocType.
+///
+/// ## Qty field
+///
+/// The qty section is driven by [qtyDelegate] (a [QtyFieldDelegate]) and
+/// rendered via [SharedQtyField].  This replaces the former
+/// `QuantityInputWidget` and its five raw sibling params
+/// (`qtyController`, `onIncrement`, `onDecrement`, `qtyInfoText`,
+/// `qtyInfoTooltip`, `isQtyReadOnly`).  All reactive behaviour —
+/// read-only locking, Max-Qty chip, ± stepper, inline error text, and
+/// blur clamping — is handled inside [SharedQtyField] by reading the
+/// delegate's Rx fields directly.
+///
+/// Pass [controller.accentColor] as [qtyAccentColor] so the field
+/// renders with the DocType's brand colour.
 class GlobalItemFormSheet extends StatelessWidget {
   final GlobalKey<FormState> formKey;
   final ScrollController? scrollController;
   final String title;
   final String itemCode;
   final String itemName;
-  final String? itemSubtext;
+  final String? variantOf;
+  final String? itemGroup;
   final List<Widget> customFields;
 
-  final TextEditingController qtyController;
-  final VoidCallback onIncrement;
-  final VoidCallback onDecrement;
-  final String? qtyInfoText;
-  final bool isQtyReadOnly;
+  // ── Qty delegate ──────────────────────────────────────────────────────────
+  /// Drives [SharedQtyField].  Any controller implementing
+  /// [QtyFieldDelegate] (or [QtyFieldWithPlusMinusDelegate]) is accepted.
+  final QtyFieldDelegate qtyDelegate;
 
+  /// Accent colour forwarded to [SharedQtyField] so the field matches the
+  /// DocType's brand colour (e.g. teal for SE, blue for DN).
+  final Color qtyAccentColor;
+
+  // ── Save / delete ──────────────────────────────────────────────────────────
   final Function onSubmit;
   final VoidCallback? onDelete;
 
-  // State
   final bool isSaveEnabled;
   final RxBool? isSaveEnabledRx;
-  final bool isSaving;
-  final bool isLoading; // External loading state (for Auto-Submit)
+  final bool isLoading;
+  final Rx<SaveButtonState> saveButtonState;
 
-  // Metadata Fields
+  // ── Metadata ───────────────────────────────────────────────────────────────
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
 
-  // Scan Integration
+  // ── Scan footer ────────────────────────────────────────────────────────────
   final Function(String)? onScan;
   final TextEditingController? scanController;
   final bool isScanning;
 
-  // Internal Loading State (for Manual Press)
-  final _isInternalLoading = false.obs;
+  // ── Camera panel ───────────────────────────────────────────────────────────
+  final void Function(String)? onCameraScan;
+  final RxBool? isCameraExpanded;
+  final VoidCallback? onToggleCamera;
+  final MobileScannerController? mobileScanController;
+
+  late final String _sheetTag;
 
   GlobalItemFormSheet({
     super.key,
@@ -50,19 +207,17 @@ class GlobalItemFormSheet extends StatelessWidget {
     required this.title,
     required this.itemCode,
     required this.itemName,
-    this.itemSubtext,
+    this.variantOf,
+    this.itemGroup,
     this.customFields = const [],
-    required this.qtyController,
-    required this.onIncrement,
-    required this.onDecrement,
-    this.qtyInfoText,
-    this.isQtyReadOnly = false,
+    required this.qtyDelegate,
+    required this.qtyAccentColor,
     required this.onSubmit,
     this.onDelete,
     this.isSaveEnabled = true,
     this.isSaveEnabledRx,
-    this.isSaving = false,
     this.isLoading = false,
+    Rx<SaveButtonState>? saveButtonState,
     this.owner,
     this.creation,
     this.modified,
@@ -70,86 +225,60 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.onScan,
     this.scanController,
     this.isScanning = false,
-  });
-
-  Widget _buildSaveButton(BuildContext context, bool enabled) {
-    return Obx(() {
-      // Combines external (Auto-Submit) and internal (Manual Click) loading states
-      final internalLoading = _isInternalLoading.value;
-      final showLoading = isSaving || isLoading || internalLoading;
-      final canPress = enabled && !showLoading;
-      final colorScheme = Theme.of(context).colorScheme;
-
-      return FilledButton(
-        onPressed: canPress
-            ? () async {
-          if (formKey.currentState!.validate()) {
-            // 1. Unfocus Keyboard
-            FocusScope.of(context).unfocus();
-
-            // 2. Set Internal Loading & Delay (Manual Feedback)
-            _isInternalLoading.value = true;
-            await Future.delayed(const Duration(milliseconds: 500));
-
-            // 3. Submit & Close
-            try {
-              var result = onSubmit();
-              if (result is Future) {
-                await result;
-              }
-              Get.back(); // Auto-close on manual success
-            } catch (e) {
-              print('Error submitting form: $e');
-            } finally {
-              _isInternalLoading.value = false;
-            }
-          }
-        }
-            : null,
-        style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: showLoading
-            ? SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            color: colorScheme.onPrimary,
-            strokeWidth: 2.5,
-          ),
-        )
-            : Text(
-          title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-      );
-    });
+    this.onCameraScan,
+    this.isCameraExpanded,
+    this.onToggleCamera,
+    this.mobileScanController,
+  }) : saveButtonState = saveButtonState ?? SaveButtonState.idle.obs {
+    _sheetTag = key != null
+        ? key.toString()
+        : 'sheet_${DateTime.now().microsecondsSinceEpoch}';
   }
 
-  // ... [buildInputGroup, _buildMetadataHeader, build() logic remains identical to previous smart implementation] ...
   static Widget buildInputGroup({
     required String label,
     required Color color,
     required Widget child,
     Color? bgColor,
+    Widget? labelTrailing,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4.0, bottom: 6.0),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-              letterSpacing: 0.5,
-            ),
-          ),
+          child: labelTrailing == null
+              ? Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    labelTrailing,
+                  ],
+                ),
         ),
         Container(
+          // fix(input-group): clip children to the BorderRadius boundary so
+          // that filled TextFormFields (filled:true + OutlineInputBorder) cannot
+          // paint their fillColor outside the rounded corners into the helper-
+          // text reserved slot below the visible border stroke.
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: bgColor ?? color.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
@@ -161,240 +290,368 @@ class GlobalItemFormSheet extends StatelessWidget {
     );
   }
 
+  ItemFormSheetController get _sheetCtrl =>
+      Get.put(ItemFormSheetController(), tag: _sheetTag, permanent: false);
+
+  static Future<void> _popSheet(BuildContext context) async {
+    Navigator.of(context).pop();
+  }
+
   Widget _buildMetadataHeader(BuildContext context) {
-    if (owner == null && creation == null && modified == null && modifiedBy == null) {
+    if (owner == null &&
+        creation == null &&
+        modified == null &&
+        modifiedBy == null) {
       return const SizedBox.shrink();
     }
-    final theme = Theme.of(context);
+
+    final theme        = Theme.of(context);
     final variantColor = theme.colorScheme.onSurfaceVariant;
-    final style = theme.textTheme.labelSmall?.copyWith(color: variantColor);
+    final style        = theme.textTheme.labelSmall?.copyWith(color: variantColor);
+
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (owner != null || creation != null)
-            Row(
-              children: [
-                if (owner != null) ...[
-                  Icon(Icons.person_outline, size: 14, color: variantColor),
-                  const SizedBox(width: 4),
-                  Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
-                ],
-                if (owner != null && creation != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                    child: Text('•', style: style),
-                  ),
-                if (creation != null) ...[
-                  Text(
-                    'Created ${FormattingHelper.getRelativeTime(creation)}',
-                    style: style,
-                  ),
-                ],
+            Row(children: [
+              if (owner != null) ...[
+                Icon(Icons.person_outline, size: 14, color: variantColor),
+                const SizedBox(width: 4),
+                Text(owner!, style: style?.copyWith(fontWeight: FontWeight.w600)),
               ],
-            ),
+              if (owner != null && creation != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                  child: Text('•', style: style),
+                ),
+              if (creation != null)
+                Text(
+                  'Created ${FormattingHelper.getRelativeTime(creation)}',
+                  style: style,
+                ),
+            ]),
           if ((modified != null || modifiedBy != null) &&
               (modified != creation || modifiedBy != owner)) ...[
             const SizedBox(height: 4),
-            Row(
-              children: [
-                if (modifiedBy != null) ...[
-                  Icon(Icons.edit_outlined, size: 14, color: variantColor),
-                  const SizedBox(width: 4),
-                  Text(modifiedBy!, style: style?.copyWith(fontWeight: FontWeight.w600)),
-                ],
-                if (modifiedBy != null && modified != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                    child: Text('•', style: style),
-                  ),
-                if (modified != null) ...[
-                  Text(
-                    'Modified ${FormattingHelper.getRelativeTime(modified)}',
-                    style: style,
-                  ),
-                ],
+            Row(children: [
+              if (modifiedBy != null) ...[
+                Icon(Icons.edit_outlined, size: 14, color: variantColor),
+                const SizedBox(width: 4),
+                Text(modifiedBy!,
+                    style: style?.copyWith(fontWeight: FontWeight.w600)),
               ],
-            ),
+              if (modifiedBy != null && modified != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                  child: Text('•', style: style),
+                ),
+              if (modified != null)
+                Text(
+                  'Modified ${FormattingHelper.getRelativeTime(modified)}',
+                  style: style,
+                ),
+            ]),
           ],
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final mediaQuery = MediaQuery.of(context);
-    final topPadding = mediaQuery.viewPadding.top;
-    final bottomPadding = mediaQuery.viewPadding.bottom;
+  List<Widget> _formChildren(BuildContext context) {
+    final theme            = Theme.of(context);
+    final colorScheme      = theme.colorScheme;
+    final mediaQuery       = MediaQuery.of(context);
+    final bottomPadding    = mediaQuery.viewPadding.bottom;
     final viewInsetsBottom = mediaQuery.viewInsets.bottom;
 
-    return Container(
-      margin: EdgeInsets.only(top: topPadding + 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    return [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            color: colorScheme.surface,
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-            alignment: Alignment.center,
-            child: Container(
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(2),
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        variantOf != null && variantOf!.isNotEmpty
+                            ? '$itemCode · $variantOf'
+                            : itemCode,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontFamily: 'ShureTechMono',
+                          fontSize: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    if (itemGroup != null && itemGroup!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          itemGroup!,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  itemName,
+                  style: theme.textTheme.bodyLarge
+                      ?.copyWith(color: colorScheme.onSurface),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                _buildMetadataHeader(context),
+              ],
             ),
           ),
-          Expanded(
-            child: Form(
-              key: formKey,
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                shrinkWrap: true,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '$itemCode${itemSubtext != null && itemSubtext!.isNotEmpty ? ' • $itemSubtext' : ''}',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  fontFamily: 'ShureTechMono',
-                                  fontSize: 16,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              itemName,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurface,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            _buildMetadataHeader(context),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Get.back(),
-                        icon: const Icon(Icons.close),
-                        style: IconButton.styleFrom(
-                          backgroundColor: colorScheme.surfaceContainerHigh,
-                          foregroundColor: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+          IconButton(
+            onPressed: () => _popSheet(context),
+            icon: const Icon(Icons.close),
+            style: IconButton.styleFrom(
+              backgroundColor: colorScheme.surfaceContainerHigh,
+              foregroundColor: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+
+      const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16.0),
+        child: Divider(height: 1),
+      ),
+
+      ...customFields.map(
+        (w) => Padding(
+          padding: const EdgeInsets.only(bottom: 20.0),
+          child: w,
+        ),
+      ),
+
+      // ── Quantity input ─────────────────────────────────────────────────────
+      // Driven by QtyFieldDelegate via SharedQtyField.
+      // SharedQtyField reads all reactive state (isQtyReadOnly, qtyError,
+      // qtyInfoText, qtyInfoTooltip, isQtyValid) directly from qtyDelegate
+      // inside its own Obx, so no manual Obx wrapping is needed here.
+      SharedQtyField(
+        c:           qtyDelegate,
+        accentColor: qtyAccentColor,
+        labelText:   'Quantity',
+      ),
+
+      const SizedBox(height: 32),
+
+      _AnimatedSaveButton(
+        saveButtonState: saveButtonState,
+        isSaveEnabled:   isSaveEnabled,
+        isSaveEnabledRx: isSaveEnabledRx,
+        isLoading:       isLoading,
+        title:           title,
+        onSubmit: () async {
+          final result = onSubmit();
+          if (result is Future) await result;
+        },
+        formKey:  formKey,
+        sheetTag: _sheetTag,
+      ),
+
+      if (onDelete != null) ...[
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            onPressed: () async {
+              _popSheet(context);
+              onDelete!();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: colorScheme.error,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Remove Item'),
+          ),
+        ),
+      ],
+
+      SizedBox(height: math.max(viewInsetsBottom, bottomPadding) + 20),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _sheetCtrl;
+
+    final theme       = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final mediaQuery  = MediaQuery.of(context);
+    final topPadding  = mediaQuery.viewPadding.top;
+    final bottomPadding = mediaQuery.viewPadding.bottom;
+
+    // Drag handle — sits on the same surface as the sheet body.
+    final dragHandle = Container(
+      color: colorScheme.surface,
+      width: double.infinity,
+      padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+      alignment: Alignment.center,
+      child: Container(
+        width: 32,
+        height: 4,
+        decoration: BoxDecoration(
+          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+
+    final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    final bool showScanFooter =
+        onScan != null || (onCameraScan != null && isMobile);
+
+    final scanBar = showScanFooter
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Camera viewfinder panel (expandable) ──────────────────────
+              if (onCameraScan != null &&
+                  isCameraExpanded != null &&
+                  mobileScanController != null &&
+                  isMobile)
+                Obx(
+                  () => AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child: isCameraExpanded!.value
+                        ? CameraViewfinderPanel(
+                            controller: mobileScanController!,
+                            onBarcode: onCameraScan!,
+                          )
+                        : const SizedBox.shrink(),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16.0),
-                    child: Divider(height: 1),
-                  ),
-                  ...customFields.map((w) => Padding(
-                    padding: const EdgeInsets.only(bottom: 20.0),
-                    child: w,
-                  )),
-                  QuantityInputWidget(
-                    controller: qtyController,
-                    onIncrement: onIncrement,
-                    onDecrement: onDecrement,
-                    isReadOnly: isQtyReadOnly,
-                    label: 'Quantity',
-                    infoText: qtyInfoText,
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    child: isSaveEnabledRx != null
-                        ? Obx(() => _buildSaveButton(context, isSaveEnabledRx!.value))
-                        : _buildSaveButton(context, isSaveEnabled),
-                  ),
-                  if (onDelete != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          Get.back();
-                          onDelete!();
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: colorScheme.error,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('Remove Item'),
+                ),
+              // ── Scan footer row ────────────────────────────────────────────
+              Container(
+                color: colorScheme.surface,
+                padding: EdgeInsets.only(bottom: bottomPadding),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: BarcodeInputWidget(
+                        onScan: onScan ?? onCameraScan!,
+                        controller: scanController,
+                        isLoading: isScanning,
+                        hintText: 'Scan Rack / Batch / Item',
+                        isEmbedded: true,
                       ),
                     ),
                   ],
-                  SizedBox(
-                      height: math.max(viewInsetsBottom, bottomPadding) + 20
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          if (onScan != null)
-            Container(
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  )
-                ],
-              ),
-              padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  bottomPadding + 12
-              ),
-              child: BarcodeInputWidget(
-                onScan: onScan!,
-                controller: scanController,
-                isLoading: isScanning,
-                hintText: 'Scan Rack / Batch / Item',
-                isEmbedded: true,
-              ),
-            ),
-        ],
-      ),
+            ],
+          )
+        : null;
+
+    // Shared decoration — both branches use identical appearance.
+    final sheetDecoration = BoxDecoration(
+      color: colorScheme.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),
     );
+    final sheetMargin = EdgeInsets.only(top: topPadding + 12);
+
+    if (scrollController != null) {
+      // fix(global-item-sheet): use Flexible(fit: FlexFit.loose) instead of
+      // Expanded so the sheet content-hugs when the ListView is shorter than
+      // the available space, while still allowing full expansion + scrolling
+      // when content overflows (keyboard open, many fields).
+      //
+      // Expanded forces the ListView to fill ALL remaining space in the Column
+      // regardless of mainAxisSize: min — this caused the DN item form sheet
+      // to always expand to full-screen height and leave dead whitespace below
+      // the Remove Item button.
+      //
+      // Removing the flex wrapper entirely is not viable — it would give the
+      // ListView an unbounded height constraint, causing a Flutter layout
+      // error: "Vertical viewport was given unbounded height".
+      return Container(
+        margin: sheetMargin,
+        decoration: sheetDecoration,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            dragHandle,
+            Flexible(
+              fit: FlexFit.loose,
+              child: Form(
+                key: formKey,
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  shrinkWrap: true,
+                  children: _formChildren(context),
+                ),
+              ),
+            ),
+            if (scanBar != null) scanBar,
+          ],
+        ),
+      );
+    } else {
+      // Non-scrollable branch: wrap in the same Container so the sheet always
+      // owns its opaque background regardless of the call-site backgroundColor.
+      return Container(
+        margin: sheetMargin,
+        decoration: sheetDecoration,
+        clipBehavior: Clip.antiAlias,
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              dragHandle,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _formChildren(context),
+                ),
+              ),
+              if (scanBar != null) scanBar,
+            ],
+          ),
+        ),
+      );
+    }
   }
 }

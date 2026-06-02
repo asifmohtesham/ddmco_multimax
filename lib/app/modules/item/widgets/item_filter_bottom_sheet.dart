@@ -100,7 +100,12 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             title: Text(item),
                             onTap: () {
                               onSelected(item);
-                              Get.back();
+                              // Use Navigator.of(context).pop() instead of Get.back().
+                              // Get.back() unconditionally calls Get.closeCurrentSnackbar()
+                              // before popping; when a SnackbarController is queued but not
+                              // yet attached, its late AnimationController throws
+                              // LateInitializationError.
+                              Navigator.of(context).pop();
                             },
                           );
                         },
@@ -135,7 +140,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     // Remove filters with empty values to ensure clean queries
     final validFilters = localFilters.where((f) => f.value.isNotEmpty).toList();
     controller.applyFilters(validFilters);
-    Get.back();
+    // Use Navigator.of(context).pop() instead of Get.back() — snackbar safety.
+    Navigator.of(context).pop();
   }
 
   @override
@@ -156,6 +162,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
         localFilters.clear();
         showImagesOnly.value = false;
         controller.clearFilters();
+        // clearFilters does not dismiss the sheet — intentional, lets the
+        // user see the cleared state before deciding to close or re-apply.
       },
       filterWidgets: [
         SwitchListTile(

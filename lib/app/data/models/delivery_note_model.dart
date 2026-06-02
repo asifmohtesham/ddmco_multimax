@@ -11,6 +11,8 @@ class DeliveryNote {
   final double totalQty;
   final int docstatus;
   final String? setWarehouse;
+  final String? owner;
+  final String? modifiedBy;
   final List<DeliveryNoteItem> items;
 
   DeliveryNote({
@@ -26,12 +28,15 @@ class DeliveryNote {
     required this.totalQty,
     required this.docstatus,
     this.setWarehouse,
+    this.owner,
+    this.modifiedBy,
     required this.items,
   });
 
   factory DeliveryNote.fromJson(Map<String, dynamic> json) {
     var itemsList = json['items'] as List? ?? [];
-    List<DeliveryNoteItem> items = itemsList.map((i) => DeliveryNoteItem.fromJson(i)).toList();
+    List<DeliveryNoteItem> items =
+        itemsList.map((i) => DeliveryNoteItem.fromJson(i)).toList();
 
     return DeliveryNote(
       name: json['name'] ?? '',
@@ -46,6 +51,8 @@ class DeliveryNote {
       totalQty: _parseDouble(json['total_qty']),
       docstatus: _parseInt(json['docstatus']),
       setWarehouse: json['set_warehouse'],
+      owner: json['owner'],
+      modifiedBy: json['modified_by'],
       items: items,
     );
   }
@@ -59,8 +66,8 @@ class DeliveryNote {
       'po_no': poNo,
       'docstatus': docstatus,
       'set_warehouse': setWarehouse,
-      'grand_total': grandTotal, // Added to prevent server-side NoneType error
-      'total_qty': totalQty,     // Added to prevent server-side NoneType error
+      'grand_total': grandTotal,
+      'total_qty': totalQty,
       'items': items.map((e) => e.toJson()).toList(),
     };
   }
@@ -78,6 +85,8 @@ class DeliveryNote {
     double? totalQty,
     int? docstatus,
     String? setWarehouse,
+    String? owner,
+    String? modifiedBy,
     List<DeliveryNoteItem>? items,
   }) {
     return DeliveryNote(
@@ -93,11 +102,12 @@ class DeliveryNote {
       totalQty: totalQty ?? this.totalQty,
       docstatus: docstatus ?? this.docstatus,
       setWarehouse: setWarehouse ?? this.setWarehouse,
+      owner: owner ?? this.owner,
+      modifiedBy: modifiedBy ?? this.modifiedBy,
       items: items ?? this.items,
     );
   }
 
-  // --- Safe Parsing Helpers ---
   static double _parseDouble(dynamic value) {
     if (value == null) return 0.0;
     if (value is num) return value.toDouble();
@@ -125,7 +135,6 @@ class DeliveryNoteItem {
   final String? customInvoiceSerialNumber;
   final String? rack;
   final String? batchNo;
-  // Additional fields
   final String? owner;
   final String? creation;
   final String? modifiedBy;
@@ -136,6 +145,8 @@ class DeliveryNoteItem {
   final String? image;
   final double? packedQty;
   final double? companyTotalStock;
+  final int docstatus;
+  final String? warehouse;
 
   DeliveryNoteItem({
     this.name,
@@ -158,6 +169,8 @@ class DeliveryNoteItem {
     this.image,
     this.packedQty,
     this.companyTotalStock,
+    this.docstatus = 0,
+    this.warehouse,
   });
 
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
@@ -169,7 +182,8 @@ class DeliveryNoteItem {
       itemName: json['item_name'],
       countryOfOrigin: json['country_of_origin'],
       uom: json['uom'],
-      customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      customInvoiceSerialNumber:
+          json['custom_invoice_serial_number']?.toString(),
       rack: json['rack'],
       batchNo: json['batch_no'],
       owner: json['owner'],
@@ -181,7 +195,10 @@ class DeliveryNoteItem {
       itemGroup: json['item_group'],
       image: json['image'],
       packedQty: DeliveryNote._parseDouble(json['packed_qty']),
-      companyTotalStock: DeliveryNote._parseDouble(json['company_total_stock']),
+      companyTotalStock:
+          DeliveryNote._parseDouble(json['company_total_stock']),
+      docstatus: DeliveryNote._parseInt(json['docstatus']),
+      warehouse: json['warehouse'] as String?,
     );
   }
 
@@ -195,9 +212,11 @@ class DeliveryNoteItem {
       'rack': rack,
       'batch_no': batchNo,
     };
-    // Include 'name' only if it exists and is NOT a local temp ID
     if (name != null && !name!.startsWith('local_')) {
       data['name'] = name;
+    }
+    if (warehouse != null) {
+      data['warehouse'] = warehouse;
     }
     return data;
   }
@@ -223,6 +242,8 @@ class DeliveryNoteItem {
     String? image,
     double? packedQty,
     double? companyTotalStock,
+    int? docstatus,
+    String? warehouse,
   }) {
     return DeliveryNoteItem(
       name: name ?? this.name,
@@ -232,7 +253,8 @@ class DeliveryNoteItem {
       itemName: itemName ?? this.itemName,
       countryOfOrigin: countryOfOrigin ?? this.countryOfOrigin,
       uom: uom ?? this.uom,
-      customInvoiceSerialNumber: customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
+      customInvoiceSerialNumber:
+          customInvoiceSerialNumber ?? this.customInvoiceSerialNumber,
       rack: rack ?? this.rack,
       batchNo: batchNo ?? this.batchNo,
       owner: owner ?? this.owner,
@@ -245,6 +267,8 @@ class DeliveryNoteItem {
       image: image ?? this.image,
       packedQty: packedQty ?? this.packedQty,
       companyTotalStock: companyTotalStock ?? this.companyTotalStock,
+      docstatus: docstatus ?? this.docstatus,
+      warehouse: warehouse ?? this.warehouse,
     );
   }
 }

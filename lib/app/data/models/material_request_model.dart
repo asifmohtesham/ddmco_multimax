@@ -8,6 +8,7 @@ class MaterialRequest {
   final String materialRequestType;
   final String? owner;
   final String? setWarehouse;
+  final double customTotalQty;
   final List<MaterialRequestItem> items;
 
   MaterialRequest({
@@ -20,6 +21,7 @@ class MaterialRequest {
     required this.materialRequestType,
     this.owner,
     this.setWarehouse,
+    required this.customTotalQty,
     required this.items,
   });
 
@@ -37,6 +39,7 @@ class MaterialRequest {
       materialRequestType: json['material_request_type']?.toString() ?? 'Purchase',
       owner: json['owner']?.toString(),
       setWarehouse: json['set_warehouse']?.toString(),
+      customTotalQty: double.tryParse(json['custom_total_qty']?.toString() ?? '0') ?? 0.0,
       items: items,
     );
   }
@@ -58,6 +61,8 @@ class MaterialRequest {
 class MaterialRequestItem {
   final String? name;
   final String itemCode;
+  final String? variantOf;
+  final String? itemGroup;
   final String? itemName;
   final double qty;
   final double receivedQty;
@@ -71,6 +76,8 @@ class MaterialRequestItem {
   MaterialRequestItem({
     this.name,
     required this.itemCode,
+    required this.variantOf,
+    this.itemGroup,
     this.itemName,
     required this.qty,
     this.receivedQty = 0.0,
@@ -86,6 +93,8 @@ class MaterialRequestItem {
     return MaterialRequestItem(
       name: json['name']?.toString(),
       itemCode: json['item_code']?.toString() ?? '',
+      variantOf: json['variant_of']?.toString() ?? '',
+      itemGroup: json['item_group']?.toString() ?? '',
       itemName: json['item_name']?.toString(),
       qty: double.tryParse(json['qty']?.toString() ?? '0') ?? 0.0,
       receivedQty: double.tryParse(json['received_qty']?.toString() ?? '0') ?? 0.0,

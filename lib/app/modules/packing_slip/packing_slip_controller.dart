@@ -3,17 +3,23 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
 
 class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
   final HomeController _homeController = Get.find<HomeController>();
+  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+
+  /// Exposed so filter widgets can call provider search helpers directly.
+  PackingSlipProvider get packingSlipProvider => _provider;
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -33,7 +39,6 @@ class PackingSlipController extends GetxController {
   var searchQuery = ''.obs;
 
   // Cache for POS Customer Names
-  // Observed by the UI to trigger rebuilds when customers are loaded
   var posCustomerMap = <String, String>{}.obs;
 
   // For DN Selection
@@ -41,11 +46,39 @@ class PackingSlipController extends GetxController {
   var deliveryNotesForSelection = <DeliveryNote>[].obs;
   List<DeliveryNote> _allFetchedDNs = [];
 
+  // ── Expand-panel detail state ─────────────────────────────────────────────
+
+  /// The fully-fetched [PackingSlip] currently shown in the expand panel.
+  ///
+  /// `null` until the user first taps a card row to expand it.
+  /// Made reactive ([Rx]) so [Obx] in [PackingSlipScreen._buildExpandedContent]
+  /// has a live dependency and rebuilds when [fetchSlipDetails] writes the
+  /// fetched document — without this, GetX throws "improper use of GetX"
+  /// because the [Obx] finds no observable variables in its builder scope.
+  final detailedSlip = Rx<PackingSlip?>(null);
+
+  /// `true` while [fetchSlipDetails] is loading a slip document from the
+  /// ERPNext API. Drives the inline [CircularProgressIndicator] inside
+  /// [GenericDocumentCard.isLoadingDetails].
+  ///
+  /// Mirrors [StockEntryController.isLoadingDetails].
+  var isLoadingDetails = false.obs;
+
+  /// Roles permitted to create / write Packing Slips.
+  ///
+  /// Seeded with `System Manager` as a safe default and then updated
+  /// dynamically in [fetchDocTypePermissions] by querying the ERPNext
+  /// `DocType` document for `Packing Slip` — mirroring the identical
+  /// mechanism in [StockEntryController] and [DeliveryNoteController].
+  /// Consumed by `RoleGuard` on the New Packing Slip FAB.
+  var writeRoles = <String>['System Manager'].obs;
+
   @override
   void onInit() {
     super.onInit();
     _homeController.activeScreen.value = ActiveScreen.packingSlip;
     fetchPackingSlips();
+    fetchDocTypePermissions();
   }
 
   @override
@@ -56,13 +89,50 @@ class PackingSlipController extends GetxController {
     }
   }
 
+  // ── Permissions ───────────────────────────────────────────────────────────
+
+  /// Fetches the `Packing Slip` DocType document from ERPNext and populates
+  /// [writeRoles] with every role that has `write == 1` at `permlevel == 0`.
+  ///
+  /// `System Manager` is always included as a non-removable fallback so the
+  /// FAB remains visible during the async fetch and in offline scenarios.
+  Future<void> fetchDocTypePermissions() async {
+    try {
+      final response =
+          await _apiProvider.getDocument('DocType', 'Packing Slip');
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final data = response.data['data'];
+        final List<dynamic> perms = data['permissions'] ?? [];
+        final newRoles = <String>{'System Manager'};
+        for (var p in perms) {
+          if (p['write'] == 1 &&
+              (p['permlevel'] == 0 || p['permlevel'] == null)) {
+            newRoles.add(p['role']);
+          }
+        }
+        writeRoles.assignAll(newRoles.toList());
+      }
+    } catch (e) {
+      // non-fatal: writeRoles retains its default value
+    }
+  }
+
+  // ── Filter API ────────────────────────────────────────────────────────────
+
   void applyFilters(Map<String, dynamic> filters) {
-    activeFilters.value = filters;
+    activeFilters.value = Map.from(filters);
     fetchPackingSlips(isLoadMore: false, clear: true);
   }
 
   void clearFilters() {
     activeFilters.clear();
+    sortField.value = 'creation';
+    sortOrder.value = 'desc';
+    fetchPackingSlips(isLoadMore: false, clear: true);
+  }
+
+  void removeFilter(String key) {
+    activeFilters.remove(key);
     fetchPackingSlips(isLoadMore: false, clear: true);
   }
 
@@ -72,7 +142,10 @@ class PackingSlipController extends GetxController {
     fetchPackingSlips(isLoadMore: false, clear: true);
   }
 
-  Future<void> fetchPackingSlips({bool isLoadMore = false, bool clear = false}) async {
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+
+  Future<void> fetchPackingSlips(
+      {bool isLoadMore = false, bool clear = false}) async {
     if (isLoadMore) {
       isFetchingMore.value = true;
     } else {
@@ -88,17 +161,16 @@ class PackingSlipController extends GetxController {
       final response = await _provider.getPackingSlips(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        filters: Map<String, dynamic>.from(activeFilters),
         orderBy: '${sortField.value} ${sortOrder.value}',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        final newSlips = data.map((json) => PackingSlip.fromJson(json)).toList();
+        final newSlips =
+            data.map((json) => PackingSlip.fromJson(json)).toList();
 
-        if (newSlips.length < _limit) {
-          hasMore.value = false;
-        }
+        if (newSlips.length < _limit) hasMore.value = false;
 
         if (isLoadMore) {
           packingSlips.addAll(newSlips);
@@ -107,13 +179,12 @@ class PackingSlipController extends GetxController {
         }
 
         _fetchAssociatedCustomers(newSlips);
-
         _currentPage++;
       } else {
-        Get.snackbar('Error', 'Failed to fetch packing slips');
+        AppNotification.error('Failed to fetch packing slips');
       }
     } catch (e) {
-      Get.snackbar('Error', e.toString());
+      AppNotification.error(e.toString());
     } finally {
       if (isLoadMore) {
         isFetchingMore.value = false;
@@ -124,10 +195,55 @@ class PackingSlipController extends GetxController {
     }
   }
 
+  // ── Expand-panel detail fetch ─────────────────────────────────────────────
+
+  /// Fetches the full [PackingSlip] document for [name] from ERPNext and
+  /// stores it in [detailedSlip].
+  ///
+  /// Skips the network call when [detailedSlip] is already the requested
+  /// document (cache-hit optimisation mirrored from
+  /// [StockEntryController.fetchStockEntryDetails]).
+  ///
+  /// Sets [isLoadingDetails] to `true` for the duration of the request so
+  /// [GenericDocumentCard] can show an inline spinner.
+  ///
+  /// On failure an [AppNotification.error] is shown and [expandedSlipName]
+  /// is reset to `''` so the card collapses cleanly instead of showing a
+  /// stuck spinner.
+  Future<void> fetchSlipDetails(String name) async {
+    if (detailedSlip.value?.name == name) return; // cache hit
+    isLoadingDetails.value = true;
+    try {
+      final response = await _provider.getPackingSlip(name);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        detailedSlip.value = PackingSlip.fromJson(response.data['data']);
+      } else {
+        AppNotification.error('Failed to load packing slip details');
+        expandedSlipName.value = '';
+      }
+    } catch (e) {
+      AppNotification.error(e.toString());
+      expandedSlipName.value = '';
+    } finally {
+      isLoadingDetails.value = false;
+    }
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  void onSearchChanged(String val) {
+    searchQuery.value = val;
+  }
+
+  // ── Grouping ─────────────────────────────────────────────────────────────
+
   Future<void> _fetchAssociatedCustomers(List<PackingSlip> slips) async {
     final poNumbers = slips
         .map((s) => s.customPoNo)
-        .where((po) => po != null && po.isNotEmpty && !posCustomerMap.containsKey(po))
+        .where((po) =>
+            po != null &&
+            po.isNotEmpty &&
+            !posCustomerMap.containsKey(po))
         .toSet()
         .toList();
 
@@ -136,7 +252,9 @@ class PackingSlipController extends GetxController {
     try {
       final response = await _posProvider.getPosUploads(
         limit: 100,
-        filters: {'name': ['in', poNumbers]},
+        filters: {
+          'name': ['in', poNumbers]
+        },
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -145,11 +263,10 @@ class PackingSlipController extends GetxController {
           final String customer = doc['customer'] ?? 'Unknown';
           posCustomerMap[name] = customer;
         }
-        // Force refresh to ensure all UI listeners update immediately after bulk load
         posCustomerMap.refresh();
       }
     } catch (e) {
-      print('Error fetching POS customers: $e');
+      // non-fatal: customer names degrade gracefully
     }
   }
 
@@ -158,20 +275,28 @@ class PackingSlipController extends GetxController {
     return posCustomerMap[poNo] ?? '';
   }
 
+  /// Toggles the expand panel for the slip identified by [name].
+  ///
+  /// - Collapsing (tapping the already-expanded card) resets
+  ///   [expandedSlipName] to `''` immediately — no network call.
+  /// - Expanding calls [fetchSlipDetails] so the panel has fresh data
+  ///   before [GenericDocumentCard.expandedContent] renders.
+  ///
+  /// ⚠️ UI/UX contract: mirrors [StockEntryController.toggleExpand] —
+  /// the expand/collapse animation is handled entirely by
+  /// [GenericDocumentCard.AnimatedSize]; do not add additional animation
+  /// logic here.
   void toggleExpand(String name) {
     if (expandedSlipName.value == name) {
       expandedSlipName.value = '';
     } else {
       expandedSlipName.value = name;
+      fetchSlipDetails(name);
     }
   }
 
   void toggleGroup(String key) {
-    if (expandedGroup.value == key) {
-      expandedGroup.value = '';
-    } else {
-      expandedGroup.value = key;
-    }
+    expandedGroup.value = expandedGroup.value == key ? '' : key;
   }
 
   Map<String, List<PackingSlip>> get groupedPackingSlips {
@@ -179,7 +304,8 @@ class PackingSlipController extends GetxController {
     if (searchQuery.value.isNotEmpty) {
       final q = searchQuery.value.toLowerCase();
       list = list.where((slip) {
-        final customer = slip.customer ?? posCustomerMap[slip.customPoNo] ?? '';
+        final customer =
+            slip.customer ?? posCustomerMap[slip.customPoNo] ?? '';
         return slip.name.toLowerCase().contains(q) ||
             slip.deliveryNote.toLowerCase().contains(q) ||
             (slip.customPoNo ?? '').toLowerCase().contains(q) ||
@@ -191,41 +317,36 @@ class PackingSlipController extends GetxController {
       if (slip.customPoNo != null && slip.customPoNo!.isNotEmpty) {
         return slip.customPoNo!;
       }
-      if (slip.deliveryNote.isNotEmpty) {
-        return slip.deliveryNote;
-      }
+      if (slip.deliveryNote.isNotEmpty) return slip.deliveryNote;
       return 'Other';
     });
 
-    grouped.forEach((key, list) {
-      list.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
+    grouped.forEach((key, slips) {
+      slips.sort((a, b) => (a.fromCaseNo ?? 0).compareTo(b.fromCaseNo ?? 0));
     });
 
     return grouped;
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-  }
-
-  // --- Creation Logic ---
+  // ── Creation ─────────────────────────────────────────────────────────────
 
   Future<void> fetchDeliveryNotesForSelection() async {
     isFetchingDNs.value = true;
     try {
       final response = await _dnProvider.getDeliveryNotes(
-          limit: 100,
-          orderBy: 'modified desc',
-          filters: {'docstatus': 0}
+        limit: 100,
+        orderBy: 'modified desc',
+        filters: {'docstatus': 0},
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List<dynamic> data = response.data['data'];
-        _allFetchedDNs = data.map((json) => DeliveryNote.fromJson(json)).toList();
+        _allFetchedDNs =
+            data.map((json) => DeliveryNote.fromJson(json)).toList();
         deliveryNotesForSelection.value = _allFetchedDNs;
       }
     } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch Delivery Notes');
+      AppNotification.error('Failed to fetch Delivery Notes');
     } finally {
       isFetchingDNs.value = false;
     }
@@ -249,9 +370,9 @@ class PackingSlipController extends GetxController {
     int nextCaseNo = 1;
     try {
       final response = await _provider.getPackingSlips(
-          limit: 1,
-          filters: {'delivery_note': dn.name},
-          orderBy: 'to_case_no desc'
+        limit: 1,
+        filters: {'delivery_note': dn.name},
+        orderBy: 'to_case_no desc',
       );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
@@ -264,7 +385,7 @@ class PackingSlipController extends GetxController {
         }
       }
     } catch (e) {
-      print('Error determining next case no: $e');
+      // non-fatal: nextCaseNo defaults to 1
     }
 
     Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
@@ -272,8 +393,38 @@ class PackingSlipController extends GetxController {
       'mode': 'new',
       'deliveryNote': dn.name,
       'customPoNo': dn.poNo,
-      'nextCaseNo': nextCaseNo
+      'nextCaseNo': nextCaseNo,
     });
+  }
+
+  Future<void> fetchAllForDeliveryNote(String dn) async {
+    activeFilters.value = {'delivery_note': dn};
+    isLoading.value = true;
+    packingSlips.clear();
+    _currentPage = 0;
+    hasMore.value = false;
+
+    try {
+      final response = await _provider.getPackingSlips(
+        limit: 500,
+        limitStart: 0,
+        filters: {'delivery_note': dn},
+        orderBy: '${sortField.value} ${sortOrder.value}',
+      );
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final newSlips = (response.data['data'] as List)
+            .map((json) => PackingSlip.fromJson(json))
+            .toList();
+        packingSlips.value = newSlips;
+        _fetchAssociatedCustomers(newSlips);
+      } else {
+        AppNotification.error('Failed to fetch packing slips');
+      }
+    } catch (e) {
+      AppNotification.error(e.toString());
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   void openCreateDialog() {
@@ -289,7 +440,8 @@ class PackingSlipController extends GetxController {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -321,28 +473,33 @@ class PackingSlipController extends GetxController {
                   Expanded(
                     child: Obx(() {
                       if (isFetchingDNs.value) {
-                        return const Center(child: CircularProgressIndicator());
+                        return const Center(
+                            child: CircularProgressIndicator());
                       }
-
                       if (deliveryNotesForSelection.isEmpty) {
-                        return const Center(child: Text('No Delivery Notes found.'));
+                        return const Center(
+                            child: Text('No Delivery Notes found.'));
                       }
-
                       return ListView.separated(
                         controller: scrollController,
                         itemCount: deliveryNotesForSelection.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1, indent: 16, endIndent: 16),
                         itemBuilder: (context, index) {
                           final dn = deliveryNotesForSelection[index];
-                          final hasPO = dn.poNo != null && dn.poNo!.isNotEmpty;
+                          final hasPO =
+                              dn.poNo != null && dn.poNo!.isNotEmpty;
                           final title = hasPO ? dn.poNo! : dn.name;
-                          final subtitle = hasPO
-                              ? '${dn.name} • ${dn.customer}'
-                              : dn.customer;
-
+                          final subtitle =
+                              hasPO ? '${dn.name} \u2022 ${dn.customer}' : dn.customer;
                           return ListTile(
-                            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey)),
+                            title: Text(title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16)),
+                            subtitle: Text(subtitle,
+                                style:
+                                    const TextStyle(color: Colors.grey)),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               Get.back();

@@ -2,10 +2,13 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/core/utils/app_navigator.dart';
+import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
@@ -35,19 +38,28 @@ class AuthenticationController extends GetxController {
       if (response.statusCode == 200 && response.data?['message'] != null) {
         final loggedInUserEmail = response.data['message'];
 
-        final userDetailsResponse = await _apiProvider.getUserDetails(loggedInUserEmail);
-        if (userDetailsResponse.statusCode == 200 && userDetailsResponse.data?['data'] != null) {
+        // Frappe returns "Guest" when the session has expired. Treat this as
+        // unauthenticated — do not proceed with a Guest user or prefetch.
+        if (loggedInUserEmail == 'Guest') {
+          await _clearSessionAndLocalData();
+          return;
+        }
+
+        final userDetailsResponse =
+            await _apiProvider.getUserDetails(loggedInUserEmail);
+        if (userDetailsResponse.statusCode == 200 &&
+            userDetailsResponse.data?['data'] != null) {
           var user = User.fromJson(userDetailsResponse.data['data']);
 
           // --- ROLE FETCHING FIX ---
-          // Fetch roles explicitly via RPC if main doc roles are empty/hidden
           if (user.roles.isEmpty) {
             try {
-              final rolesResponse = await _userProvider.getUserRoles(user.id);
-              // RPC returns { "message": ["Role1", "Role2"] }
-              if (rolesResponse.statusCode == 200 && rolesResponse.data['message'] != null) {
-                final roleList = List<String>.from(rolesResponse.data['message']);
-
+              final rolesResponse =
+                  await _userProvider.getUserRoles(user.id);
+              if (rolesResponse.statusCode == 200 &&
+                  rolesResponse.data['message'] != null) {
+                final roleList =
+                    List<String>.from(rolesResponse.data['message']);
                 if (roleList.isNotEmpty) {
                   user = user.copyWith(roles: roleList);
                 }
@@ -60,8 +72,10 @@ class AuthenticationController extends GetxController {
 
           // --- LINK EMPLOYEE DOCUMENT ---
           try {
-            final empResponse = await _userProvider.getEmployeeIdForUser(user.email);
-            if (empResponse.statusCode == 200 && empResponse.data['data'] != null) {
+            final empResponse =
+                await _userProvider.getEmployeeIdForUser(user.email);
+            if (empResponse.statusCode == 200 &&
+                empResponse.data['data'] != null) {
               final list = empResponse.data['data'] as List;
               if (list.isNotEmpty) {
                 final empId = list[0]['name'];
@@ -76,11 +90,16 @@ class AuthenticationController extends GetxController {
           currentUser.value = user;
           isAuthenticated.value = true;
 
-          // Persist user
           if (Get.isRegistered<StorageService>()) {
             await Get.find<StorageService>().saveUser(user);
           }
 
+          if (Get.isRegistered<PermissionService>()) {
+            // Clear before prefetch so stale cache entries from an expired
+            // session (e.g. a prior Guest prefetch) cannot block fresh fetches.
+            Get.find<PermissionService>().clearCache();
+            await Get.find<PermissionService>().prefetchAll(kAppPermissions);
+          }
         } else {
           await _clearSessionAndLocalData();
         }
@@ -88,7 +107,7 @@ class AuthenticationController extends GetxController {
         await _clearSessionAndLocalData();
       }
     } catch (e) {
-      printError(info: "Failed to fetch user details: $e");
+      printError(info: 'Failed to fetch user details: $e');
       await _clearSessionAndLocalData();
     }
   }
@@ -110,7 +129,7 @@ class AuthenticationController extends GetxController {
         await _clearSessionAndLocalData();
       }
     } catch (e) {
-      printError(info: "Error checking auth status: $e");
+      printError(info: 'Error checking auth status: $e');
       await _clearSessionAndLocalData();
     } finally {
       isLoading.value = false;
@@ -128,32 +147,59 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> logoutUser() async {
+    // Builder provides a valid local BuildContext so button callbacks
+    // use Navigator.of(context).pop() instead of Get.back().
     Get.dialog(
-      AlertDialog(
-        title: const Text('Confirm Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Get.back(),
-          ),
-          TextButton(
-            child: const Text('Logout'),
-            onPressed: () async {
-              Get.back();
-              isLoading.value = true;
-              try {
-                await _apiProvider.logoutApiCall();
-                await _clearSessionAndLocalData();
-                Get.offAllNamed(AppRoutes.LOGIN);
-              } catch (e) {
-                GlobalSnackbar.error(title: 'Logout Error', message: 'Could not log out.');
-              } finally {
-                isLoading.value = false;
-              }
-            },
-          ),
-        ],
+      Builder(
+        builder: (context) => AlertDialog(
+          title: const Text('Confirm Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              child: const Text('Logout'),
+              onPressed: () async {
+                Navigator.of(context).pop();
+                isLoading.value = true;
+                Get.dialog(
+                  const PopScope(
+                    canPop: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(height: 16),
+                          Text(
+                            'Logging out…',
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  barrierDismissible: false,
+                  barrierColor: Colors.black54,
+                );
+                try {
+                  await _apiProvider.logoutApiCall();
+                  await _clearSessionAndLocalData();
+                  Get.offAllNamed(AppRoutes.LOGIN);
+                } catch (e) {
+                  Get.back();
+                  isLoading.value = false;
+                  GlobalSnackbar.error(
+                    title: 'Logout Error',
+                    message: 'Could not log out.',
+                  );
+                }
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -162,6 +208,9 @@ class AuthenticationController extends GetxController {
     await _apiProvider.clearSessionCookies();
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
+    }
+    if (Get.isRegistered<PermissionService>()) {
+      Get.find<PermissionService>().clearCache();
     }
     currentUser.value = null;
     isAuthenticated.value = false;
@@ -178,6 +227,7 @@ class AuthenticationController extends GetxController {
   bool hasAnyRole(List<String> roles) {
     if (currentUser.value == null) return false;
     if (currentUser.value!.roles.contains('System Manager')) return true;
-    return currentUser.value!.roles.any((userRole) => roles.contains(userRole));
+    return currentUser.value!.roles.any(
+        (userRole) => roles.contains(userRole));
   }
 }

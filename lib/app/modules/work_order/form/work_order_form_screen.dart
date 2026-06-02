@@ -1,0 +1,1790 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/data/models/work_order_item_model.dart';
+import 'package:multimax/app/data/models/work_order_operation_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'job_card_creation_sheet.dart';
+import 'work_order_form_controller.dart';
+
+class WorkOrderFormScreen extends GetView<WorkOrderFormController> {
+  const WorkOrderFormScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (controller.isDirty.value) {
+          await controller.confirmDiscard();
+        } else {
+          Get.back();
+        }
+      },
+      child: Obx(() {
+        final wo = controller.workOrder.value;
+        final title = (wo?.name.isEmpty ?? true) || wo?.name == 'New Work Order'
+            ? 'New Work Order'
+            : wo!.name;
+        final isLoading = controller.isLoading.value;
+        return Scaffold(
+          body: CustomScrollView(
+            slivers: [
+              DocTypeFormHeader(
+                title:       title,
+                docType:     'Work Order',
+                statusLabel: wo?.status,
+                onSave: controller.canEdit ? controller.save : null,
+                onReload: controller.mode != 'new' ? controller.reload : null,
+                isSaving:   controller.isSaving.value,
+                saveResult: controller.saveResult.value,
+                canSave:    controller.isDirty.value,
+                docStatus:  wo?.docstatus ?? 0,
+              ),
+              if (isLoading)
+                const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                SliverToBoxAdapter(
+                  child: _WorkOrderForm(controller: controller),
+                ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Main form
+// ────────────────────────────────────────────────────────────────────────────
+
+class _WorkOrderForm extends StatelessWidget {
+  final WorkOrderFormController controller;
+
+  const _WorkOrderForm({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Obx(() {
+      final wo = controller.workOrder.value;
+      final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
+
+      // ── Lift all RxList / Rx reads here so the parent Obx always
+      //    subscribes to them — child visibility is then gated with plain
+      //    `if` conditionals, eliminating nested Obx improper-use crashes.
+      final bomOps = controller.bomOperations;
+      final operations = controller.operations;
+      final linkedCards = controller.linkedJobCards;
+      final fetchingJC = controller.isFetchingLinkedCards.value;
+      final requiredItems = controller.workOrder.value?.requiredItems ?? const [];
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Section: Production ───────────────────────────────────────────────
+            _SectionHeader(
+              label: 'Production Details',
+              icon: Icons.precision_manufacturing_outlined,
+            ),
+            const SizedBox(height: 12),
+
+            // Item search typeahead
+            _FieldLabel(label: 'Production Item *'),
+            const SizedBox(height: 6),
+            Obx(() {
+              final items = controller.itemOptions;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller.itemController,
+                    readOnly: !canEdit,
+                    decoration: InputDecoration(
+                      hintText: 'Search item code…',
+                      border: const OutlineInputBorder(),
+                      filled: !canEdit,
+                      fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                      prefixIcon: const Icon(Icons.inventory_2_outlined),
+                      suffixIcon: controller.isFetchingItems.value
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                          : (controller.itemController.text.isNotEmpty &&
+                                    canEdit
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      controller.itemController.clear();
+                                      controller.selectedItem.value = null;
+                                      controller.selectedItemName.value = null;
+                                      controller.bomController.clear();
+                                      controller.selectedBom.value = null;
+                                      controller.bomOptions.clear();
+                                      controller.isItemValid.value = false;
+                                      controller.isBomValid.value = false;
+                                    },
+                                  )
+                                : null),
+                    ),
+                    onChanged: controller.searchItems,
+                  ),
+                  if (items.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: cs.outlineVariant),
+                      ),
+                      child: Column(
+                        children: items
+                            .map(
+                              (code) => ListTile(
+                                dense: true,
+                                title: Text(code),
+                                onTap: () => controller.onItemSelected(code),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  if ((controller.selectedItemName.value ?? '').isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 4),
+                      child: Text(
+                        controller.selectedItemName.value!,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }),
+            const SizedBox(height: 16),
+
+            // BOM No
+            _FieldLabel(label: 'BOM No *'),
+            const SizedBox(height: 6),
+            Obx(() {
+              final loadingBom = controller.isFetchingBom.value;
+              return TextField(
+                controller: controller.bomController,
+                readOnly: true,
+                decoration: InputDecoration(
+                  hintText: loadingBom
+                      ? 'Fetching BOM…'
+                      : 'Auto-filled or tap to choose',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  prefixIcon: const Icon(Icons.account_tree_outlined),
+                  suffixIcon: loadingBom
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : (canEdit && controller.bomOptions.length > 1
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_drop_down_circle_outlined,
+                                ),
+                                onPressed: controller.showBomPicker,
+                              )
+                            : null),
+                ),
+                onTap: canEdit && controller.bomOptions.length > 1
+                    ? controller.showBomPicker
+                    : null,
+              );
+            }),
+            const SizedBox(height: 16),
+
+            // Qty row with ± stepper
+            _FieldLabel(label: 'Quantity *'),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (canEdit)
+                  _StepButton(
+                    icon: Icons.remove,
+                    onTap: () => controller.adjustQty(-1),
+                  ),
+                Expanded(
+                  child: TextField(
+                    controller: controller.qtyController,
+                    readOnly: !canEdit,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      filled: !canEdit,
+                      fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 8,
+                      ),
+                    ),
+                  ),
+                ),
+                if (canEdit)
+                  _StepButton(
+                    icon: Icons.add,
+                    onTap: () => controller.adjustQty(1),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // ── Section: Dates ───────────────────────────────────────────────────
+            _SectionHeader(label: 'Dates', icon: Icons.date_range_outlined),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _DateField(
+                    label: 'Planned Start *',
+                    controller: controller.plannedStartController,
+                    readOnly: !canEdit,
+                    onTap: () =>
+                        controller.pickDate(controller.plannedStartController),
+                    fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _DateField(
+                    label: 'Expected End',
+                    controller: controller.expectedEndController,
+                    readOnly: !canEdit,
+                    onTap: () =>
+                        controller.pickDate(controller.expectedEndController),
+                    fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // ── Section: Warehouses ─────────────────────────────────────────────
+            _SectionHeader(label: 'Warehouses', icon: Icons.warehouse_outlined),
+            const SizedBox(height: 12),
+
+            _WarehouseField(
+              label: 'WIP Warehouse',
+              controller: controller.wipWarehouseController,
+              readOnly: !canEdit,
+              onTap: () => controller.showWarehousePicker(
+                controller.wipWarehouseController,
+              ),
+              fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+            ),
+            const SizedBox(height: 12),
+
+            _WarehouseField(
+              label: 'FG Warehouse',
+              controller: controller.fgWarehouseController,
+              readOnly: !canEdit,
+              onTap: () => controller.showWarehousePicker(
+                controller.fgWarehouseController,
+              ),
+              fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+            ),
+            const SizedBox(height: 24),
+
+            // ── Section: Required Items ─────────────────────────────────────────────
+            if (requiredItems.isNotEmpty)
+              _RequiredItemsSection(
+                items: requiredItems,
+                cs: cs,
+                textTheme: textTheme,
+              ),
+
+            // ── Section: BOM Operations Preview (new-WO mode only) ──────────────
+            // Plain `if` — no nested Obx. bomOps is already subscribed above.
+            if (controller.mode == 'new' && bomOps.isNotEmpty)
+              _BomOperationsPreview(
+                controller: controller,
+                cs: cs,
+                textTheme: textTheme,
+              ),
+
+            // ── Section: Notes ───────────────────────────────────────────────────
+            _SectionHeader(label: 'Notes', icon: Icons.notes_outlined),
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: controller.descriptionController,
+              readOnly: !canEdit,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Add notes or description…',
+                border: const OutlineInputBorder(),
+                filled: !canEdit,
+                fillColor: !canEdit ? cs.surfaceContainerHighest : null,
+                alignLabelWithHint: true,
+              ),
+              onChanged: (_) => controller.markDirty(),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Section: Operations ───────────────────────────────────────────────
+            // Plain `if` — no nested Obx. operations is already subscribed above.
+            if (operations.isNotEmpty)
+              _OperationsSection(
+                controller: controller,
+                cs: cs,
+                textTheme: textTheme,
+              ),
+
+            // ── Section: Linked Job Cards ──────────────────────────────────────
+            // Plain `if` — no nested Obx. linkedCards/fetchingJC subscribed above.
+            if (linkedCards.isNotEmpty || fetchingJC)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SectionHeader(
+                    // Show "2/3 Completed" tally when WO is submitted
+                    label: wo?.docstatus == 1
+                        ? 'Job Cards '
+                              '(${controller.completedJobCardsCount}/${linkedCards.length} Completed)'
+                        : 'Job Cards (${linkedCards.length})',
+                    icon: Icons.assignment_ind_outlined,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Contextual hint when WO is Not Started (JCs exist but not yet unlocked)
+                  if (wo?.status == 'Not Started')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, left: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 13,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Tap "Execute Work Order" to begin processing.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Hint when In Process but not all JCs are done
+                  if (wo?.status == 'In Process' &&
+                      !controller.allJobCardsCompleted &&
+                      linkedCards.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, left: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_outlined,
+                            size: 13,
+                            color: Colors.orange.shade700,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Complete all Job Cards to enable "Finish Work Order".',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Colors.orange.shade700,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 4),
+                  if (fetchingJC)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    ...linkedCards.map(
+                      (jc) => _JobCardRow(
+                        jc: jc,
+                        // Lock JC rows until WO is "In Process" or beyond.
+                        isLocked: wo?.status == 'Not Started',
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+
+            // ── Action buttons ───────────────────────────────────────────────────────
+            const SizedBox(height: 8),
+
+            // [1] Save — shown when draft & dirty
+            // NOTE: canEdit guard is INSIDE the Obx, not wrapping it.
+            // Wrapping Obx with `if (canEdit)` in a Column children list causes
+            // GetX to throw "improper use" when the parent Obx rebuilds and
+            // mounts/unmounts the inner Obx before it registers any observables.
+            Obx(() {
+              final wo = controller.workOrder.value;
+              final canEdit = wo?.docstatus == 0 || controller.mode == 'new';
+              if (!canEdit) return const SizedBox.shrink();
+              final saving = controller.isSaving.value;
+              final canSave =
+                  controller.isDirty.value &&
+                  controller.isItemValid.value &&
+                  controller.isBomValid.value &&
+                  controller.isQtyValid.value;
+              return SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: canSave ? controller.save : null,
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(
+                    saving
+                        ? 'Saving…'
+                        : controller.mode == 'new'
+                        ? 'Create Work Order'
+                        : 'Save Changes',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.all(16),
+                  ),
+                ),
+              );
+            }),
+
+            // [2] Submit — shown for saved drafts (docstatus 0, mode view)
+            Obx(() {
+              final wo = controller.workOrder.value;
+              final submitting = controller.isSubmitting.value;
+              final creatingJC = controller.isCreatingJobCards.value;
+              final canSubmit =
+                  controller.mode != 'new' &&
+                  wo?.docstatus == 0 &&
+                  !controller.isSaving.value &&
+                  !submitting;
+              if (!canSubmit) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: (submitting || creatingJC)
+                        ? null
+                        : controller.submitDocument,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: cs.tertiary,
+                      foregroundColor: cs.onTertiary,
+                    ),
+                    icon: (submitting || creatingJC)
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_circle_outline),
+                    label: Text(
+                      submitting
+                          ? 'Submitting…'
+                          : creatingJC
+                          ? 'Creating Job Cards…'
+                          : 'Submit Work Order',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // [3] Execute — shown ONLY when submitted + status "Not Started"
+            // AND at least one Job Card already exists for this WO.
+            Obx(() {
+              final wo = controller.workOrder.value;
+              final executing = controller.isExecuting.value;
+              final hasJobCards = controller.linkedJobCards.isNotEmpty;
+              final canExecute =
+                  wo?.docstatus == 1 &&
+                  wo?.status == 'Not Started' &&
+                  hasJobCards &&
+                  !executing &&
+                  !controller.isSubmitting.value &&
+                  !controller.isCreatingJobCards.value;
+              if (!canExecute) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: executing ? null : controller.executeWorkOrder,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: Colors.orange.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: executing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.play_circle_outline),
+                    label: Text(
+                      executing ? 'Executing...' : 'Execute Work Order',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // [4] Create Job Cards — shown when submitted + pending ops exist
+            // AND no Job Cards have been created yet.
+            Obx(() {
+              final wo = controller.workOrder.value;
+              final creatingCards = controller.isCreatingJobCards.value;
+              final woQty = wo?.qty ?? 0;
+              final hasPendingOps = controller.operations.any(
+                (op) => op.pendingQty(woQty) > 0,
+              );
+              final hasJobCards = controller.linkedJobCards.isNotEmpty;
+              // Show only when: submitted, has pending ops, and no JC created yet.
+              final canCreateCards =
+                  wo?.docstatus == 1 &&
+                  hasPendingOps &&
+                  !hasJobCards; // ← NEW guard
+              if (!canCreateCards) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: creatingCards
+                        ? null
+                        : () => Get.bottomSheet(
+                            JobCardCreationSheet(controller: controller),
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                          ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      side: BorderSide(color: cs.primary, width: 1.5),
+                    ),
+                    icon: creatingCards
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: cs.primary,
+                            ),
+                          )
+                        : const Icon(Icons.playlist_add_check_outlined),
+                    label: Text(
+                      creatingCards
+                          ? 'Creating Job Cards...'
+                          : 'Create Job Cards',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            // [5] Finish — shown when WO is "In Process" and producedQty < qty.
+            // Navigates to Stock Entry: Manufacture prefilled form.
+            Obx(() {
+              final wo = controller.workOrder.value;
+              final executing = controller.isExecuting.value;
+              final canFinish = controller.canFinish;
+              if (!canFinish) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: executing ? null : controller.finishWorkOrder,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: executing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_circle_outline),
+                    label: Text(
+                      executing ? 'Opening...' : 'Finish Work Order',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      );
+    });
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// BOM Operations Preview (new-WO mode only)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _BomOperationsPreview extends StatelessWidget {
+  final WorkOrderFormController controller;
+  final ColorScheme cs;
+  final TextTheme textTheme;
+
+  const _BomOperationsPreview({
+    required this.controller,
+    required this.cs,
+    required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(label: 'Operations Preview', icon: Icons.route_outlined),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10, left: 2),
+          child: Text(
+            'Operations from the selected BOM — will be submitted with this Work Order.',
+            style: textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+        ...controller.bomOperations.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final op = entry.value;
+          final hasWorkstation = (op.workstation ?? '').isNotEmpty;
+          final timeLabel = op.timeInMins != null && op.timeInMins! > 0
+              ? _fmtTime(op.timeInMins!)
+              : null;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.18)),
+            ),
+            child: Row(
+              children: [
+                // Sequence badge
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${idx + 1}',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Operation name + optional workstation + optional BOM
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        op.operation,
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (hasWorkstation) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.precision_manufacturing_outlined,
+                              size: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              op.workstation!,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ],
+                      if ((op.bom ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.account_tree_outlined,
+                              size: 11,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                op.bom!,
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Time chip
+                if (timeLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      timeLabel,
+                      style: textTheme.labelSmall?.copyWith(
+                        color: cs.onSecondaryContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  /// Format minutes → compact label: "90 min" → "1h 30m", "45 min" → "45m".
+  String _fmtTime(double mins) {
+    final total = mins.round();
+    if (total < 60) return '${total}m';
+    final h = total ~/ 60;
+    final m = total % 60;
+    return m == 0 ? '${h}h' : '${h}h ${m}m';
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Operations section (saved WO)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _OperationsSection extends StatelessWidget {
+  final WorkOrderFormController controller;
+  final ColorScheme cs;
+  final TextTheme textTheme;
+
+  const _OperationsSection({
+    required this.controller,
+    required this.cs,
+    required this.textTheme,
+  });
+
+  Color _statusColor(String status) => switch (status) {
+    WorkOrderOperationStatus.wip => Colors.orange.shade700,
+    WorkOrderOperationStatus.completed => cs.primary,
+    _ => cs.onSurfaceVariant,
+  };
+
+  void _showOperationEditSheet(
+    BuildContext context,
+    WorkOrderFormController controller,
+    WorkOrderOperation op,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    // Capture the system navigation bar height BEFORE entering the sheet,
+    // where the context is still valid and fully laid-out.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
+    Get.bottomSheet(
+      Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 32 + bottomInset), // ← dynamic bottom
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Header: sequence badge + operation name
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.secondaryContainer,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Text(
+                    '${op.sequenceId}',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    op.operation,
+                    style: tt.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Workstation Type
+            _OperationEditRow(
+              icon: Icons.category_outlined,
+              label: 'Workstation Type',
+              value: op.workstationType,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationTypePicker(op);
+              },
+            ),
+
+            // Row: Workstation (filtered by type if set)
+            _OperationEditRow(
+              icon: Icons.precision_manufacturing_outlined,
+              label: 'Workstation',
+              value: op.workstation,
+              onTap: () {
+                Get.back();
+                controller.showWorkstationPicker(op);
+              },
+            ),
+
+            // Row: Source Warehouse (Draft only — editable; Submitted — read-only)
+            _OperationEditRow(
+              icon: Icons.warehouse_outlined,
+              label: 'Source Warehouse',
+              value: op.sourceWarehouse,
+              // onTap is null when not canEdit → _OperationEditRow should render as
+              // read-only (no chevron, muted text). Pass null explicitly.
+              onTap: controller.canEdit
+                  ? () {
+                      Get.back();
+                      controller.showSourceWarehousePicker(op);
+                    }
+                  : null,
+            ),
+
+            const SizedBox(height: 4),
+            Divider(color: cs.outlineVariant),
+            const SizedBox(height: 4),
+
+            // Row: Planned Start Time
+            _OperationEditRow(
+              icon: Icons.schedule_outlined,
+              label: 'Planned Start Time',
+              value: _fmtDatetime(op.plannedStartTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedStartTime(op);
+              },
+            ),
+
+            // Row: Planned End Time
+            _OperationEditRow(
+              icon: Icons.schedule,
+              label: 'Planned End Time',
+              value: _fmtDatetime(op.plannedEndTime),
+              onTap: () {
+                Get.back();
+                controller.pickOperationPlannedEndTime(op);
+              },
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(label: 'Operations', icon: Icons.account_tree_outlined),
+        const SizedBox(height: 12),
+        ...controller.operations.map((op) {
+          final woQty = controller.workOrder.value?.qty ?? 0;
+          final pending = op.pendingQty(woQty);
+          final progress = woQty > 0
+              ? (op.completedQty / woQty).clamp(0.0, 1.0)
+              : 0.0;
+          final statusClr = _statusColor(op.status);
+
+          return InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _showOperationEditSheet(context, controller, op),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Row 1: sequence badge + operation name + status chip
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.secondaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${op.sequenceId}',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSecondaryContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          op.operation,
+                          style: textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusClr.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          op.status,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: statusClr,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // Row 2: workstation (if set)
+                  if ((op.workstation ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.precision_manufacturing_outlined,
+                          size: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          op.workstation!,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  // After the workstation row block (~line 1016), before BOM row:
+                  if ((op.sourceWarehouse ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.warehouse_outlined,
+                            size: 12, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            op.sourceWarehouse!,
+                            style: textTheme.labelSmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  // Row 3: BOM (if set)
+                  if ((op.bom ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.account_tree_outlined,
+                          size: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            op.bom!,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 16,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Progress bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: cs.outlineVariant,
+                      color: statusClr,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // Completed / pending counts
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Completed: ${_fmtQty(op.completedQty)}',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        'Pending: ${_fmtQty(pending)}',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: pending > 0 ? cs.error : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
+String _fmtQty(double qty) =>
+    qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
+
+/// Thin status constant shim used by [_OperationsSection._statusColor].
+abstract class WorkOrderOperationStatus {
+  static const String wip = 'Work In Progress';
+  static const String completed = 'Completed';
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Small widgets
+// ────────────────────────────────────────────────────────────────────────────
+
+// Required Items section (read-only — from BOM snapshot)
+// ────────────────────────────────────────────────────────────────────────────
+
+class _RequiredItemsSection extends StatelessWidget {
+  final List<WorkOrderItem> items;
+  final ColorScheme cs;
+  final TextTheme textTheme;
+
+  const _RequiredItemsSection({
+    required this.items,
+    required this.cs,
+    required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          label: 'Required Items',
+          icon: Icons.checklist_outlined,
+        ),
+        const SizedBox(height: 12),
+        ...items.map((item) {
+          final progress = item.requiredQty > 0
+              ? (item.transferredQty / item.requiredQty).clamp(0.0, 1.0)
+              : 0.0;
+          final isFullyTransferred = item.isFullyTransferred;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Row 1: item code + transferred badge
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.itemCode,
+                        style: textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isFullyTransferred
+                            ? cs.primary.withValues(alpha: 0.12)
+                            : cs.outlineVariant.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        isFullyTransferred ? 'Transferred' : 'Pending',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: isFullyTransferred
+                              ? cs.primary
+                              : cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Row 2: item name (if different from code)
+                if (item.itemName.isNotEmpty && item.itemName != item.itemCode)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      item.itemName,
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+
+                // Row 3: source warehouse (if set)
+                if ((item.sourceWarehouse ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.warehouse_outlined,
+                          size: 12, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          item.sourceWarehouse!,
+                          style: textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 8),
+
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: cs.outlineVariant,
+                    color: isFullyTransferred ? cs.primary : Colors.orange.shade700,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                // Qty row: required / transferred / UOM
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Required: ${_fmtQty(item.requiredQty)} ${item.uom ?? ''}',
+                      style: textTheme.labelSmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                    Text(
+                      'Transferred: ${_fmtQty(item.transferredQty)}',
+                      style: textTheme.labelSmall?.copyWith(
+                        color: isFullyTransferred
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                        fontWeight: isFullyTransferred
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  final IconData icon;
+
+  const _SectionHeader({required this.label, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: cs.primary),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: cs.primary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Divider(
+            color: cs.primary.withValues(alpha: 0.2),
+            thickness: 1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String label;
+
+  const _FieldLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _StepButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 44,
+        height: 50,
+        decoration: BoxDecoration(
+          border: Border.all(color: cs.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+          color: cs.surfaceContainerHighest,
+        ),
+        child: Icon(icon, color: cs.primary),
+      ),
+    );
+  }
+}
+
+class _DateField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final bool readOnly;
+  final VoidCallback onTap;
+  final Color? fillColor;
+
+  const _DateField({
+    required this.label,
+    required this.controller,
+    required this.readOnly,
+    required this.onTap,
+    this.fillColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      onTap: readOnly ? null : onTap,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        filled: fillColor != null,
+        fillColor: fillColor,
+        suffixIcon: Icon(
+          Icons.calendar_today_outlined,
+          size: 18,
+          color: readOnly
+              ? Theme.of(context).colorScheme.onSurfaceVariant
+              : Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
+  }
+}
+
+class _WarehouseField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final bool readOnly;
+  final VoidCallback onTap;
+  final Color? fillColor;
+
+  const _WarehouseField({
+    required this.label,
+    required this.controller,
+    required this.readOnly,
+    required this.onTap,
+    this.fillColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      onTap: readOnly ? null : onTap,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: fillColor ?? cs.surfaceContainerLowest,
+        prefixIcon: const Icon(Icons.warehouse_outlined),
+        suffixIcon: readOnly
+            ? null
+            : Icon(Icons.arrow_drop_down, color: cs.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+/// Private widget to render a single Job Card row in the linked section.
+class _JobCardRow extends StatelessWidget {
+  final JobCard jc;
+
+  /// When true the row is tappable; false = WO not yet "In Process".
+  final bool isLocked;
+
+  const _JobCardRow({required this.jc, this.isLocked = false});
+
+  Color _statusColor(String? status, ColorScheme cs) => switch (status) {
+    'Open' => cs.onSurfaceVariant,
+    'Work In Progress' => Colors.orange.shade700,
+    'Completed' => Colors.green.shade700,
+    _ => cs.onSurfaceVariant,
+  };
+
+  IconData _statusIcon(String? status) => switch (status) {
+    'Open' => Icons.radio_button_unchecked,
+    'Work In Progress' => Icons.timelapse_outlined,
+    'Completed' => Icons.check_circle_outline,
+    _ => Icons.help_outline,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final name = jc.name ?? '';
+    final status = jc.status ?? 'Open';
+    final clr = _statusColor(status, cs);
+
+    // Safe accessors for additional display fields
+    final workstation = (jc.workstation ?? '').trim();
+    final employee = (jc.primaryEmployeeDisplay ?? '').trim();
+    final qtyLabel = _fmtQty(jc.forQuantity);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        // Locked = WO not yet executed; tapping is suppressed.
+        onTap: isLocked
+            ? null
+            : () => Get.toNamed(
+          AppRoutes.JOB_CARD_FORM,
+          arguments: {'name': name},
+        ),
+        borderRadius: BorderRadius.circular(8),
+        child: Opacity(
+          opacity: isLocked ? 0.55 : 1.0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: isLocked
+                  ? cs.surfaceContainerHighest.withValues(alpha: 0.5)
+                  : null,
+              border: Border.all(
+                color: isLocked
+                    ? cs.outline.withValues(alpha: 0.15)
+                    : clr.withValues(alpha: 0.35),
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                // Status icon
+                Icon(_statusIcon(status), size: 20, color: clr),
+                const SizedBox(width: 10),
+
+                // Main content: name + workstation + employee + qty
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Job Card name
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isLocked ? cs.onSurfaceVariant : cs.onSurface,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                      // Workstation (optional)
+                      if (workstation.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.precision_manufacturing_outlined,
+                              size: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                workstation,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Employee name (optional)
+                      if (employee.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_outline,
+                              size: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                employee,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Quantity (always shown)
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.straighten,
+                            size: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Qty: $qtyLabel',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Status chip (unchanged)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: clr.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: clr,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 6),
+
+                // Trailing: lock icon when locked, chevron when navigable
+                Icon(
+                  isLocked ? Icons.lock_outline : Icons.chevron_right,
+                  size: 18,
+                  color: cs.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OperationEditRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? value;
+  final VoidCallback? onTap;
+
+  const _OperationEditRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: tt.labelMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value?.isNotEmpty == true ? value! : 'Not set',
+                    style: tt.bodyMedium?.copyWith(
+                      color: (value?.isNotEmpty == true)
+                          ? cs.onSurface
+                          : cs.onSurfaceVariant,
+                      fontStyle: (value?.isNotEmpty == true)
+                          ? FontStyle.normal
+                          : FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onTap != null)
+              Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _fmtDatetime(String? raw) {
+  if (raw == null || raw.isEmpty) return '—';
+  try {
+    final dt = raw.contains('T')
+        ? DateTime.parse(raw)
+        : DateFormat('yyyy-MM-dd HH:mm:ss').parse(raw);
+    return DateFormat('dd MMM, HH:mm').format(dt);
+  } catch (_) {
+    return raw;
+  }
+}

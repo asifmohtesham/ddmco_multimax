@@ -17,7 +17,10 @@ class MaterialRequestProvider {
         limitStart: limitStart,
         filters: filters,
         orderBy: orderBy,
-        fields: ['name', 'transaction_date', 'schedule_date', 'status', 'docstatus', 'material_request_type']
+        fields: [
+          'name', 'transaction_date', 'schedule_date', 'status', 'docstatus',
+          'material_request_type', 'owner', 'modified', 'custom_total_qty'
+        ]
     );
   }
 

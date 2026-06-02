@@ -29,7 +29,7 @@ class InfoBlock extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: backgroundColor ?? colorScheme.surfaceContainerHigh.withOpacity(0.5),
+        color: backgroundColor ?? colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -39,9 +39,9 @@ class InfoBlock extends StatelessWidget {
             children: [
               if (icon != null) ...[
                 Icon(
-                    icon,
-                    size: 14,
-                    color: iconColor ?? colorScheme.onSurfaceVariant
+                  icon,
+                  size: 14,
+                  color: iconColor ?? colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 6),
               ],
@@ -55,15 +55,16 @@ class InfoBlock extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          child ?? Text(
-            value ?? '-',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: valueColor ?? colorScheme.onSurface,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child ??
+              Text(
+                value ?? '-',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: valueColor ?? colorScheme.onSurface,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
         ],
       ),
     );
