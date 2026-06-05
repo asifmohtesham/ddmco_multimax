@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_controller.dart';
-import 'package:multimax/app/shared/image_scan/image_scan_result.dart'; // ignore: unused_import
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 /// Bottom panel shown inside the scan dialog when an Item or Batch has been
 /// resolved. Slides up from the bottom of the Stack — not a separate route.
@@ -195,7 +195,7 @@ class ItemScanResultSheet extends StatelessWidget {
   }
 
   Future<void> _saveAndOpen(BuildContext context) async {
-    final result = await controller.enrichAndComplete(imagePath);
+    final ImageScanResult? result = await controller.enrichAndComplete(imagePath);
     if (!context.mounted) return;
     if (result != null) {
       Navigator.of(context).pop(result);
