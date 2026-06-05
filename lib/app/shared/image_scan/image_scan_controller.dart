@@ -47,14 +47,18 @@ class ImageScanController extends GetxController {
     try {
       final bytes = await File(path).readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
       try {
-        imageNaturalSize.value = Size(
-          frame.image.width.toDouble(),
-          frame.image.height.toDouble(),
-        );
+        final frame = await codec.getNextFrame();
+        try {
+          imageNaturalSize.value = Size(
+            frame.image.width.toDouble(),
+            frame.image.height.toDouble(),
+          );
+        } finally {
+          frame.image.dispose();
+        }
       } finally {
-        frame.image.dispose();
+        codec.dispose();
       }
 
       final capture = await scanner.analyzeImage(path);

@@ -181,7 +181,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
           tooltip: 'Search by image',
           onPressed: () async {
             final result = await ImageScanFlow.run(context);
-            if (result != null) {
+            if (result != null && context.mounted) {
               close(context, null);
               onImageScanResult!(result);
             }
