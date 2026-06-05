@@ -1,16 +1,18 @@
 import 'dart:convert';
+import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:get/get.dart' hide Response, FormData;
+import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
-  static const String defaultBaseUrl = "https://erp.multimax.cloud";
+  static const String defaultBaseUrl = "https://erp.domain.com";
 
   bool _dioInitialised = false;
   late Dio _dio;
@@ -18,6 +20,11 @@ class ApiProvider {
   String _baseUrl = defaultBaseUrl;
 
   String get baseUrl => _baseUrl;
+
+  // Expose for providers that need raw Dio access (e.g. makeJobCard form-post)
+  bool get isDioInitialised => _dioInitialised;
+  Dio get dio => _dio;
+  Future<void> initDio() => _initDio();
 
   ApiProvider() {
     _initDio();
@@ -69,6 +76,7 @@ class ApiProvider {
     int limit = 20,
     int limitStart = 0,
     List<String>? fields,
+    String? groupBy = '',
     Map<String, dynamic>? filters,
     Map<String, dynamic>? orFilters,
     String orderBy = 'modified desc',
@@ -80,6 +88,7 @@ class ApiProvider {
       'limit_page_length': limit,
       'limit_start': limitStart,
       'order_by': orderBy,
+      if (groupBy!.isNotEmpty) 'group_by': groupBy,
     };
 
     if (fields != null) {
@@ -89,25 +98,22 @@ class ApiProvider {
     // Process Standard Filters (AND)
     if (filters != null && filters.isNotEmpty) {
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
-        if (entry.value is List && (entry.value as List).length == 2) {
-          return [doctype, entry.key, entry.value[0], entry.value[1]];
+        final val = entry.value;
+        if (val is List) {
+          // 4-element: already a complete Frappe tuple — pass through as-is.
+          // Used for child-table filters: ["Job Card Time Log","employee","=","HR-EMP-00013"]
+          if (val.length == 4) return List<dynamic>.from(val);
+          // 3-element: child-table filter stored as [childDoctype, field, op, value]
+          // where key == childDoctype. Expand to full 4-element tuple.
+          if (val.length == 3) return [entry.key, val[0], val[1], val[2]];
+          // 2-element: standard [operator, value] tuple — prepend doctype + key.
+          if (val.length == 2) return [doctype, entry.key, val[0], val[1]];
         }
-        return [doctype, entry.key, '=', entry.value];
+        // Plain scalar value — equality filter.
+        return [doctype, entry.key, '=', val];
       }).toList();
 
       queryParameters['filters'] = json.encode(filterList);
-    }
-
-    // Process OR Filters (OR)
-    if (orFilters != null && orFilters.isNotEmpty) {
-      final List<List<dynamic>> orFilterList = orFilters.entries.map((entry) {
-        if (entry.value is List && (entry.value as List).length == 2) {
-          return [doctype, entry.key, entry.value[0], entry.value[1]];
-        }
-        return [doctype, entry.key, '=', entry.value];
-      }).toList();
-
-      queryParameters['or_filters'] = json.encode(orFilterList);
     }
 
     try {
@@ -166,16 +172,129 @@ class ApiProvider {
     return await _dio.delete('/api/resource/$doctype/$name');
   }
 
+  /// Submit a document (change docstatus from 0 to 1) in ERP.
+  Future<Response> submitDocument(String doctype, String name) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.put('/api/resource/$doctype/$name', data: {'docstatus': 1});
+  }
+
+  /// Call a Frappe whitelisted method via GET with query parameters.
   Future<Response> callMethod(String method, {Map<String, dynamic>? params}) async {
     if (!_dioInitialised) await _initDio();
     return await _dio.get('/api/method/$method', queryParameters: params);
+  }
+
+  /// Call a Frappe whitelisted method via POST with a form-urlencoded body.
+  Future<Response> callMethodPost(
+    String method, {
+    Map<String, dynamic>? params,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.post(
+      '/api/method/$method',
+      data: params,
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+    );
+  }
+
+  /// Probes whether the current session user can list [doctype].
+  ///
+  /// Uses `frappe.client.get_list` with `limit=1` as a permission probe:
+  /// HTTP 200 (even empty list) → has access; HTTP 403 → denied.
+  /// `frappe.client.has_permission` requires a `docname` positional arg in
+  /// Frappe v15 and cannot check DocType-level access without it.
+  /// [permType] is accepted for API compatibility but not sent to the server —
+  /// list access is the binding check for both read and report in standard ERPNext.
+  Future<Response> hasPermission(String doctype, String permType) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.get(
+      '/api/method/frappe.client.get_list',
+      queryParameters: {
+        'doctype': doctype,
+        'limit_page_length': 1,
+        'fields': '["name"]',
+      },
+    );
+  }
+
+  /// Parses a `frappe.client.get_list` permission-probe response into a [bool].
+  ///
+  /// Expected shape: `{"message": [...]}` — a List (possibly empty) means
+  /// the user has access; anything else (null, non-Map, missing key) means denied.
+  /// HTTP 403 is handled upstream as a [DioException]; this method only sees
+  /// the successful-200 body.
+  /// Exposed as a public static method so unit tests can exercise this
+  /// logic without a live HTTP connection.
+  static bool parseHasPermissionResponse(dynamic data) {
+    if (data is! Map) return false;
+    return data['message'] is List;
   }
 
   // ---------------------------------------------------------------------------
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
 
-  Future<List<String>> getList(String doctype) async {
+  /// Named-param version used by [ItemSheetControllerBase.validateBatch] and
+  /// any other caller that needs to filter by fields.
+  ///
+  /// Returns a [List<Map<String, dynamic>>] of matching document rows so
+  /// callers can read individual field values (e.g. expiry_date).
+  ///
+  /// [_positional] is an OPTIONAL positional kept for backwards compat with
+  /// any legacy call-site that still passes the doctype positionally.
+  /// New call-sites should use the named [doctype] parameter instead:
+  ///
+  ///   ApiProvider().getList(doctype: 'Batch', filters: {...}, fields: [...])
+  ///
+  /// Group D fix: the param was previously declared as a required positional
+  /// (String? _positional) with no default — callers that omitted it (i.e.
+  /// all named-only call-sites) produced a compile error.  Wrapping in
+  /// square brackets makes it an optional positional with an implicit null
+  /// default, so both calling styles compile correctly.
+  Future<List<Map<String, dynamic>>> getList(
+    String? _positional, {
+    String? doctype,
+    Map<String, dynamic>? filters,
+    List<String>? fields,
+    int limit = 20,
+    String orderBy = 'modified desc',
+    String? groupBy = '',
+  }) async {
+    final dt = _positional ?? doctype;
+    if (dt == null) return [];
+
+    try {
+      if (!_dioInitialised) await _initDio();
+      final response = await _dio.get('/api/resource/$dt', queryParameters: {
+        if (fields != null) 'fields': json.encode(fields)
+        else 'fields': json.encode(['name']),
+        'limit_page_length': limit,
+        'order_by': orderBy,
+        if (groupBy!.isNotEmpty) 'group_by': groupBy,
+        if (filters != null && filters.isNotEmpty)
+          'filters': json.encode(
+            filters.entries.map((e) {
+              if (e.value is List && (e.value as List).length == 2) {
+                return [dt, e.key, e.value[0], e.value[1]];
+              }
+              return [dt, e.key, '=', e.value];
+            }).toList(),
+          ),
+      });
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return (response.data['data'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      }
+    } catch (e) {
+      print('Error fetching list for $dt: $e');
+    }
+    return [];
+  }
+
+  /// Legacy positional convenience; returns names only.
+  /// Prefer [getList] with named params for any new call-sites.
+  Future<List<String>> getListSimple(String doctype) async {
     try {
       if (!_dioInitialised) await _initDio();
       final response = await _dio.get('/api/resource/$doctype', queryParameters: {
@@ -190,6 +309,46 @@ class ApiProvider {
       print('Error fetching list for $doctype: $e');
     }
     return [];
+  }
+
+  /// Parses a Frappe `/api/resource/Rack` response into rack name strings.
+  ///
+  /// Expects `data['data']` to be a `List` of maps each with a `'name'` key.
+  /// Skips null entries, non-Map entries, and entries with a null or empty name.
+  /// Returns an empty list on any shape mismatch or null input.
+  static List<String> parseRacksByWarehouseResponse(dynamic data) {
+    if (data == null) return [];
+    final rawList = data['data'];
+    if (rawList is! List) return [];
+    final result = <String>[];
+    for (final item in rawList) {
+      if (item is! Map) continue;
+      final name = item['name'];
+      if (name is String && name.isNotEmpty) {
+        result.add(name);
+      }
+    }
+    return result;
+  }
+
+  /// Fetches all rack names in [warehouse] from the Rack DocType API.
+  ///
+  /// Calls `GET /api/resource/Rack?filters=[["Rack","warehouse","=",wh]]&fields=["name"]&limit_page_length=0`.
+  /// Returns an empty list when [warehouse] is empty or on any API error.
+  Future<List<String>> getRacksByWarehouse(String warehouse) async {
+    if (warehouse.isEmpty) return [];
+    try {
+      if (!_dioInitialised) await _initDio();
+      final response = await _dio.get('/api/resource/Rack', queryParameters: {
+        'fields':            json.encode(['name']),
+        'filters':           json.encode([['Rack', 'warehouse', '=', warehouse]]),
+        'limit_page_length': 0,
+        'order_by':          'name asc',
+      });
+      return parseRacksByWarehouseResponse(response.data);
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
@@ -243,13 +402,34 @@ class ApiProvider {
           'report_name': 'Stock Balance',
           'filters': json.encode(filters),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
           '_': DateTime.now().millisecondsSinceEpoch
         }
     );
   }
 
-  Future<Response> getBatchWiseBalance(String itemCode, String batchNo, {String? warehouse}) async {
+  // ---------------------------------------------------------------------------
+  // getBatchWiseBalance
+  //
+  // All-named params, optional batchNo (omit = fetch all batches for item+wh).
+  // Used by ItemSheetControllerBase.fetchBatchBalance and
+  // StockEntryItemFormController.fetchBatchWiseHistory.
+  // Signature was already correct on this branch — no changes needed.
+  // ---------------------------------------------------------------------------
+
+  /// Fetch Batch-Wise Balance History rows for [itemCode].
+  ///
+  /// [batchNo] is optional — omit to fetch all in-stock batches for the item
+  /// (used by BatchPickerSheet pre-fetch / fetchBatchWiseHistory).
+  ///
+  /// Both Map rows (key-based) and List rows (positional) are normalised to
+  /// a consistent shape: {'batch_no': String, 'qty': double, ...} so that
+  /// [ItemSheetControllerBase.fetchBatchBalance] can always read r['qty']
+  /// regardless of the ERP response format.
+  Future<List<Map<String, dynamic>>> getBatchWiseBalance({
+    required String itemCode,
+    String? batchNo,
+    String? warehouse,
+  }) async {
     if (!_dioInitialised) await _initDio();
 
     final storage = Get.find<StorageService>();
@@ -257,26 +437,683 @@ class ApiProvider {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final Map<String, dynamic> filters = {
-      "company": company,
-      "from_date": today,
-      "to_date": today,
-      "item_code": itemCode,
-      "batch_no": batchNo,
+      "company"   : company,
+      "from_date" : today,
+      "to_date"   : today,
+      "item_code" : itemCode,
     };
 
-    if (warehouse != null && warehouse.isNotEmpty) {
-      filters["warehouse"] = warehouse;
+    if (batchNo   != null && batchNo.isNotEmpty)   filters["batch_no"]  = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return [];
+    } catch (_) {
+      return [];
     }
 
-    return await _dio.get('/api/method/frappe.desk.query_report.run',
+    if (response.statusCode != 200) return [];
+
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return [];
+      final rawRows = message['result'] as List<dynamic>?;
+      if (rawRows == null) return [];
+
+      final firstRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
+
+      if (firstRow is Map) {
+        // Fix 1: Map rows from Batch-Wise Balance History report carry the
+        // balance under 'balance_qty', not 'qty'.  Normalise to 'qty' so
+        // fetchBatchBalance() (which reads r['qty']) gets the correct value.
+        return rawRows
+            .whereType<Map>()
+            .map((r) {
+              final m = Map<String, dynamic>.from(r);
+              m['qty'] ??= _toDouble(
+                m['balance_qty'] ?? m['bal_qty'] ?? m['balance'],
+              );
+              return m;
+            })
+            .toList();
+      }
+
+      // List rows — resolve column indices
+      final rawColumns = message['columns'] as List<dynamic>?;
+      if (rawColumns == null) return [];
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      final cols      = rawColumns.map(fn).toList();
+      final batchIdx  = cols.indexWhere((c) => c.contains('batch'));
+      final balIdx    = cols.indexWhere((c) => c.contains('balance'));
+      final whIdx     = cols.indexWhere((c) => c.contains('warehouse'));
+      final expiryIdx = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+
+      if (batchIdx == -1 || balIdx == -1) return [];
+
+      return rawRows
+          .whereType<List>()
+          .where((r) => r.isNotEmpty)
+          .map((r) {
+            final row = <String, dynamic>{};
+            if (batchIdx < r.length) row['batch_no']   = r[batchIdx]?.toString() ?? '';
+            if (balIdx   < r.length) row['qty']        = _toDouble(r[balIdx]);
+            if (whIdx >= 0 && whIdx < r.length) row['warehouse'] = r[whIdx]?.toString() ?? '';
+            if (expiryIdx >= 0 && expiryIdx < r.length) row['expiry_date'] = r[expiryIdx]?.toString();
+            return row;
+          })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // getItemVariantDetails
+  // ---------------------------------------------------------------------------
+
+  /// Fetches all variants of [itemCode] (the template/parent item) via the
+  /// ERPNext "Item Variant Details" script report.
+  ///
+  /// Returns both column definitions (dynamic per item template) and row data
+  /// so the UI can render attribute columns generically at runtime.
+  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
+      getItemVariantDetails(String itemCode) async {
+    if (!_dioInitialised) await _initDio();
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
         queryParameters: {
-          'report_name': 'Batch-Wise Balance History',
-          'filters': json.encode(filters),
+          'report_name'           : 'Item Variant Details',
+          'filters'               : json.encode({'item': itemCode}),
           'ignore_prepared_report': 'true',
-          'are_default_filters': 'false',
-          '_': DateTime.now().millisecondsSinceEpoch
-        }
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    } catch (_) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    if (response.statusCode != 200) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    return parseItemVariantDetailsResponse(
+      response.data['message'] as Map<String, dynamic>?,
     );
+  }
+
+  /// Exposed as a public static method so unit tests can exercise the parsing
+  /// logic without a live HTTP connection or GetX service registration.
+  static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
+      parseItemVariantDetailsResponse(Map<String, dynamic>? message) {
+    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    if (message == null) return empty;
+    try {
+      final rawCols = message['columns'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
+      final columns = rawCols
+          .whereType<Map>()
+          .map((c) => Map<String, dynamic>.from(c))
+          .toList();
+      final rows = rawRows
+          .whereType<Map>()
+          .map((r) => Map<String, dynamic>.from(r))
+          .toList();
+      return (columns: columns, rows: rows);
+    } catch (_) {
+      return empty;
+    }
+  }
+
+  /// Exposed as a public static method so unit tests can exercise the parsing
+  /// logic without a live HTTP connection.
+  static String? parseUploadFileResponse(Map<String, dynamic>? data) {
+    if (data == null) return null;
+    final message = data['message'];
+    if (message is! Map) return null;
+    final fileUrl = message['file_url'];
+    return fileUrl is String ? fileUrl : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FILE UPLOAD
+  // ---------------------------------------------------------------------------
+
+  /// Uploads [filePath] to Frappe and links it to [fieldname] on
+  /// [doctype]/[docname].
+  ///
+  /// Returns the relative file_url (e.g. "/files/image.jpg") on success.
+  /// Throws [DioException] on HTTP error; throws [Exception] when the server
+  /// response does not contain a file_url (malformed response).
+  Future<String> uploadFile({
+    required String filePath,
+    required String doctype,
+    required String docname,
+    required String fieldname,
+    bool isPrivate = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    final formData = FormData.fromMap({
+      'file'      : await MultipartFile.fromFile(filePath, filename: p.basename(filePath)),
+      'doctype'   : doctype,
+      'docname'   : docname,
+      'fieldname' : fieldname,
+      'is_private': isPrivate ? '1' : '0',
+      'folder'    : 'Home/Attachments',
+    });
+    final response = await _dio.post('/api/method/upload_file', data: formData);
+    if (response.statusCode != 200) {
+      throw DioException(
+        requestOptions: response.requestOptions,
+        response: response,
+        message: 'Upload failed with status ${response.statusCode}',
+      );
+    }
+    final fileUrl = parseUploadFileResponse(
+      response.data as Map<String, dynamic>?,
+    );
+    if (fileUrl == null || fileUrl.isEmpty) {
+      throw Exception('Server returned no file_url');
+    }
+    return fileUrl;
+  }
+
+  // ---------------------------------------------------------------------------
+  // getItemDetails — Item Variant Details tile helper
+  // ---------------------------------------------------------------------------
+
+  /// Batch-fetches item_name, item_group, and image for [itemCodes].
+  /// Returns a map of item code → {item_name, item_group, image?}.
+  /// The image value is null when the field is unset.
+  Future<Map<String, Map<String, dynamic>>> getItemDetails(
+      List<String> itemCodes) async {
+    if (itemCodes.isEmpty) return {};
+    try {
+      final rows = await getList(
+        null,
+        doctype: 'Item',
+        fields:  ['name', 'item_name', 'item_group', 'image'],
+        filters: {'name': ['in', itemCodes]},
+        limit:   itemCodes.length + 1,
+        orderBy: 'name asc',
+      );
+      return {
+        for (final r in rows)
+          r['name'].toString(): {
+            'item_name':  r['item_name']?.toString()  ?? '',
+            'item_group': r['item_group']?.toString() ?? '',
+            'image': (r['image']?.toString().isNotEmpty ?? false)
+                ? r['image'].toString()
+                : null,
+          },
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // getStockBalanceWithDimension
+  //
+  // Used by:
+  //   • DeliveryNoteItemFormController.preloadRackStockMap
+  //   • StockEntryItemFormController.validateRack fallback
+  //   • ItemSheetControllerBase.fetchRackBalance
+  //   • RackPickerController.load  (Browse Rack sheet)
+  // ---------------------------------------------------------------------------
+
+  /// Fetch per-rack stock balance rows for [itemCode] + [warehouse],
+  /// optionally filtered by [batchNo].
+  ///
+  /// Always sends `show_variant_attributes=1` and
+  /// `show_dimension_wise_stock=1` so the Stock Balance report expands
+  /// rows by rack dimension.
+  ///
+  /// Both Map rows (key-based) and List rows (positional) are handled.
+  /// Every returned row is normalised to {'rack': String, 'qty': double}
+  /// so callers can always read r['rack'] and r['qty'] regardless of the
+  /// ERP response format.
+  Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
+    required String itemCode,
+    String? warehouse,
+    String? batchNo,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+    final company = storage.getCompany();
+    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final filters = <String, dynamic>{
+      'company'                  : company,
+      'from_date'                : today,
+      'to_date'                  : today,
+      'item_code'                : itemCode,
+      'show_variant_attributes'  : 1,
+      'show_dimension_wise_stock': 1,
+    };
+    if (warehouse != null && warehouse.isNotEmpty) filters['warehouse'] = warehouse;
+    if (batchNo   != null && batchNo.isNotEmpty)   filters['batch_no']  = batchNo;
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Stock Balance',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return [];
+    } catch (_) {
+      return [];
+    }
+
+    if (response.statusCode != 200) return [];
+
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return [];
+      final rawRows = message['result'] as List<dynamic>?;
+      if (rawRows == null || rawRows.isEmpty) return [];
+
+      final firstDataRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
+
+      // ── Fix 2a: Map rows (key-based) ──────────────────────────────────────
+      // Accept both 'rack' key spellings for resilience.
+      // Balance field is 'bal_qty' from Stock Balance report; fall back to
+      // 'qty' / 'balance_qty' for any variant report configurations.
+      if (firstDataRow is Map) {
+        return rawRows
+            .whereType<Map>()
+            .map((r) {
+              final rack = (r['rack'] ?? '').toString().trim();
+              final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
+              return <String, dynamic>{'rack': rack, 'qty': qty};
+            })
+            .where((r) => (r['rack'] as String).isNotEmpty)
+            .toList();
+      }
+
+      // ── Fix 2b: List rows (positional) ────────────────────────────────────
+      // The previous implementation discarded all List rows via
+      // whereType<Map>() with no fallback, silently returning [] when
+      // ERP sends positional arrays.  Resolve column indices and map
+      // to the same normalised shape as the Map branch above.
+      final rawColumns = message['columns'] as List<dynamic>?;
+      if (rawColumns == null) return [];
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      final cols    = rawColumns.map(fn).toList();
+      final rackIdx = cols.indexWhere((c) => c == 'rack');
+
+      // Prefer exact 'bal_qty' column; fall back to any column containing
+      // 'balance' or the generic 'qty' column.
+      int balIdx = cols.indexWhere((c) => c == 'bal_qty');
+      if (balIdx == -1) {
+        balIdx = cols.indexWhere((c) => c.contains('balance') || c == 'qty');
+      }
+
+      if (rackIdx == -1 || balIdx == -1) return [];
+
+      return rawRows
+          .whereType<List>()
+          .where((r) => r.length > rackIdx && r.length > balIdx)
+          .map((r) {
+            final rack = r[rackIdx]?.toString().trim() ?? '';
+            final qty  = _toDouble(r[balIdx]);
+            return <String, dynamic>{'rack': rack, 'qty': qty};
+          })
+          .where((r) => (r['rack'] as String).isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Fetch all available batches for [itemCode] in [warehouse] from the
+  /// Batch-Wise Balance History report, returning only rows where balance > 0.
+  Future<List<BatchWiseBalanceRow>> fetchBatchesForItem(
+    String itemCode, {
+    String? warehouse,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+    final company = storage.getCompany();
+    final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final filters = <String, dynamic>{
+      'company'   : company,
+      'from_date' : today,
+      'to_date'   : today,
+      'item_code' : itemCode,
+    };
+    if (warehouse != null && warehouse.isNotEmpty) {
+      filters['warehouse'] = warehouse;
+    }
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return [];
+    } catch (_) {
+      return [];
+    }
+
+    if (response.statusCode != 200) return [];
+
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return [];
+
+      final rawRows = message['result'] as List<dynamic>?;
+      if (rawRows == null || rawRows.isEmpty) return [];
+
+      final rows = <BatchWiseBalanceRow>[];
+
+      final firstDataRow = rawRows.firstWhere(
+        (r) => r != null,
+        orElse: () => null,
+      );
+
+      if (firstDataRow is Map) {
+        for (final row in rawRows) {
+          if (row is! Map) continue;
+
+          final batchNo    = (row['batch'] ?? row['batch_no'] ?? row['batch_id'] ?? '').toString().trim();
+          final balanceQty = _toDouble(row['balance_qty'] ?? row['bal_qty'] ?? row['balance']);
+
+          if (batchNo.isEmpty || balanceQty <= 0) continue;
+
+          final warehouseVal = (row['warehouse'] ?? '').toString().trim();
+
+          DateTime? expiryDate;
+          final expiryRaw = row['expiry_date'] ?? row['expiration_date'];
+          if (expiryRaw != null && expiryRaw.toString().isNotEmpty) {
+            expiryDate = DateTime.tryParse(expiryRaw.toString());
+          }
+
+          final packagingQty = _toDouble(
+            row['custom_packaging_qty'] ?? row['packaging_qty'],
+          );
+
+          rows.add(BatchWiseBalanceRow(
+            batchNo      : batchNo,
+            balanceQty   : balanceQty,
+            warehouse    : warehouseVal,
+            expiryDate   : expiryDate,
+            packagingQty : packagingQty,
+          ));
+        }
+      } else {
+        final rawColumns = message['columns'] as List<dynamic>?;
+        if (rawColumns == null) return [];
+
+        String innerFn(dynamic col) {
+          if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+          final s = col.toString().toLowerCase();
+          final lastDot = s.lastIndexOf('.');
+          return lastDot >= 0
+              ? s.substring(lastDot + 1).replaceAll('`', '')
+              : s;
+        }
+
+        final cols         = rawColumns.map(innerFn).toList();
+        final batchIdx     = cols.indexWhere((c) => c.contains('batch'));
+        final expiryIdx    = cols.indexWhere((c) => c.contains('expiry') || c.contains('expiration'));
+        final whIdx        = cols.indexWhere((c) => c.contains('warehouse'));
+        final balIdx       = cols.indexWhere((c) => c.contains('balance'));
+        final packagingIdx = cols.indexWhere((c) => c.contains('packaging'));
+
+        if (batchIdx == -1 || balIdx == -1) return [];
+
+        for (final row in rawRows) {
+          if (row is! List || row.isEmpty) continue;
+          final parsed = BatchWiseBalanceRow.fromReportRow(
+            row,
+            batchIdx    : batchIdx,
+            balanceIdx  : balIdx,
+            warehouseIdx: whIdx >= 0 ? whIdx : 0,
+            expiryIdx   : expiryIdx >= 0 ? expiryIdx : 0,
+            packagingIdx: packagingIdx,
+          );
+          if (parsed.batchNo.isNotEmpty && parsed.balanceQty > 0) {
+            rows.add(parsed);
+          }
+        }
+      }
+
+      rows.sort((a, b) => b.balanceQty.compareTo(a.balanceQty));
+      return rows;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Coerce a dynamic value to [double]. Returns 0.0 for null / unparseable.
+  static double _toDouble(dynamic v) => switch (v) {
+    final num n    => n.toDouble(),
+    final String s => double.tryParse(s) ?? 0.0,
+    _              => 0.0,
+  };
+
+  // ---------------------------------------------------------------------------
+  // BOM SEARCH
+  // ---------------------------------------------------------------------------
+
+  Future<Response> searchBom({
+    String? item,
+    String? bom,
+    String? item1,
+    String? item2,
+    String? item3,
+    String? item4,
+    String? item5,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final filters = <String, dynamic>{};
+    if (item?.isNotEmpty  == true) filters['item']   = item;
+    if (bom?.isNotEmpty   == true) filters['bom']    = bom;
+    if (item1?.isNotEmpty == true) filters['item1']  = item1;
+    if (item2?.isNotEmpty == true) filters['item2']  = item2;
+    if (item3?.isNotEmpty == true) filters['item3']  = item3;
+    if (item4?.isNotEmpty == true) filters['item4']  = item4;
+    if (item5?.isNotEmpty == true) filters['item5']  = item5;
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        'report_name'          : 'BOM Search',
+        'filters'              : json.encode(filters),
+        'ignore_prepared_report': 'true',
+        'are_default_filters'  : 'false',
+        '_'                    : DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // JOB CARD SUMMARY
+  // ---------------------------------------------------------------------------
+
+  /// Runs the ERP "Job Card Summary" scripted report.
+  ///
+  /// Filters match the ERP desktop defaults:
+  ///   company        — read from StorageService (required)
+  ///   fiscal_year    — e.g. "2026"
+  ///   from_date      — yyyy-MM-dd
+  ///   to_date        — yyyy-MM-dd
+  ///   work_order     — optional single value (empty list → no filter)
+  ///   production_item — optional item code (empty list → no filter)
+  ///
+  /// Returns the raw [Response] so the controller can parse
+  /// message.result (List<dynamic>) and message.columns.
+  Future<Response> getJobCardSummary({
+    required String fromDate,
+    required String toDate,
+    String? workOrder,
+    String? productionItem,
+    String? workstation,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage     = Get.find<StorageService>();
+    final company     = storage.getCompany();
+    final fiscalYear  = fromDate.substring(0, 4);   // e.g. "2026"
+
+    final filters = <String, dynamic>{
+      'company'         : company,
+      'fiscal_year'     : fiscalYear,
+      'from_date'       : fromDate,
+      'to_date'         : toDate,
+      'work_order'      : workOrder?.isNotEmpty == true ? workOrder : [],
+      'production_item' : productionItem?.isNotEmpty == true ? productionItem : [],
+      'workstation'     : workstation?.isNotEmpty == true ? workstation : [],
+    };
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        'report_name'           : 'Job Card Summary',
+        'filters'               : json.encode(filters),
+        'ignore_prepared_report': 'false',
+        'are_default_filters'   : 'true',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  /// Fetches per-rack available quantity for [itemCode] + [batchNo] within
+  /// [warehouse] from the Stock Ledger report.
+  Future<Map<String, double>> getRackBatchStock({
+    required String itemCode,
+    required String batchNo,
+    required String warehouse,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage  = Get.find<StorageService>();
+    final company  = storage.getCompany();
+    final today    = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    final filters = <String, dynamic>{
+      'company'  : company,
+      'item_code': itemCode,
+      'batch_no' : batchNo,
+      'warehouse': warehouse,
+      'from_date': '2000-01-01',
+      'to_date'  : today,
+    };
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'          : 'Stock Ledger',
+          'filters'              : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'  : 'false',
+          '_'                    : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return {};
+    } catch (_) {
+      return {};
+    }
+
+    if (response.statusCode != 200) return {};
+
+    try {
+      final message = response.data['message'] as Map<String, dynamic>?;
+      if (message == null) return {};
+
+      final rawColumns = message['columns'] as List<dynamic>?;
+      final rawRows    = message['result']  as List<dynamic>?;
+      if (rawColumns == null || rawRows == null || rawRows.isEmpty) return {};
+
+      String fieldname(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        return col.toString().toLowerCase();
+      }
+
+      final colNames = rawColumns.map(fieldname).toList();
+      final rackIdx  = colNames.indexOf('rack');
+      final qtyIdx   = colNames.indexOf('qty_after_transaction');
+
+      if (rackIdx == -1 || qtyIdx == -1) return {};
+
+      final result = <String, double>{};
+      for (final row in rawRows) {
+        if (row is! List || row.length <= rackIdx || row.length <= qtyIdx) {
+          continue;
+        }
+        final rack = row[rackIdx]?.toString().trim() ?? '';
+        if (rack.isEmpty) continue;
+
+        final qty = switch (row[qtyIdx]) {
+          final num n   => n.toDouble(),
+          final String s => double.tryParse(s) ?? 0.0,
+          _              => 0.0,
+        };
+
+        result[rack] = qty;
+      }
+
+      return result;
+    } catch (_) {
+      return {};
+    }
   }
 
   // Module specific getters
@@ -294,7 +1131,7 @@ class ApiProvider {
   Future<Response> getDeliveryNote(String name) async => getDocument('Delivery Note', name);
   Future<Response> getPosUploads({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async {
     if (filters != null && filters.containsKey('docstatus')) filters.remove('docstatus');
-    return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'customer', 'date', 'modified', 'status', 'total_qty']);
+    return getDocumentList('POS Upload', limit: limit, limitStart: limitStart, filters: filters, fields: ['name', 'total_qty']);
   }
   Future<Response> getPosUpload(String name) async => getDocument('POS Upload', name);
   Future<Response> getTodos({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters}) async =>

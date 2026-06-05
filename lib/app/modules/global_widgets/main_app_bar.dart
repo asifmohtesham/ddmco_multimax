@@ -6,26 +6,59 @@ import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart'
 
 class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
+
+  /// Optional widget to replace the [title] text. When provided, [title] is
+  /// still required (used as a fallback / accessibility label) but the
+  /// visual title column renders [titleWidget] instead of a [Text].
+  final Widget? titleWidget;
+
   final String? status;
   final bool isDirty;
   final bool isSaving;
+
+  /// Result of the most recent save attempt. Forwarded directly to
+  /// [SaveIconButton]. Defaults to [SaveResult.idle] (no-op).
+  final SaveResult saveResult;
+
   final VoidCallback? onSave;
+  final VoidCallback? onReload;
   final List<Widget>? actions;
   final Widget? leading;
   final bool showBack;
   final PreferredSizeWidget? bottom;
   final bool centerTitle;
 
-  // Search Configuration
+  // ── Search configuration ─────────────────────────────────────────────────────────
+
+  /// When provided, shows a 🔍 icon in the app bar that opens
+  /// [DocTypeSearchDelegate].
+  ///
+  /// **API mode** — set both [searchDoctype] and [searchRoute]:
+  /// the delegate queries the ERPNext search API and navigates on tap.
+  ///
+  /// **Local mode** — set only [searchDoctype] (leave [searchRoute] empty)
+  /// and provide [onSearchChanged] + [onSearchClear]:
+  /// every keystroke is forwarded to the controller; no network call is made.
   final String? searchDoctype;
+
+  /// Target route for API-mode search navigation. Leave empty for local mode.
   final String? searchRoute;
+
+  /// Local-mode: called on every keystroke. Ignored in API mode.
+  final ValueChanged<String>? onSearchChanged;
+
+  /// Local-mode: called when the user taps the × clear button.
+  final VoidCallback? onSearchClear;
 
   const MainAppBar({
     super.key,
     required this.title,
+    this.titleWidget,
     this.status,
     this.isSaving = false,
+    this.saveResult = SaveResult.idle,
     this.onSave,
+    this.onReload,
     this.actions,
     this.leading,
     this.showBack = true,
@@ -34,74 +67,130 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isDirty = false,
     this.searchDoctype,
     this.searchRoute,
+    this.onSearchChanged,
+    this.onSearchClear,
   });
+
+  /// Whether the search icon should be rendered.
+  /// Requires at least [searchDoctype] to be set.
+  bool get _hasSearch => (searchDoctype ?? '').isNotEmpty;
+
+  /// API mode: both doctype and route are provided.
+  bool get _isApiSearch =>
+      _hasSearch && (searchRoute ?? '').isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
-    // 1. Determine Display Status: Override with 'Not Saved' if dirty
     final String? displayStatus = isDirty ? 'Not Saved' : status;
 
-    // 2. Construct Actions List: [Search] -> [Custom Actions] -> [Save]
     final List<Widget> appActions = [
-      // Global Search Action
-      if (searchDoctype != null && searchRoute != null)
+      // ── Search icon (API or local mode) ─────────────────────────────────
+      if (_hasSearch)
         IconButton(
-          tooltip: 'Search $searchDoctype',
+          tooltip: 'Search ${searchDoctype!}',
           icon: const Icon(Icons.search),
           onPressed: () {
             showSearch(
               context: context,
-              delegate: GlobalSearchDelegate(
-                doctype: searchDoctype!,
-                targetRoute: searchRoute!,
+              delegate: DocTypeSearchDelegate(
+                doctype:        searchDoctype!,
+                targetRoute:    _isApiSearch ? searchRoute! : '',
+                onSearchChanged: !_isApiSearch ? onSearchChanged : null,
+                onSearchClear:   !_isApiSearch ? onSearchClear  : null,
               ),
             );
           },
         ),
-
-      // Custom Actions injected by the screen
+      // ── Reload ──────────────────────────────────────────────────────────────
+      if (onReload != null)
+        IconButton(
+          tooltip: 'Reload document',
+          icon: const Icon(Icons.refresh),
+          onPressed: isSaving ? null : onReload,
+        ),
+      // ── Extra caller-supplied actions ────────────────────────────────────
       ...(actions ?? []),
-
-      // Global Save Action
+      // ── Save icon (always last) ────────────────────────────────────────
       if (onSave != null)
         SaveIconButton(
-          onPressed: onSave,
-          isSaving: isSaving,
-          isDirty: isDirty,
+          onPressed:  onSave,
+          isSaving:   isSaving,
+          isDirty:    isDirty,
+          saveResult: saveResult,
         ),
     ];
 
+    final PreferredSizeWidget? resolvedBottom =
+      (displayStatus == null && bottom == null && appActions.isEmpty)
+          ? null
+          : PreferredSize(
+        preferredSize: Size.fromHeight(
+          40 + (bottom?.preferredSize.height ?? 0),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 40,
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.centerLeft,
+              child: Row(
+                children: [
+                  if (displayStatus != null) StatusPill(status: displayStatus),
+                  const Spacer(),
+                  ...appActions,
+                ],
+              ),
+            ),
+            if (bottom != null) bottom!,
+          ],
+        ),
+      );
+
     return AppBar(
-      leading: leading ?? (showBack && Navigator.canPop(context)
-          ? IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Get.back(),
-      )
-          : null),
-      title: Column(
-        crossAxisAlignment: centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+      titleSpacing: 0,
+      leadingWidth: 48,
+      leading: leading ??
+          (showBack && Navigator.canPop(context)
+              ? IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.maybePop(context),
+          )
+              : null),
+      title: titleWidget ??
           Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          if (displayStatus != null) ...[
-            const SizedBox(height: 4),
-            StatusPill(status: displayStatus),
-          ]
-        ],
-      ),
-      actions: appActions,
+      actions: const [], // top row intentionally kept free
       centerTitle: centerTitle,
       elevation: 0,
       scrolledUnderElevation: 0,
       backgroundColor: Theme.of(context).primaryColor,
       foregroundColor: Theme.of(context).colorScheme.onPrimary,
-      bottom: bottom,
+      bottom: resolvedBottom,
     );
   }
 
   @override
-  Size get preferredSize => Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 0));
+  Size get preferredSize {
+    final hasSecondRow =
+        (isDirty || status != null) ||
+            onReload != null ||
+            onSave != null ||
+            _hasSearch ||
+            (actions?.isNotEmpty ?? false);
+
+    return Size.fromHeight(
+      kToolbarHeight +
+          (hasSecondRow ? 40.0 : 0.0) +
+          (bottom?.preferredSize.height ?? 0),
+    );
+  }
 }

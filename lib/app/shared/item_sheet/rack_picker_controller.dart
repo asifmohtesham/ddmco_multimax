@@ -1,0 +1,435 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+import 'rack_location.dart';
+
+// ── SufficiencyStatus ─────────────────────────────────────────────────────────
+
+/// Represents how well a rack's available quantity covers the requested qty.
+enum SufficiencyStatus {
+  /// `availableQty >= requestedQty > 0` — rack can fully satisfy the request.
+  sufficient,
+
+  /// `0 < availableQty < requestedQty` — rack has stock but not enough.
+  low,
+
+  /// `availableQty <= 0` — rack is empty for this item/batch.
+  empty,
+
+  /// `requestedQty == 0` — qty field is blank; sufficiency is indeterminate.
+  unknown,
+}
+
+// ── RackPickerEntry ──────────────────────────────────────────────────────────
+
+/// Immutable data record for a single row in [RackPickerSheet].
+///
+/// [location] may be `null` when the rack name does not conform to the
+/// expected 4-part pattern; callers fall back to [rackName] in that case.
+@immutable
+class RackPickerEntry {
+  /// Raw rack asset-code name, e.g. `'KA-WH-DXB1-101A'`.
+  final String rackName;
+
+  /// Structured location decoded from [rackName]. `null` if unparseable.
+  final RackLocation? location;
+
+  /// Available quantity for the current item + batch in this rack.
+  final double availableQty;
+
+  /// Quantity the operator is trying to pick (from the qty field).
+  final double requestedQty;
+
+  const RackPickerEntry({
+    required this.rackName,
+    required this.location,
+    required this.availableQty,
+    required this.requestedQty,
+  });
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+
+  SufficiencyStatus get status {
+    if (requestedQty <= 0)            return SufficiencyStatus.unknown;
+    if (availableQty <= 0)            return SufficiencyStatus.empty;
+    if (availableQty >= requestedQty) return SufficiencyStatus.sufficient;
+    return SufficiencyStatus.low;
+  }
+
+  bool get isSufficient => status == SufficiencyStatus.sufficient;
+
+  /// Warehouse name derived locally from the rack asset code.
+  /// Falls back to an empty string when [location] is null.
+  String get warehouseName => location?.warehouseName ?? '';
+
+  /// Human-readable physical location label (e.g. `'Aisle 101 · Shelf A'`).
+  /// Falls back to [rackName] when [location] is null.
+  String get displayLabel => location?.displayLabel ?? rackName;
+
+  /// Compact shelf identifier (e.g. `'101A'`).
+  String get shortLabel => location?.shortLabel ?? rackName;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RackPickerEntry &&
+          runtimeType == other.runtimeType &&
+          rackName == other.rackName;
+
+  @override
+  int get hashCode => rackName.hashCode;
+}
+
+// ── RackPickerController ───────────────────────────────────────────────────────
+
+/// On-demand GetX controller that fetches and sorts rack availability data
+/// for display in [RackPickerSheet].
+///
+/// ## Data sources
+/// - **Source rack** (`load()`): queries [ApiProvider.getStockBalanceWithDimension]
+///   and falls back to [fallbackMap] when the live fetch returns nothing.
+/// - **Target rack** (`loadForTarget()`): queries [ApiProvider.getRacksByWarehouse]
+///   (Rack DocType) to list all racks in the warehouse regardless of stock level.
+///   Sets [isTargetMode] to `true`; the sheet suppresses stock-centric UI.
+///
+/// ## Instantiation
+/// Created by the picker button in [ValidatedRackField] via `Get.put()`
+/// with a unique tag so multiple sheets (source + target in SE) can coexist:
+/// ```dart
+/// Get.put(RackPickerController(), tag: 'source_rack');
+/// ```
+/// Deleted when the picker sheet closes:
+/// ```dart
+/// Get.delete<RackPickerController>(tag: 'source_rack');
+/// ```
+///
+/// ## Usage
+/// ```dart
+/// final ctrl = Get.put(RackPickerController(), tag: tag);
+/// ctrl.load(
+///   itemCode:     'ITEM-001',
+///   batchNo:      'BATCH-001',
+///   warehouse:    'WH-DXB1 - KA',
+///   requestedQty: 5.0,
+///   currentRack:  'KA-WH-DXB1-101A',
+///   fallbackMap:  rackStockMap,         // from ItemSheetControllerBase
+/// );
+/// // For a destination rack (no stock context needed):
+/// ctrl.loadForTarget(warehouse: 'WH-DXB1 - KA', currentRack: 'KA-WH-DXB1-202B');
+/// ```
+class RackPickerController extends GetxController {
+  final ApiProvider _api = Get.find<ApiProvider>();
+
+  // ── Observable state ─────────────────────────────────────────────────────
+
+  /// Whether a Stock Balance fetch is in progress.
+  var isLoading = false.obs;
+
+  /// Full sorted list of rack entries (all warehouses).
+  /// The sheet displays [visibleEntries] which may be a filtered subset.
+  var entries = <RackPickerEntry>[].obs;
+
+  /// The rack currently written into the rack field (may be empty).
+  var selectedRack = ''.obs;
+
+  /// Non-null when the Stock Balance fetch failed or returned empty and the
+  /// picker fell back to [fallbackMap]. Shown as a subtle info banner in
+  /// the sheet.
+  var usedFallback = false.obs;
+
+  /// Whether to restrict the visible list to racks whose warehouse matches
+  /// the document-level [warehouse]. Defaults to `true` (On).
+  /// Disabled automatically when [warehouse] is empty.
+  var filterByWarehouse = true.obs;
+
+  /// `true` when the picker was opened for a target (destination) rack via
+  /// [loadForTarget]. Drives UI changes in [RackPickerSheet]: hides the
+  /// sufficiency bar, changes the empty-state message, and replaces the
+  /// sufficiency badge with a simple rack count.
+  var isTargetMode = false.obs;
+
+  // ── Input context (set by load()) ────────────────────────────────────
+
+  String _itemCode     = '';
+  String _batchNo      = '';
+  String _warehouse    = '';
+  double _requestedQty = 0.0;
+
+  String get itemCode     => _itemCode;
+  String get batchNo      => _batchNo;
+  String get warehouse    => _warehouse;
+  double get requestedQty => _requestedQty;
+
+  // ── Derived / filtered list ───────────────────────────────────────────────
+
+  /// Subset of [entries] shown in the sheet.
+  ///
+  /// When [filterByWarehouse] is `true` **and** [warehouse] is non-empty,
+  /// only entries whose [RackPickerEntry.warehouseName] matches [warehouse]
+  /// are returned. Otherwise the full [entries] list is returned.
+  List<RackPickerEntry> get visibleEntries {
+    if (filterByWarehouse.value && _warehouse.isNotEmpty) {
+      return entries
+          .where((e) => e.warehouseName == _warehouse)
+          .toList();
+    }
+    return entries;
+  }
+
+  /// Count of sufficient-stock racks in the **visible** list.
+  int get visibleSufficientCount =>
+      visibleEntries.where((e) => e.isSufficient).length;
+
+  // ── load() ─────────────────────────────────────────────────────────────────
+
+  /// Fetches rack availability from the Stock Balance report and populates
+  /// [entries].
+  ///
+  /// Call this immediately after `Get.put()` without awaiting — the sheet
+  /// opens immediately and its [isLoading] spinner resolves when the fetch
+  /// completes.
+  ///
+  /// Parameters:
+  /// - [itemCode]    : ERPNext item code.
+  /// - [batchNo]     : Active batch number; may be empty for non-batch items.
+  /// - [warehouse]   : Resolved warehouse name (e.g. `'WH-DXB1 - KA'`).
+  /// - [requestedQty]: Value from the qty field; used for sufficiency bars.
+  /// - [currentRack] : Rack already written into the rack field; shown as
+  ///                   selected (highlighted) in the picker list.
+  /// - [fallbackMap] : [ItemSheetControllerBase.rackStockMap] — used when
+  ///                   the Stock Balance report returns an empty result.
+  Future<void> load({
+    required String              itemCode,
+    required String              batchNo,
+    required String              warehouse,
+    required double              requestedQty,
+    required String              currentRack,
+    required Map<String, double> fallbackMap,
+  }) async {
+    _itemCode     = itemCode;
+    _batchNo      = batchNo;
+    _warehouse    = warehouse;
+    _requestedQty = requestedQty;
+    selectedRack.value      = currentRack;
+    usedFallback.value      = false;
+    filterByWarehouse.value = true;   // reset to On on every fresh load
+    isLoading.value         = true;
+
+    try {
+      // ── 1. Primary: Stock Balance with Dimension (per-rack qty) ──────────
+      // getStockBalanceWithDimension sends show_variant_attributes=1 and
+      // show_dimension_wise_stock=1, and discards the trailing Total row.
+      // Returns rows: [{'rack': 'KA-WH-DXB1-101A', 'qty': 12.0}, ...]
+      final rows = await _api.getStockBalanceWithDimension(
+        itemCode:  itemCode,
+        warehouse: warehouse.isNotEmpty ? warehouse : null,
+        // batchNo:   batchNo.isNotEmpty   ? batchNo   : null,
+      );
+
+      // Collapse rows into a {rackId → qty} map (sum duplicate rack entries).
+      final liveMap = <String, double>{};
+      for (final row in rows.whereType<Map<String, dynamic>>()) {
+        final rack = (row['rack'] ?? '').toString().trim();
+        if (rack.isEmpty) continue;
+        final qty = (row['qty'] as num?)?.toDouble() ?? 0.0;
+        liveMap[rack] = (liveMap[rack] ?? 0.0) + qty;
+      }
+
+      // ── 2. Merge / fallback ───────────────────────────────────────────────
+      // If live fetch returned nothing, fall back to the pre-loaded
+      // rackStockMap (already fetched by preloadRackStockMap).
+      Map<String, double> stockMap;
+      if (liveMap.isEmpty) {
+        usedFallback.value = true;
+        stockMap = Map<String, double>.from(fallbackMap);
+      } else {
+        // Start with fallback (broader coverage), overwrite with live data.
+        stockMap = Map<String, double>.from(fallbackMap)..addAll(liveMap);
+      }
+
+      // ── 3. Build + sort entries ───────────────────────────────────────────
+      final built = stockMap.entries.map((e) {
+        return RackPickerEntry(
+          rackName:     e.key,
+          location:     RackLocation.tryParse(e.key),
+          availableQty: e.value,
+          requestedQty: requestedQty,
+        );
+      }).toList();
+
+      built.sort(_compareEntries);
+      entries.assignAll(built);
+    } catch (_) {
+      // On any error, surface fallback data so the sheet is never fully empty.
+      usedFallback.value = true;
+      final built = fallbackMap.entries.map((e) {
+        return RackPickerEntry(
+          rackName:     e.key,
+          location:     RackLocation.tryParse(e.key),
+          availableQty: e.value,
+          requestedQty: requestedQty,
+        );
+      }).toList();
+      built.sort(_compareEntries);
+      entries.assignAll(built);
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Fetches all rack names in [warehouse] from the Rack DocType API and
+  /// populates [entries] with zero-qty entries (all [SufficiencyStatus.unknown],
+  /// all tappable). Sets [isTargetMode] to `true`.
+  ///
+  /// If [warehouse] is empty, [entries] is cleared immediately with no API call.
+  /// On any API error, [entries] is cleared and [isLoading] is reset.
+  Future<void> loadForTarget({
+    required String warehouse,
+    required String currentRack,
+  }) async {
+    isTargetMode.value      = true;
+    _warehouse              = warehouse;
+    _itemCode               = '';
+    _batchNo                = '';
+    _requestedQty           = 0.0;
+    selectedRack.value      = currentRack;
+    filterByWarehouse.value = true;
+    usedFallback.value      = false;
+
+    if (warehouse.isEmpty) {
+      entries.clear();
+      return;
+    }
+
+    isLoading.value = true;
+    try {
+      final names = await _api.getRacksByWarehouse(warehouse);
+      final built = names.map((name) {
+        return RackPickerEntry(
+          rackName:     name,
+          location:     RackLocation.tryParse(name),
+          availableQty: 0.0,
+          requestedQty: 0.0,
+        );
+      }).toList();
+      built.sort(_compareEntriesByLocation);
+      entries.assignAll(built);
+    } catch (_) {
+      entries.clear();
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // ── Sorting ─────────────────────────────────────────────────────────────────
+
+  /// Sort order:
+  /// 1. Sufficient racks before insufficient/empty racks.
+  /// 2. Within each group: descending available qty.
+  /// 3. Ties: ascending aisle number then ascending shelf letter,
+  ///    preserving physical adjacency in the list.
+  static int _compareEntries(RackPickerEntry a, RackPickerEntry b) {
+    // ── Group: sufficient first ──
+    final aSuf = a.isSufficient ? 0 : 1;
+    final bSuf = b.isSufficient ? 0 : 1;
+    if (aSuf != bSuf) return aSuf.compareTo(bSuf);
+
+    // ── Within group: higher qty first ──
+    final qtyComp = b.availableQty.compareTo(a.availableQty);
+    if (qtyComp != 0) return qtyComp;
+
+    // ── Tie-break: physical location (aisle asc, shelf asc) ──
+    final aAisle = a.location?.aisleNumber ?? 9999;
+    final bAisle = b.location?.aisleNumber ?? 9999;
+    final aisleComp = aAisle.compareTo(bAisle);
+    if (aisleComp != 0) return aisleComp;
+
+    final aShelf = a.location?.shelfLetter ?? 'Z';
+    final bShelf = b.location?.shelfLetter ?? 'Z';
+    return aShelf.compareTo(bShelf);
+  }
+
+  /// Sort order for target mode: aisle number ascending, then shelf letter
+  /// ascending. Used by [loadForTarget] where sufficiency and qty are irrelevant.
+  static int _compareEntriesByLocation(RackPickerEntry a, RackPickerEntry b) {
+    final aAisle = a.location?.aisleNumber ?? 9999;
+    final bAisle = b.location?.aisleNumber ?? 9999;
+    final aisleComp = aAisle.compareTo(bAisle);
+    if (aisleComp != 0) return aisleComp;
+
+    final aShelf = a.location?.shelfLetter ?? 'Z';
+    final bShelf = b.location?.shelfLetter ?? 'Z';
+    return aShelf.compareTo(bShelf);
+  }
+
+  // ── Selection ─────────────────────────────────────────────────────────────────
+
+  /// Mark [rack] as selected. Called from [RackPickerSheet] when the user
+  /// taps a tile. The sheet's [onSelected] callback fires immediately after.
+  void selectRack(String rack) {
+    selectedRack.value = rack;
+  }
+
+  // ── Helpers for the sheet UI ──────────────────────────────────────────────
+
+  /// Count of sufficient-stock racks in the full (unfiltered) list.
+  int get sufficientCount =>
+      entries.where((e) => e.isSufficient).length;
+
+  /// Count of racks with any stock (including low) in the full list.
+  int get withStockCount =>
+      entries.where((e) => e.availableQty > 0).length;
+}
+
+/// Static rack-picker lifecycle utility.
+///
+/// Registers a scoped [RackPickerController], presents [RackPickerSheet],
+/// calls [onSelected] with the picked rack, then disposes the controller
+/// after the sheet closes. Used by both [SharedSourceRackField] and
+/// [SharedTargetRackField] to avoid duplicating the lifecycle boilerplate.
+abstract final class RackPickerLauncher {
+  /// Opens a [RackPickerSheet] for [warehouse] + [itemCode] + [batchNo],
+  /// calls [onSelected] with the chosen rack ID, and disposes the scoped
+  /// [RackPickerController] after the sheet closes.
+  ///
+  /// Both [SharedSourceRackField] and [SharedTargetRackField] delegate here
+  /// so the picker-lifecycle boilerplate is not duplicated.
+  static Future<void> open(
+      BuildContext context, {
+        required String warehouse,
+        required String itemCode,
+        required String batchNo,
+        required double requestedQty,
+        required String currentRack,
+        required Map<String, double> fallbackMap,
+        required void Function(String rack) onSelected,
+      }) async {
+    final tag = 'rack_picker_${DateTime.now().microsecondsSinceEpoch}';
+    final ctrl = Get.put(RackPickerController(), tag: tag);
+    unawaited(ctrl.load(
+      itemCode:     itemCode,
+      batchNo:      batchNo,
+      warehouse:    warehouse,
+      requestedQty: requestedQty,
+      currentRack:  currentRack,
+      fallbackMap:  fallbackMap,
+    ));
+    await Get.bottomSheet(
+      RackPickerSheet(
+        pickerTag:  tag,
+        onSelected: onSelected,
+      ),
+      isScrollControlled: true,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Get.isRegistered<RackPickerController>(tag: tag)) {
+        Get.delete<RackPickerController>(tag: tag);
+      }
+    });
+  }
+}

@@ -5,5 +5,8 @@ class PurchaseOrderFormBinding extends Bindings {
   @override
   void dependencies() {
     Get.lazyPut<PurchaseOrderFormController>(() => PurchaseOrderFormController());
+    // PurchaseOrderItemFormController is registered on-demand (tagged) inside
+    // PurchaseOrderFormController._openItemSheet() and deleted on sheet close.
+    // No static registration needed here.
   }
 }

@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -23,8 +24,11 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/providers/bom_provider.dart';
 
-enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch }
+enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
+
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -35,7 +39,13 @@ class HomeController extends GetxController {
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
+  final BomProvider _bomProvider = Get.find<BomProvider>();
   final ScanService _scanService = Get.find<ScanService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+
+  /// Worker that routes hardware (DataWedge) scans to [onScan].
+  /// Disposed in [onClose].
+  Worker? _scanWorker;
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
@@ -63,6 +73,13 @@ class HomeController extends GetxController {
   var activeJobCardsCount = 0.obs;
   final int targetJobCards = 40;
 
+  /// Count of active (is_active = 1) BOMs fetched on dashboard load.
+  var activeBomCount = 0.obs;
+
+  /// Active WIP Job Card for the session employee (null if none).
+  final activeWipJcName      = RxnString();
+  final activeWipJcOperation = RxnString();
+
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
   var isRackScanning = false.obs;
@@ -86,10 +103,18 @@ class HomeController extends GetxController {
     super.onInit();
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
+
+    // ── DataWedge hardware-scan worker ────────────────────────────────────
+    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
+      if (code.isEmpty) return;
+      if (Get.currentRoute != AppRoutes.HOME) return;
+      onScan(code);
+    });
   }
 
   @override
   void onClose() {
+    _scanWorker?.dispose();
     barcodeController.dispose();
     super.onClose();
   }
@@ -122,7 +147,13 @@ class HomeController extends GetxController {
         final response = await _userProvider.getDirectReports(empId);
         if (response.statusCode == 200 && response.data['data'] != null) {
           final data = response.data['data'] as List;
-          final reports = data.map((e) => User(id: e['user_id'] ?? '', name: e['employee_name'] ?? 'Unknown', email: e['user_id'] ?? '', roles: [], employeeId: e['name'])).toList();
+          final reports = data.map((e) => User(
+            id: e['user_id'] ?? '',
+            name: e['employee_name'] ?? 'Unknown',
+            email: e['user_id'] ?? '',
+            roles: [],
+            employeeId: e['name'],
+          )).toList();
           if (currentUser != null && !reports.any((u) => u.email == currentUser.email)) {
             reports.insert(0, currentUser);
           }
@@ -159,17 +190,45 @@ class HomeController extends GetxController {
         woFilters['owner'] = filterEmail;
         jcFilters['owner'] = filterEmail;
       }
+
+      // BOM count is company-wide (is_active only — not user-scoped).
+      const Map<String, dynamic> bomFilters = {'is_active': 1, 'docstatus': 1};
+
       final results = await Future.wait([
         _woProvider.getWorkOrders(limit: 0, filters: woFilters),
         _jcProvider.getJobCards(limit: 0, filters: jcFilters),
+        _bomProvider.getBOMs(limit: 0, filters: bomFilters),
       ]);
+
       activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
-      activeJobCardsCount.value = _getCountFromResponse(results[1]);
+      activeJobCardsCount.value   = _getCountFromResponse(results[1]);
+      activeBomCount.value        = _getCountFromResponse(results[2]);
+
+      await _fetchActiveWipJc();
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
       isLoadingStats.value = false;
     }
+  }
+
+  Future<void> _fetchActiveWipJc() async {
+    final empId = _authController.currentUser.value?.employeeId;
+    if (empId == null || empId.isEmpty) return;
+    try {
+      final res = await _jcProvider.getJobCards(
+        filters: {
+          'status': 'Work In Progress',
+          '__child__Job Card Employee': ['Job Card Employee', 'employee', '=', empId],
+        },
+        limit: 1,
+      );
+      if (res.statusCode == 200) {
+        final list = (res.data['data'] as List?) ?? [];
+        activeWipJcName.value      = list.isNotEmpty ? list.first['name']?.toString() : null;
+        activeWipJcOperation.value = list.isNotEmpty ? list.first['operation']?.toString() : null;
+      }
+    } catch (_) {}
   }
 
   // --- Timeline Logic ---
@@ -300,9 +359,7 @@ class HomeController extends GetxController {
 
   // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
-    // 1. Prevent Double Trigger / Re-entry
     if (isScanning.value) return;
-
     if (code.isEmpty) return;
 
     isScanning.value = true;
@@ -313,12 +370,10 @@ class HomeController extends GetxController {
         await _handleRackScan(result.rackId!);
       }
       else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
-        _openItemDetailSheet(result.itemData!.itemCode);
+        _openItemDetailSheet(result.itemData!.itemCode, batchNo: result.batchNo);
       }
-      // NEW: Handle Variant Of Scan
       else if (result.type == ScanType.variant_of) {
         barcodeController.clear();
-        // Open Item List with Filter
         Get.toNamed(AppRoutes.ITEM, arguments: {
           'filters': {
             'variant_of': ['like', '%${result.rawCode}%']
@@ -327,7 +382,6 @@ class HomeController extends GetxController {
         });
       }
       else if (result.type == ScanType.multiple && result.candidates != null) {
-        // Open Disambiguation Sheet
         barcodeController.clear();
         Get.bottomSheet(
           MultiItemSelectionSheet(
@@ -348,12 +402,12 @@ class HomeController extends GetxController {
     }
   }
 
-  void _openItemDetailSheet(String itemCode) async {
-    final itemFormController = Get.put(ItemFormController());
-    itemFormController.loadItem(itemCode);
+  void _openItemDetailSheet(String itemCode, {String? batchNo}) {
+    Get.put(ItemTabController());
+    Get.put(ItemFormController())..loadItem(itemCode, batchNo: batchNo);
     barcodeController.clear();
 
-    await Get.bottomSheet(
+    Get.bottomSheet(
       FractionallySizedBox(
         heightFactor: 0.9,
         child: ClipRRect(
@@ -363,26 +417,25 @@ class HomeController extends GetxController {
       ),
       isScrollControlled: true,
       enableDrag: true,
-      backgroundColor: Colors.white,
-    );
-    Get.delete<ItemFormController>();
+    ).then((_) {
+      Get.delete<ItemTabController>(force: true);
+      Get.delete<ItemFormController>(force: true);
+    });
   }
 
   Future<void> _handleRackScan(String rackCode) async {
     isRackScanning.value = true;
-    barcodeController.clear(); // Clear immediately for UX
+    barcodeController.clear();
     try {
       final parts = rackCode.split('-');
       if (parts.length < 3) throw Exception('Invalid Rack Format');
       final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
 
-      // Call provider which now uses "Stock Balance - Custom"
       final response = await _itemProvider.getWarehouseStock(warehouse);
 
       if (response.statusCode == 200 && response.data['message']?['result'] != null) {
         final List<dynamic> data = response.data['message']['result'];
 
-        // Filter results for the specific scanned rack
         final rackItems = data.where((row) {
           final rowRack = row['rack']?.toString() ?? '';
           return rowRack == rackCode;
@@ -391,7 +444,6 @@ class HomeController extends GetxController {
         if (rackItems.isEmpty) {
           GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
         } else {
-          // Open the updated RackContentsSheet
           Get.bottomSheet(
             RackContentsSheet(rackId: rackCode, items: rackItems),
             isScrollControlled: true,
@@ -418,8 +470,6 @@ class HomeController extends GetxController {
       if(response.statusCode == 200 && response.data['data'] != null) {
         final data = response.data['data'];
         _allFulfillmentUploads = (data as List).map((e)=>PosUpload.fromJson(e)).toList();
-
-        // Re-apply filters to the fresh data
         filterFulfillmentList(fulfillmentSearchQuery.value);
       }
     } catch(e){
@@ -431,9 +481,7 @@ class HomeController extends GetxController {
 
   void setFulfillmentPrefixFilter(List<String> prefixes) {
     _fulfillmentPrefixFilters = prefixes;
-    // Clear search query when switching modes to avoid confusion
     fulfillmentSearchQuery.value = '';
-    // Apply filters immediately if data exists
     if (_allFulfillmentUploads.isNotEmpty) {
       filterFulfillmentList('');
     }
@@ -443,14 +491,12 @@ class HomeController extends GetxController {
     fulfillmentSearchQuery.value = query;
     List<PosUpload> filtered = _allFulfillmentUploads;
 
-    // 1. Apply Prefix Filter (if any)
     if (_fulfillmentPrefixFilters.isNotEmpty) {
       filtered = filtered.where((doc) {
         return _fulfillmentPrefixFilters.any((prefix) => doc.name.startsWith(prefix));
       }).toList();
     }
 
-    // 2. Apply Search Query
     if (query.isNotEmpty) {
       filtered = filtered.where((d) =>
       d.name.toLowerCase().contains(query.toLowerCase()) ||
@@ -463,6 +509,7 @@ class HomeController extends GetxController {
 
   Future<void> handleFulfillmentSelection(PosUpload posUpload) async {
     Get.back();
+
     GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
     final name = posUpload.name.toUpperCase();
     if (name.startsWith('KX') || name.startsWith('MX')) {
@@ -515,35 +562,39 @@ class HomeController extends GetxController {
 
   void _updateActiveScreenForRoute(String route) {
     switch (route) {
-      case AppRoutes.HOME: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 0; break;
-      case AppRoutes.STOCK_ENTRY: activeScreen.value = ActiveScreen.stockEntry; selectedDrawerIndex.value = 1; break;
-      case AppRoutes.DELIVERY_NOTE: activeScreen.value = ActiveScreen.deliveryNote; selectedDrawerIndex.value = 2; break;
-      case AppRoutes.PACKING_SLIP: activeScreen.value = ActiveScreen.packingSlip; selectedDrawerIndex.value = 3; break;
-      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4; break;
-      case AppRoutes.POS_UPLOAD: activeScreen.value = ActiveScreen.posUpload; selectedDrawerIndex.value = 5; break;
-      case AppRoutes.TODO: activeScreen.value = ActiveScreen.todo; selectedDrawerIndex.value = 6; break;
-      case AppRoutes.ITEM: activeScreen.value = ActiveScreen.item; selectedDrawerIndex.value = 7; break;
-      case AppRoutes.WORK_ORDER: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 8; break; // Assuming Work Order uses index 8
-      case AppRoutes.JOB_CARD: activeScreen.value = ActiveScreen.home; selectedDrawerIndex.value = 9; break;  // Assuming Job Card uses index 9
-      case AppRoutes.BATCH: activeScreen.value = ActiveScreen.batch; selectedDrawerIndex.value = 10; break;
+      case AppRoutes.HOME:             activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 0;  break;
+      case AppRoutes.STOCK_ENTRY:      activeScreen.value = ActiveScreen.stockEntry;      selectedDrawerIndex.value = 1;  break;
+      case AppRoutes.DELIVERY_NOTE:    activeScreen.value = ActiveScreen.deliveryNote;    selectedDrawerIndex.value = 2;  break;
+      case AppRoutes.PACKING_SLIP:     activeScreen.value = ActiveScreen.packingSlip;     selectedDrawerIndex.value = 3;  break;
+      case AppRoutes.PURCHASE_RECEIPT: activeScreen.value = ActiveScreen.purchaseReceipt; selectedDrawerIndex.value = 4;  break;
+      case AppRoutes.POS_UPLOAD:       activeScreen.value = ActiveScreen.posUpload;       selectedDrawerIndex.value = 5;  break;
+      case AppRoutes.TODO:             activeScreen.value = ActiveScreen.todo;            selectedDrawerIndex.value = 6;  break;
+      case AppRoutes.ITEM:             activeScreen.value = ActiveScreen.item;            selectedDrawerIndex.value = 7;  break;
+      case AppRoutes.WORK_ORDER:       activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 8;  break;
+      case AppRoutes.JOB_CARD:         activeScreen.value = ActiveScreen.home;            selectedDrawerIndex.value = 9;  break;
+      case AppRoutes.BATCH:            activeScreen.value = ActiveScreen.batch;           selectedDrawerIndex.value = 10; break;
+      case AppRoutes.BOM:              activeScreen.value = ActiveScreen.bom;             selectedDrawerIndex.value = 11; break;
     }
   }
 
   void changeDrawerPage(int index, String route) {
     selectedDrawerIndex.value = index;
-    Get.back();
-    if (Get.currentRoute != route) Get.toNamed(route);
-    _updateActiveScreenForRoute(route);
+    if (Get.currentRoute != route) {
+      Get.toNamed(route);
+      _updateActiveScreenForRoute(route);
+    }
   }
-  void goToHome() => changeDrawerPage(0, AppRoutes.HOME);
-  void goToStockEntry() => changeDrawerPage(1, AppRoutes.STOCK_ENTRY);
-  void goToDeliveryNote() => changeDrawerPage(2, AppRoutes.DELIVERY_NOTE);
-  void goToPackingSlip() => changeDrawerPage(3, AppRoutes.PACKING_SLIP);
-  void goToPurchaseReceipt() => changeDrawerPage(4, AppRoutes.PURCHASE_RECEIPT);
-  void goToPosUpload() => changeDrawerPage(5, AppRoutes.POS_UPLOAD);
-  void goToToDo() => changeDrawerPage(6, AppRoutes.TODO);
-  void goToItem() => changeDrawerPage(7, AppRoutes.ITEM);
-  void goToWorkOrder() => changeDrawerPage(8, AppRoutes.WORK_ORDER);
-  void goToJobCard() => changeDrawerPage(9, AppRoutes.JOB_CARD);
-  void goToBatch() => changeDrawerPage(10, AppRoutes.BATCH);
+
+  void goToHome()            => changeDrawerPage(0,  AppRoutes.HOME);
+  void goToStockEntry()      => changeDrawerPage(1,  AppRoutes.STOCK_ENTRY);
+  void goToDeliveryNote()    => changeDrawerPage(2,  AppRoutes.DELIVERY_NOTE);
+  void goToPackingSlip()     => changeDrawerPage(3,  AppRoutes.PACKING_SLIP);
+  void goToPurchaseReceipt() => changeDrawerPage(4,  AppRoutes.PURCHASE_RECEIPT);
+  void goToPosUpload()       => changeDrawerPage(5,  AppRoutes.POS_UPLOAD);
+  void goToToDo()            => changeDrawerPage(6,  AppRoutes.TODO);
+  void goToItem()            => changeDrawerPage(7,  AppRoutes.ITEM);
+  void goToWorkOrder()       => changeDrawerPage(8,  AppRoutes.WORK_ORDER);
+  void goToJobCard()         => changeDrawerPage(9,  AppRoutes.JOB_CARD);
+  void goToBatch()           => changeDrawerPage(10, AppRoutes.BATCH);
+  void goToBOM()             => changeDrawerPage(11, AppRoutes.BOM);
 }

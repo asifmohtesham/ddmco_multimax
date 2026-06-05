@@ -1,0 +1,74 @@
+{
+  "configurations": [
+    {
+      "name": "Pixel 7 USB",
+      "program": "lib/main.dart",
+      "deviceId": "34241FDH200620",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "Pixel 7 Wi-Fi",
+      "program": "lib/main.dart",
+      "deviceId": "192.168.0.186:40091",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "TC15 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700452",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "Mueen Barmawer USB",
+      "program": "lib/main.dart",
+      "deviceId": "R8MFEMYT8PIFWWZ5",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "TC15 23045524700218 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700218",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "Adnan K AWCX6R4131003991 USB",
+      "program": "lib/main.dart",
+      "deviceId": "AWCX6R4131003991",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "JB 00751909060cd099 USB",
+      "program": "lib/main.dart",
+      "deviceId": "00751909060cd099",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "AA 22204524700538 USB",
+      "program": "lib/main.dart",
+      "deviceId": "22204524700538",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "ES RFCT50ZQXWK USB",
+      "program": "lib/main.dart",
+      "deviceId": "RFCT50ZQXWK",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "MB 23045524700285 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700285",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}

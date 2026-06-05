@@ -16,8 +16,8 @@ subprojects {
         // Check if the project is an Android library or app
         if (extensions.findByName("android") != null) {
             configure<com.android.build.gradle.BaseExtension> {
-                // Force compileSdk to 35 to match the dependencies' requirements
-                compileSdkVersion(35)
+                // Force compileSdk to 36 (required by image_picker → androidx.activity:1.12.4+)
+                compileSdkVersion(36)
             }
         }
     }

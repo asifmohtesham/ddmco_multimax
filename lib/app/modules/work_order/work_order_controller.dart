@@ -1,46 +1,177 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 
 class WorkOrderController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
+
+  // ── List state ──────────────────────────────────────────────────────────────
   var workOrders = <WorkOrder>[].obs;
   var isLoading = true.obs;
+  var isFetchingMore = false.obs;
+  var hasMore = false.obs;
+
+  // ── Search & filter ─────────────────────────────────────────────────────────
+  final searchQuery = ''.obs;
+  final activeFilters = <String, dynamic>{}.obs;
+
+  /// Optional title override injected via [Get.arguments] from the Dashboard
+  /// quick-access shortcut (e.g. 'In-Process Orders'). Falls back to null so
+  /// WorkOrderScreen renders its default title when navigated from the drawer.
+  String? pageTitle;
+
+  Timer? _debounce;
+
+  static const int _pageSize = 20;
+  int _start = 0;
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
-    fetchWorkOrders();
+    _applyRouteArguments();
+    fetchWorkOrders(clear: true);
   }
 
-  Future<void> fetchWorkOrders() async {
-    isLoading.value = true;
-    try {
-      final response = await _provider.getWorkOrders();
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final List<dynamic> data = response.data['data'];
-        workOrders.value = data.map((json) => WorkOrder.fromJson(json)).toList();
-      }
-    } catch (e) {
-      Get.snackbar('Error', 'Failed to fetch Work Orders: $e');
-    } finally {
-      isLoading.value = false;
+  @override
+  void onClose() {
+    _debounce?.cancel();
+    super.onClose();
+  }
+
+  // ── Route argument injection ─────────────────────────────────────────────────
+
+  void _applyRouteArguments() {
+    final args = Get.arguments;
+    if (args is! Map) return;
+
+    final rawFilters = args['filters'];
+    if (rawFilters is Map<String, dynamic>) {
+      activeFilters.addAll(rawFilters);
+    }
+
+    final title = args['pageTitle'];
+    if (title is String && title.isNotEmpty) {
+      pageTitle = title;
     }
   }
 
-  // --- KPIs ---
+  // ── Search ───────────────────────────────────────────────────────────────────
+
+  void onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      searchQuery.value = value;
+      fetchWorkOrders(clear: true);
+    });
+  }
+
+  // ── Filter helpers ───────────────────────────────────────────────────────────
+
+  /// Adds or updates a single filter key and re-fetches the list.
+  void setFilter(String key, dynamic value) {
+    activeFilters[key] = value;
+    fetchWorkOrders(clear: true);
+  }
+
+  void removeFilter(String key) {
+    activeFilters.remove(key);
+    fetchWorkOrders(clear: true);
+  }
+
+  void clearFilters() {
+    activeFilters.clear();
+    searchQuery.value = '';
+    fetchWorkOrders(clear: true);
+  }
+
+  // ── Fetch ────────────────────────────────────────────────────────────────────
+
+  Future<void> fetchWorkOrders({
+    bool clear = false,
+    bool isLoadMore = false,
+  }) async {
+    if (isLoadMore) {
+      if (isFetchingMore.value || !hasMore.value) return;
+      isFetchingMore.value = true;
+    } else {
+      isLoading.value = !clear ? true : workOrders.isEmpty;
+      if (clear) {
+        _start = 0;
+        workOrders.clear();
+      }
+    }
+
+    try {
+      final (:filters, :orFilters) = _buildSearchFilters();
+      final response = await _provider.getWorkOrders(
+        filters: filters,
+        limit: _pageSize,
+        limitStart: _start,
+      );
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final List<dynamic> data = response.data['data'];
+        final fetched = data.map((j) => WorkOrder.fromJson(j)).toList();
+        workOrders.addAll(fetched);
+        _start += fetched.length;
+        hasMore.value = fetched.length == _pageSize;
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('WorkOrderController.fetch error: $e');
+    } finally {
+      isLoading.value = false;
+      isFetchingMore.value = false;
+    }
+  }
+
+  // ── Filter / OR-filter builder ────────────────────────────────────────────────
+  //
+  // activeFilters  → AND filters (status, production_item, owner, etc.)
+  // searchQuery    → OR filters across all card-visible fields:
+  //                    name, item_name, bom_no, status
+  //
+  ({Map<String, dynamic> filters, Map<String, dynamic>? orFilters})
+      _buildSearchFilters() {
+    final f = <String, dynamic>{};
+    for (final entry in activeFilters.entries) {
+      final val = entry.value;
+      f[entry.key] = val is List ? val : ['=', val];
+    }
+
+    Map<String, dynamic>? or;
+    if (searchQuery.value.isNotEmpty) {
+      final q = '%${searchQuery.value}%';
+      or = {
+        'name':      ['like', q],
+        'item_name': ['like', q],
+        'bom_no':    ['like', q],
+        'status':    ['like', q],
+      };
+    }
+
+    return (filters: f.isEmpty ? {} : f, orFilters: or);
+  }
+
+  // ── KPIs ────────────────────────────────────────────────────────────────────
 
   int get totalCount => workOrders.length;
 
-  // Status Counts
   int get countDraft => workOrders.where((w) => w.status == 'Draft').length;
-  int get countConfirmed => workOrders.where((w) => w.status == 'Submitted' || w.status == 'Not Started').length;
-  int get countInProgress => workOrders.where((w) => w.status == 'In Process').length;
-  int get countCompleted => workOrders.where((w) => w.status == 'Completed').length;
+  int get countConfirmed => workOrders
+      .where((w) => w.status == 'Submitted' || w.status == 'Not Started')
+      .length;
+  int get countInProgress =>
+      workOrders.where((w) => w.status == 'In Process').length;
+  int get countCompleted =>
+      workOrders.where((w) => w.status == 'Completed').length;
 
-  // Production Metrics
-  double get totalPlannedQty => workOrders.fold(0.0, (sum, w) => sum + w.qty);
-  double get totalProducedQty => workOrders.fold(0.0, (sum, w) => sum + w.producedQty);
+  double get totalPlannedQty =>
+      workOrders.fold(0.0, (sum, w) => sum + w.qty);
+  double get totalProducedQty =>
+      workOrders.fold(0.0, (sum, w) => sum + w.producedQty);
 
   double get overallProgress {
     if (totalPlannedQty == 0) return 0.0;

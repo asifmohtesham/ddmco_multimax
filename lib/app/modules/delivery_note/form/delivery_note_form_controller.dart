@@ -3,219 +3,177 @@ import 'dart:convert';
 import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:flutter/services.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:collection/collection.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'widgets/delivery_note_item_form_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
-import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/controller_feedback_mixin.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
+import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
 
-class DeliveryNoteFormController extends GetxController with OptimisticLockingMixin {
-  final DeliveryNoteProvider _provider = Get.find<DeliveryNoteProvider>();
-  final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
-  final ScanService _scanService = Get.find<ScanService>();
-  final StorageService _storageService = Get.find<StorageService>();
+// Child sheet controller
+import 'delivery_note_item_form_controller.dart';
 
-  var itemFormKey = GlobalKey<FormState>();
-  final String name = Get.arguments['name'];
+class DeliveryNoteFormController extends GetxController
+    with OptimisticLockingMixin, ControllerFeedbackMixin {
+  final DeliveryNoteProvider  _provider          = Get.find<DeliveryNoteProvider>();
+  final PosUploadProvider     _posUploadProvider = Get.find<PosUploadProvider>();
+  final ApiProvider           _apiProvider       = Get.find<ApiProvider>();
+  final WorkOrderProvider     _woProvider        = Get.find<WorkOrderProvider>();
+  final ScanService           _scanService       = Get.find<ScanService>();
+  final StorageService        _storageService    = Get.find<StorageService>();
+  final DataWedgeService      _dataWedgeService  = Get.find<DataWedgeService>();
 
-  // CHANGED: Removed 'final' so we can update mode to 'edit' after saving a new doc
-  String mode = Get.arguments['mode'];
+  final String  name = Get.arguments['name'];
+  String        mode = Get.arguments['mode'];
 
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
-  final String? posUploadNameArg = Get.arguments['posUploadName'];
+  final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
-  var isLoading = true.obs;
-  var isScanning = false.obs;
+  // ── Document-level state ──────────────────────────────────────────────────
+  var isLoading    = true.obs;
+  var isScanning   = false.obs;
   var isAddingItem = false.obs;
-  var isSaving = false.obs;
-
-  var isDirty = false.obs;
+  var isSaving     = false.obs;
+  var isDirty      = false.obs;
   String _originalJson = '';
 
+  // ── Save result state machine ─────────────────────────────────────────────
+  var saveResult     = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
+
   var deliveryNote = Rx<DeliveryNote?>(null);
-  var posUpload = Rx<PosUpload?>(null);
+  var posUpload    = Rx<PosUpload?>(null);
 
   final TextEditingController barcodeController = TextEditingController();
   var expandedItemCode = ''.obs;
-  var expandedInvoice = ''.obs;
-
-  var itemFilter = 'All'.obs;
+  var expandedInvoice  = ''.obs;
+  var itemFilter       = 'All'.obs;
 
   var recentlyAddedItemCode = ''.obs;
-  var recentlyAddedSerial = ''.obs;
+  var recentlyAddedSerial   = ''.obs;
   final ScrollController scrollController = ScrollController();
   final Map<String, GlobalKey> itemKeys = {};
 
-  // Bottom Sheet State
-  final bsBatchController = TextEditingController();
-  final bsRackController = TextEditingController();
-  final bsQtyController = TextEditingController(text: '6');
-  final bsRackFocusNode = FocusNode();
+  // ── Sheet-open + item-edit loading flags ──────────────────────────────────
+  var isItemSheetOpen    = false.obs;
+  var isLoadingItemEdit  = false.obs;
+  var loadingForItemName = RxnString();
 
-  var isItemSheetOpen = false.obs;
-  var bsIsLoadingBatch = false.obs;
-  var isValidatingBatch = false.obs;
-  var bsMaxQty = 0.0.obs;
-  var customerError = RxnString();
-  var bsBatchError = RxnString();
-  var bsIsBatchValid = false.obs;
-  var batchInfoTooltip = RxnString();
-
-  // Rack Validation State
-  var bsIsRackValid = false.obs;
-  var isValidatingRack = false.obs;
-  var rackStockTooltip = RxnString();
-  var rackStockMap = <String, double>{}.obs;
-  var rackError = RxnString();
-
-  var bsInvoiceSerialNo = RxnString();
-  var editingItemName = RxnString();
-  var isFormDirty = false.obs;
-  var isSheetValid = false.obs;
-
-  String _initialBatch = '';
-  String _initialRack = '';
-  String _initialQty = '';
-  String? _initialSerial;
-
-  // Warehouse State
-  var warehouses = <String>[].obs;
+  // ── Warehouse ─────────────────────────────────────────────────────────────
+  var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
-  var setWarehouse = RxnString();
+  var setWarehouse         = RxnString();
+  final _derivedWarehousePlaceholder = RxnString();
 
-  // Temp Item Data
-  var bsItemOwner = RxnString();
-  var bsItemCreation = RxnString();
-  var bsItemModifiedBy = RxnString();
-  var bsItemModified = RxnString();
-  var bsItemIdx = RxnInt();
-  var bsItemCustomVariantOf = RxnString();
-  var bsItemGroup = RxnString();
-  var bsItemImage = RxnString();
-  var bsItemPackedQty = RxnDouble();
-  var bsItemCompanyTotalStock = RxnDouble();
-  var bsItemWarehouse = RxnString();
+  // ── Customer-level error ──────────────────────────────────────────────────
+  var customerError = RxnString();
 
-  String currentItemCode = '';
-  String currentItemName = '';
+  // ── EAN scan context ──────────────────────────────────────────────────────
   String currentScannedEan = '';
 
-  Timer? _autoSubmitTimer;
+  // ── Persistent scan worker ────────────────────────────────────────────────
+  Worker? _scanWorker;
+
+  // ── items convenience getter ──────────────────────────────────────────────
+  List<DeliveryNoteItem> get items => deliveryNote.value?.items ?? [];
 
   @override
   void onInit() {
     super.onInit();
     fetchWarehouses();
-
-    // Add Listeners for Validation
-    bsQtyController.addListener(validateSheet);
-    bsBatchController.addListener(validateSheet);
-    bsRackController.addListener(validateSheet);
-    ever(bsInvoiceSerialNo, (_) => validateSheet());
-    ever(setWarehouse, (_) => _checkForChanges());
-
-    _setupAutoSubmit();
+    ever(setWarehouse, (_) => checkForChanges());
+    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+    log('[DN:onInit] _scanWorker registered on DataWedgeService.scannedCode',
+        name: 'DN');
 
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
-      fetchDeliveryNote();
+      fetchDocument();
     }
-  }
-
-  // 1. IMPLEMENT MIXIN
-  @override
-  Future<void> reloadDocument() async {
-    await fetchDeliveryNote();
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
   }
 
   @override
   void onClose() {
-    _autoSubmitTimer?.cancel();
+    _scanWorker?.dispose();
+    _saveResultTimer?.cancel();
+    disposeFeedback();
+    log('[DN:onClose] _scanWorker disposed', name: 'DN');
     barcodeController.dispose();
-    bsBatchController.dispose();
-    bsRackController.dispose();
-    bsQtyController.dispose();
-    bsRackFocusNode.dispose();
     scrollController.dispose();
     super.onClose();
   }
 
-  void _setupAutoSubmit() {
-    ever(isSheetValid, (bool valid) {
-      _autoSubmitTimer?.cancel();
-      // Check if valid, sheet is open, and document is editable (docstatus == 0)
-      if (valid && isItemSheetOpen.value && deliveryNote.value?.docstatus == 0) {
-        if (_storageService.getAutoSubmitEnabled()) {
-          final int delay = _storageService.getAutoSubmitDelay();
-          _autoSubmitTimer = Timer(Duration(seconds: delay), () async {
-            if (isSheetValid.value && isItemSheetOpen.value) {
-              // Trigger loading state only during auto-submit
-              isAddingItem.value = true;
-              await Future.delayed(const Duration(milliseconds: 500));
-              await submitSheet();
-              isAddingItem.value = false;
-            }
-          });
-        }
-      }
-    });
+  // ── Raw scan entry point ──────────────────────────────────────────────────
+  void _onRawScan(String code) {
+    if (code.isEmpty) return;
+    if (Get.currentRoute != AppRoutes.DELIVERY_NOTE_FORM) return;
+    if (isItemSheetOpen.value) return;
+    final clean = code.trim();
+    barcodeController.text = clean;
+    scanBarcode(clean);
   }
 
-  // --- PopScope Logic ---
+
+  // ── PopScope ──────────────────────────────────────────────────────────────
   Future<void> confirmDiscard() async {
     GlobalDialog.showUnsavedChanges(
       onDiscard: () {
-        isDirty.value = false; // Reset dirty flag
-        Get.back(); // Pop the screen (Navigation)
+        isDirty.value = false;
+        Get.back();
       },
     );
   }
 
-  void _checkForChanges() {
+  // ── Dirty tracking ────────────────────────────────────────────────────────
+  void checkForChanges() {
     if (deliveryNote.value == null) return;
-
-    // Explicitly mark new documents as dirty
-    if (mode == 'new') {
-      isDirty.value = true;
-      return;
-    }
-    // Prevent dirty check if document is not editable (submitted/cancelled)
-    if (deliveryNote.value?.docstatus != 0) {
-      isDirty.value = false;
-      return;
-    }
-
+    if (mode == 'new') { isDirty.value = true; return; }
+    if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
     final tempNote = DeliveryNote(
-      name: deliveryNote.value!.name,
-      customer: deliveryNote.value!.customer,
-      grandTotal: deliveryNote.value!.grandTotal,
-      postingDate: deliveryNote.value!.postingDate,
-      modified: deliveryNote.value!.modified,
-      creation: deliveryNote.value!.creation,
-      status: deliveryNote.value!.status,
-      currency: deliveryNote.value!.currency,
-      items: deliveryNote.value!.items,
-      poNo: deliveryNote.value!.poNo,
-      totalQty: deliveryNote.value!.totalQty,
-      docstatus: deliveryNote.value!.docstatus,
+      name:         deliveryNote.value!.name,
+      customer:     deliveryNote.value!.customer,
+      grandTotal:   deliveryNote.value!.grandTotal,
+      postingDate:  deliveryNote.value!.postingDate,
+      modified:     deliveryNote.value!.modified,
+      creation:     deliveryNote.value!.creation,
+      status:       deliveryNote.value!.status,
+      currency:     deliveryNote.value!.currency,
+      items:        deliveryNote.value!.items,
+      poNo:         deliveryNote.value!.poNo,
+      totalQty:     deliveryNote.value!.totalQty,
+      docstatus:    deliveryNote.value!.docstatus,
       setWarehouse: setWarehouse.value,
     );
-
-    final currentJson = jsonEncode(tempNote.toJson());
-    isDirty.value = currentJson != _originalJson;
+    isDirty.value = jsonEncode(tempNote.toJson()) != _originalJson;
   }
 
   void _updateOriginalState(DeliveryNote note) {
@@ -223,15 +181,19 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isDirty.value = false;
   }
 
+  // ── Data fetching ─────────────────────────────────────────────────────────
   Future<void> fetchWarehouses() async {
     isFetchingWarehouses.value = true;
     try {
-      final response = await _apiProvider.getDocumentList('Warehouse', filters: {'is_group': 0}, limit: 100);
+      final response = await _apiProvider.getDocumentList(
+          'Warehouse', filters: {'is_group': 0}, limit: 100);
       if (response.statusCode == 200 && response.data['data'] != null) {
-        warehouses.value = (response.data['data'] as List).map((e) => e['name'] as String).toList();
+        warehouses.value = (response.data['data'] as List)
+            .map((e) => e['name'] as String)
+            .toList();
       }
     } catch (e) {
-      print('Error fetching warehouses: $e');
+      log('[DN:fetchWarehouses] error: $e', name: 'DN');
     } finally {
       isFetchingWarehouses.value = false;
     }
@@ -241,50 +203,57 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
     isLoading.value = true;
     final now = DateTime.now();
     deliveryNote.value = DeliveryNote(
-      name: 'New Delivery Note',
-      customer: posUploadCustomer ?? '',
-      grandTotal: 0.0,
+      name:        'New Delivery Note',
+      customer:    posUploadCustomer ?? '',
+      grandTotal:  0.0,
       postingDate: now.toString().split(' ')[0],
-      modified: '',
-      creation: now.toString(),
-      status: 'Draft',
-      currency: 'AED',
-      items: [],
-      poNo: posUploadNameArg,
-      totalQty: 0.0,
-      docstatus: 0,
+      modified:    '',
+      creation:    now.toString(),
+      status:      'Draft',
+      currency:    'AED',
+      items:       [],
+      poNo:        posUploadNameArg,
+      totalQty:    0.0,
+      docstatus:   0,
       setWarehouse: '',
     );
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
     }
-
-    // CHANGED: Explicitly set dirty for new doc
-    isDirty.value = true;
-    _originalJson = '';
+    await _validateCustomerOnOpen();
+    isDirty.value   = true;
+    _originalJson   = '';
     isLoading.value = false;
   }
 
-  Future<void> fetchDeliveryNote() async {
+  Future<void> fetchDocument() async {
     isLoading.value = true;
     try {
       final response = await _provider.getDeliveryNote(name);
       if (response.statusCode == 200 && response.data['data'] != null) {
         final note = DeliveryNote.fromJson(response.data['data']);
-        deliveryNote.value = note;
-        setWarehouse.value = note.setWarehouse;
+        deliveryNote.value  = note;
+        setWarehouse.value  = note.setWarehouse;
         _updateOriginalState(note);
         if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
+        await _validateCustomerOnOpen();
       } else {
-        GlobalSnackbar.error(message: 'Failed to fetch delivery note');
+        showBanner('Failed to fetch delivery note', type: BannerType.error);
       }
     } catch (e) {
-      GlobalSnackbar.error(message: 'Failed to load data: $e');
+      showBanner('Failed to load data: $e', type: BannerType.error);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  @override
+  Future<void> reloadDocument() async {
+    await fetchDocument();
+    isStale.value = false;
+    showBanner('Document reloaded successfully', type: BannerType.success);
   }
 
   Future<void> fetchPosUpload(String posName) async {
@@ -294,739 +263,616 @@ class DeliveryNoteFormController extends GetxController with OptimisticLockingMi
         posUpload.value = PosUpload.fromJson(response.data['data']);
       }
     } catch (e) {
-      print('Failed to fetch linked POS Upload: $e');
+      log('[DN:fetchPosUpload] error: $e', name: 'DN');
     }
   }
 
-  Future<void> submitSheet() async {
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
-    final rack = bsRackController.text;
-    final batch = bsBatchController.text;
-    final invoiceSerial = bsInvoiceSerialNo.value;
-
-    if (editingItemName.value != null && editingItemName.value!.isNotEmpty) {
-      _updateItemLocally(editingItemName.value!, qty, rack, batch, invoiceSerial);
-    } else {
-      _addItemLocally(currentItemCode, currentItemName, qty, rack, batch, invoiceSerial);
-    }
-
-    Get.back();
-    barcodeController.clear();
-    _checkForChanges();
-
-    await saveDeliveryNote();
-
-    if(editingItemName.value == null) {
-      GlobalSnackbar.success(message: 'Item added/updated.');
-    }
+  // ── POS qty-cap helpers ───────────────────────────────────────────────────
+  double posQtyCapForSerial(String serial) {
+    final idx = int.tryParse(serial);
+    if (idx == null || posUpload.value == null) return double.infinity;
+    return posUpload.value!.items
+            .firstWhereOrNull((i) => i.idx == idx)
+            ?.quantity ??
+        double.infinity;
   }
 
-  void _updateItemLocally(String itemNameID, double qty, String rack, String? batchNo, String? invoiceSerial) {
-    final currentItems = deliveryNote.value?.items.toList() ?? [];
-    final index = currentItems.indexWhere((item) => item.name == itemNameID);
-    if (index != -1) {
-      final existingItem = currentItems[index];
-      currentItems[index] = existingItem.copyWith(
-          qty: qty,
-          rack: rack,
-          batchNo: batchNo,
-          customInvoiceSerialNumber: invoiceSerial
-      );
-      deliveryNote.update((val) {
-        val?.items.assignAll(currentItems);
-      });
-      _triggerItemFeedback(existingItem.itemCode, invoiceSerial ?? '0');
-    }
+  double scannedQtyForSerial(String serial, {String? excludeItemName}) {
+    return (deliveryNote.value?.items ?? [])
+        .where((i) {
+          return (i.customInvoiceSerialNumber) == serial &&
+              (excludeItemName == null || i.name != excludeItemName);
+        })
+        .fold(0.0, (sum, i) {
+          debugPrint('i.qty: ${i.qty}');
+          return sum + i.qty;
+        });
   }
 
-  void _addItemLocally(String itemCode, String itemName, double qty, String rack, String? batchNo, String? invoiceSerial) {
-    final currentItems = deliveryNote.value?.items.toList() ?? [];
-    final serial = invoiceSerial ?? '0';
-
-    final existingIndex = currentItems.indexWhere((item) =>
-    item.itemCode == itemCode &&
-        (item.batchNo ?? '') == (batchNo ?? '') &&
-        (item.rack ?? '') == rack &&
-        (item.customInvoiceSerialNumber ?? '0') == serial
-    );
-
-    if (existingIndex != -1) {
-      final existing = currentItems[existingIndex];
-      final newQty = existing.qty + qty;
-      currentItems[existingIndex] = existing.copyWith(qty: newQty);
-
-      deliveryNote.update((val) {
-        val?.items.assignAll(currentItems);
-      });
-      _triggerItemFeedback(itemCode, serial);
-
-    } else {
-      final tempId = 'local_${DateTime.now().millisecondsSinceEpoch}';
-      final newItem = DeliveryNoteItem(
-        name: tempId,
-        itemCode: itemCode,
-        qty: qty,
-        rate: 0.0,
-        rack: rack,
-        batchNo: batchNo,
-        customInvoiceSerialNumber: serial,
-        itemName: itemName,
-        creation: DateTime.now().toString(),
-      );
-      currentItems.add(newItem);
-      deliveryNote.update((val) {
-        val?.items.assignAll(currentItems);
-      });
-      _triggerItemFeedback(itemCode, serial);
-    }
+  double remainingQtyForSerial(String serial) {
+    final cap = posQtyCapForSerial(serial);
+    if (cap == double.infinity) return double.infinity;
+    final used = scannedQtyForSerial(serial);
+    return (cap - used).clamp(0.0, cap);
   }
 
-  Future<void> confirmAndDeleteItem(DeliveryNoteItem item) async {
-    GlobalDialog.showConfirmation(
-      title: 'Delete Item?',
-      message: 'Are you sure you want to remove ${item.itemCode} from this note?',
-      onConfirm: () => _deleteItemLocally(item),
-    );
-  }
-
-  void _deleteItemLocally(DeliveryNoteItem item) {
-    final currentItems = deliveryNote.value?.items.toList() ?? [];
-    currentItems.remove(item);
-    deliveryNote.update((val) {
-      val?.items.assignAll(currentItems);
-    });
-    _checkForChanges();
-    GlobalSnackbar.success(message: 'Item removed');
-  }
-
-  Future<void> saveDeliveryNote() async {
-    if (isSaving.value) return;
-
-    // 2. USE GUARD
-    if (checkStaleAndBlock()) return;
-
-    isSaving.value = true;
-    customerError.value = null; // Clear previous error
-
-    try {
-      final String docName = deliveryNote.value?.name ?? '';
-      final bool isNew = docName == 'New Delivery Note' || docName.isEmpty;
-
-      final Map<String, dynamic> data = deliveryNote.value!.toJson();
-      data['set_warehouse'] = setWarehouse.value;
-
-      // Safety: Ensure modified is sent (now handled by toJson as well, but redundant check is fine)
-      if (!isNew && deliveryNote.value?.modified != null) {
-        data['modified'] = deliveryNote.value?.modified;
-      }
-
-      if (isNew) {
-        data['customer'] = deliveryNote.value!.customer;
-        data['posting_date'] = deliveryNote.value!.postingDate;
-        if (deliveryNote.value!.poNo != null) data['po_no'] = deliveryNote.value!.poNo;
-        data['docstatus'] = 0;
-      }
-      final response = isNew
-          ? await _apiProvider.createDocument('Delivery Note', data)
-          : await _apiProvider.updateDocument('Delivery Note', docName, data);
-
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final savedNote = DeliveryNote.fromJson(response.data['data']);
-        deliveryNote.value = savedNote;
-        _updateOriginalState(savedNote);
-
-        // CHANGED: Update mode to 'edit' so _checkForChanges logic works correctly for subsequent edits
-        if (isNew) {
-          mode = 'edit';
-        }
-
-        GlobalSnackbar.success(message: 'Delivery Note Saved');
+  // ── Item sheet orchestration ──────────────────────────────────────────────
+  Future<void> _openItemSheet({
+    required String itemCode,
+    required String itemName,
+    String?  batchNo,
+    String?  variantOf,
+    DeliveryNoteItem? editingItem,
+  }) async {
+    if (editingItem != null) {
+      if (editingItem.batchNo != null && editingItem.batchNo!.contains('-')) {
+        currentScannedEan = editingItem.batchNo!.split('-').first;
       } else {
-        GlobalSnackbar.error(message: 'Failed to save: ${response.data['exception'] ?? 'Unknown error'}');
+        currentScannedEan = '';
+      }
+    }
+
+    final child = Get.put(
+      DeliveryNoteItemFormController(),
+      permanent: true,
+    );
+    child.initialise(
+      parent:      this,
+      code:        itemCode,
+      name:        itemName,
+      batchNo:     batchNo,
+      variantOf:   variantOf ?? editingItem?.customVariantOf,
+      scannedEan8: currentScannedEan,
+      editingItem: editingItem,
+    );
+
+    const rackPickerTag = 'dn_rack_picker';
+
+    isItemSheetOpen.value = true;
+    child.initBarcodeListener();
+    await Get.bottomSheet(
+      UniversalItemFormSheet(
+        controller:       child,
+        scrollController: child.sheetScrollController,
+        customFields: [
+          _CheckWoButton(
+            itemCode: itemCode,
+            fetchWorkOrders: () => fetchWorkOrdersForItem(itemCode),
+          ),
+          // Commit 4: migrated from SharedSerialField to
+          // SharedInvoiceSerialNumberField (delegate-driven, zero coupling).
+          SharedInvoiceSerialNumberField(c: child),
+          SharedBatchField(
+            c:               child,
+            accentColor:     Colors.blueGrey,
+            editMode:        true,
+            onPickerTap:     child.openBatchPicker,
+            balanceOverride: () => child.batchBalance.value,
+          ),
+          SharedRackField(
+            c:               child,
+            accentColor:     Colors.blueGrey,
+            editMode:        true,
+            balanceOverride: () => child.rackBalance.value,
+            onPickerTap: () async {
+              HapticFeedback.lightImpact();
+
+              final picker = Get.put(
+                RackPickerController(),
+                tag: rackPickerTag,
+              );
+
+              picker.load(
+                itemCode:     child.itemCode.value,
+                batchNo:      child.batchController.text,
+                warehouse:    child.resolvedWarehouse ?? '',
+                requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
+                currentRack:  child.rackController.text,
+                fallbackMap:  Map<String, double>.from(child.rackStockMap),
+              );
+
+              await Get.bottomSheet<void>(
+                RackPickerSheet(
+                  pickerTag:  rackPickerTag,
+                  onSelected: (rackId) => child.applyRackScan(rackId),
+                ),
+                isScrollControlled: true,
+              );
+
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (Get.isRegistered<RackPickerController>(
+                    tag: rackPickerTag)) {
+                  Get.delete<RackPickerController>(tag: rackPickerTag);
+                }
+              });
+            },
+          ),
+          DerivedWarehouseLabel(
+            itemWarehouse:    child.itemWarehouse,
+            derivedWarehouse: _derivedWarehousePlaceholder,
+            headerWarehouse:  setWarehouse,
+          ),
+        ],
+        onSubmit: () async {
+          final ok = await child.submitWithFeedback();
+          if (ok) Get.back();
+        },
+      ),
+      isScrollControlled: true,
+      enableDrag:         false,
+      isDismissible:      false,
+      backgroundColor:    Colors.transparent,
+    );
+    child.disposeBarcodeListener();
+    isItemSheetOpen.value = false;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      child.disposeControllers();
+      Get.delete<DeliveryNoteItemFormController>(force: true);
+      log('[DN:_openItemSheet] post-frame teardown complete', name: 'DN');
+    });
+  }
+
+  void _handleCustomerNotFound(String customer) {
+    customerError.value = 'Customer not found in the system';
+    GlobalDialog.showCustomerNotFound(customer: customer);
+  }
+
+  Future<void> _validateCustomerOnOpen() async {
+    final customer = deliveryNote.value?.customer ?? '';
+    if (customer.isEmpty) return;
+    try {
+      final response = await _apiProvider.getDocument('Customer', customer);
+      if (response.statusCode != 200 || response.data['data'] == null) {
+        _handleCustomerNotFound(customer);
       }
     } on DioException catch (e) {
-      // 4. HANDLE CONFLICT
-      if (handleVersionConflict(e)) return;
+      if (e.response?.statusCode == 404) {
+        _handleCustomerNotFound(customer);
+      }
+      // Network/other errors: don't block the form; save will surface them.
+    }
+  }
 
-      // Check response data for specific error messages
-      final errorMsg = e.response?.data.toString() ?? e.message ?? '';
-      if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
-        customerError.value = 'Customer not found in the system';
+  // ── Work Order lookup for item (Item #7A) ─────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchWorkOrdersForItem(String itemCode) async {
+    try {
+      final res = await _woProvider.getWorkOrders(
+        filters: {
+          'production_item': itemCode,
+          'status': ['in', 'Not Started,In Process'],
+        },
+        limit: 5,
+      );
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        return (res.data['data'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
       }
-      GlobalSnackbar.error(message: 'Save failed: ${e.message}');
+    } catch (_) {}
+    return [];
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+  Future<void> saveDocument() async {
+    if (isSaving.value) return;
+    isSaving.value = true;
+    try {
+      final note = deliveryNote.value;
+      if (note == null) return;
+
+      final payload = note.toJson();
+      payload['set_warehouse'] = setWarehouse.value ?? '';
+
+      Response response;
+      if (mode == 'new') {
+        response = await _apiProvider.createDocument('Delivery Note', payload);
+      } else {
+        response = await _apiProvider.updateDocument('Delivery Note', note.name, payload);
+      }
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final saved = DeliveryNote.fromJson(response.data['data']);
+        deliveryNote.value = saved;
+        setWarehouse.value = saved.setWarehouse;
+        _updateOriginalState(saved);
+        customerError.value = null;
+        if (mode == 'new') {
+          mode = 'edit';
+          Get.parameters['mode'] = 'edit';
+        }
+        _setSaveResult(SaveResult.success);
+      } else {
+        _setSaveResult(SaveResult.error);
+        showBanner('Failed to save delivery note', type: BannerType.error);
+      }
+    } on DioException catch (e) {
+      _setSaveResult(SaveResult.error);
+      final int? statusCode = e.response?.statusCode;
+      final String rawError = (() {
+        final data = e.response?.data;
+        if (data is Map) return data.toString();
+        return data?.toString() ?? '';
+      })();
+
+      final bool isCustomerNotFound =
+          (statusCode == 417 || statusCode == 400) &&
+          (rawError.toLowerCase().contains('customer') ||
+          rawError.toLowerCase().contains('does not exist') ||
+          rawError.toLowerCase().contains('link validation'));
+
+      if (isCustomerNotFound) {
+        _handleCustomerNotFound(
+            deliveryNote.value?.customer ?? posUploadCustomer ?? '');
+      } else {
+        final message = e.response?.data is Map
+            ? (e.response!.data['exception'] ??
+               e.response!.data['message'] ??
+               'An unexpected error occurred.')
+            : 'An unexpected error occurred.';
+        showBanner(message.toString(), type: BannerType.error);
+      }
     } catch (e) {
-      final errorMsg = e.toString();
-      if (errorMsg.contains('Customer') && errorMsg.contains('not found')) {
-        customerError.value = 'Customer not found in the system';
-      }
-      GlobalSnackbar.error(message: 'Save failed: $e');
+      _setSaveResult(SaveResult.error);
+      showBanner('An unexpected error occurred: $e', type: BannerType.error);
     } finally {
       isSaving.value = false;
     }
   }
 
-  void _triggerItemFeedback(String itemCode, String serial) {
-    recentlyAddedItemCode.value = itemCode;
-    recentlyAddedSerial.value = serial;
-
-    if (serial != '0' && serial.isNotEmpty) {
-      expandedInvoice.value = serial;
+  bool _validateHeaderBeforeScan() {
+    final note = deliveryNote.value;
+    if (note == null) {
+      GlobalSnackbar.error(message: 'Delivery note not loaded yet.');
+      return false;
     }
+    if (note.customer.isEmpty) {
+      customerError.value = 'Customer is required before scanning.';
+      GlobalSnackbar.error(
+          message: 'Please set a customer before scanning items.');
+      return false;
+    }
+    customerError.value = null;
+    return true;
+  }
+
+  Future<void> scanBarcode(String barcode) async {
+    if (!_validateHeaderBeforeScan()) return;
+    if (isScanning.value || isAddingItem.value) return;
+    if (barcode.isEmpty) return;
+
+    final cleanBarcode = barcode.trim();
+    isScanning.value = true;
+
+    try {
+      final result = await _scanService.processScan(cleanBarcode);
+
+      switch (result.type) {
+        case ScanType.item:
+          currentScannedEan = result.rawCode ?? '';
+          await _handleScanResult(result);
+          break;
+        case ScanType.batch:
+          currentScannedEan = '';
+          await _handleScanResult(result);
+          break;
+        case ScanType.multiple:
+          isScanning.value = false;
+          await _showMultipleMatchSheet(result.candidates ?? []);
+          break;
+        case ScanType.rack:
+        case ScanType.variant_of:
+        case ScanType.unknown:
+        case ScanType.error:
+          GlobalSnackbar.error(
+            message: 'Item not found for barcode: $cleanBarcode',
+          );
+          break;
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Scan error: $e');
+    } finally {
+      isScanning.value = false;
+      barcodeController.clear();
+    }
+  }
+
+  Future<void> _handleScanResult(ScanResult result) async {
+    isScanning.value = false;
+    await _openItemSheet(
+      itemCode:  result.itemCode!,
+      itemName:  result.itemData?.itemName ?? result.itemCode!,
+      batchNo:   result.batchNo,
+      variantOf: result.itemData?.variantOf,
+    );
+  }
+
+  Future<void> _showMultipleMatchSheet(List<Item> candidates) async {
+    await Get.bottomSheet(
+      _MultipleMatchSheet(candidates: candidates, parent: this),
+      isScrollControlled: true,
+    );
+  }
+
+  // ── Item CRUD ─────────────────────────────────────────────────────────────
+  Future<void> addItem(DeliveryNoteItem newItem) async {
+    deliveryNote.value?.items.add(newItem);
+    deliveryNote.refresh();
+    checkForChanges();
+    recentlyAddedItemCode.value = newItem.itemCode;
+    recentlyAddedSerial.value   = newItem.customInvoiceSerialNumber ?? '';
+    Future.delayed(const Duration(seconds: 2), () {
+      if (recentlyAddedItemCode.value == newItem.itemCode) {
+        recentlyAddedItemCode.value = '';
+      }
+    });
+    _scrollToItem(newItem.name ?? newItem.itemCode);
+    if (mode == 'edit') await saveDocument();
+  }
+
+  Future<void> updateItem(DeliveryNoteItem updatedItem) async {
+    final items = deliveryNote.value?.items ?? [];
+    final idx   = items.indexWhere((i) => i.name == updatedItem.name);
+    if (idx != -1) {
+      items[idx] = updatedItem;
+      deliveryNote.refresh();
+      checkForChanges();
+    }
+    if (mode == 'edit') await saveDocument();
+  }
+
+  Future<void> deleteItem(DeliveryNoteItem item) async {
+    final confirmed = await GlobalDialog.confirm(
+      title:        'Remove Item',
+      message:      'Remove "${item.itemName}" from this delivery note?',
+      confirmText:  'Remove',
+      confirmColor: Colors.red,
+      icon:         Icons.delete_outline,
+    );
+    if (confirmed != true) return;
+    deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
+    deliveryNote.refresh();
+    checkForChanges();
+    if (mode == 'edit') await saveDocument();
+  }
+
+  Future<void> editItem(DeliveryNoteItem item) async {
+    if (isLoadingItemEdit.value) return;
+    isLoadingItemEdit.value  = true;
+    loadingForItemName.value = item.name;
+
+    await _openItemSheet(
+      itemCode:    item.itemCode,
+      itemName:    item.itemName ?? item.itemCode,
+      batchNo:     item.batchNo,
+      editingItem: item,
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        final item = deliveryNote.value?.items.firstWhereOrNull(
-                (i) => i.itemCode == itemCode && (i.customInvoiceSerialNumber ?? '0') == serial
-        );
-
-        if (item != null && item.name != null) {
-          final key = itemKeys[item.name];
-          if (key?.currentContext != null) {
-            Scrollable.ensureVisible(
-              key!.currentContext!,
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
-              alignment: 0.5,
-            );
-          }
-        }
-      });
-    });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      recentlyAddedItemCode.value = '';
-      recentlyAddedSerial.value = '';
+      isLoadingItemEdit.value  = false;
+      loadingForItemName.value = null;
     });
   }
 
+  void _scrollToItem(String key) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final globalKey = itemKeys[key];
+      if (globalKey?.currentContext != null) {
+        Scrollable.ensureVisible(
+          globalKey!.currentContext!,
+          duration: const Duration(milliseconds: 400),
+          curve:    Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  void setFilter(String filter) => itemFilter.value = filter;
+
+  int get allCount => posUpload.value?.items.length ??
+      (deliveryNote.value?.items.length ?? 0);
+
+  int get pendingCount {
+    if (posUpload.value == null) return 0;
+    return posUpload.value!.items.where((posItem) {
+      final serial = posItem.idx.toString();
+      final used   = groupedItems[serial]
+              ?.fold(0.0, (s, i) => s + i.qty) ?? 0.0;
+      return used < posItem.quantity;
+    }).length;
+  }
+
+  int get completedCount {
+    if (posUpload.value == null) return 0;
+    return posUpload.value!.items.where((posItem) {
+      final serial = posItem.idx.toString();
+      final used   = groupedItems[serial]
+              ?.fold(0.0, (s, i) => s + i.qty) ?? 0.0;
+      return used >= posItem.quantity;
+    }).length;
+  }
+
+  Map<String, List<DeliveryNoteItem>> get groupedItems {
+    final map = <String, List<DeliveryNoteItem>>{};
+    for (final item in deliveryNote.value?.items ?? []) {
+      final serial = item.customInvoiceSerialNumber ?? '0';
+      map.putIfAbsent(serial, () => []).add(item);
+    }
+    return map;
+  }
+
   void toggleExpand(String itemCode) {
-    expandedItemCode.value = expandedItemCode.value == itemCode ? '' : itemCode;
+    expandedItemCode.value =
+        expandedItemCode.value == itemCode ? '' : itemCode;
   }
 
   void toggleInvoiceExpand(String key) {
     expandedInvoice.value = expandedInvoice.value == key ? '' : key;
   }
+}
 
-  Map<String, List<DeliveryNoteItem>> get groupedItems {
-    if (deliveryNote.value == null || deliveryNote.value!.items.isEmpty) {
-      return {};
-    }
-    return groupBy(deliveryNote.value!.items, (DeliveryNoteItem item) {
-      return item.customInvoiceSerialNumber ?? '0';
-    });
-  }
+// ── Multiple-match sheet (private widget) ─────────────────────────────────────
 
-  int get allCount => posUpload.value?.items.length ?? 0;
-  int get completedCount {
-    if (posUpload.value == null) return 0;
-    final groups = groupedItems;
-    return posUpload.value!.items.where((posItem) {
-      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
-      final dnItems = groups[serialNumber] ?? [];
-      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
-      return cumulativeQty >= posItem.quantity;
-    }).length;
-  }
-  int get pendingCount {
-    if (posUpload.value == null) return 0;
-    final groups = groupedItems;
-    return posUpload.value!.items.where((posItem) {
-      final serialNumber = (posUpload.value!.items.indexOf(posItem) + 1).toString();
-      final dnItems = groups[serialNumber] ?? [];
-      final cumulativeQty = dnItems.fold(0.0, (sum, item) => sum + item.qty);
-      return cumulativeQty < posItem.quantity;
-    }).length;
-  }
-  void setFilter(String filter) {
-    itemFilter.value = filter;
-  }
-  List<String> get bsAvailableInvoiceSerialNos {
-    if (posUpload.value == null) return [];
-    return posUpload.value!.items
-        .map((item) => item.idx.toString())
-        .toList();
-  }
+class _MultipleMatchSheet extends StatelessWidget {
+  const _MultipleMatchSheet({
+    required this.candidates,
+    required this.parent,
+  });
 
-  void validateSheet() {
-    bool valid = true;
-    rackError.value = null;
+  final List<Item> candidates;
+  final DeliveryNoteFormController parent;
 
-    final qty = double.tryParse(bsQtyController.text) ?? 0;
-
-    if (qty <= 0) valid = false;
-    if (bsMaxQty.value > 0 && qty > bsMaxQty.value) valid = false;
-
-    // Strict Validation Check
-    if (bsBatchController.text.isNotEmpty && !bsIsBatchValid.value) valid = false;
-
-    // Strict Rack Validation: If text is entered, it must be validated
-    if (bsRackController.text.isNotEmpty && !bsIsRackValid.value) valid = false;
-
-    // RACK-WISE STOCK AVAILABILITY LOGIC
-    final selectedRack = bsRackController.text;
-    if (selectedRack.isNotEmpty && rackStockMap.isNotEmpty) {
-      final availableInRack = rackStockMap[selectedRack] ?? 0.0;
-      if (qty > availableInRack) {
-        valid = false;
-        rackError.value = 'Only $availableInRack available in $selectedRack';
-      }
-    }
-
-    // Invoice Serial No Check
-    if (bsInvoiceSerialNo.value == null || bsInvoiceSerialNo.value!.isEmpty) {
-      if (bsAvailableInvoiceSerialNos.isNotEmpty) {
-        valid = false;
-      }
-    }
-
-    bool dirty = false;
-    if (bsBatchController.text != _initialBatch) dirty = true;
-    if (bsRackController.text != _initialRack) dirty = true;
-    if (bsQtyController.text != _initialQty) dirty = true;
-    if (bsInvoiceSerialNo.value != _initialSerial) dirty = true;
-    isFormDirty.value = dirty;
-
-    if (editingItemName.value != null && !dirty) valid = false;
-
-    isSheetValid.value = valid;
-  }
-
-  void initBottomSheet(String itemCode, String itemName, String? batchNo, double maxQty, {DeliveryNoteItem? editingItem}) {
-    itemFormKey = GlobalKey<FormState>();
-    currentItemCode = itemCode;
-    currentItemName = itemName;
-    bsItemOwner.value = null;
-    bsItemCreation.value = null;
-    bsItemModifiedBy.value = null;
-    bsItemModified.value = null;
-    bsItemIdx.value = null;
-    bsItemCustomVariantOf.value = null;
-    bsItemGroup.value = null;
-    bsItemImage.value = null;
-    bsItemPackedQty.value = null;
-    bsItemCompanyTotalStock.value = null;
-    isFormDirty.value = false;
-    rackStockTooltip.value = null;
-    rackStockMap.clear();
-    rackError.value = null;
-
-    if (editingItem != null) {
-      bsItemOwner.value = editingItem.owner;
-      bsItemCreation.value = editingItem.creation;
-      bsItemModified.value = editingItem.modified;
-      bsItemModifiedBy.value = editingItem.modifiedBy;
-
-      editingItemName.value = editingItem.name;
-      bsBatchController.text = editingItem.batchNo ?? '';
-      bsRackController.text = editingItem.rack ?? '';
-      bsQtyController.text = editingItem.qty.toStringAsFixed(0);
-      bsInvoiceSerialNo.value = editingItem.customInvoiceSerialNumber;
-
-      _initialBatch = editingItem.batchNo ?? '';
-      _initialRack = editingItem.rack ?? '';
-      _initialQty = editingItem.qty.toStringAsFixed(0);
-      _initialSerial = editingItem.customInvoiceSerialNumber;
-
-      bsIsBatchValid.value = (editingItem.batchNo != null && editingItem.batchNo!.isNotEmpty);
-      bsIsRackValid.value = (editingItem.rack != null && editingItem.rack!.isNotEmpty);
-
-      bsMaxQty.value = maxQty;
-      bsBatchError.value = null;
-    } else {
-      editingItemName.value = null;
-      bsBatchController.text = batchNo ?? '';
-      bsRackController.clear();
-      bsQtyController.text = '6';
-
-      _initialBatch = batchNo ?? '';
-      _initialRack = '';
-      _initialQty = '6';
-
-      bsMaxQty.value = maxQty;
-      bsBatchError.value = null;
-      bsIsRackValid.value = false;
-
-      bsInvoiceSerialNo.value = null;
-      _initialSerial = null;
-
-      if (batchNo != null && maxQty > 0) {
-        bsIsBatchValid.value = true;
-      } else {
-        bsIsBatchValid.value = false;
-      }
-    }
-
-    validateSheet();
-    _fetchAllRackStocks();
-
-    bsIsLoadingBatch.value = false;
-    isValidatingRack.value = false;
-    isValidatingBatch.value = false;
-    isItemSheetOpen.value = true;
-  }
-
-  // Updated to respect the derived Item Warehouse
-  Future<void> _fetchAllRackStocks() async {
-    // Priority: Item Level Warehouse -> Global Set Warehouse
-    final warehouse = bsItemWarehouse.value ?? setWarehouse.value;
-
-    if (warehouse == null || warehouse.isEmpty) return;
-
-    try {
-      final response = await _apiProvider.getStockBalance(
-        itemCode: currentItemCode,
-        warehouse: warehouse,
-        batchNo: bsBatchController.text.isNotEmpty ? bsBatchController.text : null,
-        // No rack filter = get all racks
-      );
-
-      if (response.statusCode == 200 && response.data['message'] != null) {
-        final result = response.data['message']['result'];
-        if (result is List && result.isNotEmpty) {
-          final Map<String, double> tempMap = {};
-          final List<String> tooltipLines = [];
-
-          // The last item is the total row, discard it.
-          for (int i = 0; i < result.length - 1; i++) {
-            final row = result[i];
-            final String? r = row['rack'];
-            final double qty = (row['bal_qty'] as num?)?.toDouble() ?? 0.0;
-
-            if (r != null && r.isNotEmpty && qty > 0) {
-              tempMap[r] = qty;
-              tooltipLines.add('$r: $qty');
-            }
-          }
-
-          rackStockMap.assignAll(tempMap);
-          if (tooltipLines.isNotEmpty) {
-            rackStockTooltip.value = tooltipLines.join('\n');
-          } else {
-            rackStockTooltip.value = "No stock in racks";
-          }
-        }
-      }
-    } catch (e) {
-      print('Error fetching rack stocks: $e');
-    }
-  }
-
-  Future<void> validateAndFetchBatch(String batchNo) async {
-    if (batchNo.isEmpty) return;
-    isValidatingBatch.value = true;
-    bsBatchError.value = null;
-    batchInfoTooltip.value = null;
-
-    try {
-      final batchResponse = await _apiProvider.getDocumentList('Batch',
-          filters: {'name': batchNo, 'item': currentItemCode},
-          fields: ['name', 'custom_packaging_qty']
-      );
-
-      if (batchResponse.data['data'] == null || (batchResponse.data['data'] as List).isEmpty) {
-        throw Exception('Batch not found');
-      }
-
-      final batchData = batchResponse.data['data'][0];
-      final double pkgQty = (batchData['custom_packaging_qty'] as num?)?.toDouble() ?? 0.0;
-      if (pkgQty > 0) {
-        bsQtyController.text = pkgQty % 1 == 0 ? pkgQty.toInt().toString() : pkgQty.toString();
-      }
-
-      // Refresh Rack Stocks whenever Batch changes
-      await _fetchAllRackStocks();
-
-      // --- Determine Warehouse ---
-      String? determinedWarehouse = setWarehouse.value;
-      if (bsRackController.text.isNotEmpty) {
-        try {
-          final rackRes = await _apiProvider.getDocument('Rack', bsRackController.text);
-          if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
-            determinedWarehouse = rackRes.data['data']['warehouse'] ?? determinedWarehouse;
-          }
-        } catch (_) {}
-      }
-
-      // 1. Get Batch-Wise Balance History (General Stock)
-      final balanceResponse = await _apiProvider.getBatchWiseBalance(
-          currentItemCode,
-          batchNo,
-          warehouse: determinedWarehouse
-      );
-
-      double fetchedBatchQty = 0.0;
-      if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-        final result = balanceResponse.data['message']['result'];
-        if (result is List && result.isNotEmpty) {
-          final row = result.first;
-          fetchedBatchQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
-        }
-      }
-
-      bsMaxQty.value = fetchedBatchQty;
-
-      // Construct Batch Tooltip
-      final sb = StringBuffer();
-      sb.writeln('Batch Stock: $fetchedBatchQty');
-      // Add Rack Info to this tooltip if available
-      if (rackStockTooltip.value != null) {
-        sb.writeln('\nRack Availability:');
-        sb.write(rackStockTooltip.value);
-      }
-      batchInfoTooltip.value = sb.toString().trim();
-
-      if (fetchedBatchQty > 0) {
-        bsIsBatchValid.value = true;
-        bsBatchError.value = null;
-        // GlobalSnackbar.success(message: 'Batch Validated');
-        bsRackFocusNode.requestFocus();
-      } else {
-        bsIsBatchValid.value = false;
-        bsBatchError.value = 'Batch has no stock';
-        GlobalSnackbar.error(message: 'Batch has 0 stock');
-      }
-    } catch (e) {
-      bsBatchError.value = 'Invalid Batch';
-      bsMaxQty.value = 0.0;
-      bsIsBatchValid.value = false;
-      GlobalSnackbar.error(message: 'Batch validation failed');
-    } finally {
-      isValidatingBatch.value = false;
-      validateSheet();
-    }
-  }
-
-  void resetBatchValidation() {
-    bsIsBatchValid.value = false;
-    validateSheet();
-  }
-
-  Future<void> validateRack(String rack) async {
-    if (rack.isEmpty) {
-      bsIsRackValid.value = false;
-      bsItemWarehouse.value = null; // Reset derived warehouse
-      validateSheet();
-      return;
-    }
-
-    // Optimistic derivation: Parse Warehouse from Rack Code (Format: ZONE-WH-RACK)
-    // Example: A-Stores-R1 -> Stores - A
-    if (rack.contains('-')) {
-      final parts = rack.split('-');
-      if (parts.length >= 3) {
-        final wh = '${parts[1]}-${parts[2]} - ${parts[0]}';
-        bsItemWarehouse.value = wh;
-      }
-    }
-
-    isValidatingRack.value = true;
-    try {
-      final response = await _apiProvider.getDocument('Rack', rack);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        bsIsRackValid.value = true;
-        // GlobalSnackbar.success(message: 'Rack validated');
-
-        // Confirm warehouse from API response
-        if (response.data['data']['warehouse'] != null) {
-          bsItemWarehouse.value = response.data['data']['warehouse'];
-        }
-
-        // Re-run validation (and stock fetch) with the new confirmed warehouse
-        validateSheet();
-
-        // Refresh rack stocks using the specific warehouse
-        _fetchAllRackStocks();
-      } else {
-        bsIsRackValid.value = false;
-        GlobalSnackbar.error(message: 'Rack not found');
-      }
-    } catch (e) {
-      bsIsRackValid.value = false;
-      GlobalSnackbar.error(message: 'Validation failed: $e');
-    } finally {
-      isValidatingRack.value = false;
-      validateSheet();
-    }
-  }
-
-  void resetRackValidation() {
-    bsIsRackValid.value = false;
-    validateSheet();
-  }
-
-  void adjustSheetQty(double amount) {
-    double currentQty = double.tryParse(bsQtyController.text) ?? 0;
-    double newQty = currentQty + amount;
-    if (newQty < 0) newQty = 0;
-    if (newQty > bsMaxQty.value && bsMaxQty.value > 0) newQty = bsMaxQty.value;
-    bsQtyController.text = newQty.toStringAsFixed(0);
-    validateSheet();
-  }
-
-  Future<void> editItem(DeliveryNoteItem item) async {
-    // REMOVED: isAddingItem.value = true;
-    double fetchedQty = 0.0;
-    bsIsLoadingBatch.value = true;
-    try {
-      if (item.batchNo != null) {
-        // Logic for edit mode: Use item.rack if available, else fallback to setWarehouse
-        String? targetWh = setWarehouse.value;
-        if (item.rack != null && item.rack!.isNotEmpty) {
-          try {
-            final rackRes = await _apiProvider.getDocument('Rack', item.rack!);
-            if (rackRes.statusCode == 200 && rackRes.data['data'] != null) {
-              targetWh = rackRes.data['data']['warehouse'];
-            }
-          } catch (_) {}
-        }
-
-        final balanceResponse = await _apiProvider.getBatchWiseBalance(
-            item.itemCode,
-            item.batchNo!,
-            warehouse: targetWh
-        );
-
-        if (balanceResponse.statusCode == 200 && balanceResponse.data['message'] != null) {
-          final result = balanceResponse.data['message']['result'];
-          if (result is List && result.isNotEmpty) {
-            final row = result.first;
-            fetchedQty = (row['balance_qty'] as num?)?.toDouble() ?? 0.0;
-          }
-        }
-      }
-    } catch (e) {
-      fetchedQty = 999;
-    }
-
-    initBottomSheet(item.itemCode, item.itemName ?? '', item.batchNo, fetchedQty, editingItem: item);
-
-    Get.bottomSheet(
-      DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-        },
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      isScrollControlled: true,
-    ).then((_) {
-      isItemSheetOpen.value = false;
-      // REMOVED: isAddingItem.value = false;
-      editingItemName.value = null;
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Multiple Items Found',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Select the item you want to add:',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            ...candidates.map((item) => ListTile(
+                  title: Text(item.itemName ?? item.itemCode),
+                  subtitle: Text(item.itemCode),
+                  onTap: () async {
+                    Get.back();
+                    await parent._openItemSheet(
+                      itemCode:  item.itemCode,
+                      itemName:  item.itemName ?? item.itemCode,
+                      variantOf: item.variantOf,
+                    );
+                  },
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Check WO button widget ─────────────────────────────────────────────────────
+// Shows active Work Orders for the item directly in the DN item sheet.
+
+class _CheckWoButton extends StatefulWidget {
+  final String itemCode;
+  final Future<List<Map<String, dynamic>>> Function() fetchWorkOrders;
+  const _CheckWoButton({required this.itemCode, required this.fetchWorkOrders});
+
+  @override
+  State<_CheckWoButton> createState() => _CheckWoButtonState();
+}
+
+class _CheckWoButtonState extends State<_CheckWoButton> {
+  bool _loading   = false;
+  bool _expanded  = false;
+  List<Map<String, dynamic>> _wos = [];
+
+  Future<void> _load() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    final results = await widget.fetchWorkOrders();
+    if (!mounted) return;
+    setState(() {
+      _loading  = false;
+      _expanded = true;
+      _wos      = results;
     });
   }
 
-  /// UX Validation Helper to prevent scanning if document cannot be saved
-  bool _validateHeaderBeforeScan() {
-    if (deliveryNote.value == null) return false;
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
 
-    // 1. Check Mandatory Fields (e.g. Customer)
-    if (deliveryNote.value!.customer.isEmpty) {
-      GlobalSnackbar.error(message: 'Missing Customer: Please select a customer before scanning.');
-      return false;
-    }
-
-    // 2. Check for unresolved errors (e.g. from previous failed save)
-    if (customerError.value != null) {
-      GlobalSnackbar.error(message: 'Invalid Customer: ${customerError.value}');
-      return false;
-    }
-
-    // 3. Optional: PO No Check (if required by business logic)
-    // if (deliveryNote.value!.poNo == null) ...
-
-    return true;
-  }
-
-  Future<void> scanBarcode(String barcode) async {
-    if (barcode.isEmpty) return;
-
-    // 5. USE GUARD
-    if (checkStaleAndBlock()) return;
-
-    // [UX] Rigid Validation: Prevent scanning if header is invalid
-    // This blocks the user from adding items if the document is currently in an unsavable state.
-    if (!_validateHeaderBeforeScan()) return;
-
-    if (isItemSheetOpen.value) {
-      barcodeController.clear();
-      final String? contextItem = currentScannedEan.isNotEmpty ? currentScannedEan : currentItemCode;
-
-      final result = await _scanService.processScan(barcode, contextItemCode: contextItem);
-
-      if (result.type == ScanType.rack && result.rackId != null) {
-        bsRackController.text = result.rackId!;
-        validateRack(result.rackId!);
-      } else if ((result.type == ScanType.batch || result.type == ScanType.item) && result.batchNo != null) {
-        bsBatchController.text = result.batchNo!;
-        validateAndFetchBatch(result.batchNo!);
-      } else if (result.type == ScanType.error) {
-        GlobalSnackbar.error(message: result.message ?? 'Invalid Scan');
-      }
-      return;
-    }
-
-    isScanning.value = true;
-    try {
-      final result = await _scanService.processScan(barcode);
-
-      if (result.isSuccess && result.itemData != null) {
-        if (result.rawCode.contains('-') && !result.rawCode.startsWith('SHIPMENT')) {
-          currentScannedEan = result.rawCode.split('-')[0];
-        } else {
-          currentScannedEan = result.rawCode;
-        }
-
-        final itemData = result.itemData!;
-        double maxQty = 0.0;
-
-        if (result.batchNo != null) {
-          try {
-            final balanceResponse = await _apiProvider.getBatchWiseBalance(
-                itemData.itemCode,
-                result.batchNo!,
-                warehouse: setWarehouse.value
-            );
-
-            if (balanceResponse.statusCode == 200 && balanceResponse.data['message']?['result'] != null) {
-              final list = balanceResponse.data['message']['result'] as List;
-              if(list.isNotEmpty) maxQty = (list[0]['balance_qty'] as num).toDouble();
-            }
-          } catch (_) { maxQty = 6.0; }
-        }
-
-        isScanning.value = false;
-        // REMOVED: isAddingItem.value = true;
-        barcodeController.clear();
-
-        initBottomSheet(itemData.itemCode, itemData.itemName, result.batchNo, maxQty);
-
-        await Get.bottomSheet(
-          DraggableScrollableSheet(
-            initialChildSize: 0.6,
-            minChildSize: 0.4,
-            maxChildSize: 0.95,
-            builder: (context, scrollController) {
-              return DeliveryNoteItemBottomSheet(scrollController: scrollController);
-            },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _expanded ? () => setState(() => _expanded = false) : _load,
+          icon: _loading
+              ? SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: cs.primary),
+                )
+              : Icon(_expanded ? Icons.expand_less : Icons.precision_manufacturing_outlined, size: 18),
+          label: Text(_expanded ? 'Hide Work Orders' : 'Check Work Orders'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: cs.primary,
+            side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
+            visualDensity: VisualDensity.compact,
+            textStyle: text.labelMedium,
           ),
-          isScrollControlled: true,
-        );
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 8),
+          if (_wos.isEmpty)
+            Text('No active Work Orders for this item.',
+                style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+          else
+            ..._wos.map((wo) => _WoInfoTile(wo: wo, cs: cs, text: text)),
+        ],
+      ],
+    );
+  }
+}
 
-        isItemSheetOpen.value = false;
-        // REMOVED: isAddingItem.value = false;
+class _WoInfoTile extends StatelessWidget {
+  final Map<String, dynamic> wo;
+  final ColorScheme cs;
+  final TextTheme text;
+  const _WoInfoTile({required this.wo, required this.cs, required this.text});
 
-      } else if (result.type == ScanType.multiple && result.candidates != null) {
-        GlobalSnackbar.warning(message: 'Multiple items found. Please search manually.');
-      } else {
-        GlobalSnackbar.error(message: result.message ?? 'Item not found');
-      }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Scan processing failed: $e');
-    } finally {
-      isScanning.value = false;
-      barcodeController.clear();
-    }
+  @override
+  Widget build(BuildContext context) {
+    final name   = wo['name']   as String? ?? '';
+    final status = wo['status'] as String? ?? '';
+    final qty    = (wo['qty']   as num?)?.toStringAsFixed(0) ?? '0';
+    final done   = (wo['produced_qty'] as num?)?.toStringAsFixed(0) ?? '0';
+
+    return InkWell(
+      onTap: () => Get.toNamed(
+        AppRoutes.WORK_ORDER_FORM,
+        arguments: {'name': name, 'mode': 'view'},
+      ),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: text.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  Text('$done / $qty  ·  $status',
+                      style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
   }
 }

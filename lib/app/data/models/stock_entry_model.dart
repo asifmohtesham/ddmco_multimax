@@ -4,7 +4,7 @@ class StockEntry {
   final String name;
   final String purpose;
   final double totalAmount;
-  final String postingDate;
+  String postingDate;
   final String modified;
   final String creation;
   final String status;
@@ -12,11 +12,15 @@ class StockEntry {
   final String? owner;
   final String? modifiedBy;
   final String? stockEntryType;
-  final String? postingTime;
+  String? postingTime;
   final String? fromWarehouse;
   final String? toWarehouse;
   final double? customTotalQty;
   final String? customReferenceNo;
+  final String? workOrder;
+  final bool    fromBom;
+  final String? bomNo;
+  final double  fgCompletedQty;
   final String currency;
   final List<StockEntryItem> items;
 
@@ -37,54 +41,74 @@ class StockEntry {
     this.toWarehouse,
     this.customTotalQty,
     this.customReferenceNo,
+    this.workOrder,
     required this.currency,
     required this.items,
+    this.fromBom       = false,
+    this.bomNo,
+    this.fgCompletedQty = 0.0,
   });
 
   factory StockEntry.fromJson(Map<String, dynamic> json) {
     var itemsList = json['items'] as List? ?? [];
-    List<StockEntryItem> items = itemsList.map((i) => StockEntryItem.fromJson(i)).toList();
+    List<StockEntryItem> items =
+        itemsList.map((i) => StockEntryItem.fromJson(i)).toList();
 
     return StockEntry(
-      name: json['name']?.toString() ?? 'No Name',
-      purpose: json['purpose']?.toString() ?? 'No Purpose',
-      totalAmount: _parseDouble(json['total_amount']),
-      postingDate: json['posting_date']?.toString() ?? '',
-      modified: json['modified']?.toString() ?? '',
-      creation: json['creation']?.toString() ?? DateTime.now().toString(),
-      docstatus: _parseInt(json['docstatus']),
-      status: _getStatusFromDocstatus(_parseInt(json['docstatus'])),
-      owner: json['owner']?.toString(),
-      modifiedBy: json['modified_by']?.toString(),
-      stockEntryType: json['stock_entry_type']?.toString(),
-      postingTime: json['posting_time']?.toString(),
-      fromWarehouse: json['from_warehouse']?.toString(),
-      toWarehouse: json['to_warehouse']?.toString(),
-      customTotalQty: _parseDoubleNullable(json['custom_total_qty']),
-      customReferenceNo: json['custom_reference_no']?.toString(),
-      currency: json['currency']?.toString() ?? 'AED',
-      items: items,
+      name:               json['name']?.toString() ?? 'No Name',
+      purpose:            json['purpose']?.toString() ?? 'No Purpose',
+      totalAmount:        _parseDouble(json['total_amount']),
+      postingDate:        json['posting_date']?.toString() ?? '',
+      modified:           json['modified']?.toString() ?? '',
+      creation:           json['creation']?.toString() ?? DateTime.now().toString(),
+      docstatus:          _parseInt(json['docstatus']),
+      status:             _getStatusFromDocstatus(_parseInt(json['docstatus'])),
+      owner:              json['owner']?.toString(),
+      modifiedBy:         json['modified_by']?.toString(),
+      stockEntryType:     json['stock_entry_type']?.toString(),
+      postingTime:        json['posting_time']?.toString(),
+      fromWarehouse:      json['from_warehouse']?.toString(),
+      toWarehouse:        json['to_warehouse']?.toString(),
+      customTotalQty:     _parseDoubleNullable(json['custom_total_qty']),
+      customReferenceNo:  json['custom_reference_no']?.toString(),
+      workOrder:          json['work_order']?.toString(),
+      fromBom:            (json['from_bom'] == 1 || json['from_bom'] == true),
+      bomNo:              json['bom_no']?.toString(),
+      fgCompletedQty:     _parseDouble(json['fg_completed_qty']),
+      currency:           json['currency']?.toString() ?? 'AED',
+      items:              items,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'stock_entry_type': stockEntryType,
-      'posting_date': postingDate,
-      'posting_time': postingTime,
-      'from_warehouse': fromWarehouse,
-      'to_warehouse': toWarehouse,
-      'custom_reference_no': customReferenceNo,
+      'stock_entry_type':     stockEntryType,
+      'posting_date':         postingDate,
+      'posting_time':         postingTime,
+      'from_warehouse':       fromWarehouse,
+      'to_warehouse':         toWarehouse,
+      'custom_reference_no':  customReferenceNo,
+      'work_order':           workOrder,
+      // ── BOM / FG: only include when from_bom is true ──────────────────
+      // Sending from_bom=0 with fg_completed_qty=0 on a manual SE is harmless,
+      // but being explicit avoids accidental WO status side-effects.
+      'from_bom':             fromBom ? 1 : 0,
+      if (fromBom && bomNo != null) 'bom_no': bomNo,
+      if (fromBom) 'fg_completed_qty': fgCompletedQty,
       'items': items.map((i) => i.toJson()).toList(),
     };
   }
 
   static String _getStatusFromDocstatus(int docstatus) {
     switch (docstatus) {
-      case 0: return 'Draft';
-      case 1: return 'Submitted';
-      case 2: return 'Cancelled';
-      default: return 'Unknown';
+      case 0:
+        return 'Draft';
+      case 1:
+        return 'Submitted';
+      case 2:
+        return 'Cancelled';
+      default:
+        return 'Unknown';
     }
   }
 
@@ -128,11 +152,16 @@ class StockEntryItem {
   // Link Fields
   final String? materialRequest;
   final String? materialRequestItem;
+  // Manufacture: marks the Finished Good row (is_finished_item = 1).
+  // Returned by make_stock_entry; must be echoed back on save so ERP
+  // does not raise FinishedGoodError.
+  final int isFinishedItem;
   // Metadata Fields
   final String? owner;
   final String? creation;
   final String? modified;
   final String? modifiedBy;
+  final int docstatus;
 
   StockEntryItem({
     this.name,
@@ -150,10 +179,12 @@ class StockEntryItem {
     this.customInvoiceSerialNumber,
     this.materialRequest,
     this.materialRequestItem,
+    this.isFinishedItem = 0,
     this.owner,
     this.creation,
     this.modified,
     this.modifiedBy,
+    this.docstatus = 0,
   });
 
   factory StockEntryItem.fromJson(Map<String, dynamic> json) {
@@ -170,34 +201,45 @@ class StockEntryItem {
       toRack: json['to_rack']?.toString(),
       sWarehouse: json['s_warehouse']?.toString(),
       tWarehouse: json['t_warehouse']?.toString(),
-      customInvoiceSerialNumber: json['custom_invoice_serial_number']?.toString(),
+      customInvoiceSerialNumber:
+          json['custom_invoice_serial_number']?.toString(),
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
+      isFinishedItem: StockEntry._parseInt(json['is_finished_item']),
       owner: json['owner']?.toString(),
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
       modifiedBy: json['modified_by']?.toString(),
+      docstatus: StockEntry._parseInt(json['docstatus']),
     );
   }
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {
       'item_code': itemCode,
-      'qty': qty,
+      'qty':        qty,
       'basic_rate': basicRate,
-      'batch_no': batchNo,
-      's_warehouse': sWarehouse,
-      't_warehouse': tWarehouse,
-      'rack': rack,
+      'batch_no':   batchNo,
+      // ── Manufacture row asymmetry ──────────────────────────────────────
+      // Finished good rows (is_finished_item == 1) are PRODUCED into a
+      // target warehouse — they must NOT carry an s_warehouse, otherwise
+      // ERPNext treats the batch as consumed from WIP and immediately
+      // posts a negative stock ledger entry.
+      //
+      // Component rows (is_finished_item == 0) are CONSUMED from a source
+      // warehouse — they must NOT carry a t_warehouse on outgoing-only
+      // entries, matching the payload that the ERPNext web UI generates.
+      if (isFinishedItem != 1) 's_warehouse': sWarehouse,
+      if (isFinishedItem == 1 || sWarehouse == null) 't_warehouse': tWarehouse,
+      'rack':    rack,
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
-      'material_request': materialRequest,
+      'material_request':      materialRequest,
       'material_request_item': materialRequestItem,
       'use_serial_batch_fields': 1,
+      'is_finished_item':      isFinishedItem,
     };
-    if (name != null) {
-      data['name'] = name;
-    }
+    if (name != null) data['name'] = name;
     return data;
   }
 }

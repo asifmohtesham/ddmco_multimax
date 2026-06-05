@@ -1,16 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/quantity_input_controller.dart';
 
+/// A quantity input row with press-and-hold increment / decrement buttons.
+///
+/// [QuantityInputWidget] is a pure [StatelessWidget]; mutable repeat-timer
+/// state lives in a [QuantityInputController] scoped per button via an
+/// explicit [Get.put] call keyed on [key.toString()].
+///
+/// Commit C-2: boxShadow removed.
+///   The animated BoxShadow was the path through which Flutter's
+///   _AnimatedState registered a listener on the passed-in
+///   TextEditingController. When GetX rebuilt the parent list (addItem),
+///   the controller was momentarily detached, causing the
+///   "TextEditingController used after being disposed" assertion.
+///   Stability is prioritised over aesthetics; shadow can be restored
+///   once the root lifecycle issue is resolved end-to-end.
+///
+/// Commit C-3: tappable Max badge
+///   When [onInfoTap] is provided the infoText badge becomes an [InkWell]
+///   with a small info_outline icon appended to signal tappability.
+///   When null the badge renders exactly as before — no visual regression
+///   for callers that do not supply the callback.
 class QuantityInputWidget extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
   final String label;
   final bool isReadOnly;
-  /// Additional context like "Available: 50" or "Ordered: 10"
+
+  /// Short badge string rendered next to the label, e.g. 'Max: 3'.
   final String? infoText;
+
+  /// Optional callback fired when the user taps the info badge.
+  /// Supply this to show a breakdown dialog/sheet (e.g. tooltip).
+  /// When null the badge is non-interactive.
+  final VoidCallback? onInfoTap;
+
   final Color color;
   final Function(String)? onChanged;
+
+  /// Optional stable identifier used to derive [Key]s for the internal
+  /// increment / decrement buttons.
+  ///
+  /// Pass a unique value per item (e.g. [itemCode]) so that GetX's reactive
+  /// rebuilds produce the same [ValueKey]s across widget re-instantiations,
+  /// preventing the "Failed assertion" AnimatedState listener crash.
+  ///
+  /// Defaults to null; falls back to [label] when not supplied.
+  final String? widgetTag;
 
   const QuantityInputWidget({
     super.key,
@@ -20,19 +59,26 @@ class QuantityInputWidget extends StatelessWidget {
     this.label = 'Quantity',
     this.isReadOnly = false,
     this.infoText,
+    this.onInfoTap,
     this.color = Colors.black87,
     this.onChanged,
+    this.widgetTag,
   });
+
+  // Stable keys derived from widgetTag (or label as fallback).
+  // Using ValueKey instead of UniqueKey prevents element-identity mismatches
+  // when the parent rebuilds and re-instantiates this StatelessWidget object.
+  Key get _decKey => ValueKey('qty_dec_${widgetTag ?? label}');
+  Key get _incKey => ValueKey('qty_inc_${widgetTag ?? label}');
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
     final borderColor = Colors.grey.shade300;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header Row: Label + Info Badge
+        // ── Header Row: Label + Info Badge ─────────────────────────────────────
         if (label.isNotEmpty || (infoText != null && infoText!.isNotEmpty))
           Padding(
             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
@@ -48,61 +94,51 @@ class QuantityInputWidget extends StatelessWidget {
                   ),
                 ),
                 if (infoText != null && infoText!.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      infoText!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: primaryColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                  _InfoBadge(
+                    text: infoText!,
+                    primaryColor: primaryColor,
+                    onTap: onInfoTap,
                   ),
               ],
             ),
           ),
-
-        // Input Control Container
+        // ── Input row ───────────────────────────────────────────────
         Container(
           height: 56,
           decoration: BoxDecoration(
             color: isReadOnly ? Colors.grey.shade50 : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
-            boxShadow: isReadOnly ? [] : [
-              BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            // C-2: boxShadow removed — animated shadow was the path through
+            // which _AnimatedState registered a listener on the
+            // TextEditingController, causing the assertion crash on addItem.
+            boxShadow: const [],
           ),
           child: Row(
             children: [
-              // Text Field (Left Side)
               Expanded(
                 child: TextFormField(
                   controller: controller,
                   readOnly: isReadOnly,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   textAlign: TextAlign.start,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color: isReadOnly ? Colors.grey.shade600 : Colors.black87,
+                    color: isReadOnly
+                        ? Colors.grey.shade600
+                        : Colors.black87,
                   ),
                   onChanged: onChanged,
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                    FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d*')),
                   ],
                   decoration: const InputDecoration(
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 16),
                     hintText: '0',
                     isDense: true,
                   ),
@@ -114,28 +150,24 @@ class QuantityInputWidget extends StatelessWidget {
                   },
                 ),
               ),
-
-              // Buttons Group (Right Side)
               if (!isReadOnly) ...[
-                // Vertical Divider
-                Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-                // Decrement Button
-                _buildActionButton(
+                Container(
+                    width: 1, height: 32, color: Colors.grey.shade200),
+                _QtyActionButton(
+                  key: _decKey,
                   icon: Icons.remove,
                   onPressed: onDecrement,
                   color: Colors.grey.shade700,
                 ),
-
-                // Vertical Divider between buttons
-                Container(width: 1, height: 32, color: Colors.grey.shade200),
-
-                // Increment Button
-                _buildActionButton(
+                Container(
+                    width: 1, height: 32, color: Colors.grey.shade200),
+                _QtyActionButton(
+                  key: _incKey,
                   icon: Icons.add,
                   onPressed: onIncrement,
                   color: primaryColor,
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(11)),
+                  borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(11)),
                 ),
               ],
             ],
@@ -144,29 +176,115 @@ class QuantityInputWidget extends StatelessWidget {
       ],
     );
   }
+}
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required Color color,
-    BorderRadius? borderRadius,
-  }) {
+// ---------------------------------------------------------------------------
+// _InfoBadge
+//
+// Renders the infoText pill.
+// • When [onTap] is null → plain Container, identical to the old badge.
+// • When [onTap] is given → InkWell wraps the pill; a small info_outline
+//   icon is appended to signal interactivity.
+// ---------------------------------------------------------------------------
+class _InfoBadge extends StatelessWidget {
+  final String text;
+  final Color primaryColor;
+  final VoidCallback? onTap;
+
+  const _InfoBadge({
+    required this.text,
+    required this.primaryColor,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: primaryColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              color: primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.info_outline,
+              size: 12,
+              color: primaryColor.withValues(alpha: 0.7),
+            ),
+          ],
+        ],
+      ),
+    );
+    if (onTap == null) return badge;
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: onTap,
+      child: badge,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Press-and-hold button.
+//
+// Uses [QuantityInputController] (from quantity_input_controller.dart) for
+// the repeat-timer state. The controller is registered once per unique key
+// and auto-removed by GetX when the widget is disposed.
+// ---------------------------------------------------------------------------
+class _QtyActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+  final Color color;
+  final BorderRadius? borderRadius;
+
+  const _QtyActionButton({
+    required super.key,
+    required this.icon,
+    required this.onPressed,
+    required this.color,
+    this.borderRadius,
+  });
+
+  QuantityInputController _controller() {
+    final tag = key.toString();
+    if (!Get.isRegistered<QuantityInputController>(tag: tag)) {
+      Get.put(QuantityInputController(), tag: tag, permanent: false);
+    }
+    return Get.find<QuantityInputController>(tag: tag);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = _controller();
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: borderRadius ?? BorderRadius.zero,
-        onTap: () {
+        onTapDown: (_) {
+          // HapticFeedback fires here (first press) only.
+          // QuantityInputController.startRepeat intentionally does NOT call
+          // HapticFeedback so repeat ticks are silent — matching platform UX.
           HapticFeedback.lightImpact();
-          onPressed();
+          ctrl.startRepeat(onPressed);
         },
+        onTapUp: (_) => ctrl.stopRepeat(),
+        onTapCancel: () => ctrl.stopRepeat(),
         child: SizedBox(
           width: 56,
           height: double.infinity,
-          child: Icon(
-            icon,
-            color: color,
-            size: 22,
-          ),
+          child: Icon(icon, color: color, size: 22),
         ),
       ),
     );

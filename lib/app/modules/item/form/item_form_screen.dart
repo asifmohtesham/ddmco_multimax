@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart'; // Imported
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
-import 'package:multimax/app/data/providers/api_provider.dart'; // Added
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_image_upload.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -15,356 +17,170 @@ class ItemFormScreen extends GetView<ItemFormController> {
   @override
   Widget build(BuildContext context) {
     final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
+    final cs = Theme.of(context).colorScheme;
+    final tabCtrl = Get.find<ItemTabController>();
 
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
-        appBar: MainAppBar(
-          title: controller.item.value?.itemName ?? 'Item Details',
-          leading: isModal
-              ? IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Get.back(),
-          )
-              : null,
-          bottom: const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: 'Overview'),
-              Tab(text: 'Stock Levels'),
-              Tab(text: 'Attributes'),
-              Tab(text: 'Attachments'),
-            ],
-          ),
-        ),
-        body: Obx(() {
-          if (controller.isLoading.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return Obx(() {
+      final item      = controller.item.value;
+      final isLoading = controller.isLoading.value;
 
-          final item = controller.item.value;
-          if (item == null) {
-            return const Center(child: Text('Item not found'));
-          }
-
-          return TabBarView(
-            children: [
-              _buildOverviewTab(context, item),
-              _buildStockLevelsTab(context),
-              _buildAttributesTab(context, item),
-              _buildAttachmentsTab(context),
-            ],
-          );
-        }),
-      ),
-    );
-  }
-
-  // ... (Other Tabs remain the same) ...
-  Widget _buildStockLevelsTab(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. Stock Balance Chart
-          const Text('Warehouse Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Obx(() {
-            if (controller.isLoadingStock.value) return const LinearProgressIndicator();
-            if (controller.stockLevels.isEmpty) {
-              return _buildEmptyState('No stock available in any warehouse.');
-            }
-            return StockBalanceChart(stockLevels: controller.stockLevels);
-          }),
-
-          const SizedBox(height: 24),
-
-          // 2. Batch-Wise History
-          const Text('Batch-Wise Balance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Obx(() {
-            if (controller.isLoadingBatches.value) return const LinearProgressIndicator();
-            if (controller.batchHistory.isEmpty) {
-              return const Text('No batch history found.', style: TextStyle(color: Colors.grey));
-            }
-
-            return Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
-              children: controller.batchHistory.map((batch) {
-                final dateStr = batch['stock_age_date'];
-                final ageString = controller.getFormattedStockAge(dateStr);
-                final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
-                final qty = batch['balance_qty'];
-                final warehouse = batch['warehouse'];
-
-                return Container(
-                  width: (MediaQuery.of(context).size.width / 1) - 18,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              batchNo,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (warehouse != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
-                              child: Text(warehouse, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                            ),
-                        ],
+      return Scaffold(
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            DocTypeFormHeader(
+              title:   item?.name ?? controller.itemCode,
+              docType: 'Item',
+              extraActions: isModal
+                  ? [
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Close',
+                        onPressed: Get.back,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                          '$qty ${controller.item.value?.stockUom ?? ''}',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).primaryColor)
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Age: $ageString',
-                        style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            );
-          }),
-
-          const SizedBox(height: 24),
-
-          // 3. Ledger Entries
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Stock Ledger', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              IconButton(
-                icon: Icon(
-                    Icons.calendar_month,
-                    color: controller.ledgerDateRange.value != null ? Theme.of(context).primaryColor : Colors.grey
-                ),
-                onPressed: () async {
-                  final picked = await showDateRangePicker(
-                      context: context,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                      initialDateRange: controller.ledgerDateRange.value
-                  );
-                  if (picked != null) controller.updateLedgerDateRange(picked);
-                },
-              ),
-            ],
-          ),
-
-          if (controller.ledgerDateRange.value != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Chip(
-                label: Text('${DateFormat('MM/dd').format(controller.ledgerDateRange.value!.start)} - ${DateFormat('MM/dd').format(controller.ledgerDateRange.value!.end)}'),
-                deleteIcon: const Icon(Icons.close, size: 16),
-                onDeleted: controller.clearLedgerDateRange,
-                visualDensity: VisualDensity.compact,
+                    ]
+                  : null,
+              bottom: TabBar(
+                controller: tabCtrl.tabController,
+                isScrollable: true,
+                tabs: const [
+                  Tab(text: 'Overview'),
+                  Tab(text: 'Stock Levels'),
+                  Tab(text: 'Attributes'),
+                  Tab(text: 'Attachments'),
+                ],
               ),
             ),
-
-          Obx(() {
-            if (controller.isLoadingLedger.value) return const LinearProgressIndicator();
-            if (controller.stockLedgerEntries.isEmpty) {
-              return const Text('No transactions found in this period.', style: TextStyle(color: Colors.grey));
-            }
-
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: controller.stockLedgerEntries.length,
-              separatorBuilder: (c,i) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final entry = controller.stockLedgerEntries[index];
-                final qty = (entry['actual_qty'] as num).toDouble();
-                final isPositive = qty > 0;
-
-                String subtitle = '${entry['voucher_no']}';
-                String? extraInfo;
-
-                if (entry['voucher_type'] == 'Delivery Note' && entry['customer'] != null) {
-                  extraInfo = 'Customer: ${entry['customer']}';
-                } else if (entry['voucher_type'] == 'Stock Entry' &&
-                    entry['stock_entry_type'] == 'Material Issue' &&
-                    entry['custom_reference_no'] != null) {
-                  extraInfo = 'Ref: ${entry['custom_reference_no']}';
-                }
-
-                return Card(
-                  elevation: 0,
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+          body: (isLoading && item == null)
+              ? const Center(child: CircularProgressIndicator())
+              : item == null
+                  ? Center(
+                      child: _buildEmptyState(
+                        context, cs,
+                        icon: Icons.error_outline,
+                        message: 'Item not found.',
+                      ),
+                    )
+                  : TabBarView(
+                      controller: tabCtrl.tabController,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(entry['voucher_type'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                            Text(
-                              '${isPositive ? '+' : ''}$qty',
-                              style: TextStyle(
-                                  color: isPositive ? Colors.green : Colors.red,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(subtitle, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                        if (extraInfo != null)
-                          Text(extraInfo, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            if (entry['warehouse'] != null)
-                              Text(entry['warehouse'], style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                            Text(
-                                FormattingHelper.getRelativeTime('${entry['posting_date']} ${entry['posting_time']}'),
-                                style: const TextStyle(fontSize: 11, color: Colors.grey)
-                            ),
-                          ],
-                        )
+                        _buildOverviewTab(context, item, cs),
+                        _buildStockLevelsTab(context, cs),
+                        _buildAttributesTab(context, item, cs),
+                        _buildAttachmentsTab(context, cs),
                       ],
                     ),
-                  ),
-                );
-              },
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAttributesTab(BuildContext context, Item item) {
-    if (item.attributes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.list_alt, size: 64, color: Colors.grey.shade300),
-            const SizedBox(height: 16),
-            const Text('No attributes defined.', style: TextStyle(color: Colors.grey, fontSize: 16)),
-          ],
         ),
       );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: item.attributes.length,
-      separatorBuilder: (context, index) => const Divider(),
-      itemBuilder: (context, index) {
-        final attr = item.attributes[index];
-        return ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(attr.attributeName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-          trailing: Text(attr.attributeValue, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        );
-      },
-    );
+    });
   }
 
-  Widget _buildOverviewTab(BuildContext context, dynamic item) {
+  // ── Overview Tab ──────────────────────────────────────────────────────────
+
+  Widget _buildOverviewTab(BuildContext context, Item item, ColorScheme cs) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
+    final theme = Theme.of(context);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(12.0),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (item.image != null)
-            GestureDetector(
-              onTap: () => _openFullScreenImage(context, '$baseUrl${item.image}'),
-              child: Container(
-                height: 200,
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Hero(
-                  tag: 'item_image_${item.itemCode}',
-                  child: Image.network(
-                    '$baseUrl${item.image}',
-                    fit: BoxFit.contain,
-                    errorBuilder: (c, o, s) => const Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-                  ),
-                ),
-              ),
-            ),
+          DocTypeImageUpload(
+            doctype: 'Item',
+            docname: item.itemCode,
+            fieldname: 'image',
+            imageUrl: item.image,
+            baseUrl: baseUrl,
+            onUploaded: () { controller.fetchItemDetails(); },
+          ),
 
           _buildSectionCard(
+            context: context,
+            cs: cs,
             title: 'General',
             children: [
-              _buildDetailRow('Item Code', item.itemCode, isCopyable: true),
-              const Divider(),
-              _buildDetailRow('Item Name', item.itemName),
-              const Divider(),
-              _buildDetailRow('Item Group', item.itemGroup),
+              _buildDetailRow(
+                context: context,
+                cs: cs,
+                label: 'Item Code',
+                value: item.itemCode,
+                isCopyable: true,
+                onCopy: () => controller.copyToClipboard(item.itemCode),
+              ),
+              Divider(color: cs.outlineVariant),
+              _buildDetailRow(
+                  context: context,
+                  cs: cs,
+                  label: 'Item Name',
+                  value: item.itemName),
+              Divider(color: cs.outlineVariant),
+              _buildDetailRow(
+                  context: context,
+                  cs: cs,
+                  label: 'Item Group',
+                  value: item.itemGroup),
             ],
           ),
 
           const SizedBox(height: 16),
 
           _buildSectionCard(
+            context: context,
+            cs: cs,
             title: 'Inventory',
             children: [
-              _buildDetailRow('Default UOM', item.stockUom ?? '-'),
+              _buildDetailRow(
+                  context: context,
+                  cs: cs,
+                  label: 'Default UOM',
+                  value: item.stockUom ?? '-'),
               if (item.countryOfOrigin != null) ...[
-                const Divider(),
-                _buildDetailRow('Country of Origin', item.countryOfOrigin!),
-              ]
+                Divider(color: cs.outlineVariant),
+                _buildDetailRow(
+                    context: context,
+                    cs: cs,
+                    label: 'Country of Origin',
+                    value: item.countryOfOrigin!),
+              ],
             ],
           ),
 
-          const SizedBox(height: 16),
-
-          if (item.variantOf != null || item.description != null)
+          if (item.variantOf != null || item.description != null) ...[
+            const SizedBox(height: 16),
             _buildSectionCard(
+              context: context,
+              cs: cs,
               title: 'Description',
               children: [
                 if (item.variantOf != null) ...[
-                  _buildDetailRow('Variant Of', item.variantOf!),
-                  const Divider(),
+                  _buildDetailRow(
+                      context: context,
+                      cs: cs,
+                      label: 'Variant Of',
+                      value: item.variantOf!),
+                  Divider(color: cs.outlineVariant),
                 ],
                 if (item.description != null)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Detailed Description', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text(
+                        'Detailed Description',
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                      ),
                       const SizedBox(height: 4),
-                      Text(item.description!, style: const TextStyle(fontSize: 14, height: 1.4)),
+                      Text(
+                        item.description!,
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: cs.onSurface, height: 1.4),
+                      ),
                     ],
                   ),
               ],
             ),
+          ],
 
           const SizedBox(height: 80),
         ],
@@ -372,59 +188,618 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  Widget _buildAttachmentsTab(BuildContext context) {
-    // ... (Same logic for Attachments)
+  // ── Stock Levels Tab ──────────────────────────────────────────────────────
+
+  Widget _buildStockLevelsTab(BuildContext context, ColorScheme cs) {
+    final theme = Theme.of(context);
+
+    return RefreshIndicator(
+      onRefresh: controller.fetchDashboardData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            // ── Warehouse filter chips ────────────────────────────────────
+            Obx(() {
+              final warehouses = controller.availableWarehouses;
+              if (controller.isLoadingStock.value || warehouses.length <= 1) {
+                return const SizedBox.shrink();
+              }
+              final selected = controller.selectedWarehouse.value;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Filter by Warehouse',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: const Text('All'),
+                            selected: selected == null,
+                            onSelected: (_) => controller.clearWarehouseFilter(),
+                            selectedColor: cs.primary,
+                            checkmarkColor: cs.onPrimary,
+                            labelStyle: TextStyle(
+                              color: selected == null
+                                  ? cs.onPrimary
+                                  : cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            side: BorderSide(
+                              color: selected == null
+                                  ? cs.primary
+                                  : cs.outlineVariant,
+                            ),
+                            backgroundColor: cs.surfaceContainer,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        ...warehouses.map((wh) {
+                          final isActive = selected == wh;
+                          final label = wh.contains(' - ')
+                              ? wh.split(' - ').first.trim()
+                              : wh;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(label),
+                              selected: isActive,
+                              onSelected: (_) =>
+                                  controller.onWarehouseChanged(wh),
+                              selectedColor: cs.primary,
+                              checkmarkColor: cs.onPrimary,
+                              labelStyle: TextStyle(
+                                color: isActive
+                                    ? cs.onPrimary
+                                    : cs.onSurfaceVariant,
+                              ),
+                              side: BorderSide(
+                                color: isActive
+                                    ? cs.primary
+                                    : cs.outlineVariant,
+                              ),
+                              backgroundColor: cs.surfaceContainer,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }),
+
+            // 1. Warehouse Balance
+            Text(
+              'Warehouse Balance',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(() {
+              if (controller.isLoadingStock.value) {
+                return const LinearProgressIndicator();
+              }
+              final levels = controller.filteredStockLevels;
+              if (levels.isEmpty) {
+                return _buildEmptyState(
+                  context,
+                  cs,
+                  icon: Icons.warehouse_outlined,
+                  message: controller.selectedWarehouse.value != null
+                      ? 'No stock in the selected warehouse.'
+                      : 'No stock available in any warehouse.',
+                );
+              }
+              return StockBalanceChart(
+                key: ValueKey(controller.selectedWarehouse.value),
+                stockLevels: levels,
+              );
+            }),
+
+            const SizedBox(height: 24),
+
+            // 2. Batch-Wise Balance
+            Text(
+              'Batch-Wise Balance',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Obx(() {
+              if (controller.isLoadingBatches.value) {
+                return const LinearProgressIndicator();
+              }
+              final batches = controller.filteredBatchHistory;
+              if (batches.isEmpty) {
+                return _buildEmptyState(
+                  context,
+                  cs,
+                  icon: Icons.category_outlined,
+                  message: controller.selectedWarehouse.value != null
+                      ? 'No batches in the selected warehouse.'
+                      : 'No batch history found.',
+                );
+              }
+              return Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: batches.asMap().entries.map((entry) {
+                    final isLast = entry.key == batches.length - 1;
+                    final batch = entry.value;
+                    final dateStr = batch['stock_age_date'];
+                    final ageString = controller.getFormattedStockAge(dateStr);
+                    final batchNo = batch['batch_no'] ?? batch['batch'] ?? 'N/A';
+                    final rawQty = batch['balance_qty'];
+                    final uom = controller.item.value?.stockUom ?? '';
+                    final qtyFormatted = rawQty != null
+                        ? NumberFormat('#,##0.##').format(
+                            rawQty is num ? rawQty : num.tryParse(rawQty.toString()) ?? 0)
+                        : '—';
+                    final warehouse = batch['warehouse'];
+                    final isHighlighted = ItemFormController.isBatchHighlighted(
+                        batchNo, controller.highlightedBatchNo.value);
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: isHighlighted
+                            ? cs.primaryContainer.withValues(alpha: 0.35)
+                            : null,
+                        border: Border(
+                          bottom: isLast
+                              ? BorderSide.none
+                              : BorderSide(color: cs.outlineVariant),
+                          left: isHighlighted
+                              ? BorderSide(color: cs.primary, width: 3)
+                              : BorderSide.none,
+                        ),
+                      ),
+                      padding: EdgeInsets.only(
+                        left: isHighlighted ? 9 : 12,
+                        right: 12,
+                        top: 10,
+                        bottom: 10,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inventory_2_outlined,
+                              size: 13, color: cs.onSurfaceVariant),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  batchNo,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    if (warehouse != null) ...[
+                                      Text(
+                                        warehouse,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        '  ·  ',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                    Flexible(
+                                      child: Text(
+                                        ageString,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.orange.shade700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '$qtyFormatted $uom',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            }),
+
+            const SizedBox(height: 24),
+
+            // 3. Stock Ledger
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Stock Ledger',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                ),
+                Obx(() => IconButton(
+                      icon: Icon(
+                        Icons.calendar_month,
+                        color: controller.ledgerDateRange.value != null
+                            ? cs.primary
+                            : cs.onSurfaceVariant,
+                      ),
+                      onPressed: () async {
+                        final picked = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                          initialDateRange: controller.ledgerDateRange.value,
+                        );
+                        if (picked != null) {
+                          controller.updateLedgerDateRange(picked);
+                        }
+                      },
+                    )),
+              ],
+            ),
+
+            Obx(() {
+              final range = controller.ledgerDateRange.value;
+              if (range == null) return const SizedBox.shrink();
+              final fmt = DateFormat('d MMM yy');
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Chip(
+                  label: Text(
+                      '${fmt.format(range.start)} – ${fmt.format(range.end)}'),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  onDeleted: controller.clearLedgerDateRange,
+                  visualDensity: VisualDensity.compact,
+                ),
+              );
+            }),
+
+            Obx(() {
+              if (controller.isLoadingLedger.value) {
+                return const LinearProgressIndicator();
+              }
+              if (controller.stockLedgerEntries.isEmpty) {
+                return _buildEmptyState(
+                  context,
+                  cs,
+                  icon: Icons.receipt_long_outlined,
+                  message: 'No transactions found in this period.',
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: controller.stockLedgerEntries.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final entry = controller.stockLedgerEntries[index];
+                  final qty = (entry['actual_qty'] as num).toDouble();
+                  final isPositive = qty > 0;
+
+                  String subtitle = '${entry['voucher_no']}';
+                  String? extraInfo;
+
+                  if (entry['voucher_type'] == 'Delivery Note' &&
+                      entry['customer'] != null) {
+                    extraInfo = 'Customer: ${entry['customer']}';
+                  } else if (entry['voucher_type'] == 'Stock Entry' &&
+                      entry['stock_entry_type'] == 'Material Issue' &&
+                      entry['custom_reference_no'] != null) {
+                    extraInfo = 'Ref: ${entry['custom_reference_no']}';
+                  }
+
+                  return Card(
+                    elevation: 0,
+                    color: cs.surfaceContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(color: cs.outlineVariant),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                entry['voucher_type'],
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.onSurface,
+                                ),
+                              ),
+                              Text(
+                                '${isPositive ? '+' : ''}$qty',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: isPositive
+                                      ? Colors.green.shade600
+                                      : cs.error,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontFamily: 'monospace',
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          if (extraInfo != null)
+                            Text(
+                              extraInfo,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.secondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              if (entry['warehouse'] != null)
+                                Expanded(
+                                  child: Text(
+                                    entry['warehouse'],
+                                    style: theme.textTheme.labelSmall
+                                        ?.copyWith(color: cs.onSurfaceVariant),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              Text(
+                                FormattingHelper.getRelativeTime(
+                                    '${entry['posting_date']} '
+                                    '${entry['posting_time']}'),
+                                style: theme.textTheme.labelSmall
+                                    ?.copyWith(color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Attributes Tab ────────────────────────────────────────────────────────
+
+  Widget _buildAttributesTab(BuildContext context, Item item, ColorScheme cs) {
+    final theme = Theme.of(context);
+
+    if (item.attributes.isEmpty) {
+      return Center(
+        child: _buildEmptyState(
+          context,
+          cs,
+          icon: Icons.list_alt_outlined,
+          message: 'No attributes defined.',
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: item.attributes.length,
+      separatorBuilder: (_, __) => Divider(color: cs.outlineVariant),
+      itemBuilder: (context, index) {
+        final attr = item.attributes[index];
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            attr.attributeName,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          trailing: Text(
+            attr.attributeValue,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Attachments Tab ───────────────────────────────────────────────────────
+
+  Widget _buildAttachmentsTab(BuildContext context, ColorScheme cs) {
+    final theme = Theme.of(context);
+    final String baseUrl = Get.find<ApiProvider>().baseUrl;
+
     return Obx(() {
-      // ... (Same logic)
       if (controller.attachments.isEmpty) {
-        return const Center(child: Text("No attachments found."));
+        return Center(
+          child: _buildEmptyState(
+            context,
+            cs,
+            icon: Icons.attach_file_outlined,
+            message: 'No attachments found.',
+          ),
+        );
       }
+
       return GridView.builder(
-        // ...
+        padding: const EdgeInsets.all(12),
         itemCount: controller.attachments.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.85,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
         itemBuilder: (ctx, i) {
           final file = controller.attachments[i];
           final String fileUrl = file['file_url'] ?? '';
           final String fileName = file['file_name'] ?? 'Unknown';
           final bool isImg = controller.isImage(fileUrl);
-          final String baseUrl = Get.find<ApiProvider>().baseUrl;
-          final fullUrl = '$baseUrl$fileUrl';
+          final String fullUrl = '$baseUrl$fileUrl';
 
           return Card(
-            // ... (Card construction using fullUrl)
-              child: InkWell(
-                onTap: () {
-                  if (isImg) _openFullScreenImage(context, fullUrl);
-                  else controller.copyLink(fileUrl);
-                },
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: isImg ? Image.network(fullUrl, fit: BoxFit.cover) : const Icon(Icons.file_present),
+            elevation: 0,
+            color: cs.surfaceContainer,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: cs.outlineVariant),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                if (isImg) _openFullScreenImage(context, fullUrl);
+                else controller.copyLink(fileUrl);
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: isImg
+                        ? Image.network(
+                            fullUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                color: cs.surfaceContainerHighest,
+                                child: const Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
+                              );
+                            },
+                            errorBuilder: (_, __, ___) => Icon(
+                              Icons.broken_image_outlined,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          )
+                        : Icon(
+                            Icons.insert_drive_file_outlined,
+                            size: 48,
+                            color: cs.primary,
+                          ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 4, 2),
+                    child: Text(
+                      fileName,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: cs.onSurface),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    Text(fileName),
-                    IconButton(icon: const Icon(Icons.share), onPressed: () => controller.shareFile(fileUrl, fileName)),
-                  ],
-                ),
-              )
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: Icon(Icons.share, size: 18,
+                          color: cs.onSurfaceVariant),
+                      onPressed: () =>
+                          controller.shareFile(fileUrl, fileName),
+                      padding: const EdgeInsets.only(right: 8, bottom: 4),
+                      constraints: const BoxConstraints(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         },
       );
     });
   }
 
-  Widget _buildSectionCard({required String title, required List<Widget> children}) {
+  // ── Shared helpers ────────────────────────────────────────────────────────
+
+  Widget _buildSectionCard({
+    required BuildContext context,
+    required ColorScheme cs,
+    required String title,
+    required List<Widget> children,
+  }) {
+    final theme = Theme.of(context);
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      color: cs.surfaceContainer,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cs.outlineVariant),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+            Text(
+              title,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 12),
             ...children,
           ],
@@ -433,13 +808,25 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {bool isCopyable = false}) {
+  Widget _buildDetailRow({
+    required BuildContext context,
+    required ColorScheme cs,
+    required String label,
+    required String value,
+    bool isCopyable = false,
+    VoidCallback? onCopy,
+  }) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
           const SizedBox(width: 16),
           Flexible(
             child: Row(
@@ -448,14 +835,24 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 Flexible(
                   child: Text(
                     value,
-                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurface,
+                    ),
                     textAlign: TextAlign.right,
                   ),
                 ),
-                if (isCopyable) ...[
+                if (isCopyable && onCopy != null) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.copy, size: 14, color: Colors.grey),
-                ]
+                  GestureDetector(
+                    onTap: onCopy,
+                    child: Icon(
+                      Icons.copy,
+                      size: 14,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -464,21 +861,76 @@ class ItemFormScreen extends GetView<ItemFormController> {
     );
   }
 
-  Widget _buildEmptyState(String message) {
-    // ... (Same logic)
-    return Text(message);
+  Widget _buildEmptyState(
+    BuildContext context,
+    ColorScheme cs, {
+    required IconData icon,
+    required String message,
+  }) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 48, color: cs.outlineVariant),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
   }
 
   void _openFullScreenImage(BuildContext context, String url) {
     Get.dialog(
+      barrierDismissible: true,
+      barrierColor: Colors.black87,
       Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.zero,
-        child: Stack(
-          children: [
-            InteractiveViewer(child: Center(child: Image.network(url))),
-            Positioned(top: 40, right: 20, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Get.back())),
-          ],
+        child: GestureDetector(
+          onVerticalDragEnd: (details) {
+            if (details.primaryVelocity != null &&
+                details.primaryVelocity! > 300) {
+              Get.back();
+            }
+          },
+          child: Stack(
+            children: [
+              InteractiveViewer(
+                child: Center(
+                  child: Image.network(
+                    url,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const Center(
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white54,
+                      size: 64,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 40,
+                right: 20,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: Get.back,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

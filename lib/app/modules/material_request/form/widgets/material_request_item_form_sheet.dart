@@ -1,8 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
-import 'package:multimax/app/modules/global_widgets/quantity_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 
+/// Item bottom sheet for Material Request.
+///
+/// Uses [GlobalItemFormSheet] for a UX identical to Stock Entry and
+/// Delivery Note. Key consistency guarantees:
+///
+///   • [key: const ValueKey('mr_item_sheet')] on [GlobalItemFormSheet]
+///     gives Flutter a stable element identity across Obx rebuilds.
+///     The element (and its subtree, including [QuantityInputWidget] with
+///     its `final` [_decKey] / [_incKey] fields) is updated in-place
+///     rather than unmounted and remounted. This means:
+///       - [_QtyRepeatController] instances survive Rx state changes
+///         (no GetX tag churn, no mid-hold timer cancellation).
+///       - Only changed params propagate down via normal widget diffing.
+///
+///   • The [Obx] scope is kept so that reactive params (title,
+///     isSaveEnabled, itemSubtext, onDelete, isLoading) still re-read
+///     the latest Rx values on every tick. The stable key ensures that
+///     re-reading those params does NOT remount the widget subtree.
+///
+///   • Qty ± stepper and inline error text are driven by [qtyDelegate]
+///     (controller implements [QtyFieldDelegate]) via [SharedQtyField].
+///     [adjustSheetQty] is still available on the controller and will be
+///     called by [SharedQtyField] through [QtyFieldWithPlusMinusDelegate]
+///     if the controller is upgraded to that interface in the future.
+///
+///   • "Update Item" title + enabled state is driven by [isSheetValid]
+///     which is false in edit mode until [isFormDirty] is true.
+///
+///   • [variantOf] = [bsItemVariantOf] and [itemGroup] = [bsItemGroup] so
+///     the B2 header shows the code·variant pill and group chip.
 class MaterialRequestItemFormSheet extends StatelessWidget {
   final MaterialRequestFormController controller;
 
@@ -10,60 +40,103 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(controller.currentItemCode.isEmpty ? 'New Item' : controller.currentItemCode,
-              style: Get.textTheme.titleLarge),
-          if (controller.currentItemName.isNotEmpty)
-            Text(controller.currentItemName, style: Get.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+    return Obx(() {
+      final isEditing = controller.currentItemNameKey.value != null;
+      final docStatus = controller.materialRequest.value?.docstatus ?? 0;
 
-          const Divider(height: 24),
+      return GlobalItemFormSheet(
+        // ── Stable key ─────────────────────────────────────────────────────────
+        //
+        // CRITICAL: a stable ValueKey prevents Flutter from unmounting and
+        // remounting this widget when the Obx rebuilds. Without it, every
+        // Rx change constructs a new GlobalItemFormSheet → new
+        // QuantityInputWidget → new UniqueKey objects for the +/− buttons
+        // → _QtyRepeatController tag churn and mid-hold timer cancellation.
+        //
+        // Previously this was ValueKey(currentItemNameKey.value ?? 'new'),
+        // which changed on edit → add transitions and caused remounts.
+        // The sheet is opened fresh each time by openItemSheet(), so a
+        // single constant key is correct for the lifetime of one sheet.
+        key: const ValueKey('mr_item_sheet'),
 
-          QuantityInputWidget(
-            controller: controller.bsQtyController,
-            label: 'Quantity',
-            onChanged: (_) => controller.validateSheet(),
-            onIncrement: () => controller.adjustSheetQty(1),
-            onDecrement: () => controller.adjustSheetQty(-1),
-          ),
+        formKey:          controller.itemFormKey,
+        scrollController: null,
 
-          const SizedBox(height: 16),
+        // ── Header ──────────────────────────────────────────────────────────
+        title:    isEditing ? 'Update Item' : 'Add Item',
+        itemCode:  controller.currentItemCode,
+        itemName:  controller.currentItemName,
+        variantOf: controller.bsItemVariantOf.value,
+        itemGroup: controller.bsItemGroup.value,
 
-          // Warehouse Dropdown
-          GestureDetector(
-            onTap: () => controller.showWarehousePicker(forItem: true),
-            child: AbsorbPointer(
-              child: TextField(
-                controller: controller.bsWarehouseController,
-                decoration: const InputDecoration(
-                  labelText: 'Warehouse',
-                  prefixIcon: Icon(Icons.store_outlined),
-                  suffixIcon: Icon(Icons.arrow_drop_down),
-                  border: OutlineInputBorder(),
-                  hintText: 'Select Warehouse',
-                ),
-              ),
-            ),
-          ),
+        // ── Quantity ─────────────────────────────────────────────────────────
+        // Delegate pattern: controller implements QtyFieldDelegate so
+        // GlobalItemFormSheet / SharedQtyField drive all qty reactive state
+        // (text field, ± stepper, inline error, Max chip) from the interface
+        // without requiring raw controller/callback params.
+        qtyDelegate:    controller,
+        qtyAccentColor: Colors.teal,
 
-          const SizedBox(height: 24),
+        // ── Save / validation ───────────────────────────────────────────────
+        isSaveEnabledRx: controller.isSheetValid,
+        // docStatus == 0 check: re-evaluated on each Obx tick so the
+        // Save button hard-disables immediately if the doc is submitted.
+        isSaveEnabled:   docStatus == 0,
+        // isAddingItem drives the _AnimatedSaveButton spinner via
+        // isSheetLoading; also passed as isLoading for the legacy path.
+        isLoading:       controller.isAddingItem.value,
+        onSubmit:        controller.saveItem,
 
-          Obx(() => SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: controller.isSheetValid.value ? controller.saveItem : null,
-              child: Text(controller.currentItemNameKey.value != null ? 'Update' : 'Add'),
-            ),
-          )),
+        // ── Delete (edit mode only) ────────────────────────────────────────
+        // onDelete reads currentItemNameKey.value at call time (not at
+        // build time) so the closure always resolves the live item even
+        // if the Rx value changes between build and tap.
+        onDelete: isEditing
+            ? () {
+                final key = controller.currentItemNameKey.value;
+                if (key == null) return;
+                final item = controller.materialRequest.value?.items
+                    .firstWhere((i) => i.name == key);
+                if (item == null) return;
+                controller.deleteItem(item);
+              }
+            : null,
+
+        // ── Custom fields ───────────────────────────────────────────────────
+        customFields: [
+          _buildWarehouseField(context),
         ],
+      );
+    });
+  }
+
+  Widget _buildWarehouseField(BuildContext context) {
+    return GlobalItemFormSheet.buildInputGroup(
+      label: 'Warehouse',
+      color: Colors.teal,
+      child: GestureDetector(
+        onTap: () => controller.showWarehousePicker(forItem: true),
+        child: AbsorbPointer(
+          child: TextFormField(
+            controller: controller.bsWarehouseController,
+            decoration: InputDecoration(
+              hintText: 'Select Warehouse',
+              prefixIcon:
+                  Icon(Icons.store_outlined, color: Colors.teal.shade600),
+              suffixIcon: const Icon(Icons.arrow_drop_down),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.teal.shade200),
+              ),
+              filled: true,
+              fillColor: Colors.teal.shade50,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            ),
+          ),
+        ),
       ),
     );
   }

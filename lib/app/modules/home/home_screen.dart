@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
-import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
@@ -18,170 +18,284 @@ class HomeScreen extends GetView<HomeController> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: MainAppBar(
-        title: "Dashboard",
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh Data',
-            onPressed: () {
-              controller.fetchDashboardData();
-              controller.fetchPerformanceData();
-            },
+    return AppShellScaffold(
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Notifications',
-            onPressed: () {
-              GlobalSnackbar.info(title: 'Notifications', message: 'No new notifications');
-            },
-          ),
-        ],
+          child: Obx(() => BarcodeInputWidget(
+            onScan: controller.onScan,
+            controller: controller.barcodeController,
+            isLoading: controller.isScanning.value,
+            hintText: 'Scan Item / Batch / Rack',
+            activeRoute: AppRoutes.HOME,
+          )),
+        ),
       ),
-      drawer: const AppNavDrawer(),
-      body: Column(
-        children: [
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await controller.fetchDashboardData();
-                await controller.fetchPerformanceData();
-              },
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildUserContextCard(context),
-                    const SizedBox(height: 24),
-
-                    // 1. Quick Access Grid
-                    Text('Quick Access', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    _buildQuickAccessGrid(context),
-
-                    const SizedBox(height: 24),
-
-                    // 2. Timeline
-                    Obx(() => PerformanceTimelineCard(
-                      viewMode: controller.timelineViewMode.value,
-                      onToggleView: controller.toggleTimelineView,
-                      data: controller.timelineData,
-                      isLoading: controller.isLoadingTimeline.value,
-                      selectedDate: controller.timelineViewMode.value != 'Weekly'
-                          ? controller.selectedDailyDate.value
-                          : null,
-                      selectedRange: controller.timelineViewMode.value == 'Weekly'
-                          ? controller.selectedWeeklyRange.value
-                          : null,
-                      onDateChanged: controller.onDailyDateChanged,
-                      onRangeChanged: controller.onWeeklyRangeChanged,
-                    )),
-
-                    const SizedBox(height: 24),
-
-                    // 3. KPIs
-                    Text('Daily Goals', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    Obx(() {
-                      if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
-                        return const SizedBox(height: 150, child: Center(child: CircularProgressIndicator()));
-                      }
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: SpeedometerKpiCard(
-                              title: 'Work Orders',
-                              actual: controller.activeWorkOrdersCount.value,
-                              target: controller.targetWorkOrders,
-                              icon: Icons.assignment_outlined,
-                              onTap: controller.goToWorkOrder,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: SpeedometerKpiCard(
-                              title: 'Job Cards',
-                              actual: controller.activeJobCardsCount.value,
-                              target: controller.targetJobCards,
-                              icon: Icons.assignment_ind_outlined,
-                              onTap: controller.goToJobCard,
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
-                  ],
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await controller.fetchDashboardData();
+          await controller.fetchPerformanceData();
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            DocTypeListHeader(
+              title: 'Dashboard',
+              automaticallyImplyLeading: false,
+              extraActions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh Data',
+                  onPressed: () {
+                    controller.fetchDashboardData();
+                    controller.fetchPerformanceData();
+                  },
                 ),
+              ],
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _buildUserContextCard(context),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Quick Access',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildQuickAccessGrid(context),
+                  const SizedBox(height: 24),
+                  Obx(() => PerformanceTimelineCard(
+                    viewMode: controller.timelineViewMode.value,
+                    onToggleView: controller.toggleTimelineView,
+                    data: controller.timelineData,
+                    isLoading: controller.isLoadingTimeline.value,
+                    selectedDate: controller.timelineViewMode.value != 'Weekly'
+                        ? controller.selectedDailyDate.value
+                        : null,
+                    selectedRange: controller.timelineViewMode.value == 'Weekly'
+                        ? controller.selectedWeeklyRange.value
+                        : null,
+                    onDateChanged: controller.onDailyDateChanged,
+                    onRangeChanged: controller.onWeeklyRangeChanged,
+                  )),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Manufacturing Pulse',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Obx(() {
+                    if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
+                      return const _ManufacturingPulseSkeleton();
+                    }
+                    return Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SpeedometerKpiCard(
+                                title: 'Work Orders',
+                                actual: controller.activeWorkOrdersCount.value,
+                                target: controller.targetWorkOrders,
+                                icon: Icons.precision_manufacturing_outlined,
+                                onTap: controller.goToWorkOrder,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: SpeedometerKpiCard(
+                                title: 'Job Cards',
+                                actual: controller.activeJobCardsCount.value,
+                                target: controller.targetJobCards,
+                                icon: Icons.assignment_ind_outlined,
+                                onTap: controller.goToJobCard,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        BomCountCard(
+                          count: controller.activeBomCount.value,
+                          onTap: controller.goToBOM,
+                        ),
+                        Obx(() {
+                          final jcName = controller.activeWipJcName.value;
+                          final op = controller.activeWipJcOperation.value;
+                          if (jcName == null) return const SizedBox.shrink();
+                          return _ResumeJobCard(jcName: jcName, operation: op);
+                        }),
+                      ],
+                    );
+                  }),
+                  const SizedBox(height: 80),
+                ]),
               ),
             ),
-          ),
-
-          // Persistent Scan Input
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, -2))],
-            ),
-            child: Obx(() => BarcodeInputWidget(
-              onScan: controller.onScan,
-              controller: controller.barcodeController,
-              isLoading: controller.isScanning.value,
-              hintText: 'Scan Item / Batch / Rack',
-              activeRoute: AppRoutes.HOME,
-            )),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Quick Access Grid
+  // ---------------------------------------------------------------------------
+
+  /// Configuration-driven quick action — adding a new tile is a one-line change
+  /// in each section list below. Satisfies OCP: open for extension, no inline
+  /// mutation of the builder method.
   Widget _buildQuickAccessGrid(BuildContext context) {
     return LayoutBuilder(
-        builder: (context, constraints) {
-          final double itemWidth = (constraints.maxWidth - 24) / 3; // 3 items per row
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _buildQuickActionItem(context, 'Stock\nEntry', Icons.compare_arrows_outlined, Colors.orange, itemWidth,
-                      () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true})),
+      builder: (context, constraints) {
+        final double itemWidth = (constraints.maxWidth - 24) / 3;
 
-              // Modified: Delivery Note now opens the selection sheet with KA/ML filter
-              _buildQuickActionItem(context, 'Delivery\nNote', Icons.local_shipping_outlined, Colors.blue, itemWidth, () {
-                controller.setFulfillmentPrefixFilter(['KA', 'ML']);
-                _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
-              }),
+        // ── Operations row ────────────────────────────────────────────────────
+        final operationItems = [
+          _QuickActionConfig(
+            label: 'Stock Entry',
+            icon: Icons.compare_arrows_outlined,
+            color: Colors.orange,
+            doctype: 'Stock Entry',
+            onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'Delivery Note',
+            icon: Icons.local_shipping_outlined,
+            color: Colors.blue,
+            doctype: 'Delivery Note',
+            onTap: () {
+              controller.setFulfillmentPrefixFilter(['KA', 'ML']);
+              _showFulfillmentSelectionSheet(context, title: 'Select Delivery Note');
+            },
+          ),
+          _QuickActionConfig(
+            label: 'Purchase Receipt',
+            icon: Icons.receipt_long_outlined,
+            color: Colors.green,
+            doctype: 'Purchase Receipt',
+            onTap: () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'Packing Slip',
+            icon: Icons.assignment_return_outlined,
+            color: Colors.purple,
+            doctype: 'Packing Slip',
+            onTap: () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'POS Upload',
+            icon: Icons.shopping_bag_outlined,
+            color: Colors.deepPurple,
+            doctype: 'POS Upload',
+            onTap: () {
+              controller.setFulfillmentPrefixFilter([]);
+              _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
+            },
+          ),
+        ];
 
-              _buildQuickActionItem(context, 'Receipt\nEntry', Icons.receipt_long_outlined, Colors.green, itemWidth,
-                      () => Get.toNamed(AppRoutes.PURCHASE_RECEIPT, arguments: {'openCreate': true})),
-              _buildQuickActionItem(context, 'Packing\nSlip', Icons.assignment_return_outlined, Colors.purple, itemWidth,
-                      () => Get.toNamed(AppRoutes.PACKING_SLIP, arguments: {'openCreate': true})),
+        // ── Manufacturing row ────────────────────────────────────────────────
+        final manufacturingItems = [
+          _QuickActionConfig(
+            label: 'BOM',
+            icon: Icons.account_tree_outlined,
+            color: Colors.teal,
+            doctype: 'BOM',
+            onTap: () => Get.toNamed(
+              AppRoutes.BOM,
+              arguments: {'filters': {'is_active': 1}, 'pageTitle': 'Active BOMs'},
+            ),
+          ),
+          _QuickActionConfig(
+            label: 'Work Order',
+            icon: Icons.precision_manufacturing_outlined,
+            color: Colors.indigo,
+            doctype: 'Work Order',
+            onTap: controller.goToWorkOrder,
+          ),
+          _QuickActionConfig(
+            label: 'Job Card',
+            icon: Icons.assignment_ind_outlined,
+            color: Colors.deepOrange,
+            doctype: 'Job Card',
+            onTap: controller.goToJobCard,
+          ),
+        ];
 
-              // Modified: Fulfilment POS explicitly clears filters
-              _buildQuickActionItem(context, 'Fulfilment\nPOS', Icons.shopping_bag_outlined, Colors.deepPurple, itemWidth, () {
-                controller.setFulfillmentPrefixFilter([]); // Empty list = No filter
-                _showFulfillmentSelectionSheet(context, title: 'Select POS Upload');
-              }),
-
-              _buildQuickActionItem(context, 'More\nActions', Icons.grid_view, Colors.grey, itemWidth,
-                      () => { GlobalSnackbar.info(message: 'Stay tuned for more features') }),
-            ],
-          );
-        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionDivider('Operations'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: operationItems.map((cfg) {
+                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                if (cfg.doctype == null) return tile;
+                return DocTypeGuard(
+                  doctype: cfg.doctype!,
+                  child: tile,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            _buildSectionDivider('Manufacturing'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: manufacturingItems.map((cfg) {
+                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                if (cfg.doctype == null) return tile;
+                return DocTypeGuard(
+                  doctype: cfg.doctype!,
+                  child: tile,
+                );
+              }).toList(),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildQuickActionItem(BuildContext context, String title, IconData icon, Color color, double width, VoidCallback onTap) {
+  /// Slim labelled divider between quick-access sections.
+  Widget _buildSectionDivider(String label) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: Colors.grey.shade300, height: 1)),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionItem(
+    BuildContext context,
+    _QuickActionConfig cfg,
+    double width,
+  ) {
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
       elevation: 1,
       child: InkWell(
-        onTap: onTap,
+        onTap: cfg.onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: width,
@@ -192,14 +306,14 @@ class HomeScreen extends GetView<HomeController> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: cfg.color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: color, size: 24),
+                child: Icon(cfg.icon, color: cfg.color, size: 24),
               ),
               const SizedBox(height: 8),
               Text(
-                title,
+                cfg.label,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
               ),
@@ -209,6 +323,10 @@ class HomeScreen extends GetView<HomeController> {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Fulfillment bottom sheet
+  // ---------------------------------------------------------------------------
 
   void _showFulfillmentSelectionSheet(BuildContext context, {String title = 'Select POS Upload'}) {
     controller.fetchFulfillmentPosUploads();
@@ -269,7 +387,10 @@ class HomeScreen extends GetView<HomeController> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(pos.customer),
-                                Text(FormattingHelper.getRelativeTime(pos.modified), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                Text(
+                                  FormattingHelper.getRelativeTime(pos.modified),
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
                               ],
                             ),
                             trailing: Container(
@@ -277,9 +398,18 @@ class HomeScreen extends GetView<HomeController> {
                               decoration: BoxDecoration(
                                 color: pos.status == 'Pending' ? Colors.orange.shade50 : Colors.blue.shade50,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200),
+                                border: Border.all(
+                                  color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200,
+                                ),
                               ),
-                              child: Text(pos.status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800)),
+                              child: Text(
+                                pos.status,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800,
+                                ),
+                              ),
                             ),
                             onTap: () => controller.handleFulfillmentSelection(pos),
                           );
@@ -296,6 +426,10 @@ class HomeScreen extends GetView<HomeController> {
       isScrollControlled: true,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // User Context Card
+  // ---------------------------------------------------------------------------
 
   Widget _buildUserContextCard(BuildContext context) {
     return Card(
@@ -370,7 +504,9 @@ class HomeScreen extends GetView<HomeController> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) {
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
@@ -382,9 +518,21 @@ class HomeScreen extends GetView<HomeController> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  const Text("Select User", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    "Select User",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: searchController,
@@ -394,31 +542,47 @@ class HomeScreen extends GetView<HomeController> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onChanged: (val) {
-                      filteredUsers.assignAll(controller.userList.where((user) {
-                        final name = user.name.toLowerCase();
-                        final email = user.email.toLowerCase();
-                        return name.contains(val.toLowerCase()) || email.contains(val.toLowerCase());
-                      }).toList());
+                      filteredUsers.assignAll(
+                        controller.userList.where((user) {
+                          final name = user.name.toLowerCase();
+                          final email = user.email.toLowerCase();
+                          return name.contains(val.toLowerCase()) || email.contains(val.toLowerCase());
+                        }).toList(),
+                      );
                     },
                   ),
                   const SizedBox(height: 12),
                   Expanded(
-                    child: Obx(() => ListView.separated(
-                      controller: scrollController,
-                      itemCount: filteredUsers.length,
-                      separatorBuilder: (c, i) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final user = filteredUsers[index];
-                        final isSelected = user.email == controller.selectedFilterUser.value?.email;
-                        return ListTile(
-                          leading: CircleAvatar(child: Text(user.name.isNotEmpty ? user.name[0] : 'U')),
-                          title: Text(user.name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                          subtitle: Text(user.email),
-                          trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).primaryColor) : null,
-                          onTap: () => controller.onUserFilterChanged(user),
-                        );
-                      },
-                    )),
+                    child: Obx(
+                      () => ListView.separated(
+                        controller: scrollController,
+                        itemCount: filteredUsers.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final user = filteredUsers[index];
+                          final isSelected =
+                              user.email == controller.selectedFilterUser.value?.email;
+                          return ListTile(
+                            leading: CircleAvatar(
+                              child: Text(user.name.isNotEmpty ? user.name[0] : 'U'),
+                            ),
+                            title: Text(
+                              user.name,
+                              style: TextStyle(
+                                fontWeight:
+                                    isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            subtitle: Text(user.email),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle,
+                                    color: Theme.of(context).primaryColor)
+                                : null,
+                            onTap: () => controller.onUserFilterChanged(user),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -429,6 +593,199 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 }
+
+// =============================================================================
+// _QuickActionConfig — data class to drive the quick-access grid (DRY/OCP)
+// =============================================================================
+
+class _QuickActionConfig {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  /// When non-null the tile is wrapped in a [DocTypeGuard] and is only
+  /// rendered if the current user has read access to this DocType.
+  final String? doctype;
+
+  const _QuickActionConfig({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.doctype,
+  });
+}
+
+// =============================================================================
+// _ResumeJobCard — quick-link to the user's active WIP Job Card
+// =============================================================================
+
+class _ResumeJobCard extends StatelessWidget {
+  final String jcName;
+  final String? operation;
+
+  const _ResumeJobCard({required this.jcName, this.operation});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        elevation: 2,
+        shadowColor: cs.primary.withValues(alpha: 0.15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: InkWell(
+          onTap: () => Get.toNamed(
+            AppRoutes.JOB_CARD_FORM,
+            arguments: {'name': jcName},
+          ),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [
+                  cs.primaryContainer,
+                  cs.primaryContainer.withValues(alpha: 0.5),
+                ],
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.play_circle_outline, color: cs.primary, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Resume Job Card',
+                        style: text.labelSmall?.copyWith(
+                          color: cs.onPrimaryContainer.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        jcName,
+                        style: text.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onPrimaryContainer,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if ((operation ?? '').isNotEmpty)
+                        Text(
+                          operation!,
+                          style: text.bodySmall?.copyWith(
+                            color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: cs.primary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// BomCountCard — flat count card for active BOMs
+// =============================================================================
+
+class BomCountCard extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const BomCountCard({super.key, required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shadowColor: Colors.teal.withValues(alpha: 0.15),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.account_tree_outlined, color: Colors.teal, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Active BOMs',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Submitted & active bills of materials',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.teal,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// SpeedometerKpiCard — half-arc KPI gauge (Work Orders, Job Cards)
+// =============================================================================
 
 class SpeedometerKpiCard extends StatelessWidget {
   final String title;
@@ -456,7 +813,9 @@ class SpeedometerKpiCard extends StatelessWidget {
       tileMode: TileMode.clamp,
     );
 
-    Color textColor = percent < 0.4 ? Colors.redAccent : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
+    Color textColor = percent < 0.4
+        ? Colors.redAccent
+        : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
 
     return Card(
       elevation: 2,
@@ -499,21 +858,110 @@ class SpeedometerKpiCard extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text("$actual", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24.0, color: textColor)),
-                      const Text("Actual", style: TextStyle(fontSize: 10.0, color: Colors.grey)),
+                      Text(
+                        "$actual",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24.0,
+                          color: textColor,
+                        ),
+                      ),
+                      const Text(
+                        "Actual",
+                        style: TextStyle(fontSize: 10.0, color: Colors.grey),
+                      ),
                     ],
                   ),
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                child: Text("Target: $target", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0, color: Colors.grey.shade700)),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "Target: $target",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12.0,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+// =============================================================================
+// _ManufacturingPulseSkeleton — shimmer placeholder while stats are loading
+// =============================================================================
+
+class _ManufacturingPulseSkeleton extends StatefulWidget {
+  const _ManufacturingPulseSkeleton();
+
+  @override
+  State<_ManufacturingPulseSkeleton> createState() =>
+      _ManufacturingPulseSkeletonState();
+}
+
+class _ManufacturingPulseSkeletonState
+    extends State<_ManufacturingPulseSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+  late final Animation<Color?> _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _color = ColorTween(
+      begin: Colors.grey.shade100,
+      end: Colors.grey.shade300,
+    ).animate(_anim);
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  Widget _box({double w = double.infinity, double h = 14, double r = 8}) {
+    return AnimatedBuilder(
+      animation: _color,
+      builder: (_, __) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: _color.value,
+          borderRadius: BorderRadius.circular(r),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _box(h: 200, r: 16)),
+            const SizedBox(width: 16),
+            Expanded(child: _box(h: 200, r: 16)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _box(h: 70, r: 16),
+      ],
     );
   }
 }
