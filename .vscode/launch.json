@@ -62,6 +62,13 @@
       "deviceId": "RFCT50ZQXWK",
       "request": "launch",
       "type": "dart"
+    },
+    {
+      "name": "MB 23045524700285 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700285",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
