@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart'; // clampDouble
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Heights — keep all magic numbers in one place.
@@ -197,6 +198,11 @@ class DocTypeListHeader extends StatelessWidget {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  // ── Image scan ────────────────────────────────────────────────────────
+  /// When non-null, the search delegate shows a camera icon that opens the
+  /// image scan flow. Only [ItemListAppBar] sets this.
+  final ValueChanged<ImageScanResult>? onImageScanResult;
+
   // ── Bottom slot ───────────────────────────────────────────────────────
   /// Optional widget pinned below the collapsed toolbar — typically a [TabBar].
   ///
@@ -231,6 +237,7 @@ class DocTypeListHeader extends StatelessWidget {
     this.onFilterTap,
     this.filterChipsBuilder,
     this.onClearAllFilters,
+    this.onImageScanResult,
     this.bottom,
     this.extraActionsKey,
   });
@@ -275,6 +282,7 @@ class DocTypeListHeader extends StatelessWidget {
         onFilterTap: onFilterTap,
         filterChipsBuilder: filterChipsBuilder,
         onClearAllFilters: onClearAllFilters,
+        onImageScanResult: onImageScanResult,
         bottom: bottom,
         statusBarHeight: statusBarHeight,
       ),
@@ -316,6 +324,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  /// See [DocTypeListHeader.onImageScanResult].
+  final ValueChanged<ImageScanResult>? onImageScanResult;
+
   /// See [DocTypeListHeader.bottom].
   final PreferredSizeWidget? bottom;
 
@@ -343,6 +354,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onFilterTap,
     required this.filterChipsBuilder,
     required this.onClearAllFilters,
+    required this.onImageScanResult,
     required this.bottom,
     required this.statusBarHeight,
   })  : _filterCount = activeFilters?.length ?? 0,
@@ -651,6 +663,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                               onSearchClear: onSearchClear,
                               activeFilters: null,
                               onFilterTap: null,
+                              onImageScanResult: onImageScanResult,
                             ),
                           ),
                         ),
@@ -692,6 +705,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                       onSearchClear: onSearchClear,
                       activeFilters: null,
                       onFilterTap: null,
+                      onImageScanResult: onImageScanResult,
                     ),
                   ),
                 ),

@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_flow.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 /// Unified search + filter delegate for every DocType list screen.
 ///
@@ -56,6 +58,11 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
   /// Opens the DocType-specific filter bottom sheet.
   final VoidCallback? onFilterTap;
 
+  // ── Image scan (optional) ──────────────────────────────────────────────
+  /// When non-null, the search delegate shows a camera icon that opens the
+  /// image scan flow. Only [ItemListAppBar] sets this.
+  final ValueChanged<ImageScanResult>? onImageScanResult;
+
   // ── Internals ──────────────────────────────────────────────────────────
   final GlobalSearchService _service = Get.put(GlobalSearchService());
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -70,6 +77,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     this.onSearchClear,
     this.activeFilters,
     this.onFilterTap,
+    this.onImageScanResult,
   });
 
   @override
@@ -165,6 +173,20 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
             ),
           );
         }),
+
+      // Camera icon — only shown when caller provides onImageScanResult.
+      if (onImageScanResult != null)
+        IconButton(
+          icon: const Icon(Icons.image_search),
+          tooltip: 'Search by image',
+          onPressed: () async {
+            final result = await ImageScanFlow.run(context);
+            if (result != null && context.mounted) {
+              close(context, null);
+              onImageScanResult!(result);
+            }
+          },
+        ),
     ];
   }
 
