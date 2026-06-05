@@ -139,6 +139,8 @@ class _ImageScanDialogState extends State<_ImageScanDialog> {
   Future<void> _tryAnotherImage() async {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file == null) return;
+    if (!mounted) return;
+    _manualFieldCtrl.clear();
     setState(() => _currentPath = file.path);
     await _ctrl.analyzeImage(file.path, _scanner);
   }
@@ -147,7 +149,7 @@ class _ImageScanDialogState extends State<_ImageScanDialog> {
     final barcodes = _ctrl.barcodes;
     showModalBottomSheet<void>(
       context: context,
-      builder: (_) => Column(
+      builder: (sheetContext) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
@@ -164,8 +166,8 @@ class _ImageScanDialogState extends State<_ImageScanDialog> {
               title: Text(barcodes[i].rawValue ?? '—'),
               subtitle: Text(barcodes[i].format.name),
               onTap: () {
-                Navigator.of(context).pop();
-                _ctrl.selectBarcode(i);
+                Navigator.of(sheetContext).pop();
+                if (i < barcodes.length) _ctrl.selectBarcode(i);
               },
             ),
           ),
