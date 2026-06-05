@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_controller.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart'; // ignore: unused_import
 
 /// Bottom panel shown inside the scan dialog when an Item or Batch has been
 /// resolved. Slides up from the bottom of the Stack — not a separate route.
@@ -63,10 +64,9 @@ class ItemScanResultSheet extends StatelessWidget {
   // ── Found panel ─────────────────────────────────────────────────────────────
 
   Widget _foundPanel(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-
     return Obx(() {
+      final cs = Theme.of(context).colorScheme;
+      final theme = Theme.of(context);
       final itemCode = controller.foundItemCode.value!;
       final itemName = controller.foundItemName.value ?? itemCode;
       final itemGroup = controller.foundItemGroup.value ?? '';
