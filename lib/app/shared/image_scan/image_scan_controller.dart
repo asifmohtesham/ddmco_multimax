@@ -48,8 +48,14 @@ class ImageScanController extends GetxController {
       final bytes = await File(path).readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
-      imageNaturalSize.value =
-          Size(frame.image.width.toDouble(), frame.image.height.toDouble());
+      try {
+        imageNaturalSize.value = Size(
+          frame.image.width.toDouble(),
+          frame.image.height.toDouble(),
+        );
+      } finally {
+        frame.image.dispose();
+      }
 
       final capture = await scanner.analyzeImage(path);
       if (capture == null || capture.barcodes.isEmpty) {
@@ -115,7 +121,7 @@ class ImageScanController extends GetxController {
         foundItemName.value = data['item_name'] as String?;
         foundItemGroup.value = data['item_group'] as String?;
         final img = data['image'];
-        foundItemHasImage.value = img != null && (img as String).isNotEmpty;
+        foundItemHasImage.value = img is String && img.isNotEmpty;
         foundBatchNo.value = batchNo;
         scanState.value = ImageScanState.found;
       } else {
@@ -175,8 +181,9 @@ class ImageScanController extends GetxController {
   }
 
   /// Builds the result without enrichment. Call when the user taps "Open".
-  ImageScanResult buildResult() => ImageScanResult(
-        itemCode: foundItemCode.value!,
-        batchNo: foundBatchNo.value,
-      );
+  ImageScanResult buildResult() {
+    final code = foundItemCode.value;
+    if (code == null) throw StateError('buildResult() called when no item is loaded');
+    return ImageScanResult(itemCode: code, batchNo: foundBatchNo.value);
+  }
 }
