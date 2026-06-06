@@ -392,73 +392,76 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
 
                     final note = controller.deliveryNotes[index];
 
-                    return Obx(() {
-                      final isExpanded =
-                          controller.expandedNoteName.value == note.name;
-                      final isLoadingDetails =
-                          controller.isLoadingDetails.value &&
-                              controller.detailedNote?.name != note.name;
+                    return Obx(
+                      key: ValueKey(note.name),
+                      () {
+                        final isExpanded =
+                            controller.expandedNoteName.value == note.name;
+                        final isLoadingDetails =
+                            controller.isLoadingDetails.value &&
+                                controller.detailedNote?.name != note.name;
 
-                      final bool hasPo =
-                          note.poNo != null && note.poNo!.isNotEmpty;
-                      final String title = hasPo ? note.poNo! : note.name;
-                      final String subtitle = hasPo
-                          ? '${note.name} • ${note.customer}'
-                          : note.customer;
+                        final bool hasPo =
+                            note.poNo != null && note.poNo!.isNotEmpty;
+                        final String title = hasPo ? note.poNo! : note.name;
+                        final String subtitle = hasPo
+                            ? '${note.name} • ${note.customer}'
+                            : note.customer;
 
-                      final showModified = note.modifiedBy != null &&
-                          note.modifiedBy!.isNotEmpty &&
-                          note.modifiedBy != note.owner &&
-                          note.creation != note.modified;
+                        final showModified = note.modifiedBy != null &&
+                            note.modifiedBy!.isNotEmpty &&
+                            note.modifiedBy != note.owner &&
+                            note.creation != note.modified;
 
-                      return GenericDocumentCard(
-                        title: title,
-                        subtitle: subtitle,
-                        status: note.status,
-                        stats: [
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.inventory_2_outlined,
-                            '${note.totalQty.toStringAsFixed(0)} Items',
-                          ),
-                          if (note.setWarehouse != null &&
-                              note.setWarehouse!.isNotEmpty)
+                        return GenericDocumentCard(
+                          title: title,
+                          subtitle: subtitle,
+                          status: note.status,
+                          stats: [
                             GenericDocumentCard.buildIconStat(
                               context,
-                              Icons.warehouse_outlined,
-                              note.setWarehouse!,
+                              Icons.inventory_2_outlined,
+                              '${note.totalQty.toStringAsFixed(0)} Items',
                             ),
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.calendar_today_outlined,
-                            note.postingDate.isNotEmpty
-                                ? note.postingDate
-                                : FormattingHelper.getRelativeTime(
-                                    note.creation),
-                          ),
-                        ],
-                        auditStats: [
-                          if (note.owner != null && note.owner!.isNotEmpty)
+                            if (note.setWarehouse != null &&
+                                note.setWarehouse!.isNotEmpty)
+                              GenericDocumentCard.buildIconStat(
+                                context,
+                                Icons.warehouse_outlined,
+                                note.setWarehouse!,
+                              ),
                             GenericDocumentCard.buildIconStat(
                               context,
-                              Icons.person_add_alt_1_outlined,
-                              note.owner!,
+                              Icons.calendar_today_outlined,
+                              note.postingDate.isNotEmpty
+                                  ? note.postingDate
+                                  : FormattingHelper.getRelativeTime(
+                                      note.creation),
                             ),
-                          if (showModified)
-                            GenericDocumentCard.buildIconStat(
-                              context,
-                              Icons.edit_outlined,
-                              note.modifiedBy!,
-                            ),
-                        ],
-                        isExpanded: isExpanded,
-                        isLoadingDetails: isLoadingDetails && isExpanded,
-                        onTap: () => controller.toggleExpand(note.name),
-                        expandedContent: isExpanded
-                            ? _buildExpandedContent(context, note.name)
-                            : null,
-                      );
-                    });
+                          ],
+                          auditStats: [
+                            if (note.owner != null && note.owner!.isNotEmpty)
+                              GenericDocumentCard.buildIconStat(
+                                context,
+                                Icons.person_add_alt_1_outlined,
+                                note.owner!,
+                              ),
+                            if (showModified)
+                              GenericDocumentCard.buildIconStat(
+                                context,
+                                Icons.edit_outlined,
+                                note.modifiedBy!,
+                              ),
+                          ],
+                          isExpanded: isExpanded,
+                          isLoadingDetails: isLoadingDetails && isExpanded,
+                          onTap: () => controller.toggleExpand(note.name),
+                          expandedContent: isExpanded
+                              ? _buildExpandedContent(context, note.name)
+                              : null,
+                        );
+                      },
+                    );
                   },
                   childCount: baseCount + 1,
                 ),
