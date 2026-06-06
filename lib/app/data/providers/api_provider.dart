@@ -1079,7 +1079,7 @@ class ApiProvider {
 
     final filters = <String, dynamic>{
       'company'  : company,
-      'item_code': itemCode,
+      'item_code': await stockBalanceItemCodeFilter(itemCode),
       'batch_no' : batchNo,
       'warehouse': warehouse,
       'from_date': '2000-01-01',
