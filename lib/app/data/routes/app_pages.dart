@@ -66,6 +66,8 @@ import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_screen.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_binding.dart';
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
@@ -258,6 +260,12 @@ class AppPages {
       name:       AppRoutes.ITEM_VARIANT_DETAILS,
       page:       () => const ItemVariantDetailsScreen(),
       binding:    ItemVariantDetailsBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.STOCK_BALANCE,
+      page:       () => const StockBalanceScreen(),
+      binding:    StockBalanceBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
   ];

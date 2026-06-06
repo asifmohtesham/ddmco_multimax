@@ -14,6 +14,7 @@ const List<PermEntry> kStockPermissions = [
   (doctype: 'Packing Slip',     permType: 'read'),
   (doctype: 'Batch',            permType: 'report'), // Batch-Wise Balance report
   (doctype: 'Item',             permType: 'report'), // Item Variant Details report
+  (doctype: 'Stock Entry',      permType: 'report'), // Stock Balance report
 ];
 
 const List<PermEntry> kBuyingPermissions = [
