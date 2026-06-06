@@ -6,7 +6,6 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
-import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -25,7 +24,6 @@ import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
-import 'package:multimax/app/data/providers/bom_provider.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -33,13 +31,11 @@ class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
-  final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
-  final BomProvider _bomProvider = Get.find<BomProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
 
@@ -195,14 +191,14 @@ class HomeController extends GetxController {
       const Map<String, dynamic> bomFilters = {'is_active': 1, 'docstatus': 1};
 
       final results = await Future.wait([
-        _woProvider.getWorkOrders(limit: 0, filters: woFilters),
-        _jcProvider.getJobCards(limit: 0, filters: jcFilters),
-        _bomProvider.getBOMs(limit: 0, filters: bomFilters),
+        _apiProvider.getDocumentCount('Work Order', filters: woFilters),
+        _apiProvider.getDocumentCount('Job Card',   filters: jcFilters),
+        _apiProvider.getDocumentCount('BOM',        filters: bomFilters),
       ]);
 
-      activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
-      activeJobCardsCount.value   = _getCountFromResponse(results[1]);
-      activeBomCount.value        = _getCountFromResponse(results[2]);
+      activeWorkOrdersCount.value = _extractCount(results[0]);
+      activeJobCardsCount.value   = _extractCount(results[1]);
+      activeBomCount.value        = _extractCount(results[2]);
 
       await _fetchActiveWipJc();
     } catch (e) {
@@ -550,9 +546,11 @@ class HomeController extends GetxController {
     }
     return [];
   }
-  int _getCountFromResponse(dynamic response) {
-    if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
-      return (response.data['data'] as List).length;
+  int _extractCount(dynamic response) {
+    if (response is Response &&
+        response.statusCode == 200 &&
+        response.data?['message'] is int) {
+      return response.data['message'] as int;
     }
     return 0;
   }

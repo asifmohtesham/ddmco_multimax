@@ -1160,6 +1160,25 @@ class ApiProvider {
     }
   }
 
+  /// Calls `frappe.client.get_count` to retrieve a document count server-side.
+  ///
+  /// Much more efficient than fetching all documents with `limit: 0` and
+  /// counting them client-side. The server returns `{"message": <int>}`.
+  Future<Response> getDocumentCount(
+    String doctype, {
+    Map<String, dynamic>? filters,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    return _dio.get(
+      '/api/method/frappe.client.get_count',
+      queryParameters: {
+        'doctype': doctype,
+        if (filters != null && filters.isNotEmpty)
+          'filters': jsonEncode(filters),
+      },
+    );
+  }
+
   // Module specific getters
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async =>
       getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, orderBy: orderBy, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
