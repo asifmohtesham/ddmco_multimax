@@ -110,7 +110,9 @@ class ItemProvider {
   }
 
   Future<Response> getStockLevels(String itemCode) async {
-    return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
+    return _apiProvider.getReport('Stock Balance', filters: {
+      'item_code': await _apiProvider.stockBalanceItemCodeFilter(itemCode),
+    });
   }
 
   Future<Response> getWarehouseStock(String warehouse) async {

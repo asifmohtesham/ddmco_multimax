@@ -26,12 +26,44 @@ class ApiProvider {
   Dio get dio => _dio;
   Future<void> initDio() => _initDio();
 
+  // ── Stock Balance filter compatibility (v15.72.0 breaking change) ──────────
+  // ERPNext v15.72.0 changed `item_code` from a single Link to a
+  // MultiSelectList. The report now calls PyPika's .isin() on the filter
+  // value, which iterates a bare string character-by-character and matches
+  // nothing. Versions ≥ 15.72 need a list; older versions need a plain string.
+  bool? _stockBalanceUsesListFilters;
+
+  Future<bool> _getStockBalanceUsesListFilters() async {
+    if (_stockBalanceUsesListFilters != null) return _stockBalanceUsesListFilters!;
+    try {
+      if (!_dioInitialised) await _initDio();
+      final response = await _dio.get('/api/method/frappe.utils.change_log.get_versions');
+      final versions = response.data['message'] as Map<String, dynamic>?;
+      final erpnext = versions?['ERPNext'] as Map<String, dynamic>?;
+      final versionStr = erpnext?['version'] as String? ?? '';
+      final parts = versionStr.split('.');
+      final minor = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+      _stockBalanceUsesListFilters = minor >= 72;
+    } catch (_) {
+      _stockBalanceUsesListFilters = true; // assume new behavior for unknown versions
+    }
+    return _stockBalanceUsesListFilters!;
+  }
+
+  /// Returns [itemCode] as a list on ERPNext ≥ v15.72.0, or as a plain string
+  /// on older versions, to match the Stock Balance `item_code` filter type.
+  Future<dynamic> stockBalanceItemCodeFilter(String itemCode) async {
+    return (await _getStockBalanceUsesListFilters()) ? [itemCode] : itemCode;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   ApiProvider() {
     _initDio();
   }
 
   void setBaseUrl(String url) {
     _baseUrl = url;
+    _stockBalanceUsesListFilters = null; // reset version cache on server change
     if (_dioInitialised) {
       _dio.options.baseUrl = _baseUrl;
     }
@@ -386,7 +418,7 @@ class ApiProvider {
       "company": company,
       "from_date": today,
       "to_date": today,
-      "item_code": itemCode,
+      "item_code": await stockBalanceItemCodeFilter(itemCode),
       "valuation_field_type": "Currency",
       "rack": rack != null && rack.isNotEmpty ? [rack] : [],
       "show_variant_attributes": 1,
@@ -713,7 +745,7 @@ class ApiProvider {
       'company'                  : company,
       'from_date'                : today,
       'to_date'                  : today,
-      'item_code'                : itemCode,
+      'item_code'                : await stockBalanceItemCodeFilter(itemCode),
       'show_variant_attributes'  : 1,
       'show_dimension_wise_stock': 1,
     };
