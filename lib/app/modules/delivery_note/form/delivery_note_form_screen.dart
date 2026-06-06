@@ -21,7 +21,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       final isDirty    = controller.isDirty.value;
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
-      final isLoading  = controller.isLoading.value;
 
       return PopScope(
         canPop: !isDirty,
@@ -55,16 +54,22 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   ),
                 ),
               ],
-              body: (isLoading && note == null)
-                  ? const Center(child: CircularProgressIndicator())
-                  : note == null
-                      ? const Center(child: Text('Delivery note not found.'))
-                      : TabBarView(
-                          children: [
-                            _buildDetailsView(context, note),
-                            _buildItemsView(context),
-                          ],
-                        ),
+              body: Obx(() {
+                final isLoading   = controller.isLoading.value;
+                final currentNote = controller.deliveryNote.value;
+                if (isLoading && currentNote == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (currentNote == null) {
+                  return const Center(child: Text('Delivery note not found.'));
+                }
+                return TabBarView(
+                  children: [
+                    _buildDetailsView(context, currentNote),
+                    _buildItemsView(context),
+                  ],
+                );
+              }),
             ),
           ),
         ),
