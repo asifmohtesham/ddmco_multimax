@@ -61,11 +61,13 @@ class DeliveryNoteController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchDeliveryNotes();
-    fetchUsers();
-    fetchWarehouses();
-    fetchCustomers();
-    fetchDocTypePermissions();
+    Future.wait([
+      fetchDeliveryNotes(),
+      fetchUsers(),
+      fetchWarehouses(),
+      fetchCustomers(),
+      fetchDocTypePermissions(),
+    ]);
     debounce(searchQuery, (_) => fetchDeliveryNotes(clear: true),
         time: const Duration(milliseconds: 500));
   }

@@ -67,11 +67,13 @@ class StockEntryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchStockEntries();
-    fetchStockEntryTypes();
-    fetchUsers();
-    fetchWarehouses();
-    fetchDocTypePermissions();
+    Future.wait([
+      fetchStockEntries(),
+      fetchStockEntryTypes(),
+      fetchUsers(),
+      fetchWarehouses(),
+      fetchDocTypePermissions(),
+    ]);
     debounce(searchQuery, (_) => fetchStockEntries(clear: true),
         time: const Duration(milliseconds: 500));
   }
