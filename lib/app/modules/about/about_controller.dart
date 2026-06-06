@@ -87,7 +87,7 @@ class AboutController extends GetxController {
         statusItem.state = IntegrationState.connected;
         statusItem.latency = '${elapsed}ms';
         final erpVersion = await api.getErpNextVersion();
-        statusItem.details = erpVersion != null ? 'ERPNext v$erpVersion' : 'Server Online';
+        statusItem.details = erpVersion != null ? 'ERP v$erpVersion' : 'Server Online';
       } else {
         statusItem.state = IntegrationState.error;
         statusItem.details = 'Status: ${response.statusCode}';
