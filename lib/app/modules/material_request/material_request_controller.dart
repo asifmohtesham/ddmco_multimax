@@ -49,6 +49,8 @@ class MaterialRequestController extends GetxController {
     fetchMaterialRequests();
     fetchUsers();
     fetchDocTypePermissions();
+    debounce(searchQuery, (_) => fetchMaterialRequests(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -60,14 +62,7 @@ class MaterialRequestController extends GetxController {
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchMaterialRequests(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ── Filters ─────────────────────────────────────────────────────────────
   void applyFilters(Map<String, dynamic> filters) {

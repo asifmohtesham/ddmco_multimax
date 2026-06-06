@@ -72,6 +72,8 @@ class StockEntryController extends GetxController {
     fetchUsers();
     fetchWarehouses();
     fetchDocTypePermissions();
+    debounce(searchQuery, (_) => fetchStockEntries(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -125,14 +127,7 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchStockEntries(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   Future<void> fetchStockEntries(
       {bool isLoadMore = false, bool clear = false}) async {

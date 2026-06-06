@@ -66,6 +66,8 @@ class DeliveryNoteController extends GetxController {
     fetchWarehouses();
     fetchCustomers();
     fetchDocTypePermissions();
+    debounce(searchQuery, (_) => fetchDeliveryNotes(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -125,14 +127,7 @@ class DeliveryNoteController extends GetxController {
     fetchDeliveryNotes(isLoadMore: false, clear: true);
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchDeliveryNotes(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ---------------------------------------------------------------------------
   // Fetch
