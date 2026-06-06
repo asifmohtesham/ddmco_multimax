@@ -473,6 +473,61 @@ class ApiProvider {
     );
   }
 
+  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
+      getStockBalanceReport({
+    required String fromDate,
+    required String toDate,
+    String? itemCode,
+    String? warehouse,
+    String? itemGroup,
+    bool showDimensionWise     = false,
+    bool showVariantAttributes = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+
+    final filters = <String, dynamic>{
+      'company'             : storage.getCompany(),
+      'from_date'           : fromDate,
+      'to_date'             : toDate,
+      'valuation_field_type': 'Currency',
+      if (itemCode  != null && itemCode.isNotEmpty)
+        'item_code'         : await stockBalanceItemCodeFilter(itemCode),
+      if (warehouse != null && warehouse.isNotEmpty)
+        'warehouse'         : warehouse,
+      if (itemGroup != null && itemGroup.isNotEmpty)
+        'item_group'        : itemGroup,
+      if (showDimensionWise)     'show_dimension_wise_stock': 1,
+      if (showVariantAttributes) 'show_variant_attributes'  : 1,
+    };
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Stock Balance',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    } catch (_) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    if (response.statusCode != 200) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    return parseStockBalanceResponse(
+      response.data['message'] as Map<String, dynamic>?,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // getBatchWiseBalance
   //
@@ -650,6 +705,67 @@ class ApiProvider {
           .whereType<Map>()
           .map((r) => Map<String, dynamic>.from(r))
           .toList();
+      return (columns: columns, rows: rows);
+    } catch (_) {
+      return empty;
+    }
+  }
+
+  static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
+      parseStockBalanceResponse(Map<String, dynamic>? message) {
+    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    if (message == null) return empty;
+    try {
+      final rawCols = message['columns'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
+      if (rawRows.isEmpty) return empty;
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s       = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      String lbl(dynamic col) {
+        if (col is Map) return (col['label'] as String? ?? '');
+        return col.toString();
+      }
+
+      final columns = rawCols
+          .map((c) => <String, dynamic>{'fieldname': fn(c), 'label': lbl(c)})
+          .toList();
+
+      // Find first non-null row to determine row format (Map vs List).
+      // Avoid firstWhere with orElse: () => null — the inferred return type
+      // conflicts with the list element type and throws at runtime.
+      dynamic firstRow;
+      for (final r in rawRows) {
+        if (r != null) { firstRow = r; break; }
+      }
+
+      if (firstRow is Map) {
+        final rows = rawRows
+            .whereType<Map>()
+            .map((r) => Map<String, dynamic>.from(r))
+            .toList();
+        return (columns: columns, rows: rows);
+      }
+
+      final fieldnames = rawCols.map(fn).toList();
+      final rows = rawRows
+          .whereType<List>()
+          .map((r) {
+            final row = <String, dynamic>{};
+            for (var i = 0; i < fieldnames.length && i < r.length; i++) {
+              row[fieldnames[i]] = r[i];
+            }
+            return row;
+          })
+          .toList();
+
       return (columns: columns, rows: rows);
     } catch (_) {
       return empty;
