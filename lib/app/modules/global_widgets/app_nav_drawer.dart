@@ -294,7 +294,7 @@ class AppNavDrawer extends StatelessWidget {
                       ),
                       // ── Stock > Reports ──────────────────────────────────────
                       _GuardedSection(
-                        doctypes: ['Batch', 'Item'],
+                        doctypes: ['Batch', 'Item', 'Stock Entry'],
                         permType: 'report',
                         children: [
                           const _NavSubheading('Reports'),
@@ -317,6 +317,17 @@ class AppNavDrawer extends StatelessWidget {
                               title:        'Item Variant Details',
                               icon:         Icons.style_outlined,
                               route:        AppRoutes.ITEM_VARIANT_DETAILS,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
+                          DocTypeGuard(
+                            doctype: 'Stock Entry',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title:        'Stock Balance',
+                              icon:         Icons.account_balance_wallet_outlined,
+                              route:        AppRoutes.STOCK_BALANCE,
                               currentRoute: currentRoute,
                             ),
                           ),
