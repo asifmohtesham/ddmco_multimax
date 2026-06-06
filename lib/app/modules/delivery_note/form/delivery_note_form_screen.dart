@@ -55,17 +55,16 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                 ),
               ],
               body: Obx(() {
-                final isLoading   = controller.isLoading.value;
-                final currentNote = controller.deliveryNote.value;
-                if (isLoading && currentNote == null) {
+                final isLoading = controller.isLoading.value;
+                if (isLoading && note == null) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (currentNote == null) {
+                if (note == null) {
                   return const Center(child: Text('Delivery note not found.'));
                 }
                 return TabBarView(
                   children: [
-                    _buildDetailsView(context, currentNote),
+                    _buildDetailsView(context, note),
                     _buildItemsView(context),
                   ],
                 );
