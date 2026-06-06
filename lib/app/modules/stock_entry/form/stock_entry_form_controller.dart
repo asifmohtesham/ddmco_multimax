@@ -113,6 +113,9 @@ class StockEntryFormController extends GetxController
 
   Timer?  _autoSubmitTimer;
   Worker? _scanWorker;
+  Worker? _fromWarehouseWorker;
+  Worker? _toWarehouseWorker;
+  Worker? _stockEntryTypeWorker;
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
 
@@ -285,9 +288,9 @@ class StockEntryFormController extends GetxController
       if (code.isNotEmpty && !isItemSheetOpen.value) scanBarcode(code);
     });
 
-    ever(fromWarehouse,    (_) => _markDirty());
-    ever(toWarehouse,      (_) => _markDirty());
-    ever(stockEntryType,   (_) => _markDirty());
+    _fromWarehouseWorker  = ever(fromWarehouse,  (_) => _markDirty());
+    _toWarehouseWorker    = ever(toWarehouse,     (_) => _markDirty());
+    _stockEntryTypeWorker = ever(stockEntryType,  (_) => _markDirty());
 
     // customReferenceNoController listener removed.
     // The reference number is read-only in the UI (set once from route arguments).
@@ -300,12 +303,11 @@ class StockEntryFormController extends GetxController
     disposeScanWiring();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
-    final bcc = barcodeController;
-    final crc = customReferenceNoController;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      bcc.dispose();
-      crc.dispose();
-    });
+    _fromWarehouseWorker?.dispose();
+    _toWarehouseWorker?.dispose();
+    _stockEntryTypeWorker?.dispose();
+    barcodeController.dispose();
+    customReferenceNoController.dispose();
     super.onClose();
   }
 
