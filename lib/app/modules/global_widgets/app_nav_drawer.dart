@@ -144,310 +144,314 @@ class AppNavDrawer extends StatelessWidget {
               child: Obx(() {
                 if (drawerController.isUserMenuOpen.value) {
                   // ---- USER MENU ----
-                  return ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
-                    children: [
-                      _DrawerItem(
-                        icon: Icons.person_outline_rounded,
-                        title: 'My Profile',
-                        route: AppRoutes.PROFILE,
-                        currentRoute: currentRoute,
-                      ),
-                      _DrawerItem(
-                        icon: Icons.settings,
-                        title: 'Session Defaults',
-                        route: '',
-                        currentRoute: currentRoute,
-                        onTap: (ctx) {
+                  final userMenuItems = <Widget>[
+                    _DrawerItem(
+                      icon: Icons.person_outline_rounded,
+                      title: 'My Profile',
+                      route: AppRoutes.PROFILE,
+                      currentRoute: currentRoute,
+                    ),
+                    _DrawerItem(
+                      icon: Icons.settings,
+                      title: 'Session Defaults',
+                      route: '',
+                      currentRoute: currentRoute,
+                      onTap: (ctx) {
+                        Navigator.of(ctx).pop();
+                        homeController.openSessionDefaults();
+                      },
+                    ),
+                    _DrawerItem(
+                      icon: Icons.info_outline,
+                      title: 'About',
+                      route: AppRoutes.ABOUT,
+                      currentRoute: currentRoute,
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Divider(height: 1),
+                    ),
+                    Builder(builder: (ctx) {
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 8),
+                        leading: Icon(Icons.logout_rounded,
+                            color: Colors.red.shade400, size: 22),
+                        title: Text('Logout',
+                            style: TextStyle(
+                                color: Colors.red.shade600,
+                                fontWeight: FontWeight.w600)),
+                        onTap: () {
+                          HapticFeedback.lightImpact();
                           Navigator.of(ctx).pop();
-                          homeController.openSessionDefaults();
+                          Get.find<AuthenticationController>().logoutUser();
                         },
-                      ),
-                      _DrawerItem(
-                        icon: Icons.info_outline,
-                        title: 'About',
-                        route: AppRoutes.ABOUT,
-                        currentRoute: currentRoute,
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Divider(height: 1),
-                      ),
-                      Builder(builder: (ctx) {
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 8),
-                          leading: Icon(Icons.logout_rounded,
-                              color: Colors.red.shade400, size: 22),
-                          title: Text('Logout',
-                              style: TextStyle(
-                                  color: Colors.red.shade600,
-                                  fontWeight: FontWeight.w600)),
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            Navigator.of(ctx).pop();
-                            Get.find<AuthenticationController>().logoutUser();
-                          },
-                        );
-                      }),
-                    ],
+                      );
+                    }),
+                  ];
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    itemCount: userMenuItems.length,
+                    itemBuilder: (_, i) => userMenuItems[i],
                   );
                 }
 
                 // ---- MAIN MODULE MENU ----
-                return ListView(
-                  padding: const EdgeInsets.symmetric(vertical: 12.0),
-                  children: [
-                    _DrawerItem(
-                      icon: Icons.dashboard_rounded,
-                      title: 'Dashboard',
-                      route: AppRoutes.HOME,
+                final moduleMenuItems = <Widget>[
+                  _DrawerItem(
+                    icon: Icons.dashboard_rounded,
+                    title: 'Dashboard',
+                    route: AppRoutes.HOME,
+                    currentRoute: currentRoute,
+                  ),
+
+                  DocTypeGuard(
+                    doctype: 'ToDo',
+                    loading: skeleton,
+                    child: _DrawerItem(
+                      icon: Icons.check_circle_outline_rounded,
+                      title: 'To Do',
+                      route: AppRoutes.TODO,
                       currentRoute: currentRoute,
                     ),
+                  ),
 
-                    DocTypeGuard(
-                      doctype: 'ToDo',
-                      loading: skeleton,
-                      child: _DrawerItem(
-                        icon: Icons.check_circle_outline_rounded,
-                        title: 'To Do',
-                        route: AppRoutes.TODO,
-                        currentRoute: currentRoute,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    child: Divider(
+                        height: 1, color: Colors.grey.shade200),
+                  ),
+
+                  // ---- STOCK ----
+                  _ModuleGroup(
+                    title: 'Stock',
+                    icon: Icons.inventory_2_rounded,
+                    currentRoute: currentRoute,
+                    drawerController: drawerController,
+                    guardEntries: kStockPermissions,
+                    children: [
+                      DocTypeGuard(
+                        doctype: 'Item',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Item',
+                          icon: Icons.category_rounded,
+                          route: AppRoutes.ITEM,
+                          currentRoute: currentRoute,
+                        ),
                       ),
-                    ),
-
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      child: Divider(
-                          height: 1, color: Colors.grey.shade200),
-                    ),
-
-                    // ---- STOCK ----
-                    _ModuleGroup(
-                      title: 'Stock',
-                      icon: Icons.inventory_2_rounded,
-                      currentRoute: currentRoute,
-                      drawerController: drawerController,
-                      guardEntries: kStockPermissions,
-                      children: [
-                        DocTypeGuard(
-                          doctype: 'Item',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Item',
-                            icon: Icons.category_rounded,
-                            route: AppRoutes.ITEM,
-                            currentRoute: currentRoute,
-                          ),
+                      DocTypeGuard(
+                        doctype: 'Batch',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Batch',
+                          icon: Icons.qr_code_scanner_rounded,
+                          route: AppRoutes.BATCH,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Batch',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Batch',
-                            icon: Icons.qr_code_scanner_rounded,
-                            route: AppRoutes.BATCH,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Material Request',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Material Request',
+                          icon: Icons.playlist_add_check_rounded,
+                          route: AppRoutes.MATERIAL_REQUEST,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Material Request',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Material Request',
-                            icon: Icons.playlist_add_check_rounded,
-                            route: AppRoutes.MATERIAL_REQUEST,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Stock Entry',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Stock Entry',
+                          icon: Icons.compare_arrows_rounded,
+                          route: AppRoutes.STOCK_ENTRY,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Stock Entry',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Stock Entry',
-                            icon: Icons.compare_arrows_rounded,
-                            route: AppRoutes.STOCK_ENTRY,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Delivery Note',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Delivery Note',
+                          icon: Icons.local_shipping_rounded,
+                          route: AppRoutes.DELIVERY_NOTE,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Delivery Note',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Delivery Note',
-                            icon: Icons.local_shipping_rounded,
-                            route: AppRoutes.DELIVERY_NOTE,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Packing Slip',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Packing Slip',
+                          icon: Icons.assignment_return_rounded,
+                          route: AppRoutes.PACKING_SLIP,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Packing Slip',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Packing Slip',
-                            icon: Icons.assignment_return_rounded,
-                            route: AppRoutes.PACKING_SLIP,
-                            currentRoute: currentRoute,
-                          ),
-                        ),
-                        // ── Stock > Reports ──────────────────────────────────────
-                        _GuardedSection(
-                          doctypes: ['Batch', 'Item'],
-                          permType: 'report',
-                          children: [
-                            const _NavSubheading('Reports'),
-                            DocTypeGuard(
-                              doctype: 'Batch',
-                              permType: 'report',
-                              loading: skeleton,
-                              child: _DrawerItem(
-                                title: 'Batch-Wise Balance',
-                                icon: Icons.history_toggle_off_rounded,
-                                route: AppRoutes.BATCH_WISE_BALANCE,
-                                currentRoute: currentRoute,
-                              ),
+                      ),
+                      // ── Stock > Reports ──────────────────────────────────────
+                      _GuardedSection(
+                        doctypes: ['Batch', 'Item'],
+                        permType: 'report',
+                        children: [
+                          const _NavSubheading('Reports'),
+                          DocTypeGuard(
+                            doctype: 'Batch',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'Batch-Wise Balance',
+                              icon: Icons.history_toggle_off_rounded,
+                              route: AppRoutes.BATCH_WISE_BALANCE,
+                              currentRoute: currentRoute,
                             ),
-                            DocTypeGuard(
-                              doctype: 'Item',
-                              permType: 'report',
-                              loading: skeleton,
-                              child: _DrawerItem(
-                                title:        'Item Variant Details',
-                                icon:         Icons.style_outlined,
-                                route:        AppRoutes.ITEM_VARIANT_DETAILS,
-                                currentRoute: currentRoute,
-                              ),
+                          ),
+                          DocTypeGuard(
+                            doctype: 'Item',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title:        'Item Variant Details',
+                              icon:         Icons.style_outlined,
+                              route:        AppRoutes.ITEM_VARIANT_DETAILS,
+                              currentRoute: currentRoute,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
 
-                    // ---- BUYING ----
-                    _ModuleGroup(
-                      title: 'Buying',
-                      icon: Icons.shopping_bag_rounded,
-                      currentRoute: currentRoute,
-                      drawerController: drawerController,
-                      guardEntries: kBuyingPermissions,
-                      children: [
-                        DocTypeGuard(
-                          doctype: 'Purchase Order',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Purchase Order',
-                            icon: Icons.description_rounded,
-                            route: AppRoutes.PURCHASE_ORDER,
-                            currentRoute: currentRoute,
-                          ),
+                  // ---- BUYING ----
+                  _ModuleGroup(
+                    title: 'Buying',
+                    icon: Icons.shopping_bag_rounded,
+                    currentRoute: currentRoute,
+                    drawerController: drawerController,
+                    guardEntries: kBuyingPermissions,
+                    children: [
+                      DocTypeGuard(
+                        doctype: 'Purchase Order',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Purchase Order',
+                          icon: Icons.description_rounded,
+                          route: AppRoutes.PURCHASE_ORDER,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Purchase Receipt',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Purchase Receipt',
-                            icon: Icons.receipt_long_rounded,
-                            route: AppRoutes.PURCHASE_RECEIPT,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Purchase Receipt',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Purchase Receipt',
+                          icon: Icons.receipt_long_rounded,
+                          route: AppRoutes.PURCHASE_RECEIPT,
+                          currentRoute: currentRoute,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
 
-                    // ---- MANUFACTURING ----
-                    _ModuleGroup(
-                      title: 'Manufacturing',
-                      icon: Icons.precision_manufacturing_rounded,
-                      currentRoute: currentRoute,
-                      drawerController: drawerController,
-                      guardEntries: kManufacturingPermissions,
-                      children: [
-                        DocTypeGuard(
-                          doctype: 'BOM',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Bill of Materials',
-                            icon: Icons.account_tree_rounded,
-                            route: AppRoutes.BOM,
-                            currentRoute: currentRoute,
-                          ),
+                  // ---- MANUFACTURING ----
+                  _ModuleGroup(
+                    title: 'Manufacturing',
+                    icon: Icons.precision_manufacturing_rounded,
+                    currentRoute: currentRoute,
+                    drawerController: drawerController,
+                    guardEntries: kManufacturingPermissions,
+                    children: [
+                      DocTypeGuard(
+                        doctype: 'BOM',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Bill of Materials',
+                          icon: Icons.account_tree_rounded,
+                          route: AppRoutes.BOM,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Work Order',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Work Order',
-                            icon: Icons.assignment_rounded,
-                            route: AppRoutes.WORK_ORDER,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Work Order',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Work Order',
+                          icon: Icons.assignment_rounded,
+                          route: AppRoutes.WORK_ORDER,
+                          currentRoute: currentRoute,
                         ),
-                        DocTypeGuard(
-                          doctype: 'Job Card',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'Job Card',
-                            icon: Icons.assignment_ind_rounded,
-                            route: AppRoutes.JOB_CARD,
-                            currentRoute: currentRoute,
-                          ),
+                      ),
+                      DocTypeGuard(
+                        doctype: 'Job Card',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Job Card',
+                          icon: Icons.assignment_ind_rounded,
+                          route: AppRoutes.JOB_CARD,
+                          currentRoute: currentRoute,
                         ),
-                        // ── Manufacturing > Reports ─────────────────────────────
-                        _GuardedSection(
-                          doctypes: ['BOM', 'Job Card'],
-                          permType: 'report',
-                          children: [
-                            const _NavSubheading('Reports'),
-                            DocTypeGuard(
-                              doctype: 'BOM',
-                              permType: 'report',
-                              loading: skeleton,
-                              child: _DrawerItem(
-                                title: 'BOM Search',
-                                icon: Icons.manage_search_rounded,
-                                route: AppRoutes.BOM_SEARCH,
-                                currentRoute: currentRoute,
-                              ),
+                      ),
+                      // ── Manufacturing > Reports ─────────────────────────────
+                      _GuardedSection(
+                        doctypes: ['BOM', 'Job Card'],
+                        permType: 'report',
+                        children: [
+                          const _NavSubheading('Reports'),
+                          DocTypeGuard(
+                            doctype: 'BOM',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'BOM Search',
+                              icon: Icons.manage_search_rounded,
+                              route: AppRoutes.BOM_SEARCH,
+                              currentRoute: currentRoute,
                             ),
-                            DocTypeGuard(
-                              doctype: 'Job Card',
-                              permType: 'report',
-                              loading: skeleton,
-                              child: _DrawerItem(
-                                title: 'Job Card Summary',
-                                icon: Icons.summarize_outlined,
-                                route: AppRoutes.JOB_CARD_SUMMARY,
-                                currentRoute: currentRoute,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    // ---- SELLING ----
-                    _ModuleGroup(
-                      title: 'Selling',
-                      icon: Icons.storefront_rounded,
-                      currentRoute: currentRoute,
-                      drawerController: drawerController,
-                      guardEntries: kSellingPermissions,
-                      children: [
-                        DocTypeGuard(
-                          doctype: 'POS Upload',
-                          loading: skeleton,
-                          child: _DrawerItem(
-                            title: 'POS Upload',
-                            icon: Icons.cloud_upload_rounded,
-                            route: AppRoutes.POS_UPLOAD,
-                            currentRoute: currentRoute,
                           ),
+                          DocTypeGuard(
+                            doctype: 'Job Card',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'Job Card Summary',
+                              icon: Icons.summarize_outlined,
+                              route: AppRoutes.JOB_CARD_SUMMARY,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  // ---- SELLING ----
+                  _ModuleGroup(
+                    title: 'Selling',
+                    icon: Icons.storefront_rounded,
+                    currentRoute: currentRoute,
+                    drawerController: drawerController,
+                    guardEntries: kSellingPermissions,
+                    children: [
+                      DocTypeGuard(
+                        doctype: 'POS Upload',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'POS Upload',
+                          icon: Icons.cloud_upload_rounded,
+                          route: AppRoutes.POS_UPLOAD,
+                          currentRoute: currentRoute,
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
+                ];
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  itemCount: moduleMenuItems.length,
+                  itemBuilder: (_, i) => moduleMenuItems[i],
                 );
               }),
             ),
