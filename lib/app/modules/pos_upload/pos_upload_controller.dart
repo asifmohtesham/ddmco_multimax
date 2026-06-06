@@ -74,8 +74,11 @@ class PosUploadController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchPosUploads(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchPosUploads(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {

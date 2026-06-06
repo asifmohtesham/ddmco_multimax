@@ -61,6 +61,7 @@ class DeliveryNoteController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // ignore: unawaited_futures
     Future.wait([
       fetchDeliveryNotes(),
       fetchUsers(),
@@ -114,8 +115,11 @@ class DeliveryNoteController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchDeliveryNotes(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchDeliveryNotes(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {

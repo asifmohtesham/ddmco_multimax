@@ -217,10 +217,13 @@ class BatchController extends GetxController {
   /// refreshes the list.
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
     sortField.value = 'modified';
     sortOrder.value = 'desc';
-    fetchBatches(clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchBatches(clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   /// Removes a single filter by [key] and refreshes the list.

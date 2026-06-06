@@ -67,6 +67,7 @@ class StockEntryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    // ignore: unawaited_futures
     Future.wait([
       fetchStockEntries(),
       fetchStockEntryTypes(),
@@ -114,8 +115,11 @@ class StockEntryController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchStockEntries(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchStockEntries(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {

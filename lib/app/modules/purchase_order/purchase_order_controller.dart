@@ -149,8 +149,11 @@ class PurchaseOrderController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchPurchaseOrders(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchPurchaseOrders(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {

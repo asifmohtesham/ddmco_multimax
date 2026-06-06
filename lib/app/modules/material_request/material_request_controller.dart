@@ -72,8 +72,11 @@ class MaterialRequestController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchMaterialRequests(clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchMaterialRequests(clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   /// Removes a single active filter by [key] and re-fetches the list.
