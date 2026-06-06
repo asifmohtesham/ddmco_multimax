@@ -78,17 +78,16 @@ class AboutController extends GetxController {
     final start = DateTime.now();
     try {
       final api = Get.find<ApiProvider>();
-      // Fix: Use callMethod instead of .get() which is not exposed
       final response = await api.callMethod('ping');
 
       final elapsed = DateTime.now().difference(start).inMilliseconds;
       final statusItem = systemStatus[index];
 
-      // Fix: Use Dio's statusCode instead of GetConnect's status.hasError
       if (response.statusCode == 200) {
         statusItem.state = IntegrationState.connected;
-        statusItem.details = 'Server Online';
         statusItem.latency = '${elapsed}ms';
+        final erpVersion = await api.getErpNextVersion();
+        statusItem.details = erpVersion != null ? 'ERPNext v$erpVersion' : 'Server Online';
       } else {
         statusItem.state = IntegrationState.error;
         statusItem.details = 'Status: ${response.statusCode}';

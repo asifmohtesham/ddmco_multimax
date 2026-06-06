@@ -32,6 +32,7 @@ class ApiProvider {
   // value, which iterates a bare string character-by-character and matches
   // nothing. Versions ≥ 15.72 need a list; older versions need a plain string.
   bool? _stockBalanceUsesListFilters;
+  String? _erpNextVersion;
 
   Future<bool> _getStockBalanceUsesListFilters() async {
     if (_stockBalanceUsesListFilters != null) return _stockBalanceUsesListFilters!;
@@ -41,6 +42,7 @@ class ApiProvider {
       final versions = response.data['message'] as Map<String, dynamic>?;
       final erpnext = versions?['ERPNext'] as Map<String, dynamic>?;
       final versionStr = erpnext?['version'] as String? ?? '';
+      _erpNextVersion = versionStr.isNotEmpty ? versionStr : null;
       final parts = versionStr.split('.');
       final minor = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
       _stockBalanceUsesListFilters = minor >= 72;
@@ -48,6 +50,15 @@ class ApiProvider {
       _stockBalanceUsesListFilters = true; // assume new behavior for unknown versions
     }
     return _stockBalanceUsesListFilters!;
+  }
+
+  /// Returns the cached ERPNext version string, fetching it if needed.
+  Future<String?> getErpNextVersion() async {
+    if (_erpNextVersion != null || _stockBalanceUsesListFilters != null) {
+      return _erpNextVersion;
+    }
+    await _getStockBalanceUsesListFilters();
+    return _erpNextVersion;
   }
 
   /// Returns [itemCode] as a list on ERPNext ≥ v15.72.0, or as a plain string
@@ -63,7 +74,8 @@ class ApiProvider {
 
   void setBaseUrl(String url) {
     _baseUrl = url;
-    _stockBalanceUsesListFilters = null; // reset version cache on server change
+    _stockBalanceUsesListFilters = null;
+    _erpNextVersion = null;
     if (_dioInitialised) {
       _dio.options.baseUrl = _baseUrl;
     }
