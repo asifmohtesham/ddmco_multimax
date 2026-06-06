@@ -514,9 +514,9 @@ class ApiProvider {
         },
       );
     } on DioException {
-      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+      rethrow;
     } catch (_) {
-      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+      rethrow;
     }
 
     if (response.statusCode != 200) {

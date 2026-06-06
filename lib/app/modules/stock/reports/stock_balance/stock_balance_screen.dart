@@ -90,9 +90,7 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
               DocTypeListHeader(
                 title: 'Stock Balance',
                 automaticallyImplyLeading: false,
-                activeFilters: controller.activeFilters
-                    .map((k, v) => MapEntry(k, v as dynamic))
-                    .obs,
+                activeFilters: controller.activeFilters,
                 onFilterTap: () => _openFilters(context),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters: controller.clearFilters,
