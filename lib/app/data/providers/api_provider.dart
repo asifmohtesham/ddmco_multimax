@@ -38,18 +38,40 @@ class ApiProvider {
     if (_stockBalanceUsesListFilters != null) return _stockBalanceUsesListFilters!;
     try {
       if (!_dioInitialised) await _initDio();
-      final response = await _dio.get('/api/method/frappe.utils.change_log.get_versions');
-      final versions = response.data['message'] as Map<String, dynamic>?;
-      final erpnext = versions?['ERPNext'] as Map<String, dynamic>?;
-      final versionStr = erpnext?['version'] as String? ?? '';
-      _erpNextVersion = versionStr.isNotEmpty ? versionStr : null;
-      final parts = versionStr.split('.');
+      _erpNextVersion = await _fetchErpNextVersion();
+      final parts = (_erpNextVersion ?? '').split('.');
       final minor = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
-      _stockBalanceUsesListFilters = minor >= 72;
+      // Unknown version → assume new behavior (safe default for ≥ v15.72)
+      _stockBalanceUsesListFilters = _erpNextVersion != null ? minor >= 72 : true;
     } catch (_) {
-      _stockBalanceUsesListFilters = true; // assume new behavior for unknown versions
+      _stockBalanceUsesListFilters = true;
     }
     return _stockBalanceUsesListFilters!;
+  }
+
+  /// Tries two endpoints to obtain the ERPNext version string.
+  /// Primary: get_versions (may crash on some builds due to a server-side bug).
+  /// Fallback: get_change_log (different code path, reads markdown files).
+  Future<String?> _fetchErpNextVersion() async {
+    try {
+      final r = await _dio.get('/api/method/frappe.utils.change_log.get_versions');
+      final msg = r.data['message'] as Map<String, dynamic>?;
+      final v = (msg?['ERPNext'] as Map<String, dynamic>?)?['version'] as String?;
+      if (v != null && v.isNotEmpty) return v;
+    } catch (_) {}
+    try {
+      final r = await _dio.get('/api/method/frappe.utils.change_log.get_change_log');
+      final entries = r.data['message'];
+      if (entries is List) {
+        for (final e in entries) {
+          if (e is Map && (e['title'] as String?)?.contains('ERPNext') == true) {
+            final v = e['version'] as String?;
+            if (v != null && v.isNotEmpty) return v;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Returns the cached ERPNext version string, fetching it if needed.
