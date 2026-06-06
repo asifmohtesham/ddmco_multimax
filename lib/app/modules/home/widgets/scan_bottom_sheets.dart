@@ -43,6 +43,8 @@ class ItemDetailSheet extends StatelessWidget {
                       '$_baseUrl${item.image}',
                       width: 60,
                       height: 60,
+                      cacheWidth: 120,
+                      cacheHeight: 120,
                       fit: BoxFit.cover,
                       errorBuilder: (c, o, s) => Container(
                         width: 60, height: 60, color: Colors.grey.shade100,
@@ -513,6 +515,8 @@ class MultiItemSelectionSheet extends StatelessWidget {
                                           ? Image.network(
                                         imageUrl,
                                         fit: BoxFit.cover,
+                                        cacheWidth: 600,
+                                        cacheHeight: 500,
                                         errorBuilder: (_, __, ___) => _buildPlaceholder(),
                                       )
                                           : _buildPlaceholder(),
