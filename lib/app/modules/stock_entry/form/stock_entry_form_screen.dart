@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/details_tab.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/standard_items_view.dart';
@@ -62,6 +63,12 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   saveResult: saveResult,
                   onSave:     onSave,
                   onReload:   onReload,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),

@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
@@ -32,6 +33,12 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                 docType:     'POS Upload',
                 statusLabel: posUpload?.status,
                 onShare: hasPackingSlips ? () => _showShareSheet(context) : null,
+                extraActions: [
+                  RealtimeSyncStatusIcon(
+                    isConnected: controller.isRealtimeConnected,
+                    isSyncing:   controller.isRemoteSyncing,
+                  ),
+                ],
                 bottom: const TabBar(
                   tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
                 ),

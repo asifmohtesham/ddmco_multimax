@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
@@ -46,6 +47,12 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),

@@ -4,6 +4,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
@@ -47,6 +48,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),

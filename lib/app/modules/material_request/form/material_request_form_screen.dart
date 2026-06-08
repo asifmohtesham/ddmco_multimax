@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
 
@@ -62,6 +63,12 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                   saveResult: saveResult,
                   onSave:     onSave,
                   onReload:   onReload,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),

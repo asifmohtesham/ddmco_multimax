@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
@@ -49,6 +50,12 @@ class PurchaseReceiptFormScreen
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
