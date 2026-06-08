@@ -173,8 +173,9 @@ class _SessionDefaultsBottomSheetState
                     ),
                     if (_autoSubmitEnabled) ...[
                       const SizedBox(height: 8),
-                      Text(
-                          'Auto-Submit Delay: ${_autoSubmitDelay.toInt()}s'),
+                      Text('Item Add Delay: ${_autoSubmitDelay.toInt()}s'),
+                      Text('Wait before adding validated scan to list',
+                          style: Theme.of(context).textTheme.bodySmall),
                       Slider(
                         value: _autoSubmitDelay,
                         min: 1,
@@ -186,9 +187,10 @@ class _SessionDefaultsBottomSheetState
                       ),
                     ],
                     const SizedBox(height: 16),
-                    Text(
-                        'Auto-save Delay: ${_autoSaveDelay.toInt()}s',
+                    Text('Document Save Delay: ${_autoSaveDelay.toInt()}s',
                         style: Theme.of(context).textTheme.bodyMedium),
+                    Text('Wait before saving document to server',
+                        style: Theme.of(context).textTheme.bodySmall),
                     Slider(
                       value: _autoSaveDelay,
                       min: 3,
