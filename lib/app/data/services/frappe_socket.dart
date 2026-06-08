@@ -32,7 +32,8 @@ class FrappeSocket {
         ? _socketFactory!(baseUrl, opts)
         : IO.io(baseUrl, opts);
 
-    _socket.onConnect(() {
+    _socket.on('connect', (_) {
+      _debugLog('connected — subscribing to $doctype/$docname');
       _socket.emit('doc_subscribe', [doctype, docname]);
       onConnected?.call();
     });
@@ -45,8 +46,8 @@ class FrappeSocket {
       }
     });
 
-    _socket.onConnectError((e) => _debugLog('connect error: $e'));
-    _socket.onError((e) => _debugLog('socket error: $e'));
+    _socket.on('connect_error', (e) => _debugLog('connect error: $e'));
+    _socket.on('error', (e) => _debugLog('socket error: $e'));
 
     _socket.connect();
   }
@@ -58,7 +59,6 @@ class FrappeSocket {
   void dispose() {
     _socket?.emit('doc_unsubscribe', []);
     _socket?.disconnect();
-    _socket?.dispose();
     _socket = null;
     _connected = false;
   }

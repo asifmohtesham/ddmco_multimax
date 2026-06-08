@@ -1,21 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/services/frappe_socket.dart';
 
-// Minimal fake socket that records calls
+// Minimal fake socket that records calls and mirrors the socket_io_client v2 Dart API
 class _FakeSocket {
   final List<String> emitted = [];
   final Map<String, void Function(dynamic)> listeners = {};
-  void Function()? onConnectCallback;
-  void Function(dynamic)? onConnectErrorCallback;
 
   void emit(String event, [dynamic data]) => emitted.add(event);
   void on(String event, void Function(dynamic) cb) => listeners[event] = cb;
-  void onConnect(void Function() cb) => onConnectCallback = cb;
-  void onConnectError(void Function(dynamic) cb) => onConnectErrorCallback = cb;
-  void onError(void Function(dynamic) cb) {}
-  void connect() => onConnectCallback?.call();
+  // Fires the 'connect' listener, matching what the real socket does on connection
+  void connect() => listeners['connect']?.call(null);
   void disconnect() {}
-  void dispose() {}
 }
 
 void main() {
