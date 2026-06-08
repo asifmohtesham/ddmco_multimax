@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -18,8 +19,11 @@ import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/app_constants.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
-class PurchaseOrderFormController extends GetxController {
+class PurchaseOrderFormController extends GetxController
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PurchaseOrderProvider _provider         = Get.find<PurchaseOrderProvider>();
   final ApiProvider           _apiProvider      = Get.find<ApiProvider>();
   final ScanService           _scanService      = Get.find<ScanService>();
@@ -52,9 +56,9 @@ class PurchaseOrderFormController extends GetxController {
   // ---------------------------------------------------------------------------
 
   var isLoading          = true.obs;
-  var isSaving           = false.obs;
+  @override var isSaving = false.obs;
   var isScanning         = false.obs;
-  var isDirty            = false.obs;
+  @override var isDirty  = false.obs;
   var isAddingItem       = false.obs;
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
@@ -66,6 +70,9 @@ class PurchaseOrderFormController extends GetxController {
   String _originalStatus = 'Draft';
 
   bool get isEditable => purchaseOrder.value?.docstatus == 0;
+
+  @override String get realtimeDoctype => 'Purchase Order';
+  @override String get realtimeDocname => name;
 
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
@@ -150,12 +157,13 @@ class PurchaseOrderFormController extends GetxController {
     if (mode == 'new') {
       _initDocument();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
     _removeListeners();
@@ -269,7 +277,12 @@ class PurchaseOrderFormController extends GetxController {
     }
   }
 
-  Future<void> reloadDocument() => fetchDocument();
+  @override
+  Future<void> reloadDocument() async {
+    isStale.value = false;
+    await fetchDocument();
+    GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
 
   void _updateOriginalState(PurchaseOrder po) {
     _originalJson   = jsonEncode(po.toJson());
@@ -415,6 +428,8 @@ class PurchaseOrderFormController extends GetxController {
     } else if (!dirty && purchaseOrder.value!.status == 'Not Saved') {
       _updateStatusOnly(_originalStatus);
     }
+
+    if (isDirty.value) scheduleAutoSave();
   }
 
   void _updateStatusOnly(String newStatus) {
@@ -648,7 +663,9 @@ class PurchaseOrderFormController extends GetxController {
   // Save
   // ---------------------------------------------------------------------------
 
+  @override
   Future<void> saveDocument() async {
+    if (checkStaleAndBlock()) return;
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
     isSaving.value = true;
@@ -668,6 +685,7 @@ class PurchaseOrderFormController extends GetxController {
         final saved = PurchaseOrder.fromJson(response.data['data']);
         purchaseOrder.value = saved;
         _updateOriginalState(saved);
+        if (mode == 'new') await startRealtimeSyncAfterCreate();
         GlobalSnackbar.success(message: 'Purchase Order Saved');
         _setSaveResult(SaveResult.success);
       } else {
@@ -679,9 +697,17 @@ class PurchaseOrderFormController extends GetxController {
         );
         _setSaveResult(SaveResult.error);
       }
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) return;
+      GlobalDialog.showError(
+        title:   'Could not save Purchase Order',
+        message: e.toString(),
+        onRetry: saveDocument,
+      );
+      _setSaveResult(SaveResult.error);
     } catch (e) {
       GlobalDialog.showError(
-        title:   'Could not load Purchase Order',
+        title:   'Could not save Purchase Order',
         message: e.toString(),
         onRetry: saveDocument,
       );
