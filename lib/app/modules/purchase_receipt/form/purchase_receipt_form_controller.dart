@@ -17,6 +17,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
@@ -27,7 +28,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'purchase_receipt_item_form_controller.dart';
 
 class PurchaseReceiptFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PurchaseReceiptProvider _provider       = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider   _poProvider     = Get.find<PurchaseOrderProvider>();
   final ApiProvider             _apiProvider    = Get.find<ApiProvider>();
@@ -40,8 +41,8 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── Document-level state ─────────────────────────────────────────────
   var isLoading       = true.obs;
-  var isSaving        = false.obs;
-  var isDirty         = false.obs;
+  @override var isSaving = false.obs;
+  @override var isDirty  = false.obs;
   var isScanning      = false.obs;
   var isItemSheetOpen = false.obs;
 
@@ -92,6 +93,9 @@ class PurchaseReceiptFormController extends GetxController
 
   bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
 
+  @override String get realtimeDoctype => 'Purchase Receipt';
+  @override String get realtimeDocname => name;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
   void onInit() {
@@ -108,16 +112,20 @@ class PurchaseReceiptFormController extends GetxController
     if (mode == 'new') {
       _initNewPurchaseReceipt();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   void _markDirty() {
-    if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
+    if (!isLoading.value && isEditable) {
+      isDirty.value = true;
+      scheduleAutoSave();
+    }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
     _scanDebounce?.cancel();
@@ -386,6 +394,7 @@ class PurchaseReceiptFormController extends GetxController
 
     _rebuildReceipt(currentItems);
     isDirty.value = true;
+    scheduleAutoSave();
   }
 
   void updateItem(
@@ -412,6 +421,7 @@ class PurchaseReceiptFormController extends GetxController
     _rebuildReceipt(currentItems);
     triggerHighlight(itemName);
     isDirty.value = true;
+    scheduleAutoSave();
   }
 
   void _rebuildReceipt(List<PurchaseReceiptItem> items) {
@@ -584,6 +594,7 @@ class PurchaseReceiptFormController extends GetxController
         currentItems.removeWhere((i) => i.name == item.name);
         purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
+        scheduleAutoSave();
         AppNotification.success('Item removed');
         await saveDocument();
       },
@@ -591,6 +602,7 @@ class PurchaseReceiptFormController extends GetxController
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────────────
+  @override
   Future<void> saveDocument() async {
     if (!isEditable) return;
     if (isSaving.value) return;
@@ -623,6 +635,7 @@ class PurchaseReceiptFormController extends GetxController
           final created = response.data['data'];
           name = created['name'];
           mode = 'edit';
+          await startRealtimeSyncAfterCreate();
           await fetchDocument();
           _setSaveResult(SaveResult.success);
           AppNotification.success('Purchase Receipt created: $name');
