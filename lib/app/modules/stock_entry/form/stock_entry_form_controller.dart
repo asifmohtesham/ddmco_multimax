@@ -24,6 +24,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
 // ── Shared sheet layer ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'widgets/item_form_sheet/rack_section.dart';
 
 class StockEntryFormController extends GetxController
-    with OptimisticLockingMixin, BarcodeScanMixin {
+    with OptimisticLockingMixin, BarcodeScanMixin, RealtimeSyncMixin {
   // ── Dependencies ───────────────────────────────────────────────────────────────────────────────────
   final StockEntryProvider  _provider       = Get.find<StockEntryProvider>();
   final ApiProvider         _apiProvider    = Get.find<ApiProvider>();
@@ -118,6 +119,9 @@ class StockEntryFormController extends GetxController
   Worker? _stockEntryTypeWorker;
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
+
+  @override String get realtimeDoctype => 'Stock Entry';
+  @override String get realtimeDocname => name;
 
   // ── Domain helpers ───────────────────────────────────────────────────────────────────────────────────
 
@@ -274,7 +278,7 @@ class StockEntryFormController extends GetxController
     if (mode == 'new') {
       _initDocument();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
@@ -300,6 +304,7 @@ class StockEntryFormController extends GetxController
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     disposeScanWiring();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
@@ -1436,6 +1441,7 @@ class StockEntryFormController extends GetxController
     if (res.statusCode == 200) {
       name = res.data['data']['name'];
       mode = 'edit';
+      await startRealtimeSyncAfterCreate();
       await fetchDocument();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
@@ -1509,6 +1515,7 @@ class StockEntryFormController extends GetxController
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
+    scheduleAutoSave();
   }
 
   Future<void> confirmDiscard() async {
