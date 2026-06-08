@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -249,13 +250,23 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
 }
 
 class PosUploadFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final StockEntryProvider _seProvider = Get.find<StockEntryProvider>();
   final PackingSlipProvider _psProvider = Get.find<PackingSlipProvider>();
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
+
+  // ── RealtimeSyncMixin requirements ─────────────────────────────────────────
+  @override String get realtimeDoctype => 'POS Upload';
+  @override String get realtimeDocname => name;
+  @override var isDirty = false.obs;
+  @override var isSaving = false.obs;
+
+  /// POS Upload is a read-only view — no edits are made from this screen.
+  @override
+  Future<void> saveDocument() async {}
 
   // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
@@ -374,11 +385,17 @@ class PosUploadFormController extends GetxController
     _loadData();
   }
 
+  @override
+  void onClose() {
+    disposeRealtimeSync();
+    super.onClose();
+  }
+
   // ── Initialisation ─────────────────────────────────────────────────────────
 
   Future<void> _loadData() async {
     isLoading.value = true;
-    await fetchPosUpload();
+    await fetchPosUpload().then((_) => initRealtimeSync());
     isLoading.value = false;
     fetchLinkedDocument();
   }
