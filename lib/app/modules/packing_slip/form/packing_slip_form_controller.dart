@@ -19,6 +19,7 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
@@ -27,7 +28,7 @@ import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 class PackingSlipFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PackingSlipProvider  _provider              = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider  = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider    _posUploadProvider     = Get.find<PosUploadProvider>();
@@ -40,10 +41,13 @@ class PackingSlipFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
+  @override String get realtimeDoctype => 'Packing Slip';
+  @override String get realtimeDocname => name;
+
   var isLoading    = true.obs;
-  var isSaving     = false.obs;
+  @override var isSaving     = false.obs;
   var isScanning   = false.obs;
-  var isDirty      = false.obs;
+  @override var isDirty      = false.obs;
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -119,12 +123,13 @@ class PackingSlipFormController extends GetxController
     if (mode == 'new') {
       _initNewPackingSlip();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
     barcodeController.dispose();
@@ -446,9 +451,10 @@ class PackingSlipFormController extends GetxController
 
   void _checkForChanges() {
     if (packingSlip.value == null) return;
-    if (mode == 'new') { isDirty.value = true; return; }
+    if (mode == 'new') { isDirty.value = true; scheduleAutoSave(); return; }
     final currentJson = jsonEncode(packingSlip.value!.toJson());
     isDirty.value = currentJson != _originalJson;
+    if (isDirty.value) scheduleAutoSave();
   }
 
   // ── POS qty cap helpers ────────────────────────────────────────────────────
@@ -1357,6 +1363,7 @@ class PackingSlipFormController extends GetxController
       _updateOriginalState(saved);
       name = saved.name;
       mode = 'edit';
+      await startRealtimeSyncAfterCreate();
       GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
       _setSaveResult(SaveResult.success);
     } else {
@@ -1434,6 +1441,7 @@ class PackingSlipFormController extends GetxController
   /// [_buildItemsPayload], API calls to [_createDocument] / [_updateDocument],
   /// and error handling to [_handleSaveError]. The orchestrator contains no
   /// field access, no JSON construction, and no snackbar calls.
+  @override
   Future<void> saveDocument() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;
