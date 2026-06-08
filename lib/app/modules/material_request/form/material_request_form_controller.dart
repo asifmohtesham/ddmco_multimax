@@ -16,10 +16,11 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/qty_field_delegate.dart';
 
 class MaterialRequestFormController extends GetxController
-    with OptimisticLockingMixin
+    with OptimisticLockingMixin, RealtimeSyncMixin
     implements QtyFieldDelegate {
   final MaterialRequestProvider _provider =
       Get.find<MaterialRequestProvider>();
@@ -32,8 +33,8 @@ class MaterialRequestFormController extends GetxController
   String mode = Get.arguments['mode'] ?? 'view';
 
   var isLoading = true.obs;
-  var isSaving = false.obs;
-  var isDirty = false.obs;
+  @override var isSaving = false.obs;
+  @override var isDirty = false.obs;
   var isScanning = false.obs;
 
   /// Drives the animated Save button state — identical to the pattern used
@@ -131,6 +132,10 @@ class MaterialRequestFormController extends GetxController
 
   bool get isEditable => (materialRequest.value?.docstatus ?? 1) == 0;
 
+  // ── RealtimeSyncMixin ──────────────────────────────────────────────────────────
+  @override String get realtimeDoctype => 'Material Request';
+  @override String get realtimeDocname => name;
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────────
 
   @override
@@ -146,12 +151,13 @@ class MaterialRequestFormController extends GetxController
     if (mode == 'new') {
       _initNewRequest();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     log('[MR:onClose] _scanWorker disposed', name: 'MR');
     scheduleDateController.dispose();
@@ -268,6 +274,7 @@ class MaterialRequestFormController extends GetxController
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) {
       isDirty.value = true;
+      scheduleAutoSave();
     }
   }
 
@@ -608,6 +615,7 @@ class MaterialRequestFormController extends GetxController
 
   // ── Save document ───────────────────────────────────────────────────────────────
 
+  @override
   Future<void> saveDocument() async {
     if (isSaving.value) return;
     if (checkStaleAndBlock()) return;
@@ -645,6 +653,7 @@ class MaterialRequestFormController extends GetxController
           name = created['name'];
           mode = 'edit';
           await fetchDocument();
+          await startRealtimeSyncAfterCreate();
           saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'Material Request Created');
         } else {
