@@ -40,13 +40,10 @@ mixin RealtimeSyncMixin on GetxController {
       _scheduleAutoSaveWithDuration(duration);
 
   Future<void> initRealtimeSync() async {
-    if (kDebugMode) debugPrint('[RealtimeSync] initRealtimeSync — docname="${realtimeDocname}"');
     if (realtimeDocname.isEmpty) return;
     try {
       final api    = Get.find<ApiProvider>();
-      if (kDebugMode) debugPrint('[RealtimeSync] baseUrl="${api.baseUrl}" dioInit=${api.isDioInitialised}');
       final cookie = await api.getSessionCookieHeader();
-      if (kDebugMode) debugPrint('[RealtimeSync] cookie="${cookie.isEmpty ? "<empty>" : "<present>"}"');
       _frappeSocket.connect(
         baseUrl:      api.baseUrl,
         cookieHeader: cookie,
@@ -56,7 +53,7 @@ mixin RealtimeSyncMixin on GetxController {
         onConnected:  () => isRealtimeConnected.value = true,
       );
     } catch (e, st) {
-      if (kDebugMode) debugPrint('[RealtimeSync] initRealtimeSync ERROR: $e\n$st');
+      if (kDebugMode) debugPrint('[RealtimeSync] initRealtimeSync error: $e\n$st');
     }
   }
 

@@ -18,7 +18,6 @@ class FrappeSocket {
     required void Function() onDocUpdate,
     void Function()? onConnected,
   }) {
-    _debugLog('connect() called — $doctype/$docname @ $baseUrl');
     if (_connected) return;
     _connected = true;
 
