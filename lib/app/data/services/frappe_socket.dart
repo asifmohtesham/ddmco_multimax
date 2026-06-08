@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 typedef _SocketFactory = dynamic Function(String url, dynamic opts);
@@ -21,7 +22,7 @@ class FrappeSocket {
     _connected = true;
 
     final opts = IO.OptionBuilder()
-        .setTransports(['websocket'])
+        .setTransports(['websocket', 'polling'])
         .setExtraHeaders({'Cookie': cookieHeader})
         .disableAutoConnect()
         .build();
@@ -43,10 +44,14 @@ class FrappeSocket {
       }
     });
 
-    _socket.onConnectError((e) {});
-    _socket.onError((e) {});
+    _socket.onConnectError((e) => _debugLog('connect error: $e'));
+    _socket.onError((e) => _debugLog('socket error: $e'));
 
     _socket.connect();
+  }
+
+  void _debugLog(String msg) {
+    if (kDebugMode) debugPrint('[FrappeSocket] $msg');
   }
 
   void dispose() {
