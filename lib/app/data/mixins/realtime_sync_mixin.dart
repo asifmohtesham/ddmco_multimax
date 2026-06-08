@@ -9,6 +9,9 @@ mixin RealtimeSyncMixin on GetxController {
   late final FrappeSocket _frappeSocket = createFrappeSocket();
   Timer? _autoSaveTimer;
 
+  final isRealtimeConnected = false.obs;
+  final isRemoteSyncing     = false.obs;
+
   FrappeSocket createFrappeSocket() => FrappeSocket();
 
   String get realtimeDoctype;
@@ -46,6 +49,7 @@ mixin RealtimeSyncMixin on GetxController {
         doctype:      realtimeDoctype,
         docname:      realtimeDocname,
         onDocUpdate:  _onRemoteUpdate,
+        onConnected:  () => isRealtimeConnected.value = true,
       );
     } catch (_) {}
   }
@@ -53,6 +57,8 @@ mixin RealtimeSyncMixin on GetxController {
   void disposeRealtimeSync() {
     _autoSaveTimer?.cancel();
     _frappeSocket.dispose();
+    isRealtimeConnected.value = false;
+    isRemoteSyncing.value     = false;
   }
 
   Future<void> startRealtimeSyncAfterCreate() => initRealtimeSync();
@@ -60,11 +66,13 @@ mixin RealtimeSyncMixin on GetxController {
   Future<void> _onRemoteUpdate() async {
     if (isClosed) return;
     _autoSaveTimer?.cancel();
+    isRemoteSyncing.value = true;
     try {
       GlobalSnackbar.info(message: 'Document updated — saving and reloading…');
     } catch (_) {}
     if (isDirty.value && !isSaving.value) await saveDocument();
     await reloadDocument();
+    isRemoteSyncing.value = false;
   }
 
   Future<void> triggerRemoteUpdateForTest() => _onRemoteUpdate();

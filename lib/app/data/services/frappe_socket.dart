@@ -15,6 +15,7 @@ class FrappeSocket {
     required String doctype,
     required String docname,
     required void Function() onDocUpdate,
+    void Function()? onConnected,
   }) {
     if (_connected) return;
     _connected = true;
@@ -31,6 +32,7 @@ class FrappeSocket {
 
     _socket.onConnect(() {
       _socket.emit('doc_subscribe', [doctype, docname]);
+      onConnected?.call();
     });
 
     _socket.on('doc_update', (data) {
