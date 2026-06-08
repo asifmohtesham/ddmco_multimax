@@ -1375,6 +1375,13 @@ class ApiProvider {
     if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
   }
+
+  Future<String> getSessionCookieHeader() async {
+    if (!_dioInitialised) await _initDio();
+    final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    return cookies.map((c) => '${c.name}=${c.value}').join('; ');
+  }
+
   Future<Response> logoutApiCall() async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/logout');
