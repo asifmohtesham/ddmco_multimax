@@ -41,7 +41,7 @@ void main() {
   });
 
   group('FrappeSocket', () {
-    test('connect() subscribes to the document room on connect', () {
+    test('connect() subscribes to doc room and doctype list room on connect', () {
       final fakeSocket = _FakeSocket();
       final frappe = FrappeSocket(
         socketFactory: (url, opts) => fakeSocket,
@@ -54,6 +54,7 @@ void main() {
         onDocUpdate: () {},
       );
       expect(fakeSocket.emitted, contains('doc_subscribe'));
+      expect(fakeSocket.emitted, contains('doctype_subscribe'));
     });
 
     test('connect() is idempotent — second call is a no-op', () {
@@ -99,6 +100,62 @@ void main() {
       fakeSocket.listeners['doc_update']!({'doctype': 'Stock Entry', 'name': 'MAT-STE-999'});
       fakeSocket.listeners['doc_update']!({'doctype': 'Delivery Note', 'name': 'MAT-STE-001'});
       expect(callCount, 1);
+    });
+
+    test('list_update fires onDocUpdate for matching doctype+name (fallback path)', () {
+      final fakeSocket = _FakeSocket();
+      final frappe = FrappeSocket(
+        socketFactory: (url, opts) => fakeSocket,
+      );
+      int callCount = 0;
+      frappe.connect(
+        baseUrl: 'https://erp.example.com',
+        cookieHeader: 'sid=abc',
+        doctype: 'Stock Entry',
+        docname: 'MAT-STE-001',
+        onDocUpdate: () => callCount++,
+      );
+      fakeSocket.listeners['list_update']!({'doctype': 'Stock Entry', 'name': 'MAT-STE-001'});
+      fakeSocket.listeners['list_update']!({'doctype': 'Stock Entry', 'name': 'MAT-STE-999'});
+      fakeSocket.listeners['list_update']!({'doctype': 'Delivery Note', 'name': 'MAT-STE-001'});
+      expect(callCount, 1);
+    });
+
+    test('doc_update and list_update together fire onDocUpdate only once within 2 seconds', () {
+      final fakeSocket = _FakeSocket();
+      final frappe = FrappeSocket(
+        socketFactory: (url, opts) => fakeSocket,
+      );
+      int callCount = 0;
+      frappe.connect(
+        baseUrl: 'https://erp.example.com',
+        cookieHeader: 'sid=abc',
+        doctype: 'Stock Entry',
+        docname: 'MAT-STE-001',
+        onDocUpdate: () => callCount++,
+      );
+      // Both events fire for the same save — should deduplicate.
+      fakeSocket.listeners['doc_update']!({'doctype': 'Stock Entry', 'name': 'MAT-STE-001'});
+      fakeSocket.listeners['list_update']!({'doctype': 'Stock Entry', 'name': 'MAT-STE-001'});
+      expect(callCount, 1);
+    });
+
+    test('disconnect fires onDisconnected callback', () {
+      final fakeSocket = _FakeSocket();
+      final frappe = FrappeSocket(
+        socketFactory: (url, opts) => fakeSocket,
+      );
+      int disconnectedCount = 0;
+      frappe.connect(
+        baseUrl: 'https://erp.example.com',
+        cookieHeader: 'sid=abc',
+        doctype: 'Stock Entry',
+        docname: 'MAT-STE-001',
+        onDocUpdate: () {},
+        onDisconnected: () => disconnectedCount++,
+      );
+      fakeSocket.listeners['disconnect']?.call('transport error');
+      expect(disconnectedCount, 1);
     });
 
     test('dispose() emits doc_unsubscribe and allows reconnect', () {

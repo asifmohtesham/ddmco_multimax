@@ -9,6 +9,9 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 mixin RealtimeSyncMixin on GetxController {
   late final FrappeSocket _frappeSocket = createFrappeSocket();
   Timer? _autoSaveTimer;
+  // Tracks whether the socket has ever successfully connected during this
+  // controller lifetime, so we can distinguish initial connect from reconnect.
+  bool _realtimeEverConnected = false;
 
   final isRealtimeConnected = false.obs;
   final isRemoteSyncing     = false.obs;
@@ -45,12 +48,21 @@ mixin RealtimeSyncMixin on GetxController {
       final api    = Get.find<ApiProvider>();
       final cookie = await api.getSessionCookieHeader();
       _frappeSocket.connect(
-        baseUrl:      api.baseUrl,
-        cookieHeader: cookie,
-        doctype:      realtimeDoctype,
-        docname:      realtimeDocname,
-        onDocUpdate:  _onRemoteUpdate,
-        onConnected:  () => isRealtimeConnected.value = true,
+        baseUrl:        api.baseUrl,
+        cookieHeader:   cookie,
+        doctype:        realtimeDoctype,
+        docname:        realtimeDocname,
+        onDocUpdate:    _onRemoteUpdate,
+        onConnected: () {
+          // On reconnect after a disconnect, reload immediately to pick up any
+          // updates that arrived while the socket was offline — socket.io does
+          // not queue missed events, so we must poll once on re-connect.
+          final isReconnect = _realtimeEverConnected;
+          _realtimeEverConnected = true;
+          isRealtimeConnected.value = true;
+          if (isReconnect) _onRemoteUpdate();
+        },
+        onDisconnected: () => isRealtimeConnected.value = false,
       );
     } catch (e, st) {
       if (kDebugMode) debugPrint('[RealtimeSync] initRealtimeSync error: $e\n$st');
@@ -79,4 +91,11 @@ mixin RealtimeSyncMixin on GetxController {
   }
 
   Future<void> triggerRemoteUpdateForTest() => _onRemoteUpdate();
+
+  Future<void> triggerConnectedForTest() async {
+    final isReconnect = _realtimeEverConnected;
+    _realtimeEverConnected = true;
+    isRealtimeConnected.value = true;
+    if (isReconnect) await _onRemoteUpdate();
+  }
 }

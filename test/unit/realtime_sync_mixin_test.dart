@@ -129,6 +129,25 @@ void main() {
     });
   });
 
+  group('RealtimeSyncMixin.reconnect', () {
+    test('first connect does not reload (document already loaded on open)', () async {
+      final ctrl = Get.put(_TestController());
+
+      await ctrl.triggerConnectedForTest();
+
+      expect(ctrl.reloadCallCount, 0);
+    });
+
+    test('reconnect after disconnect triggers reload to catch missed offline events', () async {
+      final ctrl = Get.put(_TestController());
+
+      await ctrl.triggerConnectedForTest(); // initial connect — no reload
+      await ctrl.triggerConnectedForTest(); // reconnect — should reload
+
+      expect(ctrl.reloadCallCount, 1);
+    });
+  });
+
   group('RealtimeSyncMixin.disposeRealtimeSync', () {
     test('cancels the auto-save timer on dispose', () async {
       final ctrl = Get.put(_TestController());
