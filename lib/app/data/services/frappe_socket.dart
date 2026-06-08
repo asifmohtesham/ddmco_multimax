@@ -27,17 +27,19 @@ class FrappeSocket {
         .disableAutoConnect()
         .build();
 
-    _socket = _socketFactory != null
+    // Capture as local so closures below never read the nullable field.
+    final sock = _socketFactory != null
         ? _socketFactory!(baseUrl, opts)
         : IO.io(baseUrl, opts);
+    _socket = sock;
 
-    _socket.on('connect', (_) {
+    sock.on('connect', (_) {
       _debugLog('connected — subscribing to $doctype/$docname');
-      _socket.emit('doc_subscribe', [doctype, docname]);
+      sock.emit('doc_subscribe', [doctype, docname]);
       onConnected?.call();
     });
 
-    _socket.on('doc_update', (data) {
+    sock.on('doc_update', (data) {
       if (data is Map &&
           data['doctype'] == doctype &&
           data['name'] == docname) {
@@ -45,10 +47,10 @@ class FrappeSocket {
       }
     });
 
-    _socket.on('connect_error', (e) => _debugLog('connect error: $e'));
-    _socket.on('error', (e) => _debugLog('socket error: $e'));
+    sock.on('connect_error', (e) => _debugLog('connect error: $e'));
+    sock.on('error',         (e) => _debugLog('socket error: $e'));
 
-    _socket.connect();
+    sock.connect();
   }
 
   void _debugLog(String msg) {
@@ -56,9 +58,15 @@ class FrappeSocket {
   }
 
   void dispose() {
-    _socket?.emit('doc_unsubscribe', []);
-    _socket?.disconnect();
-    _socket = null;
+    if (_socket != null) {
+      _socket!.off('connect');
+      _socket!.off('doc_update');
+      _socket!.off('connect_error');
+      _socket!.off('error');
+      _socket!.emit('doc_unsubscribe', []);
+      _socket!.disconnect();
+      _socket = null;
+    }
     _connected = false;
   }
 }

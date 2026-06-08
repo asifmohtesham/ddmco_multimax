@@ -8,6 +8,7 @@ class _FakeSocket {
 
   void emit(String event, [dynamic data]) => emitted.add(event);
   void on(String event, void Function(dynamic) cb) => listeners[event] = cb;
+  void off(String event) => listeners.remove(event);
   // Fires the 'connect' listener, matching what the real socket does on connection
   void connect() => listeners['connect']?.call(null);
   void disconnect() {}
