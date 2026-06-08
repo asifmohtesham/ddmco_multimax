@@ -31,6 +31,7 @@ class _SessionDefaultsBottomSheetState
   String? _selectedCompany;
   bool _autoSubmitEnabled = true;
   double _autoSubmitDelay = 2.0;
+  double _autoSaveDelay = 5.0;
 
   @override
   void initState() {
@@ -44,6 +45,7 @@ class _SessionDefaultsBottomSheetState
       final savedCompany = _storageService.getCompany();
       final autoSubmit = _storageService.getAutoSubmitEnabled();
       final delay = _storageService.getAutoSubmitDelay();
+      final autoSaveDelay = _storageService.getAutoSaveDelay();
 
       if (mounted) {
         setState(() {
@@ -52,6 +54,7 @@ class _SessionDefaultsBottomSheetState
           _selectedCompany = savedCompany;
           _autoSubmitEnabled = autoSubmit;
           _autoSubmitDelay = delay.toDouble();
+          _autoSaveDelay = autoSaveDelay.toDouble();
           _isLoading = false;
         });
         // Commit 10: extract 'name' key for the auto-select logic.
@@ -76,6 +79,7 @@ class _SessionDefaultsBottomSheetState
     await _storageService.saveSessionDefaults(_selectedCompany!);
     await _storageService.saveAutoSubmitSettings(
         _autoSubmitEnabled, _autoSubmitDelay.toInt());
+    await _storageService.saveAutoSaveDelay(_autoSaveDelay.toInt());
     // Use widget's own BuildContext — always valid inside mounted State.
     if (mounted) Navigator.of(context).pop();
     AppNotification.success('Settings Saved');
@@ -181,6 +185,19 @@ class _SessionDefaultsBottomSheetState
                             setState(() => _autoSubmitDelay = val),
                       ),
                     ],
+                    const SizedBox(height: 16),
+                    Text(
+                        'Auto-save Delay: ${_autoSaveDelay.toInt()}s',
+                        style: Theme.of(context).textTheme.bodyMedium),
+                    Slider(
+                      value: _autoSaveDelay,
+                      min: 3,
+                      max: 30,
+                      divisions: 9,
+                      label: '${_autoSaveDelay.toInt()}s',
+                      onChanged: (val) =>
+                          setState(() => _autoSaveDelay = val),
+                    ),
                     const SizedBox(height: 24),
                     Text('Troubleshooting',
                         style: TextStyle(
