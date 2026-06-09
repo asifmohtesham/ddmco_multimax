@@ -104,7 +104,7 @@ class _JobCardScreenState extends State<JobCardScreen>
     }
 
     // Assigned Employee
-    if (controller.activeFilters.containsKey('Job Card Employee') &&
+    if (controller.activeFilters.containsKey('Job Card Time Log') &&
         controller.assignedEmployeeLabel.value.isNotEmpty) {
       chips.add(chip(
         icon: Icons.badge_outlined,

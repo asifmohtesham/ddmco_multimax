@@ -57,8 +57,8 @@ class JobCard {
 
   // ── Warehouse & dates ─────────────────────────────────────────────────────
   final String? wipWarehouse;
-  /// Header-level assigned employees (Table MultiSelect → Job Card Time Log).
-  /// ERPNext returns this as a List of dicts, never a plain String.
+  /// Employees associated with this Job Card, parsed from the `employee` field
+  /// returned by the full-document API response.
   final List<JobCardEmployee> employees;
   final String? postingDate;
   final String? expectedStartDate;

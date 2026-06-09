@@ -215,7 +215,7 @@ class HomeController extends GetxController {
       final res = await _jcProvider.getJobCards(
         filters: {
           'status': 'Work In Progress',
-          '__child__Job Card Employee': ['Job Card Employee', 'employee', '=', empId],
+          '__child__Job Card Time Log': ['Job Card Time Log', 'employee', '=', empId],
         },
         limit: 1,
       );
