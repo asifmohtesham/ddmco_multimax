@@ -56,7 +56,7 @@ class ApiProvider {
     try {
       final r = await _dio.get('/api/method/frappe.utils.change_log.get_versions');
       final msg = r.data['message'] as Map<String, dynamic>?;
-      final v = (msg?['ERPNext'] as Map<String, dynamic>?)?['version'] as String?;
+      final v = (msg?['erpnext'] as Map<String, dynamic>?)?['version'] as String?;
       if (v != null && v.isNotEmpty) return v;
     } catch (_) {}
     try {
