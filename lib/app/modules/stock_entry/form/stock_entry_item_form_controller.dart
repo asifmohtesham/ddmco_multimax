@@ -1233,8 +1233,26 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Re-fetches the batch balance when a rack scan resolves the item-level
+  /// source warehouse AFTER the batch was already validated (batch-first
+  /// scan order). Without this, the balance stays scoped to the document
+  /// default warehouse.
+  Worker? _batchRescopeWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _batchRescopeWorker = ever<String?>(itemSourceWarehouse, (_) {
+      if (isClosed) return;
+      if (isBatchValid.value && batchController.text.trim().isNotEmpty) {
+        fetchBatchBalance();
+      }
+    });
+  }
+
   @override
   void onClose() {
+    _batchRescopeWorker?.dispose();
     disposeBarcodeListener();   // BarcodeAwareMixin: safety-net disposal
     disposeAutoFillListener();
     super.onClose();
