@@ -457,37 +457,33 @@ scan resolves the warehouse *after* the batch was already validated.
 ### Rack Validation & Balance
 
 ```
-validateRack(rack, isSource)
-├── if empty → clear valid flag + derived warehouse; validateSheet(); return
+validateDualRack(rack, isSource)
+├── if empty → resetSource/TargetRackValidation(); return
+├── isValidatingSourceRack / isValidatingTargetRack = true
 ├── resolveRackWarehouse(rack, isSource):
 │   ├── optimistic: itemSource/TargetWarehouse = RackLocation.tryParse(rack)?.warehouseName
 │   ├── GET /api/resource/Rack/{rack} → overwrite with doc's `warehouse` field
-│   ├── 404 → warehouse cleared, rack invalid, snackbar
+│   ├── 404 → warehouse cleared, rack invalid, rackError + snackbar, abort
 │   └── network error → optimistic parse value stands
-├── isValidatingSourceRack / isValidatingTargetRack = true
-├── GET /api/resource/Rack/{rack}
-│   ├── Found:
-│   │   ├── isSourceRackValid / isTargetRackValid = true
-│   │   └── if isSource:
-│   │       ├── await _updateAvailableStock()
-│   │       ├── await _updateBatchBalance()
-│   │       └── if enteredQty > bsBatchBalance → set batchError
-│   │           else → clear stale batchError
-│   └── Not found: clear valid flag; snackbar
-└── validateSheet()
+├── if isSource:
+│   ├── rack in _rackStockMap cache → rackBalance from cache
+│   │   else → await fetchRackBalance(rack)   ← scoped to resolvedWarehouse cascade
+│   └── rackBalance ≤ 0 → invalid, itemSourceWarehouse cleared, balance error
+│       else → isSourceRackValid = true
+├── else (target): isTargetRackValid = true; clear rackError if source has none
+└── finally → validateSheet()
 
-_updateAvailableStock()
-├── Resolve effectiveWarehouse (same cascade)
-├── GET getStockBalance(itemCode, warehouse, batchNo?)
-└── Sum result rows → bsMaxQty; if rack text present → bsRackBalance
+ever/debounce(itemSourceWarehouse) — 200 ms
+└── if batch already valid → fetchBatchBalance()  ← re-scope for batch-first scans
 ```
 
 ---
 
 ### Warehouse Resolution Cascade
 
-Used identically across `_updateAvailableStock`, `_updateBatchBalance`,
-`addItem`, `saveStockEntry`, and the form-screen warehouse label display:
+Used identically across `resolvedWarehouse` (which scopes `fetchRackBalance`,
+`fetchBatchBalance`, and the pickers), `submit()`, and the sheet's
+`DerivedWarehouseLabel`:
 
 ```
 effective_warehouse =
@@ -500,9 +496,8 @@ parent from_warehouse/to_warehouse are defaults only.
 
 | Source | Set by |
 |---|---|
-| `bsItemSourceWarehouse` | `validateRack()` after successful Rack API call |
-| `derivedSourceWarehouse` | Inline parse in `validateRack()` (pre-API call) |
-| `selectedFromWarehouse` | User picks in Details tab warehouse picker |
+| `itemSourceWarehouse` | `resolveRackWarehouse()` — Rack DocType `warehouse` field (optimistic name-parse while the API call is in flight) |
+| `fromWarehouse` | User picks in Details tab warehouse picker (document default) |
 
 ---
 
