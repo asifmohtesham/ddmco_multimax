@@ -1236,18 +1236,26 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// Re-fetches the batch balance when a rack scan resolves the item-level
   /// source warehouse AFTER the batch was already validated (batch-first
   /// scan order). Without this, the balance stays scoped to the document
-  /// default warehouse.
+  /// default warehouse. Debounced 200 ms to coalesce the optimistic-parse
+  /// and API-overwrite writes.
   Worker? _batchRescopeWorker;
 
   @override
   void onInit() {
     super.onInit();
-    _batchRescopeWorker = ever<String?>(itemSourceWarehouse, (_) {
-      if (isClosed) return;
-      if (isBatchValid.value && batchController.text.trim().isNotEmpty) {
-        fetchBatchBalance();
-      }
-    });
+    // debounce (not ever): resolveRackWarehouse writes itemSourceWarehouse
+    // twice in quick succession (optimistic parse, then API overwrite) —
+    // coalesce into one re-fetch so a stale intermediate balance never lands.
+    _batchRescopeWorker = debounce<String?>(
+      itemSourceWarehouse,
+      (_) {
+        if (isClosed) return;
+        if (isBatchValid.value && batchController.text.trim().isNotEmpty) {
+          fetchBatchBalance();
+        }
+      },
+      time: const Duration(milliseconds: 200),
+    );
   }
 
   @override
