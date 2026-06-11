@@ -671,6 +671,10 @@ class PosUploadFormController extends GetxController
               return matches.fold<double>(0, (sum, i) => sum + i.qty);
             },
           );
+        } else {
+          // Detail fetch failed — clear any DN retained from a previous
+          // fetch so the export UI can't act on stale data.
+          deliveryNote.value = null;
         }
         isLoadingLinked.value = false;
         await _fetchPackingSlips(upload, dnName);
