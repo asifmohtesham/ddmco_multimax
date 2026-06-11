@@ -6,6 +6,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -414,6 +415,39 @@ class ApiProvider {
       return parseRacksByWarehouseResponse(response.data);
     } catch (_) {
       return [];
+    }
+  }
+
+  /// Extracts the `warehouse` link from a `GET /api/resource/Rack/{name}`
+  /// response body. Returns null on any shape mismatch or empty value.
+  static String? parseRackWarehouseResponse(dynamic data) {
+    if (data is! Map) return null;
+    final doc = data['data'];
+    if (doc is! Map) return null;
+    final wh = doc['warehouse'];
+    return (wh is String && wh.isNotEmpty) ? wh : null;
+  }
+
+  /// Resolves the authoritative warehouse of [rack] from the Rack DocType.
+  ///
+  /// Distinguishes "rack does not exist" (404 → notFound) from transient
+  /// failures (error) so callers can reject invalid racks while degrading
+  /// gracefully offline.
+  Future<RackWarehouseLookup> getRackWarehouse(String rack) async {
+    try {
+      final response = await getDocument('Rack', rack);
+      if (response.statusCode == 200 && response.data != null) {
+        return RackWarehouseLookup.found(
+            parseRackWarehouseResponse(response.data));
+      }
+      return const RackWarehouseLookup.error();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return const RackWarehouseLookup.notFound();
+      }
+      return const RackWarehouseLookup.error();
+    } catch (_) {
+      return const RackWarehouseLookup.error();
     }
   }
 
