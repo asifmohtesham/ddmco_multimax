@@ -459,10 +459,11 @@ scan resolves the warehouse *after* the batch was already validated.
 ```
 validateRack(rack, isSource)
 ├── if empty → clear valid flag + derived warehouse; validateSheet(); return
-├── Attempt inline warehouse parse:
-│   rack format "WH-A1" → parts[0]=branch, parts[1]=aisle, parts[2]=slot
-│   derived warehouse = '{parts[1]}-{parts[2]} - {parts[0]}'
-│   bsItemSourceWarehouse (or Target) = derived warehouse  ← triggers reactives
+├── resolveRackWarehouse(rack, isSource):
+│   ├── optimistic: itemSource/TargetWarehouse = RackLocation.tryParse(rack)?.warehouseName
+│   ├── GET /api/resource/Rack/{rack} → overwrite with doc's `warehouse` field
+│   ├── 404 → warehouse cleared, rack invalid, snackbar
+│   └── network error → optimistic parse value stands
 ├── isValidatingSourceRack / isValidatingTargetRack = true
 ├── GET /api/resource/Rack/{rack}
 │   ├── Found:
@@ -490,9 +491,11 @@ Used identically across `_updateAvailableStock`, `_updateBatchBalance`,
 
 ```
 effective_warehouse =
-  bsItemSourceWarehouse    (set from rack scan → item-level)
-  ?? derivedSourceWarehouse  (inline parse from rack string)
-  ?? selectedFromWarehouse   (document-level header field)
+  itemSourceWarehouse       (Rack DocType `warehouse` field; name-parse while in flight)
+  ?? fromWarehouse          (document-level default source warehouse)
+
+Matches ERPNext v15: row-level s_warehouse/t_warehouse take precedence;
+parent from_warehouse/to_warehouse are defaults only.
 ```
 
 | Source | Set by |
