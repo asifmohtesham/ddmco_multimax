@@ -213,8 +213,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Abstract overrides ─────────────────────────────────────────────────
+  /// Warehouse scope for balance lookups (rack balance, batch balance,
+  /// pickers, rack-stock preload).
+  ///
+  /// Priority 1: warehouse resolved from the scanned source rack.
+  /// Priority 2: the document-level default source warehouse.
+  /// Mirrors ERPNext v15 row-precedence (row s_warehouse over parent
+  /// from_warehouse) and the submit() cascade below.
   @override
-  String? get resolvedWarehouse => _parent.fromWarehouse.value;
+  String? get resolvedWarehouse =>
+      itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
 
   @override bool get requiresBatch => true;
   @override bool get requiresRack  => false;
@@ -536,6 +544,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isTargetRackValid.value      = false;
     }
     try {
+      // Resolve the rack's warehouse FIRST so the balance lookup below is
+      // scoped to the rack's own warehouse rather than the document default
+      // (a rack in a non-default warehouse otherwise reads balance 0 and is
+      // falsely rejected).
+      final rackExists = await resolveRackWarehouse(rack, isSource);
+      if (!rackExists) {
+        if (isSource) {
+          isSourceRackValid.value = false;
+        } else {
+          isTargetRackValid.value = false;
+        }
+        rackError.value = 'Rack "$rack" not found.';
+        showError('Rack "$rack" not found');
+        return;
+      }
       if (isSource) {
         isLoadingRackBalance.value = true;
         if (_rackStockMap.containsKey(rack)) {
@@ -550,13 +573,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           rackError.value =
               'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
         } else {
-          isSourceRackValid.value   = true;
-          itemSourceWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
+          isSourceRackValid.value = true;
           rackError.value = '';
         }
       } else {
         isTargetRackValid.value   = true;
-        itemTargetWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
         // Only clear rackError if source rack has no active error.
         // Preserving source-side negative-balance error message.
         if (isSourceRackValid.value) {
