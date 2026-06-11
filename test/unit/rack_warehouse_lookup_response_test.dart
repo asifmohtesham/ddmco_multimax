@@ -1,5 +1,6 @@
 // test/unit/rack_warehouse_lookup_response_test.dart
 import 'package:flutter_test/flutter_test.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 
 void main() {
@@ -40,6 +41,17 @@ void main() {
         'data': {'warehouse': 42},
       };
       expect(ApiProvider.parseRackWarehouseResponse(data), isNull);
+    });
+  });
+
+  group('RackWarehouseLookup constructors', () {
+    test('T-7: found(null) is distinguishable from notFound', () {
+      const found    = RackWarehouseLookup.found(null);
+      const notFound = RackWarehouseLookup.notFound();
+      expect(found.status, equals(RackLookupStatus.found));
+      expect(found.warehouse, isNull);
+      expect(notFound.status, equals(RackLookupStatus.notFound));
+      expect(notFound.warehouse, isNull);
     });
   });
 }

@@ -433,7 +433,9 @@ class ApiProvider {
   /// Distinguishes "rack does not exist" (404 → notFound) from transient
   /// failures (error) so callers can reject invalid racks while degrading
   /// gracefully offline.
+  /// An empty [rack] resolves to [RackLookupStatus.notFound].
   Future<RackWarehouseLookup> getRackWarehouse(String rack) async {
+    if (rack.isEmpty) return const RackWarehouseLookup.notFound();
     try {
       final response = await getDocument('Rack', rack);
       if (response.statusCode == 200 && response.data != null) {
