@@ -808,6 +808,7 @@ class PosUploadFormController extends GetxController
     List<String> columnNames,
     int dataRowCount, {
     int tableStartRow = 0,
+    String tableName = 'PackingSlipTable',
   }) {
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
     final colCount = columnNames.length;
@@ -824,7 +825,7 @@ class PosUploadFormController extends GetxController
 
     final tableXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
-        ' id="1" name="PackingSlipTable" displayName="PackingSlipTable"'
+        ' id="1" name="$tableName" displayName="$tableName"'
         ' ref="$ref" totalsRowShown="0">'
         '<autoFilter ref="$ref"/>'
         '<tableColumns count="$colCount">$colsBuffer</tableColumns>'
