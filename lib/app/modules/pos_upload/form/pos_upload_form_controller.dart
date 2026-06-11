@@ -20,6 +20,8 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 enum LinkedDocType { deliveryNote, stockEntry, none }
 
+enum ExportDocType { deliveryNote, packingSlip }
+
 class PackingSlipInfo {
   final String psName;
   final int? fromCaseNo;

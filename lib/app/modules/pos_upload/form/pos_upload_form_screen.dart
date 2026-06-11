@@ -21,7 +21,8 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
               : 'POS Upload';
       final isLoading  = controller.isLoading.value;
       final posUpload  = controller.posUpload.value;
-      final hasPackingSlips = controller.packingSlips.isNotEmpty;
+      final canShare = controller.deliveryNote.value != null ||
+          controller.packingSlips.isNotEmpty;
 
       return DefaultTabController(
         length: 2,
@@ -32,7 +33,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                 title:       title,
                 docType:     'POS Upload',
                 statusLabel: posUpload?.status,
-                onShare: hasPackingSlips ? () => _showShareSheet(context) : null,
+                onShare: canShare ? () => _showShareSheet(context) : null,
                 extraActions: [
                   RealtimeSyncStatusIcon(
                     isConnected: controller.isRealtimeConnected,
@@ -72,15 +73,41 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
     });
   }
 
-  // Must match the column names in PosUploadFormController.sharePackingSlipExcel's columns list.
-  static List<String> _columnNames(bool compact) => compact
-      ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
-      : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
+  // Must match the column names in the controller's export builders
+  // (_buildPackingSlipExcel / buildDeliveryNoteExcelBytes).
+  static List<String> _columnNames(ExportDocType docType, bool compact) {
+    final base = compact
+        ? ['Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
+        : [
+            'Invoice Serial #',
+            'Variant Of',
+            'Item Code',
+            'Item Name',
+            'Qty',
+            'Country of Origin',
+          ];
+    return docType == ExportDocType.packingSlip ? ['Case #', ...base] : base;
+  }
+
+  static const _shortLabels = {
+    'Case #': 'Case',
+    'Invoice Serial #': 'Serial',
+    'Variant Of': 'Variant',
+    'Item Code': 'Code',
+    'Item Name': 'Item',
+    'Qty': 'Qty',
+    'Country of Origin': 'Country',
+  };
 
   void _showShareSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) {
+        final hasDn = controller.deliveryNote.value != null;
+        final hasPs = controller.packingSlips.isNotEmpty;
+        // Default to the most-used export when available.
+        var docType =
+            hasPs ? ExportDocType.packingSlip : ExportDocType.deliveryNote;
         var compact = true;
         String? sortByColumn;
         var isExporting = false;
@@ -93,16 +120,57 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Export Packing Slip',
+                    'Export as Excel',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<ExportDocType>(
+                    segments: [
+                      ButtonSegment(
+                        value: ExportDocType.deliveryNote,
+                        icon: const Icon(Icons.local_shipping_outlined),
+                        label: const Text('Delivery Note'),
+                        enabled: hasDn,
+                      ),
+                      ButtonSegment(
+                        value: ExportDocType.packingSlip,
+                        icon: const Icon(Icons.inventory_outlined),
+                        label: const Text('Packing Slip'),
+                        enabled: hasPs,
+                      ),
+                    ],
+                    selected: {docType},
+                    onSelectionChanged: isExporting
+                        ? null
+                        : (selection) => setState(() {
+                              docType = selection.first;
+                              // Reset sort only if the column doesn't exist
+                              // for the new doc type (Case # is PS-only).
+                              if (sortByColumn != null &&
+                                  !_columnNames(docType, compact)
+                                      .contains(sortByColumn)) {
+                                sortByColumn = null;
+                              }
+                            }),
+                  ),
+                  if (!hasPs || !hasDn) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      !hasPs
+                          ? 'No packing slips yet'
+                          : 'Delivery note not available',
+                      style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   SwitchListTile(
                     title: const Text('Compact'),
                     subtitle: Text(
-                      compact
-                          ? 'Case · Serial · Item · Qty · Country'
-                          : 'Case · Serial · Variant · Code · Item · Qty · Country',
+                      _columnNames(docType, compact)
+                          .map((c) => _shortLabels[c]!)
+                          .join(' · '),
                     ),
                     value: compact,
                     onChanged: isExporting
@@ -127,7 +195,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         value: null,
                         child: Text('None (natural order)'),
                       ),
-                      ..._columnNames(compact).map(
+                      ..._columnNames(docType, compact).map(
                         (name) =>
                             DropdownMenuItem(value: name, child: Text(name)),
                       ),
@@ -153,12 +221,21 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         ? () {}
                         : () async {
                             setState(() => isExporting = true);
+                            final docLabel =
+                                docType == ExportDocType.packingSlip
+                                    ? 'Packing Slip'
+                                    : 'Delivery Note';
                             try {
                               final filePath =
-                                  await controller.buildPackingSlipExcel(
-                                compact: compact,
-                                sortByColumn: sortByColumn,
-                              );
+                                  docType == ExportDocType.packingSlip
+                                      ? await controller.buildPackingSlipExcel(
+                                          compact: compact,
+                                          sortByColumn: sortByColumn,
+                                        )
+                                      : await controller.buildDeliveryNoteExcel(
+                                          compact: compact,
+                                          sortByColumn: sortByColumn,
+                                        );
                               if (ctx.mounted) Navigator.of(ctx).pop();
                               await Share.shareXFiles(
                                 [
@@ -168,7 +245,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                                   ),
                                 ],
                                 subject:
-                                    '${controller.posUpload.value?.name} – Packing Slip',
+                                    '${controller.posUpload.value?.name} – $docLabel',
                               );
                             } catch (e) {
                               if (ctx.mounted) {
