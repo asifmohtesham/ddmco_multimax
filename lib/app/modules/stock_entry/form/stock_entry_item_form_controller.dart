@@ -503,6 +503,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// warehouse is cleared and `false` is returned — the rack is invalid.
   /// On a transient failure the parse value stands (offline degradation).
   Future<bool> resolveRackWarehouse(String rack, bool isSource) async {
+    if (isClosed) return false;
     final target = isSource ? itemSourceWarehouse : itemTargetWarehouse;
     target.value = RackLocation.tryParse(rack)?.warehouseName;
 
