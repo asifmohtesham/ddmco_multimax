@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
@@ -486,6 +487,38 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     isTargetRackValid.value      = false;
     isValidatingTargetRack.value = false;
     itemTargetWarehouse.value    = null;
+  }
+
+  /// Fetches the authoritative warehouse for a rack from the Rack DocType.
+  /// Injectable so unit tests can stub server outcomes without a Dio mock.
+  Future<RackWarehouseLookup> Function(String rack) rackWarehouseFetcher =
+      (rack) => ApiProvider().getRackWarehouse(rack);
+
+  /// Resolves the warehouse for [rack] onto the item-level warehouse of the
+  /// given side (Priority 1 of the cascade; `submit()` falls back to the
+  /// document default when this stays null).
+  ///
+  /// Sets the rack-name parse optimistically for a zero-latency label, then
+  /// overwrites it with the Rack DocType's `warehouse` field. On 404 the
+  /// warehouse is cleared and `false` is returned — the rack is invalid.
+  /// On a transient failure the parse value stands (offline degradation).
+  Future<bool> resolveRackWarehouse(String rack, bool isSource) async {
+    final target = isSource ? itemSourceWarehouse : itemTargetWarehouse;
+    target.value = RackLocation.tryParse(rack)?.warehouseName;
+
+    final lookup = await rackWarehouseFetcher(rack);
+    if (isClosed) return false;
+
+    switch (lookup.status) {
+      case RackLookupStatus.found:
+        if (lookup.warehouse != null) target.value = lookup.warehouse;
+        return true;
+      case RackLookupStatus.notFound:
+        target.value = null;
+        return false;
+      case RackLookupStatus.error:
+        return true;
+    }
   }
 
   @override
