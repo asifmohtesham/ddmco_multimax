@@ -101,6 +101,8 @@ typedef DnRow = ({
   String country,
 });
 
+typedef _DnCol = (String, CellValue Function(DnRow));
+
 // ── compute() plumbing ──────────────────────────────────────────────────────
 
 class _PackingSlipExcelParams {
@@ -260,6 +262,127 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
   );
 }
 
+/// Params for the DN export isolate. Public (with the function below) so
+/// unit tests can exercise the full xlsx pipeline; compute() also requires
+/// a top-level or static function.
+class DeliveryNoteExcelParams {
+  final String docName;
+  final String docDate;
+  final Map<String, String> itemNameByIdx;
+  final List<DeliveryNoteItem> items;
+  final bool compact;
+  final String? sortByColumn;
+
+  const DeliveryNoteExcelParams({
+    required this.docName,
+    required this.docDate,
+    required this.itemNameByIdx,
+    required this.items,
+    required this.compact,
+    this.sortByColumn,
+  });
+}
+
+// Top-level function — required by compute(). Runs in a background isolate.
+// Mirrors _buildPackingSlipExcel: Consolas font, autofit, Excel Table injected.
+List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
+  final safeName = p.docName.replaceAll('/', '_');
+  final excelFile = Excel.createExcel();
+  excelFile.rename('Sheet1', safeName);
+  final sheet = excelFile[safeName];
+
+  var columns = p.compact
+      ? <_DnCol>[
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Country of Origin', (r) => TextCellValue(r.country)),
+        ]
+      : <_DnCol>[
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
+          ('Item Code',         (r) => TextCellValue(r.itemCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Country of Origin', (r) => TextCellValue(r.country)),
+        ];
+
+  final sortedRows = PosUploadFormController.buildDnRows(
+    items: p.items,
+    itemNameByIdx: p.itemNameByIdx,
+    compact: p.compact,
+    sortByColumn: p.sortByColumn,
+  );
+
+  // Move the sorted column to the front, matching the PS export behaviour.
+  if (p.sortByColumn != null) {
+    final sortIdx = columns.indexWhere((c) => c.$1 == p.sortByColumn);
+    if (sortIdx > 0) {
+      final col = columns.removeAt(sortIdx);
+      columns.insert(0, col);
+    }
+  }
+
+  // ── Document header (rows 0–3, row 3 is blank) ───────────────────────
+  const tableStartRow = 4;
+
+  CellIndex idx(int c, int r) =>
+      CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r);
+
+  sheet.cell(idx(0, 0))
+    ..value = TextCellValue('Delivery Note')
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 20, bold: true);
+
+  sheet.cell(idx(0, 1))
+    ..value = TextCellValue(p.docName)
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 13);
+
+  String formattedDate;
+  try {
+    formattedDate =
+        DateFormat('dd MMM yyyy').format(DateTime.parse(p.docDate));
+  } catch (_) {
+    formattedDate = p.docDate;
+  }
+  sheet.cell(idx(0, 2))
+    ..value = TextCellValue(formattedDate)
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
+
+  // ── Table column headers ──────────────────────────────────────────────
+  final bodyStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
+
+  for (int c = 0; c < columns.length; c++) {
+    sheet.cell(idx(c, tableStartRow))
+      ..value = TextCellValue(columns[c].$1)
+      ..cellStyle = bodyStyle;
+  }
+
+  // ── Data rows ─────────────────────────────────────────────────────────
+  int row = tableStartRow + 1;
+  for (final r in sortedRows) {
+    for (int c = 0; c < columns.length; c++) {
+      sheet.cell(idx(c, row))
+        ..value = columns[c].$2(r)
+        ..cellStyle = bodyStyle;
+    }
+    row++;
+  }
+
+  // ── Autofit ───────────────────────────────────────────────────────────
+  for (int c = 0; c < columns.length; c++) {
+    sheet.setColumnAutoFit(c);
+  }
+
+  final rawBytes = excelFile.encode()!;
+  return PosUploadFormController._injectExcelTable(
+    rawBytes,
+    columns.map((col) => col.$1).toList(),
+    sortedRows.length,
+    tableStartRow: tableStartRow,
+    tableName: 'DeliveryNoteTable',
+  );
+}
+
 class PosUploadFormController extends GetxController
     with OptimisticLockingMixin, RealtimeSyncMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
@@ -297,6 +420,9 @@ class PosUploadFormController extends GetxController
   var linkedDocType = LinkedDocType.none.obs;
   var linkedDocName = ''.obs;
   var isLoadingLinked = false.obs;
+
+  /// The full linked Delivery Note, retained for the DN Excel export.
+  final deliveryNote = Rxn<DeliveryNote>();
 
   /// idx → custom_invoice_serial_number (null = no match)
   final resolvedSerials = <int, String?>{}.obs;
@@ -526,6 +652,7 @@ class PosUploadFormController extends GetxController
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
           final dn = DeliveryNote.fromJson(detailResp.data['data']);
+          deliveryNote.value = dn;
           _buildSerialMap(
             posItems: upload.items,
             matchSerial: (idx) => dn.items
@@ -550,10 +677,12 @@ class PosUploadFormController extends GetxController
       } else {
         linkedDocName.value = '';
         linkedDocType.value = LinkedDocType.none;
+        deliveryNote.value = null;
         isLoadingLinked.value = false;
       }
     } catch (_) {
       linkedDocType.value = LinkedDocType.none;
+      deliveryNote.value = null;
       isLoadingLinked.value = false;
     }
   }
@@ -791,7 +920,44 @@ class PosUploadFormController extends GetxController
 
     final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
     final safeName  = upload.name.replaceAll('/', '_');
-    final fileName  = 'POS Upload - $safeName - $timestamp';
+    final fileName  = 'POS Upload - $safeName - Packing Slip - $timestamp';
+    final tempDir   = await getTemporaryDirectory();
+    final filePath  = '${tempDir.path}/$fileName.xlsx';
+    await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
+
+    return filePath;
+  }
+
+  // Builds the DN xlsx and writes it to the temp directory.
+  // Returns the file path on success; throws on failure.
+  // The caller is responsible for opening the share sheet and handling errors.
+  Future<String> buildDeliveryNoteExcel({
+    required bool compact,
+    String? sortByColumn,
+  }) async {
+    final upload = posUpload.value;
+    final dn = deliveryNote.value;
+    if (upload == null || dn == null) {
+      throw Exception('No delivery note data available');
+    }
+
+    final params = DeliveryNoteExcelParams(
+      docName: dn.name,
+      docDate: dn.postingDate,
+      itemNameByIdx: {
+        for (final item in upload.items) item.idx.toString(): item.itemName,
+      },
+      items: dn.items,
+      compact: compact,
+      sortByColumn: sortByColumn,
+    );
+
+    // Runs in a background isolate — caller's UI stays responsive.
+    final fileBytes = await compute(buildDeliveryNoteExcelBytes, params);
+
+    final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
+    final safeName  = upload.name.replaceAll('/', '_');
+    final fileName  = 'POS Upload - $safeName - Delivery Note - $timestamp';
     final tempDir   = await getTemporaryDirectory();
     final filePath  = '${tempDir.path}/$fileName.xlsx';
     await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));

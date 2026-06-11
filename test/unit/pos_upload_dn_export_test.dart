@@ -1,3 +1,4 @@
+import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
@@ -127,6 +128,108 @@ void main() {
         sortByColumn: 'Invoice Serial #',
       );
       expect(rows.map((r) => r.serial).toList(), [2, 7]);
+    });
+
+    test('returns empty list when items is empty', () {
+      final rows = PosUploadFormController.buildDnRows(
+        items: [],
+        itemNameByIdx: {},
+        compact: true,
+      );
+      expect(rows, isEmpty);
+    });
+
+    test('unknown sortByColumn leaves order unchanged', () {
+      final rows = PosUploadFormController.buildDnRows(
+        items: [_dnItem(serial: '2'), _dnItem(serial: '1')],
+        itemNameByIdx: {},
+        compact: true,
+        sortByColumn: 'NonExistentColumn',
+      );
+      expect(rows.map((r) => r.serial).toList(), [2, 1]);
+    });
+  });
+
+  group('buildDeliveryNoteExcelBytes', () {
+    test('writes header block, compact column headers, and a data row', () {
+      final params = DeliveryNoteExcelParams(
+        docName: 'DN-001',
+        docDate: '2026-06-11',
+        itemNameByIdx: {'1': 'POS Item'},
+        items: [_dnItem(serial: '1', qty: 2, country: 'India')],
+        compact: true,
+      );
+      final bytes = buildDeliveryNoteExcelBytes(params);
+      final decoded = Excel.decodeBytes(bytes);
+      final sheet = decoded['DN-001'];
+
+      CellValue? cell(int col, int row) => sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
+          .value;
+
+      // Document header block (rows 0–2)
+      expect((cell(0, 0) as TextCellValue).value.text, 'Delivery Note');
+      expect((cell(0, 1) as TextCellValue).value.text, 'DN-001');
+      expect((cell(0, 2) as TextCellValue).value.text, '11 Jun 2026');
+
+      // Table headers at row 4 (compact set)
+      expect((cell(0, 4) as TextCellValue).value.text, 'Invoice Serial #');
+      expect((cell(1, 4) as TextCellValue).value.text, 'Item Name');
+      expect((cell(2, 4) as TextCellValue).value.text, 'Qty');
+      expect((cell(3, 4) as TextCellValue).value.text, 'Country of Origin');
+
+      // Data row at row 5
+      expect((cell(0, 5) as IntCellValue).value, 1);
+      expect((cell(1, 5) as TextCellValue).value.text, 'POS Item');
+      expect((cell(2, 5) as DoubleCellValue).value, 2);
+      expect((cell(3, 5) as TextCellValue).value.text, 'India');
+    });
+
+    test('full mode includes Variant Of and Item Code columns', () {
+      final params = DeliveryNoteExcelParams(
+        docName: 'DN-002',
+        docDate: '2026-06-11',
+        itemNameByIdx: {},
+        items: [_dnItem(serial: '1', variantOf: 'VAR', itemCode: 'CODE')],
+        compact: false,
+      );
+      final decoded = Excel.decodeBytes(buildDeliveryNoteExcelBytes(params));
+      final sheet = decoded['DN-002'];
+      final headers = List.generate(
+        6,
+        (c) => (sheet
+                .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 4))
+                .value as TextCellValue)
+            .value
+            .text,
+      );
+      expect(headers, [
+        'Invoice Serial #',
+        'Variant Of',
+        'Item Code',
+        'Item Name',
+        'Qty',
+        'Country of Origin',
+      ]);
+    });
+
+    test('sorted column moves to the first position', () {
+      final params = DeliveryNoteExcelParams(
+        docName: 'DN-003',
+        docDate: '2026-06-11',
+        itemNameByIdx: {},
+        items: [_dnItem(serial: '1', qty: 1)],
+        compact: true,
+        sortByColumn: 'Qty',
+      );
+      final decoded = Excel.decodeBytes(buildDeliveryNoteExcelBytes(params));
+      final sheet = decoded['DN-003'];
+      final first = (sheet
+              .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4))
+              .value as TextCellValue)
+          .value
+          .text;
+      expect(first, 'Qty');
     });
   });
 }
