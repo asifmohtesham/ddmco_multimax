@@ -156,7 +156,9 @@ void main() {
         docName: 'DN-001',
         docDate: '2026-06-11',
         itemNameByIdx: {'1': 'POS Item'},
-        items: [_dnItem(serial: '1', qty: 2, country: 'India')],
+        // Fractional qty: the excel package decodes whole-number doubles
+        // back as IntCellValue, so 2.5 keeps the round-trip type stable.
+        items: [_dnItem(serial: '1', qty: 2.5, country: 'India')],
         compact: true,
       );
       final bytes = buildDeliveryNoteExcelBytes(params);
@@ -181,7 +183,7 @@ void main() {
       // Data row at row 5
       expect((cell(0, 5) as IntCellValue).value, 1);
       expect((cell(1, 5) as TextCellValue).value.text, 'POS Item');
-      expect((cell(2, 5) as DoubleCellValue).value, 2);
+      expect((cell(2, 5) as DoubleCellValue).value, 2.5);
       expect((cell(3, 5) as TextCellValue).value.text, 'India');
     });
 
