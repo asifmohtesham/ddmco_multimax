@@ -1,5 +1,6 @@
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
 
@@ -154,7 +155,6 @@ void main() {
     test('writes header block, compact column headers, and a data row', () {
       final params = DeliveryNoteExcelParams(
         docName: 'DN-001',
-        docDate: '2026-06-11',
         itemNameByIdx: {'1': 'POS Item'},
         // Fractional qty: the excel package decodes whole-number doubles
         // back as IntCellValue, so 2.5 keeps the round-trip type stable.
@@ -169,10 +169,11 @@ void main() {
           .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
           .value;
 
-      // Document header block (rows 0–2)
+      // Document header block (rows 0–2); date is the export date.
       expect((cell(0, 0) as TextCellValue).value.text, 'Delivery Note');
       expect((cell(0, 1) as TextCellValue).value.text, 'DN-001');
-      expect((cell(0, 2) as TextCellValue).value.text, '11 Jun 2026');
+      expect((cell(0, 2) as TextCellValue).value.text,
+          DateFormat('dd MMM yyyy').format(DateTime.now()));
 
       // Table headers at row 4 (compact set)
       expect((cell(0, 4) as TextCellValue).value.text, 'Invoice Serial #');
@@ -185,12 +186,16 @@ void main() {
       expect((cell(1, 5) as TextCellValue).value.text, 'POS Item');
       expect((cell(2, 5) as DoubleCellValue).value, 2.5);
       expect((cell(3, 5) as TextCellValue).value.text, 'India');
+
+      // Totals row at row 6: label in the first column, SUBTOTAL over Qty.
+      expect((cell(0, 6) as TextCellValue).value.text, 'Total');
+      expect((cell(2, 6) as FormulaCellValue).formula,
+          contains('SUBTOTAL(109'));
     });
 
     test('full mode includes Variant Of and Item Code columns', () {
       final params = DeliveryNoteExcelParams(
         docName: 'DN-002',
-        docDate: '2026-06-11',
         itemNameByIdx: {},
         items: [_dnItem(serial: '1', variantOf: 'VAR', itemCode: 'CODE')],
         compact: false,
@@ -218,7 +223,6 @@ void main() {
     test('sorted column moves to the first position', () {
       final params = DeliveryNoteExcelParams(
         docName: 'DN-003',
-        docDate: '2026-06-11',
         itemNameByIdx: {},
         items: [_dnItem(serial: '1', qty: 1)],
         compact: true,
@@ -226,12 +230,14 @@ void main() {
       );
       final decoded = Excel.decodeBytes(buildDeliveryNoteExcelBytes(params));
       final sheet = decoded['DN-003'];
-      final first = (sheet
-              .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 4))
-              .value as TextCellValue)
-          .value
-          .text;
-      expect(first, 'Qty');
+      CellValue? cell(int col, int row) => sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
+          .value;
+      expect((cell(0, 4) as TextCellValue).value.text, 'Qty');
+      // Qty sits in column 0, so the totals row has no 'Total' label —
+      // just the SUBTOTAL formula in the Qty column itself.
+      expect((cell(0, 6) as FormulaCellValue).formula,
+          contains('SUBTOTAL(109'));
     });
   });
 }

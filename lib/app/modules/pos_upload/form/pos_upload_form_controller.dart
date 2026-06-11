@@ -109,7 +109,6 @@ typedef _DnCol = (String, CellValue Function(DnRow));
 
 class _PackingSlipExcelParams {
   final String docName;
-  final String docDate;
   final Map<String, String> itemNameByIdx;
   final List<PackingSlip> packingSlips;
   final bool compact;
@@ -117,7 +116,6 @@ class _PackingSlipExcelParams {
 
   const _PackingSlipExcelParams({
     required this.docName,
-    required this.docDate,
     required this.itemNameByIdx,
     required this.packingSlips,
     required this.compact,
@@ -219,15 +217,9 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     ..value = TextCellValue(p.docName)
     ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 13);
 
-  String formattedDate;
-  try {
-    formattedDate =
-        DateFormat('dd MMM yyyy').format(DateTime.parse(p.docDate));
-  } catch (_) {
-    formattedDate = p.docDate;
-  }
+  // Export date (when the file was generated), not the document date.
   sheet.cell(idx(0, 2))
-    ..value = TextCellValue(formattedDate)
+    ..value = TextCellValue(DateFormat('dd MMM yyyy').format(DateTime.now()))
     ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
 
   // ── Table column headers ──────────────────────────────────────────────
@@ -250,6 +242,17 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     row++;
   }
 
+  // ── Totals row (rendered as the injected table's totals row) ──────────
+  if (sortedRows.isNotEmpty) {
+    PosUploadFormController.writeQtyTotalsRow(
+      sheet: sheet,
+      columnNames: columns.map((col) => col.$1).toList(),
+      tableStartRow: tableStartRow,
+      dataRowCount: sortedRows.length,
+      style: bodyStyle,
+    );
+  }
+
   // ── Autofit ───────────────────────────────────────────────────────────
   for (int c = 0; c < columns.length; c++) {
     sheet.setColumnAutoFit(c);
@@ -261,6 +264,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     columns.map((col) => col.$1).toList(),
     sortedRows.length,
     tableStartRow: tableStartRow,
+    sumColumnName: 'Qty',
   );
 }
 
@@ -269,7 +273,6 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
 /// a top-level or static function.
 class DeliveryNoteExcelParams {
   final String docName;
-  final String docDate;
   final Map<String, String> itemNameByIdx;
   final List<DeliveryNoteItem> items;
   final bool compact;
@@ -277,7 +280,6 @@ class DeliveryNoteExcelParams {
 
   const DeliveryNoteExcelParams({
     required this.docName,
-    required this.docDate,
     required this.itemNameByIdx,
     required this.items,
     required this.compact,
@@ -339,15 +341,9 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
     ..value = TextCellValue(p.docName)
     ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 13);
 
-  String formattedDate;
-  try {
-    formattedDate =
-        DateFormat('dd MMM yyyy').format(DateTime.parse(p.docDate));
-  } catch (_) {
-    formattedDate = p.docDate;
-  }
+  // Export date (when the file was generated), not the document date.
   sheet.cell(idx(0, 2))
-    ..value = TextCellValue(formattedDate)
+    ..value = TextCellValue(DateFormat('dd MMM yyyy').format(DateTime.now()))
     ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
 
   // ── Table column headers ──────────────────────────────────────────────
@@ -370,6 +366,17 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
     row++;
   }
 
+  // ── Totals row (rendered as the injected table's totals row) ──────────
+  if (sortedRows.isNotEmpty) {
+    PosUploadFormController.writeQtyTotalsRow(
+      sheet: sheet,
+      columnNames: columns.map((col) => col.$1).toList(),
+      tableStartRow: tableStartRow,
+      dataRowCount: sortedRows.length,
+      style: bodyStyle,
+    );
+  }
+
   // ── Autofit ───────────────────────────────────────────────────────────
   for (int c = 0; c < columns.length; c++) {
     sheet.setColumnAutoFit(c);
@@ -382,6 +389,7 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
     sortedRows.length,
     tableStartRow: tableStartRow,
     tableName: 'DeliveryNoteTable',
+    sumColumnName: 'Qty',
   );
 }
 
@@ -911,7 +919,6 @@ class PosUploadFormController extends GetxController
 
     final params = _PackingSlipExcelParams(
       docName: upload.name,
-      docDate: upload.date,
       itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
       },
@@ -949,7 +956,6 @@ class PosUploadFormController extends GetxController
 
     final params = DeliveryNoteExcelParams(
       docName: dn.name,
-      docDate: dn.postingDate,
       itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
       },
@@ -973,33 +979,84 @@ class PosUploadFormController extends GetxController
 
   // ── Excel post-processing helpers ───────────────────────────────────────
 
+  /// Writes the totals-row cells for an export sheet: a 'Total' label in the
+  /// first column (unless Qty itself sits there) and a filter-aware
+  /// SUBTOTAL(109) sum over the Qty data range. The injected table's
+  /// totalsRowCount renders this row with the table's totals styling.
+  static void writeQtyTotalsRow({
+    required Sheet sheet,
+    required List<String> columnNames,
+    required int tableStartRow,
+    required int dataRowCount,
+    required CellStyle style,
+  }) {
+    final qtyCol = columnNames.indexOf('Qty');
+    if (qtyCol < 0 || dataRowCount == 0) return;
+
+    final totalsRow = tableStartRow + 1 + dataRowCount;
+    CellIndex idx(int c, int r) =>
+        CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r);
+
+    if (qtyCol > 0) {
+      sheet.cell(idx(0, totalsRow))
+        ..value = TextCellValue('Total')
+        ..cellStyle = style;
+    }
+
+    final colLetter = _excelColLetter(qtyCol);
+    final firstDataRow = tableStartRow + 2; // 1-based Excel row
+    final lastDataRow = tableStartRow + 1 + dataRowCount;
+    sheet.cell(idx(qtyCol, totalsRow))
+      ..value = FormulaCellValue(
+          'SUBTOTAL(109,$colLetter$firstDataRow:$colLetter$lastDataRow)')
+      ..cellStyle = style;
+  }
+
   // Injects a structured Excel Table into an already-encoded xlsx file.
   // The table covers the header row (row 0) plus [dataRowCount] data rows.
+  // When [sumColumnName] names an existing column and data rows exist, the
+  // table also declares a totals row (the builder must have written its
+  // cells via writeQtyTotalsRow).
   static List<int> _injectExcelTable(
     List<int> xlsxBytes,
     List<String> columnNames,
     int dataRowCount, {
     int tableStartRow = 0,
     String tableName = 'PackingSlipTable',
+    String? sumColumnName,
   }) {
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
     final colCount = columnNames.length;
     final lastCol = _excelColLetter(colCount - 1);
+    final hasTotals = sumColumnName != null &&
+        dataRowCount > 0 &&
+        columnNames.contains(sumColumnName);
     // tableStartRow is 0-based; Excel refs are 1-based.
     final firstExcelRow = tableStartRow + 1;
-    final ref = 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount}';
+    // The autoFilter must span only header + data; the table ref also
+    // includes the totals row when present.
+    final dataRef = 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount}';
+    final ref = hasTotals
+        ? 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount + 1}'
+        : dataRef;
 
     final colsBuffer = StringBuffer();
     for (int i = 0; i < colCount; i++) {
-      colsBuffer
-          .write('<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"/>');
+      colsBuffer.write(
+          '<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"');
+      if (hasTotals && columnNames[i] == sumColumnName) {
+        colsBuffer.write(' totalsRowFunction="sum"');
+      } else if (hasTotals && i == 0) {
+        colsBuffer.write(' totalsRowLabel="Total"');
+      }
+      colsBuffer.write('/>');
     }
 
     final tableXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
         ' id="1" name="$tableName" displayName="$tableName"'
-        ' ref="$ref" totalsRowShown="0">'
-        '<autoFilter ref="$ref"/>'
+        ' ref="$ref" ${hasTotals ? 'totalsRowCount="1"' : 'totalsRowShown="0"'}>'
+        '<autoFilter ref="$dataRef"/>'
         '<tableColumns count="$colCount">$colsBuffer</tableColumns>'
         '<tableStyleInfo name="TableStyleMedium9" showFirstColumn="0"'
         ' showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>'

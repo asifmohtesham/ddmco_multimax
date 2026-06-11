@@ -109,9 +109,15 @@ opening a sheet that would throw.
    - Rows with identical key (all displayed text columns) aggregate `qty`.
    - Sorting reuses the existing comparator logic; sorted column moves to
      the first position, as in the PS export.
-5. **Sheet header rows:** "Delivery Note", DN name, formatted
-   `postingDate` (same layout as the PS export's header block).
-6. **Excel Table injection:** `_injectExcelTable` reused; the hardcoded
+5. **Sheet header rows:** "Delivery Note", DN name, and the export date
+   (`DateTime.now()`, format `dd MMM yyyy`) — same layout as the PS
+   export's header block, which also uses the export date.
+   *(Post-smoke-test change: originally the document's posting date.)*
+6. **Totals row:** both exports declare a table totals row
+   (`totalsRowCount="1"`) with a "Total" label in the first column and a
+   filter-aware `SUBTOTAL(109, …)` sum over the Qty column. Skipped when
+   there are no data rows. *(Post-smoke-test addition.)*
+7. **Excel Table injection:** `_injectExcelTable` reused; the hardcoded
    `PackingSlipTable` name becomes a parameter
    (`DeliveryNoteTable` / `PackingSlipTable`).
 7. **Implementation note:** the `_PSRow`/`_PSCol` record machinery is shared;
