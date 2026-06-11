@@ -90,6 +90,17 @@ typedef _PSRow = ({
 
 typedef _PSCol = (String, CellValue Function(_PSRow));
 
+/// Public record for a single Delivery Note export row.
+/// Public (unlike _PSRow) so unit tests can call buildDnRows directly.
+typedef DnRow = ({
+  int    serial,
+  String variantOf,
+  String itemCode,
+  String itemName,
+  double qty,
+  String country,
+});
+
 // ── compute() plumbing ──────────────────────────────────────────────────────
 
 class _PackingSlipExcelParams {
@@ -362,6 +373,76 @@ class PosUploadFormController extends GetxController
         final bn = int.tryParse(b.caseKey.split('-').first);
         if (an != null && bn != null) return an.compareTo(bn);
         return a.caseKey.compareTo(b.caseKey);
+      case 'Invoice Serial #':
+        return a.serial.compareTo(b.serial);
+      case 'Qty':
+        return a.qty.compareTo(b.qty);
+      case 'Item Name':
+        return a.itemName.toLowerCase().compareTo(b.itemName.toLowerCase());
+      case 'Variant Of':
+        return a.variantOf.toLowerCase().compareTo(b.variantOf.toLowerCase());
+      case 'Item Code':
+        return a.itemCode.toLowerCase().compareTo(b.itemCode.toLowerCase());
+      case 'Country of Origin':
+        return a.country.toLowerCase().compareTo(b.country.toLowerCase());
+      default:
+        return 0;
+    }
+  }
+
+  /// Builds the aggregated, optionally sorted row set for the DN Excel export.
+  /// Mirrors the PS export semantics: rows whose displayed text columns are
+  /// identical aggregate their qty; item names resolve from the POS Upload
+  /// items by invoice serial, falling back to the DN item's own name/code.
+  static List<DnRow> buildDnRows({
+    required List<DeliveryNoteItem> items,
+    required Map<String, String> itemNameByIdx,
+    required bool compact,
+    String? sortByColumn,
+  }) {
+    final rowMap = <String, DnRow>{};
+    for (final dnItem in items) {
+      final serialStr = dnItem.customInvoiceSerialNumber ?? '';
+      final itemName =
+          itemNameByIdx[serialStr] ?? dnItem.itemName ?? dnItem.itemCode;
+      final serial    = int.tryParse(serialStr) ?? 0;
+      final variantOf = dnItem.customVariantOf ?? '';
+      final itemCode  = dnItem.itemCode;
+      final country   = dnItem.countryOfOrigin ?? '';
+
+      final key = compact
+          ? '$serial\x00$itemName\x00$country'
+          : '$serial\x00$variantOf\x00$itemCode\x00$itemName\x00$country';
+
+      final existing = rowMap[key];
+      rowMap[key] = existing == null
+          ? (
+              serial:    serial,
+              variantOf: variantOf,
+              itemCode:  itemCode,
+              itemName:  itemName,
+              qty:       dnItem.qty,
+              country:   country,
+            )
+          : (
+              serial:    existing.serial,
+              variantOf: existing.variantOf,
+              itemCode:  existing.itemCode,
+              itemName:  existing.itemName,
+              qty:       existing.qty + dnItem.qty,
+              country:   existing.country,
+            );
+    }
+
+    final rows = rowMap.values.toList();
+    if (sortByColumn != null) {
+      rows.sort((a, b) => _dnRowComparator(sortByColumn, a, b));
+    }
+    return rows;
+  }
+
+  static int _dnRowComparator(String col, DnRow a, DnRow b) {
+    switch (col) {
       case 'Invoice Serial #':
         return a.serial.compareTo(b.serial);
       case 'Qty':
