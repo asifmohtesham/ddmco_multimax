@@ -34,11 +34,14 @@ consistent output format.
 Enabled when either export is possible:
 
 ```dart
-final canShare =
-    (controller.linkedDocType.value == LinkedDocType.deliveryNote &&
-     controller.linkedDocName.value.isNotEmpty) ||
+final canShare = controller.deliveryNote.value != null ||
     controller.packingSlips.isNotEmpty;
 ```
+
+Gating on the retained `deliveryNote` object (rather than
+`linkedDocType`/`linkedDocName`) is deliberately stricter: if the DN list
+resolves but the detail fetch fails, the export stays disabled instead of
+opening a sheet that would throw.
 
 - ML/KA uploads: icon enables as soon as the DN resolves (earlier than today).
 - MX/KX (Stock Entry-linked) uploads: icon stays disabled (unchanged).

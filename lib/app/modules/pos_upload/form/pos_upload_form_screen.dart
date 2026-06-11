@@ -21,6 +21,9 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
               : 'POS Upload';
       final isLoading  = controller.isLoading.value;
       final posUpload  = controller.posUpload.value;
+      // Gate on the loaded DN object (not linkedDocName): if the DN detail
+      // fetch failed, deliveryNote stays null and the export stays disabled
+      // instead of throwing when the sheet opens.
       final canShare = controller.deliveryNote.value != null ||
           controller.packingSlips.isNotEmpty;
 
@@ -251,6 +254,9 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                               if (ctx.mounted) {
                                 setState(() => isExporting = false);
                               }
+                              // GlobalSnackbar uses Get's global overlay, not
+                              // ctx — safe even after the sheet was popped
+                              // (e.g. Share.shareXFiles throws post-pop).
                               GlobalSnackbar.error(
                                   message: 'Export failed: $e');
                             }
