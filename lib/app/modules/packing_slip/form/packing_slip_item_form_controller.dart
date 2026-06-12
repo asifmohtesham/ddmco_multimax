@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 
@@ -26,6 +27,14 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin {
   // ── Parent reference ───────────────────────────────────────────────────────
   late PackingSlipFormController _parent;
+
+  /// PS hard-disables Full serials — see SerialFieldMixin.supportsAllowFullToggle.
+  @override
+  bool get supportsAllowFullToggle => false;
+
+  /// Retargets the parent sheet session when the user picks another serial.
+  /// Stored so it can be cancelled in [onClose] (project Worker rule).
+  Worker? _serialRetargetWorker;
 
   // ── ItemSheetControllerBase abstract overrides ─────────────────────────────
 
@@ -97,16 +106,74 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
 
   // ── SerialFieldMixin: availableSerialNos ────────────────────────────────────
   //
-  // PS serial field is read-only: the serial is fixed by the linked DN item.
-  // We expose it as a single-element list so SharedInvoiceSerialNumberField
-  // renders the dropdown pre-selected (no user selection needed).
+  // Add mode: all serials whose DN rows match the current item (and scanned
+  // batch) — the user can re-target the sheet to any non-Full serial.
+  // Edit mode: locked to the existing row's serial (single-element list).
   // Return [] when no POS Upload is loaded → widget hidden entirely.
   @override
   List<String> get availableSerialNos {
     if (_parent.posUpload.value == null) return [];
-    final serial = _parent.currentSerial;
-    if (serial == null || serial.isEmpty || serial == '0') return [];
-    return [serial];
+    if (editingItemName.value != null) {
+      final serial = _parent.currentSerial;
+      if (serial == null || serial.isEmpty || serial == '0') return [];
+      return [serial];
+    }
+    return _parent.serialOptionsForSheet().map((o) => o.serial).toList();
+  }
+
+  // ── SerialFieldMixin: rich dropdown row metadata ───────────────────────────
+  //
+  // qty/remaining describe the serial's DN row (not the POS cap): a serial is
+  // "Full" when its DN row is fully packed across current + related slips.
+  @override
+  SerialDropdownItem? posDropdownItemFor(String serial) {
+    final option = _parent
+        .serialOptionsForSheet()
+        .firstWhereOrNull((o) => o.serial == serial);
+    if (option == null) return null;
+
+    final posName = _parent.getPosItemName(serial);
+    return SerialDropdownItem(
+      serial:    serial,
+      itemName:  posName.isNotEmpty ? posName : option.dnRow.itemName,
+      qty:       option.qty,
+      remaining: option.remaining,
+      used:      option.qty - option.remaining,
+    );
+  }
+
+  // ── Serial retarget wiring ─────────────────────────────────────────────────
+
+  /// Add-mode only: when the user selects a different serial, re-seed the
+  /// parent session to that serial's DN row and re-prefill qty with the new
+  /// remaining. Safe against auto-submit: programmatic qty writes reset
+  /// saveButtonState to idle via _resetSaveStateOnEdit.
+  void _wireSerialRetarget() {
+    _serialRetargetWorker = ever(selectedSerial, (String? serial) {
+      if (serial == null || serial.isEmpty) return;
+      if (serial == _parent.currentSerial) return;
+      _parent.retargetSheetToSerial(serial);
+      _prefillQtyFromRemaining();
+      notifySerialItemsChanged();
+      validateSheet();
+    });
+  }
+
+  /// Pre-fills qty with the parent's current remaining cap (same formatting
+  /// as _populateAddFields).
+  void _prefillQtyFromRemaining() {
+    final remaining = _parent.bsMaxQty.value;
+    qtyController.text = remaining > 0
+        ? (remaining % 1 == 0
+            ? remaining.toInt().toString()
+            : remaining.toString())
+        : '0';
+  }
+
+  @override
+  void onClose() {
+    _serialRetargetWorker?.dispose();
+    super.onClose();
   }
 
   // ── SerialFieldMixin: POS qty cap for a given serial ───────────────────────
@@ -241,6 +308,8 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     );
     _seedSerial(parent);
     _populateFields(editingItem: editingItem, parent: parent);
+    // After the serial seed so the initial value never fires a retarget.
+    if (editingItem == null) _wireSerialRetarget();
     _finaliseInit();
   }
 
@@ -300,13 +369,7 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     itemCreation.value    = null;
     itemModified.value    = null;
     itemModifiedBy.value  = null;
-
-    final remaining = parent.bsMaxQty.value;
-    qtyController.text = remaining > 0
-        ? (remaining % 1 == 0
-        ? remaining.toInt().toString()
-        : remaining.toString())
-        : '0';
+    _prefillQtyFromRemaining();
   }
 
   /// (4) Dispatch to the correct field-population helper based on mode.
