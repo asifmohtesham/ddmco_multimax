@@ -23,6 +23,7 @@ import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
 import 'package:multimax/app/modules/packing_slip/form/dn_scan_item_matcher.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_serial_options.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
@@ -99,6 +100,14 @@ class PackingSlipFormController extends GetxController
   double? currentNetWeight;
   double? currentWeightUom;
   String? currentItemNameKey;
+
+  /// Batch from the scan result that opened the sheet; null for tap-to-add.
+  /// Narrows the serial options to rows of the scanned batch.
+  String? currentScannedBatch;
+
+  /// Reactive batch for the sheet's BatchDisplayTile — re-seeded when the
+  /// sheet is re-targeted to a different serial's DN row.
+  final bsBatchNo = RxnString();
 
   // Metadata shims kept until step-6.
   var bsItemOwner      = RxnString();
@@ -506,6 +515,39 @@ class PackingSlipFormController extends GetxController
     return _posItemQtyForIdx(idx);
   }
 
+  // ── Multi-serial sheet options ─────────────────────────────────────────────
+
+  /// Ordered serial options for the open item sheet — one per invoice serial
+  /// whose DN row matches the current item (and scanned batch, when present).
+  ///
+  /// In edit mode the row being edited is excluded from "packed" so its own
+  /// qty does not mark its serial Full (mirrors the DN dropdown semantics).
+  List<PsSerialOption> serialOptionsForSheet() {
+    final dn = linkedDeliveryNote.value;
+    final code = currentItemCode;
+    if (dn == null || code == null) return const [];
+    return buildPsSerialOptions(
+      items: dn.items,
+      code: code,
+      batch: currentScannedBatch,
+      remainingQty: (row) => _calcRemainingQtyForDnItem(
+        row,
+        excludeSlipItemName: isEditing.value ? currentItemNameKey : null,
+      ),
+    );
+  }
+
+  /// Re-seeds the open add-mode sheet session to [serial]'s DN row:
+  /// dnDetail, batch, uom, serial context, and the qty cap. The child
+  /// controller re-prefills its qty field afterwards.
+  void retargetSheetToSerial(String serial) {
+    final option = serialOptionsForSheet()
+        .firstWhereOrNull((o) => o.serial == serial);
+    if (option == null) return;
+    _populateItemDetails(option.dnRow);
+    bsMaxQty.value = option.remaining;
+  }
+
   // ---------------------------------------------------------------------------
   // UI helpers
   // ---------------------------------------------------------------------------
@@ -666,7 +708,7 @@ class PackingSlipFormController extends GetxController
       result.batchNo,
     );
     if (match != null) {
-      prepareSheetForAdd(match);
+      prepareSheetForAdd(match, scannedBatch: result.batchNo);
     } else {
       GlobalSnackbar.error(
         message:
@@ -769,9 +811,13 @@ class PackingSlipFormController extends GetxController
       ) {
     final fields = <Widget>[];
 
-    if (currentBatchNo != null && currentBatchNo!.isNotEmpty) {
-      fields.add(BatchDisplayTile(batchNo: currentBatchNo!));
-    }
+    // Reactive: re-targeting the sheet to another serial's DN row can change
+    // (or clear) the batch — the tile follows bsBatchNo.
+    fields.add(Obx(() {
+      final batch = bsBatchNo.value;
+      if (batch == null || batch.isEmpty) return const SizedBox.shrink();
+      return BatchDisplayTile(batchNo: batch);
+    }));
 
     if (_shouldShowSerialBadge()) {
       final serial = currentSerial!;
@@ -781,7 +827,10 @@ class PackingSlipFormController extends GetxController
           accentColor: Colors.teal,
           label:       'Invoice Serial No',
           hint:        serial,
-          posItemQtyOverride: () => posQtyCapForSerial(serial),
+          // Read the live selection — the open-time serial is only the
+          // fallback before anything is selected.
+          posItemQtyOverride: () =>
+              posQtyCapForSerial(child.selectedSerial.value ?? serial),
         ),
       );
     }
@@ -964,8 +1013,9 @@ class PackingSlipFormController extends GetxController
 
   // ── Orchestrator ───────────────────────────────────────────────────────────
 
-  void prepareSheetForAdd(DeliveryNoteItem item) {
+  void prepareSheetForAdd(DeliveryNoteItem item, {String? scannedBatch}) {
     if (_isSheetAlreadyOpen()) return;
+    currentScannedBatch = scannedBatch;
     _resetSessionForAdd(item);
     final remaining = _calcRemainingQtyForDnItem(item);
     _seedSheetQty(maxQty: remaining);
@@ -1061,6 +1111,7 @@ class PackingSlipFormController extends GetxController
       final dnItem = _resolveDnItemForSlipItem(item);
       if (dnItem == null) return;
       _resetSessionForEdit(item, dnItem);
+      currentScannedBatch = null;
       final remaining = _calcRemainingQtyForDnItem(
         dnItem,
         excludeSlipItemName: item.name,
@@ -1100,6 +1151,7 @@ class PackingSlipFormController extends GetxController
     currentItemCode      = item.itemCode;
     currentItemName      = item.itemName;
     currentBatchNo       = item.batchNo;
+    bsBatchNo.value      = item.batchNo;
     currentUom           = item.uom;
     currentSerial        = item.customInvoiceSerialNumber;
     currentNetWeight     = 0.0;
