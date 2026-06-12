@@ -22,6 +22,7 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
+import 'package:multimax/app/modules/packing_slip/form/dn_scan_item_matcher.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
@@ -723,13 +724,16 @@ class PackingSlipFormController extends GetxController
     }
   }
 
-  DeliveryNoteItem? _findItemInDN(String code, String? batch) {
-    return linkedDeliveryNote.value!.items.firstWhereOrNull((item) {
-      final codeMatch  = item.itemCode == code;
-      final batchMatch = (batch == null) || (item.batchNo == batch);
-      return codeMatch && batchMatch;
-    });
-  }
+  /// Same item code can appear on multiple DN rows (one per invoice serial).
+  /// Delegates to [findScannedDnItem] so a scan advances to the first row
+  /// that still has qty remaining instead of always resolving to row #1.
+  DeliveryNoteItem? _findItemInDN(String code, String? batch) =>
+      findScannedDnItem(
+        items:        linkedDeliveryNote.value!.items,
+        code:         code,
+        batch:        batch,
+        remainingQty: _calcRemainingQtyForDnItem,
+      );
 
   // ── Serial badge predicate ─────────────────────────────────────────────────
 
