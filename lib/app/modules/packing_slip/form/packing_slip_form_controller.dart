@@ -426,7 +426,13 @@ class PackingSlipFormController extends GetxController
       if (isDirty.value) await saveDocument();
     }
 
-    _announceResolveResult(result.fixed, result.unresolved);
+    // saveDocument() swallows errors and shows its own snackbar; if the patch
+    // failed to persist, isDirty stays true — suppress the success message so
+    // the user isn't told the links were saved when they weren't.
+    final saveFailed = result.fixed > 0 && isDirty.value;
+    if (!saveFailed) {
+      _announceResolveResult(result.fixed, result.unresolved);
+    }
   }
 
   /// Surfaces the outcome of [resolveDnReferencesAndSave] as a snackbar.
