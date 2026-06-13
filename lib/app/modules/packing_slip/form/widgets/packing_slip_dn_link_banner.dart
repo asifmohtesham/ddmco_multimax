@@ -131,7 +131,7 @@ class PackingSlipDnLinkBanner extends StatelessWidget {
             child: Text(
               '${item.itemCode}  ·  ${item.qty} ${item.uom}'
               '${serial != null && serial != '0' ? '  ·  #$serial' : ''}',
-              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+              style: const TextStyle(fontSize: 12, fontFamily: 'ShureTechMono'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -139,10 +139,9 @@ class PackingSlipDnLinkBanner extends StatelessWidget {
           if (canEdit)
             IconButton(
               icon: Icon(Icons.delete_outline,
-                  size: 18, color: Colors.red.shade400),
-              visualDensity: VisualDensity.compact,
-              constraints: const BoxConstraints(),
-              padding: const EdgeInsets.all(4),
+                  size: 20, color: Colors.red.shade400),
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              padding: const EdgeInsets.all(8),
               tooltip: 'Remove',
               onPressed: () => controller.deleteItem(item),
             ),
