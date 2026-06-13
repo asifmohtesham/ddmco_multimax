@@ -24,6 +24,7 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
 import 'package:multimax/app/modules/packing_slip/form/dn_scan_item_matcher.dart';
 import 'package:multimax/app/modules/packing_slip/form/ps_serial_options.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_dn_reference_resolver.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
@@ -363,43 +364,88 @@ class PackingSlipFormController extends GetxController
     final slip = packingSlip.value;
     if (slip == null) return;
 
-    // Build lookup of valid DN item names from the current fetch.
-    final validNames = {
-      for (final d in dn.items)
-        if (d.name != null && d.name!.isNotEmpty) d.name!,
-    };
-
-    // Determine which slip items need resolution.
-    final needsRefresh = slip.items.any(
-      (i) => i.dnDetail.isEmpty || !validNames.contains(i.dnDetail),
+    final result = resolveDnReferences(
+      slipItems:    slip.items,
+      dnItems:      dn.items,
+      remainingQty: _calcRemainingQtyForDnItem,
     );
-    if (!needsRefresh) return;
 
-    bool changed = false;
-    final patched = slip.items.map((item) {
-      // Already a valid, current DN item reference — keep it.
-      if (item.dnDetail.isNotEmpty && validNames.contains(item.dnDetail)) {
-        return item;
-      }
-
-      // Resolve by matching itemCode + serial (+ batch when present).
-      final itemSerial = item.customInvoiceSerialNumber ?? '0';
-      final match = dn.items.firstWhereOrNull((d) {
-        if (d.name == null || d.name!.isEmpty) return false;
-        if (d.itemCode != item.itemCode) return false;
-        if ((d.customInvoiceSerialNumber ?? '0') != itemSerial) return false;
-        if (item.batchNo.isNotEmpty && d.batchNo != item.batchNo) return false;
-        return true;
-      });
-
-      if (match == null) return item;
-      changed = true;
-      return item.copyWith(dnDetail: match.name!);
-    }).toList();
-
-    if (changed) {
-      packingSlip.value = slip.copyWith(items: patched);
+    if (result.fixed > 0) {
+      packingSlip.value = slip.copyWith(items: result.items);
       _checkForChanges();
+    }
+  }
+
+  // ── DN-reference validity (Items-tab indicator) ────────────────────────────
+
+  /// Names of the linked DN's item rows that are valid link targets.
+  Set<String> get _validDnNames =>
+      validDnItemNames(linkedDeliveryNote.value?.items ?? const []);
+
+  /// Slip rows whose `dn_detail` is empty or stale (would block ERPNext submit).
+  /// Empty while the linked DN is not loaded — validity is unknown then.
+  List<PackingSlipItem> get unlinkedItems {
+    if (linkedDeliveryNote.value == null) return const [];
+    final names = _validDnNames;
+    return packingSlip.value?.items
+            .where((i) => !isSlipItemLinked(i, names))
+            .toList() ??
+        const [];
+  }
+
+  /// Reactive validity status consumed by [PackingSlipDnLinkBanner].
+  DnRefStatus get dnRefStatus => computeDnRefStatus(
+        items:      packingSlip.value?.items ?? const [],
+        validNames: _validDnNames,
+        dnLoaded:   linkedDeliveryNote.value != null,
+      );
+
+  // ── User-triggered reference resolution ────────────────────────────────────
+
+  /// Re-matches orphaned `dn_detail` references and persists the slip so it
+  /// becomes immediately submittable in ERPNext. Guarded to draft documents
+  /// with a loaded Delivery Note.
+  Future<void> resolveDnReferencesAndSave() async {
+    final dn   = linkedDeliveryNote.value;
+    final slip = packingSlip.value;
+    if (dn == null || slip == null) {
+      GlobalSnackbar.error(message: 'Delivery Note not loaded yet.');
+      return;
+    }
+    if (slip.docstatus != 0) return;
+
+    final result = resolveDnReferences(
+      slipItems:    slip.items,
+      dnItems:      dn.items,
+      remainingQty: _calcRemainingQtyForDnItem,
+    );
+
+    if (result.fixed > 0) {
+      packingSlip.value = slip.copyWith(items: result.items);
+      _checkForChanges();
+      if (isDirty.value) await saveDocument();
+    }
+
+    _announceResolveResult(result.fixed, result.unresolved);
+  }
+
+  /// Surfaces the outcome of [resolveDnReferencesAndSave] as a snackbar.
+  void _announceResolveResult(int fixed, int unresolved) {
+    if (fixed == 0 && unresolved == 0) {
+      GlobalSnackbar.info(
+          message: 'All items already linked to the Delivery Note.');
+      return;
+    }
+    final parts = <String>[];
+    if (fixed > 0) parts.add('Linked $fixed item(s) to the Delivery Note');
+    if (unresolved > 0) {
+      parts.add('$unresolved could not be matched — remove them to proceed');
+    }
+    final msg = parts.join('. ');
+    if (unresolved > 0) {
+      GlobalSnackbar.warning(message: msg);
+    } else {
+      GlobalSnackbar.success(message: msg);
     }
   }
 
