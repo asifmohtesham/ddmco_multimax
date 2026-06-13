@@ -76,6 +76,13 @@
       "deviceId": "23045524700731",
       "request": "launch",
       "type": "dart"
+    },
+    {
+      "name": "TS 23045524700452 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700452",
+      "request": "launch",
+      "type": "dart"
     }
   ]
 }
