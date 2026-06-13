@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_dn_link_banner.dart';
 
 class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   const PackingSlipFormScreen({super.key});
@@ -228,6 +229,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               )),
         ),
         const Divider(height: 1),
+        const PackingSlipDnLinkBanner(),
         Expanded(
           child: Obx(() {
             final visibleGroups = controller.visibleGroupKeys;
