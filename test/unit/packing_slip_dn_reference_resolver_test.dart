@@ -69,6 +69,7 @@ void main() {
         dnItems: [_dn(name: 'new-row', itemCode: 'ITEM-A')],
       );
       expect(r.fixed, 1);
+      expect(r.unresolved, 0);
       expect(r.items.first.dnDetail, 'new-row');
     });
 
@@ -115,6 +116,38 @@ void main() {
       );
       expect(r.fixed, 1);
       expect(r.items.first.dnDetail, 'first-row');
+    });
+
+    test('null serial on both sides resolves via sentinel', () {
+      final r = resolveDnReferences(
+        slipItems: [
+          PackingSlipItem(
+            name: 'PS-NULL',
+            dnDetail: '',
+            itemCode: 'ITEM-A',
+            itemName: '',
+            qty: 1.0,
+            uom: 'Nos',
+            batchNo: '',
+            netWeight: 0.0,
+            weightUom: 0.0,
+            customInvoiceSerialNumber: null,
+          ),
+        ],
+        dnItems: [
+          DeliveryNoteItem(
+            name: 'dn-null',
+            itemCode: 'ITEM-A',
+            qty: 5.0,
+            rate: 0.0,
+            docstatus: 0,
+            customInvoiceSerialNumber: null,
+          ),
+        ],
+      );
+      expect(r.fixed, 1);
+      expect(r.unresolved, 0);
+      expect(r.items.first.dnDetail, 'dn-null');
     });
   });
 
