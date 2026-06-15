@@ -1,5 +1,6 @@
-• Role-based access: modules and reports now hidden automatically based on your account permissions
-• Delivery Notes: warehouse derived automatically from rack scan per item
-• Stock Entries: target rack picker now pulls live rack data from the server
-• Form headers now show an unsaved changes indicator
-• Bug fixes across stock entry validation and delivery note document handling
+• Search by image: tap the camera in item search to scan a barcode or QR from a photo and open the matching item
+• Forms now auto-save and show a live connection-status icon
+• New Stock Balance report under Stock › Reports
+• Packing Slips: scanning auto-advances through serial numbers, with a banner to fix broken delivery-note links
+• POS Upload: export Delivery Notes and Packing Slips to Excel from a single sheet
+• Faster lists, dashboards and image loading
