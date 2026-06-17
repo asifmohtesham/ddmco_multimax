@@ -700,16 +700,24 @@ Expected: no NEW issues in the five modified `lib/` files.
 
 Run the app (`flutter run -d <device_id>`) and verify, on a **draft** Stock Entry:
 
-1. Open a draft SE with no edits → header shows a blue **Submit** button next to Save.
-2. Edit a field → Submit disappears, Save (filled) appears (the Save→Submit morph).
-3. Save → Submit reappears once the draft is clean.
+1. Open a clean draft SE → header shows **only** the blue **Submit** button; the Save
+   icon is hidden and the pill reads **Draft**. (Save and Submit are mutually
+   exclusive — never shown together.)
+2. Edit a field → Submit disappears, the filled **Save** icon appears, pill reads
+   **Not Saved** (the ERPNext morph).
+3. Save → the Save icon disappears and **Submit** reappears once the draft is clean.
 4. Tap Submit → "Confirm / Permanently Submit {name}? / Yes" dialog appears.
-5. Confirm → document refetches, status becomes Submitted (docstatus 1), Submit and
-   Save both disappear (read-only).
+5. Confirm → document refetches, status becomes **Submitted** (docstatus 1); Submit is
+   gone and the form is read-only.
 6. As a user **without** Stock Entry submit permission, the Submit button never appears
    on a clean draft (fail-closed pre-check).
-7. (Optional, server-enforced path) If a draft passes the pre-check but the server
-   rejects submit, an error snackbar shows the ERPNext message and the doc stays a draft.
+7. (Server-enforced path) If a draft passes the pre-check but the server rejects submit,
+   an error snackbar shows the ERPNext message and the doc stays a draft.
+8. **Security verification (authoritative):** run the API-level negative/positive
+   checks in the spec's "Security Verification" section
+   (`docs/superpowers/specs/2026-06-17-stock-entry-submit-design.md`) — an
+   unprivileged user's direct `PUT {docstatus:1}` must return **403** with the doc
+   left as a draft. This proves enforcement independently of the app UI.
 
 - [ ] **Step 4: Final commit (if any manual-fix tweaks were needed)**
 
@@ -728,6 +736,9 @@ git commit -m "test(stock-entry): verify submit flow end-to-end"
 - **Fail-closed everywhere** — `canSubmitPerm` defaults `false`; `provider.canSubmit`
   and `parseHasDocPermissionResponse` both return `false` on any error/unexpected shape.
 - **Server is the source of truth** — the pre-check only governs button *visibility*;
-  `submitDocument()` still handles a server rejection via `_handleSaveDioError`.
+  ERPNext enforces submit permission server-side on the `PUT {docstatus:1}` regardless
+  of the client. `submitDocument()` handles a rejection via its own `DioException` path
+  (`handleVersionConflict` + `_extractDioErrorMessage`), independent of save-result state.
+  See the spec's "Security Verification" section for the authoritative 403 check.
 - **Do not modify** Work Order / Job Card submit code — the new header params are
   opt-in and default off, so those screens are unaffected.

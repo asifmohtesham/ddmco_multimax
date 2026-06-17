@@ -221,10 +221,11 @@ header Obx ─► canSubmit getter ─► Submit button visible/enabled
 
 - Pre-check failure (network/403/parse) → `canSubmitPerm = false` → Submit hidden.
   No user-facing error (graceful: Submit simply isn't offered).
-- Submit rejection → `_handleSaveDioError` extracts ERPNext `exception` /
-  `_server_messages` and shows an error snackbar; document stays a draft.
-- Version conflict on submit → handled by the existing `handleVersionConflict`
-  path inside `_handleSaveDioError`.
+- Submit rejection → submit's own `DioException` handler first calls
+  `handleVersionConflict(e)`, then shows `_extractDioErrorMessage(e, 'Submit failed')`
+  (ERPNext `exception` / `_server_messages`) via an error snackbar; the document
+  stays a draft. (Submit does **not** route through `_handleSaveDioError`, so a
+  submit failure never poisons the save-status indicator.)
 
 ## Testing
 
@@ -234,6 +235,62 @@ header Obx ─► canSubmit getter ─► Submit button visible/enabled
   `false`, `null`, non-Map, missing key → false (fail-closed).
 - **Provider** `submitStockEntry` issues a docstatus:1 PUT to the Stock Entry resource.
 - **Provider** `canSubmit` returns false on `DioException` (fail-closed).
+
+## Security Verification (manual — confirms server-side enforcement)
+
+**Why:** The hidden Submit button is a UX/fail-closed convenience, **not** a security
+boundary. The actual guarantee is that ERPNext rejects an unauthorised submit
+server-side, regardless of the client. This step proves that boundary holds
+end-to-end with evidence — it does not rely on the app's UI.
+
+**Pre-req:** Two ERPNext users — one **with** and one **without** the `submit`
+permission on the Stock Entry DocType (set via Role Permissions Manager, and/or a
+User Permission restricting the row). Pick an existing **draft** Stock Entry name,
+e.g. `MAT-STE-2026-00081`. Use API-key/secret auth so the test bypasses the app UI
+entirely (a modified client cannot be the thing under test).
+
+**1. Negative case — unprivileged user is blocked (the security assertion):**
+
+```bash
+curl -i -X PUT \
+  "https://erp.domain.com/api/resource/Stock%20Entry/MAT-STE-2026-00081" \
+  -H "Authorization: token <UNPRIVILEGED_api_key>:<api_secret>" \
+  -H "Content-Type: application/json" \
+  -d '{"docstatus": 1}'
+```
+
+Expected: **HTTP 403** (PermissionError) — body contains a permission/exception
+message. Then confirm the document was **not** submitted:
+
+```bash
+curl -s \
+  "https://erp.domain.com/api/resource/Stock%20Entry/MAT-STE-2026-00081?fields=[\"docstatus\"]" \
+  -H "Authorization: token <UNPRIVILEGED_api_key>:<api_secret>"
+# Expect docstatus still 0 (or 403 if the user also lacks read — both prove no submit occurred)
+```
+
+**2. Positive control — privileged user succeeds:**
+
+```bash
+curl -i -X PUT \
+  "https://erp.domain.com/api/resource/Stock%20Entry/MAT-STE-2026-00081" \
+  -H "Authorization: token <PRIVILEGED_api_key>:<api_secret>" \
+  -H "Content-Type: application/json" \
+  -d '{"docstatus": 1}'
+```
+
+Expected: **HTTP 200**, response shows `"docstatus": 1`. (Use a different draft for
+each run, since a submitted doc cannot be re-submitted.)
+
+**3. In-app cross-check (UX layer):** Logged in as the unprivileged user, open a
+draft Stock Entry — the **Submit button must not appear** even on a clean draft
+(the `has_permission('Stock Entry', <name>, 'submit')` pre-check returns false →
+`canSubmitPerm` false). This confirms the fail-closed client gating, but step 1 is
+the authoritative security result.
+
+**Pass criteria:** Step 1 returns 403 and the doc remains a draft; step 2 returns
+200 with docstatus 1; step 3 shows no Submit button for the unprivileged user.
+Record the date and the ERPNext build the check was run against.
 
 ## Risks / Notes
 
