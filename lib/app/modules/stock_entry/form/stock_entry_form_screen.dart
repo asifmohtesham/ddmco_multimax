@@ -63,6 +63,9 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   saveResult: saveResult,
                   onSave:     onSave,
                   onReload:   onReload,
+                  onSubmit:     controller.submitDocument,
+                  canSubmit:    controller.canSubmit,
+                  isSubmitting: controller.isSubmitting.value,
                   extraActions: [
                     RealtimeSyncStatusIcon(
                       isConnected: controller.isRealtimeConnected,
