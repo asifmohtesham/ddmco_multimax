@@ -372,6 +372,9 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
           child: FilledButton(
             onPressed: isSubmitting ? null : onSubmit,
             style: FilledButton.styleFrom(
+              // ERPNext desk's Submit is a blue btn-primary. This app's theme
+              // primary is maroon, so we intentionally hardcode blue here to
+              // match ERPNext rather than use colorScheme.primary.
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 16),

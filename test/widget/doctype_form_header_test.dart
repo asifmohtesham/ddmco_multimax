@@ -118,6 +118,10 @@ void main() {
       ));
       expect(find.text('Submit'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
     });
   });
 }
