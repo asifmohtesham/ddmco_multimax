@@ -297,6 +297,38 @@ class ApiProvider {
     return data['message'] is List;
   }
 
+  /// Checks whether the current session user has [ptype] permission on the
+  /// specific document [name] of [doctype], via `frappe.client.has_permission`.
+  ///
+  /// Frappe v15 requires a docname for this method, so it is only meaningful
+  /// for already-saved documents (e.g. submitting a saved draft).
+  Future<Response> hasDocPermission(
+      String doctype, String name, String ptype) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.get(
+      '/api/method/frappe.client.has_permission',
+      queryParameters: {
+        'doctype':   doctype,
+        'docname':   name,
+        'perm_type': ptype,
+      },
+    );
+  }
+
+  /// Parses a `frappe.client.has_permission` response into a [bool].
+  ///
+  /// Expected shape: `{"message": {"has_permission": 1|true}}`.
+  /// Anything else (null, non-Map, missing keys, falsy value) → `false`
+  /// (fail-closed). Exposed as a public static method so unit tests can
+  /// exercise it without a live HTTP connection.
+  static bool parseHasDocPermissionResponse(dynamic data) {
+    if (data is! Map) return false;
+    final message = data['message'];
+    if (message is! Map) return false;
+    final value = message['has_permission'];
+    return value == true || value == 1;
+  }
+
   // ---------------------------------------------------------------------------
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
