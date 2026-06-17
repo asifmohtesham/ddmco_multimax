@@ -71,7 +71,7 @@ Pure Dart, no Flutter imports. A timing state machine:
 - `terminate(int timestampMs) → String?` → returns the assembled code if the
   buffer qualifies as a burst (non-empty and assembled in cadence), else
   `null`. Clears the buffer either way.
-- `reset()` → clears state (called on non-printable keys).
+- `reset()` → clears state (called on non-printable, non-modifier keys).
 - Single tuning constant `maxGapMs` (~50 ms).
 
 Independently unit-testable: no GetX, no key codes, no OS.
@@ -92,8 +92,12 @@ Thin bridge. Registered in `main.dart` with `permanent: true`, alongside
     **consume** (`return true`). If it returns `false` (idle / first key of a
     burst): **pass through** (`return false`). The service never computes gaps
     itself — it trusts the assembler's cadence flag.
-  - **Non-printable key** (Shift, arrows, etc.): `assembler.reset()`,
-    `return false`.
+  - **Modifier key** (Shift, CapsLock, Ctrl, Alt, Meta): ignored — `return
+    false` WITHOUT resetting. Modifiers carry no character and are part of
+    producing the next character (e.g. Shift for an uppercase barcode digit),
+    so resetting on them would fragment uppercase/mixed-case scans.
+  - **Other non-printable key** (arrows, function keys, etc.):
+    `assembler.reset()`, `return false`.
 
 ### 3. `DataWedgeService.injectScan(String code)` — modify `data_wedge_service.dart`
 
@@ -143,7 +147,9 @@ wart but is out of scope for v1.
 ## Error / edge handling
 
 - `KeyUpEvent` and `KeyRepeatEvent` ignored.
-- Non-printable keys reset the assembler buffer.
+- Modifier keys (Shift/CapsLock/Ctrl/Alt/Meta) are ignored without resetting,
+  so they don't fragment uppercase/mixed-case scans; other non-printable keys
+  (arrows, function keys) reset the assembler buffer.
 - A buffer that goes idle without a terminator is discarded on the next
   out-of-cadence key.
 - Empty/whitespace codes dropped by the existing `_enqueueScan` guard.
