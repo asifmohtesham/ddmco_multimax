@@ -1,6 +1,1 @@
-• Search by image: tap the camera in item search to scan a barcode or QR from a photo and open the matching item
-• Forms now auto-save and show a live connection-status icon
-• New Stock Balance report under Stock › Reports
-• Packing Slips: scanning auto-advances through serial numbers, with a banner to fix broken delivery-note links
-• POS Upload: export Delivery Notes and Packing Slips to Excel from a single sheet
-• Faster lists, dashboards and image loading
+• Submit Stock Entries right from the app — save your draft, then tap Submit to post it. Your ERPNext roles and permissions are always enforced.
