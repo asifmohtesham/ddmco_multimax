@@ -1512,19 +1512,24 @@ class StockEntryFormController extends GetxController
 
   // ── Error handler ─────────────────────────────────────────────────────────
 
-  void _handleSaveDioError(DioException e) {
-    if (handleVersionConflict(e)) return;
-    _setSaveResult(SaveResult.error);
-    String msg = 'Save failed';
+  /// Extracts a user-facing message from an ERPNext error response.
+  /// Pure: no state mutation, no snackbar.
+  String _extractDioErrorMessage(DioException e, String fallback) {
     final data = e.response?.data;
     if (data is Map) {
       if (data['exception'] != null) {
-        msg = data['exception'].toString().split(':').last.trim();
+        return data['exception'].toString().split(':').last.trim();
       } else if (data['_server_messages'] != null) {
-        msg = 'Validation Error: Check form details';
+        return 'Validation Error: Check form details';
       }
     }
-    GlobalSnackbar.error(message: msg);
+    return fallback;
+  }
+
+  void _handleSaveDioError(DioException e) {
+    if (handleVersionConflict(e)) return;
+    _setSaveResult(SaveResult.error);
+    GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Save failed'));
   }
 
   // ── saveDocument (orchestrator only, ~15 lines) ─────────────────────────
@@ -1575,7 +1580,8 @@ class StockEntryFormController extends GetxController
         GlobalSnackbar.error(message: 'Failed to submit Stock Entry');
       }
     } on DioException catch (e) {
-      _handleSaveDioError(e);
+      if (handleVersionConflict(e)) return;
+      GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Submit failed'));
     } catch (e) {
       GlobalSnackbar.error(message: 'Submit failed: $e');
     } finally {
