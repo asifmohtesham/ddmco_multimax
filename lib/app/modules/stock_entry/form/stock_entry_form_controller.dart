@@ -64,6 +64,8 @@ class StockEntryFormController extends GetxController
   var isScanning       = false.obs;
   var isSaving         = false.obs;
   var isDirty          = false.obs;
+  var isSubmitting     = false.obs;
+  var canSubmitPerm    = false.obs; // fail-closed default until pre-check confirms
   var isAddingItem     = false.obs;
   var isLoadingItemEdit = false.obs;
   var loadingForItemName = RxnString();
@@ -138,6 +140,15 @@ class StockEntryFormController extends GetxController
         !isSubmitting &&
         canSubmitPerm;
   }
+
+  bool get canSubmit => computeCanSubmit(
+        mode:          mode,
+        docStatus:     stockEntry.value?.docstatus,
+        isDirty:       isDirty.value,
+        isSaving:      isSaving.value,
+        isSubmitting:  isSubmitting.value,
+        canSubmitPerm: canSubmitPerm.value,
+      );
 
   @override String get realtimeDoctype => 'Stock Entry';
   @override String get realtimeDocname => name;
@@ -702,6 +713,7 @@ class StockEntryFormController extends GetxController
         }
 
         isDirty.value = false;
+        await _refreshSubmitPermission();
       } else {
         GlobalDialog.showError(
           title:   'Could not load Stock Entry',
@@ -734,6 +746,17 @@ class StockEntryFormController extends GetxController
         }
       });
     });
+  }
+
+  /// Refreshes [canSubmitPerm] for the currently-loaded document.
+  /// Only drafts with a real name can be submitted; everything else is
+  /// fail-closed to `false`.
+  Future<void> _refreshSubmitPermission() async {
+    if (name.isEmpty || (stockEntry.value?.docstatus ?? 1) != 0) {
+      canSubmitPerm.value = false;
+      return;
+    }
+    canSubmitPerm.value = await _provider.canSubmit(name);
   }
 
   // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────────────────
@@ -1527,6 +1550,36 @@ class StockEntryFormController extends GetxController
       GlobalSnackbar.error(message: 'Save failed: $e');
     } finally {
       isSaving.value = false;
+    }
+  }
+
+  // ── Submit ──────────────────────────────────────────────────────────────
+  Future<void> submitDocument() async {
+    if (!canSubmit) return;
+    // Mirror ERPNext desk's submit prompt.
+    final confirmed = await GlobalDialog.confirm(
+      title:        'Confirm',
+      message:      'Permanently Submit $name?',
+      confirmText:  'Yes',
+      confirmColor: Colors.blue,
+    );
+    if (confirmed != true) return;
+
+    isSubmitting.value = true;
+    try {
+      final res = await _provider.submitStockEntry(name);
+      if (res.statusCode == 200) {
+        await fetchDocument(); // now docstatus 1, read-only; perm refreshed to false
+        GlobalSnackbar.success(message: 'Stock Entry $name submitted');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to submit Stock Entry');
+      }
+    } on DioException catch (e) {
+      _handleSaveDioError(e);
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Submit failed: $e');
+    } finally {
+      isSubmitting.value = false;
     }
   }
 
