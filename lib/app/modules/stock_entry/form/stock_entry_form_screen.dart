@@ -25,8 +25,13 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final entry = controller.stockEntry.value;
       final bool isEditable = entry?.docstatus == 0;
 
+      // Save and Submit are mutually exclusive (ERPNext morph): show Save only
+      // while there are unsaved changes; once the draft is clean the header
+      // shows Submit instead. Avoids Save + Submit appearing side by side.
       final VoidCallback? onSave =
-          isEditable ? controller.saveDocument : null;
+          (isEditable && controller.isDirty.value)
+              ? controller.saveDocument
+              : null;
       final VoidCallback? onReload =
           controller.mode != 'new' ? controller.reloadDocument : null;
 
