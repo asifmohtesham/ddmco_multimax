@@ -61,6 +61,13 @@ class HidWedgeService extends GetxService {
       return _assembler.addChar(ch, ts);
     }
 
+    // Modifier keys (Shift, CapsLock, etc.) carry no character and are part of
+    // producing the NEXT character — e.g. Shift for an uppercase barcode digit.
+    // Ignore them so they don't fragment an in-progress burst.
+    if (_isModifier(event.logicalKey)) {
+      return false;
+    }
+
     _assembler.reset();
     return false;
   }
@@ -70,4 +77,18 @@ class HidWedgeService extends GetxService {
     final c = ch.codeUnitAt(0);
     return c >= 0x20 && c != 0x7f; // exclude control chars and DEL
   }
+
+  static final Set<LogicalKeyboardKey> _modifierKeys = {
+    LogicalKeyboardKey.shiftLeft,
+    LogicalKeyboardKey.shiftRight,
+    LogicalKeyboardKey.controlLeft,
+    LogicalKeyboardKey.controlRight,
+    LogicalKeyboardKey.altLeft,
+    LogicalKeyboardKey.altRight,
+    LogicalKeyboardKey.metaLeft,
+    LogicalKeyboardKey.metaRight,
+    LogicalKeyboardKey.capsLock,
+  };
+
+  bool _isModifier(LogicalKeyboardKey key) => _modifierKeys.contains(key);
 }

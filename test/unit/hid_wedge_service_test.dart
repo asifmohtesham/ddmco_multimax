@@ -31,6 +31,12 @@ KeyUpEvent _enterUp(int ms) => KeyUpEvent(
       timeStamp: Duration(milliseconds: ms),
     );
 
+KeyDownEvent _modDown(LogicalKeyboardKey key, int ms) => KeyDownEvent(
+      physicalKey: PhysicalKeyboardKey.shiftLeft,
+      logicalKey: key,
+      timeStamp: Duration(milliseconds: ms),
+    );
+
 void main() {
   group('HidWedgeService.handleKeyEvent', () {
     late _FakeDataWedge dw;
@@ -90,6 +96,22 @@ void main() {
       ));
       svc.handleKeyEvent(_enterDown(30));
       expect(dw.injected, isEmpty);
+    });
+
+    test('Shift key-downs between chars do not fragment an uppercase burst', () {
+      // Scanning "AB12": Shift precedes each uppercase letter.
+      svc.handleKeyEvent(_modDown(LogicalKeyboardKey.shiftLeft, 0));
+      svc.handleKeyEvent(_charDown('A', LogicalKeyboardKey.keyA, 5));
+      svc.handleKeyEvent(_modDown(LogicalKeyboardKey.shiftLeft, 10));
+      svc.handleKeyEvent(_charDown('B', LogicalKeyboardKey.keyB, 15));
+      svc.handleKeyEvent(_charDown('1', LogicalKeyboardKey.digit1, 20));
+      svc.handleKeyEvent(_charDown('2', LogicalKeyboardKey.digit2, 25));
+      svc.handleKeyEvent(_enterDown(30));
+      expect(dw.injected, ['AB12']);
+    });
+
+    test('a modifier key alone is not consumed', () {
+      expect(svc.handleKeyEvent(_modDown(LogicalKeyboardKey.shiftLeft, 0)), isFalse);
     });
   });
 }
