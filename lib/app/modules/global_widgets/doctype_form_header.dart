@@ -66,10 +66,13 @@ class DocTypeFormHeader extends StatelessWidget {
   final VoidCallback? onReload;
   final VoidCallback? onSave;
   final VoidCallback? onShare;
+  final VoidCallback? onSubmit;
 
   final bool canSave;
+  final bool canSubmit;
   final int docStatus;
   final bool isSaving;
+  final bool isSubmitting;
   final SaveResult saveResult;
 
   final PreferredSizeWidget? bottom;
@@ -83,10 +86,13 @@ class DocTypeFormHeader extends StatelessWidget {
     this.onReload,
     this.onSave,
     this.onShare,
-    this.canSave    = false,
-    this.docStatus  = 0,
-    this.isSaving   = false,
-    this.saveResult = SaveResult.idle,
+    this.onSubmit,
+    this.canSave      = false,
+    this.canSubmit    = false,
+    this.docStatus    = 0,
+    this.isSaving     = false,
+    this.isSubmitting = false,
+    this.saveResult   = SaveResult.idle,
     this.bottom,
     this.extraActions,
   });
@@ -105,8 +111,11 @@ class DocTypeFormHeader extends StatelessWidget {
         onReload:        onReload,
         onSave:          onSave,
         onShare:         onShare,
+        onSubmit:        onSubmit,
         canSave:         _canSave,
+        canSubmit:       canSubmit,
         isSaving:        isSaving,
+        isSubmitting:    isSubmitting,
         saveResult:      saveResult,
         bottom:          bottom,
         extraActions:    extraActions,
@@ -125,8 +134,11 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onReload;
   final VoidCallback? onSave;
   final VoidCallback? onShare;
+  final VoidCallback? onSubmit;
   final bool canSave;
+  final bool canSubmit;
   final bool isSaving;
+  final bool isSubmitting;
   final SaveResult saveResult;
   final PreferredSizeWidget? bottom;
   final List<Widget>? extraActions;
@@ -139,8 +151,11 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onReload,
     required this.onSave,
     required this.onShare,
+    required this.onSubmit,
     required this.canSave,
+    required this.canSubmit,
     required this.isSaving,
+    required this.isSubmitting,
     required this.saveResult,
     required this.bottom,
     required this.extraActions,
@@ -351,6 +366,30 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
   // ── Actions ───────────────────────────────────────────────────────────────
   Widget? _buildActions(BuildContext context) {
     final items = <Widget>[
+      if (onSubmit != null && canSubmit)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: FilledButton(
+            onPressed: isSubmitting ? null : onSubmit,
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: isSubmitting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Submit'),
+          ),
+        ),
       ...(extraActions ?? []),
       if (onReload != null)
         IconButton(
@@ -392,6 +431,9 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
            (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
            (onReload != null) != (old.onReload != null) ||
            (onSave   != null) != (old.onSave   != null) ||
-           (onShare  != null) != (old.onShare  != null);
+           (onShare  != null) != (old.onShare  != null) ||
+           canSubmit      != old.canSubmit             ||
+           isSubmitting   != old.isSubmitting           ||
+           (onSubmit != null) != (old.onSubmit != null);
   }
 }

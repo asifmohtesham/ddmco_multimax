@@ -74,5 +74,50 @@ void main() {
       ));
       expect(find.byType(SliverPersistentHeader), findsOneWidget);
     });
+
+    testWidgets('renders Submit button when onSubmit set and canSubmit true',
+        (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        DocTypeFormHeader(
+          title: 'MAT-STE-0001',
+          onSubmit: () {},
+          canSubmit: true,
+        ),
+      ));
+      expect(find.widgetWithText(FilledButton, 'Submit'), findsOneWidget);
+    });
+
+    testWidgets('hides Submit button when canSubmit false', (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        DocTypeFormHeader(
+          title: 'MAT-STE-0001',
+          onSubmit: () {},
+          canSubmit: false,
+        ),
+      ));
+      expect(find.text('Submit'), findsNothing);
+    });
+
+    testWidgets('hides Submit button when onSubmit is null (backwards compat)',
+        (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        const DocTypeFormHeader(title: 'MAT-STE-0001', canSubmit: true),
+      ));
+      expect(find.text('Submit'), findsNothing);
+    });
+
+    testWidgets('shows spinner instead of label while submitting',
+        (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        DocTypeFormHeader(
+          title: 'MAT-STE-0001',
+          onSubmit: () {},
+          canSubmit: true,
+          isSubmitting: true,
+        ),
+      ));
+      expect(find.text('Submit'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
   });
 }
