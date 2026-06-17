@@ -120,6 +120,25 @@ class StockEntryFormController extends GetxController
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
 
+  /// Pure submit-eligibility predicate (no GetX state) so it is unit-testable.
+  /// A Stock Entry may be submitted only when it is a saved, clean draft the
+  /// current user is permitted to submit, with no save/submit already running.
+  static bool computeCanSubmit({
+    required String mode,
+    required int? docStatus,
+    required bool isDirty,
+    required bool isSaving,
+    required bool isSubmitting,
+    required bool canSubmitPerm,
+  }) {
+    return mode != 'new' &&
+        docStatus == 0 &&
+        !isDirty &&
+        !isSaving &&
+        !isSubmitting &&
+        canSubmitPerm;
+  }
+
   @override String get realtimeDoctype => 'Stock Entry';
   @override String get realtimeDocname => name;
 
