@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/hid_wedge_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -34,6 +35,8 @@ Future<void> main() async {
   // the EventChannel stream listener is live before the first scan can
   // arrive from the native BroadcastReceiver in MainActivity.
   Get.put<DataWedgeService>(DataWedgeService(), permanent: true);
+  // HID keyboard-wedge bridge (Netum C750 etc.) feeds DataWedgeService.scannedCode.
+  Get.put<HidWedgeService>(HidWedgeService(), permanent: true);
   Get.put<ScanService>(ScanService(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
