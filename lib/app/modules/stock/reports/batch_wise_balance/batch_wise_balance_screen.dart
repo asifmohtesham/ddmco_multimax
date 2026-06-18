@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_controller.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
@@ -15,27 +17,15 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   // InputChip gives the delete icon a full 48dp tap target out of the box.
 
   List<Widget> _buildFilterChips(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    Widget chip(String key, String label) => InputChip(
-          avatar: Icon(Icons.filter_alt_outlined,
-              size: 14, color: cs.onSecondaryContainer),
-          label: Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: cs.onSecondaryContainer,
-                fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: cs.secondaryContainer,
-          deleteIconColor: cs.onSecondaryContainer,
-          onDeleted: () => controller.clearFilter(key),
-          side: BorderSide.none,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
-
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list and report screen.
     final chips = <Widget>[];
     controller.activeFilters.forEach((key, label) {
-      chips.add(chip(key, label));
+      chips.add(FilterChipWidget(
+        icon: Icons.filter_alt_outlined,
+        label: label,
+        onDeleted: () => controller.clearFilter(key),
+      ));
     });
     return chips;
   }
@@ -46,8 +36,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: cs.surfaceContainerLow,
+    return AppShellScaffold(
       body: Obx(() {
         return RefreshIndicator(
           onRefresh: controller.runReport,

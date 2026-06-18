@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_controller.dart';
 
@@ -33,28 +34,16 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
   // internally, so this builder only needs to produce the chip widgets.
 
   List<Widget> _buildFilterChips(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    Widget chip(String key, String label) => InputChip(
-          avatar: Icon(Icons.filter_alt_outlined,
-              size: 14, color: cs.onSecondaryContainer),
-          label: Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: cs.onSecondaryContainer,
-                fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: cs.secondaryContainer,
-          deleteIconColor: cs.onSecondaryContainer,
-          onDeleted: () => controller.clearFilter(key),
-          side: BorderSide.none,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
-
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list and report screen.
     final chips = <Widget>[];
     // Relies on being called synchronously inside the parent Obx() rebuild.
     controller.activeFilters.forEach((key, label) {
-      chips.add(chip(key, label));
+      chips.add(FilterChipWidget(
+        icon: Icons.filter_alt_outlined,
+        label: label,
+        onDeleted: () => controller.clearFilter(key),
+      ));
     });
     return chips;
   }

@@ -96,21 +96,43 @@ affordances contradict.
 
 ---
 
-## 6. Migration status
+## 6. Report-style screens
 
-Routed through the shared widgets: **Item**, **Delivery Note**, **Work Order**,
-**Purchase Order**, **Purchase Receipt**, **Material Request**, **Stock Entry**,
-**Packing Slip**, **Job Card**.
+A second archetype: read-only **report** screens driven by `report_filter_sheet`
+(Stock Balance, Batch-Wise Balance, Item Variant Details, Job Card Summary,
+BOM Search). They **share**: `AppShellScaffold`, `DocTypeListHeader`
+(`automaticallyImplyLeading: false`), an `RxMap` `activeFilters`, singular
+titles, and the shared `FilterChipWidget`.
 
-> Job Card and Packing Slip are partial by design: Job Card uses its KPI strip
-> as the count affordance (no `ResultCountPill`); Packing Slip groups rows and
-> keeps its per-group `_countPill`. Both use `ListEmptyState` / `ListEndFooter`
-> and the shared `FilterChipWidget`.
+They **intentionally differ** and therefore do *not* use the list widgets:
+- **Empty state** is "set filters and run the report", not `ListEmptyState`
+  (there is no "reload"/"clear" semantic until a report is run).
+- **No pagination** → no `ListEndFooter`.
+- **No `ResultCountPill`** (KPI strips or the report itself convey counts).
 
-Remaining list screens to migrate: POS Upload, BOM, and the Stock report
-screens (Stock Balance, Batch-Wise Balance, Item Variant Details, Job Card
-Summary, BOM Search). These are table/report-style views; assess per screen.
-Titles for all list screens have already been singularised.
+When adding a report screen, conform to the shared header/scaffold/chip/filter
+contract; the run-to-load empty state is expected.
+
+## 7. Migration status
+
+**Fully routed** through the list widgets (`ResultCountPill` / `ListEmptyState`
+/ `ListEndFooter` / `FilterChipWidget`): Item, Delivery Note, Work Order,
+Purchase Order, Purchase Receipt, Material Request, Stock Entry, POS Upload.
+
+**Partial by design** (list widgets minus the pill): Job Card uses its KPI
+strip as the count affordance; Packing Slip groups rows and keeps its per-group
+`_countPill`; BOM uses its KPI strip. All three use `ListEmptyState` /
+`ListEndFooter` / `FilterChipWidget`.
+
+**Report archetype** (§6 — shared chip + header + scaffold only): Stock Balance,
+Batch-Wise Balance, Item Variant Details, Job Card Summary, BOM Search.
+
+All list/report screen titles are singularised. Every hand-rolled filter `Chip`
+/ `InputChip` has been removed in favour of `FilterChipWidget`.
+
+**Still open:** none in the list/report set. Item's filter model is now exposed
+as a real `RxMap` (`activeFiltersMap`, keyed by field / `attr:<name>`), no longer
+a positional-sentinel shim.
 
 > **Future:** a custom `dart analyze` lint (per `app_bar_conventions.md` §4.1)
 > could enforce items in §5 at CI time.
