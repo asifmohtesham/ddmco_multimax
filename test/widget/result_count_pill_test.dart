@@ -1,0 +1,64 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+
+Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+
+void main() {
+  group('ResultCountPill', () {
+    testWidgets('singular noun when count == 1 and no more pages',
+        (tester) async {
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 1,
+        hasMore: false,
+        hasActiveFilters: false,
+        noun: 'item',
+        icon: Icons.inventory_2_outlined,
+      )));
+      expect(find.text('1 item'), findsOneWidget);
+    });
+
+    testWidgets('pluralises noun when count != 1', (tester) async {
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 3,
+        hasMore: false,
+        hasActiveFilters: false,
+        noun: 'note',
+        icon: Icons.description_outlined,
+      )));
+      expect(find.text('3 notes'), findsOneWidget);
+    });
+
+    testWidgets('renders N+ form when hasMore', (tester) async {
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 20,
+        hasMore: true,
+        hasActiveFilters: false,
+        noun: 'order',
+        icon: Icons.precision_manufacturing_outlined,
+      )));
+      expect(find.text('20+ orders'), findsOneWidget);
+    });
+
+    testWidgets('shows filter indicator only when filters active',
+        (tester) async {
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 5,
+        hasMore: false,
+        hasActiveFilters: false,
+        noun: 'item',
+        icon: Icons.inventory_2_outlined,
+      )));
+      expect(find.byIcon(Icons.filter_alt), findsNothing);
+
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 5,
+        hasMore: false,
+        hasActiveFilters: true,
+        noun: 'item',
+        icon: Icons.inventory_2_outlined,
+      )));
+      expect(find.byIcon(Icons.filter_alt), findsOneWidget);
+    });
+  });
+}

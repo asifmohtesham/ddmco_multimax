@@ -4,6 +4,10 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/work_order/work_order_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
@@ -44,27 +48,15 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
-    final cs = Theme.of(context).colorScheme;
 
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
     Widget chip({
       required IconData icon,
       required String label,
       required VoidCallback onDeleted,
     }) =>
-        Chip(
-          avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
-          label: Text(label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onSecondaryContainer,
-                  fontWeight: FontWeight.w600)),
-          backgroundColor: cs.secondaryContainer,
-          deleteIconColor: cs.onSecondaryContainer,
-          onDeleted: onDeleted,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          side: BorderSide.none,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
+        FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
@@ -104,7 +96,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final screenTitle = controller.pageTitle ?? 'Work Orders';
+    final screenTitle = controller.pageTitle ?? 'Work Order';
 
     return AppShellScaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -142,6 +134,24 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               onFilterTap:        () => _showFilterSheet(context),
             ),
 
+            // ── Result count pill ──────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Obx(() {
+                if (controller.isLoading.value &&
+                    controller.workOrders.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return ResultCountPill(
+                  count: controller.workOrders.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'order',
+                  icon: Icons.precision_manufacturing_outlined,
+                );
+              }),
+            ),
+
             Obx(() {
               if (controller.isLoading.value &&
                   controller.workOrders.isEmpty) {
@@ -155,55 +165,17 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                         controller.searchQuery.value.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.precision_manufacturing_outlined,
-                            size: 64,
-                            color: cs.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Work Orders'
-                                : 'No Active Orders',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                    color: cs.onSurface,
-                                    fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            hasFilters
-                                ? 'Try clearing the active filter to see all Work Orders.'
-                                : 'No Work Orders found. Tap "+ New Work Order" to create one.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: cs.onSurfaceVariant, fontSize: 13),
-                          ),
-                          const SizedBox(height: 24),
-                          FilledButton.tonalIcon(
-                            onPressed: hasFilters
-                                ? controller.clearFilters
-                                : () => controller.fetchWorkOrders(
-                                    clear: true),
-                            icon: Icon(hasFilters
-                                ? Icons.filter_alt_off
-                                : Icons.refresh),
-                            label: Text(
-                                hasFilters ? 'Clear Filters' : 'Reload'),
-                          ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.precision_manufacturing_outlined,
+                    emptyTitle: 'No Active Orders',
+                    emptyMessage:
+                        'No Work Orders found. Tap "+ New Work Order" to create one.',
+                    filteredTitle: 'No Matching Work Orders',
+                    filteredMessage:
+                        'Try clearing the active filter to see all Work Orders.',
+                    onClearFilters: controller.clearFilters,
+                    onReload: () => controller.fetchWorkOrders(clear: true),
                   ),
                 );
               }
@@ -218,12 +190,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       if (index >= baseCount) {
-                        return controller.hasMore.value
-                            ? const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: CircularProgressIndicator()))
-                            : const SizedBox(height: 80);
+                        return ListEndFooter(hasMore: controller.hasMore.value);
                       }
                       final wo  = controller.workOrders[index];
                       final double pct = (wo.qty > 0)

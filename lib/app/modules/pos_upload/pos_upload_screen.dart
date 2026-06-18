@@ -141,7 +141,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           slivers: [
             // ── Unified header ─────────────────────────────────────────────────
             DocTypeListHeader(
-              title: 'POS Uploads',
+              title: 'POS Upload',
               automaticallyImplyLeading: false,
               searchDoctype: 'POS Invoice',
               searchRoute: AppRoutes.POS_UPLOAD_FORM,

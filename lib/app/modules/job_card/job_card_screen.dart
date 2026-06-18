@@ -139,7 +139,7 @@ class _JobCardScreenState extends State<JobCardScreen>
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             DocTypeListHeader(
-              title: 'Job Cards',
+              title: 'Job Card',
               automaticallyImplyLeading: false,
               searchDoctype:      'Job Card',
               searchQuery:        controller.searchQuery,

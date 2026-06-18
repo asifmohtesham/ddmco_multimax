@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
@@ -7,6 +6,9 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/item/widgets/item_list_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/item/widgets/item_image.dart';
 import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
 import 'package:multimax/app/modules/item/widgets/item_grid_preview_sheet.dart';
@@ -18,8 +20,7 @@ class ItemScreen extends GetView<ItemController> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final cs = Theme.of(context).colorScheme;
 
     return AppShellScaffold(
       floatingActionButton: Obx(
@@ -34,6 +35,8 @@ class ItemScreen extends GetView<ItemController> {
       ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchItems(clear: true),
+        color: cs.primary,
+        backgroundColor: cs.surfaceContainerHighest,
         child: CustomScrollView(
           controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -47,53 +50,13 @@ class ItemScreen extends GetView<ItemController> {
                     controller.displayedItems.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count = controller.displayedItems.length;
-                final hasMore = controller.hasMore.value;
-                final hasFilters = controller.filterCount > 0 ||
-                    controller.searchQuery.value.isNotEmpty;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: cs.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.inventory_2_outlined,
-                              size: 14,
-                              color: cs.onSecondaryContainer,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              hasMore
-                                  ? '$count+ items'
-                                  : '$count item${count == 1 ? '' : 's'}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: cs.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (hasFilters) ...[
-                              const SizedBox(width: 6),
-                              Icon(
-                                Icons.filter_alt,
-                                size: 12,
-                                color: cs.onSecondaryContainer
-                                    .withValues(alpha: 0.7),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                return ResultCountPill(
+                  count: controller.displayedItems.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.filterCount > 0 ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'item',
+                  icon: Icons.inventory_2_outlined,
                 );
               }),
             ),
@@ -161,22 +124,16 @@ class ItemScreen extends GetView<ItemController> {
   // ── list ──────────────────────────────────────────────────────────────────────
 
   Widget _buildList() {
-    final itemCount = controller.displayedItems.length +
-        (controller.hasMore.value ? 1 : 0);
+    final baseCount = controller.displayedItems.length;
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          if (index >= controller.displayedItems.length) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(),
-              ),
-            );
+          if (index >= baseCount) {
+            return ListEndFooter(hasMore: controller.hasMore.value);
           }
           return _buildListCard(context, controller.displayedItems[index]);
         },
-        childCount: itemCount,
+        childCount: baseCount + 1,
       ),
     );
   }
@@ -184,55 +141,18 @@ class ItemScreen extends GetView<ItemController> {
   // ── empty state ───────────────────────────────────────────────────────────────
 
   Widget _buildEmptyState(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    final hasFilters = controller.filterCount > 0;
-
     return SliverFillRemaining(
       hasScrollBody: false,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                hasFilters
-                    ? Icons.filter_alt_off_outlined
-                    : Icons.inventory_2_outlined,
-                size: 64,
-                color: cs.outlineVariant,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                hasFilters ? 'No Matching Items' : 'No Items Found',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(color: cs.onSurface, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                hasFilters
-                    ? 'Try adjusting your filters or search query.'
-                    : 'Pull to refresh to load items.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: cs.onSurfaceVariant),
-              ),
-              const SizedBox(height: 24),
-              hasFilters
-                  ? FilledButton.tonalIcon(
-                      onPressed: controller.clearFilters,
-                      icon: const Icon(Icons.filter_alt_off),
-                      label: const Text('Clear Filters'),
-                    )
-                  : FilledButton.tonalIcon(
-                      onPressed: () => controller.fetchItems(clear: true),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reload'),
-                    ),
-            ],
-          ),
-        ),
+      child: ListEmptyState(
+        hasActiveFilters: controller.filterCount > 0 ||
+            controller.searchQuery.value.isNotEmpty,
+        emptyIcon: Icons.inventory_2_outlined,
+        emptyTitle: 'No Items Found',
+        emptyMessage: 'Pull to refresh to load items.',
+        filteredTitle: 'No Matching Items',
+        filteredMessage: 'Try adjusting your filters or search query.',
+        onClearFilters: controller.clearFilters,
+        onReload: () => controller.fetchItems(clear: true),
       ),
     );
   }

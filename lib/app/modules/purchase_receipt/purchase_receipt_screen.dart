@@ -164,7 +164,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
           slivers: [
             // ── Unified header: AppBar + filter chips ──────────────────────
             DocTypeListHeader(
-              title: 'Purchase Receipts',
+              title: 'Purchase Receipt',
               automaticallyImplyLeading: false,
               searchDoctype: 'Purchase Receipt',
               searchRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
