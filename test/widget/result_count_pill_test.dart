@@ -40,6 +40,29 @@ void main() {
       expect(find.text('20+ orders'), findsOneWidget);
     });
 
+    testWidgets('uses explicit pluralNoun for irregular nouns',
+        (tester) async {
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 4,
+        hasMore: false,
+        hasActiveFilters: false,
+        noun: 'entry',
+        pluralNoun: 'entries',
+        icon: Icons.receipt_long_outlined,
+      )));
+      expect(find.text('4 entries'), findsOneWidget);
+
+      await tester.pumpWidget(_wrap(const ResultCountPill(
+        count: 1,
+        hasMore: false,
+        hasActiveFilters: false,
+        noun: 'entry',
+        pluralNoun: 'entries',
+        icon: Icons.receipt_long_outlined,
+      )));
+      expect(find.text('1 entry'), findsOneWidget);
+    });
+
     testWidgets('shows filter indicator only when filters active',
         (tester) async {
       await tester.pumpWidget(_wrap(const ResultCountPill(

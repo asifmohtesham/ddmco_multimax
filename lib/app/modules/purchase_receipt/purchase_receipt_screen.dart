@@ -7,8 +7,12 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_filter_bottom_sheet.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
@@ -106,24 +110,9 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
     required String label,
     required VoidCallback onDeleted,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      backgroundColor: colorScheme.secondaryContainer,
-      deleteIconColor: colorScheme.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
+    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
   }
 
   // ---------------------------------------------------------------------------
@@ -181,48 +170,12 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
                     controller.purchaseReceipts.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count = controller.purchaseReceipts.length;
-                final hasMore = controller.hasMore.value;
-                final hasFilters = controller.activeFilters.isNotEmpty;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.receipt_long_outlined,
-                                size: 14,
-                                color: colorScheme.onSecondaryContainer),
-                            const SizedBox(width: 6),
-                            Text(
-                              hasMore
-                                  ? '$count+ receipts'
-                                  : '$count receipt${count == 1 ? '' : 's'}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (hasFilters) ...[
-                              const SizedBox(width: 6),
-                              Icon(Icons.filter_alt,
-                                  size: 12,
-                                  color: colorScheme.onSecondaryContainer
-                                      .withValues(alpha: 0.7)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                return ResultCountPill(
+                  count: controller.purchaseReceipts.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty,
+                  noun: 'receipt',
+                  icon: Icons.receipt_long_outlined,
                 );
               }),
             ),
@@ -240,84 +193,29 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
                 final hasFilters = controller.activeFilters.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.receipt_long_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Receipts'
-                                : 'No Purchase Receipts',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            hasFilters
-                                ? 'Try adjusting your filters.'
-                                : 'Pull to refresh or create a new one.',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchPurchaseReceipts(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.receipt_long_outlined,
+                    emptyTitle: 'No Purchase Receipts',
+                    emptyMessage: 'Pull to refresh or create a new one.',
+                    filteredTitle: 'No Matching Receipts',
+                    filteredMessage: 'Try adjusting your filters.',
+                    onClearFilters: controller.clearFilters,
+                    onReload: () =>
+                        controller.fetchPurchaseReceipts(clear: true),
                   ),
                 );
               }
 
               final baseCount = controller.purchaseReceipts.length;
-              final navPad = navBarHeight;
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= baseCount) {
-                      if (controller.hasMore.value) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-                      return Padding(
-                        padding: EdgeInsets.only(
-                            top: 16, bottom: 16 + navPad),
-                        child: Center(
-                          child: Text(
-                            'End of results',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
+                      return ListEndFooter(
+                        hasMore: controller.hasMore.value,
+                        bottomPadding: navBarHeight,
                       );
                     }
                     return _buildCard(

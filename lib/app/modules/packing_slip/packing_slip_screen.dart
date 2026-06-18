@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
@@ -166,24 +170,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     required String label,
     required VoidCallback onDeleted,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      backgroundColor: colorScheme.secondaryContainer,
-      deleteIconColor: colorScheme.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
+    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
   }
 
   /// Small pill showing the slip count inside a group header.
@@ -265,49 +254,13 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                     controller.packingSlips.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count = controller.packingSlips.length;
-                final hasMore = controller.hasMore.value;
-                final hasFilters = controller.activeFilters.isNotEmpty ||
-                    controller.searchQuery.value.isNotEmpty;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.assignment_return_outlined,
-                                size: 14,
-                                color: colorScheme.onSecondaryContainer),
-                            const SizedBox(width: 6),
-                            Text(
-                              hasMore
-                                  ? '$count+ slips'
-                                  : '$count slip${count == 1 ? '' : 's'}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (hasFilters) ...[
-                              const SizedBox(width: 6),
-                              Icon(Icons.filter_alt,
-                                  size: 12,
-                                  color: colorScheme.onSecondaryContainer
-                                      .withValues(alpha: 0.7)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                return ResultCountPill(
+                  count: controller.packingSlips.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'slip',
+                  icon: Icons.assignment_return_outlined,
                 );
               }),
             ),
@@ -356,53 +309,16 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
 
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.assignment_return_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Slips'
-                                : 'No Packing Slips Found',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            emptySubtitle,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchPackingSlips(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.assignment_return_outlined,
+                    emptyTitle: 'No Packing Slips Found',
+                    emptyMessage: emptySubtitle,
+                    filteredTitle: 'No Matching Slips',
+                    filteredMessage: emptySubtitle,
+                    onClearFilters: controller.clearFilters,
+                    onReload: () =>
+                        controller.fetchPackingSlips(clear: true),
                   ),
                 );
               }
@@ -429,24 +345,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= groupKeys.length) {
-                      if (showLoader) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-                      return Padding(
-                        padding: EdgeInsets.only(
-                            top: 16, bottom: 16 + navBarHeight),
-                        child: Center(
-                          child: Text(
-                            'End of results',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
+                      return ListEndFooter(
+                        hasMore: showLoader,
+                        bottomPadding: navBarHeight,
                       );
                     }
 

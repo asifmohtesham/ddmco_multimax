@@ -9,7 +9,11 @@ import 'package:multimax/app/modules/purchase_order/widgets/purchase_order_filte
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 
 class PurchaseOrderScreen extends StatefulWidget {
@@ -99,24 +103,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     required String label,
     required VoidCallback onDeleted,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      backgroundColor: colorScheme.secondaryContainer,
-      deleteIconColor: colorScheme.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
+    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
   }
 
   @override
@@ -135,6 +124,8 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
       )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchPurchaseOrders(clear: true),
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -156,6 +147,24 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               onClearAllFilters: controller.clearFilters,
             ),
 
+            // ── Result count pill ──────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Obx(() {
+                if (controller.isLoading.value &&
+                    controller.purchaseOrders.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return ResultCountPill(
+                  count: controller.purchaseOrders.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'order',
+                  icon: Icons.shopping_cart_outlined,
+                );
+              }),
+            ),
+
             // ── List content ───────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value && controller.purchaseOrders.isEmpty) {
@@ -169,49 +178,17 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                     controller.searchQuery.value.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.shopping_cart_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Orders'
-                                : 'No Purchase Orders',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  color: colorScheme.onSurface,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchPurchaseOrders(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.shopping_cart_outlined,
+                    emptyTitle: 'No Purchase Orders',
+                    emptyMessage: 'Pull to refresh or create a new one.',
+                    filteredTitle: 'No Matching Orders',
+                    filteredMessage:
+                        'Try adjusting your filters or search query.',
+                    onClearFilters: controller.clearFilters,
+                    onReload: () =>
+                        controller.fetchPurchaseOrders(clear: true),
                   ),
                 );
               }
@@ -221,14 +198,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= baseCount) {
-                      return controller.hasMore.value
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(),
-                              ),
-                            )
-                          : const SizedBox(height: 80);
+                      return ListEndFooter(hasMore: controller.hasMore.value);
                     }
                     return _buildCard(context, controller.purchaseOrders[index]);
                   },

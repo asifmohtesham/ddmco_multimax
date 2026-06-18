@@ -34,6 +34,7 @@ class ResultCountPill extends StatelessWidget {
     required this.hasActiveFilters,
     required this.noun,
     required this.icon,
+    this.pluralNoun,
   });
 
   /// Number of rows currently loaded.
@@ -46,15 +47,20 @@ class ResultCountPill extends StatelessWidget {
   final bool hasActiveFilters;
 
   /// Singular noun for the row type, e.g. `'item'`, `'note'`. The plural form
-  /// is derived by appending `s`.
+  /// is derived by appending `s` unless [pluralNoun] is supplied.
   final String noun;
 
   /// Leading icon, typically the DocType's representative icon.
   final IconData icon;
 
-  String get _label => hasMore
-      ? '$count+ ${noun}s'
-      : '$count $noun${count == 1 ? '' : 's'}';
+  /// Explicit plural for irregular nouns (e.g. `'entries'` for `'entry'`).
+  /// Defaults to `'${noun}s'`.
+  final String? pluralNoun;
+
+  String get _plural => pluralNoun ?? '${noun}s';
+
+  String get _label =>
+      hasMore ? '$count+ $_plural' : '$count ${count == 1 ? noun : _plural}';
 
   @override
   Widget build(BuildContext context) {

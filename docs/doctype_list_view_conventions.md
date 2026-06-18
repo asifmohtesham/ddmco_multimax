@@ -98,13 +98,19 @@ affordances contradict.
 
 ## 6. Migration status
 
-Routed through the shared widgets: **Item**, **Delivery Note**, **Work Order**.
+Routed through the shared widgets: **Item**, **Delivery Note**, **Work Order**,
+**Purchase Order**, **Purchase Receipt**, **Material Request**, **Stock Entry**,
+**Packing Slip**, **Job Card**.
 
-Remaining list screens to migrate (structure already close; not yet routed
-through `ResultCountPill` / `ListEmptyState` / `ListEndFooter`): Purchase Order,
-Purchase Receipt, Material Request, Stock Entry, Packing Slip, Job Card,
-POS Upload, BOM, and the Stock report screens. Titles for all of these have
-already been singularised.
+> Job Card and Packing Slip are partial by design: Job Card uses its KPI strip
+> as the count affordance (no `ResultCountPill`); Packing Slip groups rows and
+> keeps its per-group `_countPill`. Both use `ListEmptyState` / `ListEndFooter`
+> and the shared `FilterChipWidget`.
+
+Remaining list screens to migrate: POS Upload, BOM, and the Stock report
+screens (Stock Balance, Batch-Wise Balance, Item Variant Details, Job Card
+Summary, BOM Search). These are table/report-style views; assess per screen.
+Titles for all list screens have already been singularised.
 
 > **Future:** a custom `dart analyze` lint (per `app_bar_conventions.md` §4.1)
 > could enforce items in §5 at CI time.
