@@ -47,14 +47,14 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
             slivers: [
               // ── Unified header ──────────────────────────────────────────
               DocTypeListHeader(
-                title: 'Batch-Wise Balance',
+                title: 'Batch-Wise Balance History',
                 automaticallyImplyLeading: false,
                 activeFilters: controller.activeFilters
                     .map((k, v) => MapEntry(k, v as dynamic))
                     .obs,
                 onFilterTap: () => showReportFilterSheet(
                   context: context,
-                  title:       'Batch-Wise Balance Filters',
+                  title:       'Batch-Wise Balance History Filters',
                   fields:      controller.filterFields,
                   controllers: controller.filterControllers,
                   onRun:       controller.runReport,
@@ -93,7 +93,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                           FilledButton.tonalIcon(
                             onPressed: () => showReportFilterSheet(
                               context: context,
-                              title:   'Batch-Wise Balance Filters',
+                              title:   'Batch-Wise Balance History Filters',
                               fields:  controller.filterFields,
                               controllers: controller.filterControllers,
                               onRun:   controller.runReport,

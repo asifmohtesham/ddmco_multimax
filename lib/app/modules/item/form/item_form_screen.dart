@@ -284,9 +284,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
               );
             }),
 
-            // 1. Warehouse Balance
+            // 1. Stock Balance
             Text(
-              'Warehouse Balance',
+              'Stock Balance',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: cs.onSurface,
@@ -316,9 +316,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 2. Batch-Wise Balance
+            // 2. Batch-Wise Balance History
             Text(
-              'Batch-Wise Balance',
+              'Batch-Wise Balance History',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: cs.onSurface,

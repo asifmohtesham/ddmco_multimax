@@ -128,7 +128,7 @@ int activeFilterCount(Map<String, TextEditingController> controllers) =>
 /// ```dart
 /// showReportFilterSheet(
 ///   context: context,
-///   title: 'Batch-Wise Balance Filters',
+///   title: 'Batch-Wise Balance History Filters',
 ///   fields: [
 ///     ReportFilterField(key: 'item_code', label: 'Item Code *',
 ///         type: ReportFilterType.text, required: true),

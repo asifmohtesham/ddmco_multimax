@@ -1,1 +1,2 @@
-• Submit Stock Entries right from the app — save your draft, then tap Submit to post it. Your ERPNext roles and permissions are always enforced.
+• Stock Levels now shows a separate balance for every rack in a warehouse, matching the ERPNext Stock Balance report.
+• Renamed sections to match ERPNext: "Stock Balance" and "Batch-Wise Balance History".

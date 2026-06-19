@@ -112,6 +112,11 @@ class ItemProvider {
   Future<Response> getStockLevels(String itemCode) async {
     return _apiProvider.getReport('Stock Balance', filters: {
       'item_code': await _apiProvider.stockBalanceItemCodeFilter(itemCode),
+      // Split balances per Rack (inventory dimension); without this ERPNext
+      // collapses every rack in a warehouse into one aggregated row, so the
+      // app would show a single rack tile with the warehouse-wide quantity.
+      'show_dimension_wise_stock': 1,
+      'show_variant_attributes': 1,
     });
   }
 

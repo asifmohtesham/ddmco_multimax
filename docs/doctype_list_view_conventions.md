@@ -99,7 +99,7 @@ affordances contradict.
 ## 6. Report-style screens
 
 A second archetype: read-only **report** screens driven by `report_filter_sheet`
-(Stock Balance, Batch-Wise Balance, Item Variant Details, Job Card Summary,
+(Stock Balance, Batch-Wise Balance History, Item Variant Details, Job Card Summary,
 BOM Search). They **share**: `AppShellScaffold`, `DocTypeListHeader`
 (`automaticallyImplyLeading: false`), an `RxMap` `activeFilters`, singular
 titles, and the shared `FilterChipWidget`.
@@ -125,7 +125,7 @@ strip as the count affordance; Packing Slip groups rows and keeps its per-group
 `ListEndFooter` / `FilterChipWidget`.
 
 **Report archetype** (§6 — shared chip + header + scaffold only): Stock Balance,
-Batch-Wise Balance, Item Variant Details, Job Card Summary, BOM Search.
+Batch-Wise Balance History, Item Variant Details, Job Card Summary, BOM Search.
 
 All list/report screen titles are singularised. Every hand-rolled filter `Chip`
 / `InputChip` has been removed in favour of `FilterChipWidget`.

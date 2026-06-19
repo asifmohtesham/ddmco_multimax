@@ -303,7 +303,7 @@ class AppNavDrawer extends StatelessWidget {
                             permType: 'report',
                             loading: skeleton,
                             child: _DrawerItem(
-                              title: 'Batch-Wise Balance',
+                              title: 'Batch-Wise Balance History',
                               icon: Icons.history_toggle_off_rounded,
                               route: AppRoutes.BATCH_WISE_BALANCE,
                               currentRoute: currentRoute,
@@ -666,7 +666,7 @@ class _GuardedSection extends StatelessWidget {
 /// Example:
 /// ```dart
 /// const _NavSubheading('Reports'),
-/// _DrawerItem(title: 'Batch-Wise Balance', ...),
+/// _DrawerItem(title: 'Batch-Wise Balance History', ...),
 /// ```
 class _NavSubheading extends StatelessWidget {
   final String label;
