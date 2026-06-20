@@ -18,12 +18,28 @@ import 'package:multimax/app/data/services/wedge_burst_assembler.dart';
 ///   - first char of a burst (idle gap)  -> passed through
 ///   - an Enter that completes a burst   -> consumed (no stray submit / focus move)
 class HidWedgeService extends GetxService {
-  HidWedgeService({WedgeBurstAssembler? assembler, DataWedgeService? dataWedge})
-      : _assembler = assembler ?? WedgeBurstAssembler(),
-        _dataWedgeOverride = dataWedge;
+  HidWedgeService({
+    WedgeBurstAssembler? assembler,
+    DataWedgeService? dataWedge,
+    int Function()? clockMs,
+  })  : _assembler = assembler ?? WedgeBurstAssembler(),
+        _dataWedgeOverride = dataWedge,
+        _clockMs = clockMs ?? _wallClockMs;
 
   final WedgeBurstAssembler _assembler;
   final DataWedgeService? _dataWedgeOverride;
+
+  /// Monotonic wall-clock source (ms) used to measure real inter-key timing.
+  ///
+  /// We deliberately do NOT use [KeyEvent.timeStamp]: Android's numeric soft
+  /// keyboard delivers digit key events to [HardwareKeyboard] with unreliable /
+  /// clustered timestamps (often all identical). Measuring the gap from the
+  /// monotonic clock at the moment the handler runs reflects the user's real
+  /// typing cadence, so slow manual entry (e.g. a multi-digit quantity) is never
+  /// mistaken for a sub-50 ms scanner burst.
+  final int Function() _clockMs;
+
+  static int _wallClockMs() => DateTime.now().microsecondsSinceEpoch ~/ 1000;
 
   DataWedgeService get _dataWedge =>
       _dataWedgeOverride ?? Get.find<DataWedgeService>();
@@ -44,7 +60,7 @@ class HidWedgeService extends GetxService {
   bool handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
 
-    final ts = event.timeStamp.inMilliseconds;
+    final ts = _clockMs();
 
     if (event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter) {

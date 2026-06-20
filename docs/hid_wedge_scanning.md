@@ -21,6 +21,13 @@ Then pair the scanner with the phone in Android Bluetooth settings.
 
 - `WedgeBurstAssembler` treats keystrokes arriving within 50 ms of each other
   as one burst; an Enter finalises the burst into a barcode string.
+- Inter-key timing is measured from the **device monotonic clock at the moment
+  `HidWedgeService` handles each key**, NOT from `KeyEvent.timeStamp`. Android's
+  numeric soft keyboard delivers digit key events to `HardwareKeyboard` with
+  unreliable / clustered timestamps (often all identical); trusting them made
+  every digit after the first look like a sub-50 ms scanner burst and get
+  consumed, so a focused quantity field accepted only a single digit. Reading
+  the wall clock per key reflects the user's real typing cadence.
 - Slow human typing (gaps >= 50 ms) is never treated as a scan, so manual
   entry into search / quantity / login fields still works.
 - Known limitation: if a text field is focused when you scan, the single
