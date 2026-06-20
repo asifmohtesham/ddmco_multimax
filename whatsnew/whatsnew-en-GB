@@ -1,2 +1,1 @@
-• Stock Levels now shows a separate balance for every rack in a warehouse, matching the ERPNext Stock Balance report.
-• Renamed sections to match ERPNext: "Stock Balance" and "Batch-Wise Balance History".
+• Fixed a bug where the quantity field accepted only a single digit when a Bluetooth HID scanner (e.g. Netum C750) was connected. You can now type multi-digit quantities normally.
