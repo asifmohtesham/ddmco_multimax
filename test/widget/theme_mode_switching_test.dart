@@ -18,40 +18,29 @@ void main() {
     expect(dark.colorScheme.primary, const Color(0xFFD9707C));
   });
 
-  // Second test: verify the Obx→ThemeController wiring drives themeMode on the
-  // GetMaterialApp without pumping a full route tree (route resolution requires
-  // services not registered in the test environment).
-  testWidgets('MultimaxApp wires ThemeController.themeMode to GetMaterialApp',
+  testWidgets(
+      'MultimaxApp.build wraps GetMaterialApp in an Obx (reactive themeMode wiring)',
       (tester) async {
-    final controller = Get.put(ThemeController(
+    Get.put(ThemeController(
       persist: (_, __) async {},
       restore: (_) async => null,
     ));
 
-    // Verify buildAppTheme is used for both light and dark slots.
-    final lightTheme = buildAppTheme(AppScheme.light, Brightness.light);
-    final darkTheme = buildAppTheme(AppScheme.dark, Brightness.dark);
-    expect(lightTheme.colorScheme.primary, const Color(0xFF870E18));
-    expect(darkTheme.colorScheme.primary, const Color(0xFFD9707C));
-
-    // Verify the controller observable starts at system and can be set.
-    expect(controller.themeMode.value, ThemeMode.system);
-    controller.themeMode.value = ThemeMode.dark;
-    expect(controller.themeMode.value, ThemeMode.dark);
-
-    // Pump a minimal widget that reads themeMode via the Obx pattern,
-    // mirroring what MultimaxApp.build does, without requiring route services.
+    // Exercise the REAL MultimaxApp.build. We assert it returns an Obx (the
+    // reactive wrapper that feeds ThemeController.themeMode into
+    // GetMaterialApp.themeMode). We do NOT render the returned GetMaterialApp:
+    // that would resolve the initial route and require service bindings that
+    // unit tests don't register. This still catches the regression of the Obx
+    // wrapper being removed from MultimaxApp.build.
+    late Widget built;
     await tester.pumpWidget(
-      GetMaterialApp(
-        home: Obx(() => Text(controller.themeMode.value.name)),
-      ),
+      Builder(builder: (context) {
+        built = const MultimaxApp(initialRoute: '/').build(context);
+        return const SizedBox.shrink();
+      }),
     );
-    await tester.pump();
-    expect(find.text('dark'), findsOneWidget);
 
-    controller.themeMode.value = ThemeMode.light;
-    await tester.pump();
-    expect(find.text('light'), findsOneWidget);
+    expect(built, isA<Obx>());
 
     Get.reset();
   });

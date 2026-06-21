@@ -16,6 +16,9 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+/// Dark-mode on-secondary (near-black) — secondary swatch sits on light text in dark mode.
+const Color _kDarkOnSecondary = Color(0xFF0B1116);
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -64,7 +67,7 @@ ThemeData buildAppTheme(AppScheme scheme, Brightness brightness) {
     onPrimary: scheme.onPrimary,
     secondary: scheme.secondary,
     onSecondary: brightness == Brightness.dark
-        ? const Color(0xFF0B1116)
+        ? _kDarkOnSecondary
         : Colors.white,
     surface: scheme.fg,
     onSurface: scheme.text,
