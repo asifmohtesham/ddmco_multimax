@@ -158,8 +158,13 @@ class MultimaxApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeController = Get.find<ThemeController>();
+    final themeController = Get.isRegistered<ThemeController>()
+        ? Get.find<ThemeController>()
+        : Get.put(ThemeController());
 
+    // Source of truth for the active theme is this Obx binding on
+    // themeController.themeMode; ThemeController also calls
+    // Get.changeThemeMode so GetX-internal consumers stay in sync.
     return Obx(() => GetMaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'KA-ML Fulfillment',

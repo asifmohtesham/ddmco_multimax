@@ -85,6 +85,8 @@ class AppScheme {
     secondary: Color(0xFF25286F), // indigo
   );
 
+  // Timeless Night surfaces are dark-mode-specific values, intentionally NOT
+  // drawn from the AppColors gray ramp (which is the light-mode neutral scale).
   static const dark = AppScheme(
     bg: Color(0xFF15191D),
     fg: Color(0xFF1F262C),
