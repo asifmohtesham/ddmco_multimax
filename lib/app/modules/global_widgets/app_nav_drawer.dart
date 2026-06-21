@@ -8,6 +8,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 // ---------------------------------------------------------------------------
 // Route extraction helper
@@ -65,12 +66,13 @@ class AppNavDrawer extends StatelessWidget {
         : Get.put(AppNavDrawerController());
 
     final String currentRoute = Get.currentRoute;
+    final s = context.scheme;
     const skeleton = _SkeletonDrawerItem();
 
     return SafeArea(
       child: Drawer(
         elevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: s.fg,
         child: Column(
           children: [
             // ── User header ──────────────────────────────────────────────────────────────
@@ -240,7 +242,7 @@ class AppNavDrawer extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),
                     child: Divider(
-                        height: 1, color: Colors.grey.shade200),
+                        height: 1, color: s.border),
                   ),
 
                   // ---- STOCK ----
@@ -526,14 +528,15 @@ class _SkeletonDrawerItemState extends State<_SkeletonDrawerItem>
 
   @override
   Widget build(BuildContext context) {
+    final s = context.scheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: AnimatedBuilder(
         animation: _anim,
         builder: (_, __) {
           final shimmerColor = Color.lerp(
-            Colors.grey.shade100,
-            Colors.grey.shade300,
+            s.subtle,
+            s.border,
             _anim.value,
           )!;
           return Container(
@@ -602,6 +605,7 @@ class _ModuleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.scheme;
     final service = Get.find<PermissionService>();
 
     return Obx(() {
@@ -621,13 +625,13 @@ class _ModuleGroup extends StatelessWidget {
           initiallyExpanded: initialExpanded,
           onExpansionChanged: (v) =>
               drawerController.setGroupExpanded(title, v),
-          leading: Icon(icon, color: Colors.grey.shade700, size: 22),
+          leading: Icon(icon, color: s.textMuted, size: 22),
           title: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 14,
-              color: Colors.black87,
+              color: s.text,
             ),
           ),
           childrenPadding: const EdgeInsets.only(bottom: 8),
@@ -693,6 +697,7 @@ class _NavSubheading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.scheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 16, 2),
       child: Row(
@@ -702,7 +707,7 @@ class _NavSubheading extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              color: Colors.grey.shade500,
+              color: s.textSubtle,
               letterSpacing: 1.1,
             ),
           ),
@@ -711,7 +716,7 @@ class _NavSubheading extends StatelessWidget {
             child: Divider(
               height: 1,
               thickness: 1,
-              color: Colors.grey.shade200,
+              color: s.border,
             ),
           ),
         ],
@@ -750,6 +755,7 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.scheme;
     final isSelected =
         route.isNotEmpty && currentRoute.startsWith(route);
 
@@ -793,7 +799,7 @@ class _DrawerItem extends StatelessWidget {
                 size: 24,
                 color: isSelected
                     ? primaryColor
-                    : Colors.grey.shade600,
+                    : s.textMuted,
               ),
               title: Text(
                 title,
@@ -804,7 +810,7 @@ class _DrawerItem extends StatelessWidget {
                       : FontWeight.w500,
                   color: isSelected
                       ? primaryColor
-                      : Colors.grey.shade800,
+                      : s.text,
                   letterSpacing: 0.2,
                 ),
               ),
