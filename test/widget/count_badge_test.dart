@@ -25,4 +25,16 @@ void main() {
       find.ancestor(of: find.text('9'), matching: find.byType(Container)).first);
     expect((box.decoration as BoxDecoration).color, AppScheme.light.textSubtle);
   });
+
+  testWidgets('muted variant uses scheme.text for text color', (tester) async {
+    await tester.pumpWidget(_host(const CountBadge(count: 5, muted: true)));
+    final text = tester.widget<Text>(find.text('5'));
+    expect((text.style as TextStyle).color, AppScheme.light.text);
+  });
+
+  testWidgets('default variant uses white text color', (tester) async {
+    await tester.pumpWidget(_host(const CountBadge(count: 7)));
+    final text = tester.widget<Text>(find.text('7'));
+    expect((text.style as TextStyle).color, Colors.white);
+  });
 }

@@ -29,8 +29,8 @@ class CountBadge extends StatelessWidget {
       child: Text(
         '$count',
         textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: muted ? s.text : Colors.white,
           fontSize: 10,
           fontWeight: FontWeight.w700,
           height: 1.0,
