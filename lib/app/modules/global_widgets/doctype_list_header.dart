@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart'; // clampDouble
+import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
@@ -629,7 +630,18 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                     tooltip: tooltip,
                   );
             return isActive
-                ? Badge(label: Text('$count'), child: button)
+                ? Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      button,
+                      if (count > 0)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: CountBadge(count: count),
+                        ),
+                    ],
+                  )
                 : button;
           });
         }),
