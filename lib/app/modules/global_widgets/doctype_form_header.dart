@@ -186,7 +186,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     final colorScheme = theme.colorScheme;
 
     // ── System UI ────────────────────────────────────────────────────────────
-    final surfaceLuminance = colorScheme.surface.computeLuminance();
+    final surfaceLuminance = colorScheme.primary.computeLuminance();
     final iconBrightness   = surfaceLuminance > 0.5 ? Brightness.dark : Brightness.light;
     final overlayStyle = SystemUiOverlayStyle(
       statusBarColor:          Colors.transparent,
@@ -204,80 +204,85 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     final toolbar = SizedBox(
       height: toolbarHeight,
-      child: NavigationToolbar(
-        leading: _buildLeading(context),
-        middle: Stack(
-          children: [
-            // Expanded middle: faded doc name (opacity fades out on collapse)
-            Positioned.fill(
-              child: Opacity(
-                opacity: expandProgress,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: AutoSizeText(
-                    title,
-                    style: theme.textTheme.titleLarge,
-                    maxLines: 2,
-                    minFontSize: _kAutoSizeMinFont,
-                    overflow: TextOverflow.clip,
-                    softWrap: true,
+      child: IconTheme.merge(
+        data: IconThemeData(color: colorScheme.onPrimary),
+        child: NavigationToolbar(
+          leading: _buildLeading(context),
+          middle: Stack(
+            children: [
+              // Expanded middle: faded doc name (opacity fades out on collapse)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: expandProgress,
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: AutoSizeText(
+                      title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: colorScheme.onPrimary,
+                      ),
+                      maxLines: 2,
+                      minFontSize: _kAutoSizeMinFont,
+                      overflow: TextOverflow.clip,
+                      softWrap: true,
+                    ),
                   ),
                 ),
               ),
-            ),
-            // Collapsed middle: two-line caption + doc name (fades in on collapse)
-            Positioned.fill(
-              child: Offstage(
-                offstage: collapseProgress < 0.001,
-                child: Opacity(
-                  opacity: collapseProgress,
-                  child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (docType != null)
-                          Text(
-                            docType!.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.7,
-                              color: colorScheme.primary,
-                              height: 1.0,
+              // Collapsed middle: two-line caption + doc name (fades in on collapse)
+              Positioned.fill(
+                child: Offstage(
+                  offstage: collapseProgress < 0.001,
+                  child: Opacity(
+                    opacity: collapseProgress,
+                    child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (docType != null)
+                            Text(
+                              docType!.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.7,
+                                color: colorScheme.onPrimary,
+                                height: 1.0,
+                              ),
                             ),
-                          ),
-                        if (docType != null && _effectiveStatusLabel != null)
-                          const SizedBox(width: 5),
-                        if (_effectiveStatusLabel != null)
-                          StatusPill(status: _effectiveStatusLabel!, compact: true),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    AutoSizeText(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.secondary,
-                        height: 1.3,
+                          if (docType != null && _effectiveStatusLabel != null)
+                            const SizedBox(width: 5),
+                          if (_effectiveStatusLabel != null)
+                            StatusPill(status: _effectiveStatusLabel!, compact: true),
+                        ],
                       ),
-                      maxLines: 1,
-                      minFontSize: _kAutoSizeMinFont,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 3),
+                      AutoSizeText(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onPrimary,
+                          height: 1.3,
+                        ),
+                        maxLines: 1,
+                        minFontSize: _kAutoSizeMinFont,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
+          trailing: actions,
+          centerMiddle: false,
+          middleSpacing: 8,
         ),
-        trailing: actions,
-        centerMiddle: false,
-        middleSpacing: 8,
       ),
     );
 
@@ -297,7 +302,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.77,
-                  color: colorScheme.primary,
+                  color: colorScheme.onPrimary,
                   height: 1.0,
                 ),
               ),
@@ -307,7 +312,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: colorScheme.onSurface,
+                color: colorScheme.onPrimary,
                 height: 1.15,
               ),
             ),
@@ -322,7 +327,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: Material(
-        color: colorScheme.surface,
+        color: colorScheme.primary,
         elevation: overlapsContent ? 1.0 : 0.0,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
