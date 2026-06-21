@@ -370,6 +370,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   Widget? _buildActions(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final items = <Widget>[
       if (onSubmit != null && canSubmit)
         Padding(
@@ -413,6 +414,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
           saveResult:          saveResult,
           tooltip:             'Save',
           showFilledWhenDirty: true,
+          onColor:             colorScheme.onPrimary,
         ),
       if (onShare != null)
         IconButton(
