@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/modules/theme/theme_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
@@ -167,6 +168,24 @@ class AppNavDrawer extends StatelessWidget {
                       route: AppRoutes.ABOUT,
                       currentRoute: currentRoute,
                     ),
+                    Obx(() {
+                      final tc = Get.isRegistered<ThemeController>()
+                          ? Get.find<ThemeController>()
+                          : Get.put(ThemeController());
+                      final mode = tc.themeMode.value;
+                      final (icon, label) = switch (mode) {
+                        ThemeMode.system => (Icons.brightness_auto_outlined, 'Theme: System'),
+                        ThemeMode.light => (Icons.light_mode_outlined, 'Theme: Light'),
+                        ThemeMode.dark => (Icons.dark_mode_outlined, 'Theme: Dark'),
+                      };
+                      return _DrawerItem(
+                        icon: icon,
+                        title: label,
+                        route: '',
+                        currentRoute: currentRoute,
+                        onTap: (_) => tc.cycleThemeMode(),
+                      );
+                    }),
                     const Padding(
                       padding: EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
