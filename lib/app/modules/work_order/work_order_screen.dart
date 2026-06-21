@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 
 class WorkOrderScreen extends StatefulWidget {
   const WorkOrderScreen({super.key});
@@ -155,8 +156,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.workOrders.isEmpty) {
-                return const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()));
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.workOrders.isEmpty) {

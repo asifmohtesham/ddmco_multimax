@@ -13,6 +13,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_filter_bottom_sheet.dart';
 
 class PurchaseReceiptScreen extends StatefulWidget {
@@ -184,9 +185,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.purchaseReceipts.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.purchaseReceipts.isEmpty) {

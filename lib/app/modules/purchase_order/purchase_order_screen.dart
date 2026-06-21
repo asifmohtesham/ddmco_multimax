@@ -13,6 +13,7 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
 
@@ -168,9 +169,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             // ── List content ───────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value && controller.purchaseOrders.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.purchaseOrders.isEmpty) {

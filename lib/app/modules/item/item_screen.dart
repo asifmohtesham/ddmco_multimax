@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/item/widgets/item_image.dart';
 import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
 import 'package:multimax/app/modules/item/widgets/item_grid_preview_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 
 class ItemScreen extends GetView<ItemController> {
   const ItemScreen({super.key});
@@ -65,9 +66,7 @@ class ItemScreen extends GetView<ItemController> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.displayedItems.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.displayedItems.isEmpty) {

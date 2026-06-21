@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/material_request/material_request_controller.dart';
 import 'package:multimax/app/modules/material_request/widgets/material_request_filter_bottom_sheet.dart';
 
@@ -247,9 +248,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.materialRequests.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.materialRequests.isEmpty) {

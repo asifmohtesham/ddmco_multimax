@@ -11,6 +11,7 @@ import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 
 class PosUploadScreen extends StatefulWidget {
   const PosUploadScreen({super.key});
@@ -167,9 +168,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.posUploads.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.posUploads.isEmpty) {
