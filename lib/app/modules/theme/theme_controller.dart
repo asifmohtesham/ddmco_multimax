@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/services/database_service.dart';
@@ -51,6 +53,6 @@ class ThemeController extends GetxController {
   void cycleThemeMode() {
     const order = [ThemeMode.system, ThemeMode.light, ThemeMode.dark];
     final next = order[(order.indexOf(themeMode.value) + 1) % order.length];
-    setThemeMode(next);
+    unawaited(setThemeMode(next));
   }
 }

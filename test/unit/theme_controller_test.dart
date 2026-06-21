@@ -56,6 +56,22 @@ void main() {
       expect(c.themeMode.value, ThemeMode.light);
     });
 
+    test('loadPersisted falls back to system on null/garbage', () async {
+      final cNull = ThemeController(
+        persist: (_, __) async {},
+        restore: (_) async => null,
+      );
+      await cNull.loadPersisted();
+      expect(cNull.themeMode.value, ThemeMode.system);
+
+      final cGarbage = ThemeController(
+        persist: (_, __) async {},
+        restore: (_) async => 'nonsense',
+      );
+      await cGarbage.loadPersisted();
+      expect(cGarbage.themeMode.value, ThemeMode.system);
+    });
+
     test('cycleThemeMode advances system -> light -> dark -> system', () async {
       final c = ThemeController(persist: (_, __) async {}, restore: (_) async => null);
       expect(c.themeMode.value, ThemeMode.system);
