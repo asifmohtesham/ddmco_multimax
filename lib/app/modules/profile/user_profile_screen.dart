@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/profile/user_profile_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -29,8 +30,6 @@ class UserProfileScreen extends GetView<UserProfileController> {
           return const Center(child: Text('User data not available'));
         }
 
-        final theme       = Theme.of(context);
-        final primary     = theme.primaryColor;
         final hasImage    = user.image != null && user.image!.isNotEmpty;
         final initials    = user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U';
         final subtitle    = [
@@ -46,27 +45,10 @@ class UserProfileScreen extends GetView<UserProfileController> {
               children: [
                 // ── Hero header ────────────────────────────────────────────
                 const SizedBox(height: 20),
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: primary, width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 56,
-                    backgroundColor: primary.withValues(alpha: 0.1),
-                    backgroundImage:
-                        hasImage ? NetworkImage(user.image!) : null,
-                    child: hasImage
-                        ? null
-                        : Text(
-                            initials,
-                            style: TextStyle(
-                              fontSize: 42,
-                              fontWeight: FontWeight.bold,
-                              color: primary,
-                            ),
-                          ),
-                  ),
+                AppAvatar(
+                  size: 112,
+                  initials: initials,
+                  image: hasImage ? NetworkImage(user.image!) : null,
                 ),
                 const SizedBox(height: 14),
                 Text(
