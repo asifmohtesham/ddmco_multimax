@@ -186,8 +186,8 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     final colorScheme = theme.colorScheme;
 
     // ── System UI ────────────────────────────────────────────────────────────
-    final surfaceLuminance = colorScheme.primary.computeLuminance();
-    final iconBrightness   = surfaceLuminance > 0.5 ? Brightness.dark : Brightness.light;
+    final barLuminance = colorScheme.primary.computeLuminance();
+    final iconBrightness   = barLuminance > 0.5 ? Brightness.dark : Brightness.light;
     final overlayStyle = SystemUiOverlayStyle(
       statusBarColor:          Colors.transparent,
       statusBarIconBrightness: iconBrightness,
