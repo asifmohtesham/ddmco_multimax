@@ -13,6 +13,7 @@ class StockBalanceController extends GetxController {
   final itemCodeController      = TextEditingController();
   final warehouseController     = TextEditingController();
   final itemGroupController     = TextEditingController();
+  final customerCodeController  = TextEditingController();
   final dimensionWiseController = TextEditingController();
   final variantAttrsController  = TextEditingController();
 
@@ -59,6 +60,12 @@ class StockBalanceController extends GetxController {
       linkDoctype: 'Item Group',
       prefixIcon:  Icons.folder_outlined,
     ),
+    const ReportFilterField(
+      key:        'customer_code',
+      label:      'Customer Code',
+      type:       ReportFilterType.text,
+      prefixIcon: Icons.badge_outlined,
+    ),
   ];
 
   // ── Chip group descriptors (passed to ReportFilterSheet) ─────────────────
@@ -97,6 +104,7 @@ class StockBalanceController extends GetxController {
       'item_code'          : itemCodeController,
       'warehouse'          : warehouseController,
       'item_group'         : itemGroupController,
+      'customer_code'      : customerCodeController,
       'show_dimension_wise': dimensionWiseController,
       'show_variant_attrs' : variantAttrsController,
     };
@@ -130,6 +138,7 @@ class StockBalanceController extends GetxController {
     itemCodeController.clear();
     warehouseController.clear();
     itemGroupController.clear();
+    customerCodeController.clear();
     dimensionWiseController.clear();
     variantAttrsController.clear();
     final today = _formatDate(DateTime.now());
@@ -162,7 +171,22 @@ class StockBalanceController extends GetxController {
       );
 
       reportColumns.assignAll(result.columns);
-      reportData.assignAll(result.rows);
+
+      // Client-side Customer Code filter (no server-side equivalent exists).
+      final customerCode = customerCodeController.text.trim();
+      if (customerCode.isNotEmpty &&
+          customerCodeColumnKey(result.columns) == null) {
+        GlobalSnackbar.info(
+          title:   'Customer Code',
+          message: 'Customer Code column not available in this report; '
+              'showing all rows.',
+        );
+        reportData.assignAll(result.rows);
+      } else {
+        reportData.assignAll(
+          filterRowsByCustomerCode(result.rows, result.columns, customerCode),
+        );
+      }
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
@@ -180,6 +204,7 @@ class StockBalanceController extends GetxController {
     'item_code'          : 'Item',
     'warehouse'          : 'Warehouse',
     'item_group'         : 'Group',
+    'customer_code'      : 'Customer Code',
     'show_dimension_wise': 'Dimension-wise',
     'show_variant_attrs' : 'Variant Attrs',
   };
@@ -200,4 +225,42 @@ class StockBalanceController extends GetxController {
       '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
+
+  // ── Customer Code filtering (client-side) ────────────────────────────────
+  // The ERPNext Stock Balance report has no server-side customer filter; the
+  // "Customer Code" column is a flattened Item.customer_items.ref_code value.
+  // We mirror the web grid's column filter by narrowing the returned rows.
+
+  /// Returns the row-map key for the report's Customer Code column, or null
+  /// when the report did not return such a column.
+  static String? customerCodeColumnKey(List<Map<String, dynamic>> columns) {
+    for (final col in columns) {
+      final label = (col['label'] ?? '').toString().toLowerCase().trim();
+      if (label == 'customer code') return (col['fieldname'] ?? '').toString();
+    }
+    for (final col in columns) {
+      if ((col['fieldname'] ?? '').toString() == 'customer_code') {
+        return 'customer_code';
+      }
+    }
+    return null;
+  }
+
+  /// Keeps only [rows] whose Customer Code value contains [query]
+  /// (case-insensitive). Returns [rows] unchanged when [query] is blank or the
+  /// report has no Customer Code column.
+  static List<Map<String, dynamic>> filterRowsByCustomerCode(
+    List<Map<String, dynamic>> rows,
+    List<Map<String, dynamic>> columns,
+    String query,
+  ) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return rows;
+    final key = customerCodeColumnKey(columns);
+    if (key == null || key.isEmpty) return rows;
+    return rows.where((r) {
+      final v = r[key];
+      return v != null && v.toString().toLowerCase().trim().contains(q);
+    }).toList();
+  }
 }
