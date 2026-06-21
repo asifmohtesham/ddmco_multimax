@@ -52,4 +52,38 @@ void main() {
       expect(StatusPill.colourForStatus('In Progress').$2, AppColors.gray700);
     });
   });
+
+  group('every status routes to the correct hue (light text = <hue>700)', () {
+    final groups = <Color, List<String>>{
+      AppColors.red700: [
+        'Draft', 'Cancelled', 'Canceled', 'Open', 'Stopped', 'Rejected', 'Expired', 'Overdue',
+      ],
+      AppColors.blue700: [
+        'Submitted', 'Enabled', 'Stock Reserved', 'Material Transferred',
+      ],
+      AppColors.orange700: [
+        'Not Saved', 'Not Started', 'To Bill', 'On Hold', 'Hold', 'In Process',
+        'Work In Progress', 'Pending', 'To Receive and Bill', 'To Receive',
+        'Stock Partially Reserved', 'Material Returned from WIP',
+      ],
+      AppColors.yellow700: [
+        'Partially Billed', 'Partly Billed', 'In Transit', 'Partially Ordered', 'Partially Received',
+      ],
+      AppColors.green700: [
+        'Completed', 'Active', 'Paid', 'Settled', 'Closed', 'Ordered',
+        'Transferred', 'Issued', 'Received', 'Goods Transferred',
+      ],
+      AppColors.gray700: [
+        'In Progress', 'Disabled', 'Passive', 'Return', 'Return Issued',
+        'Goods In Transit', 'To Pay',
+      ],
+    };
+    groups.forEach((expectedText, statuses) {
+      for (final status in statuses) {
+        test('"$status" -> correct hue', () {
+          expect(StatusPill.colourForStatus(status).$2, expectedText);
+        });
+      }
+    });
+  });
 }
