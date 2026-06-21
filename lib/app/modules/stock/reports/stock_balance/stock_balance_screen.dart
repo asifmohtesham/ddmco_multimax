@@ -1544,57 +1544,69 @@ void showItemImagePreview(
 ) {
   showDialog<void>(
     context: context,
-    barrierColor: Colors.black87,
+    barrierColor: Colors.black,
+    useSafeArea: false, // let the preview fill the whole screen
     builder: (ctx) => Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(16),
-      child: Stack(
-        children: [
-          Center(
-            child: InteractiveViewer(
-              minScale: 0.8,
-              maxScale: 4,
-              child: CachedNetworkImage(
-                imageUrl: url,
-                fit: BoxFit.contain,
-                placeholder: (_, __) => const Center(
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2),
-                ),
-                errorWidget: (_, __, ___) => const Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white54,
-                  size: 64,
+      backgroundColor: Colors.black,
+      insetPadding: EdgeInsets.zero,
+      clipBehavior: Clip.hardEdge,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      child: SizedBox.expand(
+        child: Stack(
+          children: [
+            // Full-bleed, zoomable image filling the screen.
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.contain,
+                    placeholder: (_, __) => const Center(
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
+                    ),
+                    errorWidget: (_, __, ___) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white54,
+                      size: 64,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-          // Caption (item code + name).
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 8,
-            child: Text(
-              itemName.isNotEmpty ? '$itemCode · $itemName' : itemCode,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
               ),
             ),
-          ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => Navigator.of(ctx).pop(),
+            // Caption (item code + name).
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Text(
+                    itemName.isNotEmpty ? '$itemCode · $itemName' : itemCode,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );
