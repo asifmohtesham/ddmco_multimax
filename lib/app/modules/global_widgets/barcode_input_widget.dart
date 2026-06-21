@@ -122,7 +122,7 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
     final primaryColor = theme.primaryColor;
 
     final decoration = BoxDecoration(
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       boxShadow: [
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.1),

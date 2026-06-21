@@ -79,6 +79,11 @@ ThemeData buildAppTheme(AppScheme scheme, Brightness brightness) {
     brightness: brightness,
     fontFamily: 'Inter',
     colorScheme: colorScheme,
+    // In dark mode ThemeData defaults primaryColor to colorScheme.surface (a
+    // dark grey), so anything painted with Theme.of(context).primaryColor — the
+    // drawer header, selected nav items — turns invisible against dark surfaces.
+    // Pin it to the brand so it stays maroon (lightened on dark) in both modes.
+    primaryColor: scheme.primary,
     scaffoldBackgroundColor: scheme.bg,
     appBarTheme: AppBarTheme(
       backgroundColor: scheme.primary,
