@@ -99,19 +99,19 @@ class ApiProvider {
   Future<List<String>> resolveItemsByCustomerCode(String code) async {
     final query = code.trim();
     if (query.isEmpty) return <String>[];
+    // List Item (which the user can read) and join-filter on the child table
+    // — querying /api/resource/Item Customer Detail directly returns 403.
     final rows = await getList(
       null,
-      doctype: 'Item Customer Detail',
-      fields:  ['parent'],
-      filters: {
-        'parenttype': 'Item',
-        'ref_code'  : ['like', '%$query%'],
-      },
-      limit:   0, // 0 = no page limit (all matches)
-      orderBy: 'parent asc',
+      doctype:       'Item',
+      fields:        ['name'],
+      filters:       {'ref_code': ['like', '%$query%']},
+      filterDoctype: 'Item Customer Detail',
+      limit:         0, // 0 = no page limit (all matches)
+      orderBy:       'name asc',
     );
     return rows
-        .map((r) => (r['parent'] ?? '').toString())
+        .map((r) => (r['name'] ?? '').toString())
         .where((s) => s.isNotEmpty)
         .toSet()
         .toList();
@@ -385,9 +385,16 @@ class ApiProvider {
     int limit = 20,
     String orderBy = 'modified desc',
     String? groupBy = '',
+    String? filterDoctype,
   }) async {
     final dt = _positional ?? doctype;
     if (dt == null) return [];
+
+    // Frappe supports filtering a parent doctype by a child-table field by
+    // setting the filter's doctype to the CHILD doctype while listing the
+    // parent (a join filter). [filterDoctype] overrides the doctype used in
+    // each filter tuple; it defaults to the listed doctype [dt].
+    final filterDt = filterDoctype ?? dt;
 
     try {
       if (!_dioInitialised) await _initDio();
@@ -401,9 +408,9 @@ class ApiProvider {
           'filters': json.encode(
             filters.entries.map((e) {
               if (e.value is List && (e.value as List).length == 2) {
-                return [dt, e.key, e.value[0], e.value[1]];
+                return [filterDt, e.key, e.value[0], e.value[1]];
               }
-              return [dt, e.key, '=', e.value];
+              return [filterDt, e.key, '=', e.value];
             }).toList(),
           ),
       });
@@ -572,7 +579,7 @@ class ApiProvider {
       getStockBalanceReport({
     required String fromDate,
     required String toDate,
-    List<String>? itemCodes,
+    String? itemCode,
     String? warehouse,
     String? itemGroup,
     bool showDimensionWise     = false,
@@ -587,8 +594,8 @@ class ApiProvider {
       'from_date'           : fromDate,
       'to_date'             : toDate,
       'valuation_field_type': 'Currency',
-      if (itemCodes != null && itemCodes.isNotEmpty)
-        'item_code'         : itemCodes,
+      if (itemCode != null && itemCode.isNotEmpty)
+        'item_code'         : await stockBalanceItemCodeFilter(itemCode),
       if (warehouse != null && warehouse.isNotEmpty)
         'warehouse'         : warehouse,
       if (itemGroup != null && itemGroup.isNotEmpty)

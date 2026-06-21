@@ -161,17 +161,16 @@ class StockBalanceController extends GetxController {
       final itemGroup    = itemGroupController.text.trim();
       final customerCode = customerCodeController.text.trim();
 
-      // Resolve Customer Code → parent item codes (server-side; the report has
-      // no customer filter). Intersect with any typed Item filter.
+      // Resolve Customer Code → parent item codes (the report has no customer
+      // filter). Intersect with any typed Item filter.
       List<String>? customerItemCodes;
       if (customerCode.isNotEmpty) {
         customerItemCodes = await _api.resolveItemsByCustomerCode(customerCode);
       }
-      final itemCodes = resolveItemCodeFilter(itemCode, customerItemCodes);
+      final allowedItems = resolveItemCodeFilter(itemCode, customerItemCodes);
 
-      // An active Customer Code (or Item) filter that matches no items must
-      // yield an empty report rather than the unfiltered result set.
-      if (itemCodes != null && itemCodes.isEmpty) {
+      // No matching items → empty report rather than the unfiltered set.
+      if (allowedItems != null && allowedItems.isEmpty) {
         GlobalSnackbar.info(
           title:   'Customer Code',
           message: 'No items found for the selected filters.',
@@ -179,10 +178,18 @@ class StockBalanceController extends GetxController {
         return;
       }
 
+      // The report's item_code filter is a single SQL value, so only push a
+      // typed Item server-side when no Customer Code is active. When a Customer
+      // Code resolves to one or more items, fetch unfiltered and narrow rows
+      // client-side (mirrors the web report's grid filter).
+      final serverItemCode = customerCode.isEmpty && itemCode.isNotEmpty
+          ? itemCode
+          : null;
+
       final result = await _api.getStockBalanceReport(
         fromDate:              fromDateController.text.trim(),
         toDate:                toDateController.text.trim(),
-        itemCodes:             itemCodes,
+        itemCode:              serverItemCode,
         warehouse:             warehouse.isEmpty ? null : warehouse,
         itemGroup:             itemGroup.isEmpty ? null : itemGroup,
         showDimensionWise:     dimensionWiseController.text == '1',
@@ -190,7 +197,11 @@ class StockBalanceController extends GetxController {
       );
 
       reportColumns.assignAll(result.columns);
-      reportData.assignAll(result.rows);
+      reportData.assignAll(
+        customerCode.isEmpty
+            ? result.rows
+            : filterRowsByItemCodes(result.rows, allowedItems!),
+      );
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
@@ -254,5 +265,22 @@ class StockBalanceController extends GetxController {
     }
     if (typed.isEmpty) return customerItemCodes;
     return customerItemCodes.contains(typed) ? [typed] : <String>[];
+  }
+
+  /// Keeps only [rows] whose `item_code` is in [allowedItemCodes].
+  ///
+  /// The Stock Balance report cannot filter by more than one item server-side
+  /// (item_code is a single SQL value), so when a Customer Code resolves to
+  /// multiple items the report is run unfiltered and the rows are narrowed
+  /// here — mirroring the web report's client-side grid filter.
+  static List<Map<String, dynamic>> filterRowsByItemCodes(
+    List<Map<String, dynamic>> rows,
+    List<String> allowedItemCodes,
+  ) {
+    final allowed = allowedItemCodes.toSet();
+    return rows.where((r) {
+      final code = r['item_code'];
+      return code != null && allowed.contains(code.toString());
+    }).toList();
   }
 }

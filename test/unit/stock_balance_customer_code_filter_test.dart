@@ -55,4 +55,31 @@ void main() {
       );
     });
   });
+
+  group('StockBalanceController.filterRowsByItemCodes', () {
+    final rows = <Map<String, dynamic>>[
+      {'item_code': '2002843', 'balance_qty': 70},
+      {'item_code': '2002844', 'balance_qty': 5},
+      {'item_code': '1000030', 'balance_qty': 1},
+      {'balance_qty': 9}, // row with no item_code
+    ];
+
+    test('keeps only rows whose item_code is in the allowed set', () {
+      final result =
+          StockBalanceController.filterRowsByItemCodes(rows, ['2002843', '2002844']);
+      expect(result.map((r) => r['item_code']), ['2002843', '2002844']);
+    });
+
+    test('returns empty when the allowed set matches no rows', () {
+      final result = StockBalanceController.filterRowsByItemCodes(rows, ['ZZZ']);
+      expect(result, isEmpty);
+    });
+
+    test('drops rows that have no item_code', () {
+      final result =
+          StockBalanceController.filterRowsByItemCodes(rows, ['2002843']);
+      expect(result.length, 1);
+      expect(result.first['item_code'], '2002843');
+    });
+  });
 }
