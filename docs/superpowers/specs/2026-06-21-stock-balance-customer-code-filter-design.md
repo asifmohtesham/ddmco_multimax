@@ -1,7 +1,16 @@
 # Stock Balance — Customer Code Filter
 
 **Date:** 2026-06-21
-**Status:** Approved (design)
+**Status:** Implemented (Approach B)
+
+> **Update (2026-06-21, after on-device smoke test):** Approach A (client-side
+> filter on a returned `customer_code` column) was implemented first and tested
+> on-device. The `frappe.desk.query_report.run` API **does not return** the
+> Customer Code column — it exists only in the saved web *report view* column
+> config — so the fail-open snackbar fired and no filtering occurred. We pivoted
+> to **Approach B (server-side pre-filter on Item)**, described in the
+> "Approach B (implemented)" section below. The original Approach A section is
+> retained for context.
 
 ## Goal
 
@@ -26,7 +35,30 @@ already use in the ERPNext web report grid.
   in each row map. So the value is already available app-side once a report
   runs — no new endpoint is required.
 
-## Approach
+## Approach B (implemented)
+
+Resolve the Customer Code to item codes **server-side**, then drive the
+report's native `item_code` list filter.
+
+1. **`ApiProvider.resolveItemsByCustomerCode(code)`** — queries the
+   `Item Customer Detail` child doctype (`parenttype='Item'`,
+   `ref_code like %code%`), returning the distinct parent item codes.
+2. **`StockBalanceController.resolveItemCodeFilter(typedItem, customerItems)`**
+   — pure helper that combines the typed Item filter with the resolved
+   customer items: returns `null` (no restriction), the item list, or `[]`
+   when the combination matches nothing (intersection of typed item ∩ customer
+   items). Unit-tested in
+   `test/unit/stock_balance_customer_code_filter_test.dart`.
+3. **`getStockBalanceReport`** now takes `List<String>? itemCodes` (replacing
+   the single `itemCode`) and sets `filters['item_code'] = itemCodes`.
+4. **`runReport`** resolves the customer code first; if the resulting item
+   list is empty it short-circuits to an empty report with an info snackbar
+   ("No items found for the selected filters.").
+
+The UI filter field, controller wiring, active-filter chip, and clear logic
+are unchanged from the original plan (see "Filter field" below).
+
+## Approach A (original — superseded)
 
 Pure **client-side view filter** on the rows the report already returns.
 No new API call, no dependency on the Item child fieldname.

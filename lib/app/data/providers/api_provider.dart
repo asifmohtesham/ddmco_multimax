@@ -89,6 +89,33 @@ class ApiProvider {
   Future<dynamic> stockBalanceItemCodeFilter(String itemCode) async {
     return (await _getStockBalanceUsesListFilters()) ? [itemCode] : itemCode;
   }
+
+  /// Resolves a Customer Code to the parent Item codes that carry it.
+  ///
+  /// The Stock Balance report has no customer filter; "Customer Code" lives in
+  /// the Item's `customer_items` child (Item Customer Detail) `ref_code` field.
+  /// Returns the distinct parent item codes whose `ref_code` contains [code]
+  /// (case-insensitive substring, mirroring the web grid's "like" filter).
+  Future<List<String>> resolveItemsByCustomerCode(String code) async {
+    final query = code.trim();
+    if (query.isEmpty) return <String>[];
+    final rows = await getList(
+      null,
+      doctype: 'Item Customer Detail',
+      fields:  ['parent'],
+      filters: {
+        'parenttype': 'Item',
+        'ref_code'  : ['like', '%$query%'],
+      },
+      limit:   0, // 0 = no page limit (all matches)
+      orderBy: 'parent asc',
+    );
+    return rows
+        .map((r) => (r['parent'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+  }
   // ──────────────────────────────────────────────────────────────────────────
 
   ApiProvider() {
@@ -545,7 +572,7 @@ class ApiProvider {
       getStockBalanceReport({
     required String fromDate,
     required String toDate,
-    String? itemCode,
+    List<String>? itemCodes,
     String? warehouse,
     String? itemGroup,
     bool showDimensionWise     = false,
@@ -560,8 +587,8 @@ class ApiProvider {
       'from_date'           : fromDate,
       'to_date'             : toDate,
       'valuation_field_type': 'Currency',
-      if (itemCode  != null && itemCode.isNotEmpty)
-        'item_code'         : await stockBalanceItemCodeFilter(itemCode),
+      if (itemCodes != null && itemCodes.isNotEmpty)
+        'item_code'         : itemCodes,
       if (warehouse != null && warehouse.isNotEmpty)
         'warehouse'         : warehouse,
       if (itemGroup != null && itemGroup.isNotEmpty)
