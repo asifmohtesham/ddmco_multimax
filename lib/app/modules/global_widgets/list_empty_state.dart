@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// Standard empty-state panel for a DocType List View.
 ///
@@ -42,8 +43,7 @@ class ListEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
+    final s = context.scheme;
 
     final icon = hasActiveFilters ? Icons.filter_alt_off_outlined : emptyIcon;
     final title = hasActiveFilters ? filteredTitle : emptyTitle;
@@ -51,27 +51,36 @@ class ListEmptyState extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.s5,
+          vertical: AppSpace.s10,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: cs.outlineVariant),
-            const SizedBox(height: 16),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: s.subtle, shape: BoxShape.circle),
+              child: Icon(icon, size: 26, color: s.textSubtle),
+            ),
+            const SizedBox(height: AppSpace.s3),
             Text(
               title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: cs.onSurface,
-                fontWeight: FontWeight.bold,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: s.text,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.s3),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: cs.onSurfaceVariant),
+              style: TextStyle(fontSize: 14, color: s.textMuted),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpace.s6),
             if (hasActiveFilters)
               FilledButton.tonalIcon(
                 onPressed: onClearFilters,
