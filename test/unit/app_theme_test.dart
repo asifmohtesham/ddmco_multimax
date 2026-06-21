@@ -38,5 +38,15 @@ void main() {
       expect(AppColors.gray50, const Color(0xFFF9FAFA));
       expect(AppColors.gray900, const Color(0xFF1F272E));
     });
+
+    test('status ramp anchors match ds.css', () {
+      expect(AppColors.blue500, const Color(0xFF2490EF));
+      expect(AppColors.green500, const Color(0xFF38A160));
+      expect(AppColors.red500, const Color(0xFFE03636));
+      expect(AppColors.yellow300, const Color(0xFFF3D08C));
+      expect(AppColors.orange500, const Color(0xFFF0851B));
+      expect(AppColors.purple500, const Color(0xFF7C4DFF));
+      expect(AppColors.cyan500, const Color(0xFF1AAFC4));
+    });
   });
 }
