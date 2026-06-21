@@ -95,7 +95,10 @@ ThemeData buildAppTheme(AppScheme scheme, Brightness brightness) {
       labelColor: scheme.primary,
       unselectedLabelColor: scheme.textMuted,
       indicatorColor: scheme.primary,
-      labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+      indicatorSize: TabBarIndicatorSize.tab,
+      dividerColor: scheme.border,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: scheme.secondary,

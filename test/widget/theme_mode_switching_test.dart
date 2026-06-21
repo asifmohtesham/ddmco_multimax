@@ -44,4 +44,15 @@ void main() {
 
     Get.reset();
   });
+
+  testWidgets('tabBarTheme matches ds.css tab spec', (tester) async {
+    final t = buildAppTheme(AppScheme.light, Brightness.light);
+    final tb = t.tabBarTheme;
+    expect(tb.labelColor, AppScheme.light.primary);
+    expect(tb.unselectedLabelColor, AppScheme.light.textMuted);
+    expect(tb.indicatorColor, AppScheme.light.primary);
+    expect(tb.indicatorSize, TabBarIndicatorSize.tab);
+    expect(tb.dividerColor, AppScheme.light.border);
+    expect(tb.labelStyle?.fontWeight, FontWeight.w500);
+  });
 }
