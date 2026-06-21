@@ -35,7 +35,42 @@ already use in the ERPNext web report grid.
   in each row map. So the value is already available app-side once a report
   runs — no new endpoint is required.
 
-## Approach B (implemented)
+## Approach D (final, implemented)
+
+> **Why not B as written:** passing the resolved item codes to the report's
+> `item_code` filter works only on ERPNext **v15.72+**. On older instances
+> (this one is **v15.60.1**) the report inlines `item_code` into raw SQL as a
+> single scalar, so a list yields `ProgrammingError (1064)` / HTTP 500. The
+> report also cannot filter by customer at all.
+
+Final design:
+
+1. **Resolve** the Customer Code → parent item codes
+   (`ApiProvider.resolveItemsByCustomerCode`, querying `Item` with an
+   `Item Customer Detail.ref_code like` child-join filter via `getList`'s new
+   `filterDoctype`).
+2. **`resolveItemCodeFilter(typedItem, customerItems)`** combines the typed
+   Item filter with the resolved set (null = unrestricted, list = restricted,
+   `[]` = no match → empty report).
+3. **Version-aware server filter** in `getStockBalanceReport(List<String>?
+   itemCodes)`: a single item is sent on any version; multiple items are sent
+   as a list only when `_getStockBalanceUsesListFilters()` (v15.72+) is true;
+   otherwise `item_code` is omitted.
+4. **Client-side narrow** in `runReport`: rows are always filtered to the
+   allowed item set via `filterRowsByItemCodes` — the actual filter on
+   ≤ v15.71, a no-op when the server already filtered.
+5. **Customer Code display**: after filtering, the controller fetches the
+   per-item Customer Code via
+   `frappe.desk.query_report.get_data_for_custom_field`
+   (`ApiProvider.getItemCustomerCodes`), attaches it to rows
+   (`attachCustomerCode`), and adds a synthetic `customer_code` column so the
+   existing tile chip rendering shows it.
+
+All pure helpers (`resolveItemCodeFilter`, `filterRowsByItemCodes`,
+`attachCustomerCode`) are unit-tested in
+`test/unit/stock_balance_customer_code_filter_test.dart`.
+
+## Approach B (superseded — list filter unsupported on v15.60.1)
 
 Resolve the Customer Code to item codes **server-side**, then drive the
 report's native `item_code` list filter.

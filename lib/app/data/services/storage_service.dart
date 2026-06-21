@@ -25,6 +25,10 @@ class StorageService {
   // Auto Save Keys
   static const String _autoSaveDelayKey = 'auto_save_delay';
 
+  // Stock Balance view preferences
+  static const String _sbHideEmptyKey  = 'sb_hide_empty';
+  static const String _sbShowImagesKey = 'sb_show_images';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -95,4 +99,17 @@ class StorageService {
 
   int getAutoSaveDelay() =>
       _box.read<int>(_autoSaveDelayKey) ?? 5;
+
+  // --- Stock Balance view preferences ---
+  // Persisted so the "Hide empty" / "Images" toggles survive navigation,
+  // mirroring the web report's view preferences.
+  Future<void> saveSbHideEmpty(bool value) async =>
+      _box.write(_sbHideEmptyKey, value);
+
+  bool getSbHideEmpty() => _box.read<bool>(_sbHideEmptyKey) ?? false;
+
+  Future<void> saveSbShowImages(bool value) async =>
+      _box.write(_sbShowImagesKey, value);
+
+  bool getSbShowImages() => _box.read<bool>(_sbShowImagesKey) ?? true;
 }

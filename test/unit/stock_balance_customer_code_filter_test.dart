@@ -82,4 +82,40 @@ void main() {
       expect(result.first['item_code'], '2002843');
     });
   });
+
+  group('StockBalanceController.attachCustomerCode', () {
+    test('sets customer_code on rows whose item is in the map', () {
+      final rows = [
+        {'item_code': '2002843'},
+        {'item_code': '2002844'},
+      ];
+      final result = StockBalanceController.attachCustomerCode(
+        rows,
+        {'2002843': '5067101', '2002844': '5067101'},
+      );
+      expect(result[0]['customer_code'], '5067101');
+      expect(result[1]['customer_code'], '5067101');
+    });
+
+    test('leaves customer_code absent when the item is not in the map', () {
+      final rows = [
+        {'item_code': '2002843'},
+        {'item_code': '9999999'},
+      ];
+      final result = StockBalanceController.attachCustomerCode(
+        rows,
+        {'2002843': '5067101'},
+      );
+      expect(result[0]['customer_code'], '5067101');
+      expect(result[1].containsKey('customer_code'), isFalse);
+    });
+
+    test('returns rows unchanged when the map is empty', () {
+      final rows = [
+        {'item_code': '2002843'},
+      ];
+      final result = StockBalanceController.attachCustomerCode(rows, const {});
+      expect(result.first.containsKey('customer_code'), isFalse);
+    });
+  });
 }

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class StockBalanceController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
+  final StorageService _storage = Get.find<StorageService>();
 
   // ── Filter controllers ───────────────────────────────────────────────────
   final fromDateController      = TextEditingController();
@@ -24,6 +26,17 @@ class StockBalanceController extends GetxController {
   final reportData    = <Map<String, dynamic>>[].obs;
   final reportColumns = <Map<String, dynamic>>[].obs;
   final activeFilters = <String, String>{}.obs;
+
+  // ── View preferences (persisted) ─────────────────────────────────────────
+  // Client-side toggles over the already-loaded rows — they never re-query.
+  final hideEmpty  = false.obs; // exclude rows where balance == 0
+  final showImages = true.obs;  // show the leading item thumbnail
+
+  // ── Quick filters (client-side, distinct from the report-options sheet) ───
+  final quickSearch    = ''.obs;    // matches item_code OR item_name
+  final quickWarehouse = 'ALL'.obs; // distinct warehouse value, or 'ALL'
+  final quickState     = 'ALL'.obs; // ALL | instock | neg | empty
+  final quickSort      = 'bal'.obs; // bal (asc) | val (desc) | move | code
 
   // ── Filter field descriptors (passed to ReportFilterSheet) ───────────────
   List<ReportFilterField> get filterFields => [
@@ -111,6 +124,9 @@ class StockBalanceController extends GetxController {
     final today = _formatDate(DateTime.now());
     fromDateController.text = today;
     toDateController.text   = today;
+    // Restore persisted view preferences.
+    hideEmpty.value  = _storage.getSbHideEmpty();
+    showImages.value = _storage.getSbShowImages();
     _rebuildActiveFilters();
   }
 
@@ -154,6 +170,9 @@ class StockBalanceController extends GetxController {
     isLoading.value = true;
     reportData.clear();
     reportColumns.clear();
+    // A fresh result set may have a different warehouse list, so drop the
+    // client-side view filters (the persisted toggles are kept).
+    _resetQuickView();
 
     try {
       final itemCode     = itemCodeController.text.trim();
@@ -178,18 +197,15 @@ class StockBalanceController extends GetxController {
         return;
       }
 
-      // The report's item_code filter is a single SQL value, so only push a
-      // typed Item server-side when no Customer Code is active. When a Customer
-      // Code resolves to one or more items, fetch unfiltered and narrow rows
-      // client-side (mirrors the web report's grid filter).
-      final serverItemCode = customerCode.isEmpty && itemCode.isNotEmpty
-          ? itemCode
-          : null;
-
+      // getStockBalanceReport pushes the item restriction server-side when the
+      // instance supports it (single item on any version, multi item on
+      // v15.72+). On older versions a multi-item restriction can't be sent, so
+      // we always narrow rows client-side below — a no-op when the server
+      // already filtered (mirrors the web report's grid filter).
       final result = await _api.getStockBalanceReport(
         fromDate:              fromDateController.text.trim(),
         toDate:                toDateController.text.trim(),
-        itemCode:              serverItemCode,
+        itemCodes:             allowedItems,
         warehouse:             warehouse.isEmpty ? null : warehouse,
         itemGroup:             itemGroup.isEmpty ? null : itemGroup,
         showDimensionWise:     dimensionWiseController.text == '1',
@@ -197,11 +213,37 @@ class StockBalanceController extends GetxController {
       );
 
       reportColumns.assignAll(result.columns);
-      reportData.assignAll(
-        customerCode.isEmpty
-            ? result.rows
-            : filterRowsByItemCodes(result.rows, allowedItems!),
-      );
+
+      final rows = allowedItems == null
+          ? result.rows
+          : filterRowsByItemCodes(result.rows, allowedItems);
+
+      // Surface the Customer Code (omitted by the report response) on each
+      // tile by fetching it for the displayed items and adding a column.
+      final viewItemCodes = rows
+          .map((r) => (r['item_code'] ?? '').toString())
+          .where((s) => s.isNotEmpty)
+          .toSet()
+          .toList();
+      final ccMap = viewItemCodes.isEmpty
+          ? const <String, String>{}
+          : await _api.getItemCustomerCodes(viewItemCodes);
+      if (ccMap.isNotEmpty &&
+          !reportColumns.any((c) => c['fieldname'] == 'customer_code')) {
+        reportColumns.add(
+          {'fieldname': 'customer_code', 'label': 'Customer Code'},
+        );
+      }
+
+      // Surface the item image (also omitted by the report) as an absolute URL
+      // on each row, mirroring the customer-code enrichment above.
+      final imgMap = viewItemCodes.isEmpty
+          ? const <String, String>{}
+          : await _api.getItemImages(viewItemCodes);
+
+      var enriched = attachCustomerCode(rows, ccMap);
+      enriched = attachItemImages(enriched, imgMap, _api.baseUrl);
+      reportData.assignAll(enriched);
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
@@ -210,6 +252,99 @@ class StockBalanceController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  // ── Quick filters (client-side view over the loaded rows) ────────────────
+
+  void setQuickSearch(String v)      => quickSearch.value = v.trim();
+  void setQuickWarehouse(String v)   => quickWarehouse.value = v;
+  void setQuickSort(String v)        => quickSort.value = v;
+  void setQuickState(String v)       => quickState.value = v;
+
+  /// The summary strip's negative chip toggles the Negative segment.
+  void toggleNegativeFilter() =>
+      quickState.value = quickState.value == 'neg' ? 'ALL' : 'neg';
+
+  void toggleHideEmpty() {
+    hideEmpty.toggle();
+    _storage.saveSbHideEmpty(hideEmpty.value);
+  }
+
+  void toggleShowImages() {
+    showImages.toggle();
+    _storage.saveSbShowImages(showImages.value);
+  }
+
+  /// Resets the client-side view filters (not the persisted toggles, not sort).
+  void clearQuickFilters() {
+    quickSearch.value    = '';
+    quickWarehouse.value = 'ALL';
+    quickState.value     = 'ALL';
+    if (hideEmpty.value) toggleHideEmpty();
+  }
+
+  void _resetQuickView() {
+    quickSearch.value    = '';
+    quickWarehouse.value = 'ALL';
+    quickState.value     = 'ALL';
+  }
+
+  /// Distinct warehouses present in the loaded rows (for the warehouse facet).
+  List<String> get distinctWarehouses {
+    final set = <String>{};
+    for (final r in reportData) {
+      final w = (r['warehouse'] ?? '').toString().trim();
+      if (w.isNotEmpty) set.add(w);
+    }
+    return set.toList()..sort();
+  }
+
+  /// Number of loaded rows whose balance is below zero (full set, not filtered).
+  int get negativeCount =>
+      reportData.where((r) => _rowNum(r, ['bal_qty', 'balance_qty']) < 0).length;
+
+  /// The rows actually shown: search + warehouse + state + hideEmpty, sorted.
+  List<Map<String, dynamic>> get visibleRows => filterAndSortRows(
+        reportData,
+        search: quickSearch.value,
+        warehouse: quickWarehouse.value,
+        state: quickState.value,
+        hideEmpty: hideEmpty.value,
+        sort: quickSort.value,
+      );
+
+  // ── Drill-downs (tap-to-navigate bottom sheets) ──────────────────────────
+
+  /// Stock Ledger entries for a tile's item + warehouse over the report period.
+  Future<List<Map<String, dynamic>>> fetchStockLedger(
+    String itemCode,
+    String warehouse,
+  ) =>
+      _api.getStockLedgerEntries(
+        itemCode: itemCode,
+        warehouse: warehouse,
+        fromDate: fromDateController.text.trim(),
+        toDate: toDateController.text.trim(),
+      );
+
+  /// Sales-Order reservations behind a tile's reserved figure.
+  Future<List<Map<String, dynamic>>> fetchReservations(
+    String itemCode,
+    String warehouse,
+  ) =>
+      _api.getStockReservations(itemCode: itemCode, warehouse: warehouse);
+
+  /// Loaded rows mapped to [customerCode] — client-side, no query.
+  List<Map<String, dynamic>> itemsForCustomer(String customerCode) =>
+      reportData
+          .where((r) => (r['customer_code'] ?? '').toString() == customerCode)
+          .toList();
+
+  /// Re-runs the report restricted to [customerCode] (drives the customer
+  /// sheet's "Filter report to this customer" action through the server filter).
+  void applyCustomerFilter(String customerCode) {
+    customerCodeController.text = customerCode;
+    runReport();
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -282,5 +417,124 @@ class StockBalanceController extends GetxController {
       final code = r['item_code'];
       return code != null && allowed.contains(code.toString());
     }).toList();
+  }
+
+  /// Returns copies of [rows] with a `customer_code` entry set from [ccMap]
+  /// (keyed by item code). Rows whose item is absent from the map are left
+  /// without a customer_code. Used to surface the Customer Code — which the
+  /// report response omits — on each result tile.
+  static List<Map<String, dynamic>> attachCustomerCode(
+    List<Map<String, dynamic>> rows,
+    Map<String, String> ccMap,
+  ) {
+    if (ccMap.isEmpty) return rows;
+    return rows.map((r) {
+      final code = (r['item_code'] ?? '').toString();
+      final cc   = ccMap[code];
+      if (cc == null || cc.isEmpty) return r;
+      return {...r, 'customer_code': cc};
+    }).toList();
+  }
+
+  /// Returns copies of [rows] with an absolute `item_image` URL set from
+  /// [imgMap] (keyed by item code). Relative frappe paths (e.g. "/files/x.jpg")
+  /// are prefixed with [baseUrl]; absolute URLs are kept as-is. Rows whose item
+  /// has no image are left untouched.
+  static List<Map<String, dynamic>> attachItemImages(
+    List<Map<String, dynamic>> rows,
+    Map<String, String> imgMap,
+    String baseUrl,
+  ) {
+    if (imgMap.isEmpty) return rows;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    return rows.map((r) {
+      final code = (r['item_code'] ?? '').toString();
+      final img  = imgMap[code];
+      if (img == null || img.isEmpty) return r;
+      final url = img.startsWith('http') ? img : '$base$img';
+      return {...r, 'item_image': url};
+    }).toList();
+  }
+
+  /// Reads the first numeric value among [keys] from [row] (0 when absent).
+  static double _rowNum(Map<String, dynamic> row, List<String> keys) {
+    for (final k in keys) {
+      final v = row[k];
+      if (v == null) continue;
+      if (v is num) return v.toDouble();
+      final parsed = double.tryParse(v.toString().trim());
+      if (parsed != null) return parsed;
+    }
+    return 0.0;
+  }
+
+  /// Applies the client-side quick filters and sort to [rows] and returns a new
+  /// list. Pure (no controller state) so it can be unit-tested directly.
+  ///
+  /// - [search]    — case-insensitive substring of item_code OR item_name.
+  /// - [warehouse] — exact warehouse, or 'ALL' for no warehouse restriction.
+  /// - [state]     — 'ALL' | 'instock' (bal>0) | 'neg' (bal<0) | 'empty' (bal==0).
+  /// - [hideEmpty] — drops rows whose balance is exactly zero.
+  /// - [sort]      — 'bal' (asc, surfaces negatives) | 'val' (desc) |
+  ///                 'move' (|in|+|out| desc) | 'code' (asc).
+  static List<Map<String, dynamic>> filterAndSortRows(
+    List<Map<String, dynamic>> rows, {
+    String search = '',
+    String warehouse = 'ALL',
+    String state = 'ALL',
+    bool hideEmpty = false,
+    String sort = 'bal',
+  }) {
+    final q = search.trim().toLowerCase();
+    final out = rows.where((r) {
+      if (warehouse != 'ALL' &&
+          (r['warehouse'] ?? '').toString() != warehouse) {
+        return false;
+      }
+      if (q.isNotEmpty) {
+        final code = (r['item_code'] ?? '').toString().toLowerCase();
+        final name = (r['item_name'] ?? '').toString().toLowerCase();
+        if (!code.contains(q) && !name.contains(q)) return false;
+      }
+      final bal = _rowNum(r, ['bal_qty', 'balance_qty']);
+      switch (state) {
+        case 'instock':
+          if (!(bal > 0)) return false;
+          break;
+        case 'neg':
+          if (!(bal < 0)) return false;
+          break;
+        case 'empty':
+          if (bal != 0) return false;
+          break;
+      }
+      if (hideEmpty && bal == 0) return false;
+      return true;
+    }).toList();
+
+    int cmp(Map<String, dynamic> a, Map<String, dynamic> b) {
+      switch (sort) {
+        case 'val':
+          return _rowNum(b, ['bal_val', 'balance_value', 'balance_val'])
+              .compareTo(_rowNum(a, ['bal_val', 'balance_value', 'balance_val']));
+        case 'move':
+          final am = _rowNum(a, ['in_qty']).abs() + _rowNum(a, ['out_qty']).abs();
+          final bm = _rowNum(b, ['in_qty']).abs() + _rowNum(b, ['out_qty']).abs();
+          return bm.compareTo(am);
+        case 'code':
+          return (a['item_code'] ?? '')
+              .toString()
+              .compareTo((b['item_code'] ?? '').toString());
+        case 'bal':
+        default:
+          return _rowNum(a, ['bal_qty', 'balance_qty'])
+              .compareTo(_rowNum(b, ['bal_qty', 'balance_qty']));
+      }
+    }
+
+    out.sort(cmp);
+    return out;
   }
 }
