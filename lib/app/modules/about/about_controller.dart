@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode, kProfileMode;
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -33,6 +34,11 @@ class AboutController extends GetxController {
   // Dynamic System Status
   final RxList<SystemIntegration> systemStatus = <SystemIntegration>[].obs;
   final RxBool isCheckingHealth = true.obs;
+
+  /// No build-flavor metadata exists; derive a coarse channel from build mode.
+  /// Phase-1 placeholder (see spec) — not a real release-channel field.
+  String get channel =>
+      kReleaseMode ? 'Stable' : (kProfileMode ? 'Profile' : 'Debug');
 
   @override
   void onInit() {
