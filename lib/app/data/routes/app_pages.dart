@@ -62,6 +62,8 @@ import 'package:multimax/app/modules/material_request/material_request_binding.d
 import 'package:multimax/app/modules/material_request/material_request_screen.dart';
 import 'package:multimax/app/modules/about/about_binding.dart';
 import 'package:multimax/app/modules/about/about_screen.dart';
+import 'package:multimax/app/modules/theme/theme_screen.dart';
+import 'package:multimax/app/modules/theme/theme_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_screen.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
@@ -249,6 +251,12 @@ class AppPages {
       name: AppRoutes.ABOUT,
       page: () => const AboutScreen(),
       binding: AboutBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.THEME,
+      page: () => const ThemeScreen(),
+      binding: ThemeBinding(),
+      transition: Transition.rightToLeft,
     ),
     GetPage(
       name: AppRoutes.BATCH_WISE_BALANCE,

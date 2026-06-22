@@ -30,6 +30,9 @@ abstract class AppRoutes {
   static const MATERIAL_REQUEST      = _Paths.MATERIAL_REQUEST;
   static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
   static const ABOUT                 = '/about';
+  static const USER_AREA             = _Paths.USER_AREA;
+  static const THEME                 = _Paths.THEME;
+  static const SESSION_DEFAULTS      = _Paths.SESSION_DEFAULTS;
   static const BATCH_WISE_BALANCE    = _Paths.BATCH_WISE_BALANCE;
   static const JOB_CARD_SUMMARY      = _Paths.JOB_CARD_SUMMARY;
   static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
@@ -38,6 +41,9 @@ abstract class AppRoutes {
 
 abstract class _Paths {
   static const PROFILE               = '/profile';
+  static const USER_AREA             = '/user-area';
+  static const THEME                 = '/theme';
+  static const SESSION_DEFAULTS      = '/session-defaults';
   static const PURCHASE_RECEIPT      = '/purchase-receipt';
   static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
   static const PURCHASE_ORDER        = '/purchase-order';
