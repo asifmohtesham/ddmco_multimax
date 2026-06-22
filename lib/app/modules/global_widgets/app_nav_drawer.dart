@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
@@ -69,82 +70,87 @@ class AppNavDrawer extends StatelessWidget {
         backgroundColor: s.fg,
         child: Column(
           children: [
-            // ── User header ──────────────────────────────────────────────────────────────
+            // ── Account card → User Area ───────────────────────────────────
             Obx(() {
-              final user   = authController.currentUser.value;
-              final letter = (user?.name.isNotEmpty == true)
-                  ? user!.name[0].toUpperCase()
-                  : 'G';
+              final user = authController.currentUser.value;
+              final name = user?.name ?? 'Guest';
+              final initials = name.isNotEmpty ? name[0].toUpperCase() : 'G';
+              final hasImage = user?.image?.isNotEmpty == true;
+              final sub = (user?.designation?.isNotEmpty == true)
+                  ? user!.designation!
+                  : (user?.email ?? 'Not logged in');
 
-              final parts = [
-                if (user?.designation?.isNotEmpty == true) user!.designation!,
-                if (user?.department?.isNotEmpty  == true) user!.department!,
-              ];
-              final subtitle = parts.isNotEmpty
-                  ? parts.join(' · ')
-                  : user?.email ?? 'Not logged in';
-
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  Get.toNamed(AppRoutes.USER_AREA);
-                },
-                child: UserAccountsDrawerHeader(
-                margin: EdgeInsets.zero,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor,
-                ),
-                accountName: Text(
-                  user?.name ?? 'Guest',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-                // AFTER — add employeeId row
-                accountEmail: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      user?.email ?? 'Not logged in',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                    if (parts.isNotEmpty)
-                      Text(
-                        subtitle,
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                child: Material(
+                  color: s.fg,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Get.toNamed(AppRoutes.USER_AREA);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: s.border),
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
                       ),
-                    if (user?.employeeId?.isNotEmpty == true)
-                      Text(
-                        'Employee: ${user!.employeeId}',
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
-                      ),
-                  ],
-                ),
-                currentAccountPicture: CircleAvatar(
-                  backgroundColor: Colors.white,
-                  backgroundImage: (user?.image?.isNotEmpty == true)
-                      ? NetworkImage(user!.image!)
-                      : null,
-                  child: (user?.image?.isNotEmpty == true)
-                      ? null
-                      : Text(
-                          letter,
-                          style: TextStyle(
-                            fontSize: 32.0,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).primaryColor,
+                      child: Row(
+                        children: [
+                          AppAvatar(
+                            size: 52,
+                            initials: initials,
+                            image: hasImage ? NetworkImage(user!.image!) : null,
                           ),
-                        ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: s.text),
+                                ),
+                                Text(
+                                  sub,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      TextStyle(fontSize: 12, color: s.textSubtle),
+                                ),
+                                const SizedBox(height: 3),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('Account & settings',
+                                        style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: s.primary)),
+                                    const SizedBox(width: 3),
+                                    Icon(Icons.chevron_right,
+                                        size: 13, color: s.primary),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                onDetailsPressed: () {
-                  Navigator.of(context).pop();
-                  Get.toNamed(AppRoutes.USER_AREA);
-                },
-                arrowColor: Colors.white,
-              ),
               );
             }),
+            Divider(height: 1, color: s.border, indent: 16, endIndent: 16),
 
             // ── Scrollable menu ────────────────────────────────────────────────────────
             Expanded(
@@ -704,15 +710,9 @@ class _DrawerItem extends StatelessWidget {
             curve: Curves.easeInOut,
             decoration: BoxDecoration(
               color: isSelected
-                  ? primaryColor.withValues(alpha: 0.08)
+                  ? primaryColor.withValues(alpha: 0.10)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
-              border: Border(
-                left: BorderSide(
-                  color: isSelected ? primaryColor : Colors.transparent,
-                  width: 3,
-                ),
-              ),
             ),
             child: ListTile(
               dense: true,
