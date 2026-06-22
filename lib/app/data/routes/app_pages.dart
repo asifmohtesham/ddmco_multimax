@@ -66,6 +66,8 @@ import 'package:multimax/app/modules/theme/theme_screen.dart';
 import 'package:multimax/app/modules/theme/theme_binding.dart';
 import 'package:multimax/app/modules/session_defaults/session_defaults_screen.dart';
 import 'package:multimax/app/modules/session_defaults/session_defaults_binding.dart';
+import 'package:multimax/app/modules/user_area/user_area_screen.dart';
+import 'package:multimax/app/modules/user_area/user_area_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_screen.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
@@ -93,6 +95,12 @@ class AppPages {
       name: AppRoutes.PROFILE,
       page: () => const UserProfileScreen(),
       binding: UserProfileBinding(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
+      name: AppRoutes.USER_AREA,
+      page: () => const UserAreaScreen(),
+      binding: UserAreaBinding(),
       transition: Transition.rightToLeft,
     ),
     GetPage(
