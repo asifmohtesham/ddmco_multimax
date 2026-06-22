@@ -83,4 +83,66 @@ void main() {
       expect(c.themeMode.value, ThemeMode.system);
     });
   });
+
+  group('accent + text size', () {
+    test('defaults: brand accent, comfortable text size', () {
+      final c = ThemeController();
+      expect(c.accentKey.value, 'brand');
+      expect(c.textSize.value, AppTextSize.comfortable);
+    });
+
+    test('setAccent updates Rx and persists the key', () async {
+      final saved = <String, String>{};
+      final c = ThemeController(
+        persist: (k, v) async => saved[k] = v,
+        restore: (_) async => null,
+      );
+
+      await c.setAccent('blue');
+      expect(c.accentKey.value, 'blue');
+      expect(saved[ThemeController.accentStorageKey], 'blue');
+
+      // Unknown keys fall back to brand.
+      await c.setAccent('chartreuse');
+      expect(c.accentKey.value, 'brand');
+    });
+
+    test('setTextSize updates Rx and persists the name', () async {
+      final saved = <String, String>{};
+      final c = ThemeController(
+        persist: (k, v) async => saved[k] = v,
+        restore: (_) async => null,
+      );
+
+      await c.setTextSize(AppTextSize.large);
+      expect(c.textSize.value, AppTextSize.large);
+      expect(saved[ThemeController.textSizeStorageKey], 'large');
+    });
+
+    test('loadPersisted restores accent + text size', () async {
+      final store = {
+        ThemeController.storageKey: 'dark',
+        ThemeController.accentStorageKey: 'cyan',
+        ThemeController.textSizeStorageKey: 'compact',
+      };
+      final c = ThemeController(
+        persist: (_, __) async {},
+        restore: (k) async => store[k],
+      );
+
+      await c.loadPersisted();
+
+      expect(c.themeMode.value, ThemeMode.dark);
+      expect(c.accentKey.value, 'cyan');
+      expect(c.textSize.value, AppTextSize.compact);
+    });
+
+    test('textSizeFromName maps names and falls back to comfortable', () {
+      expect(ThemeController.textSizeFromName('compact'), AppTextSize.compact);
+      expect(ThemeController.textSizeFromName('large'), AppTextSize.large);
+      expect(ThemeController.textSizeFromName(null), AppTextSize.comfortable);
+      expect(
+          ThemeController.textSizeFromName('xl'), AppTextSize.comfortable);
+    });
+  });
 }

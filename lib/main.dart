@@ -59,12 +59,21 @@ Future<void> main() async {
 
 /// Builds a [ThemeData] from a semantic [AppScheme]. Used for both the light
 /// and dark themes so the two can never drift. Keeps the maroon brand primary.
-ThemeData buildAppTheme(AppScheme scheme, Brightness brightness) {
+ThemeData buildAppTheme(
+  AppScheme scheme,
+  Brightness brightness, {
+  AppAccent accent = AppAccent.brand,
+}) {
+  // The accent supplies the primary; the brand maroon is the default. All
+  // neutrals/surfaces still come from [scheme].
+  final primary = accent.primaryFor(brightness);
+  final onPrimary = accent.onPrimaryFor(brightness);
+
   final colorScheme = ColorScheme.fromSeed(
-    seedColor: scheme.primary,
+    seedColor: primary,
     brightness: brightness,
-    primary: scheme.primary,
-    onPrimary: scheme.onPrimary,
+    primary: primary,
+    onPrimary: onPrimary,
     secondary: scheme.secondary,
     onSecondary: brightness == Brightness.dark
         ? _kDarkOnSecondary
@@ -83,18 +92,18 @@ ThemeData buildAppTheme(AppScheme scheme, Brightness brightness) {
     // dark grey), so anything painted with Theme.of(context).primaryColor — the
     // drawer header, selected nav items — turns invisible against dark surfaces.
     // Pin it to the brand so it stays maroon (lightened on dark) in both modes.
-    primaryColor: scheme.primary,
+    primaryColor: primary,
     scaffoldBackgroundColor: scheme.bg,
     appBarTheme: AppBarTheme(
-      backgroundColor: scheme.primary,
-      foregroundColor: scheme.onPrimary,
+      backgroundColor: primary,
+      foregroundColor: onPrimary,
       centerTitle: false,
       elevation: 0,
     ),
     tabBarTheme: TabBarThemeData(
-      labelColor: scheme.primary,
+      labelColor: primary,
       unselectedLabelColor: scheme.textMuted,
-      indicatorColor: scheme.primary,
+      indicatorColor: primary,
       indicatorSize: TabBarIndicatorSize.tab,
       dividerColor: scheme.border,
       labelStyle: const TextStyle(fontWeight: FontWeight.w500),
@@ -134,21 +143,21 @@ ThemeData buildAppTheme(AppScheme scheme, Brightness brightness) {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.md),
-        borderSide: BorderSide(color: scheme.primary, width: 2),
+        borderSide: BorderSide(color: primary, width: 2),
       ),
       labelStyle: TextStyle(color: scheme.textMuted),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: scheme.primary,
-        foregroundColor: scheme.onPrimary,
+        backgroundColor: primary,
+        foregroundColor: onPrimary,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.md)),
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: scheme.primary),
+      style: TextButton.styleFrom(foregroundColor: primary),
     ),
     visualDensity: VisualDensity.adaptivePlatformDensity,
     textTheme: TextTheme(
@@ -171,23 +180,34 @@ class MultimaxApp extends StatelessWidget {
         : Get.put(ThemeController());
 
     // Source of truth for the active theme is this Obx binding on
-    // themeController.themeMode; ThemeController also calls
+    // themeController's themeMode/accentKey/textSize; ThemeController also calls
     // Get.changeThemeMode so GetX-internal consumers stay in sync.
-    return Obx(() => GetMaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'KA-ML Fulfillment',
-          initialRoute: initialRoute,
-          getPages: AppPages.routes,
-          theme: buildAppTheme(AppScheme.light, Brightness.light),
-          darkTheme: buildAppTheme(AppScheme.dark, Brightness.dark),
-          themeMode: themeController.themeMode.value,
-          defaultTransition: Transition.fadeIn,
-          routingCallback: (routing) {
-            if (routing?.current != null &&
-                Get.isRegistered<HomeController>()) {
-              Get.find<HomeController>().updateActiveScreen(routing!.current);
-            }
-          },
-        ));
+    return Obx(() {
+      final accent = AppAccent.byKey(themeController.accentKey.value);
+      final textFactor = themeController.textSize.value.factor;
+      return GetMaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'KA-ML Fulfillment',
+        initialRoute: initialRoute,
+        getPages: AppPages.routes,
+        theme: buildAppTheme(AppScheme.light, Brightness.light, accent: accent),
+        darkTheme: buildAppTheme(AppScheme.dark, Brightness.dark, accent: accent),
+        themeMode: themeController.themeMode.value,
+        defaultTransition: Transition.fadeIn,
+        builder: (context, child) {
+          final mq = MediaQuery.of(context);
+          return MediaQuery(
+            data: mq.copyWith(textScaler: TextScaler.linear(textFactor)),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+        routingCallback: (routing) {
+          if (routing?.current != null &&
+              Get.isRegistered<HomeController>()) {
+            Get.find<HomeController>().updateActiveScreen(routing!.current);
+          }
+        },
+      );
+    });
   }
 }

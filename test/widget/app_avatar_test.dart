@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
+import 'package:multimax/main.dart';
 
-Widget _host(Widget child, {Brightness b = Brightness.light}) =>
-    MaterialApp(theme: ThemeData(brightness: b), home: Scaffold(body: Center(child: child)));
+// Pump under the real app theme so context.scheme.primary resolves to the
+// brand maroon (the default accent), as it does in the running app.
+Widget _host(Widget child, {Brightness b = Brightness.light}) => MaterialApp(
+    theme: buildAppTheme(AppScheme.of(b), b),
+    home: Scaffold(body: Center(child: child)));
 
 void main() {
   testWidgets('shows initials in primary over a primary-tinted bg', (tester) async {

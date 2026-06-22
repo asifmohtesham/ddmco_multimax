@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/main.dart';
 
+// Pump under the real app theme so context.scheme.primary resolves to the
+// brand maroon (the default accent), as it does in the running app.
 Widget _host({required Brightness brightness, required Widget child}) {
   return MaterialApp(
-    theme: ThemeData(brightness: brightness),
+    theme: buildAppTheme(AppScheme.of(brightness), brightness),
     home: Scaffold(body: Center(child: child)),
   );
 }

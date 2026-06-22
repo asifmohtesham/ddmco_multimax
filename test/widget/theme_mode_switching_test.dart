@@ -18,6 +18,17 @@ void main() {
     expect(dark.colorScheme.primary, const Color(0xFFD9707C));
   });
 
+  testWidgets('buildAppTheme honours a non-brand accent', (tester) async {
+    final blue = buildAppTheme(AppScheme.light, Brightness.light,
+        accent: AppAccent.blue);
+    expect(blue.colorScheme.primary, AppColors.blue500);
+    expect(blue.primaryColor, AppColors.blue500);
+
+    // Default (no accent arg) stays on the maroon brand.
+    final brand = buildAppTheme(AppScheme.light, Brightness.light);
+    expect(brand.colorScheme.primary, const Color(0xFF870E18));
+  });
+
   testWidgets(
       'MultimaxApp.build wraps GetMaterialApp in an Obx (reactive themeMode wiring)',
       (tester) async {

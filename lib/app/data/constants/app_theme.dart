@@ -103,6 +103,127 @@ class AppScheme {
 
   static AppScheme of(Brightness brightness) =>
       brightness == Brightness.dark ? dark : light;
+
+  AppScheme copyWith({
+    Color? bg,
+    Color? fg,
+    Color? subtle,
+    Color? text,
+    Color? textMuted,
+    Color? textSubtle,
+    Color? border,
+    Color? borderStrong,
+    Color? primary,
+    Color? onPrimary,
+    Color? secondary,
+  }) =>
+      AppScheme(
+        bg: bg ?? this.bg,
+        fg: fg ?? this.fg,
+        subtle: subtle ?? this.subtle,
+        text: text ?? this.text,
+        textMuted: textMuted ?? this.textMuted,
+        textSubtle: textSubtle ?? this.textSubtle,
+        border: border ?? this.border,
+        borderStrong: borderStrong ?? this.borderStrong,
+        primary: primary ?? this.primary,
+        onPrimary: onPrimary ?? this.onPrimary,
+        secondary: secondary ?? this.secondary,
+      );
+}
+
+/// A user-selectable primary accent. The brand maroon is the default; the
+/// other options are drawn from the [AppColors] status ramps (x500 in light,
+/// the lighter x300 in dark) so every choice still reads as in-system.
+/// Neutrals/surfaces never change — only the primary + onPrimary do.
+class AppAccent {
+  final String key;
+  final String name;
+  final Color lightPrimary;
+  final Color lightOnPrimary;
+  final Color darkPrimary;
+  final Color darkOnPrimary;
+
+  const AppAccent({
+    required this.key,
+    required this.name,
+    required this.lightPrimary,
+    required this.lightOnPrimary,
+    required this.darkPrimary,
+    required this.darkOnPrimary,
+  });
+
+  Color primaryFor(Brightness b) =>
+      b == Brightness.dark ? darkPrimary : lightPrimary;
+  Color onPrimaryFor(Brightness b) =>
+      b == Brightness.dark ? darkOnPrimary : lightOnPrimary;
+
+  // Near-black text sits on the light pastel (x300) dark-mode fills.
+  static const Color _darkOn = Color(0xFF15191D);
+  static const Color _white = Color(0xFFFFFFFF);
+
+  /// Brand maroon — default. Values match [AppScheme.light]/[AppScheme.dark].
+  static const brand = AppAccent(
+    key: 'brand',
+    name: 'Maroon',
+    lightPrimary: Color(0xFF870E18),
+    lightOnPrimary: _white,
+    darkPrimary: Color(0xFFD9707C),
+    darkOnPrimary: Color(0xFF2A0509),
+  );
+  static const blue = AppAccent(
+    key: 'blue',
+    name: 'Blue',
+    lightPrimary: AppColors.blue500,
+    lightOnPrimary: _white,
+    darkPrimary: AppColors.blue300,
+    darkOnPrimary: _darkOn,
+  );
+  static const green = AppAccent(
+    key: 'green',
+    name: 'Green',
+    lightPrimary: AppColors.green500,
+    lightOnPrimary: _white,
+    darkPrimary: AppColors.green300,
+    darkOnPrimary: _darkOn,
+  );
+  static const purple = AppAccent(
+    key: 'purple',
+    name: 'Purple',
+    lightPrimary: AppColors.purple500,
+    lightOnPrimary: _white,
+    darkPrimary: AppColors.purple300,
+    darkOnPrimary: _darkOn,
+  );
+  static const orange = AppAccent(
+    key: 'orange',
+    name: 'Orange',
+    lightPrimary: AppColors.orange500,
+    lightOnPrimary: _white,
+    darkPrimary: AppColors.orange300,
+    darkOnPrimary: _darkOn,
+  );
+  static const cyan = AppAccent(
+    key: 'cyan',
+    name: 'Cyan',
+    lightPrimary: AppColors.cyan500,
+    lightOnPrimary: _white,
+    darkPrimary: AppColors.cyan300,
+    darkOnPrimary: _darkOn,
+  );
+
+  static const List<AppAccent> all = [
+    brand,
+    blue,
+    green,
+    purple,
+    orange,
+    cyan,
+  ];
+
+  /// Resolve a stored key to an accent; unknown keys fall back to [brand].
+  static AppAccent byKey(String? key) =>
+      all.firstWhere((a) => a.key == key, orElse: () => brand);
 }
 
 class AppRadius {
@@ -115,7 +236,17 @@ class AppSpace {
   static const double s1 = 4, s2 = 8, s3 = 12, s4 = 16, s5 = 20, s6 = 24, s8 = 32, s10 = 40;
 }
 
-/// `context.scheme` → the active [AppScheme] for the current brightness.
+/// `context.scheme` → the active [AppScheme] for the current brightness, with
+/// its `primary`/`onPrimary` sourced from the live [ThemeData] so a
+/// user-selected [AppAccent] flows to everything that reads `context.scheme`.
+/// Neutrals/surfaces come from the const per-brightness scheme.
 extension AppSchemeX on BuildContext {
-  AppScheme get scheme => AppScheme.of(Theme.of(this).brightness);
+  AppScheme get scheme {
+    final theme = Theme.of(this);
+    final base = AppScheme.of(theme.brightness);
+    return base.copyWith(
+      primary: theme.colorScheme.primary,
+      onPrimary: theme.colorScheme.onPrimary,
+    );
+  }
 }

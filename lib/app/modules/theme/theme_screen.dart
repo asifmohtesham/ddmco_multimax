@@ -44,8 +44,113 @@ class ThemeScreen extends StatelessWidget {
                         icon: Icons.brightness_auto_outlined),
                   ],
                 )),
+            const SizedBox(height: AppSpace.s4),
+            const SectionLabel(text: 'Accent color'),
+            Obx(() => _AccentGrid(
+                  selected: tc.accentKey.value,
+                  onPick: tc.setAccent,
+                )),
+            const SizedBox(height: AppSpace.s4),
+            const SectionLabel(text: 'Text size'),
+            Obx(() => SettingsSegmented<AppTextSize>(
+                  value: tc.textSize.value,
+                  onChanged: tc.setTextSize,
+                  options: const [
+                    SegmentOption(
+                        value: AppTextSize.compact, label: 'Compact'),
+                    SegmentOption(
+                        value: AppTextSize.comfortable, label: 'Comfortable'),
+                    SegmentOption(value: AppTextSize.large, label: 'Large'),
+                  ],
+                )),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Accent swatch grid (the design's `.ua-accents`). Brand maroon first; the
+/// selected swatch gets a ring + check. Swatch fill is the accent's primary
+/// for the current brightness.
+class _AccentGrid extends StatelessWidget {
+  final String selected;
+  final ValueChanged<String> onPick;
+  const _AccentGrid({required this.selected, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    final brightness = Theme.of(context).brightness;
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.s3),
+      decoration: BoxDecoration(
+        color: s.fg,
+        border: Border.all(color: s.border),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          for (final a in AppAccent.all)
+            GestureDetector(
+              key: Key('accent-${a.key}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onPick(a.key),
+              child: _Swatch(
+                accent: a,
+                selected: a.key == selected,
+                brightness: brightness,
+                ringColor: s.border,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Swatch extends StatelessWidget {
+  final AppAccent accent;
+  final bool selected;
+  final Brightness brightness;
+  final Color ringColor;
+  const _Swatch({
+    required this.accent,
+    required this.selected,
+    required this.brightness,
+    required this.ringColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = accent.primaryFor(brightness);
+    final onFill = accent.onPrimaryFor(brightness);
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (selected)
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: fill, width: 2),
+              ),
+            ),
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+            child: selected
+                ? Icon(Icons.check, size: 18, color: onFill)
+                : null,
+          ),
+        ],
       ),
     );
   }
