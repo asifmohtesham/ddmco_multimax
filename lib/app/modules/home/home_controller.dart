@@ -20,7 +20,6 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
@@ -116,7 +115,7 @@ class HomeController extends GetxController {
   }
 
   void openSessionDefaults() {
-    Get.bottomSheet(const SessionDefaultsBottomSheet(), isScrollControlled: true);
+    Get.toNamed(AppRoutes.SESSION_DEFAULTS);
   }
 
   Future<void> _initDashboard() async {

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
-import 'package:multimax/app/modules/home/home_controller.dart';
-import 'package:multimax/app/modules/theme/theme_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
@@ -38,10 +36,7 @@ List<String> _extractRoutes(List<Widget> widgets) {
 // ---------------------------------------------------------------------------
 
 class AppNavDrawerController extends GetxController {
-  final isUserMenuOpen  = false.obs;
   final expandedGroups  = <String, bool>{}.obs;
-
-  void toggleUserMenu() => isUserMenuOpen.toggle();
 
   bool isGroupExpanded(String title, {required bool defaultValue}) =>
       expandedGroups[title] ?? defaultValue;
@@ -59,7 +54,6 @@ class AppNavDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final homeController   = Get.find<HomeController>();
     final authController   = Get.find<AuthenticationController>();
     final drawerController = Get.isRegistered<AppNavDrawerController>()
         ? Get.find<AppNavDrawerController>()
@@ -90,7 +84,13 @@ class AppNavDrawer extends StatelessWidget {
                   ? parts.join(' · ')
                   : user?.email ?? 'Not logged in';
 
-              return UserAccountsDrawerHeader(
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Get.toNamed(AppRoutes.USER_AREA);
+                },
+                child: UserAccountsDrawerHeader(
                 margin: EdgeInsets.zero,
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
@@ -137,87 +137,18 @@ class AppNavDrawer extends StatelessWidget {
                           ),
                         ),
                 ),
-                onDetailsPressed: drawerController.toggleUserMenu,
+                onDetailsPressed: () {
+                  Navigator.of(context).pop();
+                  Get.toNamed(AppRoutes.USER_AREA);
+                },
                 arrowColor: Colors.white,
+              ),
               );
             }),
 
             // ── Scrollable menu ────────────────────────────────────────────────────────
             Expanded(
-              child: Obx(() {
-                if (drawerController.isUserMenuOpen.value) {
-                  // ---- USER MENU ----
-                  final userMenuItems = <Widget>[
-                    _DrawerItem(
-                      icon: Icons.person_outline_rounded,
-                      title: 'My Profile',
-                      route: AppRoutes.PROFILE,
-                      currentRoute: currentRoute,
-                    ),
-                    _DrawerItem(
-                      icon: Icons.settings,
-                      title: 'Session Defaults',
-                      route: '',
-                      currentRoute: currentRoute,
-                      onTap: (ctx) {
-                        Navigator.of(ctx).pop();
-                        homeController.openSessionDefaults();
-                      },
-                    ),
-                    _DrawerItem(
-                      icon: Icons.info_outline,
-                      title: 'About',
-                      route: AppRoutes.ABOUT,
-                      currentRoute: currentRoute,
-                    ),
-                    Obx(() {
-                      final tc = Get.isRegistered<ThemeController>()
-                          ? Get.find<ThemeController>()
-                          : Get.put(ThemeController());
-                      final mode = tc.themeMode.value;
-                      final (icon, label) = switch (mode) {
-                        ThemeMode.system => (Icons.brightness_auto_outlined, 'Theme: System'),
-                        ThemeMode.light => (Icons.light_mode_outlined, 'Theme: Light'),
-                        ThemeMode.dark => (Icons.dark_mode_outlined, 'Theme: Dark'),
-                      };
-                      return _DrawerItem(
-                        icon: icon,
-                        title: label,
-                        route: '',
-                        currentRoute: currentRoute,
-                        onTap: (_) => tc.cycleThemeMode(),
-                      );
-                    }),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      child: Divider(height: 1),
-                    ),
-                    Builder(builder: (ctx) {
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 8),
-                        leading: Icon(Icons.logout_rounded,
-                            color: Colors.red.shade400, size: 22),
-                        title: Text('Logout',
-                            style: TextStyle(
-                                color: Colors.red.shade600,
-                                fontWeight: FontWeight.w600)),
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.of(ctx).pop();
-                          Get.find<AuthenticationController>().logoutUser();
-                        },
-                      );
-                    }),
-                  ];
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 12.0),
-                    itemCount: userMenuItems.length,
-                    itemBuilder: (_, i) => userMenuItems[i],
-                  );
-                }
-
+              child: Builder(builder: (context) {
                 // ---- MAIN MODULE MENU ----
                 final moduleMenuItems = <Widget>[
                   _DrawerItem(
@@ -735,14 +666,11 @@ class _DrawerItem extends StatelessWidget {
   final String   route;
   final String   currentRoute;
 
-  final void Function(BuildContext ctx)? onTap;
-
   const _DrawerItem({
     required this.title,
     required this.icon,
     required this.route,
     required this.currentRoute,
-    this.onTap,
   });
 
   void _defaultTap(BuildContext ctx) {
@@ -767,7 +695,7 @@ class _DrawerItem extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => (onTap ?? _defaultTap)(context),
+          onTap: () => _defaultTap(context),
           borderRadius: BorderRadius.circular(16),
           splashColor:    primaryColor.withValues(alpha: 0.1),
           highlightColor: primaryColor.withValues(alpha: 0.05),
