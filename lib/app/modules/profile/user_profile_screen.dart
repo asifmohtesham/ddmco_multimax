@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/profile/user_profile_controller.dart';
-import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class UserProfileScreen extends GetView<UserProfileController> {
   const UserProfileScreen({super.key});
@@ -110,6 +109,14 @@ class UserProfileScreen extends GetView<UserProfileController> {
                               : null,
                           icon: Icons.business_outlined,
                         ),
+                        if (user.employeeId?.isNotEmpty == true) ...[
+                          const Divider(height: 24),
+                          _buildInfoRow(
+                            'Employee ID',
+                            user.employeeId,
+                            icon: Icons.badge_outlined,
+                          ),
+                        ],
                         const Divider(height: 24),
                         _buildEditableRow(
                           context,
@@ -130,14 +137,16 @@ class UserProfileScreen extends GetView<UserProfileController> {
 
                 // ── Assigned Roles ─────────────────────────────────────────
                 if (user.roles.isNotEmpty) ...[
-                  _buildSectionTitle('Assigned Roles'),
+                  _buildSectionTitle('Roles · ${user.roles.length}'),
                   const SizedBox(height: 12),
                   _buildRoleChips(context, user.roles),
                   const SizedBox(height: 32),
                 ],
 
-                // ── Account Settings ───────────────────────────────────────
-                _buildSectionTitle('Account Settings'),
+                // ── Security ───────────────────────────────────────────────
+                // Logout intentionally lives only in the Account hub now
+                // (single, confirmed exit point).
+                _buildSectionTitle('Security'),
                 const SizedBox(height: 12),
                 Card(
                   elevation: 0,
@@ -146,42 +155,13 @@ class UserProfileScreen extends GetView<UserProfileController> {
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(color: Colors.grey.shade200),
                   ),
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.lock_outline,
-                            color: Colors.blueGrey),
-                        title: const Text('Change Password'),
-                        trailing: const Icon(Icons.chevron_right,
-                            color: Colors.grey),
-                        onTap: () => _showChangePasswordSheet(context),
-                      ),
-                      Divider(
-                          height: 1,
-                          indent: 16,
-                          endIndent: 16,
-                          color: Colors.grey.shade200),
-                      // Logout — confirmation required
-                      ListTile(
-                        leading:
-                            const Icon(Icons.logout, color: Colors.red),
-                        title: const Text('Logout',
-                            style: TextStyle(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w500)),
-                        trailing: const Icon(Icons.chevron_right,
-                            color: Colors.red),
-                        onTap: () => GlobalDialog.showConfirmation(
-                          title: 'Log Out?',
-                          message:
-                              'Are you sure you want to log out of your account?',
-                          confirmText: 'Log Out',
-                          confirmColor: Colors.red,
-                          icon: Icons.logout,
-                          onConfirm: controller.logout,
-                        ),
-                      ),
-                    ],
+                  child: ListTile(
+                    leading: const Icon(Icons.lock_outline,
+                        color: Colors.blueGrey),
+                    title: const Text('Change Password'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: Colors.grey),
+                    onTap: () => _showChangePasswordSheet(context),
                   ),
                 ),
 
