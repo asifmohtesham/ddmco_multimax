@@ -782,8 +782,13 @@ class PurchaseReceiptFormController extends GetxController
         if (chosen == null) {
           AppNotification.error(
               'Could not link ${it.itemCode} to a valid Purchase Order Item.');
+          _setSaveResult(SaveResult.error);
           return true; // handled (surfaced message); do not re-save
         }
+        // Re-link the reference only; qty is intentionally left as entered.
+        // If the chosen line lacks remaining qty, ERPNext enforces its own
+        // over-receipt tolerance on the re-save (surfaces as the generic
+        // error — the one-shot guard prevents another recovery pass).
         items[i] = it.copyWith(
           purchaseOrderItem: chosen.item.name,
           purchaseOrder: chosen.poName,
