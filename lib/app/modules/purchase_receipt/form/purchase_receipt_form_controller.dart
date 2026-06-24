@@ -82,6 +82,9 @@ class PurchaseReceiptFormController extends GetxController
   final List<Map<String, dynamic>> _cachedPoItems = [];
   var poItemQuantities = <String, double>{}.obs;
 
+  /// Re-entrancy guard so the 417 PO-link recovery re-save runs at most once.
+  bool _poLinkRecoveryAttempted = false;
+
   // ── EAN context for doc-level scan routing ────────────────────────────
   String currentScannedEan = '';
 
@@ -705,6 +708,8 @@ class PurchaseReceiptFormController extends GetxController
     } on DioException catch (e) {
       if (handleVersionConflict(e)) {
         // handled by OptimisticLockingMixin
+      } else if (await _maybeRecoverInvalidPoRef(e)) {
+        // 417 invalid PO ref handled: re-linked + re-saved, or surfaced.
       } else {
         _setSaveResult(SaveResult.error);
         String msg = 'Save failed';
@@ -723,6 +728,74 @@ class PurchaseReceiptFormController extends GetxController
       AppNotification.error('Save failed: $e');
     } finally {
       isSaving.value = false;
+    }
+  }
+
+  /// Reactive safety net for the 417 "Invalid reference Purchase Order Item"
+  /// failure (design Section 4). Re-fetches the linked PO(s) fresh, re-links
+  /// the offending items via the resolver, then re-saves ONCE. Returns true
+  /// when the failure was a PO-ref problem this method handled (re-saved or
+  /// surfaced its own message), false to let the caller show the generic error.
+  Future<bool> _maybeRecoverInvalidPoRef(DioException e) async {
+    if (_poLinkRecoveryAttempted) return false;
+    if (e.response?.statusCode != 417) return false;
+    final data = e.response?.data;
+    final exc = (data is Map ? data['exception']?.toString() : null) ?? '';
+    final badRefs = parseInvalidPoItemRefs(exc);
+    if (badRefs.isEmpty) return false;
+
+    _poLinkRecoveryAttempted = true;
+    isSaving.value = false; // release the save lock before re-entrant save
+
+    try {
+      // Re-fetch linked POs fresh to drop stale child-row names.
+      final poNames = purchaseReceipt.value?.items
+              .map((i) => i.purchaseOrder)
+              .whereType<String>()
+              .where((n) => n.isNotEmpty)
+              .toSet()
+              .toList() ??
+          <String>[];
+      await _fetchLinkedPurchaseOrders(poNames);
+
+      final items = purchaseReceipt.value?.items.toList() ?? [];
+      for (var i = 0; i < items.length; i++) {
+        final it = items[i];
+        if (it.purchaseOrderItem == null ||
+            !badRefs.contains(it.purchaseOrderItem)) {
+          continue;
+        }
+        final result =
+            resolvePoLink(it.itemCode, allowOverReceipt: false);
+        PoLinkCandidate? chosen;
+        switch (result.outcome) {
+          case PoLinkOutcome.autoLinked:
+            chosen = result.linked;
+          case PoLinkOutcome.needsPicker:
+          case PoLinkOutcome.blocked:
+            chosen = await showPoLinkPicker(
+              itemCode: it.itemCode,
+              candidates: result.allForItem,
+              initialAllowOverReceipt: false,
+            );
+        }
+        if (chosen == null) {
+          AppNotification.error(
+              'Could not link ${it.itemCode} to a valid Purchase Order Item.');
+          return true; // handled (surfaced message); do not re-save
+        }
+        items[i] = it.copyWith(
+          purchaseOrderItem: chosen.item.name,
+          purchaseOrder: chosen.poName,
+          purchaseOrderQty: chosen.item.qty,
+        );
+      }
+      _rebuildReceipt(items);
+
+      await saveDocument(); // single re-save
+      return true;
+    } finally {
+      _poLinkRecoveryAttempted = false;
     }
   }
 
