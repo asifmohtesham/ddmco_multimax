@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
