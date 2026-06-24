@@ -309,23 +309,41 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── PO linking ─────────────────────────────────────────────────────────────
 
+  /// Resolves a valid PO Item row for [itemCode] against the cached PO rows.
+  PoLinkResult resolvePoLink(String itemCode,
+      {required bool allowOverReceipt}) {
+    final cands = _cachedPoItems
+        .map((d) =>
+            PoLinkCandidate(d['poName'] as String, d['item'] as PurchaseOrderItem))
+        .toList();
+    return resolvePoLinkFor(cands, itemCode,
+        allowOverReceipt: allowOverReceipt);
+  }
+
+  /// Writes a resolved PO row onto the item-sheet controller.
+  void applyPoLink(
+      PurchaseReceiptItemFormController child, PoLinkCandidate c) {
+    child.poItemId.value = c.item.name ?? '';
+    child.poDocName.value = c.poName;
+    child.poQty.value = c.item.qty;
+    child.poRate.value = c.item.rate;
+  }
+
+  /// Best-effort PO link used when the sheet opens, so the PO Qty chip and
+  /// progress bar populate. Final authority is the submit-time resolve in
+  /// PurchaseReceiptItemFormController.submit(). Never links a closed row
+  /// here (toggle defaults off); blocked items are simply left unlinked.
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
-    var match = _cachedPoItems.firstWhereOrNull((d) {
-      final PurchaseOrderItem item = d['item'];
-      return item.itemCode == itemCode && item.receivedQty < item.qty;
-    });
-    match ??= _cachedPoItems.firstWhereOrNull((d) {
-      final PurchaseOrderItem item = d['item'];
-      return item.itemCode == itemCode;
-    });
-
-    if (match != null) {
-      final PurchaseOrderItem item = match['item'];
-      child.poItemId.value  = item.name  ?? '';
-      child.poDocName.value = match['poName'];
-      child.poQty.value     = item.qty;
-      child.poRate.value    = item.rate;
+    final result =
+        resolvePoLink(itemCode, allowOverReceipt: child.allowOverReceipt.value);
+    switch (result.outcome) {
+      case PoLinkOutcome.autoLinked:
+        applyPoLink(child, result.linked!);
+      case PoLinkOutcome.needsPicker:
+        applyPoLink(child, result.candidates.first);
+      case PoLinkOutcome.blocked:
+        break;
     }
   }
 
