@@ -552,6 +552,18 @@ class PurchaseReceiptFormController extends GetxController
               editMode:    true,
               balanceOverride: () => null,
             ),
+            Obx(() => SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Allow Over-Receipt'),
+                  subtitle: const Text(
+                      'Receive above ordered qty / against closed PO lines'),
+                  value: child.allowOverReceipt.value,
+                  onChanged: (v) {
+                    child.allowOverReceipt.value = v;
+                    child.validateSheet();
+                  },
+                )),
           ],
         ),
       ),
