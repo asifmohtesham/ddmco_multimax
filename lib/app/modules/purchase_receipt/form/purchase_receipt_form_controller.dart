@@ -26,6 +26,8 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'purchase_receipt_item_form_controller.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/po_link_resolver.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_po_link_sheet.dart';
 
 class PurchaseReceiptFormController extends GetxController
     with OptimisticLockingMixin, RealtimeSyncMixin {
@@ -325,6 +327,22 @@ class PurchaseReceiptFormController extends GetxController
       child.poQty.value     = item.qty;
       child.poRate.value    = item.rate;
     }
+  }
+
+  /// Opens the link picker and returns the chosen PO row (null if dismissed).
+  Future<PoLinkCandidate?> showPoLinkPicker({
+    required String itemCode,
+    required List<PoLinkCandidate> candidates,
+    required bool initialAllowOverReceipt,
+  }) {
+    return Get.bottomSheet<PoLinkCandidate>(
+      PurchaseReceiptPoLinkSheet(
+        itemCode: itemCode,
+        candidates: candidates,
+        initialAllowOverReceipt: initialAllowOverReceipt,
+      ),
+      isScrollControlled: true,
+    );
   }
 
   double getOrderedQty(String? poItemName) {
