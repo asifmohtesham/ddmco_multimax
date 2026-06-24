@@ -1,1 +1,1 @@
-• Fixed a bug where the quantity field accepted only a single digit when a Bluetooth HID scanner (e.g. Netum C750) was connected. You can now type multi-digit quantities normally.
+• Purchase Receipt: fixed a save error ("Invalid reference Purchase Order Item") that could occur when a scanned item's Purchase Order link was out of date. The app now links each received item to the correct open PO line automatically, asks you to choose when more than one open line matches, and clearly tells you when a line is already fully received — instead of failing the whole save.
