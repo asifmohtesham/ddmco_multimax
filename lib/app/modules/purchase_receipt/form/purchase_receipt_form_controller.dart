@@ -311,15 +311,14 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── PO linking ─────────────────────────────────────────────────────────────
 
-  /// Resolves a valid PO Item row for [itemCode] against the cached PO rows.
-  PoLinkResult resolvePoLink(String itemCode,
-      {required bool allowOverReceipt}) {
+  /// Resolves a valid, open PO Item row for [itemCode] against the cached
+  /// PO rows.
+  PoLinkResult resolvePoLink(String itemCode) {
     final cands = _cachedPoItems
         .map((d) =>
             PoLinkCandidate(d['poName'] as String, d['item'] as PurchaseOrderItem))
         .toList();
-    return resolvePoLinkFor(cands, itemCode,
-        allowOverReceipt: allowOverReceipt);
+    return resolvePoLinkFor(cands, itemCode);
   }
 
   /// Writes a resolved PO row onto the item-sheet controller.
@@ -333,12 +332,11 @@ class PurchaseReceiptFormController extends GetxController
 
   /// Best-effort PO link used when the sheet opens, so the PO Qty chip and
   /// progress bar populate. Final authority is the submit-time resolve in
-  /// PurchaseReceiptItemFormController.submit(). Never links a closed row
-  /// here (toggle defaults off); blocked items are simply left unlinked.
+  /// PurchaseReceiptItemFormController.submit(). Only ever links an open row;
+  /// blocked items are simply left unlinked.
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
-    final result =
-        resolvePoLink(itemCode, allowOverReceipt: child.allowOverReceipt.value);
+    final result = resolvePoLink(itemCode);
     switch (result.outcome) {
       case PoLinkOutcome.autoLinked:
         applyPoLink(child, result.linked!);
@@ -353,13 +351,11 @@ class PurchaseReceiptFormController extends GetxController
   Future<PoLinkCandidate?> showPoLinkPicker({
     required String itemCode,
     required List<PoLinkCandidate> candidates,
-    required bool initialAllowOverReceipt,
   }) {
     return Get.bottomSheet<PoLinkCandidate>(
       PurchaseReceiptPoLinkSheet(
         itemCode: itemCode,
         candidates: candidates,
-        initialAllowOverReceipt: initialAllowOverReceipt,
       ),
       isScrollControlled: true,
     );
@@ -555,18 +551,6 @@ class PurchaseReceiptFormController extends GetxController
               editMode:    true,
               balanceOverride: () => null,
             ),
-            Obx(() => SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('Allow Over-Receipt'),
-                  subtitle: const Text(
-                      'Receive above ordered qty / against closed PO lines'),
-                  value: child.allowOverReceipt.value,
-                  onChanged: (v) {
-                    child.allowOverReceipt.value = v;
-                    child.validateSheet();
-                  },
-                )),
           ],
         ),
       ),
@@ -765,30 +749,32 @@ class PurchaseReceiptFormController extends GetxController
             !badRefs.contains(it.purchaseOrderItem)) {
           continue;
         }
-        final result =
-            resolvePoLink(it.itemCode, allowOverReceipt: false);
+        final result = resolvePoLink(it.itemCode);
         PoLinkCandidate? chosen;
         switch (result.outcome) {
           case PoLinkOutcome.autoLinked:
             chosen = result.linked;
           case PoLinkOutcome.needsPicker:
-          case PoLinkOutcome.blocked:
             chosen = await showPoLinkPicker(
               itemCode: it.itemCode,
-              candidates: result.allForItem,
-              initialAllowOverReceipt: false,
+              candidates: result.candidates,
             );
+          case PoLinkOutcome.blocked:
+            // No open PO line to re-link to (e.g. fully received). Surface the
+            // reason and stop — never over-receive to "fix" a stale reference.
+            AppNotification.error(result.reason!);
+            _setSaveResult(SaveResult.error);
+            return true; // handled; do not re-save
         }
         if (chosen == null) {
           AppNotification.error(
               'Could not link ${it.itemCode} to a valid Purchase Order Item.');
           _setSaveResult(SaveResult.error);
-          return true; // handled (surfaced message); do not re-save
+          return true; // user dismissed picker; do not re-save
         }
-        // Re-link the reference only; qty is intentionally left as entered.
-        // If the chosen line lacks remaining qty, ERPNext enforces its own
-        // over-receipt tolerance on the re-save (surfaces as the generic
-        // error — the one-shot guard prevents another recovery pass).
+        // Re-link to a valid OPEN PO line; qty stays as entered (capped at
+        // ordered at entry time). The reference is now valid; ERPNext still
+        // enforces its own qty/tolerance rules on the re-save.
         items[i] = it.copyWith(
           purchaseOrderItem: chosen.item.name,
           purchaseOrder: chosen.poName,

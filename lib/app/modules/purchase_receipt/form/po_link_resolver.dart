@@ -19,11 +19,8 @@ class PoLinkResult {
   /// Set for [PoLinkOutcome.autoLinked].
   final PoLinkCandidate? linked;
 
-  /// Eligible rows for [PoLinkOutcome.needsPicker].
+  /// The open rows to choose from for [PoLinkOutcome.needsPicker].
   final List<PoLinkCandidate> candidates;
-
-  /// Every cached row for the item_code (open + closed) — what the picker shows.
-  final List<PoLinkCandidate> allForItem;
 
   /// Human-readable reason for [PoLinkOutcome.blocked].
   final String? reason;
@@ -32,67 +29,59 @@ class PoLinkResult {
     required this.outcome,
     this.linked,
     this.candidates = const [],
-    this.allForItem = const [],
     this.reason,
   });
 
-  factory PoLinkResult.autoLinked(
-          PoLinkCandidate row, List<PoLinkCandidate> all) =>
-      PoLinkResult._(
-          outcome: PoLinkOutcome.autoLinked, linked: row, allForItem: all);
+  factory PoLinkResult.autoLinked(PoLinkCandidate row) =>
+      PoLinkResult._(outcome: PoLinkOutcome.autoLinked, linked: row);
 
-  factory PoLinkResult.needsPicker(
-          List<PoLinkCandidate> eligible, List<PoLinkCandidate> all) =>
+  factory PoLinkResult.needsPicker(List<PoLinkCandidate> openRows) =>
       PoLinkResult._(
-          outcome: PoLinkOutcome.needsPicker,
-          candidates: eligible,
-          allForItem: all);
+          outcome: PoLinkOutcome.needsPicker, candidates: openRows);
 
-  factory PoLinkResult.blocked(String reason, List<PoLinkCandidate> all) =>
-      PoLinkResult._(
-          outcome: PoLinkOutcome.blocked, reason: reason, allForItem: all);
+  factory PoLinkResult.blocked(String reason) =>
+      PoLinkResult._(outcome: PoLinkOutcome.blocked, reason: reason);
 }
 
 /// Resolves which cached Purchase Order row an item should link to.
 ///
-/// Rules (design 2026-06-24, Section 1):
+/// Open-rows-only by design (no over-receipt). Receiving above ordered, or
+/// against a fully-received line, is a policy decision ERPNext owns via its
+/// `over_delivery_receipt_allowance` tolerance — the app never facilitates it.
+///
+/// Rules:
 ///   - Candidates = cached rows with matching item_code.
-///   - Open candidates have received_qty < qty.
-///   - Closed rows (received_qty >= qty) are eligible only when
-///     [allowOverReceipt] is true.
-///   - 1 eligible -> autoLinked; >=2 -> needsPicker; 0 -> blocked.
+///   - Eligible = OPEN candidates only (received_qty < qty).
+///   - 1 open -> autoLinked; >=2 open -> needsPicker; 0 open -> blocked.
 PoLinkResult resolvePoLinkFor(
   List<PoLinkCandidate> cached,
-  String itemCode, {
-  required bool allowOverReceipt,
-}) {
+  String itemCode,
+) {
   final all = cached.where((c) => c.item.itemCode == itemCode).toList();
   if (all.isEmpty) {
     return PoLinkResult.blocked(
       'No Purchase Order line for $itemCode on any linked Purchase Order.',
-      all,
     );
   }
 
   final open = all.where((c) => c.isOpen).toList();
-  final eligible = allowOverReceipt ? all : open;
 
-  if (eligible.isEmpty) {
+  if (open.isEmpty) {
     return PoLinkResult.blocked(
       'No open Purchase Order line for $itemCode on ${all.first.poName} — '
-      'enable Allow Over-Receipt to receive against a closed line.',
-      all,
+      'the line is fully received. Resolve on the Purchase Order before '
+      'receiving.',
     );
   }
-  if (eligible.length == 1) {
-    return PoLinkResult.autoLinked(eligible.first, all);
+  if (open.length == 1) {
+    return PoLinkResult.autoLinked(open.first);
   }
-  return PoLinkResult.needsPicker(eligible, all);
+  return PoLinkResult.needsPicker(open);
 }
 
-/// Qty ceiling for the qty field. Over-receipt lifts the PO cap entirely.
-double poQtyCeiling(double? poQty, {required bool allowOverReceipt}) {
-  if (allowOverReceipt) return double.infinity;
+/// Qty ceiling for the qty field: the PO ordered qty, or no ceiling when the
+/// item carries no PO qty. Qty above ordered is never permitted in-app.
+double poQtyCeiling(double? poQty) {
   if (poQty != null && poQty > 0) return poQty;
   return double.infinity;
 }

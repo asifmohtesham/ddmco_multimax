@@ -1,31 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/po_link_resolver.dart';
 
-/// Bottom sheet that lets the operator link a Purchase Receipt item to a valid
-/// Purchase Order Item row. Open rows are always selectable; fully-received
-/// rows are revealed only when the Allow Over-Receipt switch is on.
+/// Bottom sheet that lets the operator link a Purchase Receipt item to a valid,
+/// OPEN Purchase Order Item row when more than one open line matches. Fully
+/// received lines are never offered — the app does not over-receive.
 ///
 /// Pops the chosen [PoLinkCandidate] (or null when dismissed).
-class PurchaseReceiptPoLinkSheet extends StatefulWidget {
+class PurchaseReceiptPoLinkSheet extends StatelessWidget {
   final String itemCode;
   final List<PoLinkCandidate> candidates;
-  final bool initialAllowOverReceipt;
 
   const PurchaseReceiptPoLinkSheet({
     super.key,
     required this.itemCode,
     required this.candidates,
-    required this.initialAllowOverReceipt,
   });
-
-  @override
-  State<PurchaseReceiptPoLinkSheet> createState() =>
-      _PurchaseReceiptPoLinkSheetState();
-}
-
-class _PurchaseReceiptPoLinkSheetState
-    extends State<PurchaseReceiptPoLinkSheet> {
-  late bool _allowOverReceipt = widget.initialAllowOverReceipt;
 
   String _fmt(double v) =>
       v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
@@ -34,11 +23,6 @@ class _PurchaseReceiptPoLinkSheetState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-
-    final hasClosed = widget.candidates.any((c) => !c.isOpen);
-    final shown = _allowOverReceipt
-        ? widget.candidates
-        : widget.candidates.where((c) => c.isOpen).toList();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
@@ -75,7 +59,7 @@ class _PurchaseReceiptPoLinkSheetState
                   children: [
                     Expanded(
                       child: Text(
-                        'Link ${widget.itemCode} to a PO line',
+                        'Link $itemCode to an open PO line',
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                           color: cs.onSurface,
@@ -93,21 +77,9 @@ class _PurchaseReceiptPoLinkSheetState
                   ],
                 ),
               ),
-              if (hasClosed)
-                SwitchListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 20),
-                  dense: true,
-                  title: const Text('Allow Over-Receipt'),
-                  subtitle:
-                      const Text('Show fully-received PO lines'),
-                  value: _allowOverReceipt,
-                  onChanged: (v) =>
-                      setState(() => _allowOverReceipt = v),
-                ),
               Divider(height: 1, color: cs.outlineVariant),
               Expanded(
-                child: shown.isEmpty
+                child: candidates.isEmpty
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(32.0),
@@ -119,23 +91,11 @@ class _PurchaseReceiptPoLinkSheetState
                               const SizedBox(height: 16),
                               Text(
                                 'No open Purchase Order line',
-                                style: theme.textTheme.titleMedium
-                                    ?.copyWith(
+                                style: theme.textTheme.titleMedium?.copyWith(
                                   color: cs.onSurface,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              if (hasClosed) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Enable Allow Over-Receipt to receive '
-                                  'against a closed line.',
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodyMedium
-                                      ?.copyWith(
-                                          color: cs.onSurfaceVariant),
-                                ),
-                              ],
                             ],
                           ),
                         ),
@@ -146,7 +106,7 @@ class _PurchaseReceiptPoLinkSheetState
                           bottom:
                               MediaQuery.of(context).padding.bottom + 16,
                         ),
-                        itemCount: shown.length,
+                        itemCount: candidates.length,
                         separatorBuilder: (_, __) => Divider(
                           height: 1,
                           indent: 20,
@@ -154,27 +114,18 @@ class _PurchaseReceiptPoLinkSheetState
                           color: cs.outlineVariant.withValues(alpha: 0.5),
                         ),
                         itemBuilder: (context, index) {
-                          final c = shown[index];
-                          final remaining =
-                              (c.item.qty - c.item.receivedQty)
-                                  .clamp(0, double.infinity)
-                                  .toDouble();
+                          final c = candidates[index];
+                          final remaining = (c.item.qty - c.item.receivedQty)
+                              .clamp(0, double.infinity)
+                              .toDouble();
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 20, vertical: 4),
                             leading: CircleAvatar(
-                              backgroundColor: c.isOpen
-                                  ? cs.primaryContainer
-                                  : cs.surfaceContainerHighest,
-                              foregroundColor: c.isOpen
-                                  ? cs.onPrimaryContainer
-                                  : cs.onSurfaceVariant,
-                              child: Icon(
-                                c.isOpen
-                                    ? Icons.inventory_2_outlined
-                                    : Icons.check_circle_outline,
-                                size: 20,
-                              ),
+                              backgroundColor: cs.primaryContainer,
+                              foregroundColor: cs.onPrimaryContainer,
+                              child: const Icon(Icons.inventory_2_outlined,
+                                  size: 20),
                             ),
                             title: Text(
                               '${c.poName} • ${c.item.name}',

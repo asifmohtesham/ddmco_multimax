@@ -19,31 +19,58 @@ PoLinkCandidate _cand(String name,
       ),
     );
 
-Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
+// Hosts the sheet behind a button so we can capture the popped result,
+// mirroring how showPoLinkPicker awaits Get.bottomSheet's return value.
+Widget _host(List<PoLinkCandidate> candidates,
+        void Function(PoLinkCandidate?) onPicked) =>
+    MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => Center(
+            child: ElevatedButton(
+              onPressed: () async {
+                final r = await showModalBottomSheet<PoLinkCandidate>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => PurchaseReceiptPoLinkSheet(
+                    itemCode: 'A',
+                    candidates: candidates,
+                  ),
+                );
+                onPicked(r);
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
 
 void main() {
-  testWidgets('open rows are tappable; closed rows hidden until toggle on',
+  testWidgets('lists the open candidates and has no over-receipt toggle',
       (tester) async {
-    await tester.pumpWidget(_host(
-      PurchaseReceiptPoLinkSheet(
-        itemCode: 'A',
-        candidates: [
-          _cand('open1'),
-          _cand('closed1', qty: 10, received: 10),
-        ],
-        initialAllowOverReceipt: false,
-      ),
-    ));
+    await tester.pumpWidget(_host([_cand('open1'), _cand('open2')], (_) {}));
+    await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    // Open row visible.
     expect(find.textContaining('open1'), findsOneWidget);
-    // Closed row hidden while toggle off.
-    expect(find.textContaining('closed1'), findsNothing);
+    expect(find.textContaining('open2'), findsOneWidget);
+    // No over-receipt affordance exists any more.
+    expect(find.byType(Switch), findsNothing);
+    expect(find.text('Allow Over-Receipt'), findsNothing);
+  });
 
-    // Toggle on -> closed row appears.
-    await tester.tap(find.byType(Switch));
+  testWidgets('tapping a row pops that candidate', (tester) async {
+    PoLinkCandidate? picked;
+    final rows = [_cand('open1'), _cand('open2')];
+    await tester.pumpWidget(_host(rows, (c) => picked = c));
+    await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('closed1'), findsOneWidget);
+
+    await tester.tap(find.textContaining('open2'));
+    await tester.pumpAndSettle();
+
+    expect(picked, isNotNull);
+    expect(picked!.item.name, 'open2');
   });
 }

@@ -135,8 +135,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
   @override
-  double get effectiveMaxQty =>
-      poQtyCeiling(poQty.value, allowOverReceipt: allowOverReceipt.value);
+  double get effectiveMaxQty => poQtyCeiling(poQty.value);
 
   @override
   String? get qtyInfoText {
@@ -153,11 +152,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
   final RxString  poDocName = ''.obs;
   final RxnDouble poQty     = RxnDouble();
   final RxnDouble poRate    = RxnDouble();
-
-  /// When true, the qty cap is lifted and fully-received PO rows become
-  /// linkable. Mirrors Delivery Note's `allowFullSerials`. Reset on each
-  /// sheet open.
-  final RxBool allowOverReceipt = false.obs;
 
   // ── Additional reactive fields ───────────────────────────────────────────
   final RxString itemUom = ''.obs;
@@ -268,17 +262,15 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
       return;
     }
 
-    // Resolve a VALID Purchase Order Item before adding (design Section 3).
-    final result = parent.resolvePoLink(itemCode.value,
-        allowOverReceipt: allowOverReceipt.value);
+    // Resolve a VALID, OPEN Purchase Order Item before adding.
+    final result = parent.resolvePoLink(itemCode.value);
     switch (result.outcome) {
       case PoLinkOutcome.autoLinked:
         parent.applyPoLink(this, result.linked!);
       case PoLinkOutcome.needsPicker:
         final chosen = await parent.showPoLinkPicker(
           itemCode: itemCode.value,
-          candidates: result.allForItem,
-          initialAllowOverReceipt: allowOverReceipt.value,
+          candidates: result.candidates,
         );
         if (chosen == null) throw const PoLinkAbortedException();
         parent.applyPoLink(this, chosen);
@@ -322,7 +314,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     poDocName.value = '';
     poQty.value     = null;
     poRate.value    = null;
-    allowOverReceipt.value = false;
 
     resetBatch();
     resetRack();
@@ -357,7 +348,6 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     poDocName.value = item.purchaseOrder     ?? '';
     poQty.value     = item.purchaseOrderQty;
     poRate.value    = item.rate != null && item.rate! > 0 ? item.rate : null;
-    allowOverReceipt.value = false;
 
     resetBatch();
     isQtyValid.value = false;

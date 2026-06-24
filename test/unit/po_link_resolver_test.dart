@@ -25,63 +25,53 @@ PoLinkCandidate _cand(
 void main() {
   group('resolvePoLinkFor', () {
     test('single open candidate auto-links', () {
-      final r = resolvePoLinkFor(
-          [_cand('PO1', 'A', name: 'r1')], 'A', allowOverReceipt: false);
+      final r = resolvePoLinkFor([_cand('PO1', 'A', name: 'r1')], 'A');
       expect(r.outcome, PoLinkOutcome.autoLinked);
       expect(r.linked!.item.name, 'r1');
     });
 
-    test('multiple open candidates need picker', () {
+    test('multiple open candidates need picker (open rows only)', () {
       final r = resolvePoLinkFor([
         _cand('PO1', 'A', name: 'r1'),
         _cand('PO2', 'A', name: 'r2'),
-      ], 'A', allowOverReceipt: false);
+      ], 'A');
       expect(r.outcome, PoLinkOutcome.needsPicker);
       expect(r.candidates.length, 2);
     });
 
-    test('zero open candidates blocked when toggle off', () {
+    test('a fully-received candidate is never eligible — blocked', () {
       final r = resolvePoLinkFor([
         _cand('PO1', 'A', qty: 10, received: 10, name: 'r1'),
-      ], 'A', allowOverReceipt: false);
+      ], 'A');
       expect(r.outcome, PoLinkOutcome.blocked);
-      expect(r.reason, contains('Allow Over-Receipt'));
+      expect(r.reason, contains('fully received'));
     });
 
-    test('fully-received candidate eligible when toggle on', () {
+    test('only the open row is offered when a closed row also exists', () {
       final r = resolvePoLinkFor([
-        _cand('PO1', 'A', qty: 10, received: 10, name: 'r1'),
-      ], 'A', allowOverReceipt: true);
+        _cand('PO1', 'A', qty: 10, received: 10, name: 'closed'),
+        _cand('PO1', 'A', qty: 10, received: 0, name: 'open'),
+      ], 'A');
       expect(r.outcome, PoLinkOutcome.autoLinked);
-      expect(r.linked!.item.name, 'r1');
+      expect(r.linked!.item.name, 'open');
     });
 
-    test('item absent from all POs is blocked regardless of toggle', () {
-      final r = resolvePoLinkFor(
-          [_cand('PO1', 'B', name: 'r1')], 'A', allowOverReceipt: true);
+    test('item absent from all POs is blocked', () {
+      final r = resolvePoLinkFor([_cand('PO1', 'B', name: 'r1')], 'A');
       expect(r.outcome, PoLinkOutcome.blocked);
       expect(r.reason, contains('any linked Purchase Order'));
-    });
-
-    test('allForItem carries every row for the item_code', () {
-      final r = resolvePoLinkFor([
-        _cand('PO1', 'A', qty: 10, received: 10, name: 'r1'),
-        _cand('PO1', 'A', name: 'r2'),
-        _cand('PO1', 'B', name: 'r3'),
-      ], 'A', allowOverReceipt: false);
-      expect(r.allForItem.map((c) => c.item.name), ['r1', 'r2']);
     });
   });
 
   group('poQtyCeiling', () {
-    test('caps at PO qty when toggle off', () {
-      expect(poQtyCeiling(5, allowOverReceipt: false), 5);
-    });
-    test('infinite when toggle on', () {
-      expect(poQtyCeiling(5, allowOverReceipt: true), double.infinity);
+    test('caps at PO qty', () {
+      expect(poQtyCeiling(5), 5);
     });
     test('infinite when no PO qty', () {
-      expect(poQtyCeiling(null, allowOverReceipt: false), double.infinity);
+      expect(poQtyCeiling(null), double.infinity);
+    });
+    test('infinite when PO qty is zero', () {
+      expect(poQtyCeiling(0), double.infinity);
     });
   });
 
