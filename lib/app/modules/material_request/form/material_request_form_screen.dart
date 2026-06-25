@@ -4,6 +4,9 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
+import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
 
@@ -396,30 +399,12 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
   // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+          {required String title, required List<Widget> children}) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
 
   Widget _buildCompactField({
     required String label,
@@ -471,47 +456,16 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         borderRadius: BorderRadius.circular(12), onTap: onTap, child: content);
   }
 
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                fontSize: isBold ? 16 : 14,
-                color: isBold ? Colors.black87 : Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) =>
+      DocSummaryRow(label: label, value: value, isBold: isBold);
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.qr_code_scanner, size: 80, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
-          Text(
-            'No Items',
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 8),
-          const Text('Scan an item or tap + to add.',
-              style: TextStyle(color: Colors.grey)),
-        ],
-      ),
-    );
-  }
+  Widget _buildEmptyState() => const Center(
+        child: FormEmptyState(
+          icon: Icons.qr_code_scanner,
+          title: 'No Items',
+          message: 'Scan an item or tap + to add.',
+        ),
+      );
 
   // ── Type Picker bottom-sheet ────────────────────────────────────────────
 

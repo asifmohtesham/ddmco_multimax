@@ -47,11 +47,17 @@ class DocSectionCard extends StatelessWidget {
   /// Typical use: a [StatusPill] or a small [IconButton].
   final Widget? headerAction;
 
+  /// Outer card margin. Defaults to a 16dp bottom gap so consecutive cards
+  /// space themselves. Pass [EdgeInsets.zero] when the call site already adds
+  /// its own inter-card spacing (e.g. a `SizedBox(height: 16)`).
+  final EdgeInsetsGeometry margin;
+
   const DocSectionCard({
     super.key,
     required this.title,
     required this.children,
     this.headerAction,
+    this.margin = const EdgeInsets.only(bottom: 16),
   });
 
   @override
@@ -61,7 +67,7 @@ class DocSectionCard extends StatelessWidget {
 
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: margin,
       color: colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),

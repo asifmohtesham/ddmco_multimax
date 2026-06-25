@@ -210,26 +210,11 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
           leading: _buildLeading(context),
           middle: Stack(
             children: [
-              // Expanded middle: faded doc name (opacity fades out on collapse)
-              Positioned.fill(
-                child: Opacity(
-                  opacity: expandProgress,
-                  child: Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: AutoSizeText(
-                      title,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: colorScheme.onPrimary,
-                      ),
-                      maxLines: 2,
-                      minFontSize: _kAutoSizeMinFont,
-                      overflow: TextOverflow.clip,
-                      softWrap: true,
-                    ),
-                  ),
-                ),
-              ),
-              // Collapsed middle: two-line caption + doc name (fades in on collapse)
+              // Collapsed middle: two-line caption + doc name (fades in on collapse).
+              // NOTE: the expanded state shows the title only once, in `largeArea`
+              // above the toolbar. There is deliberately NO expanded toolbar-middle
+              // title — an earlier "faded echo" here rendered at full opacity when
+              // expanded and duplicated the large title (wrapping to two lines).
               Positioned.fill(
                 child: Offstage(
                   offstage: collapseProgress < 0.001,
@@ -344,13 +329,36 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                     child: largeArea,
                   ),
                   toolbar,
-                  if (bottom != null) bottom!,
+                  if (bottom != null) _wrapBottomOnPrimary(context, bottom!),
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ── Bottom slot (TabBar) colour override ────────────────────────────────────
+  /// The header background is `colorScheme.primary` (solid maroon). The global
+  /// [TabBarThemeData] in `main.dart` is tuned for tabs on a white `surface`
+  /// (list screens), where `labelColor: primary` renders maroon-on-white.
+  /// On this maroon header that same theme makes the **selected** tab label
+  /// invisible (maroon-on-maroon). We override the theme locally so the bottom
+  /// slot paints with `onPrimary` (white) ink while it lives on the maroon bar.
+  Widget _wrapBottomOnPrimary(BuildContext context, Widget bottom) {
+    final theme  = Theme.of(context);
+    final onBar  = theme.colorScheme.onPrimary;
+    return Theme(
+      data: theme.copyWith(
+        tabBarTheme: theme.tabBarTheme.copyWith(
+          labelColor:           onBar,
+          unselectedLabelColor: onBar.withValues(alpha: 0.7),
+          indicatorColor:       onBar,
+          dividerColor:         onBar.withValues(alpha: 0.2),
+        ),
+      ),
+      child: bottom,
     );
   }
 

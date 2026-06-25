@@ -9,6 +9,8 @@ import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
@@ -485,50 +487,14 @@ class PurchaseReceiptFormScreen
   // ── Shared helpers ────────────────────────────────────────────────────────────
 
   Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin:    EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+          {required String title, required List<Widget> children}) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
 
   Widget _buildSummaryRow(String label, String value,
-      {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-              fontSize:   isBold ? 16 : 14,
-              color:      isBold ? Colors.black87 : Colors.black54,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+          {bool isBold = false}) =>
+      DocSummaryRow(label: label, value: value, isBold: isBold);
 }

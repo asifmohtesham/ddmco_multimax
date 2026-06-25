@@ -63,6 +63,13 @@ Active filters and the current search query are rendered as `FilterChipWidget`s
 via the header's `filterChipsBuilder`. Surface the search query as its own chip
 where the screen supports free-text search.
 
+The chip row also renders a persistent **`AddFilterChip`** (`+ Filter`) at its
+trailing end whenever the header is given an `onFilterTap` — opening the same
+filter sheet as the toolbar funnel. Because the 48dp chip-row band is always
+reserved, the row is never an empty gap: with no filter active it shows just the
+`+ Filter` chip. `DocTypeListHeader` adds this automatically; screens don't wire
+it up beyond passing `onFilterTap`.
+
 ---
 
 ## 4. Row interaction — `navigatesOnTap`

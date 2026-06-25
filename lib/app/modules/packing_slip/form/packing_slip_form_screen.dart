@@ -7,6 +7,8 @@ import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.da
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -179,30 +181,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   }
 
   Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin:    EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+          {required String title, required List<Widget> children}) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
 
   // ── Items tab ───────────────────────────────────────────────────────────────────
 
@@ -481,13 +465,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     });
   }
 
-  Widget _buildFilterChip(String label, int count) {
-    return ChoiceChip(
-      label:    Text('$label ($count)'),
-      selected: controller.itemFilter.value == label,
-      onSelected: (bool selected) {
-        if (selected) controller.setFilter(label);
-      },
-    );
-  }
+  Widget _buildFilterChip(String label, int count) => SelectableFilterChip(
+        label: label,
+        count: count,
+        selected: controller.itemFilter.value == label,
+        onSelected: (selected) {
+          if (selected) controller.setFilter(label);
+        },
+      );
 }

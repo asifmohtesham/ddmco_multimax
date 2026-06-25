@@ -119,8 +119,20 @@ class _SaveIconButtonState extends State<SaveIconButton> {
       );
     }
 
-    // Plain / disabled — no explicit color:
+    // Plain / disabled.
+    // When [onColor] is set (e.g. the solid-maroon form header) the default
+    // disabledColor renders dark-on-maroon = near-invisible. Honour onColor so
+    // the idle "nothing to save" icon stays a legible — but muted — onColor
+    // glyph instead of vanishing into the bar. Without onColor we keep the
+    // theme defaults (no explicit color — the fix from 48e1596b stands).
+    final bool hasOnColor = widget.onColor != null;
     return IconButton(
+      style: hasOnColor
+          ? IconButton.styleFrom(
+              foregroundColor:         widget.onColor,
+              disabledForegroundColor: widget.onColor!.withValues(alpha: 0.55),
+            )
+          : null,
       icon:      const Icon(Icons.save),
       tooltip:   widget.tooltip,
       onPressed: widget.isDirty ? widget.onPressed : null,

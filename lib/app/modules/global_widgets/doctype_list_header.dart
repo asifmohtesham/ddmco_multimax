@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart'; // clampDouble
 import 'package:multimax/app/modules/global_widgets/count_badge.dart';
+import 'package:multimax/app/modules/global_widgets/add_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
@@ -369,6 +370,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       filterChipsBuilder != null &&
       (currentSearch.isNotEmpty || currentFilterCount > 0);
 
+  /// The chip row exists (and its height is reserved) whenever there are chips
+  /// to display *or* a `+ Filter` affordance to offer. With [onFilterTap] set
+  /// the row is always present — showing just the `+ Filter` add-chip when no
+  /// filter is active — so the add-chip is reachable directly from the row.
+  bool get _hasChipRow => filterChipsBuilder != null || onFilterTap != null;
+
   // ── Extents ────────────────────────────────────────────────────────────
   double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
 
@@ -377,19 +384,18 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       statusBarHeight +
       _kToolbar +
       _bottomHeight +
-      // Chip row is always reserved in maxExtent when the builder is present,
-      // so minExtent must match — otherwise the layout overflows when collapsed.
-      (filterChipsBuilder != null ? _kChipRow : 0.0);
+      // Chip row is always reserved in maxExtent when present, so minExtent
+      // must match — otherwise the layout overflows when collapsed.
+      (_hasChipRow ? _kChipRow : 0.0);
 
   @override
   double get maxExtent =>
       statusBarHeight +
       _kToolbar +
       _kExpandedExtra +
-      // Reserve the chip row height whenever a builder is provided so the
-      // list does not jump when the first filter is applied.  The row renders
-      // empty when no chips are active.
-      (filterChipsBuilder != null ? _kChipRow : 0.0) +
+      // Reserve the chip row height whenever the row is present so the list
+      // does not jump when the first filter is applied.
+      (_hasChipRow ? _kChipRow : 0.0) +
       _bottomHeight;
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -455,46 +461,56 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     // ─ Chip row ────────────────────────────────────────────────────────
     //
-    // filterChipsBuilder returns List<Widget>.  We render them in a
-    // horizontal SingleChildScrollView so they never wrap or overflow
-    // into the list content below.  A "Clear all" button is appended
-    // at the trailing end when onClearAllFilters is set and there are
-    // more than one chip visible.
+    // Renders, in a horizontal SingleChildScrollView (so chips never wrap or
+    // overflow into the list below):
+    //   • the active-filter chips from filterChipsBuilder,
+    //   • a trailing "Clear all" button when onClearAllFilters is set and more
+    //     than one chip is active,
+    //   • a persistent "+ Filter" add-chip when onFilterTap is set — so users
+    //     can add a filter straight from the row even when none is active.
+    //
+    // The row is built whenever _hasChipRow, so its reserved height is never
+    // an empty band: it shows at least the "+ Filter" chip.
     Widget? chipRow;
-    if (chipsNowActive && filterChipsBuilder != null) {
-      final chips = filterChipsBuilder!.call(context);
-      if (chips.isNotEmpty) {
-        chipRow = Material(
-          color: colorScheme.surface,
-          child: SizedBox(
-            height: _kChipRow,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ...chips.map((chip) => Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: chip,
-                      )),
-                  if (chips.length > 1 && onClearAllFilters != null)
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: colorScheme.error,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onPressed: onClearAllFilters,
-                      icon: const Icon(Icons.clear_all, size: 16),
-                      label: const Text('Clear all'),
+    if (_hasChipRow) {
+      final activeChips = (chipsNowActive && filterChipsBuilder != null)
+          ? filterChipsBuilder!.call(context)
+          : const <Widget>[];
+      chipRow = Material(
+        color: colorScheme.surface,
+        child: SizedBox(
+          height: _kChipRow,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...activeChips.map((chip) => Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: chip,
+                    )),
+                if (onFilterTap != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: AddFilterChip(onTap: onFilterTap!),
+                  ),
+                if (activeChips.length > 1 && onClearAllFilters != null)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
-                ],
-              ),
+                    onPressed: onClearAllFilters,
+                    icon: const Icon(Icons.clear_all, size: 16),
+                    label: const Text('Clear all'),
+                  ),
+              ],
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
     // ─ Full layout ───────────────────────────────────────────────────────
@@ -519,12 +535,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                   ),
                   toolbar,
                   if (bottom != null) bottom!,
-                  if (filterChipsBuilder != null)
+                  if (_hasChipRow)
                     SizedBox(
                       height: _kChipRow,
-                      // Empty when no chips are active; space is always
-                      // reserved so the list below does not jump.
-                      child: chipsNowActive ? chipRow : null,
+                      child: chipRow,
                     ),
                 ],
               ),

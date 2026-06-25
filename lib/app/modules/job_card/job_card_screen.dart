@@ -143,10 +143,10 @@ class _JobCardScreenState extends State<JobCardScreen>
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters:  controller.clearFilters,
               onFilterTap: () => _showFilterSheet(context),
-            ),
-
-            SliverToBoxAdapter(
-              child: TabBar(
+              // Pin the My Work / All segmentation in the header bottom slot so
+              // it stays visible at all scroll positions, consistent with the
+              // tabbed form screens (rather than scrolling away as content).
+              bottom: TabBar(
                 controller: _tabController,
                 tabs: const [
                   Tab(text: 'My Work'),
