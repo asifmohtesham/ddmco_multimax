@@ -15,6 +15,13 @@
       "type": "dart"
     },
     {
+      "name": "XCover 7",
+      "program": "lib/main.dart",
+      "deviceId": "R5CXB2JBDYY",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
       "name": "TC15 USB",
       "program": "lib/main.dart",
       "deviceId": "23045524700452",
