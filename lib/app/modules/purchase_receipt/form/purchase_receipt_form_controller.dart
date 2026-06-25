@@ -26,6 +26,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'purchase_receipt_item_form_controller.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/po_link_resolver.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_item_filter.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_po_link_sheet.dart';
 
 class PurchaseReceiptFormController extends GetxController
@@ -64,6 +65,17 @@ class PurchaseReceiptFormController extends GetxController
   }
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
+
+  // ── Items-tab status filter (All / Pending / Completed) ──────────────────
+  final receiptItemFilter = ReceiptItemFilter.all.obs;
+
+  /// Rows currently shown on the Items tab, after applying [receiptItemFilter].
+  List<PurchaseReceiptItem> get visibleItems => filterReceiptItems(
+      purchaseReceipt.value?.items ?? const [], receiptItemFilter.value);
+
+  /// Row count for [filter] — drives the chip badges.
+  int receiptItemCount(ReceiptItemFilter filter) => countReceiptItems(
+      purchaseReceipt.value?.items ?? const [], filter);
 
   // ── Header form controllers ──────────────────────────────────────────────
   final supplierController    = TextEditingController();
@@ -364,6 +376,100 @@ class PurchaseReceiptFormController extends GetxController
   double getOrderedQty(String? poItemName) {
     if (poItemName == null) return 0.0;
     return poItemQuantities[poItemName] ?? 0.0;
+  }
+
+  // ── Orphaned-link repair ───────────────────────────────────────────────────
+  // A row is orphaned when its purchase_order_item reference no longer resolves
+  // (the PO line's name was regenerated, e.g. after a post-receipt qty edit).
+  // We re-fetch the linked PO fresh, match by item_code, and either re-point the
+  // reference to the current line, prompt the user to pick among several, or —
+  // when the item is no longer on the PO at all — offer to discard the row.
+
+  /// Distinct linked-PO names across all rows (plus an optional [extra]).
+  List<String> _allLinkedPoNames({String? extra}) {
+    final names = <String>{};
+    for (final i in purchaseReceipt.value?.items ?? const <PurchaseReceiptItem>[]) {
+      final n = i.purchaseOrder ?? i.poName;
+      if (n != null && n.isNotEmpty) names.add(n);
+    }
+    if (extra != null && extra.isNotEmpty) names.add(extra);
+    return names.toList();
+  }
+
+  /// Repairs an orphaned PO link on [item] (draft receipts only).
+  Future<void> repairPoLink(PurchaseReceiptItem item) async {
+    if (!isEditable) return;
+
+    final ownPo = item.purchaseOrder ?? item.poName;
+    final poNames = _allLinkedPoNames(extra: ownPo);
+    if (poNames.isEmpty) {
+      // No linked PO to match against — the row can only be discarded.
+      _promptDiscardOrphan(item);
+      return;
+    }
+
+    // Re-fetch fresh so we match against the current PO Item row names.
+    await _fetchLinkedPurchaseOrders(poNames);
+
+    final cands = _cachedPoItems
+        .where((d) =>
+            ownPo == null || ownPo.isEmpty || d['poName'] == ownPo)
+        .map((d) => PoLinkCandidate(
+            d['poName'] as String, d['item'] as PurchaseOrderItem))
+        .toList();
+
+    final result = resolvePoLinkRepair(cands, item.itemCode);
+    switch (result.outcome) {
+      case PoRepairOutcome.relink:
+        await _applyRepairToRow(item, result.match!);
+      case PoRepairOutcome.needsPicker:
+        final chosen = await showPoLinkPicker(
+          itemCode: item.itemCode,
+          candidates: result.candidates,
+        );
+        if (chosen == null) return; // dismissed — leave orphaned for now
+        await _applyRepairToRow(item, chosen);
+      case PoRepairOutcome.discard:
+        _promptDiscardOrphan(item);
+    }
+  }
+
+  Future<void> _applyRepairToRow(
+      PurchaseReceiptItem item, PoLinkCandidate c) async {
+    final items = purchaseReceipt.value?.items.toList() ?? [];
+    final idx = items.indexWhere((i) => i.name == item.name);
+    if (idx == -1) return;
+
+    items[idx] = items[idx].copyWith(
+      purchaseOrderItem: c.item.name,
+      purchaseOrder:     c.poName,
+      purchaseOrderQty:  c.item.qty,
+      poItem:            c.item.name,
+      poName:            c.poName,
+      poQty:             c.item.qty,
+      poRate:            c.item.rate,
+    );
+    _rebuildReceipt(items);
+    isDirty.value = true;
+    AppNotification.success('Re-linked ${item.itemCode} to ${c.poName}');
+    await saveDocument();
+  }
+
+  void _promptDiscardOrphan(PurchaseReceiptItem item) {
+    final po = item.purchaseOrder ?? item.poName ?? 'the Purchase Order';
+    GlobalDialog.showConfirmation(
+      title: 'Discard Item?',
+      message: '${item.itemCode} is no longer on $po, so its Purchase Order '
+          'link cannot be repaired. Discard this row from the receipt?',
+      onConfirm: () async {
+        final items = purchaseReceipt.value?.items.toList() ?? [];
+        items.removeWhere((i) => i.name == item.name);
+        _rebuildReceipt(items);
+        isDirty.value = true;
+        AppNotification.success('Item removed');
+        await saveDocument();
+      },
+    );
   }
 
   void ensureItemKey(PurchaseReceiptItem item) {
@@ -792,6 +898,9 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── UX helpers ────────────────────────────────────────────────────────────────────
   void triggerHighlight(String uniqueId) {
+    // A freshly added/edited row is Pending; drop any active filter so it can
+    // never scroll-to a row that the current filter is hiding.
+    receiptItemFilter.value = ReceiptItemFilter.all;
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {

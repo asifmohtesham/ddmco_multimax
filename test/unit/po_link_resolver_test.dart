@@ -63,6 +63,32 @@ void main() {
     });
   });
 
+  group('resolvePoLinkRepair', () {
+    test('no matching item code → discard', () {
+      final r = resolvePoLinkRepair([_cand('PO1', 'B', name: 'r1')], 'A');
+      expect(r.outcome, PoRepairOutcome.discard);
+    });
+
+    test('single match → relink (even when fully received)', () {
+      // Repair restores an existing link; it must re-point even to a line that
+      // now reads as fully received, since it never adds new receipt qty.
+      final r = resolvePoLinkRepair([
+        _cand('PO1', 'A', qty: 10, received: 10, name: 'live'),
+      ], 'A');
+      expect(r.outcome, PoRepairOutcome.relink);
+      expect(r.match!.item.name, 'live');
+    });
+
+    test('multiple matches → picker', () {
+      final r = resolvePoLinkRepair([
+        _cand('PO1', 'A', name: 'r1'),
+        _cand('PO1', 'A', name: 'r2'),
+      ], 'A');
+      expect(r.outcome, PoRepairOutcome.needsPicker);
+      expect(r.candidates.length, 2);
+    });
+  });
+
   group('poQtyCeiling', () {
     test('caps at PO qty', () {
       expect(poQtyCeiling(5), 5);

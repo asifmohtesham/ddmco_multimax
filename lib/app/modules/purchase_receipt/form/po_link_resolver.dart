@@ -79,6 +79,63 @@ PoLinkResult resolvePoLinkFor(
   return PoLinkResult.needsPicker(open);
 }
 
+// ── Orphaned-link repair ─────────────────────────────────────────────────────
+
+enum PoRepairOutcome { relink, needsPicker, discard }
+
+/// Result of resolving how to repair an orphaned `purchase_order_item`
+/// reference on a draft Purchase Receipt row.
+class PoLinkRepairResult {
+  final PoRepairOutcome outcome;
+
+  /// Set for [PoRepairOutcome.relink].
+  final PoLinkCandidate? match;
+
+  /// The matching rows to choose from for [PoRepairOutcome.needsPicker].
+  final List<PoLinkCandidate> candidates;
+
+  const PoLinkRepairResult._({
+    required this.outcome,
+    this.match,
+    this.candidates = const [],
+  });
+
+  factory PoLinkRepairResult.relink(PoLinkCandidate row) =>
+      PoLinkRepairResult._(outcome: PoRepairOutcome.relink, match: row);
+
+  factory PoLinkRepairResult.needsPicker(List<PoLinkCandidate> rows) =>
+      PoLinkRepairResult._(
+          outcome: PoRepairOutcome.needsPicker, candidates: rows);
+
+  factory PoLinkRepairResult.discard() =>
+      const PoLinkRepairResult._(outcome: PoRepairOutcome.discard);
+}
+
+/// Resolves how to repair an orphaned row whose PO Item reference no longer
+/// resolves (the PO line's `name` was regenerated, e.g. after a post-receipt
+/// qty edit).
+///
+/// Unlike [resolvePoLinkFor], this is **NOT** open-rows-only: a repair restores
+/// a link to qty that already exists on the receipt row, so it must re-point to
+/// the corresponding PO line even when that line now reads as fully received.
+/// It never adds new receipt qty, so it cannot over-receive.
+///
+/// Rules (matching by item_code within [cachedForPo], the rows of the row's
+/// linked PO):
+///   - 0 matches  -> discard   (item no longer on the PO; caller prompts)
+///   - 1 match    -> relink
+///   - >=2 matches -> needsPicker
+PoLinkRepairResult resolvePoLinkRepair(
+  List<PoLinkCandidate> cachedForPo,
+  String itemCode,
+) {
+  final matches =
+      cachedForPo.where((c) => c.item.itemCode == itemCode).toList();
+  if (matches.isEmpty) return PoLinkRepairResult.discard();
+  if (matches.length == 1) return PoLinkRepairResult.relink(matches.first);
+  return PoLinkRepairResult.needsPicker(matches);
+}
+
 /// Qty ceiling for the qty field: the PO ordered qty, or no ceiling when the
 /// item carries no PO qty. Qty above ordered is never permitted in-app.
 double poQtyCeiling(double? poQty) {

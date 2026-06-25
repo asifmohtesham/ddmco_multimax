@@ -1,1 +1,2 @@
-• Purchase Receipt: fixed a save error ("Invalid reference Purchase Order Item") that could occur when a scanned item's Purchase Order link was out of date. The app now links each received item to the correct open PO line automatically, asks you to choose when more than one open line matches, and clearly tells you when a line is already fully received — instead of failing the whole save.
+• Purchase Receipt: the Items tab now has All / Pending / Completed filter chips, and fully-received lines show in green.
+• Out-of-date Purchase Order links are now detected. On a draft receipt, tap to re-link the item to the correct PO line (or discard it if it's no longer on the order); submitted receipts are flagged to cancel and amend.
