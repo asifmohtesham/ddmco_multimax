@@ -49,6 +49,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                       ? controller.reloadDocument
                       : null,
                   extraActions: [
+                    if (controller.canCreateReceipt)
+                      IconButton(
+                        tooltip: 'Create Purchase Receipt',
+                        icon: const Icon(Icons.receipt_long),
+                        onPressed: controller.createPurchaseReceipt,
+                      ),
                     RealtimeSyncStatusIcon(
                       isConnected: controller.isRealtimeConnected,
                       isSyncing:   controller.isRemoteSyncing,
@@ -192,6 +198,21 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             hintText:    'Scan Item Code',
             activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
           )),
+        if (controller.canCreateReceipt)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton.icon(
+                onPressed: controller.createPurchaseReceipt,
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('Create Purchase Receipt'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+            ),
+          ),
         SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );
