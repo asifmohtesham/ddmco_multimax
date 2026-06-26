@@ -1,2 +1,2 @@
-• Purchase Receipt: the Items tab now has All / Pending / Completed filter chips, and fully-received lines show in green.
-• Out-of-date Purchase Order links are now detected. On a draft receipt, tap to re-link the item to the correct PO line (or discard it if it's no longer on the order); submitted receipts are flagged to cancel and amend.
+• Stock Balance: a cleaner header — the counts strip and the search / sort / view-toggle row have been removed to free up screen space.
+• Stock Balance: tap a warehouse pill to filter the report to that warehouse in a single tap (shown when the results span more than one warehouse).
