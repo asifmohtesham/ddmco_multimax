@@ -21,6 +21,9 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/app_constants.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/purchase_order/form/po_receipt_helpers.dart';
+import 'package:multimax/app/modules/purchase_order/form/widgets/purchase_receipt_resume_sheet.dart';
 
 class PurchaseOrderFormController extends GetxController
     with OptimisticLockingMixin, RealtimeSyncMixin {
@@ -29,6 +32,7 @@ class PurchaseOrderFormController extends GetxController
   final ScanService           _scanService      = Get.find<ScanService>();
   final StorageService        _storageService   = Get.find<StorageService>();
   final DataWedgeService      _dataWedgeService = Get.find<DataWedgeService>();
+  final PermissionService _permissionService = Get.find<PermissionService>();
 
   // ---------------------------------------------------------------------------
   // Arguments
@@ -70,6 +74,79 @@ class PurchaseOrderFormController extends GetxController
   String _originalStatus = 'Draft';
 
   bool get isEditable => purchaseOrder.value?.docstatus == 0;
+
+  // ── Create Purchase Receipt action ──────────────────────────────────────────
+  bool get hasOpenQty =>
+      hasOpenReceiptQty(purchaseOrder.value?.items ?? const []);
+
+  /// Whether the "Create Purchase Receipt" surfaces should be shown.
+  /// Submitted, not closed, has open qty, and the user has PR create access.
+  /// Fail-closed: a loading/`null` permission probe reads as not-allowed.
+  bool get canCreateReceipt {
+    final po = purchaseOrder.value;
+    if (po == null) return false;
+    if (po.docstatus != 1) return false;
+    if (po.status == 'Closed') return false;
+    if (!hasOpenQty) return false;
+    return _permissionService.hasAccess('Purchase Receipt',
+            permType: 'create') ==
+        true;
+  }
+
+  /// Launches the PO-bound Purchase Receipt flow: offers to resume an open
+  /// draft receipt if one exists, else opens a new receipt linked to this PO.
+  Future<void> createPurchaseReceipt() async {
+    final po = purchaseOrder.value;
+    if (po == null) return;
+
+    // Defence-in-depth: the surfaces are already gated, but never proceed
+    // without create access.
+    if (_permissionService.hasAccess('Purchase Receipt', permType: 'create') !=
+        true) {
+      GlobalSnackbar.warning(
+          message: "You don't have permission to create a Purchase Receipt.");
+      return;
+    }
+
+    List<DraftReceiptSummary> drafts = const [];
+    try {
+      drafts = await _provider.getOpenDraftReceiptsForPo(po.name);
+    } catch (_) {
+      // Fail-open: resume is a convenience, never a blocker for receiving.
+      drafts = const [];
+    }
+
+    if (drafts.isEmpty) {
+      _goToNewReceipt(po);
+      return;
+    }
+
+    await Get.bottomSheet(
+      PurchaseReceiptResumeSheet(
+        drafts: drafts,
+        onResume: (name) {
+          Get.back();
+          Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM,
+              arguments: {'name': name, 'mode': 'edit'});
+        },
+        onCreateNew: () {
+          Get.back();
+          _goToNewReceipt(po);
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  void _goToNewReceipt(PurchaseOrder po) {
+    Get.toNamed(AppRoutes.PURCHASE_RECEIPT_FORM, arguments: {
+      'name': '',
+      'mode': 'new',
+      'purchaseOrder': po.name,
+      'supplier': po.supplier,
+    });
+  }
 
   @override String get realtimeDoctype => 'Purchase Order';
   @override String get realtimeDocname => name;
