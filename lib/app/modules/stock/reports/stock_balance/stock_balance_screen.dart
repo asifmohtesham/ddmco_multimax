@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_controller.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_sheets.dart';
 
@@ -122,35 +123,37 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
                 onClearAllFilters: controller.clearFilters,
               ),
 
-              // ── Summary strip + quick-filter control bar ────────────
-              if (hasData) ...[
+              // ── Warehouse pills + state filter ──────────────────────
+              if (hasData)
                 SliverToBoxAdapter(
-                  child: _SummaryStrip(
-                    shownCount: visible.length,
-                    warehouseCount: controller.distinctWarehouses.length,
-                    negativeCount: controller.negativeCount,
-                    negativeActive: controller.quickState.value == 'neg',
-                    hideEmpty: controller.hideEmpty.value,
-                    showImages: showImages,
-                    onToggleHideEmpty: controller.toggleHideEmpty,
-                    onToggleImages: controller.toggleShowImages,
-                    onToggleNegative: controller.toggleNegativeFilter,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      border:
+                          Border(bottom: BorderSide(color: cs.outlineVariant)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Single-tap warehouse facet — only worth showing when
+                        // the result set spans more than one warehouse.
+                        if (controller.distinctWarehouses.length > 1) ...[
+                          _WarehouseChips(
+                            warehouses: controller.distinctWarehouses,
+                            selected: controller.quickWarehouse.value,
+                            onSelected: controller.setQuickWarehouse,
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        _SegmentedStateFilter(
+                          state: controller.quickState.value,
+                          onState: controller.setQuickState,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: _QuickFilterBar(
-                    search: controller.quickSearch.value,
-                    warehouse: controller.quickWarehouse.value,
-                    warehouses: controller.distinctWarehouses,
-                    sort: controller.quickSort.value,
-                    state: controller.quickState.value,
-                    onSearch: controller.setQuickSearch,
-                    onWarehouse: controller.setQuickWarehouse,
-                    onSort: controller.setQuickSort,
-                    onState: controller.setQuickState,
-                  ),
-                ),
-              ],
 
               // ── Results ────────────────────────────────────────────
               if (loading)
@@ -369,395 +372,6 @@ StockBalanceTotals computeStockBalanceTotals(List<Map<String, dynamic>> rows) {
 
 String _plural(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
 
-// ── Summary strip ──────────────────────────────────────────────────────────────
-
-class _SummaryStrip extends StatelessWidget {
-  final int shownCount;
-  final int warehouseCount;
-  final int negativeCount;
-  final bool negativeActive;
-  final bool hideEmpty;
-  final bool showImages;
-  final VoidCallback onToggleHideEmpty;
-  final VoidCallback onToggleImages;
-  final VoidCallback onToggleNegative;
-
-  const _SummaryStrip({
-    required this.shownCount,
-    required this.warehouseCount,
-    required this.negativeCount,
-    required this.negativeActive,
-    required this.hideEmpty,
-    required this.showImages,
-    required this.onToggleHideEmpty,
-    required this.onToggleImages,
-    required this.onToggleNegative,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final muted = cs.onSurfaceVariant;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Counts + negative chip.
-          Row(
-            children: [
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    style: TextStyle(fontSize: 12, color: muted),
-                    children: [
-                      _countSpan(shownCount, cs),
-                      const TextSpan(text: ' shown'),
-                      TextSpan(
-                          text: '  ·  ', style: TextStyle(color: cs.outline)),
-                      _countSpan(warehouseCount, cs),
-                      TextSpan(
-                          text: warehouseCount == 1
-                              ? ' warehouse'
-                              : ' warehouses'),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (negativeCount > 0)
-                _NegativeChip(
-                  count: negativeCount,
-                  active: negativeActive,
-                  onTap: onToggleNegative,
-                ),
-            ],
-          ),
-          // View toggles, right-aligned on their own line so they never crowd
-          // the counts on narrow screens.
-          Row(
-            children: [
-              const Spacer(),
-              _MiniToggle(
-                  label: 'Images', value: showImages, onTap: onToggleImages),
-              _MiniToggle(
-                  label: 'Hide empty',
-                  value: hideEmpty,
-                  onTap: onToggleHideEmpty),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  TextSpan _countSpan(int n, ColorScheme cs) => TextSpan(
-        text: '$n',
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: cs.onSurface,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      );
-}
-
-// A compact label + sliding track toggle (denser than a Material Switch).
-class _MiniToggle extends StatelessWidget {
-  final String label;
-  final bool value;
-  final VoidCallback onTap;
-  const _MiniToggle(
-      {required this.label, required this.value, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 26,
-              height: 16,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: value ? cs.primary : cs.outlineVariant,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 150),
-                alignment:
-                    value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: value ? cs.onPrimary : cs.surface,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: value ? cs.onSurface : cs.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// The negative-count chip doubles as a toggle for the Negative state segment.
-class _NegativeChip extends StatelessWidget {
-  final int count;
-  final bool active;
-  final VoidCallback onTap;
-  const _NegativeChip(
-      {required this.count, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final bg = active
-        ? cs.error
-        : Color.alphaBlend(cs.error.withValues(alpha: 0.12), cs.surface);
-    final fg = active ? cs.onError : Colors.red.shade700;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        margin: const EdgeInsets.only(left: 4),
-        padding: const EdgeInsets.fromLTRB(8, 4, 9, 4),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: cs.error.withValues(alpha: 0.24)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '$count negative',
-              style: TextStyle(
-                  fontSize: 11.5, fontWeight: FontWeight.w600, color: fg),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Quick-filter control bar ─────────────────────────────────────────────────────
-
-class _QuickFilterBar extends StatefulWidget {
-  final String search;
-  final String warehouse;
-  final List<String> warehouses;
-  final String sort;
-  final String state;
-  final ValueChanged<String> onSearch;
-  final ValueChanged<String> onWarehouse;
-  final ValueChanged<String> onSort;
-  final ValueChanged<String> onState;
-
-  const _QuickFilterBar({
-    required this.search,
-    required this.warehouse,
-    required this.warehouses,
-    required this.sort,
-    required this.state,
-    required this.onSearch,
-    required this.onWarehouse,
-    required this.onSort,
-    required this.onState,
-  });
-
-  @override
-  State<_QuickFilterBar> createState() => _QuickFilterBarState();
-}
-
-class _QuickFilterBarState extends State<_QuickFilterBar> {
-  late final TextEditingController _searchCtl =
-      TextEditingController(text: widget.search);
-
-  @override
-  void didUpdateWidget(covariant _QuickFilterBar old) {
-    super.didUpdateWidget(old);
-    // Sync when the value is reset externally (e.g. Clear quick filters).
-    if (widget.search != _searchCtl.text) {
-      _searchCtl.text = widget.search;
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchCtl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    // 'ALL' plus only the warehouses present in the data.
-    final whItems = <String>['ALL', ...widget.warehouses];
-    final whValue = whItems.contains(widget.warehouse) ? widget.warehouse : 'ALL';
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: SizedBox(
-                  height: 40,
-                  child: TextField(
-                    controller: _searchCtl,
-                    onChanged: widget.onSearch,
-                    textInputAction: TextInputAction.search,
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: 'Search code or name',
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      prefixIconConstraints:
-                          const BoxConstraints(minWidth: 36, minHeight: 36),
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                      filled: true,
-                      fillColor: cs.surfaceContainerHighest,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: cs.outlineVariant),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: cs.outlineVariant),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 4,
-                child: _Dropdown<String>(
-                  value: whValue,
-                  items: [
-                    for (final w in whItems)
-                      DropdownMenuItem(
-                        value: w,
-                        child: Text(
-                          w == 'ALL' ? 'All warehouses' : w,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                  ],
-                  onChanged: (v) => widget.onWarehouse(v ?? 'ALL'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 3,
-                child: _Dropdown<String>(
-                  value: widget.sort,
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'bal',
-                        child: Text('Balance ↑',
-                            style: TextStyle(fontSize: 13))),
-                    DropdownMenuItem(
-                        value: 'val',
-                        child:
-                            Text('Value ↓', style: TextStyle(fontSize: 13))),
-                    DropdownMenuItem(
-                        value: 'move',
-                        child:
-                            Text('Movement', style: TextStyle(fontSize: 13))),
-                    DropdownMenuItem(
-                        value: 'code',
-                        child: Text('Code', style: TextStyle(fontSize: 13))),
-                  ],
-                  onChanged: (v) => widget.onSort(v ?? 'bal'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _SegmentedStateFilter(state: widget.state, onState: widget.onState),
-        ],
-      ),
-    );
-  }
-}
-
-// A bordered dropdown styled to match the search field.
-class _Dropdown<T> extends StatelessWidget {
-  final T value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
-  const _Dropdown(
-      {required this.value, required this.items, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          items: items,
-          onChanged: onChanged,
-          isExpanded: true,
-          isDense: true,
-          icon: Icon(Icons.arrow_drop_down, color: cs.onSurfaceVariant),
-          style: TextStyle(fontSize: 13, color: cs.onSurface),
-          dropdownColor: cs.surfaceContainerHigh,
-        ),
-      ),
-    );
-  }
-}
-
 // All / In stock / Negative / Empty — segmented client-side state filter.
 class _SegmentedStateFilter extends StatelessWidget {
   final String state;
@@ -817,6 +431,50 @@ class _SegmentedStateFilter extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Warehouse pills ──────────────────────────────────────────────────────────────
+//
+// A single-tap warehouse facet over the loaded rows. 'All' plus one chip per
+// distinct warehouse, in a horizontal scroller so long warehouse names never
+// wrap or crowd the row. Tapping a chip sets the warehouse quick filter; tapping
+// the already-selected chip is a harmless re-select.
+class _WarehouseChips extends StatelessWidget {
+  final List<String> warehouses;
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  const _WarehouseChips({
+    required this.warehouses,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <String>['ALL', ...warehouses];
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          final w = items[i];
+          final isAll = w == 'ALL';
+          return Align(
+            alignment: Alignment.center,
+            child: SelectableFilterChip(
+              label: isAll ? 'All' : w,
+              selected: isAll ? selected == 'ALL' : selected == w,
+              onSelected: (_) => onSelected(w),
+            ),
+          );
+        },
       ),
     );
   }
@@ -988,59 +646,30 @@ Widget buildStockBalanceTileForTest({
       onCustomerTap: onCustomerTap,
     );
 
-/// Renders the summary strip in isolation for widget tests.
-@visibleForTesting
-Widget buildStockBalanceSummaryForTest({
-  required int shownCount,
-  required int warehouseCount,
-  required int negativeCount,
-  bool negativeActive = false,
-  bool hideEmpty = false,
-  bool showImages = true,
-  VoidCallback? onToggleHideEmpty,
-  VoidCallback? onToggleImages,
-  VoidCallback? onToggleNegative,
-}) =>
-    _SummaryStrip(
-      shownCount: shownCount,
-      warehouseCount: warehouseCount,
-      negativeCount: negativeCount,
-      negativeActive: negativeActive,
-      hideEmpty: hideEmpty,
-      showImages: showImages,
-      onToggleHideEmpty: onToggleHideEmpty ?? () {},
-      onToggleImages: onToggleImages ?? () {},
-      onToggleNegative: onToggleNegative ?? () {},
-    );
-
 /// Renders the sticky total bar in isolation for widget tests.
 @visibleForTesting
 Widget buildStockBalanceTotalBarForTest(StockBalanceTotals totals) =>
     _TotalBar(totals: totals);
 
-/// Renders the quick-filter control bar in isolation for widget tests.
+/// Renders the segmented state filter in isolation for widget tests.
 @visibleForTesting
-Widget buildStockBalanceQuickFilterBarForTest({
-  String search = '',
-  String warehouse = 'ALL',
-  List<String> warehouses = const [],
-  String sort = 'bal',
+Widget buildStockBalanceStateFilterForTest({
   String state = 'ALL',
-  ValueChanged<String>? onSearch,
-  ValueChanged<String>? onWarehouse,
-  ValueChanged<String>? onSort,
   ValueChanged<String>? onState,
 }) =>
-    _QuickFilterBar(
-      search: search,
-      warehouse: warehouse,
+    _SegmentedStateFilter(state: state, onState: onState ?? (_) {});
+
+/// Renders the single-tap warehouse pills in isolation for widget tests.
+@visibleForTesting
+Widget buildStockBalanceWarehouseChipsForTest({
+  List<String> warehouses = const [],
+  String selected = 'ALL',
+  ValueChanged<String>? onSelected,
+}) =>
+    _WarehouseChips(
       warehouses: warehouses,
-      sort: sort,
-      state: state,
-      onSearch: onSearch ?? (_) {},
-      onWarehouse: onWarehouse ?? (_) {},
-      onSort: onSort ?? (_) {},
-      onState: onState ?? (_) {},
+      selected: selected,
+      onSelected: onSelected ?? (_) {},
     );
 
 // ── Result tile ──────────────────────────────────────────────────────────────
