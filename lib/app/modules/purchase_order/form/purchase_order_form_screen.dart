@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
@@ -50,29 +51,15 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                       : null,
                   extraActions: [
                     if (controller.canCreateReceipt)
-                      // Wrapped in its own Obx: the form header is a
-                      // SliverPersistentHeader whose shouldRebuild keys on
-                      // extraActions.length, so a content-only swap (icon ->
-                      // spinner) would not rebuild the header. The Obx makes
-                      // this action self-react to isCreatingReceipt.
-                      Obx(() => IconButton(
+                      // AsyncIconButton carries its own Obx, so it repaints the
+                      // icon↔spinner swap even though the SliverPersistentHeader
+                      // delegate's shouldRebuild keys on action count.
+                      AsyncIconButton(
+                        busy: controller.isCreatingReceipt,
+                        onPressed: controller.createPurchaseReceipt,
+                        icon: const Icon(Icons.receipt_long),
                         tooltip: 'Create Purchase Receipt',
-                        icon: controller.isCreatingReceipt.value
-                            ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onPrimary,
-                                ),
-                              )
-                            : const Icon(Icons.receipt_long),
-                        onPressed: controller.isCreatingReceipt.value
-                            ? null
-                            : controller.createPurchaseReceipt,
-                      )),
+                      ),
                     RealtimeSyncStatusIcon(
                       isConnected: controller.isRealtimeConnected,
                       isSyncing:   controller.isRemoteSyncing,
@@ -221,23 +208,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: FilledButton.icon(
-                onPressed: controller.isCreatingReceipt.value
-                    ? null
-                    : controller.createPurchaseReceipt,
-                icon: controller.isCreatingReceipt.value
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Theme.of(context).colorScheme.onPrimary,
-                        ),
-                      )
-                    : const Icon(Icons.receipt_long),
-                label: Text(controller.isCreatingReceipt.value
-                    ? 'Creating…'
-                    : 'Create Purchase Receipt'),
+              child: AsyncFilledButton(
+                busy: controller.isCreatingReceipt,
+                onPressed: controller.createPurchaseReceipt,
+                icon: const Icon(Icons.receipt_long),
+                label: 'Create Purchase Receipt',
+                loadingLabel: 'Creating…',
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
