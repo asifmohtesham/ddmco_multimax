@@ -67,6 +67,7 @@ class PurchaseOrderFormController extends GetxController
   var isItemSheetOpen    = false.obs;
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
+  var isCreatingReceipt  = false.obs;
 
   var purchaseOrder = Rx<PurchaseOrder?>(null);
 
@@ -108,12 +109,20 @@ class PurchaseOrderFormController extends GetxController
       return;
     }
 
+    // Guard against a double-tap launching two draft lookups.
+    if (isCreatingReceipt.value) return;
+
+    // Loading feedback while the draft lookup runs (a network round-trip);
+    // cleared before we navigate or show the resume sheet (both instant).
+    isCreatingReceipt.value = true;
     List<DraftReceiptSummary> drafts = const [];
     try {
       drafts = await _provider.getOpenDraftReceiptsForPo(po.name);
     } catch (_) {
       // Fail-open: resume is a convenience, never a blocker for receiving.
       drafts = const [];
+    } finally {
+      isCreatingReceipt.value = false;
     }
 
     if (drafts.isEmpty) {

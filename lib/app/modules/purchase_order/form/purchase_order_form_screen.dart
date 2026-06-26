@@ -52,8 +52,21 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                     if (controller.canCreateReceipt)
                       IconButton(
                         tooltip: 'Create Purchase Receipt',
-                        icon: const Icon(Icons.receipt_long),
-                        onPressed: controller.createPurchaseReceipt,
+                        icon: controller.isCreatingReceipt.value
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimary,
+                                ),
+                              )
+                            : const Icon(Icons.receipt_long),
+                        onPressed: controller.isCreatingReceipt.value
+                            ? null
+                            : controller.createPurchaseReceipt,
                       ),
                     RealtimeSyncStatusIcon(
                       isConnected: controller.isRealtimeConnected,
@@ -204,9 +217,22 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: FilledButton.icon(
-                onPressed: controller.createPurchaseReceipt,
-                icon: const Icon(Icons.receipt_long),
-                label: const Text('Create Purchase Receipt'),
+                onPressed: controller.isCreatingReceipt.value
+                    ? null
+                    : controller.createPurchaseReceipt,
+                icon: controller.isCreatingReceipt.value
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                      )
+                    : const Icon(Icons.receipt_long),
+                label: Text(controller.isCreatingReceipt.value
+                    ? 'Creating…'
+                    : 'Create Purchase Receipt'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
                 ),
