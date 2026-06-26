@@ -9,6 +9,9 @@ import 'package:multimax/app/modules/job_card/job_card_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/job_card/job_card_form_controller.dart';
@@ -63,27 +66,15 @@ class _JobCardScreenState extends State<JobCardScreen>
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
-    final cs = Theme.of(context).colorScheme;
 
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
     Widget chip({
       required IconData icon,
       required String label,
       required VoidCallback onDeleted,
     }) =>
-        Chip(
-          avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
-          label: Text(label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onSecondaryContainer,
-                  fontWeight: FontWeight.w600)),
-          backgroundColor: cs.secondaryContainer,
-          deleteIconColor: cs.onSecondaryContainer,
-          onDeleted: onDeleted,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          side: BorderSide.none,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
+        FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
@@ -104,7 +95,7 @@ class _JobCardScreenState extends State<JobCardScreen>
     }
 
     // Assigned Employee
-    if (controller.activeFilters.containsKey('Job Card Employee') &&
+    if (controller.activeFilters.containsKey('Job Card Time Log') &&
         controller.assignedEmployeeLabel.value.isNotEmpty) {
       chips.add(chip(
         icon: Icons.badge_outlined,
@@ -139,7 +130,7 @@ class _JobCardScreenState extends State<JobCardScreen>
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             DocTypeListHeader(
-              title: 'Job Cards',
+              title: 'Job Card',
               automaticallyImplyLeading: false,
               searchDoctype:      'Job Card',
               searchQuery:        controller.searchQuery,
@@ -152,10 +143,10 @@ class _JobCardScreenState extends State<JobCardScreen>
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters:  controller.clearFilters,
               onFilterTap: () => _showFilterSheet(context),
-            ),
-
-            SliverToBoxAdapter(
-              child: TabBar(
+              // Pin the My Work / All segmentation in the header bottom slot so
+              // it stays visible at all scroll positions, consistent with the
+              // tabbed form screens (rather than scrolling away as content).
+              bottom: TabBar(
                 controller: _tabController,
                 tabs: const [
                   Tab(text: 'My Work'),
@@ -177,46 +168,16 @@ class _JobCardScreenState extends State<JobCardScreen>
                         controller.searchQuery.value.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.assignment_ind_outlined,
-                            size: 64,
-                            color: cs.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Job Cards'
-                                : 'No Job Cards',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                    color: cs.onSurface,
-                                    fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 24),
-                          FilledButton.tonalIcon(
-                            onPressed: hasFilters
-                                ? controller.clearFilters
-                                : () => controller.fetchJobCards(
-                                    clear: true),
-                            icon: Icon(hasFilters
-                                ? Icons.clear_all
-                                : Icons.refresh),
-                            label: Text(
-                                hasFilters ? 'Clear Filters' : 'Reload'),
-                          ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.assignment_ind_outlined,
+                    emptyTitle: 'No Job Cards',
+                    emptyMessage: 'Pull to refresh to load job cards.',
+                    filteredTitle: 'No Matching Job Cards',
+                    filteredMessage:
+                        'Try adjusting your filters or search query.',
+                    onClearFilters: controller.clearFilters,
+                    onReload: () => controller.fetchJobCards(clear: true),
                   ),
                 );
               }
@@ -236,13 +197,8 @@ class _JobCardScreenState extends State<JobCardScreen>
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           if (index >= cards.length) {
-                            return controller.hasMore.value
-                                ? const Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child:
-                                          CircularProgressIndicator()))
-                                : const SizedBox(height: 80);
+                            return ListEndFooter(
+                                hasMore: controller.hasMore.value);
                           }
                           final jc = cards[index];
                           return Padding(

@@ -1,5 +1,2 @@
-• Role-based access: modules and reports now hidden automatically based on your account permissions
-• Delivery Notes: warehouse derived automatically from rack scan per item
-• Stock Entries: target rack picker now pulls live rack data from the server
-• Form headers now show an unsaved changes indicator
-• Bug fixes across stock entry validation and delivery note document handling
+• Purchase Receipt: the Items tab now has All / Pending / Completed filter chips, and fully-received lines show in green.
+• Out-of-date Purchase Order links are now detected. On a draft receipt, tap to re-link the item to the correct PO line (or discard it if it's no longer on the order); submitted receipts are flagged to cancel and amend.

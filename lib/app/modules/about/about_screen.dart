@@ -1,33 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/about/about_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
+import 'package:multimax/app/modules/global_widgets/settings_group.dart';
 
 class AboutScreen extends GetView<AboutController> {
   const AboutScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    final s = context.scheme;
     return Scaffold(
-      appBar: const MainAppBar(title: 'System Information'),
+      appBar: MainAppBar(
+        title: 'System Information',
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: controller.runHealthChecks,
+          ),
+        ],
+      ),
       drawer: const AppNavDrawer(),
       body: RefreshIndicator(
         onRefresh: controller.runHealthChecks,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpace.s4, AppSpace.s4, AppSpace.s4, AppSpace.s8),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildAppHeader(theme),
-              const SizedBox(height: 32),
-              _buildVersionCard(theme),
-              const SizedBox(height: 24),
-              _buildSystemHealthSection(theme),
-              const SizedBox(height: 48),
-              _buildFooter(theme),
+              _header(context),
+              const SizedBox(height: AppSpace.s5),
+              _versionCard(context),
+              const SizedBox(height: AppSpace.s5),
+              const SectionLabel(text: 'System health'),
+              _healthCard(context),
+              const SizedBox(height: AppSpace.s8),
+              Center(
+                child: Text(
+                  '© ${DateTime.now().year} Multimax · Powered by DDMCO',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: s.textSubtle),
+                ),
+              ),
             ],
           ),
         ),
@@ -35,178 +53,173 @@ class AboutScreen extends GetView<AboutController> {
     );
   }
 
-  Widget _buildAppHeader(ThemeData theme) {
+  Widget _header(BuildContext context) {
+    final s = context.scheme;
     return Column(
       children: [
-        Hero(
-          tag: 'app_logo',
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
-              image: const DecorationImage(image: AssetImage('lib/assets/images/logo.jpg')),
+        Container(
+          width: 76,
+          height: 76,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            image: const DecorationImage(
+              image: AssetImage('lib/assets/images/logo.jpg'),
+              fit: BoxFit.cover,
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Obx(() => Text(
-          controller.appName.value.isEmpty ? 'ERP' : controller.appName.value,
-          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: theme.primaryColor),
-        )),
+              controller.appName.value.isEmpty
+                  ? 'Multimax'
+                  : controller.appName.value,
+              style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w700, color: s.text),
+            )),
       ],
     );
   }
 
-  Widget _buildVersionCard(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+  Widget _versionCard(BuildContext context) {
+    final s = context.scheme;
+    Widget cell(String k, String v) => Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            child: Column(
+              children: [
+                Text(k,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: s.textSubtle)),
+                const SizedBox(height: 3),
+                Text(v,
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: s.text)),
+              ],
+            ),
+          ),
+        );
+    Widget sep() => Container(width: 1, height: 36, color: s.border);
+
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        color: s.fg,
+        border: Border.all(color: s.border),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
-      child: Obx(() => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Obx(() => IntrinsicHeight(
+            child: Row(
+              children: [
+                cell(
+                    'Version',
+                    controller.version.value.isEmpty
+                        ? '—'
+                        : controller.version.value),
+                sep(),
+                cell(
+                    'Build',
+                    controller.buildNumber.value.isEmpty
+                        ? '—'
+                        : controller.buildNumber.value),
+                sep(),
+                cell('Channel', controller.channel),
+              ],
+            ),
+          )),
+    );
+  }
+
+  Widget _healthCard(BuildContext context) {
+    final s = context.scheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: s.fg,
+        border: Border.all(color: s.border),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Obx(() {
+          final items = controller.systemStatus;
+          final rows = <Widget>[];
+          for (var i = 0; i < items.length; i++) {
+            if (i > 0) {
+              rows.add(Divider(height: 1, thickness: 1, color: s.border));
+            }
+            rows.add(_healthRow(context, items[i]));
+          }
+          return Column(mainAxisSize: MainAxisSize.min, children: rows);
+        }),
+      ),
+    );
+  }
+
+  Widget _healthRow(BuildContext context, SystemIntegration item) {
+    final s = context.scheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ok = item.state == IntegrationState.connected;
+    final loading = item.state == IntegrationState.loading;
+    final tint = ok ? AppColors.green500 : AppColors.red500;
+    final detailColor = ok
+        ? (isDark ? AppColors.green300 : AppColors.green700)
+        : (isDark ? AppColors.red300 : AppColors.red700);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      child: Row(
         children: [
-          _buildVersionItem(theme, 'Version', controller.version.value),
-          Container(height: 30, width: 1, color: Colors.grey.shade300),
-          _buildVersionItem(theme, 'Build', controller.buildNumber.value),
-        ],
-      )),
-    );
-  }
-
-  Widget _buildVersionItem(ThemeData theme, String label, String value) {
-    return Column(
-      children: [
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-      ],
-    );
-  }
-
-  Widget _buildSystemHealthSection(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4.0, bottom: 12.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(tint.withValues(alpha: 0.14), s.fg),
+              shape: BoxShape.circle,
+            ),
+            child: loading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(ok ? Icons.check_rounded : Icons.error_outline,
+                    size: 19, color: detailColor),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(item.name,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: s.text)),
+                Text(item.type,
+                    style: TextStyle(fontSize: 11.5, color: s.textSubtle)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('System Health', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-              Obx(() => controller.isCheckingHealth.value
-                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const SizedBox.shrink()),
+              if (item.details != null && !loading)
+                Text(item.details!,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: detailColor)),
+              if (item.latency != null)
+                Text(item.latency!,
+                    style: TextStyle(fontSize: 10.5, color: s.textSubtle)),
             ],
           ),
-        ),
-        Card(
-          elevation: 0,
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.grey.shade200),
-          ),
-          child: Obx(() => Column(
-            children: controller.systemStatus.asMap().entries.map((entry) {
-              final index = entry.key;
-              final item = entry.value;
-              final isLast = index == controller.systemStatus.length - 1;
-              return Column(
-                children: [
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: _buildStatusIcon(item.state),
-                    title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.type, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-                        if (item.filePath != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4.0),
-                            child: Text(
-                              item.filePath!,
-                              style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontFamily: 'monospace'),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          item.details ?? '',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: _getStatusColor(item.state),
-                          ),
-                        ),
-                        if (item.latency != null)
-                          Text(
-                            item.latency!,
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (!isLast) const Divider(height: 1, indent: 56),
-                ],
-              );
-            }).toList(),
-          )),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatusIcon(IntegrationState state) {
-    switch (state) {
-      case IntegrationState.loading:
-        return Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-          child: const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(strokeWidth: 2)),
-        );
-      case IntegrationState.connected:
-        return Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
-          child: Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 20),
-        );
-      case IntegrationState.error:
-      case IntegrationState.offline:
-        return Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle),
-          child: Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
-        );
-    }
-  }
-
-  Color _getStatusColor(IntegrationState state) {
-    switch (state) {
-      case IntegrationState.connected: return Colors.green.shade700;
-      case IntegrationState.error:
-      case IntegrationState.offline: return Colors.red.shade700;
-      default: return Colors.grey;
-    }
-  }
-
-  Widget _buildFooter(ThemeData theme) {
-    return Center(
-      child: Text(
-        '© ${DateTime.now().year} ERP\nPowered by DDMCO',
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade400),
+        ],
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/details_tab.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/standard_items_view.dart';
@@ -24,8 +25,13 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final entry = controller.stockEntry.value;
       final bool isEditable = entry?.docstatus == 0;
 
+      // Save and Submit are mutually exclusive (ERPNext morph): show Save only
+      // while there are unsaved changes; once the draft is clean the header
+      // shows Submit instead. Avoids Save + Submit appearing side by side.
       final VoidCallback? onSave =
-          isEditable ? controller.saveDocument : null;
+          (isEditable && controller.isDirty.value)
+              ? controller.saveDocument
+              : null;
       final VoidCallback? onReload =
           controller.mode != 'new' ? controller.reloadDocument : null;
 
@@ -62,6 +68,15 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   saveResult: saveResult,
                   onSave:     onSave,
                   onReload:   onReload,
+                  onSubmit:     controller.submitDocument,
+                  canSubmit:    controller.canSubmit,
+                  isSubmitting: controller.isSubmitting.value,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),

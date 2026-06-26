@@ -3,7 +3,12 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
 class StorageService {
-  final GetStorage _box = GetStorage();
+  final dynamic _box;
+
+  StorageService() : _box = GetStorage();
+
+  // Internal constructor for testing - allows injection of a custom storage instance
+  StorageService.withStorage(this._box);
 
   // Keys
   static const String _userKey = 'currentUser';
@@ -16,6 +21,13 @@ class StorageService {
   // Auto Submit Keys
   static const String _autoSubmitEnabledKey = 'auto_submit_enabled';
   static const String _autoSubmitDelayKey = 'auto_submit_delay';
+
+  // Auto Save Keys
+  static const String _autoSaveDelayKey = 'auto_save_delay';
+
+  // Stock Balance view preferences
+  static const String _sbHideEmptyKey  = 'sb_hide_empty';
+  static const String _sbShowImagesKey = 'sb_show_images';
 
   // --- User Data ---
   Future<void> saveUser(User user) async {
@@ -80,4 +92,24 @@ class StorageService {
   int getAutoSubmitDelay() {
     return _box.read<int>(_autoSubmitDelayKey) ?? 1; // Default 1 second
   }
+
+  // --- Auto Save Settings ---
+  Future<void> saveAutoSaveDelay(int seconds) async =>
+      _box.write(_autoSaveDelayKey, seconds);
+
+  int getAutoSaveDelay() =>
+      _box.read<int>(_autoSaveDelayKey) ?? 5;
+
+  // --- Stock Balance view preferences ---
+  // Persisted so the "Hide empty" / "Images" toggles survive navigation,
+  // mirroring the web report's view preferences.
+  Future<void> saveSbHideEmpty(bool value) async =>
+      _box.write(_sbHideEmptyKey, value);
+
+  bool getSbHideEmpty() => _box.read<bool>(_sbHideEmptyKey) ?? false;
+
+  Future<void> saveSbShowImages(bool value) async =>
+      _box.write(_sbShowImagesKey, value);
+
+  bool getSbShowImages() => _box.read<bool>(_sbShowImagesKey) ?? true;
 }

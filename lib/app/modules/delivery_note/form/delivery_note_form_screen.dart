@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -21,7 +25,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       final isDirty    = controller.isDirty.value;
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
-      final isLoading  = controller.isLoading.value;
 
       return PopScope(
         canPop: !isDirty,
@@ -47,6 +50,12 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -55,16 +64,21 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   ),
                 ),
               ],
-              body: (isLoading && note == null)
-                  ? const Center(child: CircularProgressIndicator())
-                  : note == null
-                      ? const Center(child: Text('Delivery note not found.'))
-                      : TabBarView(
-                          children: [
-                            _buildDetailsView(context, note),
-                            _buildItemsView(context),
-                          ],
-                        ),
+              body: Obx(() {
+                final isLoading = controller.isLoading.value;
+                if (isLoading && note == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (note == null) {
+                  return const Center(child: Text('Delivery note not found.'));
+                }
+                return TabBarView(
+                  children: [
+                    _buildDetailsView(context, note),
+                    _buildItemsView(context),
+                  ],
+                );
+              }),
             ),
           ),
         ),
@@ -514,67 +528,30 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
   // ── Shared helpers ────────────────────────────────────────────────────────────
 
+  // These thin adapters forward to the shared global widgets so the markup
+  // lives in one canonical place; only the controller wiring stays local.
+
   Widget _buildSectionCard({
     required BuildContext context,
     required String title,
     required List<Widget> children,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      margin:    EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: cs.outlineVariant)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+  }) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
 
   Widget _buildSummaryRow(BuildContext context, String label, String value,
-      {bool isBold = false}) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                fontSize:   isBold ? 16 : 14,
-                color:      isBold
-                    ? cs.onSurface
-                    : cs.onSurface.withValues(alpha: 0.6)),
-          ),
-        ],
-      ),
-    );
-  }
+          {bool isBold = false}) =>
+      DocSummaryRow(label: label, value: value, isBold: isBold);
 
-  Widget _buildFilterChip(String label, int count) {
-    return ChoiceChip(
-      label:    Text('$label ($count)'),
-      selected: controller.itemFilter.value == label,
-      onSelected: (bool selected) {
-        if (selected) controller.setFilter(label);
-      },
-    );
-  }
+  Widget _buildFilterChip(String label, int count) => SelectableFilterChip(
+        label: label,
+        count: count,
+        selected: controller.itemFilter.value == label,
+        onSelected: (selected) {
+          if (selected) controller.setFilter(label);
+        },
+      );
 }

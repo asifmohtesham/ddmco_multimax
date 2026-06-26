@@ -67,6 +67,19 @@ Shared form components (used across modules) live in `lib/app/modules/global_wid
 - `ItemSheet` — bottom-sheet for inline item selection within form screens
 - `RackField` / `SharedRackField` — warehouse rack picker (universal delegate pattern)
 - `DocTypeGuard` — wraps a widget and hides it when the user lacks access to a DocType
+- `AsyncIconButton` / `AsyncFilledButton` — action controls that bake in spinner + disabled state + repaint-safe loading feedback (see Async feedback below)
+
+### Async feedback
+
+Any control that triggers async work (network/disk/heavy compute) MUST give immediate loading feedback. Prefer `AsyncIconButton` / `AsyncFilledButton` (`lib/app/modules/global_widgets/async_action_buttons.dart`), driven by a controller `RxBool` busy flag that the controller sets and clears in a `finally`, with a re-entrancy guard (`if (busy.value) return;`) before launching the work.
+
+When hand-rolling instead of using those widgets, three things must hold:
+
+- **Disabled + guarded** while in flight, so a double-tap can't fire duplicate work.
+- **Actually repaints.** Beware render layers that skip rebuilds for content-only changes — a `SliverPersistentHeader` whose `shouldRebuild` keys on action *count* will not repaint an icon→spinner swap. Wrap the reactive control in its own `Obx`.
+- **Visible.** A bare `CircularProgressIndicator` renders in `colorScheme.primary` (maroon) and is invisible on the solid-maroon form header. Use `colorScheme.onPrimary` (or the ambient `IconTheme` colour) on primary-coloured surfaces.
+
+Verify by toggling the flag in a widget test or on-device — a clean `flutter analyze` proves nothing here.
 
 ## Codebase Docs
 

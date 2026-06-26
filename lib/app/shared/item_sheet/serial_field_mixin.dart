@@ -128,6 +128,14 @@ mixin SerialFieldMixin implements SerialNumberFieldDelegate {
   /// `_seedEditModeFlags` (DN) and `initForNewItem` / `_loadExistingItem` (SE).
   final allowFullSerials = false.obs;
 
+  /// Whether [SharedInvoiceSerialNumberField] should offer the "Allow Full"
+  /// override toggle when a Full serial exists.
+  ///
+  /// DN/SE keep the default (true). Packing Slip overrides to false: its qty
+  /// cap treats 0 remaining as "uncapped", so selecting a Full serial could
+  /// over-pack the DN row. Full rows stay hard-disabled there.
+  bool get supportsAllowFullToggle => true;
+
   // ── Abstract hooks (concrete controller must provide) ────────────────────
 
   /// Ordered list of valid serial numbers for the dropdown.

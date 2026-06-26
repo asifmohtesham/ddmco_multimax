@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
@@ -17,6 +16,7 @@ import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
@@ -25,9 +25,12 @@ import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
 import 'purchase_receipt_item_form_controller.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/po_link_resolver.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_item_filter.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/widgets/purchase_receipt_po_link_sheet.dart';
 
 class PurchaseReceiptFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PurchaseReceiptProvider _provider       = Get.find<PurchaseReceiptProvider>();
   final PurchaseOrderProvider   _poProvider     = Get.find<PurchaseOrderProvider>();
   final ApiProvider             _apiProvider    = Get.find<ApiProvider>();
@@ -40,8 +43,8 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── Document-level state ─────────────────────────────────────────────
   var isLoading       = true.obs;
-  var isSaving        = false.obs;
-  var isDirty         = false.obs;
+  @override var isSaving = false.obs;
+  @override var isDirty  = false.obs;
   var isScanning      = false.obs;
   var isItemSheetOpen = false.obs;
 
@@ -63,6 +66,17 @@ class PurchaseReceiptFormController extends GetxController
 
   var purchaseReceipt = Rx<PurchaseReceipt?>(null);
 
+  // ── Items-tab status filter (All / Pending / Completed) ──────────────────
+  final receiptItemFilter = ReceiptItemFilter.all.obs;
+
+  /// Rows currently shown on the Items tab, after applying [receiptItemFilter].
+  List<PurchaseReceiptItem> get visibleItems => filterReceiptItems(
+      purchaseReceipt.value?.items ?? const [], receiptItemFilter.value);
+
+  /// Row count for [filter] — drives the chip badges.
+  int receiptItemCount(ReceiptItemFilter filter) => countReceiptItems(
+      purchaseReceipt.value?.items ?? const [], filter);
+
   // ── Header form controllers ──────────────────────────────────────────────
   final supplierController    = TextEditingController();
   final postingDateController = TextEditingController();
@@ -80,6 +94,9 @@ class PurchaseReceiptFormController extends GetxController
   final List<Map<String, dynamic>> _cachedPoItems = [];
   var poItemQuantities = <String, double>{}.obs;
 
+  /// Re-entrancy guard so the 417 PO-link recovery re-save runs at most once.
+  bool _poLinkRecoveryAttempted = false;
+
   // ── EAN context for doc-level scan routing ────────────────────────────
   String currentScannedEan = '';
 
@@ -91,6 +108,9 @@ class PurchaseReceiptFormController extends GetxController
   Timer?  _scanDebounce;
 
   bool get isEditable => (purchaseReceipt.value?.docstatus ?? 1) == 0;
+
+  @override String get realtimeDoctype => 'Purchase Receipt';
+  @override String get realtimeDocname => name;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
@@ -108,16 +128,20 @@ class PurchaseReceiptFormController extends GetxController
     if (mode == 'new') {
       _initNewPurchaseReceipt();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   void _markDirty() {
-    if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
+    if (!isLoading.value && isEditable) {
+      isDirty.value = true;
+      scheduleAutoSave();
+    }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
     _scanDebounce?.cancel();
@@ -299,29 +323,153 @@ class PurchaseReceiptFormController extends GetxController
 
   // ── PO linking ─────────────────────────────────────────────────────────────
 
+  /// Resolves a valid, open PO Item row for [itemCode] against the cached
+  /// PO rows.
+  PoLinkResult resolvePoLink(String itemCode) {
+    final cands = _cachedPoItems
+        .map((d) =>
+            PoLinkCandidate(d['poName'] as String, d['item'] as PurchaseOrderItem))
+        .toList();
+    return resolvePoLinkFor(cands, itemCode);
+  }
+
+  /// Writes a resolved PO row onto the item-sheet controller.
+  void applyPoLink(
+      PurchaseReceiptItemFormController child, PoLinkCandidate c) {
+    child.poItemId.value = c.item.name ?? '';
+    child.poDocName.value = c.poName;
+    child.poQty.value = c.item.qty;
+    child.poRate.value = c.item.rate;
+  }
+
+  /// Best-effort PO link used when the sheet opens, so the PO Qty chip and
+  /// progress bar populate. Final authority is the submit-time resolve in
+  /// PurchaseReceiptItemFormController.submit(). Only ever links an open row;
+  /// blocked items are simply left unlinked.
   void linkToPurchaseOrder(
       String itemCode, PurchaseReceiptItemFormController child) {
-    var match = _cachedPoItems.firstWhereOrNull((d) {
-      final PurchaseOrderItem item = d['item'];
-      return item.itemCode == itemCode && item.receivedQty < item.qty;
-    });
-    match ??= _cachedPoItems.firstWhereOrNull((d) {
-      final PurchaseOrderItem item = d['item'];
-      return item.itemCode == itemCode;
-    });
-
-    if (match != null) {
-      final PurchaseOrderItem item = match['item'];
-      child.poItemId.value  = item.name  ?? '';
-      child.poDocName.value = match['poName'];
-      child.poQty.value     = item.qty;
-      child.poRate.value    = item.rate;
+    final result = resolvePoLink(itemCode);
+    switch (result.outcome) {
+      case PoLinkOutcome.autoLinked:
+        applyPoLink(child, result.linked!);
+      case PoLinkOutcome.needsPicker:
+        applyPoLink(child, result.candidates.first);
+      case PoLinkOutcome.blocked:
+        break;
     }
+  }
+
+  /// Opens the link picker and returns the chosen PO row (null if dismissed).
+  Future<PoLinkCandidate?> showPoLinkPicker({
+    required String itemCode,
+    required List<PoLinkCandidate> candidates,
+  }) {
+    return Get.bottomSheet<PoLinkCandidate>(
+      PurchaseReceiptPoLinkSheet(
+        itemCode: itemCode,
+        candidates: candidates,
+      ),
+      isScrollControlled: true,
+    );
   }
 
   double getOrderedQty(String? poItemName) {
     if (poItemName == null) return 0.0;
     return poItemQuantities[poItemName] ?? 0.0;
+  }
+
+  // ── Orphaned-link repair ───────────────────────────────────────────────────
+  // A row is orphaned when its purchase_order_item reference no longer resolves
+  // (the PO line's name was regenerated, e.g. after a post-receipt qty edit).
+  // We re-fetch the linked PO fresh, match by item_code, and either re-point the
+  // reference to the current line, prompt the user to pick among several, or —
+  // when the item is no longer on the PO at all — offer to discard the row.
+
+  /// Distinct linked-PO names across all rows (plus an optional [extra]).
+  List<String> _allLinkedPoNames({String? extra}) {
+    final names = <String>{};
+    for (final i in purchaseReceipt.value?.items ?? const <PurchaseReceiptItem>[]) {
+      final n = i.purchaseOrder ?? i.poName;
+      if (n != null && n.isNotEmpty) names.add(n);
+    }
+    if (extra != null && extra.isNotEmpty) names.add(extra);
+    return names.toList();
+  }
+
+  /// Repairs an orphaned PO link on [item] (draft receipts only).
+  Future<void> repairPoLink(PurchaseReceiptItem item) async {
+    if (!isEditable) return;
+
+    final ownPo = item.purchaseOrder ?? item.poName;
+    final poNames = _allLinkedPoNames(extra: ownPo);
+    if (poNames.isEmpty) {
+      // No linked PO to match against — the row can only be discarded.
+      _promptDiscardOrphan(item);
+      return;
+    }
+
+    // Re-fetch fresh so we match against the current PO Item row names.
+    await _fetchLinkedPurchaseOrders(poNames);
+
+    final cands = _cachedPoItems
+        .where((d) =>
+            ownPo == null || ownPo.isEmpty || d['poName'] == ownPo)
+        .map((d) => PoLinkCandidate(
+            d['poName'] as String, d['item'] as PurchaseOrderItem))
+        .toList();
+
+    final result = resolvePoLinkRepair(cands, item.itemCode);
+    switch (result.outcome) {
+      case PoRepairOutcome.relink:
+        await _applyRepairToRow(item, result.match!);
+      case PoRepairOutcome.needsPicker:
+        final chosen = await showPoLinkPicker(
+          itemCode: item.itemCode,
+          candidates: result.candidates,
+        );
+        if (chosen == null) return; // dismissed — leave orphaned for now
+        await _applyRepairToRow(item, chosen);
+      case PoRepairOutcome.discard:
+        _promptDiscardOrphan(item);
+    }
+  }
+
+  Future<void> _applyRepairToRow(
+      PurchaseReceiptItem item, PoLinkCandidate c) async {
+    final items = purchaseReceipt.value?.items.toList() ?? [];
+    final idx = items.indexWhere((i) => i.name == item.name);
+    if (idx == -1) return;
+
+    items[idx] = items[idx].copyWith(
+      purchaseOrderItem: c.item.name,
+      purchaseOrder:     c.poName,
+      purchaseOrderQty:  c.item.qty,
+      poItem:            c.item.name,
+      poName:            c.poName,
+      poQty:             c.item.qty,
+      poRate:            c.item.rate,
+    );
+    _rebuildReceipt(items);
+    isDirty.value = true;
+    AppNotification.success('Re-linked ${item.itemCode} to ${c.poName}');
+    await saveDocument();
+  }
+
+  void _promptDiscardOrphan(PurchaseReceiptItem item) {
+    final po = item.purchaseOrder ?? item.poName ?? 'the Purchase Order';
+    GlobalDialog.showConfirmation(
+      title: 'Discard Item?',
+      message: '${item.itemCode} is no longer on $po, so its Purchase Order '
+          'link cannot be repaired. Discard this row from the receipt?',
+      onConfirm: () async {
+        final items = purchaseReceipt.value?.items.toList() ?? [];
+        items.removeWhere((i) => i.name == item.name);
+        _rebuildReceipt(items);
+        isDirty.value = true;
+        AppNotification.success('Item removed');
+        await saveDocument();
+      },
+    );
   }
 
   void ensureItemKey(PurchaseReceiptItem item) {
@@ -386,6 +534,7 @@ class PurchaseReceiptFormController extends GetxController
 
     _rebuildReceipt(currentItems);
     isDirty.value = true;
+    scheduleAutoSave();
   }
 
   void updateItem(
@@ -412,6 +561,7 @@ class PurchaseReceiptFormController extends GetxController
     _rebuildReceipt(currentItems);
     triggerHighlight(itemName);
     isDirty.value = true;
+    scheduleAutoSave();
   }
 
   void _rebuildReceipt(List<PurchaseReceiptItem> items) {
@@ -584,6 +734,7 @@ class PurchaseReceiptFormController extends GetxController
         currentItems.removeWhere((i) => i.name == item.name);
         purchaseReceipt.update((val) => val?.items.assignAll(currentItems));
         isDirty.value = true;
+        scheduleAutoSave();
         AppNotification.success('Item removed');
         await saveDocument();
       },
@@ -591,6 +742,7 @@ class PurchaseReceiptFormController extends GetxController
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────────────
+  @override
   Future<void> saveDocument() async {
     if (!isEditable) return;
     if (isSaving.value) return;
@@ -623,6 +775,7 @@ class PurchaseReceiptFormController extends GetxController
           final created = response.data['data'];
           name = created['name'];
           mode = 'edit';
+          await startRealtimeSyncAfterCreate();
           await fetchDocument();
           _setSaveResult(SaveResult.success);
           AppNotification.success('Purchase Receipt created: $name');
@@ -645,6 +798,8 @@ class PurchaseReceiptFormController extends GetxController
     } on DioException catch (e) {
       if (handleVersionConflict(e)) {
         // handled by OptimisticLockingMixin
+      } else if (await _maybeRecoverInvalidPoRef(e)) {
+        // 417 invalid PO ref handled: re-linked + re-saved, or surfaced.
       } else {
         _setSaveResult(SaveResult.error);
         String msg = 'Save failed';
@@ -666,8 +821,86 @@ class PurchaseReceiptFormController extends GetxController
     }
   }
 
+  /// Reactive safety net for the 417 "Invalid reference Purchase Order Item"
+  /// failure (design Section 4). Re-fetches the linked PO(s) fresh, re-links
+  /// the offending items via the resolver, then re-saves ONCE. Returns true
+  /// when the failure was a PO-ref problem this method handled (re-saved or
+  /// surfaced its own message), false to let the caller show the generic error.
+  Future<bool> _maybeRecoverInvalidPoRef(DioException e) async {
+    if (_poLinkRecoveryAttempted) return false;
+    if (e.response?.statusCode != 417) return false;
+    final data = e.response?.data;
+    final exc = (data is Map ? data['exception']?.toString() : null) ?? '';
+    final badRefs = parseInvalidPoItemRefs(exc);
+    if (badRefs.isEmpty) return false;
+
+    _poLinkRecoveryAttempted = true;
+    isSaving.value = false; // release the save lock before re-entrant save
+
+    try {
+      // Re-fetch linked POs fresh to drop stale child-row names.
+      final poNames = purchaseReceipt.value?.items
+              .map((i) => i.purchaseOrder)
+              .whereType<String>()
+              .where((n) => n.isNotEmpty)
+              .toSet()
+              .toList() ??
+          <String>[];
+      await _fetchLinkedPurchaseOrders(poNames);
+
+      final items = purchaseReceipt.value?.items.toList() ?? [];
+      for (var i = 0; i < items.length; i++) {
+        final it = items[i];
+        if (it.purchaseOrderItem == null ||
+            !badRefs.contains(it.purchaseOrderItem)) {
+          continue;
+        }
+        final result = resolvePoLink(it.itemCode);
+        PoLinkCandidate? chosen;
+        switch (result.outcome) {
+          case PoLinkOutcome.autoLinked:
+            chosen = result.linked;
+          case PoLinkOutcome.needsPicker:
+            chosen = await showPoLinkPicker(
+              itemCode: it.itemCode,
+              candidates: result.candidates,
+            );
+          case PoLinkOutcome.blocked:
+            // No open PO line to re-link to (e.g. fully received). Surface the
+            // reason and stop — never over-receive to "fix" a stale reference.
+            AppNotification.error(result.reason!);
+            _setSaveResult(SaveResult.error);
+            return true; // handled; do not re-save
+        }
+        if (chosen == null) {
+          AppNotification.error(
+              'Could not link ${it.itemCode} to a valid Purchase Order Item.');
+          _setSaveResult(SaveResult.error);
+          return true; // user dismissed picker; do not re-save
+        }
+        // Re-link to a valid OPEN PO line; qty stays as entered (capped at
+        // ordered at entry time). The reference is now valid; ERPNext still
+        // enforces its own qty/tolerance rules on the re-save.
+        items[i] = it.copyWith(
+          purchaseOrderItem: chosen.item.name,
+          purchaseOrder: chosen.poName,
+          purchaseOrderQty: chosen.item.qty,
+        );
+      }
+      _rebuildReceipt(items);
+
+      await saveDocument(); // single re-save
+      return true;
+    } finally {
+      _poLinkRecoveryAttempted = false;
+    }
+  }
+
   // ── UX helpers ────────────────────────────────────────────────────────────────────
   void triggerHighlight(String uniqueId) {
+    // A freshly added/edited row is Pending; drop any active filter so it can
+    // never scroll-to a row that the current filter is hiding.
+    receiptItemFilter.value = ReceiptItemFilter.all;
     recentlyAddedItemName.value = uniqueId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 100), () {

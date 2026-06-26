@@ -163,41 +163,44 @@ class BatchScreen extends GetView<BatchController> {
       status = 'Active';
     }
 
-    return Obx(() {
-      final isExpanded =
-          controller.expandedBatchName.value == batch.name;
+    return Obx(
+      key: ValueKey(batch.name),
+      () {
+        final isExpanded =
+            controller.expandedBatchName.value == batch.name;
 
-      return GenericDocumentCard(
-        title: batch.item,
-        subtitle: batch.name,
-        status: status,
-        isExpanded: isExpanded,
-        onTap: () => controller.toggleExpand(batch.name),
-        stats: [
-          if (batch.manufacturingDate != null)
+        return GenericDocumentCard(
+          title: batch.item,
+          subtitle: batch.name,
+          status: status,
+          isExpanded: isExpanded,
+          onTap: () => controller.toggleExpand(batch.name),
+          stats: [
+            if (batch.manufacturingDate != null)
+              GenericDocumentCard.buildIconStat(
+                context,
+                Icons.precision_manufacturing_outlined,
+                DateFormat('dd MMM yyyy')
+                    .format(DateTime.parse(batch.manufacturingDate!)),
+              ),
+            if (batch.expiryDate != null)
+              GenericDocumentCard.buildIconStat(
+                context,
+                Icons.event_busy_outlined,
+                DateFormat('dd MMM yyyy')
+                    .format(DateTime.parse(batch.expiryDate!)),
+              ),
             GenericDocumentCard.buildIconStat(
               context,
-              Icons.precision_manufacturing_outlined,
-              DateFormat('dd MMM yyyy')
-                  .format(DateTime.parse(batch.manufacturingDate!)),
+              Icons.layers_outlined,
+              'Qty: ${batch.customPackagingQty}',
             ),
-          if (batch.expiryDate != null)
-            GenericDocumentCard.buildIconStat(
-              context,
-              Icons.event_busy_outlined,
-              DateFormat('dd MMM yyyy')
-                  .format(DateTime.parse(batch.expiryDate!)),
-            ),
-          GenericDocumentCard.buildIconStat(
-            context,
-            Icons.layers_outlined,
-            'Qty: ${batch.customPackagingQty}',
-          ),
-        ],
-        expandedContent:
-            isExpanded ? _buildExpandedContent(context, batch) : null,
-      );
-    });
+          ],
+          expandedContent:
+              isExpanded ? _buildExpandedContent(context, batch) : null,
+        );
+      },
+    );
   }
 
   // ── Expanded content ───────────────────────────────────────────────────

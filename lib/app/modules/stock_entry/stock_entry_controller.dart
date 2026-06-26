@@ -67,11 +67,16 @@ class StockEntryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchStockEntries();
-    fetchStockEntryTypes();
-    fetchUsers();
-    fetchWarehouses();
-    fetchDocTypePermissions();
+    // ignore: unawaited_futures
+    Future.wait([
+      fetchStockEntries(),
+      fetchStockEntryTypes(),
+      fetchUsers(),
+      fetchWarehouses(),
+      fetchDocTypePermissions(),
+    ]);
+    debounce(searchQuery, (_) => fetchStockEntries(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -110,8 +115,11 @@ class StockEntryController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchStockEntries(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchStockEntries(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {
@@ -125,14 +133,7 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchStockEntries(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   Future<void> fetchStockEntries(
       {bool isLoadMore = false, bool clear = false}) async {

@@ -73,13 +73,11 @@ class JobCardController extends GetxController {
   Future<void> _ensureDefaultAssignedToFilter() async {
     try {
       // Use the session employee ID stored at login — this is the HR-EMP-XXXXX
-      // value that lives in the `employee` child table on Job Card.
+      // value stored in the `employee` field on Job Card.
       final storedEmployeeId =
           Get.find<StorageService>().getUser()?.employeeId ?? '';
       if (storedEmployeeId.isNotEmpty) {
-        // Frappe child-table filter: targets `Job Card Employee` assignment
-        // table — shows cards assigned to the user even before time is logged.
-        activeFilters['Job Card Employee'] = ['employee', '=', storedEmployeeId];
+        activeFilters['Job Card Time Log'] = ['employee', '=', storedEmployeeId];
         assignedEmployeeId.value           = storedEmployeeId;
         assignedEmployeeLabel.value        = storedEmployeeId;
       }
@@ -94,12 +92,11 @@ class JobCardController extends GetxController {
     if (employeeId == null || employeeId.isEmpty) {
       assignedEmployeeId.value    = '';
       assignedEmployeeLabel.value = '';
-      activeFilters.remove('Job Card Employee');
+      activeFilters.remove('Job Card Time Log');
     } else {
       assignedEmployeeId.value    = employeeId;
       assignedEmployeeLabel.value = label ?? employeeId;
-      // Child-doctype filter: targets tabJob Card Employee (assignment table).
-      activeFilters['Job Card Employee'] = ['employee', '=', employeeId];
+      activeFilters['Job Card Time Log'] = ['employee', '=', employeeId];
     }
     fetchJobCards(clear: true);
   }
@@ -126,7 +123,7 @@ class JobCardController extends GetxController {
       _ensureDefaultAssignedToFilter().then((_) => fetchJobCards(clear: true));
     } else {
       // All: remove employee filter so supervisors see every card
-      activeFilters.remove('Job Card Employee');
+      activeFilters.remove('Job Card Time Log');
       assignedEmployeeId.value    = '';
       assignedEmployeeLabel.value = '';
       fetchJobCards(clear: true);

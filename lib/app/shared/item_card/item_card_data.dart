@@ -190,15 +190,9 @@ class ItemCardData {
     required bool isEditable,
     bool isHighlighted = false,
   }) {
-    // purchaseOrderQty is populated by the API on persisted docs.
-    // For locally-added rows (new PR from PO), fall back to poQty which is
-    // set by addItem() via the child controller's poQty field.
-    final double? resolvedTargetQty =
-    (item.purchaseOrderQty != null && item.purchaseOrderQty! > 0)
-        ? item.purchaseOrderQty
-        : (item.poQty != null && item.poQty! > 0)
-        ? item.poQty
-        : null;
+    // Single source of truth on the model so the Items-tab status chips and
+    // this progress bar resolve the PO target identically.
+    final double? resolvedTargetQty = item.resolvedTargetQty;
 
     return ItemCardData(
       rowName:       item.name,

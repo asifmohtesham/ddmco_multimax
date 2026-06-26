@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Multimax</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="multimax-ds/ds.css">
+<style>
+  /* ===== Multimax brand (maroon) over the DS blue language ===== */
+  :root{
+    --primary:#8c1c2b; --primary-hover:#741420; --on-primary:#ffffff;
+    --maroon-700:#5f0f1a;
+    --brand-tint:color-mix(in srgb, var(--primary) 6%, #fff);
+    --brand-tint-2:color-mix(in srgb, var(--primary) 11%, #fff);
+    --focus-ring:color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+  html,body{margin:0;background:#eceef0;color:var(--text);font-family:var(--font);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+
+  .stage{min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;
+    padding:34px 16px 60px;
+    background:radial-gradient(125% 80% at 50% -8%, color-mix(in srgb,var(--primary) 8%,#f2f3f4), #eceef0 62%);}
+  .stage-cap{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;}
+  .stage-cap h1{font-size:14px;font-weight:600;margin:0;color:var(--text);}
+  .stage-cap p{font-size:12px;color:var(--text-subtle);margin:0;font-family:var(--mono);}
+
+  /* ===== device ===== */
+  .device{width:392px;}
+  .device .screen{height:812px;background:#fff;}
+  .statusbar{height:42px;background:#fff;padding:0 20px 0 22px;}
+  .statusbar .clock{font-size:13px;font-weight:600;}
+  .statusbar .right{display:flex;align-items:center;gap:7px;}
+  .statusbar .right svg{width:16px;height:16px;display:block;}
+  .batt{display:inline-flex;align-items:center;gap:3px;}
+  .batt .lvl{font-size:11px;font-weight:700;border:1.5px solid var(--text);border-radius:4px;padding:0 3px;line-height:14px;}
+
+  /* ===== app bar ===== */
+  .appbar{background:#fff;border-bottom:1px solid var(--border);}
+  .appbar .toolbar{height:50px;padding:0 4px 0 6px;display:flex;align-items:center;gap:2px;}
+  .appbar .toolbar .title{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-.01em;margin-left:4px;}
+  .icon-btn .ico{width:22px;height:22px;}
+
+  .greet{display:flex;align-items:center;gap:12px;padding:8px 16px 14px;}
+  .greet .ava{width:42px;height:42px;border-radius:var(--r-full);background:var(--primary);color:#fff;
+    font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;flex:none;
+    box-shadow:0 2px 6px color-mix(in srgb,var(--primary) 40%,transparent);}
+  .greet .gtxt{min-width:0;flex:1;}
+  .greet .hi{font-size:19px;font-weight:700;color:var(--text);letter-spacing:-.01em;line-height:1.1;}
+  .greet .ctx{display:inline-flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;color:var(--text-muted);
+    background:var(--subtle);border:1px solid var(--border);border-radius:var(--r-full);
+    padding:3px 8px 3px 9px;max-width:100%;cursor:pointer;}
+  .greet .ctx b{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .greet .ctx svg{width:13px;height:13px;flex:none;color:var(--text-subtle);}
+
+  /* ===== scroll body ===== */
+  .body{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--brand-tint);scroll-behavior:smooth;}
+  .body::-webkit-scrollbar{width:0;}
+  .pad{padding:14px 16px 28px;display:flex;flex-direction:column;gap:18px;}
+
+  /* ===== hero scan ===== */
+  .scan{display:flex;align-items:center;gap:13px;padding:14px 14px;border-radius:var(--r-lg);
+    background:linear-gradient(135deg,var(--primary),var(--maroon-700));color:#fff;cursor:pointer;
+    box-shadow:0 8px 20px color-mix(in srgb,var(--primary) 32%,transparent);position:relative;overflow:hidden;}
+  .scan::after{content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;
+    background:rgba(255,255,255,.06);}
+  .scan .glyph{width:46px;height:46px;border-radius:var(--r-md);background:rgba(255,255,255,.16);
+    display:flex;align-items:center;justify-content:center;flex:none;}
+  .scan .glyph svg{width:26px;height:26px;color:#fff;}
+  .scan .stx{flex:1;min-width:0;}
+  .scan .stx .t{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+  .scan .stx .s{font-size:12px;color:rgba(255,255,255,.82);margin-top:2px;}
+  .scan .cam{width:42px;height:42px;border-radius:var(--r-md);background:rgba(255,255,255,.18);
+    display:flex;align-items:center;justify-content:center;flex:none;}
+  .scan .cam svg{width:22px;height:22px;color:#fff;}
+
+  /* ===== section heading ===== */
+  .sec{display:flex;align-items:center;gap:10px;margin-bottom:-4px;}
+  .sec .lb{font-size:13px;font-weight:700;color:var(--text);letter-spacing:-.01em;}
+  .sec .sub{font-size:11px;font-weight:600;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;}
+  .sec .ln{flex:1;height:1px;background:var(--border);}
+  .sec a{font-size:12px;font-weight:600;color:var(--primary);text-decoration:none;}
+
+  /* ===== quick create ===== */
+  .grp{display:flex;flex-direction:column;gap:9px;}
+  .grp .glab{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--text-subtle);
+    text-transform:uppercase;letter-spacing:.07em;}
+  .grp .glab .ln{flex:1;height:1px;background:var(--border);}
+  .qcg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .qc{position:relative;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:13px 8px 11px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;
+    box-shadow:var(--shadow-xs);transition:box-shadow .12s,border-color .12s,transform .08s;text-align:center;}
+  .qc:active{transform:scale(.97);}
+  .qc::before{content:"";position:absolute;left:14px;right:14px;top:0;height:3px;border-radius:0 0 3px 3px;
+    background:var(--c);opacity:.9;}
+  .qc .ic{width:44px;height:44px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;
+    background:color-mix(in srgb,var(--c) 14%,#fff);}
+  .qc .ic svg{width:23px;height:23px;color:var(--c);}
+  .qc .lb{font-size:12px;font-weight:600;color:var(--text);line-height:1.2;}
+  .qc .plus{position:absolute;top:8px;right:8px;width:17px;height:17px;border-radius:var(--r-full);
+    background:var(--subtle);color:var(--text-muted);display:flex;align-items:center;justify-content:center;}
+  .qc .plus svg{width:11px;height:11px;}
+
+  .c-orange{--c:var(--orange-500);} .c-blue{--c:var(--blue-500);} .c-green{--c:var(--green-500);}
+  .c-purple{--c:var(--purple-500);} .c-cyan{--c:var(--cyan-500);} .c-teal{--c:#149b8a;}
+  .c-indigo{--c:#4456c9;} .c-red{--c:var(--red-500);}
+
+  /* ===== needs attention ===== */
+  .att{display:flex;flex-direction:column;gap:9px;}
+  .resume{display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:var(--r-lg);cursor:pointer;
+    background:color-mix(in srgb,var(--primary) 9%,#fff);
+    border:1px solid color-mix(in srgb,var(--primary) 22%,var(--border));box-shadow:var(--shadow-xs);}
+  .resume .pl{width:40px;height:40px;border-radius:var(--r-full);background:var(--primary);color:#fff;
+    display:flex;align-items:center;justify-content:center;flex:none;}
+  .resume .pl svg{width:22px;height:22px;}
+  .resume .rtx{flex:1;min-width:0;}
+  .resume .rk{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--primary);}
+  .resume .rt{font-size:15px;font-weight:700;color:var(--text);margin-top:1px;}
+  .resume .rs{font-size:12px;color:var(--text-muted);margin-top:1px;}
+  .resume .timer{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--primary);
+    background:color-mix(in srgb,var(--primary) 13%,#fff);padding:4px 9px;border-radius:var(--r-full);flex:none;}
+
+  .arow{display:flex;align-items:center;gap:12px;padding:11px 13px;background:#fff;border:1px solid var(--border);
+    border-radius:var(--r-lg);box-shadow:var(--shadow-xs);cursor:pointer;}
+  .arow .ai{width:38px;height:38px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;
+    background:color-mix(in srgb,var(--c) 13%,#fff);flex:none;}
+  .arow .ai svg{width:20px;height:20px;color:var(--c);}
+  .arow .atx{flex:1;min-width:0;}
+  .arow .at{font-size:14px;font-weight:600;color:var(--text);line-height:1.25;}
+  .arow .as{font-size:12px;color:var(--text-muted);margin-top:1px;}
+  .arow .cnt{font-size:14px;font-weight:800;color:var(--c);font-variant-numeric:tabular-nums;
+    background:color-mix(in srgb,var(--c) 13%,#fff);min-width:30px;height:30px;border-radius:var(--r-full);
+    display:flex;align-items:center;justify-content:center;padding:0 8px;flex:none;}
+  .arow .chev{color:var(--text-subtle);flex:none;}
+  .arow .chev svg{width:18px;height:18px;}
+
+  /* ===== pulse KPIs ===== */
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);padding:13px 14px 12px;
+    box-shadow:var(--shadow-xs);cursor:pointer;}
+  .kpi .kh{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text-muted);}
+  .kpi .kh svg{width:15px;height:15px;color:var(--text-subtle);}
+  .kpi .kn{display:flex;align-items:baseline;gap:4px;margin-top:9px;}
+  .kpi .kn .a{font-size:27px;font-weight:800;color:var(--text);letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .kpi .kn .t{font-size:13px;font-weight:600;color:var(--text-subtle);}
+  .kpi .bar{height:6px;border-radius:var(--r-full);background:var(--border);overflow:hidden;margin-top:10px;}
+  .kpi .bar > i{display:block;height:100%;border-radius:var(--r-full);background:var(--k);}
+  .kpi .kf{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
+  .kpi .kf .due{font-size:11.5px;font-weight:600;color:var(--k);}
+  .kpi .kf .pct{font-size:11px;font-weight:600;color:var(--text-subtle);}
+  .k-amber{--k:var(--orange-500);} .k-green{--k:var(--green-500);}
+
+  /* performance mini */
+  .perf{background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);padding:13px 14px 12px;
+    box-shadow:var(--shadow-xs);cursor:pointer;}
+  .perf .ph{display:flex;align-items:center;justify-content:space-between;}
+  .perf .ph .pt{font-size:13px;font-weight:700;color:var(--text);}
+  .perf .ph .ps{font-size:11.5px;color:var(--text-subtle);margin-top:1px;}
+  .perf .seg{display:flex;background:var(--subtle);border:1px solid var(--border);border-radius:var(--r-full);
+    padding:2px;font-size:11px;font-weight:600;}
+  .perf .seg span{padding:3px 9px;border-radius:var(--r-full);color:var(--text-muted);}
+  .perf .seg span.on{background:#fff;color:var(--text);box-shadow:var(--shadow-xs);}
+  .perf .bars{display:flex;align-items:flex-end;gap:7px;height:62px;margin-top:13px;}
+  .perf .bars .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end;}
+  .perf .bars .stk{width:100%;max-width:20px;border-radius:4px 4px 2px 2px;display:flex;flex-direction:column;justify-content:flex-end;
+    background:var(--border);overflow:hidden;}
+  .perf .bars .stk > i{display:block;background:var(--primary);}
+  .perf .bars .stk > u{display:block;background:color-mix(in srgb,var(--primary) 30%,#fff);}
+  .perf .bars .dy{font-size:10px;font-weight:600;color:var(--text-subtle);}
+  .perf .bars .col.today .dy{color:var(--primary);}
+  .perf .leg{display:flex;align-items:center;gap:14px;margin-top:11px;padding-top:11px;border-top:1px dashed var(--border);}
+  .perf .leg .it{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);}
+  .perf .leg .it b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;}
+  .perf .leg .sw{width:9px;height:9px;border-radius:2px;flex:none;}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="stage-cap">
+    <h1>Dashboard — revamp</h1>
+    <p>scan-first · task-aware · maroon brand</p>
+  </div>
+
+  <div class="device">
+    <div class="screen">
+
+      <!-- status bar -->
+      <div class="statusbar">
+        <span class="clock">11:17</span>
+        <span class="right">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="14" width="3" height="6" rx="1"/><rect x="7" y="10" width="3" height="10" rx="1"/><rect x="12" y="6" width="3" height="14" rx="1"/><rect x="17" y="3" width="3" height="17" rx="1" opacity=".45"/></svg>
+          <span class="batt"><span class="lvl">100</span></span>
+        </span>
+      </div>
+
+      <!-- app bar -->
+      <div class="appbar">
+        <div class="toolbar">
+          <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+          <span class="title">Dashboard</span>
+          <span style="flex:1"></span>
+          <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg></button>
+        </div>
+        <div class="greet">
+          <div class="ava">M</div>
+          <div class="gtxt">
+            <div class="hi">Good morning, Asif</div>
+            <div class="ctx" title="Switch user">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              Viewing <b>Muhammad Asif Mohtesham</b>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- scroll body -->
+      <div class="body">
+        <div class="pad">
+
+          <!-- hero scan -->
+          <div class="scan">
+            <div class="glyph">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M22 5v14" stroke-width="1.6"/></svg>
+            </div>
+            <div class="stx">
+              <div class="t">Scan to start</div>
+              <div class="s">Item, batch or rack — look up or add stock</div>
+            </div>
+            <div class="cam">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L8 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4l-1.5-2Z"/><circle cx="12" cy="13" r="3.2"/></svg>
+            </div>
+          </div>
+
+          <!-- quick create -->
+          <div>
+            <div class="sec" style="margin-bottom:12px">
+              <span class="lb">Quick Create</span>
+              <span class="ln"></span>
+              <a href="#">All forms</a>
+            </div>
+
+            <div class="grp">
+              <div class="glab">Operations <span class="ln"></span></div>
+              <div class="qcg">
+                <button class="qc c-orange">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7H4l3-3M4 7l3 3"/><path d="M16 17h4l-3-3M20 17l-3 3"/><path d="M4 7h14M6 17h14"/></svg></span>
+                  <span class="lb">Stock Entry</span>
+                </button>
+                <button class="qc c-blue">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16V7a1 1 0 0 1 1-1h11v10"/><path d="M14 9h4l3 3v4h-7"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg></span>
+                  <span class="lb">Delivery Note</span>
+                </button>
+                <button class="qc c-green">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18l2-1.4L9 21l2-1.4L13 21l2-1.4L17 21l2-1.4V3l-2 1.4L15 3l-2 1.4L11 3 9 4.4 7 3 5 4.4Z"/><path d="M9 8h6M9 12h6"/></svg></span>
+                  <span class="lb">Purchase Receipt</span>
+                </button>
+                <button class="qc c-purple">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4V2.8h6V4"/><path d="m13 11-2.2 2.2L9.6 12" /><path d="M9 16h6"/></svg></span>
+                  <span class="lb">Packing Slip</span>
+                </button>
+                <button class="qc c-cyan">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span>
+                  <span class="lb">POS Upload</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="grp" style="margin-top:14px">
+              <div class="glab">Manufacturing <span class="ln"></span></div>
+              <div class="qcg">
+                <button class="qc c-teal">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-2h12v2"/></svg></span>
+                  <span class="lb">BOM</span>
+                </button>
+                <button class="qc c-indigo">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V10l5-3v3l5-3v14"/><path d="M15 21V8l4 2v11"/><path d="M8 13h0M8 17h0"/></svg></span>
+                  <span class="lb">Work Order</span>
+                </button>
+                <button class="qc c-red">
+                  <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+                  <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16a3 3 0 0 1 6 0"/><path d="M14 10h4M14 13h3"/></svg></span>
+                  <span class="lb">Job Card</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- needs attention -->
+          <div>
+            <div class="sec" style="margin-bottom:11px">
+              <span class="lb">Needs attention</span>
+              <span class="sub" style="color:var(--primary)">4</span>
+              <span class="ln"></span>
+            </div>
+            <div class="att">
+              <div class="resume">
+                <div class="pl"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l11-6.5a1 1 0 0 0 0-1.72l-11-6.5A1 1 0 0 0 8 5.5Z"/></svg></div>
+                <div class="rtx">
+                  <div class="rk">Resume Job Card</div>
+                  <div class="rt">JC-0042 · Cutting</div>
+                  <div class="rs">Belts Formal Auto CP — paused 22 min ago</div>
+                </div>
+                <span class="timer">00:48:12</span>
+              </div>
+
+              <div class="arow c-blue">
+                <span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="13" height="10" rx="1.5"/><path d="M15 10h3l3 3v4h-6"/><circle cx="6.5" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg></span>
+                <div class="atx">
+                  <div class="at">Deliveries to pack</div>
+                  <div class="as">KA &amp; ML routes · oldest 3h</div>
+                </div>
+                <span class="cnt">3</span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+              </div>
+
+              <div class="arow c-indigo">
+                <span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                <div class="atx">
+                  <div class="at">Work Orders due today</div>
+                  <div class="as">2 behind schedule</div>
+                </div>
+                <span class="cnt">2</span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+              </div>
+
+              <div class="arow c-green">
+                <span class="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11.5 11 13.5 15.5 9"/><circle cx="12" cy="12" r="9"/></svg></span>
+                <div class="atx">
+                  <div class="at">Purchase Receipts pending QC</div>
+                  <div class="as">1 awaiting inspection</div>
+                </div>
+                <span class="cnt">1</span>
+                <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- pulse -->
+          <div>
+            <div class="sec" style="margin-bottom:11px">
+              <span class="lb">Today's pulse</span>
+              <span class="ln"></span>
+              <a href="#">Reports</a>
+            </div>
+
+            <div class="kpis">
+              <div class="kpi k-amber">
+                <div class="kh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V10l5-3v3l5-3v14"/></svg> Work Orders</div>
+                <div class="kn"><span class="a">8</span><span class="t">/ 12 target</span></div>
+                <div class="bar"><i style="width:67%"></i></div>
+                <div class="kf"><span class="due">2 due today</span><span class="pct">67%</span></div>
+              </div>
+              <div class="kpi k-green">
+                <div class="kh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.5 16a3 3 0 0 1 6 0M14 10h4M14 13h3"/></svg> Job Cards</div>
+                <div class="kn"><span class="a">5</span><span class="t">/ 6 target</span></div>
+                <div class="bar"><i style="width:83%"></i></div>
+                <div class="kf"><span class="due">1 in progress</span><span class="pct">83%</span></div>
+              </div>
+            </div>
+
+            <div class="perf" style="margin-top:10px">
+              <div class="ph">
+                <div>
+                  <div class="pt">Performance</div>
+                  <div class="ps">Items managed &amp; fulfilled</div>
+                </div>
+                <div class="seg"><span>Daily</span><span class="on">Weekly</span></div>
+              </div>
+              <div class="bars">
+                <div class="col"><div class="stk" style="height:42%"><u style="height:46%"></u><i style="height:54%"></i></div><div class="dy">M</div></div>
+                <div class="col"><div class="stk" style="height:64%"><u style="height:40%"></u><i style="height:60%"></i></div><div class="dy">T</div></div>
+                <div class="col"><div class="stk" style="height:53%"><u style="height:50%"></u><i style="height:50%"></i></div><div class="dy">W</div></div>
+                <div class="col"><div class="stk" style="height:78%"><u style="height:34%"></u><i style="height:66%"></i></div><div class="dy">T</div></div>
+                <div class="col"><div class="stk" style="height:88%"><u style="height:30%"></u><i style="height:70%"></i></div><div class="dy">F</div></div>
+                <div class="col"><div class="stk" style="height:48%"><u style="height:42%"></u><i style="height:58%"></i></div><div class="dy">S</div></div>
+                <div class="col today"><div class="stk" style="height:70%"><u style="height:26%"></u><i style="height:74%"></i></div><div class="dy">Today</div></div>
+              </div>
+              <div class="leg">
+                <span class="it"><span class="sw" style="background:var(--primary)"></span> Fulfilled <b>64</b></span>
+                <span class="it"><span class="sw" style="background:color-mix(in srgb,var(--primary) 30%,#fff)"></span> Managed <b>86</b></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

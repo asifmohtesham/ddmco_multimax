@@ -131,6 +131,7 @@ class _ImageScanDialogState extends State<_ImageScanDialog> {
         return ItemScanResultSheet(
             controller: _ctrl, imagePath: _currentPath);
       case ImageScanState.idle:
+        return const _LoadingOverlay();
       case ImageScanState.barcodeFound:
         return const SizedBox.shrink();
     }

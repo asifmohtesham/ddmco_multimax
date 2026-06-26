@@ -6,6 +6,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -26,12 +27,137 @@ class ApiProvider {
   Dio get dio => _dio;
   Future<void> initDio() => _initDio();
 
+  // ── Stock Balance filter compatibility (v15.72.0 breaking change) ──────────
+  // ERPNext v15.72.0 changed `item_code` from a single Link to a
+  // MultiSelectList. The report now calls PyPika's .isin() on the filter
+  // value, which iterates a bare string character-by-character and matches
+  // nothing. Versions ≥ 15.72 need a list; older versions need a plain string.
+  bool? _stockBalanceUsesListFilters;
+  String? _erpNextVersion;
+
+  Future<bool> _getStockBalanceUsesListFilters() async {
+    if (_stockBalanceUsesListFilters != null) return _stockBalanceUsesListFilters!;
+    try {
+      if (!_dioInitialised) await _initDio();
+      _erpNextVersion = await _fetchErpNextVersion();
+      final parts = (_erpNextVersion ?? '').split('.');
+      final minor = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+      // Unknown version → assume new behavior (safe default for ≥ v15.72)
+      _stockBalanceUsesListFilters = _erpNextVersion != null ? minor >= 72 : true;
+    } catch (_) {
+      _stockBalanceUsesListFilters = true;
+    }
+    return _stockBalanceUsesListFilters!;
+  }
+
+  /// Tries two endpoints to obtain the ERPNext version string.
+  /// Primary: get_versions (may crash on some builds due to a server-side bug).
+  /// Fallback: get_change_log (different code path, reads markdown files).
+  Future<String?> _fetchErpNextVersion() async {
+    try {
+      final r = await _dio.get('/api/method/frappe.utils.change_log.get_versions');
+      final msg = r.data['message'] as Map<String, dynamic>?;
+      final v = (msg?['erpnext'] as Map<String, dynamic>?)?['version'] as String?;
+      if (v != null && v.isNotEmpty) return v;
+    } catch (_) {}
+    try {
+      final r = await _dio.get('/api/method/frappe.utils.change_log.get_change_log');
+      final entries = r.data['message'];
+      if (entries is List) {
+        for (final e in entries) {
+          if (e is Map && (e['title'] as String?)?.contains('ERPNext') == true) {
+            final v = e['version'] as String?;
+            if (v != null && v.isNotEmpty) return v;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Returns the cached ERPNext version string, fetching it if needed.
+  Future<String?> getErpNextVersion() async {
+    if (_erpNextVersion != null || _stockBalanceUsesListFilters != null) {
+      return _erpNextVersion;
+    }
+    await _getStockBalanceUsesListFilters();
+    return _erpNextVersion;
+  }
+
+  /// Returns [itemCode] as a list on ERPNext ≥ v15.72.0, or as a plain string
+  /// on older versions, to match the Stock Balance `item_code` filter type.
+  Future<dynamic> stockBalanceItemCodeFilter(String itemCode) async {
+    return (await _getStockBalanceUsesListFilters()) ? [itemCode] : itemCode;
+  }
+
+  /// Resolves a Customer Code to the parent Item codes that carry it.
+  ///
+  /// The Stock Balance report has no customer filter; "Customer Code" lives in
+  /// the Item's `customer_items` child (Item Customer Detail) `ref_code` field.
+  /// Returns the distinct parent item codes whose `ref_code` contains [code]
+  /// (case-insensitive substring, mirroring the web grid's "like" filter).
+  Future<List<String>> resolveItemsByCustomerCode(String code) async {
+    final query = code.trim();
+    if (query.isEmpty) return <String>[];
+    // List Item (which the user can read) and join-filter on the child table
+    // — querying /api/resource/Item Customer Detail directly returns 403.
+    final rows = await getList(
+      null,
+      doctype:       'Item',
+      fields:        ['name'],
+      filters:       {'ref_code': ['like', '%$query%']},
+      filterDoctype: 'Item Customer Detail',
+      limit:         0, // 0 = no page limit (all matches)
+      orderBy:       'name asc',
+    );
+    return rows
+        .map((r) => (r['name'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  /// Fetches the Customer Code (Item `customer_code` field) for [itemCodes].
+  ///
+  /// The Stock Balance report response omits this column, so we read it the
+  /// same way the web report's "Add Column" feature does, via
+  /// `query_report.get_data_for_custom_field`. Returns a map of item code →
+  /// customer code; empty on any failure (display-only enrichment).
+  Future<Map<String, String>> getItemCustomerCodes(List<String> itemCodes) async {
+    final names = itemCodes.where((c) => c.isNotEmpty).toSet().toList();
+    if (names.isEmpty) return <String, String>{};
+    if (!_dioInitialised) await _initDio();
+    try {
+      final response = await _dio.post(
+        '/api/method/frappe.desk.query_report.get_data_for_custom_field',
+        data: {
+          'doctype': 'Item',
+          'field'  : 'customer_code',
+          'names'  : json.encode(names),
+        },
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+      );
+      final message = response.data['message'];
+      if (message is Map) {
+        return message.map(
+          (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+        );
+      }
+    } catch (_) {
+      // Enrichment only — never block the report on this.
+    }
+    return <String, String>{};
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   ApiProvider() {
     _initDio();
   }
 
   void setBaseUrl(String url) {
     _baseUrl = url;
+    _stockBalanceUsesListFilters = null;
+    _erpNextVersion = null;
     if (_dioInitialised) {
       _dio.options.baseUrl = _baseUrl;
     }
@@ -230,6 +356,38 @@ class ApiProvider {
     return data['message'] is List;
   }
 
+  /// Checks whether the current session user has [ptype] permission on the
+  /// specific document [name] of [doctype], via `frappe.client.has_permission`.
+  ///
+  /// Frappe v15 requires a docname for this method, so it is only meaningful
+  /// for already-saved documents (e.g. submitting a saved draft).
+  Future<Response> hasDocPermission(
+      String doctype, String name, String ptype) async {
+    if (!_dioInitialised) await _initDio();
+    return await _dio.get(
+      '/api/method/frappe.client.has_permission',
+      queryParameters: {
+        'doctype':   doctype,
+        'docname':   name,
+        'perm_type': ptype,
+      },
+    );
+  }
+
+  /// Parses a `frappe.client.has_permission` response into a [bool].
+  ///
+  /// Expected shape: `{"message": {"has_permission": 1|true}}`.
+  /// Anything else (null, non-Map, missing keys, falsy value) → `false`
+  /// (fail-closed). Exposed as a public static method so unit tests can
+  /// exercise it without a live HTTP connection.
+  static bool parseHasDocPermissionResponse(dynamic data) {
+    if (data is! Map) return false;
+    final message = data['message'];
+    if (message is! Map) return false;
+    final value = message['has_permission'];
+    return value == true || value == 1;
+  }
+
   // ---------------------------------------------------------------------------
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------
@@ -259,9 +417,16 @@ class ApiProvider {
     int limit = 20,
     String orderBy = 'modified desc',
     String? groupBy = '',
+    String? filterDoctype,
   }) async {
     final dt = _positional ?? doctype;
     if (dt == null) return [];
+
+    // Frappe supports filtering a parent doctype by a child-table field by
+    // setting the filter's doctype to the CHILD doctype while listing the
+    // parent (a join filter). [filterDoctype] overrides the doctype used in
+    // each filter tuple; it defaults to the listed doctype [dt].
+    final filterDt = filterDoctype ?? dt;
 
     try {
       if (!_dioInitialised) await _initDio();
@@ -275,9 +440,9 @@ class ApiProvider {
           'filters': json.encode(
             filters.entries.map((e) {
               if (e.value is List && (e.value as List).length == 2) {
-                return [dt, e.key, e.value[0], e.value[1]];
+                return [filterDt, e.key, e.value[0], e.value[1]];
               }
-              return [dt, e.key, '=', e.value];
+              return [filterDt, e.key, '=', e.value];
             }).toList(),
           ),
       });
@@ -351,6 +516,41 @@ class ApiProvider {
     }
   }
 
+  /// Extracts the `warehouse` link from a `GET /api/resource/Rack/{name}`
+  /// response body. Returns null on any shape mismatch or empty value.
+  static String? parseRackWarehouseResponse(dynamic data) {
+    if (data is! Map) return null;
+    final doc = data['data'];
+    if (doc is! Map) return null;
+    final wh = doc['warehouse'];
+    return (wh is String && wh.isNotEmpty) ? wh : null;
+  }
+
+  /// Resolves the authoritative warehouse of [rack] from the Rack DocType.
+  ///
+  /// Distinguishes "rack does not exist" (404 → notFound) from transient
+  /// failures (error) so callers can reject invalid racks while degrading
+  /// gracefully offline.
+  /// An empty [rack] resolves to [RackLookupStatus.notFound].
+  Future<RackWarehouseLookup> getRackWarehouse(String rack) async {
+    if (rack.isEmpty) return const RackWarehouseLookup.notFound();
+    try {
+      final response = await getDocument('Rack', rack);
+      if (response.statusCode == 200 && response.data != null) {
+        return RackWarehouseLookup.found(
+            parseRackWarehouseResponse(response.data));
+      }
+      return const RackWarehouseLookup.error();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return const RackWarehouseLookup.notFound();
+      }
+      return const RackWarehouseLookup.error();
+    } catch (_) {
+      return const RackWarehouseLookup.error();
+    }
+  }
+
   Future<Response> getReport(String reportName, {Map<String, dynamic>? filters}) async {
     if (!_dioInitialised) await _initDio();
 
@@ -386,7 +586,7 @@ class ApiProvider {
       "company": company,
       "from_date": today,
       "to_date": today,
-      "item_code": itemCode,
+      "item_code": await stockBalanceItemCodeFilter(itemCode),
       "valuation_field_type": "Currency",
       "rack": rack != null && rack.isNotEmpty ? [rack] : [],
       "show_variant_attributes": 1,
@@ -404,6 +604,76 @@ class ApiProvider {
           'ignore_prepared_report': 'true',
           '_': DateTime.now().millisecondsSinceEpoch
         }
+    );
+  }
+
+  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
+      getStockBalanceReport({
+    required String fromDate,
+    required String toDate,
+    List<String>? itemCodes,
+    String? warehouse,
+    String? itemGroup,
+    bool showDimensionWise     = false,
+    bool showVariantAttributes = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final storage = Get.find<StorageService>();
+
+    // The Stock Balance report's item_code filter is a single SQL scalar on
+    // older instances (≤ v15.71) and a proper list on v15.72+. Push the
+    // restriction server-side only when the instance can honour it:
+    //   • a single item works on every version;
+    //   • multiple items are sent as a list only on v15.72+.
+    // When a multi-item restriction can't be sent, item_code is omitted and
+    // the caller narrows the rows client-side.
+    final items = itemCodes?.where((c) => c.isNotEmpty).toList() ?? const [];
+    dynamic itemCodeFilter;
+    if (items.length == 1) {
+      itemCodeFilter = await stockBalanceItemCodeFilter(items.first);
+    } else if (items.length > 1 && await _getStockBalanceUsesListFilters()) {
+      itemCodeFilter = items;
+    }
+
+    final filters = <String, dynamic>{
+      'company'             : storage.getCompany(),
+      'from_date'           : fromDate,
+      'to_date'             : toDate,
+      'valuation_field_type': 'Currency',
+      if (itemCodeFilter != null)
+        'item_code'         : itemCodeFilter,
+      if (warehouse != null && warehouse.isNotEmpty)
+        'warehouse'         : warehouse,
+      if (itemGroup != null && itemGroup.isNotEmpty)
+        'item_group'        : itemGroup,
+      if (showDimensionWise)     'show_dimension_wise_stock': 1,
+      if (showVariantAttributes) 'show_variant_attributes'  : 1,
+    };
+
+    late final Response response;
+    try {
+      response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Stock Balance',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } on DioException {
+      rethrow;
+    } catch (_) {
+      rethrow;
+    }
+
+    if (response.statusCode != 200) {
+      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    }
+
+    return parseStockBalanceResponse(
+      response.data['message'] as Map<String, dynamic>?,
     );
   }
 
@@ -590,6 +860,67 @@ class ApiProvider {
     }
   }
 
+  static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
+      parseStockBalanceResponse(Map<String, dynamic>? message) {
+    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+    if (message == null) return empty;
+    try {
+      final rawCols = message['columns'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
+      if (rawRows.isEmpty) return empty;
+
+      String fn(dynamic col) {
+        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
+        final s       = col.toString().toLowerCase();
+        final lastDot = s.lastIndexOf('.');
+        return lastDot >= 0
+            ? s.substring(lastDot + 1).replaceAll('`', '')
+            : s;
+      }
+
+      String lbl(dynamic col) {
+        if (col is Map) return (col['label'] as String? ?? '');
+        return col.toString();
+      }
+
+      final columns = rawCols
+          .map((c) => <String, dynamic>{'fieldname': fn(c), 'label': lbl(c)})
+          .toList();
+
+      // Find first non-null row to determine row format (Map vs List).
+      // Avoid firstWhere with orElse: () => null — the inferred return type
+      // conflicts with the list element type and throws at runtime.
+      dynamic firstRow;
+      for (final r in rawRows) {
+        if (r != null) { firstRow = r; break; }
+      }
+
+      if (firstRow is Map) {
+        final rows = rawRows
+            .whereType<Map>()
+            .map((r) => Map<String, dynamic>.from(r))
+            .toList();
+        return (columns: columns, rows: rows);
+      }
+
+      final fieldnames = rawCols.map(fn).toList();
+      final rows = rawRows
+          .whereType<List>()
+          .map((r) {
+            final row = <String, dynamic>{};
+            for (var i = 0; i < fieldnames.length && i < r.length; i++) {
+              row[fieldnames[i]] = r[i];
+            }
+            return row;
+          })
+          .toList();
+
+      return (columns: columns, rows: rows);
+    } catch (_) {
+      return empty;
+    }
+  }
+
   /// Exposed as a public static method so unit tests can exercise the parsing
   /// logic without a live HTTP connection.
   static String? parseUploadFileResponse(Map<String, dynamic>? data) {
@@ -677,6 +1008,34 @@ class ApiProvider {
     }
   }
 
+  /// Batch-fetches the `image` field for [itemCodes].
+  ///
+  /// Returns a map of item code → image path (relative frappe file URL, e.g.
+  /// "/files/foo.jpg") for items that have one; items without an image are
+  /// omitted. Used to surface item thumbnails on the Stock Balance tiles, whose
+  /// report response does not include the image (mirrors the customer_code
+  /// enrichment).
+  Future<Map<String, String>> getItemImages(List<String> itemCodes) async {
+    if (itemCodes.isEmpty) return {};
+    try {
+      final rows = await getList(
+        null,
+        doctype: 'Item',
+        fields:  ['name', 'image'],
+        filters: {'name': ['in', itemCodes]},
+        limit:   itemCodes.length + 1,
+        orderBy: 'name asc',
+      );
+      return {
+        for (final r in rows)
+          if (r['image']?.toString().trim().isNotEmpty ?? false)
+            r['name'].toString(): r['image'].toString(),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // getStockBalanceWithDimension
   //
@@ -713,7 +1072,7 @@ class ApiProvider {
       'company'                  : company,
       'from_date'                : today,
       'to_date'                  : today,
-      'item_code'                : itemCode,
+      'item_code'                : await stockBalanceItemCodeFilter(itemCode),
       'show_variant_attributes'  : 1,
       'show_dimension_wise_stock': 1,
     };
@@ -1047,7 +1406,7 @@ class ApiProvider {
 
     final filters = <String, dynamic>{
       'company'  : company,
-      'item_code': itemCode,
+      'item_code': await stockBalanceItemCodeFilter(itemCode),
       'batch_no' : batchNo,
       'warehouse': warehouse,
       'from_date': '2000-01-01',
@@ -1116,6 +1475,167 @@ class ApiProvider {
     }
   }
 
+  /// Fetches Stock Ledger entries for [itemCode] in [warehouse] over the
+  /// [fromDate]–[toDate] period, for the ledger drill-down sheet.
+  ///
+  /// Returns rows `{date, voucher_type, voucher_no, qty, balance}` oldest →
+  /// newest (`qty` = signed actual_qty, `balance` = qty_after_transaction).
+  /// Fail-open: returns `[]` on any error so the sheet shows an empty state.
+  Future<List<Map<String, dynamic>>> getStockLedgerEntries({
+    required String itemCode,
+    required String warehouse,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    final storage = Get.find<StorageService>();
+    final filters = <String, dynamic>{
+      'company'  : storage.getCompany(),
+      'item_code': await stockBalanceItemCodeFilter(itemCode),
+      if (warehouse.isNotEmpty) 'warehouse': warehouse,
+      'from_date': fromDate,
+      'to_date'  : toDate,
+    };
+    try {
+      final response = await _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Stock Ledger',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+      if (response.statusCode != 200) return [];
+      return parseStockLedgerEntries(
+          response.data['message'] as Map<String, dynamic>?);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Normalises a Stock Ledger report `message` into ledger rows. Exposed as a
+  /// static so the parsing is unit-testable without a live connection.
+  static List<Map<String, dynamic>> parseStockLedgerEntries(
+      Map<String, dynamic>? message) {
+    if (message == null) return [];
+    try {
+      final rawCols = message['columns'] as List<dynamic>? ?? [];
+      final rawRows = message['result']  as List<dynamic>? ?? [];
+      if (rawRows.isEmpty) return [];
+
+      String fn(dynamic c) {
+        if (c is Map) return (c['fieldname'] as String? ?? '').toLowerCase();
+        final s = c.toString().toLowerCase();
+        final i = s.lastIndexOf('.');
+        return i >= 0 ? s.substring(i + 1).replaceAll('`', '') : s;
+      }
+
+      dynamic first;
+      for (final r in rawRows) {
+        if (r != null) { first = r; break; }
+      }
+      late final List<Map<String, dynamic>> mapRows;
+      if (first is Map) {
+        mapRows = rawRows
+            .whereType<Map>()
+            .map((r) => Map<String, dynamic>.from(r))
+            .toList();
+      } else {
+        final names = rawCols.map(fn).toList();
+        mapRows = rawRows.whereType<List>().map((r) {
+          final m = <String, dynamic>{};
+          for (var i = 0; i < names.length && i < r.length; i++) {
+            m[names[i]] = r[i];
+          }
+          return m;
+        }).toList();
+      }
+
+      double toNum(dynamic v) =>
+          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+
+      return mapRows
+          .where((r) => r['voucher_no'] != null || r['posting_date'] != null)
+          .map((r) => <String, dynamic>{
+                'date': (r['posting_date'] ?? r['date'] ?? '').toString(),
+                'voucher_type': (r['voucher_type'] ?? '').toString(),
+                'voucher_no': (r['voucher_no'] ?? '').toString(),
+                'qty': toNum(r['actual_qty']),
+                'balance': toNum(r['qty_after_transaction']),
+              })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Sales-Order reservations behind the reserved figure for [itemCode] in
+  /// [warehouse], via Stock Reservation Entry (the source of the report's
+  /// reserved_stock column on ERPNext v15).
+  ///
+  /// Returns rows `{voucher_type, voucher_no, reserved, status}` where
+  /// `reserved` = reserved_qty − delivered_qty (only still-reserved rows).
+  /// Fail-open: returns `[]` on any error.
+  Future<List<Map<String, dynamic>>> getStockReservations({
+    required String itemCode,
+    required String warehouse,
+  }) async {
+    try {
+      final rows = await getList(
+        null,
+        doctype: 'Stock Reservation Entry',
+        fields: [
+          'voucher_type',
+          'voucher_no',
+          'reserved_qty',
+          'delivered_qty',
+          'status',
+        ],
+        filters: {
+          'item_code': itemCode,
+          if (warehouse.isNotEmpty) 'warehouse': warehouse,
+          'docstatus': 1,
+        },
+        limit: 100,
+        orderBy: 'creation asc',
+      );
+      double toNum(dynamic v) =>
+          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
+      return rows
+          .map((r) => <String, dynamic>{
+                'voucher_type': (r['voucher_type'] ?? 'Sales Order').toString(),
+                'voucher_no': (r['voucher_no'] ?? '').toString(),
+                'reserved': toNum(r['reserved_qty']) - toNum(r['delivered_qty']),
+                'status': (r['status'] ?? '').toString(),
+              })
+          .where((r) => (r['reserved'] as double) > 0)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Calls `frappe.client.get_count` to retrieve a document count server-side.
+  ///
+  /// Much more efficient than fetching all documents with `limit: 0` and
+  /// counting them client-side. The server returns `{"message": <int>}`.
+  Future<Response> getDocumentCount(
+    String doctype, {
+    Map<String, dynamic>? filters,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    return _dio.get(
+      '/api/method/frappe.client.get_count',
+      queryParameters: {
+        'doctype': doctype,
+        if (filters != null && filters.isNotEmpty)
+          'filters': jsonEncode(filters),
+      },
+    );
+  }
+
   // Module specific getters
   Future<Response> getPurchaseReceipts({int limit = 20, int limitStart = 0, Map<String, dynamic>? filters, String orderBy = 'modified desc'}) async =>
       getDocumentList('Purchase Receipt', limit: limit, limitStart: limitStart, filters: filters, orderBy: orderBy, fields: ['name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'status', 'supplier', 'posting_date', 'posting_time', 'set_warehouse', 'currency', 'total_qty', 'grand_total']);
@@ -1174,6 +1694,13 @@ class ApiProvider {
     if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
   }
+
+  Future<String> getSessionCookieHeader() async {
+    if (!_dioInitialised) await _initDio();
+    final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    return cookies.map((c) => '${c.name}=${c.value}').join('; ');
+  }
+
   Future<Response> logoutApiCall() async {
     if (!_dioInitialised) await _initDio();
     return await _dio.post('/api/method/logout');

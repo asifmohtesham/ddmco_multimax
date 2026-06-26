@@ -60,6 +60,8 @@ class PurchaseOrderController extends GetxController {
     fetchUsers();
     fetchWarehouses();
     fetchDocTypePermissions();
+    debounce(searchQuery, (_) => fetchPurchaseOrders(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -147,8 +149,11 @@ class PurchaseOrderController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchPurchaseOrders(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchPurchaseOrders(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {
@@ -165,14 +170,7 @@ class PurchaseOrderController extends GetxController {
   // ── Search ────────────────────────────────────────────────────────────────
 
   /// Debounced handler wired to the SearchBar's [onChanged].
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchPurchaseOrders(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ── Data ──────────────────────────────────────────────────────────────────
 

@@ -31,15 +31,20 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
   }
 
   // --- Searchable Selection Helper ---
+  //
+  // [itemsBuilder] and [isLoadingBuilder] are read INSIDE the result Obx, so
+  // when reference data is still loading (the sheet was opened before the
+  // background fetch finished) the list fills in progressively without the
+  // user having to reopen the selector.
   void _showSelectionSheet({
     required BuildContext context,
     required String title,
-    required List<String> items,
+    required List<String> Function() itemsBuilder,
     required Function(String) onSelected,
-    bool isLoading = false,
+    bool Function()? isLoadingBuilder,
   }) {
     final searchController = TextEditingController();
-    final RxList<String> filteredItems = RxList<String>(items);
+    final query = ''.obs;
 
     showModalBottomSheet(
       context: context,
@@ -71,31 +76,32 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
-                    onChanged: (val) {
-                      if (val.isEmpty) {
-                        filteredItems.assignAll(items);
-                      } else {
-                        filteredItems.assignAll(items.where(
-                                (item) => item.toLowerCase().contains(val.toLowerCase())
-                        ).toList());
-                      }
-                    },
+                    onChanged: (val) => query.value = val,
                   ),
                   const SizedBox(height: 12),
                   Expanded(
                     child: Obx(() {
-                      if (isLoading) {
+                      final loading = isLoadingBuilder?.call() ?? false;
+                      final all = itemsBuilder();
+                      // Still fetching and nothing to show yet → spinner.
+                      if (loading && all.isEmpty) {
                         return const Center(child: CircularProgressIndicator());
                       }
-                      if (filteredItems.isEmpty) {
+                      final q = query.value.toLowerCase();
+                      final filtered = q.isEmpty
+                          ? all
+                          : all
+                              .where((item) => item.toLowerCase().contains(q))
+                              .toList();
+                      if (filtered.isEmpty) {
                         return const Center(child: Text("No items found"));
                       }
                       return ListView.separated(
                         controller: scrollController,
-                        itemCount: filteredItems.length,
+                        itemCount: filtered.length,
                         separatorBuilder: (c, i) => const Divider(height: 1),
                         itemBuilder: (context, index) {
-                          final item = filteredItems[index];
+                          final item = filtered[index];
                           return ListTile(
                             title: Text(item),
                             onTap: () {
@@ -203,7 +209,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       onTap: () => _showSelectionSheet(
                         context: context,
                         title: "Select Field",
-                        items: controller.availableFields.map((e) => e.label).toList(),
+                        itemsBuilder: () =>
+                            controller.availableFields.map((e) => e.label).toList(),
                         onSelected: (label) => _updateFilterField(index, label),
                       ),
                       child: Row(
@@ -231,8 +238,9 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                           onTap: () => _showSelectionSheet(
                             context: context,
                             title: "Select Attribute",
-                            items: controller.itemAttributes,
-                            isLoading: controller.isLoadingAttributes.value,
+                            itemsBuilder: () => controller.itemAttributes,
+                            isLoadingBuilder: () =>
+                                controller.isLoadingAttributes.value,
                             onSelected: (val) {
                               filter.attributeName = val;
                               filter.value = ''; // Reset value when attribute changes
@@ -257,8 +265,10 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             _showSelectionSheet(
                               context: context,
                               title: "Select Value",
-                              items: controller.currentAttributeValues,
-                              isLoading: controller.isLoadingAttributeValues.value,
+                              itemsBuilder: () =>
+                                  controller.currentAttributeValues,
+                              isLoadingBuilder: () =>
+                                  controller.isLoadingAttributeValues.value,
                               onSelected: (val) {
                                 filter.value = val;
                                 localFilters.refresh();
@@ -283,7 +293,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                           onTap: () => _showSelectionSheet(
                             context: context,
                             title: "Operator",
-                            items: controller.availableOperators,
+                            itemsBuilder: () => controller.availableOperators,
                             onSelected: (op) {
                               filter.operator = op;
                               localFilters.refresh();
@@ -323,23 +333,23 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
   Widget _buildValueInput(BuildContext context, FilterRow filter, int index) {
     if (filter.fieldType == 'Link') {
+      final isGroup = filter.doctype == 'Item Group';
+      final isItem = filter.doctype == 'Item';
       return InkWell(
         onTap: () {
-          List<String> options = [];
-          bool loading = false;
-          if (filter.doctype == 'Item Group') {
-            options = controller.itemGroups;
-            loading = controller.isLoadingGroups.value;
-          } else if (filter.doctype == 'Item') {
-            options = controller.templateItems;
-            loading = controller.isLoadingTemplates.value;
-          }
-
           _showSelectionSheet(
             context: context,
             title: "Select ${filter.label}",
-            items: options,
-            isLoading: loading,
+            itemsBuilder: () {
+              if (isGroup) return controller.itemGroups;
+              if (isItem) return controller.templateItems;
+              return const <String>[];
+            },
+            isLoadingBuilder: () {
+              if (isGroup) return controller.isLoadingGroups.value;
+              if (isItem) return controller.isLoadingTemplates.value;
+              return false;
+            },
             onSelected: (val) {
               filter.value = val;
               localFilters.refresh();

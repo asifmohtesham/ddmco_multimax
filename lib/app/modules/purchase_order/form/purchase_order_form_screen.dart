@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
@@ -47,6 +49,22 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    if (controller.canCreateReceipt)
+                      // AsyncIconButton carries its own Obx, so it repaints the
+                      // icon↔spinner swap even though the SliverPersistentHeader
+                      // delegate's shouldRebuild keys on action count.
+                      AsyncIconButton(
+                        busy: controller.isCreatingReceipt,
+                        onPressed: controller.createPurchaseReceipt,
+                        icon: const Icon(Icons.receipt_long),
+                        tooltip: 'Create Purchase Receipt',
+                      ),
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -185,6 +203,23 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             hintText:    'Scan Item Code',
             activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
           )),
+        if (controller.canCreateReceipt)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: AsyncFilledButton(
+                busy: controller.isCreatingReceipt,
+                onPressed: controller.createPurchaseReceipt,
+                icon: const Icon(Icons.receipt_long),
+                label: 'Create Purchase Receipt',
+                loadingLabel: 'Creating…',
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+            ),
+          ),
         SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );

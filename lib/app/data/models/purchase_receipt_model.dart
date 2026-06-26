@@ -117,6 +117,42 @@ class PurchaseReceiptItem {
     this.poRate,
   });
 
+  /// The PO ordered qty this row is being received against, or null when the
+  /// row carries no PO linkage (manually-added line).
+  ///
+  /// Resolution mirrors [ItemCardData.fromPurchaseReceiptItem] exactly:
+  /// the API-populated `purchase_order_qty` wins; locally-added rows fall back
+  /// to `po_qty`. Both the per-row progress bar and the Items-tab status chips
+  /// read this single source so they can never disagree.
+  double? get resolvedTargetQty =>
+      (purchaseOrderQty != null && purchaseOrderQty! > 0)
+          ? purchaseOrderQty
+          : (poQty != null && poQty! > 0)
+              ? poQty
+              : null;
+
+  /// True when this row's accepted qty meets or exceeds its PO ordered qty —
+  /// i.e. the line is fully received. Matches the progress bar's "complete"
+  /// (green) state. Rows with no PO target are never "fully received".
+  bool get isFullyReceived {
+    final target = resolvedTargetQty;
+    return target != null && qty >= target;
+  }
+
+  /// True when this row carries a Purchase Order Item reference (it was
+  /// received against a PO line).
+  bool get hasPoItemReference =>
+      (purchaseOrderItem != null && purchaseOrderItem!.isNotEmpty) ||
+      (poItem != null && poItem!.isNotEmpty);
+
+  /// True when the row references a PO line but that line can no longer be
+  /// resolved — the `Purchase Order Item.name` was regenerated (e.g. the PO
+  /// qty was edited after receipt), orphaning the link. Because
+  /// `purchase_order_qty` is re-hydrated from the live PO on load, an orphaned
+  /// reference leaves [resolvedTargetQty] null. Such rows are neither
+  /// "pending" nor "completed" — they need their link repaired.
+  bool get isPoLinkBroken => hasPoItemReference && resolvedTargetQty == null;
+
   factory PurchaseReceiptItem.fromJson(Map<String, dynamic> json) {
     return PurchaseReceiptItem(
       name: json['name'],

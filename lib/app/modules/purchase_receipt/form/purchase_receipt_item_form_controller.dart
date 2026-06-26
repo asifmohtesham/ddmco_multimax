@@ -14,6 +14,7 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/po_link_resolver.dart';
 
 /// Item-level sheet controller for Purchase Receipt.
 ///
@@ -134,11 +135,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty (Commit 6) ────────
   @override
-  double get effectiveMaxQty {
-    final po = poQty.value;
-    if (po != null && po > 0) return po;
-    return double.infinity;
-  }
+  double get effectiveMaxQty => poQtyCeiling(poQty.value);
 
   @override
   String? get qtyInfoText {
@@ -260,19 +257,36 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     final warehouse = resolvedWarehouse ?? '';
 
     if (editingItemName.value != null) {
-      parent.updateItem(
-        editingItemName.value!, qty, batch, rack, warehouse,
-      );
-    } else {
-      parent.addItem(
-        itemCode.value, itemName.value, qty, batch, rack, warehouse,
-        uom:       itemUom.value,
-        poItemId:  poItemId.value,
-        poDocName: poDocName.value,
-        poQty:     poQty.value  ?? 0.0,
-        poRate:    poRate.value ?? 0.0,
-      );
+      parent.updateItem(editingItemName.value!, qty, batch, rack, warehouse);
+      await parent.saveDocument();
+      return;
     }
+
+    // Resolve a VALID, OPEN Purchase Order Item before adding.
+    final result = parent.resolvePoLink(itemCode.value);
+    switch (result.outcome) {
+      case PoLinkOutcome.autoLinked:
+        parent.applyPoLink(this, result.linked!);
+      case PoLinkOutcome.needsPicker:
+        final chosen = await parent.showPoLinkPicker(
+          itemCode: itemCode.value,
+          candidates: result.candidates,
+        );
+        if (chosen == null) throw const PoLinkAbortedException();
+        parent.applyPoLink(this, chosen);
+      case PoLinkOutcome.blocked:
+        GlobalSnackbar.error(message: result.reason!);
+        throw const PoLinkAbortedException();
+    }
+
+    parent.addItem(
+      itemCode.value, itemName.value, qty, batch, rack, warehouse,
+      uom:       itemUom.value,
+      poItemId:  poItemId.value,
+      poDocName: poDocName.value,
+      poQty:     poQty.value  ?? 0.0,
+      poRate:    poRate.value ?? 0.0,
+    );
     await parent.saveDocument();
   }
 

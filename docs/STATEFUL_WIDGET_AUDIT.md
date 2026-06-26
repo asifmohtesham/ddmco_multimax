@@ -43,8 +43,6 @@
 | Class | File Path | Note |
 |-------|-----------|------|
 | _SkeletonDrawerItem | lib/app/modules/global_widgets/app_nav_drawer.dart | Vsync required for shimmer |
-| _ProfileSkeleton | lib/app/modules/profile/user_profile_screen.dart | Vsync required for shimmer |
-| SessionDefaultsBottomSheet | lib/app/modules/home/widgets/session_defaults_bottom_sheet.dart | Local UI state management |
 
 ---
 

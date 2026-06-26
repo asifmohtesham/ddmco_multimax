@@ -23,6 +23,7 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/controller_feedback_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
@@ -34,7 +35,7 @@ import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
 import 'delivery_note_item_form_controller.dart';
 
 class DeliveryNoteFormController extends GetxController
-    with OptimisticLockingMixin, ControllerFeedbackMixin {
+    with OptimisticLockingMixin, ControllerFeedbackMixin, RealtimeSyncMixin {
   final DeliveryNoteProvider  _provider          = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider     _posUploadProvider = Get.find<PosUploadProvider>();
   final ApiProvider           _apiProvider       = Get.find<ApiProvider>();
@@ -46,6 +47,9 @@ class DeliveryNoteFormController extends GetxController
   final String  name = Get.arguments['name'];
   String        mode = Get.arguments['mode'];
 
+  @override String get realtimeDoctype => 'Delivery Note';
+  @override String get realtimeDocname => name;
+
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
 
@@ -53,8 +57,8 @@ class DeliveryNoteFormController extends GetxController
   var isLoading    = true.obs;
   var isScanning   = false.obs;
   var isAddingItem = false.obs;
-  var isSaving     = false.obs;
-  var isDirty      = false.obs;
+  @override var isSaving = false.obs;
+  @override var isDirty  = false.obs;
   String _originalJson = '';
 
   // ── Save result state machine ─────────────────────────────────────────────
@@ -117,12 +121,13 @@ class DeliveryNoteFormController extends GetxController
     if (mode == 'new') {
       _createNewDeliveryNote();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
     disposeFeedback();
@@ -156,7 +161,7 @@ class DeliveryNoteFormController extends GetxController
   // ── Dirty tracking ────────────────────────────────────────────────────────
   void checkForChanges() {
     if (deliveryNote.value == null) return;
-    if (mode == 'new') { isDirty.value = true; return; }
+    if (mode == 'new') { isDirty.value = true; scheduleAutoSave(); return; }
     if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
     final tempNote = DeliveryNote(
       name:         deliveryNote.value!.name,
@@ -174,6 +179,7 @@ class DeliveryNoteFormController extends GetxController
       setWarehouse: setWarehouse.value,
     );
     isDirty.value = jsonEncode(tempNote.toJson()) != _originalJson;
+    if (isDirty.value) scheduleAutoSave();
   }
 
   void _updateOriginalState(DeliveryNote note) {
@@ -455,6 +461,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────
+  @override
   Future<void> saveDocument() async {
     if (isSaving.value) return;
     isSaving.value = true;

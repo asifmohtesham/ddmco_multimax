@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -18,6 +19,8 @@ import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 enum LinkedDocType { deliveryNote, stockEntry, none }
+
+enum ExportDocType { deliveryNote, packingSlip }
 
 class PackingSlipInfo {
   final String psName;
@@ -89,11 +92,23 @@ typedef _PSRow = ({
 
 typedef _PSCol = (String, CellValue Function(_PSRow));
 
+/// Public record for a single Delivery Note export row.
+/// Public (unlike _PSRow) so unit tests can call buildDnRows directly.
+typedef DnRow = ({
+  int    serial,
+  String variantOf,
+  String itemCode,
+  String itemName,
+  double qty,
+  String country,
+});
+
+typedef _DnCol = (String, CellValue Function(DnRow));
+
 // ── compute() plumbing ──────────────────────────────────────────────────────
 
 class _PackingSlipExcelParams {
   final String docName;
-  final String docDate;
   final Map<String, String> itemNameByIdx;
   final List<PackingSlip> packingSlips;
   final bool compact;
@@ -101,7 +116,6 @@ class _PackingSlipExcelParams {
 
   const _PackingSlipExcelParams({
     required this.docName,
-    required this.docDate,
     required this.itemNameByIdx,
     required this.packingSlips,
     required this.compact,
@@ -203,15 +217,9 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     ..value = TextCellValue(p.docName)
     ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 13);
 
-  String formattedDate;
-  try {
-    formattedDate =
-        DateFormat('dd MMM yyyy').format(DateTime.parse(p.docDate));
-  } catch (_) {
-    formattedDate = p.docDate;
-  }
+  // Export date (when the file was generated), not the document date.
   sheet.cell(idx(0, 2))
-    ..value = TextCellValue(formattedDate)
+    ..value = TextCellValue(DateFormat('dd MMM yyyy').format(DateTime.now()))
     ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
 
   // ── Table column headers ──────────────────────────────────────────────
@@ -234,6 +242,17 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     row++;
   }
 
+  // ── Totals row (rendered as the injected table's totals row) ──────────
+  if (sortedRows.isNotEmpty) {
+    PosUploadFormController.writeQtyTotalsRow(
+      sheet: sheet,
+      columnNames: columns.map((col) => col.$1).toList(),
+      tableStartRow: tableStartRow,
+      dataRowCount: sortedRows.length,
+      style: bodyStyle,
+    );
+  }
+
   // ── Autofit ───────────────────────────────────────────────────────────
   for (int c = 0; c < columns.length; c++) {
     sheet.setColumnAutoFit(c);
@@ -245,17 +264,153 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     columns.map((col) => col.$1).toList(),
     sortedRows.length,
     tableStartRow: tableStartRow,
+    sumColumnName: 'Qty',
+  );
+}
+
+/// Params for the DN export isolate. Public (with the function below) so
+/// unit tests can exercise the full xlsx pipeline; compute() also requires
+/// a top-level or static function.
+class DeliveryNoteExcelParams {
+  final String docName;
+  final Map<String, String> itemNameByIdx;
+  final List<DeliveryNoteItem> items;
+  final bool compact;
+  final String? sortByColumn;
+
+  const DeliveryNoteExcelParams({
+    required this.docName,
+    required this.itemNameByIdx,
+    required this.items,
+    required this.compact,
+    this.sortByColumn,
+  });
+}
+
+// Top-level function — required by compute(). Runs in a background isolate.
+// Mirrors _buildPackingSlipExcel: Consolas font, autofit, Excel Table injected.
+List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
+  final safeName = p.docName.replaceAll('/', '_');
+  final excelFile = Excel.createExcel();
+  excelFile.rename('Sheet1', safeName);
+  final sheet = excelFile[safeName];
+
+  var columns = p.compact
+      ? <_DnCol>[
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Country of Origin', (r) => TextCellValue(r.country)),
+        ]
+      : <_DnCol>[
+          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
+          ('Item Code',         (r) => TextCellValue(r.itemCode)),
+          ('Item Name',         (r) => TextCellValue(r.itemName)),
+          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Country of Origin', (r) => TextCellValue(r.country)),
+        ];
+
+  final sortedRows = PosUploadFormController.buildDnRows(
+    items: p.items,
+    itemNameByIdx: p.itemNameByIdx,
+    compact: p.compact,
+    sortByColumn: p.sortByColumn,
+  );
+
+  // Move the sorted column to the front, matching the PS export behaviour.
+  if (p.sortByColumn != null) {
+    final sortIdx = columns.indexWhere((c) => c.$1 == p.sortByColumn);
+    if (sortIdx > 0) {
+      final col = columns.removeAt(sortIdx);
+      columns.insert(0, col);
+    }
+  }
+
+  // ── Document header (rows 0–3, row 3 is blank) ───────────────────────
+  const tableStartRow = 4;
+
+  CellIndex idx(int c, int r) =>
+      CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r);
+
+  sheet.cell(idx(0, 0))
+    ..value = TextCellValue('Delivery Note')
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 20, bold: true);
+
+  sheet.cell(idx(0, 1))
+    ..value = TextCellValue(p.docName)
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 13);
+
+  // Export date (when the file was generated), not the document date.
+  sheet.cell(idx(0, 2))
+    ..value = TextCellValue(DateFormat('dd MMM yyyy').format(DateTime.now()))
+    ..cellStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
+
+  // ── Table column headers ──────────────────────────────────────────────
+  final bodyStyle = CellStyle(fontFamily: 'Consolas', fontSize: 11);
+
+  for (int c = 0; c < columns.length; c++) {
+    sheet.cell(idx(c, tableStartRow))
+      ..value = TextCellValue(columns[c].$1)
+      ..cellStyle = bodyStyle;
+  }
+
+  // ── Data rows ─────────────────────────────────────────────────────────
+  int row = tableStartRow + 1;
+  for (final r in sortedRows) {
+    for (int c = 0; c < columns.length; c++) {
+      sheet.cell(idx(c, row))
+        ..value = columns[c].$2(r)
+        ..cellStyle = bodyStyle;
+    }
+    row++;
+  }
+
+  // ── Totals row (rendered as the injected table's totals row) ──────────
+  if (sortedRows.isNotEmpty) {
+    PosUploadFormController.writeQtyTotalsRow(
+      sheet: sheet,
+      columnNames: columns.map((col) => col.$1).toList(),
+      tableStartRow: tableStartRow,
+      dataRowCount: sortedRows.length,
+      style: bodyStyle,
+    );
+  }
+
+  // ── Autofit ───────────────────────────────────────────────────────────
+  for (int c = 0; c < columns.length; c++) {
+    sheet.setColumnAutoFit(c);
+  }
+
+  final rawBytes = excelFile.encode()!;
+  return PosUploadFormController._injectExcelTable(
+    rawBytes,
+    columns.map((col) => col.$1).toList(),
+    sortedRows.length,
+    tableStartRow: tableStartRow,
+    tableName: 'DeliveryNoteTable',
+    sumColumnName: 'Qty',
   );
 }
 
 class PosUploadFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final StockEntryProvider _seProvider = Get.find<StockEntryProvider>();
   final PackingSlipProvider _psProvider = Get.find<PackingSlipProvider>();
   final String name = Get.arguments['name'];
   final String mode = Get.arguments['mode'];
+
+  // ── RealtimeSyncMixin requirements ─────────────────────────────────────────
+  @override String get realtimeDoctype => 'POS Upload';
+  @override String get realtimeDocname => name;
+  @override var isDirty = false.obs;
+  @override var isSaving = false.obs;
+
+  /// POS Upload is a read-only view — no edits are made from this screen.
+  @override
+  Future<void> saveDocument() async {}
 
   // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
@@ -275,6 +430,9 @@ class PosUploadFormController extends GetxController
   var linkedDocType = LinkedDocType.none.obs;
   var linkedDocName = ''.obs;
   var isLoadingLinked = false.obs;
+
+  /// The full linked Delivery Note, retained for the DN Excel export.
+  final deliveryNote = Rxn<DeliveryNote>();
 
   /// idx → custom_invoice_serial_number (null = no match)
   final resolvedSerials = <int, String?>{}.obs;
@@ -368,17 +526,93 @@ class PosUploadFormController extends GetxController
     }
   }
 
+  /// Builds the aggregated, optionally sorted row set for the DN Excel export.
+  /// Mirrors the PS export semantics: rows whose displayed text columns are
+  /// identical aggregate their qty; item names resolve from the POS Upload
+  /// items by invoice serial, falling back to the DN item's own name/code.
+  static List<DnRow> buildDnRows({
+    required List<DeliveryNoteItem> items,
+    required Map<String, String> itemNameByIdx,
+    required bool compact,
+    String? sortByColumn,
+  }) {
+    final rowMap = <String, DnRow>{};
+    for (final dnItem in items) {
+      final serialStr = dnItem.customInvoiceSerialNumber ?? '';
+      final itemName =
+          itemNameByIdx[serialStr] ?? dnItem.itemName ?? dnItem.itemCode;
+      final serial    = int.tryParse(serialStr) ?? 0;
+      final variantOf = dnItem.customVariantOf ?? '';
+      final itemCode  = dnItem.itemCode;
+      final country   = dnItem.countryOfOrigin ?? '';
+
+      final key = compact
+          ? '$serial\x00$itemName\x00$country'
+          : '$serial\x00$variantOf\x00$itemCode\x00$itemName\x00$country';
+
+      final existing = rowMap[key];
+      rowMap[key] = existing == null
+          ? (
+              serial:    serial,
+              variantOf: variantOf,
+              itemCode:  itemCode,
+              itemName:  itemName,
+              qty:       dnItem.qty,
+              country:   country,
+            )
+          : (
+              serial:    existing.serial,
+              variantOf: existing.variantOf,
+              itemCode:  existing.itemCode,
+              itemName:  existing.itemName,
+              qty:       existing.qty + dnItem.qty,
+              country:   existing.country,
+            );
+    }
+
+    final rows = rowMap.values.toList();
+    if (sortByColumn != null) {
+      rows.sort((a, b) => _dnRowComparator(sortByColumn, a, b));
+    }
+    return rows;
+  }
+
+  static int _dnRowComparator(String col, DnRow a, DnRow b) {
+    switch (col) {
+      case 'Invoice Serial #':
+        return a.serial.compareTo(b.serial);
+      case 'Qty':
+        return a.qty.compareTo(b.qty);
+      case 'Item Name':
+        return a.itemName.toLowerCase().compareTo(b.itemName.toLowerCase());
+      case 'Variant Of':
+        return a.variantOf.toLowerCase().compareTo(b.variantOf.toLowerCase());
+      case 'Item Code':
+        return a.itemCode.toLowerCase().compareTo(b.itemCode.toLowerCase());
+      case 'Country of Origin':
+        return a.country.toLowerCase().compareTo(b.country.toLowerCase());
+      default:
+        return 0;
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
     _loadData();
   }
 
+  @override
+  void onClose() {
+    disposeRealtimeSync();
+    super.onClose();
+  }
+
   // ── Initialisation ─────────────────────────────────────────────────────────
 
   Future<void> _loadData() async {
     isLoading.value = true;
-    await fetchPosUpload();
+    await fetchPosUpload().then((_) => initRealtimeSync());
     isLoading.value = false;
     fetchLinkedDocument();
   }
@@ -428,6 +662,7 @@ class PosUploadFormController extends GetxController
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
           final dn = DeliveryNote.fromJson(detailResp.data['data']);
+          deliveryNote.value = dn;
           _buildSerialMap(
             posItems: upload.items,
             matchSerial: (idx) => dn.items
@@ -446,16 +681,22 @@ class PosUploadFormController extends GetxController
               return matches.fold<double>(0, (sum, i) => sum + i.qty);
             },
           );
+        } else {
+          // Detail fetch failed — clear any DN retained from a previous
+          // fetch so the export UI can't act on stale data.
+          deliveryNote.value = null;
         }
         isLoadingLinked.value = false;
         await _fetchPackingSlips(upload, dnName);
       } else {
         linkedDocName.value = '';
         linkedDocType.value = LinkedDocType.none;
+        deliveryNote.value = null;
         isLoadingLinked.value = false;
       }
     } catch (_) {
       linkedDocType.value = LinkedDocType.none;
+      deliveryNote.value = null;
       isLoadingLinked.value = false;
     }
   }
@@ -678,7 +919,6 @@ class PosUploadFormController extends GetxController
 
     final params = _PackingSlipExcelParams(
       docName: upload.name,
-      docDate: upload.date,
       itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
       },
@@ -693,7 +933,43 @@ class PosUploadFormController extends GetxController
 
     final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
     final safeName  = upload.name.replaceAll('/', '_');
-    final fileName  = 'POS Upload - $safeName - $timestamp';
+    final fileName  = 'POS Upload - $safeName - Packing Slip - $timestamp';
+    final tempDir   = await getTemporaryDirectory();
+    final filePath  = '${tempDir.path}/$fileName.xlsx';
+    await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
+
+    return filePath;
+  }
+
+  // Builds the DN xlsx and writes it to the temp directory.
+  // Returns the file path on success; throws on failure.
+  // The caller is responsible for opening the share sheet and handling errors.
+  Future<String> buildDeliveryNoteExcel({
+    required bool compact,
+    String? sortByColumn,
+  }) async {
+    final upload = posUpload.value;
+    final dn = deliveryNote.value;
+    if (upload == null || dn == null) {
+      throw Exception('No delivery note data available');
+    }
+
+    final params = DeliveryNoteExcelParams(
+      docName: dn.name,
+      itemNameByIdx: {
+        for (final item in upload.items) item.idx.toString(): item.itemName,
+      },
+      items: dn.items,
+      compact: compact,
+      sortByColumn: sortByColumn,
+    );
+
+    // Runs in a background isolate — caller's UI stays responsive.
+    final fileBytes = await compute(buildDeliveryNoteExcelBytes, params);
+
+    final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
+    final safeName  = upload.name.replaceAll('/', '_');
+    final fileName  = 'POS Upload - $safeName - Delivery Note - $timestamp';
     final tempDir   = await getTemporaryDirectory();
     final filePath  = '${tempDir.path}/$fileName.xlsx';
     await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
@@ -703,32 +979,84 @@ class PosUploadFormController extends GetxController
 
   // ── Excel post-processing helpers ───────────────────────────────────────
 
+  /// Writes the totals-row cells for an export sheet: a 'Total' label in the
+  /// first column (unless Qty itself sits there) and a filter-aware
+  /// SUBTOTAL(109) sum over the Qty data range. The injected table's
+  /// totalsRowCount renders this row with the table's totals styling.
+  static void writeQtyTotalsRow({
+    required Sheet sheet,
+    required List<String> columnNames,
+    required int tableStartRow,
+    required int dataRowCount,
+    required CellStyle style,
+  }) {
+    final qtyCol = columnNames.indexOf('Qty');
+    if (qtyCol < 0 || dataRowCount == 0) return;
+
+    final totalsRow = tableStartRow + 1 + dataRowCount;
+    CellIndex idx(int c, int r) =>
+        CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r);
+
+    if (qtyCol > 0) {
+      sheet.cell(idx(0, totalsRow))
+        ..value = TextCellValue('Total')
+        ..cellStyle = style;
+    }
+
+    final colLetter = _excelColLetter(qtyCol);
+    final firstDataRow = tableStartRow + 2; // 1-based Excel row
+    final lastDataRow = tableStartRow + 1 + dataRowCount;
+    sheet.cell(idx(qtyCol, totalsRow))
+      ..value = FormulaCellValue(
+          'SUBTOTAL(109,$colLetter$firstDataRow:$colLetter$lastDataRow)')
+      ..cellStyle = style;
+  }
+
   // Injects a structured Excel Table into an already-encoded xlsx file.
   // The table covers the header row (row 0) plus [dataRowCount] data rows.
+  // When [sumColumnName] names an existing column and data rows exist, the
+  // table also declares a totals row (the builder must have written its
+  // cells via writeQtyTotalsRow).
   static List<int> _injectExcelTable(
     List<int> xlsxBytes,
     List<String> columnNames,
     int dataRowCount, {
     int tableStartRow = 0,
+    String tableName = 'PackingSlipTable',
+    String? sumColumnName,
   }) {
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
     final colCount = columnNames.length;
     final lastCol = _excelColLetter(colCount - 1);
+    final hasTotals = sumColumnName != null &&
+        dataRowCount > 0 &&
+        columnNames.contains(sumColumnName);
     // tableStartRow is 0-based; Excel refs are 1-based.
     final firstExcelRow = tableStartRow + 1;
-    final ref = 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount}';
+    // The autoFilter must span only header + data; the table ref also
+    // includes the totals row when present.
+    final dataRef = 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount}';
+    final ref = hasTotals
+        ? 'A$firstExcelRow:$lastCol${firstExcelRow + dataRowCount + 1}'
+        : dataRef;
 
     final colsBuffer = StringBuffer();
     for (int i = 0; i < colCount; i++) {
-      colsBuffer
-          .write('<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"/>');
+      colsBuffer.write(
+          '<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"');
+      if (hasTotals && columnNames[i] == sumColumnName) {
+        colsBuffer.write(' totalsRowFunction="sum"');
+      } else if (hasTotals && i == 0) {
+        colsBuffer.write(' totalsRowLabel="Total"');
+      }
+      colsBuffer.write('/>');
     }
 
     final tableXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
-        ' id="1" name="PackingSlipTable" displayName="PackingSlipTable"'
-        ' ref="$ref" totalsRowShown="0">'
-        '<autoFilter ref="$ref"/>'
+        ' id="1" name="$tableName" displayName="$tableName"'
+        ' ref="$ref" ${hasTotals ? 'totalsRowCount="1"' : 'totalsRowShown="0"'}>'
+        '<autoFilter ref="$dataRef"/>'
         '<tableColumns count="$colCount">$colsBuffer</tableColumns>'
         '<tableStyleInfo name="TableStyleMedium9" showFirstColumn="0"'
         ' showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>'

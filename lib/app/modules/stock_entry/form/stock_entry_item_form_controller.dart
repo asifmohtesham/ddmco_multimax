@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
@@ -212,8 +213,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Abstract overrides ─────────────────────────────────────────────────
+  /// Warehouse scope for balance lookups (rack balance, batch balance,
+  /// pickers, rack-stock preload).
+  ///
+  /// Priority 1: warehouse resolved from the scanned source rack.
+  /// Priority 2: the document-level default source warehouse.
+  /// Mirrors ERPNext v15 row-precedence (row s_warehouse over parent
+  /// from_warehouse) and the submit() cascade below.
   @override
-  String? get resolvedWarehouse => _parent.fromWarehouse.value;
+  String? get resolvedWarehouse =>
+      itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
 
   @override bool get requiresBatch => true;
   @override bool get requiresRack  => false;
@@ -488,6 +497,39 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     itemTargetWarehouse.value    = null;
   }
 
+  /// Fetches the authoritative warehouse for a rack from the Rack DocType.
+  /// Injectable so unit tests can stub server outcomes without a Dio mock.
+  Future<RackWarehouseLookup> Function(String rack) rackWarehouseFetcher =
+      (rack) => ApiProvider().getRackWarehouse(rack);
+
+  /// Resolves the warehouse for [rack] onto the item-level warehouse of the
+  /// given side (Priority 1 of the cascade; `submit()` falls back to the
+  /// document default when this stays null).
+  ///
+  /// Sets the rack-name parse optimistically for a zero-latency label, then
+  /// overwrites it with the Rack DocType's `warehouse` field. On 404 the
+  /// warehouse is cleared and `false` is returned — the rack is invalid.
+  /// On a transient failure the parse value stands (offline degradation).
+  Future<bool> resolveRackWarehouse(String rack, bool isSource) async {
+    if (isClosed) return false;
+    final target = isSource ? itemSourceWarehouse : itemTargetWarehouse;
+    target.value = RackLocation.tryParse(rack)?.warehouseName;
+
+    final lookup = await rackWarehouseFetcher(rack);
+    if (isClosed) return false;
+
+    switch (lookup.status) {
+      case RackLookupStatus.found:
+        if (lookup.warehouse != null) target.value = lookup.warehouse;
+        return true;
+      case RackLookupStatus.notFound:
+        target.value = null;
+        return false;
+      case RackLookupStatus.error:
+        return true;
+    }
+  }
+
   @override
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
@@ -502,6 +544,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isTargetRackValid.value      = false;
     }
     try {
+      // Resolve the rack's warehouse FIRST so the balance lookup below is
+      // scoped to the rack's own warehouse rather than the document default
+      // (a rack in a non-default warehouse otherwise reads balance 0 and is
+      // falsely rejected).
+      final rackExists = await resolveRackWarehouse(rack, isSource);
+      if (!rackExists) {
+        if (isSource) {
+          isSourceRackValid.value = false;
+        } else {
+          isTargetRackValid.value = false;
+        }
+        rackError.value = 'Rack "$rack" not found.';
+        showError('Rack "$rack" not found');
+        return;
+      }
       if (isSource) {
         isLoadingRackBalance.value = true;
         if (_rackStockMap.containsKey(rack)) {
@@ -516,13 +573,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           rackError.value =
               'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
         } else {
-          isSourceRackValid.value   = true;
-          itemSourceWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
+          isSourceRackValid.value = true;
           rackError.value = '';
         }
       } else {
         isTargetRackValid.value   = true;
-        itemTargetWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
         // Only clear rackError if source rack has no active error.
         // Preserving source-side negative-balance error message.
         if (isSourceRackValid.value) {
@@ -1178,8 +1233,34 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Re-fetches the batch balance when a rack scan resolves the item-level
+  /// source warehouse AFTER the batch was already validated (batch-first
+  /// scan order). Without this, the balance stays scoped to the document
+  /// default warehouse. Debounced 200 ms to coalesce the optimistic-parse
+  /// and API-overwrite writes.
+  Worker? _batchRescopeWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    // debounce (not ever): resolveRackWarehouse writes itemSourceWarehouse
+    // twice in quick succession (optimistic parse, then API overwrite) —
+    // coalesce into one re-fetch so a stale intermediate balance never lands.
+    _batchRescopeWorker = debounce<String?>(
+      itemSourceWarehouse,
+      (_) {
+        if (isClosed) return;
+        if (isBatchValid.value && batchController.text.trim().isNotEmpty) {
+          fetchBatchBalance();
+        }
+      },
+      time: const Duration(milliseconds: 200),
+    );
+  }
+
   @override
   void onClose() {
+    _batchRescopeWorker?.dispose();
     disposeBarcodeListener();   // BarcodeAwareMixin: safety-net disposal
     disposeAutoFillListener();
     super.onClose();

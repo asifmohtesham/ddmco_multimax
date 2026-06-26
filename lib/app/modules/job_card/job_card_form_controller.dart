@@ -1091,8 +1091,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       final res = await _provider.getJobCards(
         limit: 2,
         filters: {
-          'status':   'Work In Progress',
-          'employee': empId,
+          'status': 'Work In Progress',
+          '__child__Job Card Time Log': ['Job Card Time Log', 'employee', '=', empId],
         },
       );
 

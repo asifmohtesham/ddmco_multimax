@@ -15,6 +15,13 @@
       "type": "dart"
     },
     {
+      "name": "XCover 7",
+      "program": "lib/main.dart",
+      "deviceId": "R5CXB2JBDYY",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
       "name": "TC15 USB",
       "program": "lib/main.dart",
       "deviceId": "23045524700452",
@@ -67,6 +74,20 @@
       "name": "MB 23045524700285 USB",
       "program": "lib/main.dart",
       "deviceId": "23045524700285",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "JB 23045524700731 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700731",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "TS 23045524700452 USB",
+      "program": "lib/main.dart",
+      "deviceId": "23045524700452",
       "request": "launch",
       "type": "dart"
     }

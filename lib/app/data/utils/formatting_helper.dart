@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 // NumberFormat and DateFormat are not const-constructible, so a
 // top-level final is the lightest allocation strategy.
 final _amountFmt = NumberFormat('#,##0.00');
+final _qtyGroupedFmt = NumberFormat('#,##0.##');
 final _dateFmt   = DateFormat('yyyy-MM-dd');
 
 class FormattingHelper {
@@ -72,6 +73,12 @@ class FormattingHelper {
     if (qty == null) return '0';
     return qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
   }
+
+  /// Like [formatQty] but with thousands separators (e.g. 1432 → "1,432",
+  /// 1432.5 → "1,432.5"). Used for large aggregate quantities such as the
+  /// Stock Balance report's total row.
+  static String formatQtyGrouped(double? qty) =>
+      _qtyGroupedFmt.format(qty ?? 0);
 
   /// Formats a monetary amount as #,##0.00 (e.g. 1234.5 → "1,234.50").
   ///

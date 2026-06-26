@@ -2,7 +2,7 @@ name: multimax
 description: "Manage stock, order, packing and delivery."
 publish_to: 'none'
 
-version: 2.0.4+13
+version: 2.0.9+18
 
 environment:
   sdk: ^3.8.1
@@ -38,7 +38,9 @@ dependencies:
   auto_size_text: ^3.0.0
   mobile_scanner: ^7.2.0
   shared_preferences: ^2.5.5
+  socket_io_client: ^2.0.3
   image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:
@@ -57,3 +59,13 @@ flutter:
       fonts:
         - asset: lib/assets/fonts/ShureTechMonoNerdFontMono-Regular.ttf
           style: normal
+    - family: Inter
+      fonts:
+        - asset: lib/assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: lib/assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: lib/assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: lib/assets/fonts/Inter-Bold.ttf
+          weight: 700

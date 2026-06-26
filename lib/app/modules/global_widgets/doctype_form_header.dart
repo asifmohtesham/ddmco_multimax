@@ -66,10 +66,13 @@ class DocTypeFormHeader extends StatelessWidget {
   final VoidCallback? onReload;
   final VoidCallback? onSave;
   final VoidCallback? onShare;
+  final VoidCallback? onSubmit;
 
   final bool canSave;
+  final bool canSubmit;
   final int docStatus;
   final bool isSaving;
+  final bool isSubmitting;
   final SaveResult saveResult;
 
   final PreferredSizeWidget? bottom;
@@ -83,10 +86,13 @@ class DocTypeFormHeader extends StatelessWidget {
     this.onReload,
     this.onSave,
     this.onShare,
-    this.canSave    = false,
-    this.docStatus  = 0,
-    this.isSaving   = false,
-    this.saveResult = SaveResult.idle,
+    this.onSubmit,
+    this.canSave      = false,
+    this.canSubmit    = false,
+    this.docStatus    = 0,
+    this.isSaving     = false,
+    this.isSubmitting = false,
+    this.saveResult   = SaveResult.idle,
     this.bottom,
     this.extraActions,
   });
@@ -105,8 +111,11 @@ class DocTypeFormHeader extends StatelessWidget {
         onReload:        onReload,
         onSave:          onSave,
         onShare:         onShare,
+        onSubmit:        onSubmit,
         canSave:         _canSave,
+        canSubmit:       canSubmit,
         isSaving:        isSaving,
+        isSubmitting:    isSubmitting,
         saveResult:      saveResult,
         bottom:          bottom,
         extraActions:    extraActions,
@@ -125,8 +134,11 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onReload;
   final VoidCallback? onSave;
   final VoidCallback? onShare;
+  final VoidCallback? onSubmit;
   final bool canSave;
+  final bool canSubmit;
   final bool isSaving;
+  final bool isSubmitting;
   final SaveResult saveResult;
   final PreferredSizeWidget? bottom;
   final List<Widget>? extraActions;
@@ -139,8 +151,11 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onReload,
     required this.onSave,
     required this.onShare,
+    required this.onSubmit,
     required this.canSave,
+    required this.canSubmit,
     required this.isSaving,
+    required this.isSubmitting,
     required this.saveResult,
     required this.bottom,
     required this.extraActions,
@@ -171,8 +186,8 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     final colorScheme = theme.colorScheme;
 
     // ── System UI ────────────────────────────────────────────────────────────
-    final surfaceLuminance = colorScheme.surface.computeLuminance();
-    final iconBrightness   = surfaceLuminance > 0.5 ? Brightness.dark : Brightness.light;
+    final barLuminance = colorScheme.primary.computeLuminance();
+    final iconBrightness   = barLuminance > 0.5 ? Brightness.dark : Brightness.light;
     final overlayStyle = SystemUiOverlayStyle(
       statusBarColor:          Colors.transparent,
       statusBarIconBrightness: iconBrightness,
@@ -189,80 +204,70 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     final toolbar = SizedBox(
       height: toolbarHeight,
-      child: NavigationToolbar(
-        leading: _buildLeading(context),
-        middle: Stack(
-          children: [
-            // Expanded middle: faded doc name (opacity fades out on collapse)
-            Positioned.fill(
-              child: Opacity(
-                opacity: expandProgress,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: AutoSizeText(
-                    title,
-                    style: theme.textTheme.titleLarge,
-                    maxLines: 2,
-                    minFontSize: _kAutoSizeMinFont,
-                    overflow: TextOverflow.clip,
-                    softWrap: true,
+      child: IconTheme.merge(
+        data: IconThemeData(color: colorScheme.onPrimary),
+        child: NavigationToolbar(
+          leading: _buildLeading(context),
+          middle: Stack(
+            children: [
+              // Collapsed middle: two-line caption + doc name (fades in on collapse).
+              // NOTE: the expanded state shows the title only once, in `largeArea`
+              // above the toolbar. There is deliberately NO expanded toolbar-middle
+              // title — an earlier "faded echo" here rendered at full opacity when
+              // expanded and duplicated the large title (wrapping to two lines).
+              Positioned.fill(
+                child: Offstage(
+                  offstage: collapseProgress < 0.001,
+                  child: Opacity(
+                    opacity: collapseProgress,
+                    child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (docType != null)
+                            Text(
+                              docType!.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.7,
+                                color: colorScheme.onPrimary,
+                                height: 1.0,
+                              ),
+                            ),
+                          if (docType != null && _effectiveStatusLabel != null)
+                            const SizedBox(width: 5),
+                          if (_effectiveStatusLabel != null)
+                            StatusPill(status: _effectiveStatusLabel!, compact: true),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      AutoSizeText(
+                        title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onPrimary,
+                          height: 1.3,
+                        ),
+                        maxLines: 1,
+                        minFontSize: _kAutoSizeMinFont,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                   ),
                 ),
               ),
-            ),
-            // Collapsed middle: two-line caption + doc name (fades in on collapse)
-            Positioned.fill(
-              child: Offstage(
-                offstage: collapseProgress < 0.001,
-                child: Opacity(
-                  opacity: collapseProgress,
-                  child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (docType != null)
-                          Text(
-                            docType!.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.7,
-                              color: colorScheme.primary,
-                              height: 1.0,
-                            ),
-                          ),
-                        if (docType != null && _effectiveStatusLabel != null)
-                          const SizedBox(width: 5),
-                        if (_effectiveStatusLabel != null)
-                          StatusPill(status: _effectiveStatusLabel!, compact: true),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    AutoSizeText(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.secondary,
-                        height: 1.3,
-                      ),
-                      maxLines: 1,
-                      minFontSize: _kAutoSizeMinFont,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
+          trailing: actions,
+          centerMiddle: false,
+          middleSpacing: 8,
         ),
-        trailing: actions,
-        centerMiddle: false,
-        middleSpacing: 8,
       ),
     );
 
@@ -282,7 +287,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.77,
-                  color: colorScheme.primary,
+                  color: colorScheme.onPrimary,
                   height: 1.0,
                 ),
               ),
@@ -292,7 +297,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
-                color: colorScheme.onSurface,
+                color: colorScheme.onPrimary,
                 height: 1.15,
               ),
             ),
@@ -307,7 +312,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: Material(
-        color: colorScheme.surface,
+        color: colorScheme.primary,
         elevation: overlapsContent ? 1.0 : 0.0,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
@@ -324,13 +329,36 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                     child: largeArea,
                   ),
                   toolbar,
-                  if (bottom != null) bottom!,
+                  if (bottom != null) _wrapBottomOnPrimary(context, bottom!),
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ── Bottom slot (TabBar) colour override ────────────────────────────────────
+  /// The header background is `colorScheme.primary` (solid maroon). The global
+  /// [TabBarThemeData] in `main.dart` is tuned for tabs on a white `surface`
+  /// (list screens), where `labelColor: primary` renders maroon-on-white.
+  /// On this maroon header that same theme makes the **selected** tab label
+  /// invisible (maroon-on-maroon). We override the theme locally so the bottom
+  /// slot paints with `onPrimary` (white) ink while it lives on the maroon bar.
+  Widget _wrapBottomOnPrimary(BuildContext context, Widget bottom) {
+    final theme  = Theme.of(context);
+    final onBar  = theme.colorScheme.onPrimary;
+    return Theme(
+      data: theme.copyWith(
+        tabBarTheme: theme.tabBarTheme.copyWith(
+          labelColor:           onBar,
+          unselectedLabelColor: onBar.withValues(alpha: 0.7),
+          indicatorColor:       onBar,
+          dividerColor:         onBar.withValues(alpha: 0.2),
+        ),
+      ),
+      child: bottom,
     );
   }
 
@@ -350,7 +378,35 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   Widget? _buildActions(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final items = <Widget>[
+      if (onSubmit != null && canSubmit)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: FilledButton(
+            onPressed: isSubmitting ? null : onSubmit,
+            style: FilledButton.styleFrom(
+              // ERPNext desk's Submit is a blue btn-primary. This app's theme
+              // primary is maroon, so we intentionally hardcode blue here to
+              // match ERPNext rather than use colorScheme.primary.
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: isSubmitting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Submit'),
+          ),
+        ),
       ...(extraActions ?? []),
       if (onReload != null)
         IconButton(
@@ -366,6 +422,7 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
           saveResult:          saveResult,
           tooltip:             'Save',
           showFilledWhenDirty: true,
+          onColor:             colorScheme.onPrimary,
         ),
       if (onShare != null)
         IconButton(
@@ -392,6 +449,9 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
            (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
            (onReload != null) != (old.onReload != null) ||
            (onSave   != null) != (old.onSave   != null) ||
-           (onShare  != null) != (old.onShare  != null);
+           (onShare  != null) != (old.onShare  != null) ||
+           canSubmit      != old.canSubmit             ||
+           isSubmitting   != old.isSubmitting           ||
+           (onSubmit != null) != (old.onSubmit != null);
   }
 }

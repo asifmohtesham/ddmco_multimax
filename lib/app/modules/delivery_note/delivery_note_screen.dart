@@ -7,7 +7,12 @@ import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 
 class DeliveryNoteScreen extends StatefulWidget {
   const DeliveryNoteScreen({super.key});
@@ -144,24 +149,9 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     required String label,
     required VoidCallback onDeleted,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      backgroundColor: colorScheme.secondaryContainer,
-      deleteIconColor: colorScheme.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
+    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
   }
 
   // ---------------------------------------------------------------------------
@@ -202,7 +192,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           slivers: [
             // ── Unified header ─────────────────────────────────────────────
             DocTypeListHeader(
-              title: 'Delivery Notes',
+              title: 'Delivery Note',
               automaticallyImplyLeading: false,
               searchDoctype: 'Delivery Note',
               searchRoute: AppRoutes.DELIVERY_NOTE_FORM,
@@ -225,49 +215,13 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                     controller.deliveryNotes.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count = controller.deliveryNotes.length;
-                final hasMore = controller.hasMore.value;
-                final hasFilters = controller.activeFilters.isNotEmpty ||
-                    controller.searchQuery.value.isNotEmpty;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.description_outlined,
-                                size: 14,
-                                color: colorScheme.onSecondaryContainer),
-                            const SizedBox(width: 6),
-                            Text(
-                              hasMore
-                                  ? '$count+ notes'
-                                  : '$count note${count == 1 ? '' : 's'}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (hasFilters) ...[
-                              const SizedBox(width: 6),
-                              Icon(Icons.filter_alt,
-                                  size: 12,
-                                  color: colorScheme.onSecondaryContainer
-                                      .withValues(alpha: 0.7)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                return ResultCountPill(
+                  count: controller.deliveryNotes.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'note',
+                  icon: Icons.description_outlined,
                 );
               }),
             ),
@@ -276,9 +230,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.deliveryNotes.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.deliveryNotes.isEmpty) {
@@ -311,53 +263,16 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
 
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.description_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Notes'
-                                : 'No Delivery Notes',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            emptySubtitle,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchDeliveryNotes(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.description_outlined,
+                    emptyTitle: 'No Delivery Notes',
+                    emptyMessage: emptySubtitle,
+                    filteredTitle: 'No Matching Notes',
+                    filteredMessage: emptySubtitle,
+                    onClearFilters: controller.clearFilters,
+                    onReload: () =>
+                        controller.fetchDeliveryNotes(clear: true),
                   ),
                 );
               }
@@ -369,96 +284,84 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= baseCount) {
-                      if (showLoader) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-                      return Padding(
-                        padding: EdgeInsets.only(
-                            top: 16, bottom: 16 + navBarHeight),
-                        child: Center(
-                          child: Text(
-                            'End of results',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
+                      return ListEndFooter(
+                        hasMore: showLoader,
+                        bottomPadding: navBarHeight,
                       );
                     }
 
                     final note = controller.deliveryNotes[index];
 
-                    return Obx(() {
-                      final isExpanded =
-                          controller.expandedNoteName.value == note.name;
-                      final isLoadingDetails =
-                          controller.isLoadingDetails.value &&
-                              controller.detailedNote?.name != note.name;
+                    return Obx(
+                      key: ValueKey(note.name),
+                      () {
+                        final isExpanded =
+                            controller.expandedNoteName.value == note.name;
+                        final isLoadingDetails =
+                            controller.isLoadingDetails.value &&
+                                controller.detailedNote?.name != note.name;
 
-                      final bool hasPo =
-                          note.poNo != null && note.poNo!.isNotEmpty;
-                      final String title = hasPo ? note.poNo! : note.name;
-                      final String subtitle = hasPo
-                          ? '${note.name} • ${note.customer}'
-                          : note.customer;
+                        final bool hasPo =
+                            note.poNo != null && note.poNo!.isNotEmpty;
+                        final String title = hasPo ? note.poNo! : note.name;
+                        final String subtitle = hasPo
+                            ? '${note.name} • ${note.customer}'
+                            : note.customer;
 
-                      final showModified = note.modifiedBy != null &&
-                          note.modifiedBy!.isNotEmpty &&
-                          note.modifiedBy != note.owner &&
-                          note.creation != note.modified;
+                        final showModified = note.modifiedBy != null &&
+                            note.modifiedBy!.isNotEmpty &&
+                            note.modifiedBy != note.owner &&
+                            note.creation != note.modified;
 
-                      return GenericDocumentCard(
-                        title: title,
-                        subtitle: subtitle,
-                        status: note.status,
-                        stats: [
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.inventory_2_outlined,
-                            '${note.totalQty.toStringAsFixed(0)} Items',
-                          ),
-                          if (note.setWarehouse != null &&
-                              note.setWarehouse!.isNotEmpty)
+                        return GenericDocumentCard(
+                          title: title,
+                          subtitle: subtitle,
+                          status: note.status,
+                          stats: [
                             GenericDocumentCard.buildIconStat(
                               context,
-                              Icons.warehouse_outlined,
-                              note.setWarehouse!,
+                              Icons.inventory_2_outlined,
+                              '${note.totalQty.toStringAsFixed(0)} Items',
                             ),
-                          GenericDocumentCard.buildIconStat(
-                            context,
-                            Icons.calendar_today_outlined,
-                            note.postingDate.isNotEmpty
-                                ? note.postingDate
-                                : FormattingHelper.getRelativeTime(
-                                    note.creation),
-                          ),
-                        ],
-                        auditStats: [
-                          if (note.owner != null && note.owner!.isNotEmpty)
+                            if (note.setWarehouse != null &&
+                                note.setWarehouse!.isNotEmpty)
+                              GenericDocumentCard.buildIconStat(
+                                context,
+                                Icons.warehouse_outlined,
+                                note.setWarehouse!,
+                              ),
                             GenericDocumentCard.buildIconStat(
                               context,
-                              Icons.person_add_alt_1_outlined,
-                              note.owner!,
+                              Icons.calendar_today_outlined,
+                              note.postingDate.isNotEmpty
+                                  ? note.postingDate
+                                  : FormattingHelper.getRelativeTime(
+                                      note.creation),
                             ),
-                          if (showModified)
-                            GenericDocumentCard.buildIconStat(
-                              context,
-                              Icons.edit_outlined,
-                              note.modifiedBy!,
-                            ),
-                        ],
-                        isExpanded: isExpanded,
-                        isLoadingDetails: isLoadingDetails && isExpanded,
-                        onTap: () => controller.toggleExpand(note.name),
-                        expandedContent: isExpanded
-                            ? _buildExpandedContent(context, note.name)
-                            : null,
-                      );
-                    });
+                          ],
+                          auditStats: [
+                            if (note.owner != null && note.owner!.isNotEmpty)
+                              GenericDocumentCard.buildIconStat(
+                                context,
+                                Icons.person_add_alt_1_outlined,
+                                note.owner!,
+                              ),
+                            if (showModified)
+                              GenericDocumentCard.buildIconStat(
+                                context,
+                                Icons.edit_outlined,
+                                note.modifiedBy!,
+                              ),
+                          ],
+                          isExpanded: isExpanded,
+                          isLoadingDetails: isLoadingDetails && isExpanded,
+                          onTap: () => controller.toggleExpand(note.name),
+                          expandedContent: isExpanded
+                              ? _buildExpandedContent(context, note.name)
+                              : null,
+                        );
+                      },
+                    );
                   },
                   childCount: baseCount + 1,
                 ),

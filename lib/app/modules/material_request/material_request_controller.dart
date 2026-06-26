@@ -49,6 +49,8 @@ class MaterialRequestController extends GetxController {
     fetchMaterialRequests();
     fetchUsers();
     fetchDocTypePermissions();
+    debounce(searchQuery, (_) => fetchMaterialRequests(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -60,14 +62,7 @@ class MaterialRequestController extends GetxController {
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchMaterialRequests(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ── Filters ─────────────────────────────────────────────────────────────
   void applyFilters(Map<String, dynamic> filters) {
@@ -77,8 +72,11 @@ class MaterialRequestController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchMaterialRequests(clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchMaterialRequests(clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   /// Removes a single active filter by [key] and re-fetches the list.

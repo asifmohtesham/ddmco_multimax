@@ -34,6 +34,8 @@ class ItemImage extends StatelessWidget {
           imageUrl!,
           width: size,
           height: size,
+          cacheWidth: size != null ? size!.toInt() : null,
+          cacheHeight: size != null ? size!.toInt() : null,
           fit: fit,
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;

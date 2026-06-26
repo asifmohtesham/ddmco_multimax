@@ -24,6 +24,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
 // ── Shared sheet layer ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'widgets/item_form_sheet/rack_section.dart';
 
 class StockEntryFormController extends GetxController
-    with OptimisticLockingMixin, BarcodeScanMixin {
+    with OptimisticLockingMixin, BarcodeScanMixin, RealtimeSyncMixin {
   // ── Dependencies ───────────────────────────────────────────────────────────────────────────────────
   final StockEntryProvider  _provider       = Get.find<StockEntryProvider>();
   final ApiProvider         _apiProvider    = Get.find<ApiProvider>();
@@ -63,6 +64,8 @@ class StockEntryFormController extends GetxController
   var isScanning       = false.obs;
   var isSaving         = false.obs;
   var isDirty          = false.obs;
+  var isSubmitting     = false.obs;
+  var canSubmitPerm    = false.obs; // fail-closed default until pre-check confirms
   var isAddingItem     = false.obs;
   var isLoadingItemEdit = false.obs;
   var loadingForItemName = RxnString();
@@ -113,8 +116,42 @@ class StockEntryFormController extends GetxController
 
   Timer?  _autoSubmitTimer;
   Worker? _scanWorker;
+  Worker? _fromWarehouseWorker;
+  Worker? _toWarehouseWorker;
+  Worker? _stockEntryTypeWorker;
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
+
+  /// Pure submit-eligibility predicate (no GetX state) so it is unit-testable.
+  /// A Stock Entry may be submitted only when it is a saved, clean draft the
+  /// current user is permitted to submit, with no save/submit already running.
+  static bool computeCanSubmit({
+    required String mode,
+    required int? docStatus,
+    required bool isDirty,
+    required bool isSaving,
+    required bool isSubmitting,
+    required bool canSubmitPerm,
+  }) {
+    return mode != 'new' &&
+        docStatus == 0 &&
+        !isDirty &&
+        !isSaving &&
+        !isSubmitting &&
+        canSubmitPerm;
+  }
+
+  bool get canSubmit => computeCanSubmit(
+        mode:          mode,
+        docStatus:     stockEntry.value?.docstatus,
+        isDirty:       isDirty.value,
+        isSaving:      isSaving.value,
+        isSubmitting:  isSubmitting.value,
+        canSubmitPerm: canSubmitPerm.value,
+      );
+
+  @override String get realtimeDoctype => 'Stock Entry';
+  @override String get realtimeDocname => name;
 
   // ── Domain helpers ───────────────────────────────────────────────────────────────────────────────────
 
@@ -271,7 +308,7 @@ class StockEntryFormController extends GetxController
     if (mode == 'new') {
       _initDocument();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
@@ -285,9 +322,9 @@ class StockEntryFormController extends GetxController
       if (code.isNotEmpty && !isItemSheetOpen.value) scanBarcode(code);
     });
 
-    ever(fromWarehouse,    (_) => _markDirty());
-    ever(toWarehouse,      (_) => _markDirty());
-    ever(stockEntryType,   (_) => _markDirty());
+    _fromWarehouseWorker  = ever(fromWarehouse,  (_) => _markDirty());
+    _toWarehouseWorker    = ever(toWarehouse,     (_) => _markDirty());
+    _stockEntryTypeWorker = ever(stockEntryType,  (_) => _markDirty());
 
     // customReferenceNoController listener removed.
     // The reference number is read-only in the UI (set once from route arguments).
@@ -297,15 +334,15 @@ class StockEntryFormController extends GetxController
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     disposeScanWiring();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
-    final bcc = barcodeController;
-    final crc = customReferenceNoController;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      bcc.dispose();
-      crc.dispose();
-    });
+    _fromWarehouseWorker?.dispose();
+    _toWarehouseWorker?.dispose();
+    _stockEntryTypeWorker?.dispose();
+    barcodeController.dispose();
+    customReferenceNoController.dispose();
     super.onClose();
   }
 
@@ -676,6 +713,7 @@ class StockEntryFormController extends GetxController
         }
 
         isDirty.value = false;
+        await _refreshSubmitPermission();
       } else {
         GlobalDialog.showError(
           title:   'Could not load Stock Entry',
@@ -708,6 +746,17 @@ class StockEntryFormController extends GetxController
         }
       });
     });
+  }
+
+  /// Refreshes [canSubmitPerm] for the currently-loaded document.
+  /// Only drafts with a real name can be submitted; everything else is
+  /// fail-closed to `false`.
+  Future<void> _refreshSubmitPermission() async {
+    if (name.isEmpty || (stockEntry.value?.docstatus ?? 1) != 0) {
+      canSubmitPerm.value = false;
+      return;
+    }
+    canSubmitPerm.value = await _provider.canSubmit(name);
   }
 
   // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────────────────
@@ -1434,6 +1483,7 @@ class StockEntryFormController extends GetxController
     if (res.statusCode == 200) {
       name = res.data['data']['name'];
       mode = 'edit';
+      await startRealtimeSyncAfterCreate();
       await fetchDocument();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
@@ -1462,19 +1512,24 @@ class StockEntryFormController extends GetxController
 
   // ── Error handler ─────────────────────────────────────────────────────────
 
-  void _handleSaveDioError(DioException e) {
-    if (handleVersionConflict(e)) return;
-    _setSaveResult(SaveResult.error);
-    String msg = 'Save failed';
+  /// Extracts a user-facing message from an ERPNext error response.
+  /// Pure: no state mutation, no snackbar.
+  String _extractDioErrorMessage(DioException e, String fallback) {
     final data = e.response?.data;
     if (data is Map) {
       if (data['exception'] != null) {
-        msg = data['exception'].toString().split(':').last.trim();
+        return data['exception'].toString().split(':').last.trim();
       } else if (data['_server_messages'] != null) {
-        msg = 'Validation Error: Check form details';
+        return 'Validation Error: Check form details';
       }
     }
-    GlobalSnackbar.error(message: msg);
+    return fallback;
+  }
+
+  void _handleSaveDioError(DioException e) {
+    if (handleVersionConflict(e)) return;
+    _setSaveResult(SaveResult.error);
+    GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Save failed'));
   }
 
   // ── saveDocument (orchestrator only, ~15 lines) ─────────────────────────
@@ -1503,10 +1558,42 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  // ── Submit ──────────────────────────────────────────────────────────────
+  Future<void> submitDocument() async {
+    if (!canSubmit) return;
+    // Mirror ERPNext desk's submit prompt.
+    final confirmed = await GlobalDialog.confirm(
+      title:        'Confirm',
+      message:      'Permanently Submit $name?',
+      confirmText:  'Yes',
+      confirmColor: Colors.blue,
+    );
+    if (confirmed != true) return;
+
+    isSubmitting.value = true;
+    try {
+      final res = await _provider.submitStockEntry(name);
+      if (res.statusCode == 200) {
+        await fetchDocument(); // now docstatus 1, read-only; perm refreshed to false
+        GlobalSnackbar.success(message: 'Stock Entry $name submitted');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to submit Stock Entry');
+      }
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) return;
+      GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Submit failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Submit failed: $e');
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
   // ── Misc ───────────────────────────────────────────────────────────────────────────────────
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
+    scheduleAutoSave();
   }
 
   Future<void> confirmDiscard() async {

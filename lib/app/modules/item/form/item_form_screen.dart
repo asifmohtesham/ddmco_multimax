@@ -10,6 +10,10 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_image_upload.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_detail_row.dart';
+import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -55,8 +59,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               ? const Center(child: CircularProgressIndicator())
               : item == null
                   ? Center(
-                      child: _buildEmptyState(
-                        context, cs,
+                      child: const FormEmptyState(
                         icon: Icons.error_outline,
                         message: 'Item not found.',
                       ),
@@ -79,7 +82,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
   Widget _buildOverviewTab(BuildContext context, Item item, ColorScheme cs) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
-    final theme = Theme.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
@@ -95,51 +97,29 @@ class ItemFormScreen extends GetView<ItemFormController> {
             onUploaded: () { controller.fetchItemDetails(); },
           ),
 
-          _buildSectionCard(
-            context: context,
-            cs: cs,
+          DocSectionCard(
             title: 'General',
             children: [
-              _buildDetailRow(
-                context: context,
-                cs: cs,
+              DocDetailRow(
                 label: 'Item Code',
                 value: item.itemCode,
                 isCopyable: true,
                 onCopy: () => controller.copyToClipboard(item.itemCode),
               ),
               Divider(color: cs.outlineVariant),
-              _buildDetailRow(
-                  context: context,
-                  cs: cs,
-                  label: 'Item Name',
-                  value: item.itemName),
+              DocDetailRow(label: 'Item Name', value: item.itemName),
               Divider(color: cs.outlineVariant),
-              _buildDetailRow(
-                  context: context,
-                  cs: cs,
-                  label: 'Item Group',
-                  value: item.itemGroup),
+              DocDetailRow(label: 'Item Group', value: item.itemGroup),
             ],
           ),
 
-          const SizedBox(height: 16),
-
-          _buildSectionCard(
-            context: context,
-            cs: cs,
+          DocSectionCard(
             title: 'Inventory',
             children: [
-              _buildDetailRow(
-                  context: context,
-                  cs: cs,
-                  label: 'Default UOM',
-                  value: item.stockUom ?? '-'),
+              DocDetailRow(label: 'Default UOM', value: item.stockUom ?? '-'),
               if (item.countryOfOrigin != null) ...[
                 Divider(color: cs.outlineVariant),
-                _buildDetailRow(
-                    context: context,
-                    cs: cs,
+                DocDetailRow(
                     label: 'Country of Origin',
                     value: item.countryOfOrigin!),
               ],
@@ -147,18 +127,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
           ),
 
           if (item.variantOf != null || item.description != null) ...[
-            const SizedBox(height: 16),
-            _buildSectionCard(
-              context: context,
-              cs: cs,
+            DocSectionCard(
               title: 'Description',
               children: [
                 if (item.variantOf != null) ...[
-                  _buildDetailRow(
-                      context: context,
-                      cs: cs,
-                      label: 'Variant Of',
-                      value: item.variantOf!),
+                  DocDetailRow(label: 'Variant Of', value: item.variantOf!),
                   Divider(color: cs.outlineVariant),
                 ],
                 if (item.description != null)
@@ -226,25 +199,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       children: [
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: const Text('All'),
+                          child: SelectableFilterChip(
+                            label: 'All',
                             selected: selected == null,
-                            onSelected: (_) => controller.clearWarehouseFilter(),
-                            selectedColor: cs.primary,
-                            checkmarkColor: cs.onPrimary,
-                            labelStyle: TextStyle(
-                              color: selected == null
-                                  ? cs.onPrimary
-                                  : cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            side: BorderSide(
-                              color: selected == null
-                                  ? cs.primary
-                                  : cs.outlineVariant,
-                            ),
-                            backgroundColor: cs.surfaceContainer,
-                            visualDensity: VisualDensity.compact,
+                            onSelected: (_) =>
+                                controller.clearWarehouseFilter(),
                           ),
                         ),
                         ...warehouses.map((wh) {
@@ -254,25 +213,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
                               : wh;
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
-                            child: FilterChip(
-                              label: Text(label),
+                            child: SelectableFilterChip(
+                              label: label,
                               selected: isActive,
                               onSelected: (_) =>
                                   controller.onWarehouseChanged(wh),
-                              selectedColor: cs.primary,
-                              checkmarkColor: cs.onPrimary,
-                              labelStyle: TextStyle(
-                                color: isActive
-                                    ? cs.onPrimary
-                                    : cs.onSurfaceVariant,
-                              ),
-                              side: BorderSide(
-                                color: isActive
-                                    ? cs.primary
-                                    : cs.outlineVariant,
-                              ),
-                              backgroundColor: cs.surfaceContainer,
-                              visualDensity: VisualDensity.compact,
                             ),
                           );
                         }),
@@ -284,9 +229,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
               );
             }),
 
-            // 1. Warehouse Balance
+            // 1. Stock Balance
             Text(
-              'Warehouse Balance',
+              'Stock Balance',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: cs.onSurface,
@@ -299,9 +244,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               }
               final levels = controller.filteredStockLevels;
               if (levels.isEmpty) {
-                return _buildEmptyState(
-                  context,
-                  cs,
+                return FormEmptyState(
                   icon: Icons.warehouse_outlined,
                   message: controller.selectedWarehouse.value != null
                       ? 'No stock in the selected warehouse.'
@@ -316,9 +259,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 2. Batch-Wise Balance
+            // 2. Batch-Wise Balance History
             Text(
-              'Batch-Wise Balance',
+              'Batch-Wise Balance History',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: cs.onSurface,
@@ -331,9 +274,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               }
               final batches = controller.filteredBatchHistory;
               if (batches.isEmpty) {
-                return _buildEmptyState(
-                  context,
-                  cs,
+                return FormEmptyState(
                   icon: Icons.category_outlined,
                   message: controller.selectedWarehouse.value != null
                       ? 'No batches in the selected warehouse.'
@@ -513,9 +454,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 return const LinearProgressIndicator();
               }
               if (controller.stockLedgerEntries.isEmpty) {
-                return _buildEmptyState(
-                  context,
-                  cs,
+                return const FormEmptyState(
                   icon: Icons.receipt_long_outlined,
                   message: 'No transactions found in this period.',
                 );
@@ -633,9 +572,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
     if (item.attributes.isEmpty) {
       return Center(
-        child: _buildEmptyState(
-          context,
-          cs,
+        child: const FormEmptyState(
           icon: Icons.list_alt_outlined,
           message: 'No attributes defined.',
         ),
@@ -675,9 +612,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     return Obx(() {
       if (controller.attachments.isEmpty) {
         return Center(
-          child: _buildEmptyState(
-            context,
-            cs,
+          child: const FormEmptyState(
             icon: Icons.attach_file_outlined,
             message: 'No attachments found.',
           ),
@@ -772,119 +707,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
   }
 
   // ── Shared helpers ────────────────────────────────────────────────────────
-
-  Widget _buildSectionCard({
-    required BuildContext context,
-    required ColorScheme cs,
-    required String title,
-    required List<Widget> children,
-  }) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: cs.surfaceContainer,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow({
-    required BuildContext context,
-    required ColorScheme cs,
-    required String label,
-    required String value,
-    bool isCopyable = false,
-    VoidCallback? onCopy,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(width: 16),
-          Flexible(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    value,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurface,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                if (isCopyable && onCopy != null) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onCopy,
-                    child: Icon(
-                      Icons.copy,
-                      size: 14,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(
-    BuildContext context,
-    ColorScheme cs, {
-    required IconData icon,
-    required String message,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 48, color: cs.outlineVariant),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _openFullScreenImage(BuildContext context, String url) {
     Get.dialog(

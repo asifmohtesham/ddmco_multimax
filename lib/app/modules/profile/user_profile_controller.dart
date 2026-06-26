@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -25,10 +24,6 @@ class UserProfileController extends GetxController {
     isLoading.value = true;
     await _authController.fetchUserDetails();
     isLoading.value = false;
-  }
-
-  void logout() {
-    _authController.logoutUser();
   }
 
   // --- Mobile Number Update ---

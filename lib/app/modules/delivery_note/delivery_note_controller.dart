@@ -61,11 +61,16 @@ class DeliveryNoteController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    fetchDeliveryNotes();
-    fetchUsers();
-    fetchWarehouses();
-    fetchCustomers();
-    fetchDocTypePermissions();
+    // ignore: unawaited_futures
+    Future.wait([
+      fetchDeliveryNotes(),
+      fetchUsers(),
+      fetchWarehouses(),
+      fetchCustomers(),
+      fetchDocTypePermissions(),
+    ]);
+    debounce(searchQuery, (_) => fetchDeliveryNotes(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -110,8 +115,11 @@ class DeliveryNoteController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchDeliveryNotes(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchDeliveryNotes(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {
@@ -125,14 +133,7 @@ class DeliveryNoteController extends GetxController {
     fetchDeliveryNotes(isLoadMore: false, clear: true);
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchDeliveryNotes(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ---------------------------------------------------------------------------
   // Fetch

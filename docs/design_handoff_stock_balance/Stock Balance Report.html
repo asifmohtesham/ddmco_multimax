@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Balance — Multimax</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ds.css">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  .stage{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    gap:18px;padding:38px 16px 60px;background:
+      radial-gradient(120% 80% at 50% -10%, color-mix(in srgb,var(--primary) 7%,var(--bg)), var(--bg) 60%);}
+  .stage-cap{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;}
+  .stage-cap h1{font-size:15px;font-weight:600;margin:0;color:var(--text);}
+  .stage-cap p{font-size:12px;color:var(--text-subtle);margin:0;font-family:var(--mono);}
+
+  /* ── device ─────────────────────────────────────────── */
+  .device{width:392px;}
+  .device .screen{height:812px;}
+  .statusbar .sysico svg{display:block;}
+  .statusbar .batt{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;}
+
+  /* ── app bar (DocTypeListHeader) ────────────────────── */
+  .appbar{border-bottom:1px solid var(--border);}
+  .appbar .toolbar{height:54px;padding:0 6px;}
+  .appbar .title-lg{font-size:26px;font-weight:700;letter-spacing:-.02em;padding:0 16px 10px;}
+  .filt-btn{position:relative;width:44px;height:44px;border-radius:var(--r-full);border:none;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;}
+  .filt-btn .ico{width:20px;height:20px;}
+  .filt-btn .count-badge{position:absolute;top:-2px;right:-2px;}
+
+  /* active-filter chips row */
+  .fchips{display:flex;gap:8px;padding:0 14px 12px;overflow-x:auto;scrollbar-width:none;}
+  .fchips::-webkit-scrollbar{display:none;}
+  .fchip{flex:none;display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 6px 0 11px;
+    border-radius:var(--r-full);font-size:12px;font-weight:600;white-space:nowrap;
+    background:color-mix(in srgb,var(--primary) 11%,var(--fg));
+    color:var(--blue-700);border:1px solid color-mix(in srgb,var(--primary) 22%,var(--border));}
+  .fchip > svg{width:13px;height:13px;opacity:.8;flex:none;}
+  .fchip .x{width:20px;height:20px;border-radius:var(--r-full);display:inline-flex;align-items:center;
+    justify-content:center;background:color-mix(in srgb,var(--primary) 18%,transparent);}
+  .fchip .x svg{width:11px;height:11px;}
+
+  /* ── result summary strip ───────────────────────────── */
+  .sb-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:9px 16px;background:var(--subtle);border-bottom:1px solid var(--border);}
+  .sb-summary .left{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--text-muted);}
+  .sb-summary .left b{font-size:13px;color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;}
+  .sb-summary .alert{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+    padding:4px 9px 4px 8px;border-radius:var(--r-full);
+    background:color-mix(in srgb,var(--red-500) 12%,var(--fg));color:var(--red-700);
+    border:1px solid color-mix(in srgb,var(--red-500) 24%,var(--border));}
+  .sb-summary .alert .dot{width:7px;height:7px;border-radius:50%;background:var(--red-500);flex:none;}
+
+  /* ── list scroll body ───────────────────────────────── */
+  .sb-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 12px 28px;
+    display:flex;flex-direction:column;gap:11px;background:var(--bg);scroll-behavior:smooth;}
+  .sb-list::-webkit-scrollbar{width:0;}
+
+  /* ── balance card ───────────────────────────────────── */
+  .sb-card{flex:none;background:var(--fg);border:1px solid var(--border);border-radius:var(--r-lg);
+    box-shadow:var(--shadow-xs);padding:13px 14px 12px;position:relative;overflow:hidden;}
+  .sb-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent,var(--gray-400));}
+
+  /* state accents */
+  .sb-card.ok    {--accent:var(--green-500);--tint:var(--green-500);--tfg:var(--green-700);}
+  .sb-card.watch {--accent:var(--orange-500);--tint:var(--orange-500);--tfg:var(--orange-700);}
+  .sb-card.neg   {--accent:var(--red-500);--tint:var(--red-500);--tfg:var(--red-700);}
+  .sb-card.empty {--accent:var(--gray-400);--tint:var(--gray-500);--tfg:var(--gray-700);}
+
+  /* head */
+  .sb-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .sb-id{min-width:0;}
+  .sb-code{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text-subtle);letter-spacing:.02em;}
+  .sb-name{font-size:15.5px;font-weight:600;color:var(--text);line-height:1.25;margin-top:1px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  .sb-balance{flex:none;text-align:right;display:flex;flex-direction:column;align-items:flex-end;
+    min-width:62px;padding:6px 11px;border-radius:var(--r-md);line-height:1;
+    background:color-mix(in srgb,var(--tint) 13%,var(--fg));
+    border:1px solid color-mix(in srgb,var(--tint) 26%,var(--border));}
+  .sb-qty{font-size:24px;font-weight:700;color:var(--tfg);font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+  .sb-uom{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+    color:color-mix(in srgb,var(--tfg) 70%,var(--text-muted));margin-top:3px;}
+
+  /* variant attributes (ERPNext “Show Variant Attributes”) */
+  .sb-attrs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;}
+  .sb-attrs > .tag{display:inline-flex;align-items:center;color:var(--text-subtle);flex:none;}
+  .sb-attrs > .tag svg{width:13px;height:13px;}
+  .sb-attr{display:inline-flex;align-items:baseline;gap:5px;flex:none;
+    padding:3px 9px;border-radius:var(--r-full);
+    background:var(--subtle);border:1px solid var(--border);
+    font-size:11px;line-height:1.5;letter-spacing:.01em;}
+  .sb-attr .ak{color:var(--text-subtle);font-weight:500;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em;}
+  .sb-attr .av{color:var(--text);font-weight:600;}
+
+  /* location line */
+  .sb-loc{display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--text-muted);
+    overflow:hidden;white-space:nowrap;}
+  .sb-loc svg{width:14px;height:14px;flex:none;color:var(--text-subtle);}
+  .sb-loc b{color:var(--text);font-weight:600;}
+  .sb-loc .sep{color:var(--border-strong);}
+  .sb-loc .rack{display:inline-flex;align-items:center;gap:5px;}
+  .sb-loc .norack{color:var(--text-subtle);font-style:italic;}
+
+  /* ledger strip */
+  .sb-ledger{display:grid;grid-template-columns:repeat(4,1fr);margin-top:11px;
+    background:var(--subtle);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;}
+  .sb-ledger .cell{padding:8px 6px 9px;text-align:center;position:relative;}
+  .sb-ledger .cell + .cell::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:1px;background:var(--border);}
+  .sb-ledger .k{display:block;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--text-subtle);}
+  .sb-ledger .v{display:block;margin-top:3px;font-size:16px;font-weight:700;color:var(--text);
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+  .sb-ledger .cell.in  .v{color:var(--green-600);}
+  .sb-ledger .cell.out .v{color:var(--red-600);}
+  .sb-ledger .cell.in  .v.zero,.sb-ledger .cell.out .v.zero{color:var(--text-subtle);}
+  .sb-ledger .cell.bal{background:color-mix(in srgb,var(--accent) 9%,var(--fg));}
+  .sb-ledger .cell.bal .v{color:var(--tfg);}
+
+  /* availability bar */
+  .sb-avail{margin-top:11px;}
+  .sb-bar{height:7px;border-radius:var(--r-full);background:var(--border);overflow:hidden;display:flex;}
+  .sb-bar i{height:100%;display:block;}
+  .sb-bar .free{background:var(--green-500);}
+  .sb-bar .resv{background:var(--orange-500);}
+  .sb-avail .lab{display:flex;align-items:center;gap:12px;margin-top:6px;font-size:11.5px;font-weight:500;}
+  .sb-avail .lab .k{display:inline-flex;align-items:center;gap:5px;color:var(--text-muted);}
+  .sb-avail .lab .k::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--c);}
+  .sb-avail .lab .k b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;}
+  .sb-avail .lab .free{--c:var(--green-500);}
+  .sb-avail .lab .resv{--c:var(--orange-500);}
+
+  /* status note (neg / empty) replaces avail bar */
+  .sb-note{display:flex;align-items:center;gap:8px;margin-top:11px;padding:8px 11px;border-radius:var(--r-md);
+    font-size:12.5px;font-weight:600;}
+  .sb-note svg{width:16px;height:16px;flex:none;}
+  .sb-card.neg   .sb-note{background:color-mix(in srgb,var(--red-500) 11%,var(--fg));color:var(--red-700);
+    border:1px solid color-mix(in srgb,var(--red-500) 24%,var(--border));}
+  .sb-card.empty .sb-note{background:var(--subtle);color:var(--text-muted);border:1px solid var(--border);}
+
+  /* meta footer */
+  .sb-meta{display:flex;align-items:center;gap:14px;margin-top:11px;padding-top:10px;
+    border-top:1px dashed var(--border);font-size:11.5px;color:var(--text-subtle);flex-wrap:wrap;}
+  .sb-meta .m{display:inline-flex;align-items:baseline;gap:5px;}
+  .sb-meta .m b{color:var(--text-muted);font-weight:600;font-variant-numeric:tabular-nums;}
+  .sb-meta .m.muted b{color:var(--text-subtle);}
+  .sb-meta .cust{margin-left:auto;display:inline-flex;align-items:center;gap:5px;
+    font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text-muted);
+    padding:3px 8px;border-radius:var(--r-sm);background:var(--subtle);border:1px solid var(--border);}
+  .sb-meta .cust svg{width:12px;height:12px;opacity:.7;}
+
+  /* ── pinned report total row (ERPNext add_total_row) ──── */
+  .sb-total{flex:none;background:var(--fg);border-top:1px solid var(--border-strong);
+    box-shadow:0 -6px 20px -8px color-mix(in srgb,var(--text) 22%,transparent);
+    padding:11px 16px calc(11px + env(safe-area-inset-bottom,0px));z-index:2;}
+  .sb-total .tt{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .sb-total .tlab{display:inline-flex;align-items:center;gap:8px;}
+  .sb-total .tlab .t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text);}
+  .sb-total .tlab .c{font-size:11px;color:var(--text-subtle);font-variant-numeric:tabular-nums;}
+  .sb-total .tval{display:flex;flex-direction:column;align-items:flex-end;line-height:1;}
+  .sb-total .tval .k{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);}
+  .sb-total .tval .v{font-size:17px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.01em;margin-top:2px;}
+  .sb-total .tgrid{display:grid;grid-template-columns:repeat(4,1fr);margin-top:10px;
+    background:var(--subtle);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;}
+  .sb-total .tgrid .cell{padding:7px 6px 8px;text-align:center;position:relative;}
+  .sb-total .tgrid .cell + .cell::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:1px;background:var(--border);}
+  .sb-total .tgrid .k{display:block;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);}
+  .sb-total .tgrid .v{display:block;margin-top:3px;font-size:15px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
+  .sb-total .tgrid .cell.in .v{color:var(--green-600);}
+  .sb-total .tgrid .cell.out .v{color:var(--red-600);}
+  .sb-total .tgrid .cell.bal{background:color-mix(in srgb,var(--primary) 9%,var(--fg));}
+  .sb-total .tgrid .cell.bal .v{color:var(--blue-700);}
+</style>
+</head>
+<body>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="22" fill="#2490ef"/>
+    <rect x="28" y="30" width="44" height="8" rx="4" fill="#fff"/>
+    <rect x="28" y="46" width="30" height="8" rx="4" fill="#bfe0fb"/>
+    <rect x="28" y="62" width="44" height="8" rx="4" fill="#fff"/>
+  </svg>
+</template>
+
+<div class="stage">
+  <div class="stage-cap">
+    <h1>Stock Balance — refined report layout</h1>
+    <p>Multimax · ERPNext v15 · operational nuances at a glance</p>
+  </div>
+
+  <div class="device"><div class="screen">
+
+    <!-- status bar -->
+    <div class="statusbar">
+      <span class="clock">10:02</span>
+      <span class="sysico">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4 2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2 22h20V2z"/></svg>
+        <span class="batt">96
+          <svg width="22" height="13" viewBox="0 0 24 13" fill="none"><rect x="1" y="1" width="19" height="11" rx="2.5" stroke="currentColor" stroke-width="1.4"/><rect x="2.6" y="2.6" width="13" height="7.8" rx="1.2" fill="currentColor"/><rect x="21" y="4" width="2" height="5" rx="1" fill="currentColor"/></svg>
+        </span>
+      </span>
+    </div>
+
+    <!-- app bar -->
+    <div class="appbar">
+      <div class="toolbar">
+        <button class="icon-btn" aria-label="Menu"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+        <span style="flex:1"></span>
+        <button class="filt-btn" aria-label="Filters">
+          <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+          <span class="count-badge">5</span>
+        </button>
+      </div>
+      <div class="title-lg">Stock Balance</div>
+
+      <div class="fchips">
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+          From: 2026-06-21
+          <span class="x"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+          To: 2026-06-21
+          <span class="x"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+        </span>
+        <span class="fchip">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>
+          Warehouse: WH-DXB3
+          <span class="x"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+        </span>
+      </div>
+    </div>
+
+    <!-- summary strip -->
+    <div class="sb-summary">
+      <div class="left"><b>24</b> items <span class="sep">·</span> <b>1</b> warehouse</div>
+      <span class="alert"><span class="dot"></span> 1 negative</span>
+    </div>
+
+    <!-- list -->
+    <div class="sb-list">
+
+      <!-- 1 · healthy, fully free -->
+      <article class="sb-card ok">
+        <div class="sb-head">
+          <div class="sb-id">
+            <div class="sb-code">2002855</div>
+            <div class="sb-name">BELTS FORMAL AUTO CP</div>
+          </div>
+          <div class="sb-balance"><span class="sb-qty">12</span><span class="sb-uom">Nos</span></div>
+        </div>
+        <div class="sb-loc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+          <b>WH-DXB3 · KA</b><span class="sep">·</span>
+          <span class="rack">Rack <b>BLOCK 1</b></span>
+        </div>
+        <div class="sb-attrs">
+          <span class="tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.84zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z"/></svg></span>
+          <span class="sb-attr"><span class="ak">Colour</span><span class="av">Black</span></span>
+          <span class="sb-attr"><span class="ak">Buckle</span><span class="av">Auto CP</span></span>
+          <span class="sb-attr"><span class="ak">Width</span><span class="av">35MM</span></span>
+        </div>
+        <div class="sb-ledger">
+          <div class="cell"><span class="k">Opening</span><span class="v">12</span></div>
+          <div class="cell in"><span class="k">In</span><span class="v zero">0</span></div>
+          <div class="cell out"><span class="k">Out</span><span class="v zero">0</span></div>
+          <div class="cell bal"><span class="k">Balance</span><span class="v">12</span></div>
+        </div>
+        <div class="sb-avail">
+          <div class="sb-bar"><i class="free" style="width:100%"></i></div>
+          <div class="lab"><span class="k free">Available <b>12</b></span><span class="k resv">Reserved <b>0</b></span></div>
+        </div>
+        <div class="sb-meta">
+          <span class="m muted">Rate <b>0.00</b></span>
+          <span class="m muted">Value <b>0.00</b></span>
+          <span class="cust"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>5067049</span>
+        </div>
+      </article>
+
+      <!-- 2 · heavy reservation (watch) -->
+      <article class="sb-card watch">
+        <div class="sb-head">
+          <div class="sb-id">
+            <div class="sb-code">2003120</div>
+            <div class="sb-name">WALLET BIFOLD LEATHER BLK</div>
+          </div>
+          <div class="sb-balance"><span class="sb-qty">220</span><span class="sb-uom">Nos</span></div>
+        </div>
+        <div class="sb-loc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+          <b>WH-DXB3 · KA</b><span class="sep">·</span>
+          <span class="rack">Rack <b>BLOCK 3</b></span>
+        </div>
+        <div class="sb-attrs">
+          <span class="tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.84zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z"/></svg></span>
+          <span class="sb-attr"><span class="ak">Colour</span><span class="av">Black</span></span>
+          <span class="sb-attr"><span class="ak">Material</span><span class="av">Leather</span></span>
+          <span class="sb-attr"><span class="ak">Style</span><span class="av">Bifold</span></span>
+        </div>
+        <div class="sb-ledger">
+          <div class="cell"><span class="k">Opening</span><span class="v">180</span></div>
+          <div class="cell in"><span class="k">In</span><span class="v">+64</span></div>
+          <div class="cell out"><span class="k">Out</span><span class="v">−24</span></div>
+          <div class="cell bal"><span class="k">Balance</span><span class="v">220</span></div>
+        </div>
+        <div class="sb-avail">
+          <div class="sb-bar"><i class="free" style="width:9.1%"></i><i class="resv" style="width:90.9%"></i></div>
+          <div class="lab"><span class="k free">Available <b>20</b></span><span class="k resv">Reserved <b>200</b></span></div>
+        </div>
+        <div class="sb-meta">
+          <span class="m">Rate <b>AED 38.50</b></span>
+          <span class="m">Value <b>AED 8,470</b></span>
+          <span class="cust"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>5067049</span>
+        </div>
+      </article>
+
+      <!-- 3 · negative balance (alert) -->
+      <article class="sb-card neg">
+        <div class="sb-head">
+          <div class="sb-id">
+            <div class="sb-code">2001045</div>
+            <div class="sb-name">BELT AUTOMATIC NICKEL 35MM</div>
+          </div>
+          <div class="sb-balance"><span class="sb-qty">−6</span><span class="sb-uom">Nos</span></div>
+        </div>
+        <div class="sb-loc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+          <b>WH-DXB3 · KA</b><span class="sep">·</span>
+          <span class="rack">Rack <b>BLOCK 2</b></span>
+        </div>
+        <div class="sb-attrs">
+          <span class="tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.84zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z"/></svg></span>
+          <span class="sb-attr"><span class="ak">Colour</span><span class="av">Brown</span></span>
+          <span class="sb-attr"><span class="ak">Buckle</span><span class="av">Auto Nickel</span></span>
+          <span class="sb-attr"><span class="ak">Width</span><span class="av">35MM</span></span>
+        </div>
+        <div class="sb-ledger">
+          <div class="cell"><span class="k">Opening</span><span class="v">4</span></div>
+          <div class="cell in"><span class="k">In</span><span class="v zero">0</span></div>
+          <div class="cell out"><span class="k">Out</span><span class="v">−10</span></div>
+          <div class="cell bal"><span class="k">Balance</span><span class="v">−6</span></div>
+        </div>
+        <div class="sb-note">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+          Negative stock — issued beyond on-hand qty
+        </div>
+        <div class="sb-meta">
+          <span class="m muted">Rate <b>AED 21.00</b></span>
+          <span class="m muted">Value <b>AED −126</b></span>
+          <span class="cust"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>5067049</span>
+        </div>
+      </article>
+
+      <!-- 4 · out of stock -->
+      <article class="sb-card empty">
+        <div class="sb-head">
+          <div class="sb-id">
+            <div class="sb-code">2004890</div>
+            <div class="sb-name">CARD HOLDER SLIM TAN</div>
+          </div>
+          <div class="sb-balance"><span class="sb-qty">0</span><span class="sb-uom">Nos</span></div>
+        </div>
+        <div class="sb-loc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+          <b>WH-DXB1 · MAIN</b><span class="sep">·</span>
+          <span class="norack">No rack assigned</span>
+        </div>
+        <div class="sb-attrs">
+          <span class="tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.84zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z"/></svg></span>
+          <span class="sb-attr"><span class="ak">Colour</span><span class="av">Tan</span></span>
+          <span class="sb-attr"><span class="ak">Material</span><span class="av">Leather</span></span>
+          <span class="sb-attr"><span class="ak">Style</span><span class="av">Slim</span></span>
+        </div>
+        <div class="sb-ledger">
+          <div class="cell"><span class="k">Opening</span><span class="v">0</span></div>
+          <div class="cell in"><span class="k">In</span><span class="v zero">0</span></div>
+          <div class="cell out"><span class="k">Out</span><span class="v zero">0</span></div>
+          <div class="cell bal"><span class="k">Balance</span><span class="v">0</span></div>
+        </div>
+        <div class="sb-note">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-3V4c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2H4v2h1v11c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V8h1V6zM9 4h6v2H9V4z"/></svg>
+          Out of stock — no movement in period
+        </div>
+        <div class="sb-meta">
+          <span class="m muted">Rate <b>0.00</b></span>
+          <span class="m muted">Value <b>0.00</b></span>
+          <span class="cust"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>5068213</span>
+        </div>
+      </article>
+
+      <!-- 5 · healthy with valuation + active movement -->
+      <article class="sb-card ok">
+        <div class="sb-head">
+          <div class="sb-id">
+            <div class="sb-code">2002770</div>
+            <div class="sb-name">BELTS FORMAL AUTO CP BROWN</div>
+          </div>
+          <div class="sb-balance"><span class="sb-qty">84</span><span class="sb-uom">Nos</span></div>
+        </div>
+        <div class="sb-loc">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+          <b>WH-DXB3 · KA</b><span class="sep">·</span>
+          <span class="rack">Rack <b>BLOCK 1</b></span>
+        </div>
+        <div class="sb-attrs">
+          <span class="tag"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.41 11.58 12.41 2.58A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 .59 1.42l9 9a2 2 0 0 0 2.82 0l7-7a2 2 0 0 0 0-2.84zM6.5 8A1.5 1.5 0 1 1 8 6.5 1.5 1.5 0 0 1 6.5 8z"/></svg></span>
+          <span class="sb-attr"><span class="ak">Colour</span><span class="av">Brown</span></span>
+          <span class="sb-attr"><span class="ak">Buckle</span><span class="av">Auto CP</span></span>
+          <span class="sb-attr"><span class="ak">Width</span><span class="av">30MM</span></span>
+        </div>
+        <div class="sb-ledger">
+          <div class="cell"><span class="k">Opening</span><span class="v">96</span></div>
+          <div class="cell in"><span class="k">In</span><span class="v">+48</span></div>
+          <div class="cell out"><span class="k">Out</span><span class="v">−60</span></div>
+          <div class="cell bal"><span class="k">Balance</span><span class="v">84</span></div>
+        </div>
+        <div class="sb-avail">
+          <div class="sb-bar"><i class="free" style="width:85.7%"></i><i class="resv" style="width:14.3%"></i></div>
+          <div class="lab"><span class="k free">Available <b>72</b></span><span class="k resv">Reserved <b>12</b></span></div>
+        </div>
+        <div class="sb-meta">
+          <span class="m">Rate <b>AED 42.00</b></span>
+          <span class="m">Value <b>AED 3,528</b></span>
+          <span class="cust"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>5067112</span>
+        </div>
+      </article>
+
+    </div>
+
+    <!-- pinned report total (ERPNext add_total_row) -->
+    <div class="sb-total">
+      <div class="tt">
+        <div class="tlab">
+          <span class="t">Total</span>
+          <span class="c">24 items · 1 warehouse</span>
+        </div>
+        <div class="tval">
+          <span class="k">Total Value</span>
+          <span class="v">AED 64,180</span>
+        </div>
+      </div>
+      <div class="tgrid">
+        <div class="cell"><span class="k">Opening</span><span class="v">1,208</span></div>
+        <div class="cell in"><span class="k">In</span><span class="v">+642</span></div>
+        <div class="cell out"><span class="k">Out</span><span class="v">−418</span></div>
+        <div class="cell bal"><span class="k">Balance</span><span class="v">1,432</span></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+</body>
+</html>

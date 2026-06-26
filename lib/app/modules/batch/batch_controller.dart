@@ -99,6 +99,8 @@ class BatchController extends GetxController {
   void onInit() {
     super.onInit();
     scrollController.addListener(_onScroll);
+    debounce(searchQuery, (_) => fetchBatches(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -200,15 +202,7 @@ class BatchController extends GetxController {
 
   // ── Search ────────────────────────────────────────────────────────────
 
-  /// Debounced search: waits 500 ms after the last keystroke before
-  /// triggering [fetchBatches].  Ignores the delayed callback if the
-  /// query has changed in the interim.
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) fetchBatches(clear: true);
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ── Filter API ──────────────────────────────────────────────────────────
 
@@ -223,10 +217,13 @@ class BatchController extends GetxController {
   /// refreshes the list.
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
     sortField.value = 'modified';
     sortOrder.value = 'desc';
-    fetchBatches(clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchBatches(clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   /// Removes a single filter by [key] and refreshes the list.

@@ -39,6 +39,8 @@ class PosUploadController extends GetxController {
     super.onInit();
     fetchPosUploads();
     fetchCustomers();
+    debounce(searchQuery, (_) => fetchPosUploads(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   // ── Customers ─────────────────────────────────────────────────────────────
@@ -61,12 +63,7 @@ class PosUploadController extends GetxController {
 
   // ── Search ────────────────────────────────────────────────────────────────
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) fetchPosUploads(clear: true);
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ── Filters ───────────────────────────────────────────────────────────────
 
@@ -77,8 +74,11 @@ class PosUploadController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchPosUploads(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchPosUploads(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {

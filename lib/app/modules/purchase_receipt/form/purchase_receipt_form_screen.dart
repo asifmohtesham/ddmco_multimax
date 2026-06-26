@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
-import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_controller.dart';
+import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_item_filter.dart';
+import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
@@ -49,6 +53,12 @@ class PurchaseReceiptFormScreen
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -256,14 +266,20 @@ class PurchaseReceiptFormScreen
   // ── Items tab ───────────────────────────────────────────────────────────────────
 
   Widget _buildItemsView(BuildContext context, dynamic receipt) {
-    final items = receipt.items;
+    final allItems = receipt.items;
 
     return Column(
       children: [
+        if (allItems.isNotEmpty) _buildItemFilterChips(context),
         Expanded(
-          child: items.isEmpty
+          child: allItems.isEmpty
               ? const Center(child: Text('No items in this receipt.'))
-              : ListView.builder(
+              : Obx(() {
+                  final items = controller.visibleItems;
+                  if (items.isEmpty) {
+                    return _buildFilteredEmptyState(context);
+                  }
+                  return ListView.builder(
                   controller: controller.scrollController,
                   padding:
                       const EdgeInsets.only(top: 8.0, bottom: 80.0),
@@ -289,7 +305,7 @@ class PurchaseReceiptFormScreen
                         isHighlighted: isHighlighted,
                       );
 
-                      return Dismissible(
+                      final Widget row = Dismissible(
                         key: ValueKey(item.name ?? index),
                         direction: controller.isEditable
                             ? DismissDirection.endToStart
@@ -320,9 +336,19 @@ class PurchaseReceiptFormScreen
                               : null,
                         ),
                       );
+
+                      if (!item.isPoLinkBroken) return row;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _poLinkBrokenBanner(context, item),
+                          row,
+                        ],
+                      );
                     });
                   },
-                ),
+                  );
+                }),
         ),
         if (controller.isEditable)
           Obx(() => BarcodeInputWidget(
@@ -336,53 +362,139 @@ class PurchaseReceiptFormScreen
     );
   }
 
-  // ── Shared helpers ────────────────────────────────────────────────────────────
+  // ── Items-tab status filter chips ──────────────────────────────────────────────
 
-  Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin:    EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
+  Widget _buildItemFilterChips(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Obx(() {
+      final selected = controller.receiptItemFilter.value;
+      final brokenCount =
+          controller.receiptItemCount(ReceiptItemFilter.linkBroken);
+
+      // "Link broken" only appears when there is something to repair.
+      final filters = <ReceiptItemFilter>[
+        ReceiptItemFilter.all,
+        ReceiptItemFilter.pending,
+        ReceiptItemFilter.completed,
+        if (brokenCount > 0) ReceiptItemFilter.linkBroken,
+      ];
+
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              for (final f in filters)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label:
+                        Text('${f.label} (${controller.receiptItemCount(f)})'),
+                    selected: selected == f,
+                    avatar: f == ReceiptItemFilter.linkBroken
+                        ? Icon(Icons.link_off,
+                            size: 16,
+                            color: selected == f ? cs.onError : cs.error)
+                        : null,
+                    selectedColor: f == ReceiptItemFilter.linkBroken
+                        ? cs.error
+                        : null,
+                    labelStyle: f == ReceiptItemFilter.linkBroken
+                        ? TextStyle(
+                            color: selected == f ? cs.onError : cs.error,
+                            fontWeight: FontWeight.w600,
+                          )
+                        : null,
+                    onSelected: (_) =>
+                        controller.receiptItemFilter.value = f,
+                  ),
+                ),
+            ],
+          ),
         ),
+      );
+    });
+  }
+
+  Widget _poLinkBrokenBanner(BuildContext context, PurchaseReceiptItem item) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.errorContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.error.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link_off, size: 18, color: cs.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              // Submitted receipts are read-only — the fix is ERPNext's
+              // cancel-and-amend route, not an in-app relink.
+              controller.isEditable
+                  ? 'Purchase Order link out of date'
+                  : 'Purchase Order link out of date — cancel and amend to repair',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          if (controller.isEditable)
+            TextButton(
+              onPressed: () => controller.repairPoLink(item),
+              style: TextButton.styleFrom(
+                foregroundColor: cs.error,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Fix'),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildSummaryRow(String label, String value,
-      {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildFilteredEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = controller.receiptItemFilter.value.label.toLowerCase();
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-              fontSize:   isBold ? 16 : 14,
-              color:      isBold ? Colors.black87 : Colors.black54,
-            ),
+          Icon(Icons.filter_alt_off_outlined,
+              size: 40, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(height: 8),
+          Text('No $label items.',
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          TextButton(
+            onPressed: () =>
+                controller.receiptItemFilter.value = ReceiptItemFilter.all,
+            child: const Text('Show all'),
           ),
         ],
       ),
     );
   }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────────
+
+  Widget _buildSectionCard(
+          {required String title, required List<Widget> children}) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
+
+  Widget _buildSummaryRow(String label, String value,
+          {bool isBold = false}) =>
+      DocSummaryRow(label: label, value: value, isBold: isBold);
 }
