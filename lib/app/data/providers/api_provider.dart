@@ -242,6 +242,21 @@ class ApiProvider {
       queryParameters['filters'] = json.encode(filterList);
     }
 
+    // Process OR Filters — same tuple expansion rules as the AND block.
+    if (orFilters != null && orFilters.isNotEmpty) {
+      final List<List<dynamic>> orFilterList = orFilters.entries.map((entry) {
+        final val = entry.value;
+        if (val is List) {
+          if (val.length == 4) return List<dynamic>.from(val);
+          if (val.length == 3) return [entry.key, val[0], val[1], val[2]];
+          if (val.length == 2) return [doctype, entry.key, val[0], val[1]];
+        }
+        return [doctype, entry.key, '=', val];
+      }).toList();
+
+      queryParameters['or_filters'] = json.encode(orFilterList);
+    }
+
     try {
       return await _dio.get(endpoint, queryParameters: queryParameters);
     } on DioException catch (e) {
