@@ -50,7 +50,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                       : null,
                   extraActions: [
                     if (controller.canCreateReceipt)
-                      IconButton(
+                      // Wrapped in its own Obx: the form header is a
+                      // SliverPersistentHeader whose shouldRebuild keys on
+                      // extraActions.length, so a content-only swap (icon ->
+                      // spinner) would not rebuild the header. The Obx makes
+                      // this action self-react to isCreatingReceipt.
+                      Obx(() => IconButton(
                         tooltip: 'Create Purchase Receipt',
                         icon: controller.isCreatingReceipt.value
                             ? SizedBox(
@@ -67,7 +72,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                         onPressed: controller.isCreatingReceipt.value
                             ? null
                             : controller.createPurchaseReceipt,
-                      ),
+                      )),
                     RealtimeSyncStatusIcon(
                       isConnected: controller.isRealtimeConnected,
                       isSyncing:   controller.isRemoteSyncing,
