@@ -150,6 +150,39 @@ class StockEntryFormController extends GetxController
         canSubmitPerm: canSubmitPerm.value,
       );
 
+  /// Pure auto-save-eligibility predicate (no GetX state) so it is unit-testable.
+  /// Background auto-save must never fire while a mandatory field is still empty:
+  /// it requires at least one item, a chosen entry type, and any source/target
+  /// warehouse the type mandates. Manual Save (header button) and the post-scan
+  /// save still run on an incomplete document and surface their own validation;
+  /// this guard only governs the silent background auto-save.
+  static bool computeCanAutoSave({
+    required bool hasItems,
+    required String stockEntryType,
+    required bool requiresSourceWarehouse,
+    required bool requiresTargetWarehouse,
+    required String? fromWarehouse,
+    required String? toWarehouse,
+  }) {
+    if (!hasItems) return false;
+    if (stockEntryType.isEmpty) return false;
+    if (requiresSourceWarehouse &&
+        (fromWarehouse == null || fromWarehouse.isEmpty)) return false;
+    if (requiresTargetWarehouse &&
+        (toWarehouse == null || toWarehouse.isEmpty)) return false;
+    return true;
+  }
+
+  @override
+  bool get canAutoSave => computeCanAutoSave(
+        hasItems:                stockEntry.value?.items.isNotEmpty ?? false,
+        stockEntryType:          stockEntryType.value,
+        requiresSourceWarehouse: requiresSourceWarehouse,
+        requiresTargetWarehouse: requiresTargetWarehouse,
+        fromWarehouse:           fromWarehouse.value,
+        toWarehouse:             toWarehouse.value,
+      );
+
   @override String get realtimeDoctype => 'Stock Entry';
   @override String get realtimeDocname => name;
 

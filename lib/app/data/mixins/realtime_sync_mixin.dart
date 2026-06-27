@@ -25,6 +25,11 @@ mixin RealtimeSyncMixin on GetxController {
   Future<void> saveDocument();
   Future<void> reloadDocument();
 
+  /// Override to block background auto-save while the document must not be
+  /// persisted yet (e.g. mandatory fields still empty). Defaults to always
+  /// allowed so doctypes that don't override keep prior behaviour.
+  bool get canAutoSave => true;
+
   void scheduleAutoSave() {
     final delay = Get.find<StorageService>().getAutoSaveDelay();
     _scheduleAutoSaveWithDuration(Duration(seconds: delay));
@@ -33,7 +38,7 @@ mixin RealtimeSyncMixin on GetxController {
   void _scheduleAutoSaveWithDuration(Duration duration) {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(duration, () async {
-      if (!isClosed && isDirty.value && !isSaving.value) {
+      if (!isClosed && isDirty.value && !isSaving.value && canAutoSave) {
         await saveDocument();
       }
     });

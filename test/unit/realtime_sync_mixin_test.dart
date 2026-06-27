@@ -11,6 +11,9 @@ class _TestController extends GetxController with RealtimeSyncMixin {
   @override final isDirty  = false.obs;
   @override final isSaving = false.obs;
 
+  bool canAutoSaveFlag = true;
+  @override bool get canAutoSave => canAutoSaveFlag;
+
   int saveCallCount   = 0;
   int reloadCallCount = 0;
 
@@ -66,6 +69,17 @@ void main() {
       final ctrl = Get.put(_TestController());
       ctrl.isDirty.value  = true;
       ctrl.isSaving.value = true;
+
+      ctrl.scheduleAutoSaveForTest(Duration.zero);
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      expect(ctrl.saveCallCount, 0);
+    });
+
+    test('does not call saveDocument when canAutoSave is false', () async {
+      final ctrl = Get.put(_TestController());
+      ctrl.isDirty.value     = true;
+      ctrl.canAutoSaveFlag   = false;
 
       ctrl.scheduleAutoSaveForTest(Duration.zero);
       await Future.delayed(const Duration(milliseconds: 10));
