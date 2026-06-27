@@ -423,16 +423,16 @@ class StockEntryController extends GetxController {
               ListTile(
                 leading: const CircleAvatar(
                   backgroundColor: Colors.blue,
-                  child: Icon(Icons.transform, color: Colors.white),
+                  child: Icon(Icons.add, color: Colors.white),
                 ),
-                title: const Text('Material Transfer'),
-                subtitle: const Text('Internal Transfer'),
+                title: const Text('New Stock Entry'),
+                subtitle: const Text('Select type after creating'),
                 onTap: () {
                   Get.back();
                   Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
                     'name': '',
                     'mode': 'new',
-                    'stockEntryType': 'Material Transfer',
+                    'stockEntryType': '',
                     'customReferenceNo': ''
                   });
                 },

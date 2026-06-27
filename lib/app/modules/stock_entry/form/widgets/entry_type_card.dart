@@ -56,10 +56,12 @@ class EntryTypeCard extends StatelessWidget {
                   Icon(Icons.category, size: 20, color: Colors.blue.shade700),
                   const SizedBox(width: 8),
                   Text(
-                    type,
+                    type.isEmpty ? 'Select type' : type,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
+                      color: type.isEmpty
+                          ? Colors.blueGrey.shade400
+                          : Colors.blue.shade900,
                       fontSize: 16,
                     ),
                   ),

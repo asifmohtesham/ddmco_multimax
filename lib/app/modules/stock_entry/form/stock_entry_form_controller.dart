@@ -157,6 +157,7 @@ class StockEntryFormController extends GetxController
 
   String getTypeHelperText(String type) {
     switch (type) {
+      case '':                 return 'Tap to choose a stock entry type to begin.';
       case 'Material Issue':   return 'Remove stock from a warehouse (outbound movement).';
       case 'Material Receipt': return 'Receive stock into a warehouse (inbound movement).';
       case 'Material Transfer':
@@ -790,6 +791,11 @@ class StockEntryFormController extends GetxController
   }
 
   bool _validateHeaderBeforeScan() {
+    if (stockEntryType.value.isEmpty) {
+      GlobalSnackbar.warning(
+          message: 'Please select a Stock Entry Type (Details tab) before scanning.');
+      return false;
+    }
     if (requiresSourceWarehouse &&
         (fromWarehouse.value == null ||
             fromWarehouse.value!.isEmpty)) {
@@ -1387,6 +1393,10 @@ class StockEntryFormController extends GetxController
   /// Returns true when the header is valid to proceed with save.
   /// Shows an error snackbar and returns false otherwise.
   bool _validateHeaderForSave() {
+    if (stockEntryType.value.isEmpty) {
+      GlobalSnackbar.error(message: 'Please select a Stock Entry Type');
+      return false;
+    }
     // Resolve warehouses from first item if header fields are still null.
     final firstItem = stockEntry.value?.items.firstOrNull;
     if (fromWarehouse.value == null && firstItem?.sWarehouse != null) {
