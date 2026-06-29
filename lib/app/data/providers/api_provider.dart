@@ -1356,6 +1356,71 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // BOM STOCK WITH CUSTOMER CODE
+  // ---------------------------------------------------------------------------
+
+  /// Builds the `frappe.desk.query_report.run` filter map for the
+  /// "BOM Stock with Customer Code" report. Empty/false filters are omitted so
+  /// the report applies its own defaults. Checkboxes are encoded as `1` when on.
+  static Map<String, dynamic> buildBomStockFilters({
+    String? customer,
+    List<String> customerCodes = const [],
+    List<String> warehouses = const [],
+    String? posUpload,
+    bool showExplodedView = false,
+    bool hideOutOfStock = false,
+  }) {
+    final f = <String, dynamic>{};
+    if (customer != null && customer.trim().isNotEmpty) {
+      f['customer'] = customer.trim();
+    }
+    if (customerCodes.isNotEmpty) f['customer_code'] = customerCodes;
+    if (warehouses.isNotEmpty) f['warehouse'] = warehouses;
+    if (posUpload != null && posUpload.trim().isNotEmpty) {
+      f['pos_upload'] = posUpload.trim();
+    }
+    if (showExplodedView) f['show_exploded_view'] = 1;
+    if (hideOutOfStock) f['hide_out_of_stock'] = 1;
+    return f;
+  }
+
+  /// Runs the "BOM Stock with Customer Code" scripted report.
+  ///
+  /// Returns the raw [Response] so the controller can parse
+  /// `message.result` (a List of row dicts; the last row is the appended
+  /// `add_total_row` total).
+  Future<Response> runBomStockWithCustomerCode({
+    String? customer,
+    List<String> customerCodes = const [],
+    List<String> warehouses = const [],
+    String? posUpload,
+    bool showExplodedView = false,
+    bool hideOutOfStock = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final filters = buildBomStockFilters(
+      customer: customer,
+      customerCodes: customerCodes,
+      warehouses: warehouses,
+      posUpload: posUpload,
+      showExplodedView: showExplodedView,
+      hideOutOfStock: hideOutOfStock,
+    );
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        'report_name'           : 'BOM Stock with Customer Code',
+        'filters'               : json.encode(filters),
+        'ignore_prepared_report': 'true',
+        'are_default_filters'   : 'false',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // JOB CARD SUMMARY
   // ---------------------------------------------------------------------------
 
