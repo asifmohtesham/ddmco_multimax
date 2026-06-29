@@ -19,10 +19,10 @@ class BomStockTile extends StatelessWidget {
     final custCode = (row['customer_code'] ?? '').toString();
     final customer = (row['customer'] ?? '').toString();
     final bom      = (row['bom'] ?? '').toString();
-    final inStock  = row['in_stock_qty'] as num?;
-    final reqRaw   = row['required_qty'];
-    final hasReq   = reqRaw is num;
-    final running  = row['running_total'] as num?;
+    final inStock  = toNum(row['in_stock_qty']);
+    final reqNum   = toNum(row['required_qty']);
+    final hasReq   = reqNum != null;
+    final running  = toNum(row['running_total']);
     final enough   = row['enough_parts_to_build'];
 
     return Material(
@@ -84,7 +84,7 @@ class BomStockTile extends StatelessWidget {
               children: [
                 _metric(theme, cs, 'In Stock', formatQty(inStock), false),
                 if (hasReq)
-                  _metric(theme, cs, 'Required', formatQty(reqRaw), shortfall),
+                  _metric(theme, cs, 'Required', formatQty(reqNum), shortfall),
                 _metric(theme, cs, 'Running', formatQty(running), shortfall),
                 if (enough != null)
                   _metric(theme, cs, 'Can Build', enough.toString(), false),

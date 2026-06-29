@@ -98,6 +98,19 @@ void main() {
     });
   });
 
+  group('isShortfall string-coercion hardening', () {
+    test('coerces stringified numerics instead of throwing', () {
+      expect(BomStockCustomerCodeController.isShortfall(
+          {'required_qty': '8', 'running_total': '2'}), isTrue);
+      expect(BomStockCustomerCodeController.isShortfall(
+          {'required_qty': '5', 'running_total': '10'}), isFalse);
+    });
+    test('non-numeric running_total is treated as 0, does not throw', () {
+      expect(BomStockCustomerCodeController.isShortfall(
+          {'required_qty': 8, 'running_total': 'n/a'}), isTrue);
+    });
+  });
+
   group('controller mutations (no network)', () {
     setUpAll(() {
       // ApiProvider() fires _initDio() asynchronously which calls path_provider.

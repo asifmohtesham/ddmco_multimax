@@ -26,9 +26,9 @@ class BomStockTotalsFooter extends StatelessWidget {
                   style: theme.textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.w700)),
               const Spacer(),
-              _cell(theme, cs, 'In Stock', formatQty(t['in_stock_qty'] as num?)),
-              _cell(theme, cs, 'Required', formatQty(t['required_qty'] as num?)),
-              _cell(theme, cs, 'Running', formatQty(t['running_total'] as num?)),
+              _cell(theme, cs, 'In Stock', formatQty(toNum(t['in_stock_qty']))),
+              _cell(theme, cs, 'Required', formatQty(toNum(t['required_qty']))),
+              _cell(theme, cs, 'Running', formatQty(toNum(t['running_total']))),
             ],
           ),
         ),

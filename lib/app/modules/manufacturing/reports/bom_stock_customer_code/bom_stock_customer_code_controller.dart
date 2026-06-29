@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 
 /// Controller for the "BOM Stock with Customer Code" report.
 ///
@@ -172,9 +173,9 @@ class BomStockCustomerCodeController extends GetxController {
   /// True when [row] is short of its POS-required quantity, mirroring the
   /// desk's red highlight: `required_qty` truthy and `running_total` below it.
   static bool isShortfall(Map<String, dynamic> row) {
-    final req = row['required_qty'];
-    if (req is! num || req == 0) return false;
-    final rt = (row['running_total'] as num?)?.toDouble() ?? 0;
+    final req = toNum(row['required_qty']);
+    if (req == null || req == 0) return false;
+    final rt = toNum(row['running_total'])?.toDouble() ?? 0;
     return rt < req.toDouble();
   }
 
