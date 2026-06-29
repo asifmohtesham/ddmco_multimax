@@ -9,6 +9,8 @@ import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_screen.dart';
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_binding.dart';
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_screen.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_binding.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
@@ -211,6 +213,12 @@ class AppPages {
       name: AppRoutes.JOB_CARD_SUMMARY,
       page: () => const JobCardSummaryScreen(),
       binding: JobCardSummaryBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.BOM_STOCK_CUSTOMER_CODE,
+      page: () => const BomStockCustomerCodeScreen(),
+      binding: BomStockCustomerCodeBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
