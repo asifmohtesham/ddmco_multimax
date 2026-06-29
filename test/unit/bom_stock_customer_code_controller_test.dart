@@ -49,30 +49,19 @@ void main() {
     });
   });
 
-  group('isShortfall', () {
-    test('true when required_qty is non-zero and running_total is below it', () {
-      expect(
-        BomStockCustomerCodeController.isShortfall(
-          {'required_qty': 8, 'running_total': 2}),
-        isTrue,
-      );
+  group('isShortfall (shortage_qty)', () {
+    test('true when shortage_qty > 0', () {
+      expect(BomStockCustomerCodeController.isShortfall({'shortage_qty': 2004}), isTrue);
     });
-
-    test('false when running_total meets or exceeds required_qty', () {
-      expect(
-        BomStockCustomerCodeController.isShortfall(
-          {'required_qty': 5, 'running_total': 10}),
-        isFalse,
-      );
+    test('false when shortage_qty is 0', () {
+      expect(BomStockCustomerCodeController.isShortfall({'shortage_qty': 0}), isFalse);
     });
-
-    test('false when required_qty is null or zero', () {
-      expect(BomStockCustomerCodeController.isShortfall({'running_total': 0}), isFalse);
-      expect(
-        BomStockCustomerCodeController.isShortfall(
-          {'required_qty': 0, 'running_total': 0}),
-        isFalse,
-      );
+    test('false when shortage_qty absent (no POS)', () {
+      expect(BomStockCustomerCodeController.isShortfall({'in_stock_qty': 10}), isFalse);
+    });
+    test('coerces stringified shortage and never throws', () {
+      expect(BomStockCustomerCodeController.isShortfall({'shortage_qty': '5'}), isTrue);
+      expect(BomStockCustomerCodeController.isShortfall({'shortage_qty': 'n/a'}), isFalse);
     });
   });
 
@@ -98,16 +87,39 @@ void main() {
     });
   });
 
-  group('isShortfall string-coercion hardening', () {
-    test('coerces stringified numerics instead of throwing', () {
-      expect(BomStockCustomerCodeController.isShortfall(
-          {'required_qty': '8', 'running_total': '2'}), isTrue);
-      expect(BomStockCustomerCodeController.isShortfall(
-          {'required_qty': '5', 'running_total': '10'}), isFalse);
+  group('applyRowFilter', () {
+    final rows = <Map<String, dynamic>>[
+      {'item_code': 'A', 'in_stock_qty': 10, 'shortage_qty': 0},
+      {'item_code': 'B', 'in_stock_qty': 0,  'shortage_qty': 5},
+      {'item_code': 'C', 'in_stock_qty': 3,  'shortage_qty': 2},
+    ];
+    test('ALL returns every row', () {
+      expect(BomStockCustomerCodeController.applyRowFilter(rows, 'ALL').length, 3);
     });
-    test('non-numeric running_total is treated as 0, does not throw', () {
-      expect(BomStockCustomerCodeController.isShortfall(
-          {'required_qty': 8, 'running_total': 'n/a'}), isTrue);
+    test('instock keeps positive stock only', () {
+      final r = BomStockCustomerCodeController.applyRowFilter(rows, 'instock');
+      expect(r.map((e) => e['item_code']), ['A', 'C']);
+    });
+    test('shortage keeps short rows only', () {
+      final r = BomStockCustomerCodeController.applyRowFilter(rows, 'shortage');
+      expect(r.map((e) => e['item_code']), ['B', 'C']);
+    });
+  });
+
+  group('sumTotals', () {
+    test('sums in_stock / required / shortage across rows', () {
+      final rows = <Map<String, dynamic>>[
+        {'in_stock_qty': 10, 'required_qty': 4, 'shortage_qty': 0},
+        {'in_stock_qty': 3,  'required_qty': 8, 'shortage_qty': 5},
+      ];
+      final t = BomStockCustomerCodeController.sumTotals(rows);
+      expect(t['in_stock'], 13);
+      expect(t['required'], 12);
+      expect(t['shortage'], 5);
+    });
+    test('empty rows give zeros', () {
+      final t = BomStockCustomerCodeController.sumTotals(const []);
+      expect(t, {'in_stock': 0, 'required': 0, 'shortage': 0});
     });
   });
 
@@ -155,6 +167,9 @@ void main() {
       expect(c.hideOutOfStock.value, isFalse);
       expect(c.posUpload.value, isNull);
       expect(c.posMissingCodes, isEmpty);
+      c.setRowFilter('shortage');
+      c.clearFilters();
+      expect(c.rowFilter.value, 'ALL');
     });
   });
 }

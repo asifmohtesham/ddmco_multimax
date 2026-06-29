@@ -19,12 +19,23 @@ class BomStockCustomerCodeController extends GetxController {
   final showExplodedView = false.obs;
   final hideOutOfStock   = false.obs;
 
+  // ── Segmented row filter (All | In Stock | Shortage) ────────────────────
+  final rowFilter = 'ALL'.obs;
+  void setRowFilter(String v) => rowFilter.value = v;
+
   // ── Result state ────────────────────────────────────────────────────────
   final reportRows      = <Map<String, dynamic>>[].obs;
   final totalRow        = Rxn<Map<String, dynamic>>();
   final posMissingCodes = <String>[].obs;
   final discoveredCodes = <String>[].obs;
   final isRunning       = false.obs;
+
+  /// Result rows after the segmented filter is applied.
+  List<Map<String, dynamic>> get filteredRows =>
+      applyRowFilter(reportRows, rowFilter.value);
+
+  /// In-stock / required / shortage sums over the currently-filtered rows.
+  Map<String, num> get filteredTotals => sumTotals(filteredRows);
 
   // ── Warehouse picker state ──────────────────────────────────────────────
   final warehouseOptions    = <String>[].obs;
@@ -117,6 +128,7 @@ class BomStockCustomerCodeController extends GetxController {
     hideOutOfStock.value = false;
     posMissingCodes.clear();
     activeFilters.clear();
+    rowFilter.value = 'ALL';
   }
 
   void clearFilter(String key) {
@@ -170,13 +182,10 @@ class BomStockCustomerCodeController extends GetxController {
     return null;
   }
 
-  /// True when [row] is short of its POS-required quantity, mirroring the
-  /// desk's red highlight: `required_qty` truthy and `running_total` below it.
+  /// True when the row is short of its POS demand (server-computed shortage).
   static bool isShortfall(Map<String, dynamic> row) {
-    final req = toNum(row['required_qty']);
-    if (req == null || req == 0) return false;
-    final rt = toNum(row['running_total'])?.toDouble() ?? 0;
-    return rt < req.toDouble();
+    final s = toNum(row['shortage_qty']);
+    return s != null && s > 0;
   }
 
   /// Distinct, non-empty `customer_code` values in first-seen order.
@@ -209,5 +218,30 @@ class BomStockCustomerCodeController extends GetxController {
       }
     }
     return (found, missing);
+  }
+
+  /// Applies the segmented filter. 'instock' → positive stock; 'shortage' →
+  /// short rows; anything else → all rows.
+  static List<Map<String, dynamic>> applyRowFilter(
+      List<Map<String, dynamic>> rows, String filter) {
+    switch (filter) {
+      case 'instock':
+        return rows.where((r) => (toNum(r['in_stock_qty']) ?? 0) > 0).toList();
+      case 'shortage':
+        return rows.where(isShortfall).toList();
+      default:
+        return List<Map<String, dynamic>>.from(rows);
+    }
+  }
+
+  /// Sums in_stock_qty / required_qty / shortage_qty across [rows].
+  static Map<String, num> sumTotals(List<Map<String, dynamic>> rows) {
+    num inStock = 0, required = 0, shortage = 0;
+    for (final r in rows) {
+      inStock += toNum(r['in_stock_qty']) ?? 0;
+      required += toNum(r['required_qty']) ?? 0;
+      shortage += toNum(r['shortage_qty']) ?? 0;
+    }
+    return {'in_stock': inStock, 'required': required, 'shortage': shortage};
   }
 }
