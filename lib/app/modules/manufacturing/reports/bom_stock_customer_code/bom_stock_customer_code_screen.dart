@@ -82,6 +82,19 @@ class BomStockCustomerCodeScreen
                         ),
                       ),
 
+                    // ── Segmented row filter ──────────────────────────────
+                    if (!controller.isRunning.value &&
+                        controller.reportRows.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          child: _SegmentedRowFilter(
+                            value: controller.rowFilter.value,
+                            onChanged: controller.setRowFilter,
+                          ),
+                        ),
+                      ),
+
                     // ── Body ──────────────────────────────────────────────
                     if (controller.isRunning.value)
                       const SliverToBoxAdapter(child: DocCardSkeletonList())
@@ -114,17 +127,30 @@ class BomStockCustomerCodeScreen
                           ),
                         ),
                       )
+                    else if (controller.filteredRows.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Text(
+                              'No items match this filter',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                        ),
+                      )
                     else
                       SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                         sliver: SliverList(
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => Padding(
                               padding: const EdgeInsets.only(bottom: 10),
-                              child:
-                                  BomStockTile(row: controller.reportRows[index]),
+                              child: BomStockTile(
+                                  row: controller.filteredRows[index]),
                             ),
-                            childCount: controller.reportRows.length,
+                            childCount: controller.filteredRows.length,
                           ),
                         ),
                       ),
@@ -132,10 +158,67 @@ class BomStockCustomerCodeScreen
                 ),
               ),
             ),
-            BomStockTotalsFooter(total: controller.totalRow.value),
+            BomStockTotalsFooter(
+              totals: controller.filteredTotals,
+              hasDemand: controller.posUpload.value != null,
+            ),
           ],
         );
       }),
+    );
+  }
+}
+
+/// All | In Stock | Shortage — client-side segmented filter over the rows.
+class _SegmentedRowFilter extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+  const _SegmentedRowFilter({required this.value, required this.onChanged});
+
+  static const _segments = [
+    ('ALL', 'All'),
+    ('instock', 'In Stock'),
+    ('shortage', 'Shortage'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          for (final (val, label) in _segments)
+            Expanded(
+              child: InkWell(
+                onTap: () => onChanged(val),
+                borderRadius: BorderRadius.circular(8),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  decoration: BoxDecoration(
+                    color: value == val ? cs.surface : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: value == val ? cs.primary : cs.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

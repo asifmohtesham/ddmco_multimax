@@ -45,4 +45,17 @@ void main() {
     await tester.pump();
     expect(find.text('BELTS PU HQ'), findsOneWidget);
   });
+
+  testWidgets('shows the All | In Stock | Shortage segmented filter when rows exist',
+      (tester) async {
+    final c = Get.find<BomStockCustomerCodeController>();
+    c.reportRows.assignAll([
+      {'sl_no': '1', 'item_name': 'BELTS PU HQ', 'item_code': '2002843', 'in_stock_qty': 396},
+    ]);
+    await tester.pumpWidget(const GetMaterialApp(home: BomStockCustomerCodeScreen()));
+    await tester.pump();
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('In Stock'), findsWidgets);
+    expect(find.text('Shortage'), findsOneWidget);
+  });
 }
