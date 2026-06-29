@@ -1,15 +1,141 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_controller.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_filter_sheet.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_tile.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_totals_footer.dart';
 
 class BomStockCustomerCodeScreen
     extends GetView<BomStockCustomerCodeController> {
   const BomStockCustomerCodeScreen({super.key});
 
+  List<Widget> _buildFilterChips(BuildContext context) {
+    final chips = <Widget>[];
+    controller.activeFilters.forEach((key, label) {
+      chips.add(FilterChipWidget(
+        icon: Icons.filter_alt_outlined,
+        label: label,
+        onDeleted: () => controller.clearFilter(key),
+      ));
+    });
+    return chips;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: Text('BOM Stock with Customer Code')),
+    final cs = Theme.of(context).colorScheme;
+
+    return AppShellScaffold(
+      backgroundColor: cs.surfaceContainerLow,
+      body: Obx(() {
+        return Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: controller.runReport,
+                color: cs.primary,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    DocTypeListHeader(
+                      title: 'BOM Stock with Customer Code',
+                      automaticallyImplyLeading: false,
+                      activeFilters: controller.activeFilters
+                          .map((k, v) => MapEntry(k, v as dynamic))
+                          .obs,
+                      onFilterTap: () =>
+                          showBomStockFilterSheet(context, controller),
+                      filterChipsBuilder: _buildFilterChips,
+                      onClearAllFilters: controller.clearFilters,
+                      extraActionsKey: controller.isRunning.value,
+                      extraActions: [
+                        AsyncIconButton(
+                          busy: controller.isRunning,
+                          onPressed: controller.runReport,
+                          icon: const Icon(Icons.refresh),
+                          tooltip: 'Run report',
+                        ),
+                      ],
+                    ),
+
+                    // ── POS missing-codes banner ──────────────────────────
+                    if (controller.posMissingCodes.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Container(
+                          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.errorContainer,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${controller.posMissingCodes.length} Customer '
+                            'Code(s) from the selected POS Upload were not '
+                            'found: ${controller.posMissingCodes.join(', ')}',
+                            style: TextStyle(color: cs.onErrorContainer, fontSize: 12),
+                          ),
+                        ),
+                      ),
+
+                    // ── Body ──────────────────────────────────────────────
+                    if (controller.isRunning.value)
+                      const SliverToBoxAdapter(child: DocCardSkeletonList())
+                    else if (controller.reportRows.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.inventory_2_outlined,
+                                    size: 64, color: cs.outlineVariant),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Set filters and run the report',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                                const SizedBox(height: 24),
+                                FilledButton.tonalIcon(
+                                  onPressed: () => showBomStockFilterSheet(
+                                      context, controller),
+                                  icon: const Icon(Icons.filter_alt_outlined),
+                                  label: const Text('Run Report'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child:
+                                  BomStockTile(row: controller.reportRows[index]),
+                            ),
+                            childCount: controller.reportRows.length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            BomStockTotalsFooter(total: controller.totalRow.value),
+          ],
+        );
+      }),
     );
   }
 }
