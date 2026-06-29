@@ -48,4 +48,32 @@ void main() {
       expect(f['pos_upload'], 'ML-2026-02011');
     });
   });
+
+  group('ApiProvider.parsePosUploadRefCodes', () {
+    test('returns empty list when body is null or wrong shape', () {
+      expect(ApiProvider.parsePosUploadRefCodes(null), isEmpty);
+      expect(ApiProvider.parsePosUploadRefCodes('nope'), isEmpty);
+      expect(ApiProvider.parsePosUploadRefCodes({'data': 'nope'}), isEmpty);
+      expect(ApiProvider.parsePosUploadRefCodes({'data': {'items': 'nope'}}), isEmpty);
+    });
+
+    test('extracts distinct non-empty ref_codes from the items child table', () {
+      final body = {
+        'data': {
+          'name': 'ML-2026-02011',
+          'items': [
+            {'ref_code': '5067101', 'quantity': 240},
+            {'ref_code': '5067102', 'quantity': 240},
+            {'ref_code': '5067101', 'quantity': 120}, // duplicate
+            {'ref_code': '',        'quantity': 0},    // empty
+            {'quantity': 5},                            // missing ref_code
+          ],
+        },
+      };
+      expect(
+        ApiProvider.parsePosUploadRefCodes(body),
+        ['5067101', '5067102'],
+      );
+    });
+  });
 }

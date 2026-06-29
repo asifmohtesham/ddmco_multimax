@@ -1420,6 +1420,64 @@ class ApiProvider {
     );
   }
 
+  /// Parses the distinct, non-empty `ref_code` values out of a
+  /// `GET /api/resource/POS Upload/{name}` response body (`data.items[]`).
+  static List<String> parsePosUploadRefCodes(dynamic docData) {
+    if (docData is! Map) return [];
+    final doc = docData['data'];
+    if (doc is! Map) return [];
+    final items = doc['items'];
+    if (items is! List) return [];
+    final codes = <String>[];
+    for (final it in items) {
+      if (it is! Map) continue;
+      final code = (it['ref_code'] ?? '').toString().trim();
+      if (code.isNotEmpty && !codes.contains(code)) codes.add(code);
+    }
+    return codes;
+  }
+
+  /// Returns the distinct customer ref-codes contained in [posUpload], read
+  /// from the POS Upload document's `items` child table. Empty on any failure.
+  Future<List<String>> getPosUploadRefCodes(String posUpload) async {
+    if (posUpload.isEmpty) return [];
+    try {
+      final resp = await getPosUpload(posUpload);
+      if (resp.statusCode == 200) return parsePosUploadRefCodes(resp.data);
+    } catch (_) {
+      // Picker convenience only — never block the report on this.
+    }
+    return [];
+  }
+
+  /// Searches a doctype's `name` field (`like %query%`) and returns the
+  /// matching names, sorted ascending. Used to drive the Customer / POS Upload
+  /// pickers without prefetching the whole table.
+  Future<List<String>> searchLinkOptions(
+    String doctype, {
+    String query = '',
+    int limit = 20,
+  }) async {
+    final rows = await getList(
+      null,
+      doctype: doctype,
+      fields: ['name'],
+      filters: query.trim().isEmpty ? null : {'name': ['like', '%${query.trim()}%']},
+      limit: limit,
+      orderBy: 'name asc',
+    );
+    return rows
+        .map((r) => (r['name'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  /// All Warehouse names (the warehouse list is small enough to prefetch and
+  /// filter client-side in [WarehousePickerSheet]).
+  Future<List<String>> getWarehouseNames() =>
+      searchLinkOptions('Warehouse', limit: 0);
+
   // ---------------------------------------------------------------------------
   // JOB CARD SUMMARY
   // ---------------------------------------------------------------------------
