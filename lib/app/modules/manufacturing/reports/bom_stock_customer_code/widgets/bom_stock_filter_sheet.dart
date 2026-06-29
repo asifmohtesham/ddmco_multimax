@@ -151,7 +151,7 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _hint('From results — tap to add'),
+                            _hint('From results — tap to add', context),
                             Wrap(
                               spacing: 6,
                               children: c.discoveredCodes
@@ -257,9 +257,9 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
       );
 
-  Widget _hint(String s) => Padding(
+  Widget _hint(String s, BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        child: Text(s, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.outline)),
       );
 }
 
@@ -314,12 +314,13 @@ class _LinkSearchSheetState extends State<_LinkSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         children: [
