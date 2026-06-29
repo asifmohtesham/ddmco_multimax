@@ -1,4 +1,6 @@
 import 'package:get/get.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 /// Controller for the "BOM Stock with Customer Code" report.
 ///
@@ -6,6 +8,139 @@ import 'package:get/get.dart';
 /// without the network or GetX. Instance members (reactive state + actions)
 /// are added on top of these.
 class BomStockCustomerCodeController extends GetxController {
+  final ApiProvider _api = Get.find<ApiProvider>();
+
+  // ── Filter state ────────────────────────────────────────────────────────
+  final customer         = RxnString();
+  final customerCodes    = <String>[].obs;
+  final warehouses       = <String>[].obs;
+  final posUpload        = RxnString();
+  final showExplodedView = false.obs;
+  final hideOutOfStock   = false.obs;
+
+  // ── Result state ────────────────────────────────────────────────────────
+  final reportRows      = <Map<String, dynamic>>[].obs;
+  final totalRow        = Rxn<Map<String, dynamic>>();
+  final posMissingCodes = <String>[].obs;
+  final discoveredCodes = <String>[].obs;
+  final isRunning       = false.obs;
+
+  // ── Warehouse picker state ──────────────────────────────────────────────
+  final warehouseOptions    = <String>[].obs;
+  final isLoadingWarehouses = false.obs;
+
+  // ── Active-filter chips ─────────────────────────────────────────────────
+  final activeFilters = <String, String>{}.obs;
+
+  // ── Actions ─────────────────────────────────────────────────────────────
+
+  Future<void> runReport() async {
+    if (isRunning.value) return;
+    isRunning.value = true;
+    _rebuildActiveFilters();
+    try {
+      final resp = await _api.runBomStockWithCustomerCode(
+        customer:         customer.value,
+        customerCodes:    customerCodes.toList(),
+        warehouses:       warehouses.toList(),
+        posUpload:        posUpload.value,
+        showExplodedView: showExplodedView.value,
+        hideOutOfStock:   hideOutOfStock.value,
+      );
+      if (resp.statusCode == 200) {
+        final message = resp.data['message'];
+        reportRows.assignAll(parseDataRows(message));
+        totalRow.value = extractTotalRow(message);
+        discoveredCodes.assignAll(distinctCustomerCodes(reportRows));
+      }
+    } catch (e) {
+      GlobalSnackbar.error(
+        title:   'Report Error',
+        message: 'Failed to run BOM Stock with Customer Code: $e',
+      );
+    } finally {
+      isRunning.value = false;
+    }
+  }
+
+  /// Selecting a POS Upload auto-fills [customerCodes] from its items, runs
+  /// the report, then flags codes not present in the results as missing.
+  Future<void> onPosUploadSelected(String? name) async {
+    final value = (name ?? '').trim();
+    if (value.isEmpty) {
+      posUpload.value = null;
+      posMissingCodes.clear();
+      customerCodes.clear();
+      await runReport();
+      return;
+    }
+    posUpload.value = value;
+    final uploadCodes = await _api.getPosUploadRefCodes(value);
+    customerCodes.assignAll(uploadCodes);
+    await runReport();
+    final (_, missing) = splitPosCodes(uploadCodes, reportRows.toList());
+    posMissingCodes.assignAll(missing);
+  }
+
+  void addCustomerCode(String code) {
+    final c = code.trim();
+    if (c.isEmpty || customerCodes.contains(c)) return;
+    customerCodes.add(c);
+  }
+
+  void removeCustomerCode(String code) => customerCodes.remove(code);
+
+  void addWarehouse(String wh) {
+    if (wh.isEmpty || warehouses.contains(wh)) return;
+    warehouses.add(wh);
+  }
+
+  void removeWarehouse(String wh) => warehouses.remove(wh);
+
+  Future<void> loadWarehouseOptions() async {
+    if (warehouseOptions.isNotEmpty || isLoadingWarehouses.value) return;
+    isLoadingWarehouses.value = true;
+    try {
+      warehouseOptions.assignAll(await _api.getWarehouseNames());
+    } finally {
+      isLoadingWarehouses.value = false;
+    }
+  }
+
+  void clearFilters() {
+    customer.value = null;
+    customerCodes.clear();
+    warehouses.clear();
+    posUpload.value = null;
+    showExplodedView.value = false;
+    hideOutOfStock.value = false;
+    posMissingCodes.clear();
+    activeFilters.clear();
+  }
+
+  void clearFilter(String key) {
+    switch (key) {
+      case 'customer':           customer.value = null;
+      case 'customer_code':      customerCodes.clear();
+      case 'warehouse':          warehouses.clear();
+      case 'pos_upload':         posUpload.value = null; posMissingCodes.clear();
+      case 'show_exploded_view': showExplodedView.value = false;
+      case 'hide_out_of_stock':  hideOutOfStock.value = false;
+    }
+    activeFilters.remove(key);
+  }
+
+  void _rebuildActiveFilters() {
+    final m = <String, String>{};
+    if ((customer.value ?? '').isNotEmpty) m['customer'] = 'Customer: ${customer.value}';
+    if (customerCodes.isNotEmpty) m['customer_code'] = 'Codes: ${customerCodes.length}';
+    if (warehouses.isNotEmpty) m['warehouse'] = 'Warehouses: ${warehouses.length}';
+    if ((posUpload.value ?? '').isNotEmpty) m['pos_upload'] = 'POS: ${posUpload.value}';
+    if (showExplodedView.value) m['show_exploded_view'] = 'Exploded';
+    if (hideOutOfStock.value) m['hide_out_of_stock'] = 'Hide OOS';
+    activeFilters.assignAll(m);
+  }
+
   // ── Static parsers (pure) ───────────────────────────────────────────────
 
   /// Data rows from a `query_report.run` `message`, excluding the appended

@@ -1,7 +1,12 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_controller.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   const message = {
     'columns': [
       {'fieldname': 'item_code', 'label': 'Item'},
@@ -90,6 +95,53 @@ void main() {
       );
       expect(found, ['5067101', '5067102']);
       expect(missing, ['9999999']);
+    });
+  });
+
+  group('controller mutations (no network)', () {
+    setUpAll(() {
+      // ApiProvider() fires _initDio() asynchronously which calls path_provider.
+      // Stub the MethodChannel so the background async doesn't leak into tests.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (MethodCall call) async => r'C:\temp\test_cookies',
+      );
+    });
+    setUp(() {
+      Get.testMode = true;
+      if (!Get.isRegistered<ApiProvider>()) Get.put(ApiProvider());
+    });
+    tearDown(Get.reset);
+
+    test('addCustomerCode dedupes and trims; removeCustomerCode removes', () {
+      final c = BomStockCustomerCodeController();
+      c.addCustomerCode('  5067101 ');
+      c.addCustomerCode('5067101'); // duplicate
+      c.addCustomerCode('5067102');
+      expect(c.customerCodes, ['5067101', '5067102']);
+      c.removeCustomerCode('5067101');
+      expect(c.customerCodes, ['5067102']);
+    });
+
+    test('addWarehouse dedupes; clearFilters resets everything', () {
+      final c = BomStockCustomerCodeController();
+      c.customer.value = 'Acme';
+      c.addWarehouse('Stores - M');
+      c.addWarehouse('Stores - M');
+      c.addCustomerCode('5067101');
+      c.showExplodedView.value = true;
+      c.posMissingCodes.add('9999999');
+      expect(c.warehouses, ['Stores - M']);
+
+      c.clearFilters();
+      expect(c.customer.value, isNull);
+      expect(c.customerCodes, isEmpty);
+      expect(c.warehouses, isEmpty);
+      expect(c.showExplodedView.value, isFalse);
+      expect(c.hideOutOfStock.value, isFalse);
+      expect(c.posUpload.value, isNull);
+      expect(c.posMissingCodes, isEmpty);
     });
   });
 }
