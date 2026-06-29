@@ -2,123 +2,133 @@ import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_controller.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 
-/// One card per row of the BOM Stock with Customer Code report.
+/// One result card, mirroring the POS Upload form's item tile.
 class BomStockTile extends StatelessWidget {
   final Map<String, dynamic> row;
   const BomStockTile({super.key, required this.row});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
     final shortfall = BomStockCustomerCodeController.isShortfall(row);
 
-    final image    = (row['image'] ?? '').toString();
-    final itemName = (row['item_name'] ?? '').toString();
-    final itemCode = (row['item_code'] ?? '').toString();
-    final custCode = (row['customer_code'] ?? '').toString();
-    final customer = (row['customer'] ?? '').toString();
-    final bom      = (row['bom'] ?? '').toString();
-    final inStock  = toNum(row['in_stock_qty']);
-    final reqNum   = toNum(row['required_qty']);
-    final hasReq   = reqNum != null;
-    final running  = toNum(row['running_total']);
-    final enough   = row['enough_parts_to_build'];
+    final slNo      = (row['sl_no'] ?? '').toString();
+    final itemName  = (row['item_name'] ?? '').toString();
+    final itemCode  = (row['item_code'] ?? '').toString();
+    final itemGroup = (row['item_group'] ?? '').toString();
+    final custCode  = (row['customer_code'] ?? '').toString();
+    final bom       = (row['bom'] ?? '').toString();
+    final inStock   = toNum(row['in_stock_qty']);
+    final reqNum    = toNum(row['required_qty']);
+    final hasReq    = reqNum != null;
+    final shortage  = toNum(row['shortage_qty']) ?? 0;
+    final enough    = row['enough_parts_to_build'];
 
-    return Material(
-      color: cs.surface,
-      elevation: 1,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: shortfall ? cs.error : cs.outlineVariant.withValues(alpha: 0.4),
-            width: shortfall ? 1.5 : 1,
-          ),
-        ),
+    final subline = [itemCode, itemGroup].where((s) => s.isNotEmpty).join(' · ');
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: shortfall ? cs.error : cs.outlineVariant),
+      ),
+      color: cs.surfaceContainerLowest,
+      child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Header ───────────────────────────────────────────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _thumb(cs, image),
-                const SizedBox(width: 12),
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: cs.primaryContainer,
+                  child: Text(
+                    slNo,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        itemName.isEmpty ? itemCode : itemName,
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              itemName.isEmpty ? itemCode : itemName,
+                              style: theme.textTheme.bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          if (hasReq) ...[
+                            const SizedBox(width: 8),
+                            _StatusPill(shortage: shortage),
+                          ],
+                        ],
                       ),
-                      if (itemCode.isNotEmpty)
+                      if (subline.isNotEmpty) ...[
+                        const SizedBox(height: 2),
                         Text(
-                          itemCode,
-                          style: theme.textTheme.bodySmall
+                          subline,
+                          style: theme.textTheme.labelSmall
                               ?.copyWith(color: cs.onSurfaceVariant),
                         ),
-                      const SizedBox(height: 6),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final maxChipWidth = constraints.maxWidth;
-                          return Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              if (custCode.isNotEmpty)
-                                _chip(cs, Icons.qr_code_2, custCode, maxChipWidth),
-                              if (customer.isNotEmpty)
-                                _chip(cs, Icons.person_outline, customer, maxChipWidth),
-                              if (bom.isNotEmpty)
-                                _chip(cs, Icons.account_tree_outlined, bom, maxChipWidth),
-                            ],
-                          );
-                        },
-                      ),
+                      ],
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            // ── Stats ────────────────────────────────────────────────────
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _metric(theme, cs, 'In Stock', formatQty(inStock), false),
+                _StatCell(label: 'In Stock', value: formatQty(inStock)),
+                if (hasReq) _StatCell(label: 'Need', value: formatQty(reqNum)),
                 if (hasReq)
-                  _metric(theme, cs, 'Required', formatQty(reqNum), shortfall),
-                _metric(theme, cs, 'Running', formatQty(running), shortfall),
+                  _StatCell(label: 'Short', value: formatQty(shortage), alert: shortage > 0),
                 if (enough != null)
-                  _metric(theme, cs, 'Can Build', enough.toString(), false),
+                  _StatCell(label: 'Build', value: enough.toString()),
               ],
             ),
+            // ── Chips ────────────────────────────────────────────────────
+            if (custCode.isNotEmpty || bom.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxW = constraints.maxWidth;
+                  return Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (custCode.isNotEmpty)
+                        _chip(cs, Icons.qr_code_2, custCode, maxW),
+                      if (bom.isNotEmpty)
+                        _chip(cs, Icons.account_tree_outlined, bom, maxW),
+                    ],
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-
-  Widget _thumb(ColorScheme cs, String image) => Container(
-        width: 56,
-        height: 56,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: image.isEmpty
-            ? Icon(Icons.image_not_supported_outlined,
-                size: 22, color: cs.outline)
-            : Image.network(
-                image,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
-                    Icons.broken_image_outlined, size: 22, color: cs.outline),
-              ),
-      );
 
   Widget _chip(ColorScheme cs, IconData icon, String label, double maxWidth) =>
       ConstrainedBox(
@@ -146,26 +156,61 @@ class BomStockTile extends StatelessWidget {
           ),
         ),
       );
+}
 
-  Widget _metric(
-      ThemeData theme, ColorScheme cs, String label, String value, bool alert) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+/// Demand status pill: red "Short N" or neutral-positive "Covered".
+class _StatusPill extends StatelessWidget {
+  final num shortage;
+  const _StatusPill({required this.shortage});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final short = shortage > 0;
+    final bg = short ? cs.errorContainer : cs.secondaryContainer;
+    final fg = short ? cs.onErrorContainer : cs.onSecondaryContainer;
+    final icon = short ? Icons.warning_amber_rounded : Icons.check_circle_outline;
+    final label = short ? 'Short ${formatQty(shortage)}' : 'Covered';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Icon(icon, size: 13, color: fg),
+          const SizedBox(width: 4),
           Text(label,
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: alert ? cs.error : cs.onSurface,
-            ),
-          ),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
         ],
       ),
+    );
+  }
+}
+
+/// Label-over-value stat cell (mirrors the POS item tile's `_Stat`).
+class _StatCell extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool alert;
+  const _StatCell({required this.label, required this.value, this.alert = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+        Text(
+          value,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: alert ? cs.error : null,
+          ),
+        ),
+      ],
     );
   }
 }
