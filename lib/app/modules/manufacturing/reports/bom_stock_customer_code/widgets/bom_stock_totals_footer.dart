@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 
-/// Sticky footer showing the report's server-computed total row.
+/// Sticky footer of in-stock / need / short totals over the filtered rows.
 class BomStockTotalsFooter extends StatelessWidget {
-  final Map<String, dynamic>? total;
-  const BomStockTotalsFooter({super.key, required this.total});
+  final Map<String, num>? totals;
+  final bool hasDemand;
+  const BomStockTotalsFooter({
+    super.key,
+    required this.totals,
+    required this.hasDemand,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final t = total;
-    if (t == null) return const SizedBox.shrink();
+    final t = totals;
+    if (t == null || t.isEmpty) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
@@ -26,9 +31,9 @@ class BomStockTotalsFooter extends StatelessWidget {
                   style: theme.textTheme.titleSmall
                       ?.copyWith(fontWeight: FontWeight.w700)),
               const Spacer(),
-              _cell(theme, cs, 'In Stock', formatQty(toNum(t['in_stock_qty']))),
-              _cell(theme, cs, 'Required', formatQty(toNum(t['required_qty']))),
-              _cell(theme, cs, 'Running', formatQty(toNum(t['running_total']))),
+              _cell(theme, cs, 'Stock', formatQty(t['in_stock'])),
+              if (hasDemand) _cell(theme, cs, 'Need', formatQty(t['required'])),
+              if (hasDemand) _cell(theme, cs, 'Short', formatQty(t['shortage'])),
             ],
           ),
         ),
