@@ -391,6 +391,17 @@ class AppNavDrawer extends StatelessWidget {
                               currentRoute: currentRoute,
                             ),
                           ),
+                          DocTypeGuard(
+                            doctype: 'BOM',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'BOM Stock with Customer Code',
+                              icon: Icons.inventory_2_outlined,
+                              route: AppRoutes.BOM_STOCK_CUSTOMER_CODE,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
                         ],
                       ),
                     ],
