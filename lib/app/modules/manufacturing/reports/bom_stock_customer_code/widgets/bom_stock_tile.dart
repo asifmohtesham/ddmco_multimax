@@ -62,17 +62,22 @@ class BomStockTile extends StatelessWidget {
                               ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                       const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          if (custCode.isNotEmpty)
-                            _chip(cs, Icons.qr_code_2, custCode),
-                          if (customer.isNotEmpty)
-                            _chip(cs, Icons.person_outline, customer),
-                          if (bom.isNotEmpty)
-                            _chip(cs, Icons.account_tree_outlined, bom),
-                        ],
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final maxChipWidth = constraints.maxWidth;
+                          return Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              if (custCode.isNotEmpty)
+                                _chip(cs, Icons.qr_code_2, custCode, maxChipWidth),
+                              if (customer.isNotEmpty)
+                                _chip(cs, Icons.person_outline, customer, maxChipWidth),
+                              if (bom.isNotEmpty)
+                                _chip(cs, Icons.account_tree_outlined, bom, maxChipWidth),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -115,20 +120,30 @@ class BomStockTile extends StatelessWidget {
               ),
       );
 
-  Widget _chip(ColorScheme cs, IconData icon, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 13, color: cs.onSurfaceVariant),
-            const SizedBox(width: 4),
-            Text(label,
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-          ],
+  Widget _chip(ColorScheme cs, IconData icon, String label, double maxWidth) =>
+      ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: cs.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
         ),
       );
 

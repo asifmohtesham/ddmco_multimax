@@ -39,4 +39,27 @@ void main() {
     }));
     expect(find.text('Required'), findsOneWidget);
   });
+
+  testWidgets('long customer name does not overflow the card', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 360,
+            child: BomStockTile(row: const {
+              'item_name': 'STRAPS T/X PRINT 40mm',
+              'item_code': '2001272',
+              'customer_code': '5052483',
+              'customer': 'NESTO DISTRIBUTION FZCO DUBAI BRANCH',
+              'in_stock_qty': 816,
+              'required_qty': 36,
+              'running_total': 816,
+            }),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }
