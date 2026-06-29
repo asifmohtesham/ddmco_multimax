@@ -58,4 +58,20 @@ void main() {
     expect(find.text('In Stock'), findsWidgets);
     expect(find.text('Shortage'), findsOneWidget);
   });
+
+  testWidgets('totals footer is hidden until rows exist', (tester) async {
+    // Empty state (no run yet) — no footer.
+    await tester.pumpWidget(const GetMaterialApp(home: BomStockCustomerCodeScreen()));
+    await tester.pump();
+    expect(find.text('Total'), findsNothing);
+
+    // With rows — footer appears.
+    final c = Get.find<BomStockCustomerCodeController>();
+    c.reportRows.assignAll([
+      {'sl_no': '1', 'item_name': 'BELTS PU HQ', 'item_code': '2002843', 'in_stock_qty': 396},
+    ]);
+    await tester.pumpWidget(const GetMaterialApp(home: BomStockCustomerCodeScreen()));
+    await tester.pump();
+    expect(find.text('Total'), findsOneWidget);
+  });
 }

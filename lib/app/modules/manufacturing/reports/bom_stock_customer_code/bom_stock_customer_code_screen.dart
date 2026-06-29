@@ -33,6 +33,7 @@ class BomStockCustomerCodeScreen
     return AppShellScaffold(
       backgroundColor: cs.surfaceContainerLow,
       body: Obx(() {
+        final rows = controller.filteredRows;
         return Column(
           children: [
             Expanded(
@@ -127,7 +128,7 @@ class BomStockCustomerCodeScreen
                           ),
                         ),
                       )
-                    else if (controller.filteredRows.isEmpty)
+                    else if (rows.isEmpty)
                       SliverFillRemaining(
                         hasScrollBody: false,
                         child: Center(
@@ -147,10 +148,9 @@ class BomStockCustomerCodeScreen
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => Padding(
                               padding: const EdgeInsets.only(bottom: 10),
-                              child: BomStockTile(
-                                  row: controller.filteredRows[index]),
+                              child: BomStockTile(row: rows[index]),
                             ),
-                            childCount: controller.filteredRows.length,
+                            childCount: rows.length,
                           ),
                         ),
                       ),
@@ -158,10 +158,12 @@ class BomStockCustomerCodeScreen
                 ),
               ),
             ),
-            BomStockTotalsFooter(
-              totals: controller.filteredTotals,
-              hasDemand: controller.posUpload.value != null,
-            ),
+            if (!controller.isRunning.value &&
+                controller.reportRows.isNotEmpty)
+              BomStockTotalsFooter(
+                totals: BomStockCustomerCodeController.sumTotals(rows),
+                hasDemand: controller.posUpload.value != null,
+              ),
           ],
         );
       }),
