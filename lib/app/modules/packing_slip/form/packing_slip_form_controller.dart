@@ -23,6 +23,7 @@ import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
 import 'package:multimax/app/modules/packing_slip/form/dn_scan_item_matcher.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_serial_balance.dart';
 import 'package:multimax/app/modules/packing_slip/form/ps_serial_options.dart';
 import 'package:multimax/app/modules/packing_slip/form/ps_dn_reference_resolver.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
@@ -762,11 +763,22 @@ class PackingSlipFormController extends GetxController
     if (match != null) {
       prepareSheetForAdd(match, scannedBatch: result.batchNo);
     } else {
-      GlobalSnackbar.error(
-        message:
-        'Item ${result.itemData!.itemCode} not found in Delivery Note'
-            ' or Batch mismatch.',
-      );
+      final code = result.itemData!.itemCode;
+      final batch = result.batchNo;
+      final dnItems = linkedDeliveryNote.value?.items ?? const [];
+      final hasAnyMatch = dnItems.any((i) =>
+          i.itemCode == code && (batch == null || i.batchNo == batch));
+      if (hasAnyMatch) {
+        GlobalSnackbar.error(
+          message:
+              'All serials for $code have mismatched Strap/Buckle quantities. '
+              'Packing blocked until the Delivery Note is balanced.',
+        );
+      } else {
+        GlobalSnackbar.error(
+          message: 'Item $code not found in Delivery Note or Batch mismatch.',
+        );
+      }
     }
   }
 
@@ -821,13 +833,19 @@ class PackingSlipFormController extends GetxController
   /// Same item code can appear on multiple DN rows (one per invoice serial).
   /// Delegates to [findScannedDnItem] so a scan advances to the first row
   /// that still has qty remaining instead of always resolving to row #1.
-  DeliveryNoteItem? _findItemInDN(String code, String? batch) =>
-      findScannedDnItem(
-        items:        linkedDeliveryNote.value!.items,
-        code:         code,
-        batch:        batch,
-        remainingQty: _calcRemainingQtyForDnItem,
-      );
+  DeliveryNoteItem? _findItemInDN(String code, String? batch) {
+    final dnItems = linkedDeliveryNote.value!.items;
+    return findScannedDnItem(
+      items:        dnItems,
+      code:         code,
+      batch:        batch,
+      remainingQty: _calcRemainingQtyForDnItem,
+      skipRow: (row) =>
+          isPairedItemGroup(row.itemGroup) &&
+          isSerialStrapBuckleUnbalanced(
+              dnItems, row.customInvoiceSerialNumber ?? ''),
+    );
+  }
 
   // ── Serial badge predicate ─────────────────────────────────────────────────
 
