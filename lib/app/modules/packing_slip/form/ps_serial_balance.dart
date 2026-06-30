@@ -38,3 +38,17 @@ bool isSerialStrapBuckleUnbalanced(
   if (q.strap <= 0 || q.buckle <= 0) return false;
   return (q.strap - q.buckle).abs() > _kQtyEpsilon;
 }
+
+/// True when packing an [itemGroup] item on [serial] must be blocked: the item
+/// is paired (Straps/Buckles) AND [serial] is strap/buckle-unbalanced in [items].
+///
+/// This is the single authoritative predicate every Packing Slip entry point
+/// consults (serial dropdown, scan, tap-to-add, and the add commit), so all
+/// paths agree on what is blocked. A non-paired group or a null / empty /
+/// sentinel ('0') serial is never blocked.
+bool isPackBlockedByBalance(
+    List<DeliveryNoteItem> items, String? itemGroup, String? serial) {
+  if (!isPairedItemGroup(itemGroup)) return false;
+  if (serial == null || serial.isEmpty || serial == '0') return false;
+  return isSerialStrapBuckleUnbalanced(items, serial);
+}

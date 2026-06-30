@@ -83,4 +83,43 @@ void main() {
       expect(isSerialStrapBuckleUnbalanced(items, '1'), isFalse);
     });
   });
+
+  group('isPackBlockedByBalance', () {
+    final unbalanced = [
+      _dn(name: 'a', itemCode: 'S', itemGroup: 'Straps', serial: '4', qty: 10),
+      _dn(name: 'b', itemCode: 'B', itemGroup: 'Buckles', serial: '4', qty: 8),
+    ];
+
+    test('blocked: paired item on an unbalanced serial', () {
+      expect(isPackBlockedByBalance(unbalanced, 'Straps', '4'), isTrue);
+      expect(isPackBlockedByBalance(unbalanced, 'Buckles', '4'), isTrue);
+    });
+
+    test('not blocked: non-paired item even on an unbalanced serial', () {
+      expect(isPackBlockedByBalance(unbalanced, 'Boxes', '4'), isFalse);
+      expect(isPackBlockedByBalance(unbalanced, '', '4'), isFalse);
+      expect(isPackBlockedByBalance(unbalanced, null, '4'), isFalse);
+    });
+
+    test('not blocked: paired item on a balanced serial', () {
+      final balanced = [
+        _dn(name: 'a', itemCode: 'S', itemGroup: 'Straps', serial: '4', qty: 10),
+        _dn(name: 'b', itemCode: 'B', itemGroup: 'Buckles', serial: '4', qty: 10),
+      ];
+      expect(isPackBlockedByBalance(balanced, 'Straps', '4'), isFalse);
+    });
+
+    test('not blocked: paired item on a one-side-zero serial', () {
+      final strapOnly = [
+        _dn(name: 'a', itemCode: 'S', itemGroup: 'Straps', serial: '4', qty: 10),
+      ];
+      expect(isPackBlockedByBalance(strapOnly, 'Straps', '4'), isFalse);
+    });
+
+    test('not blocked: null/empty/sentinel serial is never blocked', () {
+      expect(isPackBlockedByBalance(unbalanced, 'Straps', null), isFalse);
+      expect(isPackBlockedByBalance(unbalanced, 'Straps', ''), isFalse);
+      expect(isPackBlockedByBalance(unbalanced, 'Straps', '0'), isFalse);
+    });
+  });
 }

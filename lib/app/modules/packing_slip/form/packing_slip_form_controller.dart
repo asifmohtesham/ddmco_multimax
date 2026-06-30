@@ -99,6 +99,7 @@ class PackingSlipFormController extends GetxController
   String? currentBatchNo;
   String? currentUom;
   String? currentSerial;
+  String? currentItemGroup;
   double? currentNetWeight;
   double? currentWeightUom;
   String? currentItemNameKey;
@@ -566,6 +567,18 @@ class PackingSlipFormController extends GetxController
     final idx = _serialToIdx(serial);
     if (idx == null) return 0.0;
     return _posItemQtyForIdx(idx);
+  }
+
+  /// External-system demand qty for [serial], for display as the top of the
+  /// fulfilment funnel (POS Upload Qty ≥ DN Qty ≥ Packed).
+  ///
+  /// Returns `null` when no POS Upload is loaded — [posQtyCapForSerial] reports
+  /// that as [double.infinity] (no cap), which is not displayable, so the
+  /// demand chip is hidden. Otherwise returns the matched upload qty (0.0 when
+  /// the serial has no matching upload line).
+  double? getPosUploadQtyForSerial(String serial) {
+    final cap = posQtyCapForSerial(serial);
+    return cap.isFinite ? cap : null;
   }
 
   // ── Multi-serial sheet options ─────────────────────────────────────────────
@@ -1087,6 +1100,14 @@ class PackingSlipFormController extends GetxController
 
   void prepareSheetForAdd(DeliveryNoteItem item, {String? scannedBatch}) {
     if (_isSheetAlreadyOpen()) return;
+    // Strap/Buckle gate: refuse to open the sheet for a paired item on an
+    // unbalanced serial (covers the Items-tab tap-to-add path, which seeds the
+    // serial directly and so bypasses the dropdown/scan navigation gates).
+    final serial = item.customInvoiceSerialNumber ?? '';
+    if (isStrapBuckleBlocked(item.itemGroup, serial)) {
+      GlobalSnackbar.error(message: strapBuckleBlockMessage(serial));
+      return;
+    }
     currentScannedBatch = scannedBatch;
     _resetSessionForAdd(item);
     final remaining = _calcRemainingQtyForDnItem(item);
@@ -1226,8 +1247,32 @@ class PackingSlipFormController extends GetxController
     bsBatchNo.value      = item.batchNo;
     currentUom           = item.uom;
     currentSerial        = item.customInvoiceSerialNumber;
+    currentItemGroup     = item.itemGroup;
     currentNetWeight     = 0.0;
     currentWeightUom     = 0.0;
+  }
+
+  // ── Strap/Buckle balance gate (commit-level) ───────────────────────────────
+  //
+  // Authoritative block shared by every Packing Slip entry point. The serial
+  // dropdown disables blocked serials and scan skips them, but those are
+  // navigation gates only — the tap-to-add path opens the sheet pre-seeded to a
+  // serial, so the actual commit must be gated here too (defense in depth).
+
+  /// True when packing [itemGroup] on [serial] is blocked by the Strap/Buckle
+  /// balance rule for the currently linked Delivery Note.
+  bool isStrapBuckleBlocked(String? itemGroup, String? serial) =>
+      isPackBlockedByBalance(
+          linkedDeliveryNote.value?.items ?? const [], itemGroup, serial);
+
+  /// User-facing block message naming the offending Strap/Buckle figures.
+  String strapBuckleBlockMessage(String serial) {
+    final q = strapBuckleQtyFor(
+        linkedDeliveryNote.value?.items ?? const [], serial);
+    String f(double v) =>
+        v == v.truncateToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+    return 'Serial #$serial: Straps (${f(q.strap)}) ≠ Buckles (${f(q.buckle)}). '
+        'Packing blocked until the Delivery Note is balanced.';
   }
 
   /// E1 fix: PackingSlipItemFormController.adjustQty takes int, but delta
@@ -1373,6 +1418,15 @@ class PackingSlipFormController extends GetxController
       updateItem(currentItemNameKey!, qty);
       Get.key.currentState?.pop();
       _applyAndPersist(packingSlip.value?.items.toList() ?? []);
+      return;
+    }
+
+    // Backstop: never create a paired-item row on an unbalanced serial, even if
+    // a future entry path reaches here without the proactive open-time guard.
+    if (isStrapBuckleBlocked(currentItemGroup, currentSerial)) {
+      GlobalSnackbar.error(
+          message: strapBuckleBlockMessage(currentSerial ?? ''));
+      Get.key.currentState?.pop();
       return;
     }
 
