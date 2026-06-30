@@ -172,4 +172,45 @@ void main() {
       expect(c.rowFilter.value, 'ALL');
     });
   });
+
+  group('groupByCustomerCode', () {
+    final rows = <Map<String, dynamic>>[
+      {'customer_code': 'A', 'item_code': 'I1', 'shortage_qty': 0},
+      {'customer_code': 'B', 'item_code': 'I2', 'shortage_qty': 5},
+      {'customer_code': 'A', 'item_code': 'I3', 'shortage_qty': 0},
+      {'customer_code': '',  'item_code': 'I4', 'shortage_qty': 0},
+    ];
+    test('buckets by customer_code in first-seen order', () {
+      final g = BomStockCustomerCodeController.groupByCustomerCode(rows);
+      expect(g.map((e) => e.code), ['A', 'B', '']);
+      expect(g.first.itemCount, 2);
+      expect(g.first.rows.map((r) => r['item_code']), ['I1', 'I3']);
+    });
+    test('totalShortage sums the group; anyShort flags it', () {
+      final g = BomStockCustomerCodeController.groupByCustomerCode(rows);
+      expect(g[0].anyShort, isFalse);
+      expect(g[0].totalShortage, 0);
+      expect(g[1].anyShort, isTrue);
+      expect(g[1].totalShortage, 5);
+    });
+  });
+
+  group('group expand state', () {
+    setUp(() {
+      Get.testMode = true;
+      if (!Get.isRegistered<ApiProvider>()) Get.put(ApiProvider());
+    });
+    tearDown(Get.reset);
+    test('collapsed by default; toggleGroup flips; clearFilters resets', () {
+      final c = BomStockCustomerCodeController();
+      expect(c.isGroupExpanded('A'), isFalse);
+      c.toggleGroup('A');
+      expect(c.isGroupExpanded('A'), isTrue);
+      c.toggleGroup('A');
+      expect(c.isGroupExpanded('A'), isFalse);
+      c.toggleGroup('B');
+      c.clearFilters();
+      expect(c.isGroupExpanded('B'), isFalse);
+    });
+  });
 }

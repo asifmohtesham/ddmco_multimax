@@ -23,6 +23,17 @@ class BomStockCustomerCodeController extends GetxController {
   final rowFilter = 'ALL'.obs;
   void setRowFilter(String v) => rowFilter.value = v;
 
+  // ── Customer-code group expand state (collapsed by default) ─────────────
+  final expandedCodes = <String>{}.obs;
+  void toggleGroup(String code) {
+    if (expandedCodes.contains(code)) {
+      expandedCodes.remove(code);
+    } else {
+      expandedCodes.add(code);
+    }
+  }
+  bool isGroupExpanded(String code) => expandedCodes.contains(code);
+
   // ── Result state ────────────────────────────────────────────────────────
   final reportRows      = <Map<String, dynamic>>[].obs;
   final totalRow        = Rxn<Map<String, dynamic>>();
@@ -36,6 +47,9 @@ class BomStockCustomerCodeController extends GetxController {
 
   /// In-stock / required / shortage sums over the currently-filtered rows.
   Map<String, num> get filteredTotals => sumTotals(filteredRows);
+
+  /// Filtered rows grouped by customer code (first-seen order).
+  List<BomStockGroup> get groupedRows => groupByCustomerCode(filteredRows);
 
   // ── Warehouse picker state ──────────────────────────────────────────────
   final warehouseOptions    = <String>[].obs;
@@ -129,6 +143,7 @@ class BomStockCustomerCodeController extends GetxController {
     posMissingCodes.clear();
     activeFilters.clear();
     rowFilter.value = 'ALL';
+    expandedCodes.clear();
   }
 
   void clearFilter(String key) {
@@ -234,6 +249,22 @@ class BomStockCustomerCodeController extends GetxController {
     }
   }
 
+  /// Buckets [rows] by `customer_code` in first-seen order.
+  static List<BomStockGroup> groupByCustomerCode(
+      List<Map<String, dynamic>> rows) {
+    final order = <String>[];
+    final byCode = <String, List<Map<String, dynamic>>>{};
+    for (final r in rows) {
+      final code = (r['customer_code'] ?? '').toString();
+      if (!byCode.containsKey(code)) {
+        byCode[code] = [];
+        order.add(code);
+      }
+      byCode[code]!.add(r);
+    }
+    return [for (final code in order) BomStockGroup(code, byCode[code]!)];
+  }
+
   /// Sums in_stock_qty / required_qty / shortage_qty across [rows].
   static Map<String, num> sumTotals(List<Map<String, dynamic>> rows) {
     num inStock = 0, required = 0, shortage = 0;
@@ -244,4 +275,16 @@ class BomStockCustomerCodeController extends GetxController {
     }
     return {'in_stock': inStock, 'required': required, 'shortage': shortage};
   }
+}
+
+/// A customer-code bucket of result rows.
+class BomStockGroup {
+  final String code;
+  final List<Map<String, dynamic>> rows;
+  const BomStockGroup(this.code, this.rows);
+
+  int get itemCount => rows.length;
+  num get totalShortage =>
+      rows.fold<num>(0, (a, r) => a + (toNum(r['shortage_qty']) ?? 0));
+  bool get anyShort => rows.any(BomStockCustomerCodeController.isShortfall);
 }
