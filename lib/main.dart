@@ -41,7 +41,13 @@ Future<void> main() async {
   // arrive from the native BroadcastReceiver in MainActivity.
   Get.put<DataWedgeService>(DataWedgeService(), permanent: true);
   // HID keyboard-wedge bridge (Netum C750 etc.) feeds DataWedgeService.scannedCode.
-  Get.put<HidWedgeService>(HidWedgeService(), permanent: true);
+  // Android-only: the service attaches a global HardwareKeyboard handler that
+  // classifies fast keystrokes as scanner bursts. On iOS / desktop the Mac/PC
+  // keyboard would trigger the same path, eating characters from focused text
+  // fields — and there is no Bluetooth HID scanner workflow there to justify it.
+  if (Platform.isAndroid) {
+    Get.put<HidWedgeService>(HidWedgeService(), permanent: true);
+  }
   Get.put<ScanService>(ScanService(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
