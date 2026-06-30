@@ -5,6 +5,7 @@ import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_serial_balance.dart';
 
 /// Item-level sheet controller for Packing Slip.
 ///
@@ -133,12 +134,18 @@ class PackingSlipItemFormController extends ItemSheetControllerBase
     if (option == null) return null;
 
     final posName = _parent.getPosItemName(serial);
+    final dnItems = _parent.linkedDeliveryNote.value?.items ?? const [];
+    final blocked = isPairedItemGroup(itemGroup.value) &&
+            isSerialStrapBuckleUnbalanced(dnItems, serial)
+        ? 'Strap ≠ Buckle'
+        : null;
     return SerialDropdownItem(
-      serial:    serial,
-      itemName:  posName.isNotEmpty ? posName : option.dnRow.itemName,
-      qty:       option.qty,
-      remaining: option.remaining,
-      used:      option.qty - option.remaining,
+      serial:       serial,
+      itemName:     posName.isNotEmpty ? posName : option.dnRow.itemName,
+      qty:          option.qty,
+      remaining:    option.remaining,
+      used:         option.qty - option.remaining,
+      blockedReason: blocked,
     );
   }
 
