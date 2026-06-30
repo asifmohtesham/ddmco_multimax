@@ -3,6 +3,7 @@ class PosUpload {
   final String customer;
   final String date;
   final String modified;
+  final String creation;
   final String status;
   final double? totalAmount;
   final double? totalQty;
@@ -13,6 +14,7 @@ class PosUpload {
     required this.customer,
     required this.date,
     required this.modified,
+    required this.creation,
     required this.status,
     this.totalAmount,
     this.totalQty,
@@ -31,6 +33,7 @@ class PosUpload {
       customer: json['customer'] ?? '',
       date: json['date'] ?? '',
       modified: json['modified'] ?? '',
+      creation: json['creation'] ?? '',
       status: docStatus,
       totalAmount: (json['total_amount'] as num?)?.toDouble(),
       totalQty: (json['total_qty'] as num?)?.toDouble(), // Corrected field name? usually total_qty

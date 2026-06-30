@@ -429,6 +429,9 @@ class PosUploadFormController extends GetxController
   // ── Linked document (DN or SE) ─────────────────────────────────────────────
   var linkedDocType = LinkedDocType.none.obs;
   var linkedDocName = ''.obs;
+  /// Server `creation` timestamp of the linked DN/SE — drives the timeline's
+  /// relative-time for that checkpoint. Empty until the linked doc loads.
+  var linkedDocCreation = ''.obs;
   var isLoadingLinked = false.obs;
 
   /// The full linked Delivery Note, retained for the DN Excel export.
@@ -663,6 +666,7 @@ class PosUploadFormController extends GetxController
             detailResp.data['data'] != null) {
           final dn = DeliveryNote.fromJson(detailResp.data['data']);
           deliveryNote.value = dn;
+          linkedDocCreation.value = dn.creation;
           _buildSerialMap(
             posItems: upload.items,
             matchSerial: (idx) => dn.items
@@ -685,6 +689,7 @@ class PosUploadFormController extends GetxController
           // Detail fetch failed — clear any DN retained from a previous
           // fetch so the export UI can't act on stale data.
           deliveryNote.value = null;
+          linkedDocCreation.value = '';
         }
         isLoadingLinked.value = false;
         await _fetchPackingSlips(upload, dnName);
@@ -692,11 +697,13 @@ class PosUploadFormController extends GetxController
         linkedDocName.value = '';
         linkedDocType.value = LinkedDocType.none;
         deliveryNote.value = null;
+        linkedDocCreation.value = '';
         isLoadingLinked.value = false;
       }
     } catch (_) {
       linkedDocType.value = LinkedDocType.none;
       deliveryNote.value = null;
+      linkedDocCreation.value = '';
       isLoadingLinked.value = false;
     }
   }
@@ -717,6 +724,8 @@ class PosUploadFormController extends GetxController
         if (detailResp.statusCode == 200 &&
             detailResp.data['data'] != null) {
           final se = StockEntry.fromJson(detailResp.data['data']);
+          linkedDocCreation.value =
+              detailResp.data['data']['creation']?.toString() ?? '';
           _buildSerialMap(
             posItems: upload.items,
             matchSerial: (idx) => se.items
@@ -727,9 +736,11 @@ class PosUploadFormController extends GetxController
       } else {
         linkedDocName.value = '';
         linkedDocType.value = LinkedDocType.none;
+        linkedDocCreation.value = '';
       }
     } catch (_) {
       linkedDocType.value = LinkedDocType.none;
+      linkedDocCreation.value = '';
     } finally {
       isLoadingLinked.value = false;
     }

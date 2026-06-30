@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
+import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_timeline.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
   const PosUploadFormScreen({super.key});
@@ -483,11 +484,67 @@ class _DetailsTabState extends State<_DetailsTab> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // ── Progress timeline ────────────────────────────────────────
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              Text(
+                'Progress',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              PosUploadTimeline(checkpoints: _buildCheckpoints(ctrl, upload)),
+              const SizedBox(height: 24),
             ],
           ),
         ),
       );
     });
+  }
+
+  /// Reads the controller's linked-doc / packing-slip state and produces the
+  /// timeline checkpoints. Called inside the tab's [Obx] so every observable
+  /// touched here re-triggers a rebuild.
+  List<TimelineCheckpoint> _buildCheckpoints(
+      PosUploadFormController ctrl, PosUpload upload) {
+    final prefix =
+        upload.name.length >= 2 ? upload.name.substring(0, 2).toUpperCase() : '';
+    final isStockEntryUpload = prefix == 'MX' || prefix == 'KX';
+
+    final slips = ctrl.packingSlips;
+    final earliestPsCreation = slips.isEmpty
+        ? null
+        : slips
+            .map((p) => p.creation)
+            .where((c) => c.isNotEmpty)
+            .fold<String?>(null, (min, c) =>
+                (min == null || c.compareTo(min) < 0) ? c : min);
+
+    final hasLinkedDoc = isStockEntryUpload
+        ? (ctrl.linkedDocType.value == LinkedDocType.stockEntry &&
+            ctrl.linkedDocName.value.isNotEmpty)
+        : ctrl.deliveryNote.value != null;
+
+    return buildPosUploadTimeline(
+      isStockEntryUpload: isStockEntryUpload,
+      posUploadCreation: upload.creation,
+      itemCount: upload.items.length,
+      isLoadingLinked: ctrl.isLoadingLinked.value,
+      hasLinkedDoc: hasLinkedDoc,
+      linkedDocName: ctrl.linkedDocName.value,
+      linkedDocCreation: ctrl.linkedDocCreation.value,
+      orderedQty: upload.totalQty,
+      deliveredQty: ctrl.deliveryNote.value?.totalQty,
+      isLoadingPackingSlips: ctrl.isLoadingPackingSlips.value,
+      packingSlipCount: slips.length,
+      earliestPackingSlipCreation: earliestPsCreation,
+      packedItems:
+          ctrl.resolvedPackingSlips.values.where((v) => v != null).length,
+      totalSerials: ctrl.resolvedSerials.length,
+    );
   }
 }
 
