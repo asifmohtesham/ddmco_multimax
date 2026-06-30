@@ -766,6 +766,8 @@ class PackingSlipFormController extends GetxController
       final code = result.itemData!.itemCode;
       final batch = result.batchNo;
       final dnItems = linkedDeliveryNote.value?.items ?? const [];
+      // This predicate mirrors findScannedDnItem's code/batch filter (minus
+      // skipRow/remainingQty), so a null match here means "matches existed but were all skipped".
       final hasAnyMatch = dnItems.any((i) =>
           i.itemCode == code && (batch == null || i.batchNo == batch));
       if (hasAnyMatch) {

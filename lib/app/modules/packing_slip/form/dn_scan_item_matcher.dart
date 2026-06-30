@@ -9,9 +9,12 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 /// The same item code can appear on multiple DN rows — one per invoice
 /// serial. Among the code/batch matches, the first row whose [remainingQty]
 /// is still positive wins, so repeated scans advance through the invoice
-/// serials as each row fills up. When every match is exhausted the first
-/// match is returned (not null) so the caller surfaces the existing
-/// fully-packed sheet flow rather than a misleading "not found" error.
+/// serials as each row fills up.
+///
+/// When [skipRow] is provided, rows for which [skipRow] returns true are
+/// excluded from both the first-with-remaining pick and the fallback.
+/// The function returns null when no code/batch row matches, or when every
+/// matching row is excluded by [skipRow].
 DeliveryNoteItem? findScannedDnItem({
   required List<DeliveryNoteItem> items,
   required String code,
