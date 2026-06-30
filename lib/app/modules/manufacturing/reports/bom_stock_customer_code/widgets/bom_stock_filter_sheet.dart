@@ -235,15 +235,18 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Run Report'),
-              onPressed: () {
-                Navigator.of(context).pop();
-                c.runReport();
-              },
+          SafeArea(
+            top: false,
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Run Report'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  c.runReport();
+                },
+              ),
             ),
           ),
         ],
