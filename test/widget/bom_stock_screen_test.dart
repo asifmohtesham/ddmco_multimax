@@ -59,6 +59,21 @@ void main() {
     expect(find.text('Shortage'), findsOneWidget);
   });
 
+  testWidgets('POS active: renders grouped customer-code cards (not flat tiles)',
+      (tester) async {
+    final c = Get.find<BomStockCustomerCodeController>();
+    c.posUpload.value = 'ML-2026-02011';
+    c.reportRows.assignAll([
+      {'sl_no': '1', 'item_name': 'STRAPS 40mm', 'item_code': '2001272',
+       'customer_code': '5052483', 'in_stock_qty': 816, 'running_total': 816,
+       'required_qty': 36, 'shortage_qty': 0},
+    ]);
+    await tester.pumpWidget(const GetMaterialApp(home: BomStockCustomerCodeScreen()));
+    await tester.pump();
+    expect(find.text('Code 5052483'), findsOneWidget);   // group header
+    expect(find.text('STRAPS 40mm'), findsNothing);       // collapsed by default
+  });
+
   testWidgets('totals footer is hidden until rows exist', (tester) async {
     // Empty state (no run yet) — no footer.
     await tester.pumpWidget(const GetMaterialApp(home: BomStockCustomerCodeScreen()));

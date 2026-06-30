@@ -7,6 +7,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_controller.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_filter_sheet.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_group_card.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_tile.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_totals_footer.dart';
 
@@ -138,6 +139,21 @@ class BomStockCustomerCodeScreen
                               'No items match this filter',
                               style: TextStyle(color: cs.onSurfaceVariant),
                             ),
+                          ),
+                        ),
+                      )
+                    else if (controller.posUpload.value != null)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                        sliver: SliverList(
+                          delegate: SliverChildListDelegate(
+                            controller.groupedRows
+                                .map((g) => BomStockGroupCard(
+                                      group: g,
+                                      expanded: controller.isGroupExpanded(g.code),
+                                      onToggle: () => controller.toggleGroup(g.code),
+                                    ))
+                                .toList(),
                           ),
                         ),
                       )
