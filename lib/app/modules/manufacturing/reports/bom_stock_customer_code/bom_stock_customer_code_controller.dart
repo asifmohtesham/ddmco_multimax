@@ -255,7 +255,7 @@ class BomStockCustomerCodeController extends GetxController {
     final order = <String>[];
     final byCode = <String, List<Map<String, dynamic>>>{};
     for (final r in rows) {
-      final code = (r['customer_code'] ?? '').toString();
+      final code = (r['customer_code'] ?? '').toString().trim();
       if (!byCode.containsKey(code)) {
         byCode[code] = [];
         order.add(code);
