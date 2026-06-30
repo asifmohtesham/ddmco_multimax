@@ -32,6 +32,20 @@ class ItemGroupCard extends StatelessWidget {
   /// When non-null, a 'Packed Qty' stat chip is rendered after the scanned chip.
   final double? packedQty;
 
+  /// External-system demand qty for this serial (the top of the fulfilment
+  /// funnel: POS Upload Qty ≥ DN Qty ≥ Packed). When non-null, a demand chip
+  /// is rendered first as an at-a-glance reminder of the quantity to meet.
+  /// Coloured amber when below [totalQty] (under-supply vs the DN commitment),
+  /// otherwise primary.
+  final double? posUploadQty;
+
+  /// Override label for the [posUploadQty] chip (default: 'POS Upload Qty').
+  final String posUploadQtyLabel;
+
+  /// Unit suffix for all quantity chips (default: 'pcs'). Callers should pass
+  /// the document's stock UOM so the figures match the source document.
+  final String unit;
+
   const ItemGroupCard({
     super.key,
     required this.isExpanded,
@@ -47,6 +61,9 @@ class ItemGroupCard extends StatelessWidget {
     this.totalQtyLabel = 'Required',
     this.scannedQtyLabel = 'Scanned',
     this.packedQty,
+    this.posUploadQty,
+    this.posUploadQtyLabel = 'POS Upload Qty',
+    this.unit = 'pcs',
   });
 
   /// Returns a short display symbol for common ISO codes;
@@ -83,13 +100,21 @@ class ItemGroupCard extends StatelessWidget {
         ? NumberFormat('#,##0.00').format(rate)
         : '$currSymbol ${NumberFormat('#,##0.00').format(rate)}';
 
+    // ── POS Upload (demand) chip colour ────────────────────────────
+    // Amber when external demand is below the DN commitment (an unexpected
+    // under-supply that must not be silently trusted), else primary so it
+    // reads as the headline demand figure.
+    final Color posUploadColor = (posUploadQty != null && posUploadQty! < totalQty)
+        ? Colors.amber.shade700
+        : cs.primary;
+
     // ── Remaining chip colour logic ────────────────────────────────
     // resolved here so it sits near the other semantic colours above.
     Color? remainingColor;
     String? remainingDisplay;
     if (remainingQty != null && remainingQty!.isFinite) {
       remainingDisplay =
-          '${NumberFormat('#,##0.##').format(remainingQty!)} pcs';
+          '${NumberFormat('#,##0.##').format(remainingQty!)} $unit';
       if (remainingQty! <= 0) {
         remainingColor = Colors.green.shade600;   // fully consumed
       } else if (totalQty > 0 && remainingQty! / totalQty <= 0.2) {
@@ -200,23 +225,30 @@ class ItemGroupCard extends StatelessWidget {
                       spacing: 12,
                       runSpacing: 6,
                       children: [
+                        if (posUploadQty != null)
+                          _buildStatChip(
+                            context: context,
+                            label: posUploadQtyLabel,
+                            value: '${NumberFormat('#,##0.##').format(posUploadQty!)} $unit',
+                            valueColor: posUploadColor,
+                          ),
                         _buildStatChip(
                           context: context,
                           label: totalQtyLabel,
-                          value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(totalQty)} $unit',
                           valueColor: cs.onSurfaceVariant,
                         ),
                         _buildStatChip(
                           context: context,
                           label: scannedQtyLabel,
-                          value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(scannedQty)} $unit',
                           valueColor: completionColor,
                         ),
                         if (packedQty != null)
                           _buildStatChip(
                             context: context,
                             label: 'Packed Qty',
-                            value: '${NumberFormat('#,##0.##').format(packedQty!)} pcs',
+                            value: '${NumberFormat('#,##0.##').format(packedQty!)} $unit',
                             valueColor: cs.tertiary,
                           ),
                         _buildStatChip(

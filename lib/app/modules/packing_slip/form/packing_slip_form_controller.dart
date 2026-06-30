@@ -581,6 +581,16 @@ class PackingSlipFormController extends GetxController
     return cap.isFinite ? cap : null;
   }
 
+  /// Stock UOM for [serial], read from its DN rows for display on the qty
+  /// chips. Defaults to 'Nos' (ERPNext's default stock UOM) when no DN row for
+  /// the serial carries a non-empty unit.
+  String getUomForSerial(String serial) {
+    final uom = getDnItemsForSerial(serial)
+        .firstWhereOrNull((i) => (i.uom ?? '').isNotEmpty)
+        ?.uom;
+    return (uom == null || uom.isEmpty) ? 'Nos' : uom;
+  }
+
   // ── Multi-serial sheet options ─────────────────────────────────────────────
 
   /// Ordered serial options for the open item sheet — one per invoice serial

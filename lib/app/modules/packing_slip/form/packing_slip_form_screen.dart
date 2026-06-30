@@ -255,8 +255,14 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     serialNo:   int.tryParse(serial) ?? 0,
                     itemName:   itemName,
                     rate:       0.0,
+                    posUploadQty:
+                        controller.getPosUploadQtyForSerial(serial),
+                    posUploadQtyLabel: 'POS Qty',
                     totalQty:   totalRequired,
+                    totalQtyLabel:   'DN Qty',
                     scannedQty: globalPacked,
+                    scannedQtyLabel: 'PS Qty',
+                    unit:       controller.getUomForSerial(serial),
                     onToggle: () =>
                         controller.toggleInvoiceExpand(serial),
                     children: sectionItems.map((dnItem) {
