@@ -17,6 +17,7 @@ DeliveryNoteItem? findScannedDnItem({
   required String code,
   required String? batch,
   required double Function(DeliveryNoteItem) remainingQty,
+  bool Function(DeliveryNoteItem)? skipRow,
 }) {
   final matches = items.where((item) {
     final codeMatch = item.itemCode == code;
@@ -25,6 +26,12 @@ DeliveryNoteItem? findScannedDnItem({
   }).toList();
 
   if (matches.isEmpty) return null;
-  return matches.firstWhereOrNull((item) => remainingQty(item) > 0) ??
-      matches.first;
+
+  final packable = skipRow == null
+      ? matches
+      : matches.where((item) => !skipRow(item)).toList();
+  if (packable.isEmpty) return null;
+
+  return packable.firstWhereOrNull((item) => remainingQty(item) > 0) ??
+      packable.first;
 }

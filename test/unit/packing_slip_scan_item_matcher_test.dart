@@ -136,5 +136,40 @@ void main() {
 
       expect(match?.name, equals('row-x2'));
     });
+
+    test('skips rows flagged by skipRow and advances to the next packable row',
+        () {
+      final items = [
+        dnItem(name: 'row-1', itemCode: 'ITEM-A', serial: '1'),
+        dnItem(name: 'row-2', itemCode: 'ITEM-A', serial: '2'),
+      ];
+
+      final match = findScannedDnItem(
+        items: items,
+        code: 'ITEM-A',
+        batch: null,
+        remainingQty: (item) => 12.0,
+        skipRow: (item) => item.name == 'row-1',
+      );
+
+      expect(match?.name, equals('row-2'));
+    });
+
+    test('returns null when every matching row is skipped', () {
+      final items = [
+        dnItem(name: 'row-1', itemCode: 'ITEM-A', serial: '1'),
+        dnItem(name: 'row-2', itemCode: 'ITEM-A', serial: '2'),
+      ];
+
+      final match = findScannedDnItem(
+        items: items,
+        code: 'ITEM-A',
+        batch: null,
+        remainingQty: (item) => 12.0,
+        skipRow: (item) => true,
+      );
+
+      expect(match, isNull);
+    });
   });
 }
