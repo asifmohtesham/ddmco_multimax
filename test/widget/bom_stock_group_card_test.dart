@@ -24,7 +24,8 @@ void main() {
   testWidgets('collapsed: header (code + count + short pill), no line rows',
       (tester) async {
     await tester.pumpWidget(_wrap(expanded: false));
-    expect(find.text('Code 5052483'), findsOneWidget);
+    expect(find.text('Customer Code'), findsOneWidget); // muted label
+    expect(find.text('5052483'), findsOneWidget);        // value (no 'Code ' prefix)
     expect(find.text('2 items'), findsOneWidget);
     expect(find.text('Short 24'), findsOneWidget); // group totalShortage = 24 → red
     expect(find.text('STRAPS 40mm'), findsNothing); // collapsed: lines hidden

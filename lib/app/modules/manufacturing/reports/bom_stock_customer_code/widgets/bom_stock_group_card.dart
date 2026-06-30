@@ -21,7 +21,6 @@ class BomStockGroupCard extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final accent = coverageAccent(context, group.anyShort);
-    final title = group.code.isEmpty ? 'No code' : 'Code ${group.code}';
     final count = '${group.itemCount} item${group.itemCount == 1 ? '' : 's'}';
 
     return Container(
@@ -50,9 +49,17 @@ class BomStockGroupCard extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(title,
-                                    style: theme.textTheme.bodyLarge
-                                        ?.copyWith(fontWeight: FontWeight.w700)),
+                                Text('Customer Code',
+                                    style: theme.textTheme.labelSmall
+                                        ?.copyWith(color: cs.onSurfaceVariant)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  group.code.isEmpty ? 'No code' : group.code,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'ShureTechMono',
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
                                 Text(count,
                                     style: theme.textTheme.labelSmall

@@ -52,7 +52,7 @@ class BomStockTotalsFooter extends StatelessWidget {
                   ?.copyWith(color: cs.onSurfaceVariant)),
           Text(value,
               style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+                  ?.copyWith(fontWeight: FontWeight.w700, fontFamily: 'ShureTechMono')),
         ],
       ),
     );

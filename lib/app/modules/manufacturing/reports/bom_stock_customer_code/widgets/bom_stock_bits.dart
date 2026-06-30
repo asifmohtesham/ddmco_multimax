@@ -60,6 +60,7 @@ class StatCell extends StatelessWidget {
         Text(value,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
+              fontFamily: 'ShureTechMono',
               color: alert ? cs.error : null,
             )),
       ],

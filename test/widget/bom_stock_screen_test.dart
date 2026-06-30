@@ -70,7 +70,7 @@ void main() {
     ]);
     await tester.pumpWidget(const GetMaterialApp(home: BomStockCustomerCodeScreen()));
     await tester.pump();
-    expect(find.text('Code 5052483'), findsOneWidget);   // group header
+    expect(find.text('5052483'), findsOneWidget);          // group header value (no 'Code ' prefix)
     expect(find.text('STRAPS 40mm'), findsNothing);       // collapsed by default
   });
 
