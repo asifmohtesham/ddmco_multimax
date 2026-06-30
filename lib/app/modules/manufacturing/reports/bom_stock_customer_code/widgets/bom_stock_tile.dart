@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_controller.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_bits.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 
 /// One result card, mirroring the POS Upload form's item tile.
@@ -73,7 +74,7 @@ class BomStockTile extends StatelessWidget {
                           ),
                           if (hasReq) ...[
                             const SizedBox(width: 8),
-                            _StatusPill(shortage: shortage),
+                            StatusPill(shortage: shortage),
                           ],
                         ],
                       ),
@@ -97,12 +98,12 @@ class BomStockTile extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _StatCell(label: 'In Stock', value: formatQty(inStock)),
-                if (hasReq) _StatCell(label: 'Need', value: formatQty(reqNum)),
+                StatCell(label: 'In Stock', value: formatQty(inStock)),
+                if (hasReq) StatCell(label: 'Need', value: formatQty(reqNum)),
                 if (hasReq)
-                  _StatCell(label: 'Short', value: formatQty(shortage), alert: shortage > 0),
+                  StatCell(label: 'Short', value: formatQty(shortage), alert: shortage > 0),
                 if (enough != null)
-                  _StatCell(label: 'Build', value: enough.toString()),
+                  StatCell(label: 'Build', value: enough.toString()),
               ],
             ),
             // ── Chips ────────────────────────────────────────────────────
@@ -158,59 +159,3 @@ class BomStockTile extends StatelessWidget {
       );
 }
 
-/// Demand status pill: red "Short N" or neutral-positive "Covered".
-class _StatusPill extends StatelessWidget {
-  final num shortage;
-  const _StatusPill({required this.shortage});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final short = shortage > 0;
-    final bg = short ? cs.errorContainer : cs.secondaryContainer;
-    final fg = short ? cs.onErrorContainer : cs.onSecondaryContainer;
-    final icon = short ? Icons.warning_amber_rounded : Icons.check_circle_outline;
-    final label = short ? 'Short ${formatQty(shortage)}' : 'Covered';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: fg),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
-        ],
-      ),
-    );
-  }
-}
-
-/// Label-over-value stat cell (mirrors the POS item tile's `_Stat`).
-class _StatCell extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool alert;
-  const _StatCell({required this.label, required this.value, this.alert = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
-        Text(
-          value,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: alert ? cs.error : null,
-          ),
-        ),
-      ],
-    );
-  }
-}
