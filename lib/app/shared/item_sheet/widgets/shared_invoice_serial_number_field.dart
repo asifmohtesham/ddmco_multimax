@@ -147,7 +147,15 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                  if (hasQty)
+                  if (item.blockedReason != null)
+                    Text(
+                      item.blockedReason!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.red.shade400,
+                      ),
+                    )
+                  else if (hasQty)
                     Text(
                       item.isFull
                           ? '\u00d7${SerialFieldMixin.fmtQty(item.qty!)}  \u2014  Full'
@@ -169,11 +177,12 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
         tile = badge;
       }
 
+      final isBlocked = item.blockedReason != null;
       return DropdownMenuItem<String>(
         value: item.serial,
-        enabled: !item.isFull || allowFull,
+        enabled: (!item.isFull || allowFull) && !isBlocked,
         child: Opacity(
-          opacity: (item.isFull && !allowFull) ? 0.4 : 1.0,
+          opacity: (isBlocked || (item.isFull && !allowFull)) ? 0.4 : 1.0,
           child: tile,
         ),
       );
