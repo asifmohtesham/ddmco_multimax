@@ -11,7 +11,7 @@ import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/material_request/material_request_controller.dart';
 import 'package:multimax/app/modules/material_request/widgets/material_request_filter_bottom_sheet.dart';
@@ -181,8 +181,9 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => RoleGuard(
-            roles: controller.writeRoles.toList(),
+      floatingActionButton: Obx(() => DocTypeGuard(
+            doctype: 'Material Request',
+            permType: 'create',
             child: _isFarFromTop.value
                 ? FloatingActionButton(
                     onPressed: controller.openCreateForm,
@@ -438,8 +439,9 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                 ),
               ),
               if (detailed.docstatus == 0) ...[
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
+                DocTypeGuard(
+                  doctype: 'Material Request',
+                  permType: 'write',
                   child: IconButton.filled(
                     onPressed: () =>
                         controller.deleteMaterialRequest(detailed.name),
@@ -452,8 +454,9 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
+                DocTypeGuard(
+                  doctype: 'Material Request',
+                  permType: 'write',
                   fallback: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                         AppRoutes.MATERIAL_REQUEST_FORM,

@@ -15,6 +15,12 @@ const List<PermEntry> kStockPermissions = [
   (doctype: 'Batch',            permType: 'report'), // Batch-Wise Balance History report
   (doctype: 'Item',             permType: 'report'), // Item Variant Details report
   (doctype: 'Stock Entry',      permType: 'report'), // Stock Balance report
+  // Gate the create/edit affordances so they resolve at login (no on-screen
+  // delay). create+write for one doctype share a single getdoctype fetch.
+  (doctype: 'Material Request', permType: 'create'), // New MR FAB
+  (doctype: 'Material Request', permType: 'write'),  // MR Delete / Edit
+  (doctype: 'Packing Slip',     permType: 'create'), // New PS FAB
+  (doctype: 'Packing Slip',     permType: 'write'),  // PS Edit
 ];
 
 const List<PermEntry> kBuyingPermissions = [

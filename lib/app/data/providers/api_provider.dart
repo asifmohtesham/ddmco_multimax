@@ -403,6 +403,58 @@ class ApiProvider {
     return value == true || value == 1;
   }
 
+  /// Fetches the DocPerm rows for [doctype] and returns the sets of roles that
+  /// hold `create` and `write` at permlevel 0 — used to gate create/edit UI.
+  ///
+  /// Sourced from `frappe.desk.form.load.getdoctype` (the endpoint the desk
+  /// itself uses to render forms) rather than `/api/resource/DocType/<name>`.
+  /// The resource endpoint requires read access on the `DocType` doctype and
+  /// returns 403 for ordinary operators (e.g. Stock User), which would leave
+  /// the role sets empty and wrongly hide their create/edit buttons; getdoctype
+  /// is gated on the target doctype instead, so those users get the rows.
+  Future<({Set<String> create, Set<String> write})> fetchDocTypeRoles(
+      String doctype) async {
+    final response = await callMethod(
+      'frappe.desk.form.load.getdoctype',
+      params: {'doctype': doctype, 'with_parent': 1},
+    );
+    return (
+      create: rolesWithPermission(response.data, doctype, 'create'),
+      write: rolesWithPermission(response.data, doctype, 'write'),
+    );
+  }
+
+  /// Extracts the roles granting [permKey] (`create`, `write`, …) at
+  /// permlevel 0 for [doctype] from a `getdoctype` response.
+  ///
+  /// getdoctype returns `{"docs": [<DocType meta>, …]}` (unwrapped); this also
+  /// tolerates a `{"message": {"docs": …}}` shape defensively. Fail-closed:
+  /// any unexpected shape yields an empty set. Exposed as a public static
+  /// method so unit tests can exercise it without a live HTTP connection.
+  static Set<String> rolesWithPermission(
+      dynamic data, String doctype, String permKey) {
+    final roles = <String>{};
+    if (data is! Map) return roles;
+    final docs = data['docs'] ??
+        (data['message'] is Map ? data['message']['docs'] : null);
+    if (docs is! List) return roles;
+    for (final doc in docs) {
+      if (doc is! Map) continue;
+      if (doc['doctype'] != 'DocType' || doc['name'] != doctype) continue;
+      final perms = doc['permissions'];
+      if (perms is! List) continue;
+      for (final p in perms) {
+        if (p is! Map) continue;
+        final lvl = p['permlevel'];
+        if ((lvl == 0 || lvl == null) && p[permKey] == 1) {
+          final role = p['role'];
+          if (role is String && role.isNotEmpty) roles.add(role);
+        }
+      }
+    }
+    return roles;
+  }
+
   // ---------------------------------------------------------------------------
   // REPORT & LIST HELPERS
   // ---------------------------------------------------------------------------

@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -11,7 +10,6 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 
 class MaterialRequestController extends GetxController {
   final MaterialRequestProvider _provider = Get.find<MaterialRequestProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
 
   // ── Pagination ───────────────────────────────────────────────────────────
@@ -37,9 +35,6 @@ class MaterialRequestController extends GetxController {
   var users = <User>[].obs;
   var isFetchingUsers = false.obs;
 
-  // ── Permissions ────────────────────────────────────────────────────────
-  var writeRoles = <String>['System Manager'].obs;
-
   MaterialRequest? get detailedRequest => _detailCache[expandedRequestId.value];
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
@@ -48,7 +43,6 @@ class MaterialRequestController extends GetxController {
     super.onInit();
     fetchMaterialRequests();
     fetchUsers();
-    fetchDocTypePermissions();
     debounce(searchQuery, (_) => fetchMaterialRequests(clear: true),
         time: const Duration(milliseconds: 500));
   }
@@ -189,28 +183,6 @@ class MaterialRequestController extends GetxController {
       } else {
         isLoading.value = false;
       }
-    }
-  }
-
-  // ── Permissions ────────────────────────────────────────────────────────
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response =
-          await _apiProvider.getDocument('DocType', 'Material Request');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final List<dynamic> perms =
-            response.data['data']['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'};
-        for (var p in perms) {
-          if (p['write'] == 1 &&
-              (p['permlevel'] == 0 || p['permlevel'] == null)) {
-            newRoles.add(p['role']);
-          }
-        }
-        writeRoles.assignAll(newRoles.toList());
-      }
-    } catch (e) {
-      debugPrint('Error fetching permissions: $e');
     }
   }
 

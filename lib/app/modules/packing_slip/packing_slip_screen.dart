@@ -8,7 +8,7 @@ import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
 import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bottom_sheet.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -202,8 +202,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => RoleGuard(
-            roles: controller.writeRoles.toList(),
+      floatingActionButton: Obx(() => DocTypeGuard(
+            doctype: 'Packing Slip',
+            permType: 'create',
             child: _isFarFromTop.value
                 ? FloatingActionButton(
                     onPressed: controller.openCreateDialog,
@@ -727,8 +728,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.status == 'Draft')
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
+                DocTypeGuard(
+                  doctype: 'Packing Slip',
+                  permType: 'write',
                   fallback: const SizedBox.shrink(),
                   child: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
