@@ -85,6 +85,13 @@
       "type": "dart"
     },
     {
+      "name": "JB 00751909060cd099 USB",
+      "program": "lib/main.dart",
+      "deviceId": "00751909060cd099",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
       "name": "TS 23045524700452 USB",
       "program": "lib/main.dart",
       "deviceId": "23045524700452",
