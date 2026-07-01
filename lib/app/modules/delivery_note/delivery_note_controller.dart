@@ -8,7 +8,6 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -20,7 +19,6 @@ class DeliveryNoteController extends GetxController {
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
   final CustomerProvider _customerProvider = Get.find<CustomerProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -53,9 +51,6 @@ class DeliveryNoteController extends GetxController {
   var customers = <CustomerEntry>[].obs;
   var isFetchingCustomers = false.obs;
 
-  // Role-gated write access — mirrors StockEntryController
-  var writeRoles = <String>['System Manager'].obs;
-
   DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
   @override
@@ -67,7 +62,6 @@ class DeliveryNoteController extends GetxController {
       fetchUsers(),
       fetchWarehouses(),
       fetchCustomers(),
-      fetchDocTypePermissions(),
     ]);
     debounce(searchQuery, (_) => fetchDeliveryNotes(clear: true),
         time: const Duration(milliseconds: 500));
@@ -78,29 +72,6 @@ class DeliveryNoteController extends GetxController {
     super.onReady();
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Permissions
-  // ---------------------------------------------------------------------------
-
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response = await _apiProvider.getDocument('DocType', 'Delivery Note');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'};
-        for (var p in perms) {
-          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
-            newRoles.add(p['role']);
-          }
-        }
-        writeRoles.assignAll(newRoles.toList());
-      }
-    } catch (e) {
-      print('Error fetching permissions: $e');
     }
   }
 

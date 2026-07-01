@@ -6,6 +6,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
 import 'package:multimax/app/modules/delivery_note/widgets/filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
@@ -164,24 +165,28 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => _isFarFromTop.value
-          ? FloatingActionButton(
-              onPressed: controller.openCreateDialog,
-              tooltip: 'New Delivery Note',
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              elevation: 4,
-              child: const Icon(Icons.add),
-            )
-          : FloatingActionButton.extended(
-              onPressed: controller.openCreateDialog,
-              tooltip: 'New Delivery Note',
-              icon: const Icon(Icons.add),
-              label: const Text('New Delivery Note'),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              elevation: 4,
-            )),
+      floatingActionButton: Obx(() => DocTypeGuard(
+            doctype: 'Delivery Note',
+            permType: 'create',
+            child: _isFarFromTop.value
+                ? FloatingActionButton(
+                    onPressed: controller.openCreateDialog,
+                    tooltip: 'New Delivery Note',
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    elevation: 4,
+                    child: const Icon(Icons.add),
+                  )
+                : FloatingActionButton.extended(
+                    onPressed: controller.openCreateDialog,
+                    tooltip: 'New Delivery Note',
+                    icon: const Icon(Icons.add),
+                    label: const Text('New Delivery Note'),
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    elevation: 4,
+                  ),
+          )),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchDeliveryNotes(clear: true),
         color: colorScheme.primary,
@@ -445,13 +450,25 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.status == 'Draft')
-                FilledButton.tonalIcon(
-                  onPressed: () => Get.toNamed(
-                    AppRoutes.DELIVERY_NOTE_FORM,
-                    arguments: {'name': detailed.name, 'mode': 'edit'},
+                DocTypeGuard(
+                  doctype: 'Delivery Note',
+                  permType: 'write',
+                  fallback: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.DELIVERY_NOTE_FORM,
+                      arguments: {'name': detailed.name, 'mode': 'view'},
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('View Details'),
                   ),
-                  icon: const Icon(Icons.edit, size: 16),
-                  label: const Text('Edit'),
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.DELIVERY_NOTE_FORM,
+                      arguments: {'name': detailed.name, 'mode': 'edit'},
+                    ),
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Edit'),
+                  ),
                 )
               else
                 FilledButton.tonalIcon(

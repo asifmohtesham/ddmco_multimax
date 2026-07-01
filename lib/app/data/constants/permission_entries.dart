@@ -21,11 +21,17 @@ const List<PermEntry> kStockPermissions = [
   (doctype: 'Material Request', permType: 'write'),  // MR Delete / Edit
   (doctype: 'Packing Slip',     permType: 'create'), // New PS FAB
   (doctype: 'Packing Slip',     permType: 'write'),  // PS Edit
+  (doctype: 'Stock Entry',      permType: 'create'), // New Stock Entry FAB
+  (doctype: 'Stock Entry',      permType: 'write'),  // Stock Entry Edit
+  (doctype: 'Delivery Note',    permType: 'create'), // New Delivery Note FAB
+  (doctype: 'Delivery Note',    permType: 'write'),  // Delivery Note Edit
 ];
 
 const List<PermEntry> kBuyingPermissions = [
   (doctype: 'Purchase Order',   permType: 'read'),
   (doctype: 'Purchase Receipt', permType: 'read'),
+  (doctype: 'Purchase Order',   permType: 'create'), // New Purchase Order FAB
+  (doctype: 'Purchase Order',   permType: 'write'),  // Purchase Order Edit
 ];
 
 const List<PermEntry> kManufacturingPermissions = [

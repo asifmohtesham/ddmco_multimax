@@ -8,7 +8,6 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -22,7 +21,6 @@ class StockEntryController extends GetxController {
       Get.find<MaterialRequestProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -59,8 +57,6 @@ class StockEntryController extends GetxController {
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  var writeRoles = <String>['System Manager'].obs;
-
   StockEntry? get detailedEntry =>
       _detailedEntriesCache[expandedEntryName.value];
 
@@ -73,7 +69,6 @@ class StockEntryController extends GetxController {
       fetchStockEntryTypes(),
       fetchUsers(),
       fetchWarehouses(),
-      fetchDocTypePermissions(),
     ]);
     debounce(searchQuery, (_) => fetchStockEntries(clear: true),
         time: const Duration(milliseconds: 500));
@@ -84,27 +79,6 @@ class StockEntryController extends GetxController {
     super.onReady();
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
-    }
-  }
-
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response =
-          await _apiProvider.getDocument('DocType', 'Stock Entry');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'};
-        for (var p in perms) {
-          if (p['write'] == 1 &&
-              (p['permlevel'] == 0 || p['permlevel'] == null)) {
-            newRoles.add(p['role']);
-          }
-        }
-        writeRoles.assignAll(newRoles.toList());
-      }
-    } catch (e) {
-      print('Error fetching permissions: $e');
     }
   }
 

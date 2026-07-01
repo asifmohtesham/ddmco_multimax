@@ -15,7 +15,7 @@ import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
 class PurchaseOrderScreen extends StatefulWidget {
   const PurchaseOrderScreen({super.key});
@@ -114,8 +114,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(),
+      floatingActionButton: Obx(() => DocTypeGuard(
+        doctype: 'Purchase Order',
+        permType: 'create',
         child: FloatingActionButton.extended(
           onPressed: controller.openCreateDialog,
           tooltip: 'New Purchase Order',
@@ -287,9 +288,17 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.docstatus == 0)
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
-                  fallback: const SizedBox.shrink(),
+                DocTypeGuard(
+                  doctype: 'Purchase Order',
+                  permType: 'write',
+                  fallback: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.PURCHASE_ORDER_FORM,
+                      arguments: {'name': po.name, 'mode': 'view'},
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('View Details'),
+                  ),
                   child: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                       AppRoutes.PURCHASE_ORDER_FORM,

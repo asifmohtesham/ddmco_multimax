@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
@@ -183,8 +183,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => RoleGuard(
-            roles: controller.writeRoles.toList(),
+      floatingActionButton: Obx(() => DocTypeGuard(
+            doctype: 'Stock Entry',
+            permType: 'create',
             child: _isFarFromTop.value
                 ? FloatingActionButton(
                     onPressed: controller.openCreateDialog,
@@ -459,9 +460,17 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.status == 'Draft')
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
-                  fallback: const SizedBox.shrink(),
+                DocTypeGuard(
+                  doctype: 'Stock Entry',
+                  permType: 'write',
+                  fallback: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.STOCK_ENTRY_FORM,
+                      arguments: {'name': detailed.name, 'mode': 'view'},
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('View Details'),
+                  ),
                   child: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                       AppRoutes.STOCK_ENTRY_FORM,
