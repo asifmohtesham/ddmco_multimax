@@ -27,7 +27,7 @@ void main() {
     test('view-mode doctypes pass name + mode:view', () {
       for (final d in const [
         'Delivery Note', 'Purchase Receipt', 'Stock Entry', 'Purchase Order',
-        'Packing Slip', 'Material Request', 'POS Upload', 'ToDo', 'Work Order',
+        'Packing Slip', 'Material Request', 'POS Upload', 'Work Order',
       ]) {
         expect(_byDoctype(d).argsFor('X'), {'name': 'X', 'mode': 'view'},
             reason: d);

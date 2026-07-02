@@ -135,14 +135,6 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     route: AppRoutes.BATCH_FORM,
     argsFor: _batchArgs,
   ),
-  GlobalSearchTarget(
-    doctype: 'ToDo',
-    label: 'To-Dos',
-    icon: Icons.check_circle_outline,
-    color: Colors.cyan,
-    route: AppRoutes.TODO_FORM,
-    argsFor: _nameView,
-  ),
 ];
 
 // Top-level functions (const list requires const-tear-off-able references).

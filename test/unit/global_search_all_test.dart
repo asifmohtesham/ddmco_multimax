@@ -73,5 +73,23 @@ void main() {
       expect(groups.first.items.length, 2); // capped
       expect(groups.last.items.single.id, 'B1');
     });
+
+    test('a throwing searcher degrades to an empty group instead of failing the whole fan-out',
+        () async {
+      final groups = await GlobalSearchService.runSearchAll(
+        targets: targets,
+        canRead: (d) => true,
+        searcher: (doctype) async {
+          if (doctype == 'BOM') throw Exception('boom');
+          if (doctype == 'Item') return [_item('I1')];
+          return [];
+        },
+      );
+
+      // Does not throw, and the successful group survives while the
+      // failing doctype is simply omitted (buildGroups drops empty groups).
+      expect(groups.map((g) => g.target.doctype), ['Item']);
+      expect(groups.single.items.single.id, 'I1');
+    });
   });
 }

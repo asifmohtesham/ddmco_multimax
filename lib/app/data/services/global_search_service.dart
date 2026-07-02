@@ -116,8 +116,15 @@ class GlobalSearchService extends GetxService {
   }) async {
     final permitted = filterPermittedTargets(targets, canRead);
     final entries = await Future.wait(
-      permitted.map((t) async =>
-          MapEntry(t, (await searcher(t.doctype)).take(cap).toList())),
+      permitted.map((t) async {
+        List<GlobalSearchItem> items;
+        try {
+          items = await searcher(t.doctype);
+        } catch (_) {
+          items = <GlobalSearchItem>[];
+        }
+        return MapEntry(t, items.take(cap).toList());
+      }),
     );
     return buildGroups(entries);
   }
