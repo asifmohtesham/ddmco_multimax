@@ -89,4 +89,73 @@ void main() {
     // Falls back to the icon avatar tile; the title still renders.
     expect(find.text('Blue Strap'), findsOneWidget);
   });
+
+  testWidgets('scope chips render All + a chip per target and report taps',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final targets = [_target('Item'), _target('Delivery Note')];
+
+    GlobalSearchTarget? selected; // starts null (All)
+    var selectCalls = 0;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildScopeChips(
+            context,
+            targets,
+            selected,
+            (t) {
+              selected = t;
+              selectCalls++;
+            },
+          ),
+        ),
+      ),
+    ));
+
+    // "All" plus one chip per target.
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Item s'), findsOneWidget);
+    expect(find.text('Delivery Note s'), findsOneWidget);
+
+    // Tapping a doctype chip reports that target.
+    await tester.tap(find.text('Item s'));
+    expect(selectCalls, 1);
+    expect(selected?.doctype, 'Item');
+
+    // Tapping "All" reports null (clears the scope).
+    await tester.tap(find.text('All'));
+    expect(selectCalls, 2);
+    expect(selected, isNull);
+  });
+
+  testWidgets('scope chip reflects the selected target', (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final targets = [_target('Item'), _target('Delivery Note')];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildScopeChips(
+            context,
+            targets,
+            targets.first, // 'Item' selected
+            (_) {},
+          ),
+        ),
+      ),
+    ));
+
+    // The selected chip is the 'Item' one, and 'All' is not selected.
+    final itemChip = tester.widget<ChoiceChip>(
+      find.ancestor(
+          of: find.text('Item s'), matching: find.byType(ChoiceChip)),
+    );
+    final allChip = tester.widget<ChoiceChip>(
+      find.ancestor(of: find.text('All'), matching: find.byType(ChoiceChip)),
+    );
+    expect(itemChip.selected, isTrue);
+    expect(allChip.selected, isFalse);
+  });
 }
