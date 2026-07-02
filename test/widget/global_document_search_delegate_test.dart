@@ -45,8 +45,8 @@ void main() {
     ));
 
     // Section headers
-    expect(find.text('Item s'), findsOneWidget);
-    expect(find.text('Delivery Note s'), findsOneWidget);
+    expect(find.text('ITEM S'), findsOneWidget);
+    expect(find.text('DELIVERY NOTE S'), findsOneWidget);
     // Rows
     expect(find.text('Blue Strap'), findsOneWidget);
     expect(find.text('Acme'), findsOneWidget);

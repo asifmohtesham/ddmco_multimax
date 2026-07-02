@@ -154,7 +154,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
           Icon(target.icon, size: 15, color: target.color),
           const SizedBox(width: 8),
           Text(
-            target.label,
+            target.label.toUpperCase(),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
