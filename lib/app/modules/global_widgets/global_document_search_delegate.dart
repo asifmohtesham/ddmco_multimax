@@ -196,7 +196,9 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
   }
 
   Widget _leadingIcon(GlobalSearchTarget target, String? imageUrl) {
-    if (imageUrl != null && imageUrl.isNotEmpty) {
+    if (imageUrl != null &&
+        imageUrl.isNotEmpty &&
+        Get.isRegistered<ApiProvider>()) {
       final fullUrl = imageUrl.startsWith('http')
           ? imageUrl
           : '${_apiProvider.baseUrl}$imageUrl';

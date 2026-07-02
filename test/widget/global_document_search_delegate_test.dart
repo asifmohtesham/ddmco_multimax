@@ -55,4 +55,38 @@ void main() {
     expect(tappedTarget?.doctype, 'Item');
     expect(tappedItem?.id, 'FG-1');
   });
+
+  testWidgets(
+      'stays service-free (no ApiProvider) even when an item has an imageUrl',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Item'), items: [
+        GlobalSearchItem(
+          id: 'FG-1',
+          title: 'Blue Strap',
+          imageUrl: '/files/x.png',
+          rawData: const {},
+        ),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+          ),
+        ),
+      ),
+    ));
+
+    // No Get.find<ApiProvider>() call should have been triggered synchronously
+    // during build, so nothing should have thrown.
+    expect(tester.takeException(), isNull);
+    // Falls back to the icon avatar tile; the title still renders.
+    expect(find.text('Blue Strap'), findsOneWidget);
+  });
 }
