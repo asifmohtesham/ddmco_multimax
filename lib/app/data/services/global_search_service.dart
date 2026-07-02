@@ -1,7 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+
+/// A doctype's search hits, for the grouped Dashboard results.
+class GlobalSearchGroup {
+  final GlobalSearchTarget target;
+  final List<GlobalSearchItem> items;
+  const GlobalSearchGroup({required this.target, required this.items});
+}
 
 class GlobalSearchService extends GetxService {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -74,6 +83,54 @@ class GlobalSearchService extends GetxService {
       print('GlobalSearchService Error ($doctype): $e');
     }
     return [];
+  }
+
+  /// Max hits shown per doctype group.
+  static const int kGroupCap = 8;
+
+  /// Targets the user is allowed to read. A target is kept unless permission
+  /// is explicitly `false`; `null` (cache not yet warm) degrades permissive.
+  static List<GlobalSearchTarget> filterPermittedTargets(
+    List<GlobalSearchTarget> targets,
+    bool? Function(String doctype) canRead,
+  ) =>
+      targets.where((t) => canRead(t.doctype) != false).toList();
+
+  /// Builds groups in [entries] order, dropping any with no items.
+  static List<GlobalSearchGroup> buildGroups(
+    List<MapEntry<GlobalSearchTarget, List<GlobalSearchItem>>> entries,
+  ) =>
+      [
+        for (final e in entries)
+          if (e.value.isNotEmpty)
+            GlobalSearchGroup(target: e.key, items: e.value),
+      ];
+
+  /// Pure fan-out: searches every permitted target via [searcher] concurrently,
+  /// caps each group at [cap], and groups the results. Injectable for testing.
+  static Future<List<GlobalSearchGroup>> runSearchAll({
+    required List<GlobalSearchTarget> targets,
+    required bool? Function(String doctype) canRead,
+    required Future<List<GlobalSearchItem>> Function(String doctype) searcher,
+    int cap = kGroupCap,
+  }) async {
+    final permitted = filterPermittedTargets(targets, canRead);
+    final entries = await Future.wait(
+      permitted.map((t) async =>
+          MapEntry(t, (await searcher(t.doctype)).take(cap).toList())),
+    );
+    return buildGroups(entries);
+  }
+
+  /// Searches [query] across every permitted [kGlobalSearchTargets] doctype and
+  /// returns the hits grouped by doctype (registry order, empty groups dropped).
+  Future<List<GlobalSearchGroup>> searchAll(String query) {
+    final permission = Get.find<PermissionService>();
+    return runSearchAll(
+      targets: kGlobalSearchTargets,
+      canRead: (doctype) => permission.hasAccess(doctype),
+      searcher: (doctype) => search(doctype, query),
+    );
   }
 
   /// Maps a raw API JSON object to a standardized [GlobalSearchItem].
