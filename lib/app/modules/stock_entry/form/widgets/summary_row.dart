@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// A simple label / value row used in the Details tab summary card.
 /// Step 2 — extracted from StockEntryFormScreen._buildSummaryRow().
@@ -16,19 +17,20 @@ class SummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              style: TextStyle(color: scheme.textMuted, fontSize: 14)),
           Text(
             value,
             style: TextStyle(
               fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
               fontSize: isBold ? 16 : 14,
-              color: isBold ? Colors.black87 : Colors.black54,
+              color: isBold ? scheme.text : scheme.textMuted,
             ),
           ),
         ],

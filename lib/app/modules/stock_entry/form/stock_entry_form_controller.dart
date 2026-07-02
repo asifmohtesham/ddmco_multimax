@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:dio/dio.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
@@ -1609,7 +1610,7 @@ class StockEntryFormController extends GetxController
       title:        'Confirm',
       message:      'Permanently Submit $name?',
       confirmText:  'Yes',
-      confirmColor: Colors.blue,
+      confirmColor: AppColors.blue600,
     );
     if (confirmed != true) return;
 

@@ -76,8 +76,11 @@ class AppScheme {
     fg: Color(0xFFFFFFFF),
     subtle: AppColors.gray50,
     text: AppColors.gray900,
-    textMuted: AppColors.gray600,
-    textSubtle: AppColors.gray500,
+    // gray700/gray600, one step darker than the original gray600/gray500:
+    // textMuted must clear 4.5:1 for normal-size secondary text and
+    // textSubtle 3:1 for icons/large text — gray500 was 2.6:1 on white.
+    textMuted: AppColors.gray700,
+    textSubtle: AppColors.gray600,
     border: AppColors.gray200,
     borderStrong: AppColors.gray300,
     primary: Color(0xFF870E18), // maroon brand — kept
@@ -133,9 +136,12 @@ class AppScheme {
 }
 
 /// A user-selectable primary accent. The brand maroon is the default; the
-/// other options are drawn from the [AppColors] status ramps (x500 in light,
-/// the lighter x300 in dark) so every choice still reads as in-system.
-/// Neutrals/surfaces never change — only the primary + onPrimary do.
+/// other options are drawn from the [AppColors] status ramps (a shade dark
+/// enough for ≥4.5:1 white-on-fill in light, the lighter x300 in dark) so
+/// every choice still reads as in-system. The x500 bases fail WCAG AA as
+/// button/AppBar fills (white-on-orange500 is 2.6:1), so light mode uses
+/// x600/x700 instead. Neutrals/surfaces never change — only primary +
+/// onPrimary do.
 class AppAccent {
   final String key;
   final String name;
@@ -174,7 +180,7 @@ class AppAccent {
   static const blue = AppAccent(
     key: 'blue',
     name: 'Blue',
-    lightPrimary: AppColors.blue500,
+    lightPrimary: AppColors.blue600,
     lightOnPrimary: _white,
     darkPrimary: AppColors.blue300,
     darkOnPrimary: _darkOn,
@@ -182,7 +188,7 @@ class AppAccent {
   static const green = AppAccent(
     key: 'green',
     name: 'Green',
-    lightPrimary: AppColors.green500,
+    lightPrimary: AppColors.green700,
     lightOnPrimary: _white,
     darkPrimary: AppColors.green300,
     darkOnPrimary: _darkOn,
@@ -198,7 +204,7 @@ class AppAccent {
   static const orange = AppAccent(
     key: 'orange',
     name: 'Orange',
-    lightPrimary: AppColors.orange500,
+    lightPrimary: AppColors.orange700,
     lightOnPrimary: _white,
     darkPrimary: AppColors.orange300,
     darkOnPrimary: _darkOn,
@@ -206,7 +212,7 @@ class AppAccent {
   static const cyan = AppAccent(
     key: 'cyan',
     name: 'Cyan',
-    lightPrimary: AppColors.cyan500,
+    lightPrimary: AppColors.cyan700,
     lightOnPrimary: _white,
     darkPrimary: AppColors.cyan300,
     darkOnPrimary: _darkOn,

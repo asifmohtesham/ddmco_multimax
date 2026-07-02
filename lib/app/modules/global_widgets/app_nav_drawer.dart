@@ -124,7 +124,7 @@ class AppNavDrawer extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style:
-                                      TextStyle(fontSize: 12, color: s.textSubtle),
+                                      TextStyle(fontSize: 12, color: s.textMuted),
                                 ),
                                 const SizedBox(height: 3),
                                 Row(
@@ -655,7 +655,7 @@ class _NavSubheading extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              color: s.textSubtle,
+              color: s.textMuted,
               letterSpacing: 1.1,
             ),
           ),

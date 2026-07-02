@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -12,11 +13,13 @@ class ItemDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String _baseUrl = Get.find<ApiProvider>().baseUrl;
+    final scheme = context.scheme;
     return Container(
       padding: const EdgeInsets.all(16.0),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20.0)),
       ),
       child: SafeArea(
         child: Column(
@@ -65,19 +68,19 @@ class ItemDetailSheet extends StatelessWidget {
                     children: [
                       Text(item.itemCode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const SizedBox(height: 4),
-                      Text(item.itemName, style: TextStyle(color: Colors.grey.shade700, fontSize: 14)),
+                      Text(item.itemName, style: TextStyle(color: scheme.textMuted, fontSize: 14)),
                     ],
                   ),
                 ),
               ],
             ),
             const Divider(height: 32),
-            _buildDetailRow('Item Group', item.itemGroup),
-            if (item.variantOf != null) _buildDetailRow('Variant Of', item.variantOf!),
-            if (item.countryOfOrigin != null) _buildDetailRow('Origin', item.countryOfOrigin!),
+            _buildDetailRow(scheme, 'Item Group', item.itemGroup),
+            if (item.variantOf != null) _buildDetailRow(scheme, 'Variant Of', item.variantOf!),
+            if (item.countryOfOrigin != null) _buildDetailRow(scheme, 'Origin', item.countryOfOrigin!),
             if (item.description != null) ...[
               const SizedBox(height: 12),
-              const Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+              Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: scheme.textMuted)),
               const SizedBox(height: 4),
               Text(item.description!, style: const TextStyle(fontSize: 14)),
             ],
@@ -95,13 +98,13 @@ class ItemDetailSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(AppScheme scheme, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(label, style: TextStyle(color: scheme.textMuted)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
@@ -129,11 +132,13 @@ class RackBalanceSheet extends StatelessWidget {
     }
     if (maxQty == 0) maxQty = 1;
 
+    final scheme = context.scheme;
     return Container(
       padding: const EdgeInsets.all(16.0),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20.0)),
       ),
       child: SafeArea(
         child: Column(
@@ -146,13 +151,13 @@ class RackBalanceSheet extends StatelessWidget {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: scheme.borderStrong,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             Text('Stock Balance by Rack', style: Theme.of(context).textTheme.titleLarge),
-            Text('Item: $itemCode', style: const TextStyle(color: Colors.grey)),
+            Text('Item: $itemCode', style: TextStyle(color: scheme.textMuted)),
             const SizedBox(height: 24),
 
             if (rackData.isEmpty)
@@ -199,7 +204,8 @@ class RackBalanceSheet extends StatelessWidget {
                           quarterTurns: 3,
                           child: Text(
                             data.rack!,
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            style: TextStyle(
+                                fontSize: 10, color: scheme.textMuted),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -234,10 +240,12 @@ class RackContentsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20.0)),
       ),
       child: SafeArea(
         child: DraggableScrollableSheet(
@@ -258,8 +266,8 @@ class RackContentsSheet extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Rack Contents', style: TextStyle(
-                              color: Colors.grey, fontSize: 12)),
+                          Text('Rack Contents', style: TextStyle(
+                              color: scheme.textMuted, fontSize: 12)),
                           const SizedBox(height: 4),
                           Text(
                             rackId,
@@ -274,8 +282,8 @@ class RackContentsSheet extends StatelessWidget {
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.close),
-                        style: IconButton.styleFrom(backgroundColor: Colors.grey
-                            .shade100),
+                        style: IconButton.styleFrom(
+                            backgroundColor: scheme.subtle),
                       ),
                     ],
                   ),
@@ -303,9 +311,9 @@ class RackContentsSheet extends StatelessWidget {
 
                       return Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: scheme.subtle,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
+                          border: Border.all(color: scheme.border),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.grey.withValues(alpha: 0.05),
@@ -347,8 +355,9 @@ class RackContentsSheet extends StatelessWidget {
                                                 .primaryColor
                                         ),
                                       ),
-                                      const Text('Qty', style: TextStyle(
-                                          fontSize: 10, color: Colors.grey)),
+                                      Text('Qty', style: TextStyle(
+                                          fontSize: 10,
+                                          color: scheme.textMuted)),
                                     ],
                                   ),
                                 ],
@@ -357,10 +366,10 @@ class RackContentsSheet extends StatelessWidget {
                               const SizedBox(height: 8),
 
                               // Row 2: Item Code & Badges (Group/Variant/Batch)
-                              Text(itemCode, style: const TextStyle(
+                              Text(itemCode, style: TextStyle(
                                   fontFamily: 'monospace',
                                   fontSize: 12,
-                                  color: Colors.black87)),
+                                  color: scheme.text)),
                               const SizedBox(height: 8),
 
                               Wrap(
@@ -437,11 +446,13 @@ class MultiItemSelectionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     // Get Base URL for images
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
+    final scheme = context.scheme;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20.0)),
       ),
       child: SafeArea(
         child: DraggableScrollableSheet(
@@ -461,7 +472,7 @@ class MultiItemSelectionSheet extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Catalogue Search', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text('Catalogue Search', style: TextStyle(color: scheme.textMuted, fontSize: 12)),
                           Text('${items.length} Items Found', style: Theme.of(context).textTheme.titleLarge),
                         ],
                       ),
@@ -494,11 +505,11 @@ class MultiItemSelectionSheet extends StatelessWidget {
                         },
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: scheme.subtle,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade200),
+                            border: Border.all(color: scheme.border),
                             boxShadow: [
-                              BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))
+                              BoxShadow(color: Colors.grey.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
                             ],
                           ),
                           child: Column(
@@ -517,9 +528,9 @@ class MultiItemSelectionSheet extends StatelessWidget {
                                         fit: BoxFit.cover,
                                         cacheWidth: 600,
                                         cacheHeight: 500,
-                                        errorBuilder: (_, __, ___) => _buildPlaceholder(),
+                                        errorBuilder: (_, __, ___) => _buildPlaceholder(scheme),
                                       )
-                                          : _buildPlaceholder(),
+                                          : _buildPlaceholder(scheme),
                                     ),
                                     if (imageUrl != null)
                                       Positioned(
@@ -556,7 +567,7 @@ class MultiItemSelectionSheet extends StatelessWidget {
                                     const SizedBox(height: 4),
                                     Text(
                                       item.itemCode,
-                                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.blueGrey),
+                                      style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: scheme.textMuted),
                                     ),
                                     const SizedBox(height: 6),
 
@@ -577,12 +588,12 @@ class MultiItemSelectionSheet extends StatelessWidget {
 
                                     Row(
                                       children: [
-                                        const Icon(Icons.category_outlined, size: 12, color: Colors.grey),
+                                        Icon(Icons.category_outlined, size: 12, color: scheme.textMuted),
                                         const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(
                                             item.itemGroup,
-                                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                            style: TextStyle(fontSize: 11, color: scheme.textMuted),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -607,11 +618,11 @@ class MultiItemSelectionSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder() {
+  Widget _buildPlaceholder(AppScheme scheme) {
     return Container(
-      color: Colors.grey.shade100,
+      color: scheme.subtle,
       child: Center(
-        child: Icon(Icons.image_not_supported_outlined, color: Colors.grey.shade300, size: 40),
+        child: Icon(Icons.image_not_supported_outlined, color: scheme.textSubtle, size: 40),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/camera_scan_overlay.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
@@ -457,7 +458,7 @@ class HomeScreen extends GetView<HomeController> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: scheme.textSubtle,
+              color: scheme.textMuted,
               letterSpacing: 0.7,
             ),
           ),
@@ -566,10 +567,12 @@ class HomeScreen extends GetView<HomeController> {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 children: [
@@ -618,28 +621,11 @@ class HomeScreen extends GetView<HomeController> {
                                 Text(pos.customer),
                                 Text(
                                   FormattingHelper.getRelativeTime(pos.modified),
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  style: TextStyle(fontSize: 11, color: scheme.textMuted),
                                 ),
                               ],
                             ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: pos.status == 'Pending' ? Colors.orange.shade50 : Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200,
-                                ),
-                              ),
-                              child: Text(
-                                pos.status,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800,
-                                ),
-                              ),
-                            ),
+                            trailing: StatusPill(status: pos.status),
                             onTap: () => controller.handleFulfillmentSelection(pos),
                           );
                         },
@@ -1209,7 +1195,7 @@ class PulseStat extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: scheme.textSubtle,
+                        color: scheme.textMuted,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1253,7 +1239,7 @@ class PulseStat extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: scheme.textSubtle,
+                      color: scheme.textMuted,
                     ),
                   ),
                 ],

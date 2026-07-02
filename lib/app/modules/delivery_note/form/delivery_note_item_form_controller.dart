@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 
@@ -112,7 +113,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   @override bool  get requiresBatch => true;
   @override bool  get requiresRack  => false;
-  @override Color get accentColor   => Colors.blueGrey;
+  @override Color get accentColor   => AppColors.gray700;
 
   @override
   bool get isAddMode => !isExistingItem.value;

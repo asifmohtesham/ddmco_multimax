@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
@@ -397,11 +398,12 @@ class PackingSlipController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: scheme.fg,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -459,7 +461,7 @@ class PackingSlipController extends GetxController {
                                     fontSize: 16)),
                             subtitle: Text(subtitle,
                                 style:
-                                    const TextStyle(color: Colors.grey)),
+                                    TextStyle(color: scheme.textMuted)),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               Get.back();

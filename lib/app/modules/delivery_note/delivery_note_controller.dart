@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -353,10 +354,12 @@ class DeliveryNoteController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,7 +390,7 @@ class DeliveryNoteController extends GetxController {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Colors.grey[100],
+                        fillColor: scheme.subtle,
                         contentPadding:
                         const EdgeInsets.symmetric(horizontal: 16),
                       ),
@@ -404,10 +407,11 @@ class DeliveryNoteController extends GetxController {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.search_off,
-                                  size: 64, color: Colors.grey[300]),
+                                  size: 64, color: scheme.textSubtle),
                               const SizedBox(height: 16),
-                              const Text('No POS Uploads found.',
-                                  style: TextStyle(color: Colors.grey)),
+                              Text('No POS Uploads found.',
+                                  style:
+                                      TextStyle(color: scheme.textMuted)),
                             ],
                           ),
                         );
@@ -433,8 +437,8 @@ class DeliveryNoteController extends GetxController {
                               children: [
                                 const SizedBox(height: 4),
                                 Row(children: [
-                                  const Icon(Icons.person_outline,
-                                      size: 14, color: Colors.grey),
+                                  Icon(Icons.person_outline,
+                                      size: 14, color: scheme.textMuted),
                                   const SizedBox(width: 4),
                                   Expanded(
                                       child: Text(posUpload.customer,
@@ -454,8 +458,8 @@ class DeliveryNoteController extends GetxController {
                                 ]),
                               ],
                             ),
-                            trailing: const Icon(Icons.chevron_right,
-                                color: Colors.grey),
+                            trailing: Icon(Icons.chevron_right,
+                                color: scheme.textMuted),
                             onTap: () {
                               Get.back();
                               createNewDeliveryNote(posUpload);
@@ -468,7 +472,7 @@ class DeliveryNoteController extends GetxController {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: scheme.fg,
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.05),

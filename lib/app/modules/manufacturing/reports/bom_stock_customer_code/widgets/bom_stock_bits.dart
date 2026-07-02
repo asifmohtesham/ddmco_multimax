@@ -6,9 +6,11 @@ import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_co
 /// token, theme-aware; red is the scheme error color.
 Color coverageAccent(BuildContext context, bool short) {
   if (short) return Theme.of(context).colorScheme.error;
+  // green700, not green500: the accent doubles as pill/stat TEXT and
+  // green500-on-white is only 3.26:1.
   return Theme.of(context).brightness == Brightness.dark
       ? AppColors.green300
-      : AppColors.green500;
+      : AppColors.green700;
 }
 
 /// Demand status pill: green "Covered" or red "Short N".

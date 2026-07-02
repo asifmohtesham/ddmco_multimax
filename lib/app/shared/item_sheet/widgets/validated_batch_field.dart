@@ -286,7 +286,11 @@ class ValidatedBatchField extends StatelessWidget {
           borderSide:   BorderSide(color: _focusedBorderColor, width: 2),
         ),
         filled:    true,
-        fillColor: isValid ? validFill : Colors.white,
+        // Themed, not Colors.white: a white fill makes the (light)
+        // dark-mode input text invisible while typing.
+        fillColor: isValid
+            ? validFill
+            : Theme.of(context).colorScheme.surface,
         // isDense collapses the ~20px invisible helper/error reserved slot
         // so the buildInputGroup tinted Container ends flush with the
         // visible field boundary.  helperText still renders when non-null.

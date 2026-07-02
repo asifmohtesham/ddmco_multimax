@@ -1,6 +1,7 @@
 import 'dart:ui' as ui show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
@@ -203,13 +204,17 @@ class _JobCardSummaryTile extends StatelessWidget {
   final Map<String, dynamic> row;
   const _JobCardSummaryTile({required this.row});
 
-  // Status → color mapping
-  Color _statusColor(String status, ColorScheme cs) => switch (status) {
-    'Completed'          => Colors.green.shade600,
-    'Work In Progress'   => cs.primary,
-    'Open'               => Colors.orange.shade700,
-    _                    => cs.outline,
-  };
+  // Status → color mapping (x700 light / x300 dark so the chip text stays
+  // readable on its tint in both themes).
+  Color _statusColor(String status, ColorScheme cs) {
+    final dark = cs.brightness == Brightness.dark;
+    return switch (status) {
+      'Completed' => dark ? AppColors.green300 : AppColors.green700,
+      'Work In Progress' => cs.primary,
+      'Open' => dark ? AppColors.orange300 : AppColors.orange700,
+      _ => cs.outline,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {

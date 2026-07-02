@@ -66,9 +66,10 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         children: [

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// Generic compact icon + label + value tile used on the Details tab.
 /// Step 2 — extracted from StockEntryFormScreen._buildCompactField().
@@ -18,21 +19,23 @@ class CompactField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
     final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: scheme.borderStrong),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey),
+          Icon(icon, size: 16, color: scheme.textMuted),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  style:
+                      TextStyle(fontSize: 10, color: scheme.textMuted)),
               Text(value ?? '-',
                   style: const TextStyle(
                       fontSize: 13, fontWeight: FontWeight.w600)),

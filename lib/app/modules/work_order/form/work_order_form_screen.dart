@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/work_order_item_model.dart';
@@ -412,24 +413,30 @@ class _WorkOrderForm extends StatelessWidget {
                       linkedCards.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8, left: 2),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_outlined,
-                            size: 13,
-                            color: Colors.orange.shade700,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Complete all Job Cards to enable "Finish Work Order".',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Colors.orange.shade700,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                          ),
-                        ],
-                      ),
+                      child: Builder(builder: (context) {
+                        final orangeInk = Theme.of(context).brightness ==
+                                Brightness.dark
+                            ? AppColors.orange300
+                            : AppColors.orange700;
+                        return Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_outlined,
+                              size: 13,
+                              color: orangeInk,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Complete all Job Cards to enable "Finish Work Order".',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: orangeInk,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                            ),
+                          ],
+                        );
+                      }),
                     ),
 
                   const SizedBox(height: 4),
@@ -561,9 +568,11 @@ class _WorkOrderForm extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: executing ? null : controller.executeWorkOrder,
+                    // orange700 token, not orange.shade700 — white on the
+                    // material shade was 2.9:1.
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
-                      backgroundColor: Colors.orange.shade700,
+                      backgroundColor: AppColors.orange700,
                       foregroundColor: Colors.white,
                     ),
                     icon: executing
@@ -653,7 +662,7 @@ class _WorkOrderForm extends StatelessWidget {
                     onPressed: executing ? null : controller.finishWorkOrder,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
-                      backgroundColor: Colors.green.shade700,
+                      backgroundColor: AppColors.green700,
                       foregroundColor: Colors.white,
                     ),
                     icon: executing

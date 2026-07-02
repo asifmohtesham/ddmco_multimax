@@ -97,7 +97,7 @@ class SettingsSliderRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(help!,
-                  style: TextStyle(fontSize: 11.5, color: s.textSubtle)),
+                  style: TextStyle(fontSize: 11.5, color: s.textMuted)),
             ),
           Slider(
             value: v,

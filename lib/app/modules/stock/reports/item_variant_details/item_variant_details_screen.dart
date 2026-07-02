@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
@@ -566,17 +567,21 @@ class _StockRow extends StatelessWidget {
   final num    qty;
   const _StockRow({required this.rack, required this.qty});
 
-  Color _qtyColor(ColorScheme cs) {
+  Color _qtyColor(ColorScheme cs, Brightness brightness) {
     if (qty < 0) return cs.error;
     if (qty == 0) return cs.onSurfaceVariant;
-    return const Color(0xFF2E7D32); // green.shade800 — accessible on white
+    // Status ramp: x700 on light surfaces, x300 on dark — a fixed dark
+    // green is unreadable on the dark-mode tint.
+    return brightness == Brightness.dark
+        ? AppColors.green300
+        : AppColors.green700;
   }
 
   @override
   Widget build(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
     final text  = Theme.of(context).textTheme;
-    final color = _qtyColor(cs);
+    final color = _qtyColor(cs, Theme.of(context).brightness);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

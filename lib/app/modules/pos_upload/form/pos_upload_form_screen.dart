@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -347,11 +348,17 @@ class _DetailsTabState extends State<_DetailsTab> {
       }.toList();
 
       // ── Linked-doc banner ─────────────────────────────────────────────────
+      // Status ramp inks (x700 light / x300 dark) — the x500 bases fall
+      // below 4.5:1 as banner text on light surfaces.
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
+      final greenInk = isDark ? AppColors.green300 : AppColors.green700;
+      final blueInk = isDark ? AppColors.blue300 : AppColors.blue700;
       Widget? linkedBanner;
       if (ctrl.isLoadingLinked.value) {
-        linkedBanner = const _StatusBanner(
+        linkedBanner = _StatusBanner(
           icon: Icons.sync,
-          color: Colors.orange,
+          color: orangeInk,
           text: 'Fetching linked document…',
           isSpinning: true,
         );
@@ -364,10 +371,10 @@ class _DetailsTabState extends State<_DetailsTab> {
           icon: isDelivery
               ? Icons.local_shipping_outlined
               : Icons.inventory_2_outlined,
-          color: Colors.green,
+          color: greenInk,
           text:
               '${isDelivery ? 'Delivery Note' : 'Stock Entry'}: ${ctrl.linkedDocName.value}',
-          trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.green),
+          trailing: Icon(Icons.chevron_right, size: 16, color: greenInk),
           onTap: () {
             // TODO: navigate to DN/SE form screen when route is wired
             GlobalSnackbar.info(
@@ -380,9 +387,9 @@ class _DetailsTabState extends State<_DetailsTab> {
       Widget? psBanner;
       if (ctrl.linkedDocType.value == LinkedDocType.deliveryNote) {
         if (ctrl.isLoadingPackingSlips.value) {
-          psBanner = const _StatusBanner(
+          psBanner = _StatusBanner(
             icon: Icons.inventory_outlined,
-            color: Colors.blue,
+            color: blueInk,
             text: 'Loading Packing Slips…',
             isSpinning: true,
           );
@@ -1175,28 +1182,29 @@ class _ItemCardState extends State<_ItemCard> {
 
   _MatchStatus? _resolveMatchStatus() {
     if (!widget.hasLinkedDoc) return null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (widget.isLoadingLinked) {
       return _MatchStatus(
           icon: Icons.hourglass_top,
           label: 'Checking…',
-          color: Colors.orange);
+          color: isDark ? AppColors.orange300 : AppColors.orange700);
     }
     if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       return _MatchStatus(
           icon: Icons.check_circle,
           label: 'Matched',
-          color: Colors.green.shade700);
+          color: isDark ? AppColors.green300 : AppColors.green700);
     }
     if (widget.resolvedSerial != null) {
       return _MatchStatus(
           icon: Icons.check_circle_outline,
           label: 'Matched – no serial',
-          color: Colors.teal.shade600);
+          color: isDark ? AppColors.cyan300 : AppColors.cyan700);
     }
     return _MatchStatus(
         icon: Icons.cancel_outlined,
         label: 'Not found',
-        color: Colors.red.shade600);
+        color: isDark ? AppColors.red300 : AppColors.red700);
   }
 }
 

@@ -21,8 +21,10 @@ void main() {
   testWidgets('buildAppTheme honours a non-brand accent', (tester) async {
     final blue = buildAppTheme(AppScheme.light, Brightness.light,
         accent: AppAccent.blue);
-    expect(blue.colorScheme.primary, AppColors.blue500);
-    expect(blue.primaryColor, AppColors.blue500);
+    // blue600, not blue500: light accents use shades that pass 4.5:1 with
+    // white foregrounds (see theme_contrast_test.dart).
+    expect(blue.colorScheme.primary, AppColors.blue600);
+    expect(blue.primaryColor, AppColors.blue600);
 
     // Default (no accent arg) stays on the maroon brand.
     final brand = buildAppTheme(AppScheme.light, Brightness.light);

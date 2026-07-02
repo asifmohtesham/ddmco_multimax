@@ -137,7 +137,7 @@ class SessionDefaultsScreen extends GetView<SessionDefaultsController> {
           ),
           const SizedBox(height: 6),
           Text('Applied to every new document this session.',
-              style: TextStyle(fontSize: 11.5, color: s.textSubtle)),
+              style: TextStyle(fontSize: 11.5, color: s.textMuted)),
         ],
       ),
     );

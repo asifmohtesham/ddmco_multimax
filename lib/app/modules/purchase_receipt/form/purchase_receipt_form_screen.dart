@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -106,9 +107,10 @@ class PurchaseReceiptFormScreen
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Receipt ID',
+                            Text('Receipt ID',
                                 style: TextStyle(
-                                    color: Colors.grey, fontSize: 12)),
+                                    color: context.scheme.textMuted,
+                                    fontSize: 12)),
                             Text(receipt.name,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold,
@@ -129,8 +131,9 @@ class PurchaseReceiptFormScreen
                   decoration: const InputDecoration(
                     labelText: 'Supplier',
                     border: OutlineInputBorder(),
+                    // fill comes from the themed InputDecorationTheme; a
+                    // hardcoded white fill hides the text in dark mode.
                     filled: true,
-                    fillColor: Colors.white,
                     prefixIcon: Icon(Icons.business),
                     contentPadding:
                         EdgeInsets.symmetric(horizontal: 12, vertical: 14),

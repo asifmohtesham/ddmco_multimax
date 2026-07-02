@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
@@ -115,8 +116,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   labelText:  'Customer',
                   border:     OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person_outline),
+                  // fill comes from the themed InputDecorationTheme; a
+                  // hardcoded white fill hides the text in dark mode.
                   filled:     true,
-                  fillColor:  Colors.white,
                 ),
               ),
             ],
@@ -313,7 +315,14 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     final bool canEdit         =
         controller.packingSlip.value?.docstatus == 0;
 
-    return Obx(() {
+    return Builder(builder: (context) {
+      final scheme = context.scheme;
+      final cs = Theme.of(context).colorScheme;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final greenInk = isDark ? AppColors.green300 : AppColors.green700;
+      final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
+
+      return Obx(() {
       final isLoadingThis =
           controller.isLoadingItemEdit.value &&
           controller.loadingForItemName.value ==
@@ -341,10 +350,10 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isComplete
-                      ? Colors.green.shade50
+                      ? AppColors.green500.withValues(alpha: 0.13)
                       : (packedQty > 0
-                          ? Colors.orange.shade50
-                          : Colors.grey.shade100),
+                          ? AppColors.orange500.withValues(alpha: 0.13)
+                          : scheme.subtle),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -353,10 +362,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       : Icons.inventory_2_outlined,
                   size:  16,
                   color: isComplete
-                      ? Colors.green.shade700
-                      : (packedQty > 0
-                          ? Colors.orange.shade700
-                          : Colors.grey),
+                      ? greenInk
+                      : (packedQty > 0 ? orangeInk : scheme.textMuted),
                 ),
               ),
               const SizedBox(width: 12),
@@ -375,8 +382,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     Text(
                       dnItem.itemName,
                       style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600),
+                          fontSize: 12, color: scheme.textMuted),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -385,14 +391,15 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                         'Row #${dnItem.idx}',
                         style: TextStyle(
                             fontSize: 11,
-                            color: Colors.indigo.shade400),
+                            color: isDark
+                                ? AppColors.blue300
+                                : AppColors.blue700),
                       ),
                     if (dnItem.batchNo != null)
                       Text(
                         'Batch: ${dnItem.batchNo}',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blueGrey.shade700),
+                            fontSize: 11, color: scheme.textMuted),
                       ),
                   ],
                 ),
@@ -407,25 +414,23 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     '${FormattingHelper.formatQty(reqQty)}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: isComplete
-                          ? Colors.green.shade700
-                          : Colors.black87,
+                      color: isComplete ? greenInk : cs.onSurface,
                     ),
                   ),
                   Text(
                     dnItem.uom,
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.grey),
+                    style: TextStyle(
+                        fontSize: 11, color: scheme.textMuted),
                   ),
                 ],
               ),
 
               // Edit chevron
               if (canEdit)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8.0),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
                   child: Icon(Icons.chevron_right,
-                      size: 18, color: Colors.grey),
+                      size: 18, color: scheme.textMuted),
                 ),
             ],
           ),
@@ -457,7 +462,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           rowWidget,
           Positioned.fill(
             child: Container(
-              color: Colors.white.withOpacity(0.65),
+              color: cs.surface.withValues(alpha: 0.65),
               child: const Center(
                 child: SizedBox(
                   width: 22, height: 22,
@@ -468,6 +473,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           ),
         ],
       );
+      });
     });
   }
 

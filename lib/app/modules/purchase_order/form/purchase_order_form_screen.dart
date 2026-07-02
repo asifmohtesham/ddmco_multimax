@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
@@ -103,7 +104,8 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Status', style: TextStyle(color: Colors.grey[600])),
+              Text('Status',
+                  style: TextStyle(color: context.scheme.textMuted)),
               StatusPill(status: po.status),
             ],
           ),
@@ -288,10 +290,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
     IconData? icon,
     bool isBold = false,
   }) {
-    return Row(
+    return Builder(builder: (context) {
+      final scheme = context.scheme;
+      return Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 20, color: Colors.grey),
+          Icon(icon, size: 20, color: scheme.textMuted),
           const SizedBox(width: 12),
         ],
         Expanded(
@@ -299,7 +303,8 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: TextStyle(
+                      fontSize: 12, color: scheme.textMuted)),
               Text(
                 value,
                 style: TextStyle(
@@ -311,6 +316,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           ),
         ),
       ],
-    );
+      );
+    });
   }
 }

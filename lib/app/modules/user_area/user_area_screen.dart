@@ -125,7 +125,7 @@ class _ProfileCard extends StatelessWidget {
                       Text(roleDept,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: s.textSubtle)),
+                          style: TextStyle(fontSize: 12, color: s.textMuted)),
                   ],
                 ),
               ),
@@ -194,13 +194,13 @@ class _Footer extends StatelessWidget {
         if (email.isNotEmpty)
           Text('Signed in as $email',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: s.textSubtle)),
+              style: TextStyle(fontSize: 11, color: s.textMuted)),
         if (ver.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(ver,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: s.textSubtle)),
+                style: TextStyle(fontSize: 11, color: s.textMuted)),
           ),
       ],
     );

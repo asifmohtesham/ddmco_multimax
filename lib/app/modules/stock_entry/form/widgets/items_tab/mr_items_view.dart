@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:collection/collection.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/mr_item_filter_bar.dart';
@@ -38,7 +39,7 @@ class MrItemsView extends StatelessWidget {
                       padding: const EdgeInsets.all(32.0),
                       child: Text(
                         'No ${controller.mrItemFilter.value.toLowerCase()} items.',
-                        style: const TextStyle(color: Colors.grey),
+                        style: TextStyle(color: context.scheme.textMuted),
                       ),
                     ),
                   )

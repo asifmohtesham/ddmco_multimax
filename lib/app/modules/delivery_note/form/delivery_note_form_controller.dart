@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
@@ -634,7 +635,7 @@ class DeliveryNoteFormController extends GetxController
       title:        'Remove Item',
       message:      'Remove "${item.itemName}" from this delivery note?',
       confirmText:  'Remove',
-      confirmColor: Colors.red,
+      confirmColor: AppColors.red700,
       icon:         Icons.delete_outline,
     );
     if (confirmed != true) return;
@@ -732,11 +733,13 @@ class _MultipleMatchSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         child: Column(
@@ -750,7 +753,7 @@ class _MultipleMatchSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Select the item you want to add:',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(color: scheme.textMuted),
             ),
             const SizedBox(height: 16),
             ...candidates.map((item) => ListTile(

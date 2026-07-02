@@ -133,7 +133,7 @@ class UserProfileScreen extends GetView<UserProfileController> {
           Text(subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w500, color: s.textSubtle)),
+                  fontSize: 13, fontWeight: FontWeight.w500, color: s.textMuted)),
         ],
       ],
     );
@@ -359,7 +359,7 @@ class _KvRow extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: s.textSubtle)),
+                        color: s.textMuted)),
                 const SizedBox(height: 2),
                 Text(has ? value! : '—',
                     maxLines: 1,

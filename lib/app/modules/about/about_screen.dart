@@ -43,7 +43,7 @@ class AboutScreen extends GetView<AboutController> {
                 child: Text(
                   '© ${DateTime.now().year} Multimax · Powered by DDMCO',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: s.textSubtle),
+                  style: TextStyle(fontSize: 11, color: s.textMuted),
                 ),
               ),
             ],
@@ -92,7 +92,7 @@ class AboutScreen extends GetView<AboutController> {
                     style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: s.textSubtle)),
+                        color: s.textMuted)),
                 const SizedBox(height: 3),
                 Text(v,
                     style: TextStyle(
@@ -200,7 +200,7 @@ class AboutScreen extends GetView<AboutController> {
                         fontWeight: FontWeight.w600,
                         color: s.text)),
                 Text(item.type,
-                    style: TextStyle(fontSize: 11.5, color: s.textSubtle)),
+                    style: TextStyle(fontSize: 11.5, color: s.textMuted)),
               ],
             ),
           ),
@@ -216,7 +216,7 @@ class AboutScreen extends GetView<AboutController> {
                         color: detailColor)),
               if (item.latency != null)
                 Text(item.latency!,
-                    style: TextStyle(fontSize: 10.5, color: s.textSubtle)),
+                    style: TextStyle(fontSize: 10.5, color: s.textMuted)),
             ],
           ),
         ],

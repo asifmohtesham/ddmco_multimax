@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 // ── Stock Balance drill-down bottom sheets (Phase 2, feature 4) ──────────────────
@@ -261,9 +262,13 @@ class StockLedgerSheetBody extends StatelessWidget {
                       final type = (e['voucher_type'] ?? '').toString();
                       final date = (e['date'] ?? '').toString();
                       final qtyColor = qty > 0
-                          ? Colors.green.shade600
+                          ? (cs.brightness == Brightness.dark
+                              ? AppColors.green300
+                              : AppColors.green700)
                           : qty < 0
-                              ? Colors.red.shade600
+                              ? (cs.brightness == Brightness.dark
+                                  ? AppColors.red300
+                                  : AppColors.red700)
                               : cs.onSurfaceVariant;
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -408,7 +413,9 @@ class ReservationsSheetBody extends StatelessWidget {
                               style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
-                                  color: Colors.orange.shade800),
+                                  color: cs.brightness == Brightness.dark
+                                      ? AppColors.orange300
+                                      : AppColors.orange700),
                             ),
                           ],
                         ),
@@ -512,7 +519,9 @@ class CustomerItemsSheetBody extends StatelessWidget {
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: bal < 0
-                                    ? Colors.red.shade600
+                                    ? (cs.brightness == Brightness.dark
+                                        ? AppColors.red300
+                                        : AppColors.red700)
                                     : cs.onSurface,
                               ),
                             ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
@@ -56,15 +57,17 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
               padding: const EdgeInsets.all(16.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: Column(
                 children: [
-                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
+                  Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: scheme.borderStrong, borderRadius: BorderRadius.circular(2)))),
                   const SizedBox(height: 16),
                   Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
@@ -193,10 +196,10 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.scheme.subtle,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-              boxShadow: [BoxShadow(color: Colors.grey.shade100, blurRadius: 4, offset: const Offset(0, 2))],
+              border: Border.all(color: context.scheme.borderStrong),
+              boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,16 +216,27 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                             controller.availableFields.map((e) => e.label).toList(),
                         onSelected: (label) => _updateFilterField(index, label),
                       ),
-                      child: Row(
-                        children: [
-                          Text(filter.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueAccent)),
-                          const Icon(Icons.arrow_drop_down, color: Colors.blueAccent),
-                        ],
-                      ),
+                      child: Builder(builder: (context) {
+                        final linkColor =
+                            Theme.of(context).brightness == Brightness.dark
+                                ? AppColors.blue300
+                                : AppColors.blue600;
+                        return Row(
+                          children: [
+                            Text(filter.label,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: linkColor)),
+                            Icon(Icons.arrow_drop_down, color: linkColor),
+                          ],
+                        );
+                      }),
                     ),
                     InkWell(
                       onTap: () => _removeFilterRow(index),
-                      child: const Icon(Icons.close, color: Colors.grey, size: 20),
+                      child: Icon(Icons.close,
+                          color: context.scheme.textMuted, size: 20),
                     ),
                   ],
                 ),

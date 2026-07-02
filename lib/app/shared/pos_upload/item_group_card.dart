@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class ItemGroupCard extends StatelessWidget {
@@ -89,11 +90,15 @@ class ItemGroupCard extends StatelessWidget {
         (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
 
+    // Status ramp inks: x700 on light surfaces, x300 on dark, so labels and
+    // stat values stay ≥4.5:1 on the card in both themes.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final greenInk = isDark ? AppColors.green300 : AppColors.green700;
+    final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
 
     // Semantic colour alias — resolved once, used for rail, border,
     // status label, progress ring, and Scanned stat chip.
-    final completionColor =
-        isCompleted ? Colors.green.shade600 : cs.primary;
+    final completionColor = isCompleted ? greenInk : cs.primary;
 
     final currSymbol  = _currencySymbol(currency);
     final rateDisplay = currSymbol.isEmpty
@@ -105,7 +110,7 @@ class ItemGroupCard extends StatelessWidget {
     // under-supply that must not be silently trusted), else primary so it
     // reads as the headline demand figure.
     final Color posUploadColor = (posUploadQty != null && posUploadQty! < totalQty)
-        ? Colors.amber.shade700
+        ? orangeInk
         : cs.primary;
 
     // ── Remaining chip colour logic ────────────────────────────────
@@ -116,9 +121,9 @@ class ItemGroupCard extends StatelessWidget {
       remainingDisplay =
           '${NumberFormat('#,##0.##').format(remainingQty!)} $unit';
       if (remainingQty! <= 0) {
-        remainingColor = Colors.green.shade600;   // fully consumed
+        remainingColor = greenInk;   // fully consumed
       } else if (totalQty > 0 && remainingQty! / totalQty <= 0.2) {
-        remainingColor = Colors.amber.shade700;   // ≤ 20 % left → warn
+        remainingColor = orangeInk;  // ≤ 20 % left → warn
       } else {
         remainingColor = cs.primary;
       }
@@ -130,7 +135,9 @@ class ItemGroupCard extends StatelessWidget {
         color: cs.surface,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(
-          color: isCompleted ? Colors.green.shade600 : cs.outlineVariant,
+          color: isCompleted
+              ? AppColors.green500.withValues(alpha: 0.5)
+              : cs.outlineVariant,
           width: 1,
         ),
       ),

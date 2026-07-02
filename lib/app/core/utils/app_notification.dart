@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// A context-safe notification utility that uses [ScaffoldMessenger]
 /// instead of [Get.snackbar], eliminating LateInitializationError crashes
@@ -54,8 +55,10 @@ abstract class AppNotification {
       );
   }
 
-  static const _successColor = Color(0xFF388E3C);
-  static const _errorColor   = Color(0xFFD32F2F);
-  static const _warningColor = Color(0xFFF57C00);
-  static const _infoColor    = Color(0xFF1565C0);
+  // x700 status-ramp fills (see AppColors): every one carries white text at
+  // ≥4.9:1. The previous material shades failed — white-on-#F57C00 was 2.9:1.
+  static const _successColor = AppColors.green700;
+  static const _errorColor   = AppColors.red700;
+  static const _warningColor = AppColors.orange700;
+  static const _infoColor    = AppColors.blue700;
 }

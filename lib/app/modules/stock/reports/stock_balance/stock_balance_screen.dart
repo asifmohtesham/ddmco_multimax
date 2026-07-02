@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
@@ -493,13 +494,14 @@ class _TotalBar extends StatelessWidget {
     final subtle = cs.onSurfaceVariant.withValues(alpha: 0.7);
 
     // The total balance carries the same red/green/neutral signal as a row.
+    final isDark = cs.brightness == Brightness.dark;
     final balColor = totals.balance < 0
-        ? Colors.red.shade600
+        ? (isDark ? AppColors.red300 : AppColors.red700)
         : totals.balance > 0
-            ? Colors.green.shade700
+            ? (isDark ? AppColors.green300 : AppColors.green700)
             : cs.onSurface;
     final ledgerAccent =
-        totals.balance < 0 ? cs.error : Colors.green.shade600;
+        totals.balance < 0 ? cs.error : AppColors.green500;
 
     return Material(
       color: cs.surface,
@@ -931,13 +933,19 @@ class _StateStyle {
 }
 
 _StateStyle _stateStyle(StockBalanceState state, ColorScheme cs) {
+  // fg follows the status ramp — x700 on light surfaces, x300 on dark —
+  // so the hero/ledger/status text stays ≥4.5:1 in both themes.
+  final isDark = cs.brightness == Brightness.dark;
   switch (state) {
     case StockBalanceState.ok:
-      return _StateStyle(Colors.green.shade600, Colors.green.shade700);
+      return _StateStyle(AppColors.green500,
+          isDark ? AppColors.green300 : AppColors.green700);
     case StockBalanceState.watch:
-      return _StateStyle(Colors.orange.shade600, Colors.orange.shade800);
+      return _StateStyle(AppColors.orange500,
+          isDark ? AppColors.orange300 : AppColors.orange700);
     case StockBalanceState.negative:
-      return _StateStyle(cs.error, Colors.red.shade700);
+      return _StateStyle(
+          cs.error, isDark ? AppColors.red300 : AppColors.red700);
     case StockBalanceState.empty:
       return _StateStyle(cs.outline, cs.onSurfaceVariant);
   }
@@ -1324,13 +1332,25 @@ class _Ledger extends StatelessWidget {
               Expanded(child: cell('Opening', opening, cs.onSurface)),
               divider(),
               Expanded(
-                child: cell('In', inText,
-                    inZero ? subtle : Colors.green.shade600),
+                child: cell(
+                    'In',
+                    inText,
+                    inZero
+                        ? subtle
+                        : (cs.brightness == Brightness.dark
+                            ? AppColors.green300
+                            : AppColors.green700)),
               ),
               divider(),
               Expanded(
-                child: cell('Out', outText,
-                    outZero ? subtle : Colors.red.shade600),
+                child: cell(
+                    'Out',
+                    outText,
+                    outZero
+                        ? subtle
+                        : (cs.brightness == Brightness.dark
+                            ? AppColors.red300
+                            : AppColors.red700)),
               ),
               divider(),
               Expanded(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
@@ -358,9 +359,10 @@ class StockEntryController extends GetxController {
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        decoration: BoxDecoration(
+          color: Get.theme.colorScheme.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(16.0)),
         ),
         child: SafeArea(
           child: Column(
@@ -370,7 +372,8 @@ class StockEntryController extends GetxController {
               const SizedBox(height: 16),
               ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.orange,
+                  // x700/x600 fills keep the white glyphs ≥4.5:1.
+                  backgroundColor: AppColors.orange700,
                   child: Icon(Icons.outbond, color: Colors.white),
                 ),
                 title: const Text('From POS Upload'),
@@ -383,7 +386,7 @@ class StockEntryController extends GetxController {
               const Divider(),
               ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.teal,
+                  backgroundColor: AppColors.cyan700,
                   child: Icon(Icons.assignment, color: Colors.white),
                 ),
                 title: const Text('From Material Request'),
@@ -396,7 +399,7 @@ class StockEntryController extends GetxController {
               const Divider(),
               ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.blue,
+                  backgroundColor: AppColors.blue600,
                   child: Icon(Icons.add, color: Colors.white),
                 ),
                 title: const Text('New Stock Entry'),
@@ -427,11 +430,12 @@ class StockEntryController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: scheme.fg,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -456,7 +460,7 @@ class StockEntryController extends GetxController {
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),
                       filled: true,
-                      fillColor: Colors.grey.shade50,
+                      fillColor: scheme.subtle,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -482,8 +486,7 @@ class StockEntryController extends GetxController {
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                    color: Colors.grey.shade200)),
+                                side: BorderSide(color: scheme.border)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
@@ -516,18 +519,25 @@ class StockEntryController extends GetxController {
                                               .symmetric(
                                               horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
-                                              color: Colors.orange.shade50,
+                                              color: AppColors.orange500
+                                                  .withValues(alpha: 0.13),
                                               borderRadius:
                                                   BorderRadius.circular(
                                                       8),
                                               border: Border.all(
-                                                  color: Colors
-                                                      .orange.shade200)),
+                                                  color: AppColors
+                                                      .orange500
+                                                      .withValues(
+                                                          alpha: 0.35))),
                                           child: Text(pos.status,
                                               style: TextStyle(
                                                   fontSize: 11,
-                                                  color: Colors
-                                                      .orange.shade800,
+                                                  color: Theme.of(context)
+                                                              .brightness ==
+                                                          Brightness.dark
+                                                      ? AppColors.orange300
+                                                      : AppColors
+                                                          .orange700,
                                                   fontWeight:
                                                       FontWeight.bold)),
                                         )
@@ -547,10 +557,10 @@ class StockEntryController extends GetxController {
                                       children: [
                                         Row(
                                           children: [
-                                            const Icon(
+                                            Icon(
                                                 Icons.inventory_2_outlined,
                                                 size: 14,
-                                                color: Colors.grey),
+                                                color: scheme.textMuted),
                                             const SizedBox(width: 4),
                                             Text(
                                               '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
@@ -562,9 +572,9 @@ class StockEntryController extends GetxController {
                                           ],
                                         ),
                                         Text(pos.date,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.grey)),
+                                                color: scheme.textMuted)),
                                       ],
                                     ),
                                   ],
@@ -595,11 +605,12 @@ class StockEntryController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: scheme.fg,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -624,7 +635,7 @@ class StockEntryController extends GetxController {
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),
                       filled: true,
-                      fillColor: Colors.grey.shade50,
+                      fillColor: scheme.subtle,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -652,8 +663,7 @@ class StockEntryController extends GetxController {
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                    color: Colors.grey.shade200)),
+                                side: BorderSide(color: scheme.border)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
@@ -708,9 +718,9 @@ class StockEntryController extends GetxController {
                                       children: [
                                         Row(
                                           children: [
-                                            const Icon(Icons.date_range,
+                                            Icon(Icons.date_range,
                                                 size: 14,
-                                                color: Colors.grey),
+                                                color: scheme.textMuted),
                                             const SizedBox(width: 4),
                                             Text(mr.transactionDate,
                                                 style: const TextStyle(
@@ -719,9 +729,9 @@ class StockEntryController extends GetxController {
                                         ),
                                         Text(
                                             'Items: ${mr.items.length}',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.grey)),
+                                                color: scheme.textMuted)),
                                       ],
                                     ),
                                   ],

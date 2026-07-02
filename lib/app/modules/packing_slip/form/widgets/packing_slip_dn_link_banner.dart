@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/packing_slip/form/ps_dn_reference_resolver.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
@@ -21,50 +22,60 @@ class PackingSlipDnLinkBanner extends StatelessWidget {
         case DnRefStatus.checking:
           return const SizedBox.shrink();
         case DnRefStatus.allLinked:
-          return _allLinkedChip();
+          return _allLinkedChip(context);
         case DnRefStatus.hasUnlinked:
-          return _unlinkedBanner(controller);
+          return _unlinkedBanner(context, controller);
       }
     });
   }
 
-  Widget _allLinkedChip() => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.green.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
-            const SizedBox(width: 8),
-            Text(
-              'All items linked to Delivery Note',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green.shade900),
-            ),
-          ],
-        ),
-      );
+  Widget _allLinkedChip(BuildContext context) {
+    final greenInk = Theme.of(context).brightness == Brightness.dark
+        ? AppColors.green300
+        : AppColors.green700;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.green500.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(8),
+        border:
+            Border.all(color: AppColors.green500.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, size: 16, color: greenInk),
+          const SizedBox(width: 8),
+          Text(
+            'All items linked to Delivery Note',
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: greenInk),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _unlinkedBanner(PackingSlipFormController controller) {
+  Widget _unlinkedBanner(
+      BuildContext context, PackingSlipFormController controller) {
     final orphans = controller.unlinkedItems;
     final canEdit = controller.packingSlip.value?.docstatus == 0;
     final isSaving = controller.isSaving.value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
+        color: AppColors.orange500.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.amber.shade300),
+        border:
+            Border.all(color: AppColors.orange500.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,7 +84,7 @@ class PackingSlipDnLinkBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.warning_amber_rounded,
-                  size: 18, color: Colors.amber.shade800),
+                  size: 18, color: orangeInk),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -82,7 +93,7 @@ class PackingSlipDnLinkBanner extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.amber.shade900),
+                      color: orangeInk),
                 ),
               ),
             ],
@@ -102,9 +113,13 @@ class PackingSlipDnLinkBanner extends StatelessWidget {
                       )
                     : const Icon(Icons.auto_fix_high, size: 16),
                 label: const Text('Resolve'),
+                // orange700-on-white / orange300-on-near-black both clear
+                // 4.5:1 — the old white-on-amber700 was 1.75:1.
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.amber.shade700,
-                  foregroundColor: Colors.white,
+                  backgroundColor:
+                      isDark ? AppColors.orange300 : AppColors.orange700,
+                  foregroundColor:
+                      isDark ? const Color(0xFF15191D) : Colors.white,
                   visualDensity: VisualDensity.compact,
                 ),
               ),

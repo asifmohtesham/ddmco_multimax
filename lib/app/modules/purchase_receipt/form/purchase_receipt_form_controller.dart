@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:intl/intl.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
@@ -651,7 +652,7 @@ class PurchaseReceiptFormController extends GetxController
             ),
             SharedRackField(
               c:           child,
-              accentColor: Colors.green,
+              accentColor: AppColors.green700,
               label:       'Target Rack',
               hint:        'Rack',
               editMode:    true,

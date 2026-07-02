@@ -191,7 +191,11 @@ class ValidatedFieldWidget extends StatelessWidget {
               ),
             ),
             filled: true,
-            fillColor: isValid ? color.withOpacity(0.05) : Colors.white,
+            // Themed, not Colors.white: a white fill makes the (light)
+            // dark-mode input text invisible while typing.
+            fillColor: isValid
+                ? color.withOpacity(0.05)
+                : Theme.of(context).colorScheme.surface,
             suffixIcon: _buildSuffixIcon(),
           ),
           onChanged: onChanged,

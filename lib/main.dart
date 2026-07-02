@@ -115,14 +115,17 @@ ThemeData buildAppTheme(
       labelStyle: const TextStyle(fontWeight: FontWeight.w500),
       unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
     ),
+    // Secondary flips to a LIGHT indigo in dark mode, so anything sitting on
+    // it must use onSecondary (near-black in dark), not hardcoded white —
+    // white-on-#8C8FE0 is 2.95:1 and fails WCAG.
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: scheme.secondary,
-      foregroundColor: Colors.white,
+      foregroundColor: colorScheme.onSecondary,
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: scheme.secondary,
-      contentTextStyle: const TextStyle(color: Colors.white),
-      actionTextColor: Colors.white,
+      contentTextStyle: TextStyle(color: colorScheme.onSecondary),
+      actionTextColor: colorScheme.onSecondary,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.md)),

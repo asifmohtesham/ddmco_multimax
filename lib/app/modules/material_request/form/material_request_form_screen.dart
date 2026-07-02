@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
@@ -127,6 +128,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                   children: [
                     Expanded(
                       child: _buildCompactField(
+                        context: context,
                         label: 'Date',
                         value: controller.transactionDateController.text,
                         icon: Icons.calendar_today_outlined,
@@ -139,6 +141,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildCompactField(
+                        context: context,
                         label: 'Required By',
                         value: controller.scheduleDateController.text,
                         icon: Icons.event_outlined,
@@ -237,13 +240,14 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                                 'REQUEST TYPE',
                                 style: TextStyle(
                                     fontSize: 10,
-                                    color: Colors.grey.shade600,
+                                    color: context.scheme.textMuted,
                                     fontWeight: FontWeight.bold),
                               ),
                               if (isEditable) ...[
                                 const SizedBox(width: 4),
                                 Icon(Icons.edit,
-                                    size: 10, color: Colors.grey.shade500),
+                                    size: 10,
+                                    color: context.scheme.textMuted),
                               ],
                             ],
                           ),
@@ -252,7 +256,8 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                             type,
                             style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Colors.deepPurple.shade900,
+                                color:
+                                    Theme.of(context).colorScheme.onSurface,
                                 fontSize: 15),
                           ),
                         ],
@@ -272,7 +277,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                 child: Text(
                   _typeHelperText(type),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.blueGrey.shade700),
+                      color: context.scheme.textMuted),
                 ),
               ),
             ),
@@ -303,13 +308,14 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                                 'TARGET WAREHOUSE',
                                 style: TextStyle(
                                     fontSize: 10,
-                                    color: Colors.grey.shade600,
+                                    color: context.scheme.textMuted,
                                     fontWeight: FontWeight.bold),
                               ),
                               if (isEditable) ...[
                                 const SizedBox(width: 4),
                                 Icon(Icons.edit,
-                                    size: 10, color: Colors.grey.shade500),
+                                    size: 10,
+                                    color: context.scheme.textMuted),
                               ],
                             ],
                           ),
@@ -322,8 +328,8 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: warehouseText.isNotEmpty
-                                  ? Colors.black87
-                                  : Colors.grey,
+                                  ? Theme.of(context).colorScheme.onSurface
+                                  : context.scheme.textMuted,
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -374,9 +380,9 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             right: 0,
             bottom: MediaQuery.viewInsetsOf(context).bottom,
             child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                boxShadow: const [
                   BoxShadow(
                       color: Colors.black12,
                       blurRadius: 10,
@@ -407,47 +413,52 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
       );
 
   Widget _buildCompactField({
+    required BuildContext context,
     required String label,
     required String? value,
     required IconData icon,
     VoidCallback? onTap,
   }) {
+    final scheme = context.scheme;
     final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: onTap != null ? Colors.white : Colors.grey.shade50,
+        color: onTap != null
+            ? Theme.of(context).colorScheme.surface
+            : scheme.subtle,
         border: Border.all(
-            color: onTap != null
-                ? Colors.grey.shade300
-                : Colors.grey.shade200),
+            color:
+                onTap != null ? scheme.borderStrong : scheme.border),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
           Icon(icon,
               size: 16,
-              color: onTap != null ? Colors.grey.shade600 : Colors.grey.shade400),
+              color:
+                  onTap != null ? scheme.textMuted : scheme.textSubtle),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  style:
+                      TextStyle(fontSize: 10, color: scheme.textMuted)),
               Text(
                 value ?? '—',
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: onTap != null
-                        ? Colors.black87
-                        : Colors.grey.shade500),
+                        ? Theme.of(context).colorScheme.onSurface
+                        : scheme.textMuted),
               ),
             ],
           ),
           const Spacer(),
           if (onTap != null)
             Icon(Icons.edit_calendar_outlined,
-                size: 14, color: Colors.grey.shade400),
+                size: 14, color: scheme.textSubtle),
         ],
       ),
     );
@@ -483,10 +494,10 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           builder: (context, scrollController) {
             return Container(
               padding: const EdgeInsets.all(16.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 children: [
@@ -543,7 +554,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                                     .textTheme
                                     .bodySmall
                                     ?.copyWith(
-                                        color: Colors.grey.shade700),
+                                        color: context.scheme.textMuted),
                               ),
                               isThreeLine: true,
                               trailing: isSelected

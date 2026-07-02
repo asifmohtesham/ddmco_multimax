@@ -81,6 +81,16 @@ When hand-rolling instead of using those widgets, three things must hold:
 
 Verify by toggling the flag in a widget test or on-device — a clean `flutter analyze` proves nothing here.
 
+## Contrast / colour usage
+
+Never hardcode surface or ink colours — they break in the other theme mode. The rules (enforced by `test/unit/theme_contrast_test.dart` and the dark-mode widget tests):
+
+- **Surfaces**: bottom sheets, cards, and input fills use `context.scheme.fg` / `colorScheme.surface` / `scheme.subtle` — never `Colors.white` or `grey.shade50/100`. A hardcoded white sheet renders theme-default text invisible in dark mode (~1.1:1).
+- **Inks**: body text `scheme.text`/`onSurface`, secondary text `scheme.textMuted` (AA at all sizes), decorative icons only `scheme.textSubtle`. Never `Colors.black87`, `Colors.grey`, or `grey.shadeX` as text.
+- **Status colours as text**: use the `AppColors` ramp — x700 in light mode, x300 in dark (`isDark ? AppColors.orange300 : AppColors.orange700`). The x500 bases and material shades (`green.shade600`, `amber.shade700`) fall below 4.5:1 on light surfaces.
+- **Status tints**: fill = `x500.withValues(alpha: 0.13)` over the surface, border ≈ alpha 0.35 — the StatusPill convention. Never pastel `shade50` fills (light islands in dark mode).
+- **Filled buttons/snackbars on status colours**: fill with x700 + white foreground (all ≥4.9:1). White-on-`orange.shade700` is 2.9:1; white-on-`amber.shade700` is 1.75:1.
+
 ## Codebase Docs
 
 The `docs/` folder contains important design and architecture notes:

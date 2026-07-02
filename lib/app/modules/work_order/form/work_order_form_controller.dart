@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
@@ -884,7 +885,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
           content: Text(
             '$count Job Card${count == 1 ? '' : 's'} created automatically',
           ),
-          backgroundColor: const Color(0xFF388E3C),
+          backgroundColor: AppColors.green700,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(12),
           shape: RoundedRectangleBorder(
