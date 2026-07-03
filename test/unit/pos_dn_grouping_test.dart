@@ -108,5 +108,38 @@ void main() {
       expect(keys.contains(primaryCollapseKey('Straps')), isTrue);
       expect(keys.contains(secondaryCollapseKey('Straps', 'ACE')), isTrue);
     });
+
+    test(
+        'secondary-only collapse: hides subgroup rows, keeps header and sibling',
+        () {
+      final tree = groupRows(_rows, PosDnGroupField.itemGroup,
+          secondary: PosDnGroupField.customer);
+
+      // Fully expanded
+      final open = flattenForDisplay(tree, <String>{});
+
+      // Collapse only Straps → ACE
+      final collapsed = flattenForDisplay(tree, {secondaryCollapseKey('Straps', 'ACE')});
+
+      // ACE secondary header should still be in the output
+      expect(
+        collapsed.where((d) =>
+            d.kind == DisplayKind.secondaryHeader && d.node!.key == 'ACE'),
+        isNotEmpty,
+      );
+
+      // Exactly 1 row less (ACE subgroup has 1 row: _rows[1])
+      expect(
+        collapsed.where((d) => d.kind == DisplayKind.row).length,
+        open.where((d) => d.kind == DisplayKind.row).length - 1,
+      );
+
+      // Both MBT secondary headers (one under Buckles, one under Straps) still present
+      expect(
+        collapsed.where((d) =>
+            d.kind == DisplayKind.secondaryHeader && d.node!.key == 'MBT'),
+        hasLength(2),
+      );
+    });
   });
 }
