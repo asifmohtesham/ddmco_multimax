@@ -68,4 +68,45 @@ void main() {
           PosDnGroupField.rate);
     });
   });
+
+  group('flattenForDisplay', () {
+    test('single level: header then its rows; collapse hides rows', () {
+      final tree = groupRows(_rows, PosDnGroupField.itemGroup);
+      final open = flattenForDisplay(tree, <String>{});
+      // Buckles(header,1 row), Straps(header,2 rows), —(header,1 row)
+      expect(open.where((d) => d.kind == DisplayKind.primaryHeader).length, 3);
+      expect(open.where((d) => d.kind == DisplayKind.row).length, 4);
+
+      final collapsed = flattenForDisplay(
+          tree, {primaryCollapseKey('Straps')});
+      expect(collapsed.where((d) => d.kind == DisplayKind.row).length, 2);
+    });
+
+    test('two levels: primary header, secondary headers, rows; nesting order',
+        () {
+      final tree = groupRows(_rows, PosDnGroupField.itemGroup,
+          secondary: PosDnGroupField.customer);
+      final items = flattenForDisplay(tree, <String>{});
+      final straps = items.indexWhere((d) =>
+          d.kind == DisplayKind.primaryHeader && d.node!.key == 'Straps');
+      expect(items[straps + 1].kind, DisplayKind.secondaryHeader); // ACE
+      expect(items[straps + 2].kind, DisplayKind.row);
+
+      // Collapsing the Straps primary hides its secondary headers too.
+      final c = flattenForDisplay(tree, {primaryCollapseKey('Straps')});
+      expect(
+        c.any((d) =>
+            d.kind == DisplayKind.secondaryHeader && d.node!.key == 'ACE'),
+        isFalse,
+      );
+    });
+
+    test('collapseKeysFor returns all header keys', () {
+      final tree = groupRows(_rows, PosDnGroupField.itemGroup,
+          secondary: PosDnGroupField.customer);
+      final keys = collapseKeysFor(tree);
+      expect(keys.contains(primaryCollapseKey('Straps')), isTrue);
+      expect(keys.contains(secondaryCollapseKey('Straps', 'ACE')), isTrue);
+    });
+  });
 }
