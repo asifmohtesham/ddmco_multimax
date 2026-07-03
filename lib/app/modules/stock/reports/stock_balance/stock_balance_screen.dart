@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -8,6 +7,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_controller.dart';
@@ -775,7 +775,7 @@ class _BalanceTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (showImage) ...[
-                      _ItemThumb(
+                      ItemThumbnail(
                         imageUrl: _pick(['item_image'])?.toString(),
                         itemCode: itemCode,
                         itemName: itemName,
@@ -1093,160 +1093,6 @@ class _LocationLine extends StatelessWidget {
       ],
     );
   }
-}
-
-// ── Item thumbnail ─────────────────────────────────────────────────────────────
-
-class _ItemThumb extends StatelessWidget {
-  final String? imageUrl;
-  final String itemCode;
-  final String itemName;
-
-  const _ItemThumb({
-    required this.imageUrl,
-    required this.itemCode,
-    required this.itemName,
-  });
-
-  static const double _size = 46;
-
-  String get _initials {
-    final source = itemName.trim().isNotEmpty ? itemName : itemCode;
-    final words = source
-        .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), '')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .toList();
-    if (words.isEmpty) return '·';
-    final letters = words.take(2).map((w) => w[0]).join();
-    return letters.toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    Widget fallback() => Container(
-          width: _size,
-          height: _size,
-          alignment: Alignment.center,
-          color: cs.secondaryContainer,
-          child: Text(
-            _initials,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: cs.onSecondaryContainer,
-            ),
-          ),
-        );
-
-    final url = imageUrl?.trim() ?? '';
-    final thumb = ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: SizedBox(
-        width: _size,
-        height: _size,
-        child: url.isEmpty
-            ? fallback()
-            : CachedNetworkImage(
-                imageUrl: url,
-                width: _size,
-                height: _size,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => fallback(),
-                errorWidget: (_, __, ___) => fallback(),
-              ),
-      ),
-    );
-
-    // Tap to enlarge (only when there's an actual image to show), without
-    // leaving the report.
-    if (url.isEmpty) return thumb;
-    return GestureDetector(
-      onTap: () => showItemImagePreview(context, url, itemCode, itemName),
-      child: thumb,
-    );
-  }
-}
-
-/// Shows the item image enlarged in an in-screen, dismissible dialog with
-/// pinch/drag zoom. Stays on the report — no navigation.
-void showItemImagePreview(
-  BuildContext context,
-  String url,
-  String itemCode,
-  String itemName,
-) {
-  showDialog<void>(
-    context: context,
-    barrierColor: Colors.black,
-    useSafeArea: false, // let the preview fill the whole screen
-    builder: (ctx) => Dialog(
-      backgroundColor: Colors.black,
-      insetPadding: EdgeInsets.zero,
-      clipBehavior: Clip.hardEdge,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      child: SizedBox.expand(
-        child: Stack(
-          children: [
-            // Full-bleed, zoomable image filling the screen.
-            Positioned.fill(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    fit: BoxFit.contain,
-                    placeholder: (_, __) => const Center(
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2),
-                    ),
-                    errorWidget: (_, __, ___) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 64,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topRight,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                ),
-              ),
-            ),
-            // Caption (item code + name).
-            SafeArea(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Text(
-                    itemName.isNotEmpty ? '$itemCode · $itemName' : itemCode,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
 }
 
 // ── Ledger strip ───────────────────────────────────────────────────────────────
