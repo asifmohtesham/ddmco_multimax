@@ -6,8 +6,11 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_grouping.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_group_header.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_item_rate_tile.dart';
 
 void main() {
   setUpAll(() {
@@ -150,5 +153,57 @@ void main() {
     await tester.pump();
     expect(find.byType(ResultCountPill), findsOneWidget);
     expect(find.textContaining('4'), findsWidgets);
+  });
+
+  testWidgets(
+      'grouped branch renders group headers and collapses on tap',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final c = Get.find<PosDnItemRateController>();
+    c.reportRows.assignAll([
+      {'status': 'New', 'ref_code': '1', 'item_code': 'A',
+       'item_group': 'Bags', 'upload_item': 'BAG A', 'pos_upload': 'K',
+       'idx': 1},
+      {'status': 'New', 'ref_code': '2', 'item_code': 'B',
+       'item_group': 'Bags', 'upload_item': 'BAG B', 'pos_upload': 'K',
+       'idx': 2},
+      {'status': 'New', 'ref_code': '3', 'item_code': 'C',
+       'item_group': 'Straps', 'upload_item': 'STRAP C', 'pos_upload': 'K',
+       'idx': 3},
+    ]);
+    c.hasRun.value = true;
+    c.setPrimaryGroup(PosDnGroupField.itemGroup);
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await tester.pump();
+
+    // Two item-group headers (Bags, Straps), one per group. Tile rows also
+    // render their item_group as a label, so scope the header-title lookup
+    // to descendants of PosDnGroupHeader to avoid over-matching those.
+    expect(find.byType(PosDnGroupHeader), findsNWidgets(2));
+    expect(
+        find.descendant(
+            of: find.byType(PosDnGroupHeader), matching: find.text('Bags')),
+        findsOneWidget);
+    expect(
+        find.descendant(
+            of: find.byType(PosDnGroupHeader),
+            matching: find.text('Straps')),
+        findsOneWidget);
+    expect(find.byType(PosDnItemRateTile), findsNWidgets(3));
+
+    // Collapse the "Bags" group (sorted first, alphabetically) — its two
+    // rows should disappear while the "Straps" row (and both headers) stay.
+    await tester.tap(find.byType(PosDnGroupHeader).first);
+    await tester.pump();
+
+    expect(find.byType(PosDnGroupHeader), findsNWidgets(2));
+    expect(find.byType(PosDnItemRateTile), findsNWidgets(1));
+    expect(find.text('BAG A'), findsNothing);
+    expect(find.text('BAG B'), findsNothing);
+    expect(find.text('STRAP C'), findsOneWidget);
   });
 }
