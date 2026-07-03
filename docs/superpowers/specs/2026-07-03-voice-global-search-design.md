@@ -24,6 +24,9 @@ taps a result to open it — voice never auto-navigates.
 - Runtime `RECORD_AUDIO` permission handling (self-managed by the package,
   mirroring how `mobile_scanner`/`image_picker` already work — no
   `permission_handler` dependency added).
+- Bluetooth-headset microphone dictation (AirPods / earbuds): the recognizer
+  captures from a connected BT mic when one is active. Requires the package's
+  Bluetooth permissions in the manifest.
 - Android platform config (manifest permission + `RecognitionService` query).
   iOS Info.plist keys added for parity so an iOS build does not crash, but
   Android is the tested target.
@@ -129,9 +132,18 @@ mic tap (buildActions)
 **Android** (`android/app/src/main/AndroidManifest.xml`)
 
 - Add `<uses-permission android:name="android.permission.RECORD_AUDIO"/>`.
-  (`INTERNET` already present. Bluetooth-headset permissions from the package
-  README are omitted — the target is a handheld scanner using the built-in mic;
-  they can be added later if BT-mic dictation is ever required.)
+  (`INTERNET` already present.)
+- Add the Bluetooth permissions the package uses to route dictation through a
+  connected BT headset mic (AirPods / earbuds):
+  ```xml
+  <uses-permission android:name="android.permission.BLUETOOTH"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+  ```
+  `BLUETOOTH`/`BLUETOOTH_ADMIN` are legacy (maxSdk 30) and `BLUETOOTH_CONNECT`
+  is the Android 12+ runtime permission; the `speech_to_text` plugin requests
+  `BLUETOOTH_CONNECT` at listen time as needed. No `permission_handler`
+  dependency required.
 - Extend the existing `<queries>` block with the `RecognitionService` intent
   (required on Android SDK 30+ to see the on-device recognizer):
   ```xml
@@ -190,7 +202,9 @@ Widget:
 
 Manual on-device smoke (Android handheld): permission prompt first run;
 dictation fills the field and shows results; cancel is a no-op; denied
-permission shows the message; result tap still opens the document.
+permission shows the message; result tap still opens the document. Repeat once
+with a paired Bluetooth headset (AirPods / earbuds) active to confirm dictation
+captures from the BT mic and the `BLUETOOTH_CONNECT` prompt is handled.
 
 ## Files
 
