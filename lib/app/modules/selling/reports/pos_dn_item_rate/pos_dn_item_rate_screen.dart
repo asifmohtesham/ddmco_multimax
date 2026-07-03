@@ -6,7 +6,10 @@ import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_grouping.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_group_by_bar.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_group_header.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_item_rate_filter_sheet.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_item_rate_tile.dart';
 
@@ -37,6 +40,25 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
       ));
     });
     return chips;
+  }
+
+  Widget _buildDisplayItem(BuildContext context, DisplayItem item) {
+    switch (item.kind) {
+      case DisplayKind.primaryHeader:
+      case DisplayKind.secondaryHeader:
+        final key = item.collapseKey!;
+        return PosDnGroupHeader(
+          node: item.node!,
+          isSecondary: item.kind == DisplayKind.secondaryHeader,
+          isExpanded: !controller.collapsedGroups.contains(key),
+          onToggle: () => controller.toggleGroupCollapsed(key),
+        );
+      case DisplayKind.row:
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: PosDnItemRateTile(row: item.row!),
+        );
+    }
   }
 
   @override
@@ -104,6 +126,23 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                         counts: counts,
                         value: controller.statusFilter.value,
                         onChanged: controller.setStatusFilter,
+                      ),
+                    ),
+                  ),
+
+                // ── Group-by bar ─────────────────────────────────────────
+                if (!controller.isRunning.value &&
+                    controller.reportRows.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
+                      child: PosDnGroupByBar(
+                        primary: controller.primaryGroup.value,
+                        secondary: controller.secondaryGroup.value,
+                        onPrimaryChanged: controller.setPrimaryGroup,
+                        onSecondaryChanged: controller.setSecondaryGroup,
+                        onExpandAll: controller.expandAllGroups,
+                        onCollapseAll: controller.collapseAllGroups,
                       ),
                     ),
                   ),
@@ -215,7 +254,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                       ),
                     ),
                   )
-                else ...[
+                else if (!controller.isGrouped) ...[
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                     sliver: SliverList(
@@ -225,6 +264,26 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                           child: PosDnItemRateTile(row: rows[index]),
                         ),
                         childCount: rows.length,
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding:
+                          EdgeInsets.fromLTRB(12, 4, 12, 16 + bottomInset),
+                      child: _EndOfListFooter(
+                        totals: PosDnItemRateController.sumTotals(rows),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildDisplayItem(
+                            context, controller.displayItems[index]),
+                        childCount: controller.displayItems.length,
                       ),
                     ),
                   ),
