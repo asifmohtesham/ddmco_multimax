@@ -425,6 +425,25 @@ class AppNavDrawer extends StatelessWidget {
                           currentRoute: currentRoute,
                         ),
                       ),
+                      // ── Selling > Reports ────────────────────────────────────
+                      _GuardedSection(
+                        doctypes: ['POS Upload'],
+                        permType: 'report',
+                        children: [
+                          const _NavSubheading('Reports'),
+                          DocTypeGuard(
+                            doctype: 'POS Upload',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'POS & DN Item Rate',
+                              icon: Icons.price_change_outlined,
+                              route: AppRoutes.POS_DN_ITEM_RATE,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ];

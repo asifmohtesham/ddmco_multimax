@@ -44,6 +44,7 @@ const List<PermEntry> kManufacturingPermissions = [
 
 const List<PermEntry> kSellingPermissions = [
   (doctype: 'POS Upload', permType: 'read'),
+  (doctype: 'POS Upload', permType: 'report'), // POS & DN Item Rate report
 ];
 
 const List<PermEntry> kAppPermissions = [

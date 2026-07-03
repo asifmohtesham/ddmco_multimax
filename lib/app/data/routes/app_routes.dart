@@ -38,6 +38,7 @@ abstract class AppRoutes {
   static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
   static const STOCK_BALANCE              = _Paths.STOCK_BALANCE;
   static const BOM_STOCK_CUSTOMER_CODE    = _Paths.BOM_STOCK_CUSTOMER_CODE;
+  static const POS_DN_ITEM_RATE       = _Paths.POS_DN_ITEM_RATE;
 }
 
 abstract class _Paths {
@@ -77,4 +78,5 @@ abstract class _Paths {
   static const ITEM_VARIANT_DETAILS  = '/stock/reports/item-variant-details';
   static const STOCK_BALANCE              = '/stock/reports/stock-balance';
   static const BOM_STOCK_CUSTOMER_CODE    = '/manufacturing/reports/bom-stock-customer-code';
+  static const POS_DN_ITEM_RATE       = '/selling/reports/pos-dn-item-rate';
 }

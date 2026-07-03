@@ -11,6 +11,8 @@ import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_screen.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_binding.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_screen.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_binding.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
@@ -219,6 +221,12 @@ class AppPages {
       name: AppRoutes.BOM_STOCK_CUSTOMER_CODE,
       page: () => const BomStockCustomerCodeScreen(),
       binding: BomStockCustomerCodeBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.POS_DN_ITEM_RATE,
+      page: () => const PosDnItemRateScreen(),
+      binding: PosDnItemRateBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
