@@ -81,6 +81,14 @@ When hand-rolling instead of using those widgets, three things must hold:
 
 Verify by toggling the flag in a widget test or on-device — a clean `flutter analyze` proves nothing here.
 
+## List / report screen conventions
+
+Any vertically-scrollable result list (list screens, report screens) MUST:
+
+- **Scrollbar.** Wrap the `CustomScrollView`/`ListView` in a `Scrollbar` sharing a single `ScrollController` with the scroll view — users need a scroll-position indicator on long result sets. (No screen did this before the POS & DN Item Rate report; it is now the standard.)
+- **Clear the system nav bar.** The last item must not sit under the Android gesture/nav bar. Read `MediaQuery.of(context).padding.bottom` once and add it to the trailing padding or footer (see `delivery_note_screen` and the POS & DN Item Rate report).
+- **End-of-list marker.** End the list with an "End of list" marker so the user knows they've reached the bottom. **Report** lists put a totals summary there — sum the quantity columns, **never** rate columns (summing rates across items is meaningless).
+
 ## Contrast / colour usage
 
 Never hardcode surface or ink colours — they break in the other theme mode. The rules (enforced by `test/unit/theme_contrast_test.dart` and the dark-mode widget tests):
@@ -98,3 +106,4 @@ The `docs/` folder contains important design and architecture notes:
 - `docs/app_bar_conventions.md` — AppBar/header standards for list vs. form screens
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
+- `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact
