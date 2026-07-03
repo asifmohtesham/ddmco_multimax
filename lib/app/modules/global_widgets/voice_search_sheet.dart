@@ -38,6 +38,15 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
+  @override
+  void dispose() {
+    // Release the recognizer if the sheet is dismissed without a normal
+    // finish (back button / barrier tap) so the mic never keeps listening
+    // with no visible UI. cancel() never throws and is safe post-finish.
+    widget.engine.cancel();
+    super.dispose();
+  }
+
   Future<void> _start() async {
     await widget.engine.start(
       onResult: (text, isFinal) {
@@ -80,44 +89,42 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: scheme.fg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.fromLTRB(
-            24, 20, 24, 20 + MediaQuery.of(context).padding.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _statusIcon(scheme),
-            const SizedBox(height: 16),
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 20, 24, 20 + MediaQuery.of(context).padding.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _statusIcon(scheme),
+          const SizedBox(height: 16),
+          Text(
+            _headline(),
+            style: TextStyle(color: scheme.textMuted, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          if (_isListening)
             Text(
-              _headline(),
-              style: TextStyle(color: scheme.textMuted, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            if (_isListening)
-              Text(
-                _text.isEmpty ? '…' : _text,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: scheme.text,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              )
-            else
-              Text(
-                _detail(),
-                textAlign: TextAlign.center,
-                style: TextStyle(color: scheme.text, fontSize: 15),
+              _text.isEmpty ? '…' : _text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: scheme.text,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
               ),
-            const SizedBox(height: 20),
-            _actionRow(scheme),
-          ],
-        ),
+            )
+          else
+            Text(
+              _detail(),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.text, fontSize: 15),
+            ),
+          const SizedBox(height: 20),
+          _actionRow(scheme),
+        ],
       ),
     );
   }

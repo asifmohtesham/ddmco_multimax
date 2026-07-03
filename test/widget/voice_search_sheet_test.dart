@@ -28,13 +28,21 @@ class FakeVoiceSearchEngine implements VoiceSearchEngine {
   Future<void> cancel() async => cancelCalls++;
 }
 
+/// Captures the outcome of `VoiceSearchSheet.show`. [completed] flips true only
+/// once the future resolves, so a returned `null` is provably distinct from
+/// "not yet returned" (both would otherwise read as `value == null`).
+class _ShowResult {
+  bool completed = false;
+  String? value;
+}
+
 /// Pumps a host screen with a button that opens [VoiceSearchSheet.show], taps
 /// it, and settles so the sheet is open and [fake]'s callbacks are wired.
-/// The eventual return value of `show` is written into [result].
+/// The eventual return value of `show` is recorded into [result].
 Future<void> _openSheet(
   WidgetTester tester,
   FakeVoiceSearchEngine fake,
-  ValueNotifier<String?> result,
+  _ShowResult result,
 ) async {
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
@@ -42,7 +50,10 @@ Future<void> _openSheet(
         builder: (context) => Center(
           child: ElevatedButton(
             onPressed: () async {
-              result.value = await VoiceSearchSheet.show(context, engine: fake);
+              final r = await VoiceSearchSheet.show(context, engine: fake);
+              result
+                ..completed = true
+                ..value = r;
             },
             child: const Text('open'),
           ),
@@ -58,7 +69,7 @@ void main() {
   testWidgets('shows the live partial transcript while listening',
       (tester) async {
     final fake = FakeVoiceSearchEngine();
-    final result = ValueNotifier<String?>(null);
+    final result = _ShowResult();
     await _openSheet(tester, fake, result);
 
     fake.onResult!('blue str', false);
@@ -70,19 +81,46 @@ void main() {
   testWidgets('a final result pops the sheet with the transcript',
       (tester) async {
     final fake = FakeVoiceSearchEngine();
-    final result = ValueNotifier<String?>(null);
+    final result = _ShowResult();
     await _openSheet(tester, fake, result);
 
     fake.onResult!('blue strap', true);
     await tester.pumpAndSettle();
 
+    expect(result.completed, isTrue);
     expect(result.value, 'blue strap');
+  });
+
+  testWidgets('a final result is trimmed before popping', (tester) async {
+    final fake = FakeVoiceSearchEngine();
+    final result = _ShowResult();
+    await _openSheet(tester, fake, result);
+
+    fake.onResult!('  blue strap  ', true);
+    await tester.pumpAndSettle();
+
+    expect(result.completed, isTrue);
+    expect(result.value, 'blue strap');
+  });
+
+  testWidgets('an empty / whitespace-only final result pops with null',
+      (tester) async {
+    final fake = FakeVoiceSearchEngine();
+    final result = _ShowResult();
+    await _openSheet(tester, fake, result);
+
+    fake.onResult!('   ', true);
+    await tester.pumpAndSettle();
+
+    // completed distinguishes "popped with null" from "never returned".
+    expect(result.completed, isTrue);
+    expect(result.value, isNull);
   });
 
   testWidgets('permission-denied state shows a message and does not crash',
       (tester) async {
     final fake = FakeVoiceSearchEngine();
-    final result = ValueNotifier<String?>(null);
+    final result = _ShowResult();
     await _openSheet(tester, fake, result);
 
     fake.onState!(VoiceEngineState.permissionDenied);
@@ -101,7 +139,7 @@ void main() {
   testWidgets('notAvailable state shows the unavailable message',
       (tester) async {
     final fake = FakeVoiceSearchEngine();
-    final result = ValueNotifier<String?>(null);
+    final result = _ShowResult();
     await _openSheet(tester, fake, result);
 
     fake.onState!(VoiceEngineState.notAvailable);
