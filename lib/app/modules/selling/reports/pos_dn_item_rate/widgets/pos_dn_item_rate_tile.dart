@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_bits.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
@@ -71,6 +74,9 @@ class PosDnItemRateTile extends StatelessWidget {
     final customerLine =
         [customer, custGroup].where((s) => s.isNotEmpty).join(' · ');
 
+    final itemImage = (row['item_image'] ?? '').toString();
+    final canOpenItem = itemCode.isNotEmpty;
+
     return Card(
       elevation: 0,
       clipBehavior: Clip.antiAlias,
@@ -79,116 +85,147 @@ class PosDnItemRateTile extends StatelessWidget {
         side: BorderSide(color: cs.outlineVariant),
       ),
       color: cs.surfaceContainerLowest,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Hero: customer code + item code + status ───────────────────
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    refCode.isEmpty ? '—' : refCode,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'ShureTechMono',
+      child: InkWell(
+        onTap: canOpenItem
+            ? () => Get.toNamed(AppRoutes.ITEM_FORM,
+                arguments: {'itemCode': itemCode})
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Hero: thumbnail + customer code + status ─────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ItemThumbnail(
+                    imageUrl: itemImage.isEmpty ? null : itemImage,
+                    itemCode: itemCode,
+                    itemName: dnItem.isNotEmpty ? dnItem : uploadItem,
+                    size: 40,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onLongPress: refCode.isEmpty
+                                    ? null
+                                    : () {
+                                        Clipboard.setData(
+                                            ClipboardData(text: refCode));
+                                        GlobalSnackbar.success(
+                                          title: 'Copied',
+                                          message: 'Customer code $refCode',
+                                        );
+                                      },
+                                child: Text(
+                                  refCode.isEmpty ? '—' : refCode,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'ShureTechMono',
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            PosDnStatusPill(status: status),
+                          ],
+                        ),
+                        if (itemCode.isNotEmpty || itemGroup.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (itemCode.isNotEmpty)
+                                Text(itemCode,
+                                    style: theme.textTheme.labelSmall
+                                        ?.copyWith(color: cs.onSurfaceVariant)),
+                              if (itemCode.isNotEmpty && itemGroup.isNotEmpty)
+                                Text(' · ',
+                                    style: theme.textTheme.labelSmall
+                                        ?.copyWith(color: cs.onSurfaceVariant)),
+                              if (itemGroup.isNotEmpty)
+                                Text(itemGroup,
+                                    style: theme.textTheme.labelSmall
+                                        ?.copyWith(color: cs.onSurfaceVariant)),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+
+              // ── Item names: the naming gap is the point — show both ──────
+              if (dnItem.isNotEmpty) _NameRow(label: 'DN', value: dnItem),
+              if (uploadItem.isNotEmpty) _NameRow(label: 'POS', value: uploadItem),
+              if (customerLine.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (customer.isNotEmpty)
+                      Text(customer,
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant)),
+                    if (customer.isNotEmpty && custGroup.isNotEmpty)
+                      Text(' · ',
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant)),
+                    if (custGroup.isNotEmpty)
+                      Text(custGroup,
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant)),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                PosDnStatusPill(status: status),
               ],
-            ),
-            if (itemCode.isNotEmpty || itemGroup.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
+              const SizedBox(height: 8),
+
+              // ── Numbers ──────────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (itemCode.isNotEmpty)
-                    Text(
-                      itemCode,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                  StatCell(label: 'POS Qty', value: formatQty(toNum(row['upload_qty']))),
+                  StatCell(label: 'POS Rate', value: formatQty(toNum(row['upload_rate']))),
+                  StatCell(label: 'DN Qty', value: formatQty(toNum(row['dn_qty']))),
+                ],
+              ),
+
+              // ── Voucher links ────────────────────────────────────────────
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (dnName.isNotEmpty)
+                    _VoucherChip(
+                      icon: Icons.local_shipping_outlined,
+                      label: dnName,
+                      onTap: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+                          arguments: {'name': dnName, 'mode': 'edit'}),
                     ),
-                  if (itemCode.isNotEmpty && itemGroup.isNotEmpty)
-                    Text(
-                      ' · ',
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                  if (itemGroup.isNotEmpty)
-                    Text(
-                      itemGroup,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                  if (posUpload.isNotEmpty)
+                    _VoucherChip(
+                      icon: Icons.cloud_upload_outlined,
+                      label: idx.isEmpty ? posUpload : '$posUpload · #$idx',
+                      onTap: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM,
+                          arguments: {'name': posUpload, 'mode': 'edit'}),
                     ),
                 ],
               ),
             ],
-            const SizedBox(height: 8),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
-
-            // ── Item names: the naming gap is the point — show both ────────
-            if (dnItem.isNotEmpty) _NameRow(label: 'DN', value: dnItem),
-            if (uploadItem.isNotEmpty) _NameRow(label: 'POS', value: uploadItem),
-            if (customerLine.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (customer.isNotEmpty)
-                    Text(customer,
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
-                  if (customer.isNotEmpty && custGroup.isNotEmpty)
-                    Text(' · ',
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
-                  if (custGroup.isNotEmpty)
-                    Text(custGroup,
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant)),
-                ],
-              ),
-            ],
-            const SizedBox(height: 8),
-
-            // ── Numbers ────────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                StatCell(label: 'POS Qty', value: formatQty(toNum(row['upload_qty']))),
-                StatCell(label: 'POS Rate', value: formatQty(toNum(row['upload_rate']))),
-                StatCell(label: 'DN Qty', value: formatQty(toNum(row['dn_qty']))),
-              ],
-            ),
-
-            // ── Voucher links ──────────────────────────────────────────────
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                if (dnName.isNotEmpty)
-                  _VoucherChip(
-                    icon: Icons.local_shipping_outlined,
-                    label: dnName,
-                    onTap: () => Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
-                        arguments: {'name': dnName, 'mode': 'edit'}),
-                  ),
-                if (posUpload.isNotEmpty)
-                  _VoucherChip(
-                    icon: Icons.cloud_upload_outlined,
-                    label: idx.isEmpty ? posUpload : '$posUpload · #$idx',
-                    onTap: () => Get.toNamed(AppRoutes.POS_UPLOAD_FORM,
-                        arguments: {'name': posUpload, 'mode': 'edit'}),
-                  ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

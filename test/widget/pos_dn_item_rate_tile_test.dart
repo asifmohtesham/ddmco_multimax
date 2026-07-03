@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_item_rate_tile.dart';
 
 Widget _wrap(Map<String, dynamic> row, {Brightness brightness = Brightness.light}) =>
@@ -30,6 +34,10 @@ const _newRow = {
 };
 
 void main() {
+  // GetMaterialApp keeps its navigator/route state in a global singleton;
+  // without a reset, route assertions in one test can leak into the next.
+  tearDown(Get.reset);
+
   testWidgets('New row: shows pill, hero code+item, both item names, numbers',
       (tester) async {
     await tester.pumpWidget(_wrap(_newRow));
@@ -110,5 +118,66 @@ void main() {
       expect(posDnStatusAccent(ctx, 'New'), AppColors.green300);
       expect(posDnStatusAccent(ctx, 'No delivery line'), AppColors.orange300);
     });
+  });
+
+  testWidgets('renders a thumbnail (initials) for a New row', (tester) async {
+    await tester.pumpWidget(_wrap(_newRow));
+    // ItemThumbnail present; initials from 'STRAPS T/X PRINT 40mm' -> 'ST'
+    expect(find.byType(ItemThumbnail), findsOneWidget);
+  });
+
+  testWidgets('tapping the card navigates to ITEM_FORM when item_code present',
+      (tester) async {
+    await tester.pumpWidget(GetMaterialApp(
+      initialRoute: '/home',
+      getPages: [
+        GetPage(name: '/home', page: () => Scaffold(
+          body: Center(child: SizedBox(width: 380,
+              child: PosDnItemRateTile(row: _newRow))))),
+        GetPage(name: AppRoutes.ITEM_FORM,
+            page: () => const Scaffold(body: Text('ITEM FORM STUB'))),
+      ],
+    ));
+    // Tap the card body (avoid the thumbnail and voucher chips).
+    await tester.tapAt(tester.getCenter(find.text('DN')));
+    await tester.pumpAndSettle();
+    expect(find.text('ITEM FORM STUB'), findsOneWidget);
+    expect(Get.arguments, {'itemCode': '2001272'});
+  });
+
+  testWidgets('card is NOT tappable for a No code row (no item_code)',
+      (tester) async {
+    await tester.pumpWidget(GetMaterialApp(
+      initialRoute: '/home',
+      getPages: [
+        GetPage(name: '/home', page: () => Scaffold(
+          body: Center(child: SizedBox(width: 380, child: PosDnItemRateTile(row: const {
+            'status': 'No code', 'upload_item': 'CARD CASE',
+            'pos_upload': 'KA-1', 'idx': 1,
+          }))))),
+        GetPage(name: AppRoutes.ITEM_FORM,
+            page: () => const Scaffold(body: Text('ITEM FORM STUB'))),
+      ],
+    ));
+    await tester.tapAt(tester.getCenter(find.text('CARD CASE')));
+    await tester.pumpAndSettle();
+    expect(find.text('ITEM FORM STUB'), findsNothing);
+  });
+
+  testWidgets('long-pressing the customer code copies it to the clipboard',
+      (tester) async {
+    final copied = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied.add(call);
+      return null;
+    });
+    await tester.pumpWidget(_wrap(_newRow));
+    await tester.longPress(find.text('5067101'));
+    await tester.pump();
+    expect(copied, isNotEmpty);
+    expect(copied.first.arguments['text'], '5067101');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 }
