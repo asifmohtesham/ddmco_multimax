@@ -1,9 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 
@@ -104,5 +106,49 @@ void main() {
     await tester.pump();
     expect(find.text('Report not deployed on this instance.'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('shows an end-of-list footer with summed quantities',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final c = Get.find<PosDnItemRateController>();
+    c.reportRows.assignAll([
+      {'status': 'New', 'ref_code': '1', 'item_code': 'A',
+       'upload_item': 'X', 'upload_qty': 84, 'dn_qty': 12, 'pos_upload': 'K', 'idx': 1},
+      {'status': 'New', 'ref_code': '2', 'item_code': 'B',
+       'upload_item': 'Y', 'upload_qty': 12, 'dn_qty': 12, 'pos_upload': 'K', 'idx': 2},
+    ]);
+    c.hasRun.value = true;
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await tester.pump();
+
+    expect(find.textContaining('End of list'), findsOneWidget);
+    // POS Qty total 96, DN Qty total 24 appear in the footer.
+    expect(find.textContaining('96'), findsWidgets);
+    expect(find.textContaining('24'), findsWidgets);
+  });
+
+  testWidgets('wraps the scroll view in a Scrollbar', (tester) async {
+    final c = Get.find<PosDnItemRateController>();
+    c.reportRows.assignAll(fourRows());
+    c.hasRun.value = true;
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await tester.pump();
+    expect(find.byType(Scrollbar), findsOneWidget);
+  });
+
+  testWidgets('shows a ResultCountPill with the filtered row count',
+      (tester) async {
+    final c = Get.find<PosDnItemRateController>();
+    c.reportRows.assignAll(fourRows()); // 4 rows
+    c.hasRun.value = true;
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await tester.pump();
+    expect(find.byType(ResultCountPill), findsOneWidget);
+    expect(find.textContaining('4'), findsWidgets);
   });
 }
