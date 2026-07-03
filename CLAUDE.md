@@ -99,10 +99,36 @@ Never hardcode surface or ink colours — they break in the other theme mode. Th
 - **Status tints**: fill = `x500.withValues(alpha: 0.13)` over the surface, border ≈ alpha 0.35 — the StatusPill convention. Never pastel `shade50` fills (light islands in dark mode).
 - **Filled buttons/snackbars on status colours**: fill with x700 + white foreground (all ≥4.9:1). White-on-`orange.shade700` is 2.9:1; white-on-`amber.shade700` is 1.75:1.
 
+## Versioning
+
+Every version bump MUST follow `docs/versioning_conventions.md` — read it each time.
+Do **not** default to a PATCH bump; historically features were mis-shipped as PATCH.
+
+`pubspec.yaml` `version: X.Y.Z+B` — `X.Y.Z` is semver; `B` is the Play Store `versionCode`
+and **always increments by 1** on every release (independent of semver).
+
+Decide the semver field by analysing everything since the last tag — commit prefixes
+**and** the actual diff:
+
+```bash
+LAST=$(git describe --tags --abbrev=0)
+git log --pretty='%s' "$LAST..HEAD" && git diff --stat "$LAST..HEAD"
+```
+
+- Any breaking change (`feat!`/`fix!`/`BREAKING CHANGE:`, or backend/workflow incompatibility) → **MAJOR** (`X+1.0.0`).
+- Else any `feat:` (new module/screen/report/flow) → **MINOR** (`X.Y+1.0`).
+- Else fixes/polish/refactor/docs/chore only → **PATCH** (`X.Y.Z+1`).
+- **Highest level wins**; MINOR resets PATCH to 0, MAJOR resets both. The diff overrides a
+  mislabeled commit (a `fix:` that adds a `lib/app/modules/**` module is a feature → MINOR).
+
+`dart run tool/bump_version.dart` classifies the range and proposes the next version
+(dry-run; `--write` applies it; `--major/--minor/--patch` override the classification).
+
 ## Codebase Docs
 
 The `docs/` folder contains important design and architecture notes:
 
+- `docs/versioning_conventions.md` — semver bump procedure (diff-driven; MAJOR/MINOR/PATCH + build-number rules)
 - `docs/app_bar_conventions.md` — AppBar/header standards for list vs. form screens
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
