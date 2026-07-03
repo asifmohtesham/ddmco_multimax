@@ -77,10 +77,11 @@ controller and reuses the global `ApiProvider`.
 
 ### Filter split
 
-- **Server-side** (via shared `ReportFilterSheet`; sent as report filters):
+- **Server-side** (via a bespoke multi-select filter sheet — the shared
+  `ReportFilterSheet` is single-select only, so this module copies the
+  `bom_stock_filter_sheet` chips + link-picker pattern; sent as report filters):
   POS Upload (multi), From Date / To Date, Customer (multi), Customer Group (multi),
   Item Group (multi), Show already-mapped (check), Only coded (check).
-  Multi-selects use `ReportFilterType.doctypeLink`; dates `datePicker`.
 - **Client-side** (instant, on fetched rows): status chips
   (All / New / No delivery line / No code — plus Already mapped only when present
   in the data), free-text search over ref_code / item names / customer.
@@ -101,14 +102,18 @@ performance caveat). User may clear it.
   from fetched rows; tapping a chip applies that status filter.
 - **Status chip row:** `SelectableFilterChip` group as listed above.
 - **Body:** `CustomScrollView` + `SliverList` of tiles; `DocCardSkeleton` while
-  loading; glyph `ListEmptyState` when empty; `ResultCountPill` + `ListEndFooter`.
+  loading; glyph empty state when empty. Row counts are conveyed by the summary
+  strip and status-chip counts; the report is non-paginated, so there is no
+  end-of-list footer (matching the `bom_stock_customer_code` / Stock Balance
+  report-screen convention, which uses neither `ResultCountPill` nor `ListEndFooter`).
 
 ### Row card (`PosDnItemRateTile`) — one per (upload line, item_code)
 
 - **Leading:** `StatusPill`, app colour ramp (never the Desk hex codes):
   New = green, No delivery line = orange, No code = neutral/muted,
   Already mapped = subtle/grey. x700 light / x300 dark for text; tint fill
-  `x500 @ alpha 0.13` per the contrast conventions.
+  `accent @ alpha 0.14` (matching the existing BOM-report `StatusPill`; the
+  CLAUDE.md StatusPill convention cites 0.13 — the report tiles use 0.14).
 - **Hero line:** `ref_code` prominent + `item_code` beside it.
 - **Detail rows:** DN item name vs POS item name (both shown — the naming gap is
   the point), Customer, Item Group.
