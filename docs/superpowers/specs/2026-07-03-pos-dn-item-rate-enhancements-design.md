@@ -77,9 +77,12 @@ New subsection "List / report screen conventions":
 Applied to the POS & DN report now; retrofitting existing screens
 (Stock Balance, BOM Stock, list screens) is a separate opt-in follow-up.
 
-## Extra suggestions (offered; item 1 recommended)
-1. **Long-press customer code → copy to clipboard.** The report exists to help
-   transcribe "New" codes into Desk by hand; one-tap copy speeds that. Low cost.
+## Extra suggestions
+1. **Long-press customer code → copy to clipboard.** — **APPROVED, in scope.**
+   The report exists to help transcribe "New" codes into Desk by hand; one-tap
+   copy speeds that. Long-press the `ref_code` hero text → `Clipboard.setData` +
+   a brief confirmation snackbar. Item-less rows (no `ref_code`) have nothing to
+   copy → no-op.
 2. **Sort / New-first grouping** — deferred; the status chips already cover the
    main need and v1 was intentionally sort-free.
 
