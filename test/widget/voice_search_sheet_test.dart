@@ -119,6 +119,28 @@ void main() {
     expect(result.value, isNull);
   });
 
+  testWidgets('Done resolves via fallback even when stop() emits no terminal '
+      'state', (tester) async {
+    final fake = FakeVoiceSearchEngine();
+    final result = _ShowResult();
+    await _openSheet(tester, fake, result);
+
+    // Capture a partial transcript; isFinal false keeps the sheet listening.
+    fake.onResult!('blue strap', false);
+    await tester.pump();
+
+    // stop() (fake) increments a counter and emits NO terminal state — the
+    // exact Android hang. The fallback timer must resolve the sheet anyway.
+    await tester.tap(find.text('Done'));
+    await tester.pump(); // let _stop() run and arm the fallback timer.
+    expect(result.completed, isFalse); // not yet — still within the window.
+
+    await tester.pump(const Duration(milliseconds: 1300)); // past the fallback.
+
+    expect(result.completed, isTrue);
+    expect(result.value, 'blue strap');
+  });
+
   testWidgets('permission-denied state shows a message and does not crash',
       (tester) async {
     final fake = FakeVoiceSearchEngine();

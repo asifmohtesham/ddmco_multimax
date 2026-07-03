@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -31,6 +33,7 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
   String _text = '';
   bool _busy = false; // re-entrancy guard for stop().
   bool _closed = false; // guards against a terminal state firing twice.
+  Timer? _stopFallback; // resolves the sheet if stop() emits no terminal state.
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
     // Release the recognizer if the sheet is dismissed without a normal
     // finish (back button / barrier tap) so the mic never keeps listening
     // with no visible UI. cancel() never throws and is safe post-finish.
+    _stopFallback?.cancel();
     widget.engine.cancel();
     super.dispose();
   }
@@ -67,6 +71,7 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
   void _finish(String text) {
     if (_closed) return;
     _closed = true;
+    _stopFallback?.cancel();
     final trimmed = text.trim();
     Navigator.of(context).pop(trimmed.isEmpty ? null : trimmed);
   }
@@ -75,7 +80,15 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
     if (_busy) return;
     setState(() => _busy = true);
     await widget.engine.stop();
-    // A final result / done state will pop; nothing else to do here.
+    // Some engines (Android speech_to_text) don't emit a terminal status
+    // after stop(); if no done/final callback arrives shortly, resolve the
+    // sheet with whatever we captured so it can never hang on the spinner.
+    // If a terminal callback DOES arrive first, _finish's _closed guard makes
+    // this a no-op.
+    _stopFallback?.cancel();
+    _stopFallback = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted && !_closed) _finish(_text);
+    });
   }
 
   Future<void> _cancel() async {
