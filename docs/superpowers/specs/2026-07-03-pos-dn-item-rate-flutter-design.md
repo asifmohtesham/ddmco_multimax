@@ -31,6 +31,11 @@ script + client script, join model, field gotchas).
 
 ## Step 0 — backend prerequisite (blocks everything)
 
+> **Status: DONE (verified live 2026-07-03).** Report deployed and running on
+> `erp.multimax.cloud` — banner showed 797 new / 238 no-delivery / 27,872 no-code
+> lines unfiltered (~29k rows), confirming the 30-day default date filter is
+> mandatory for the mobile fetch.
+
 Deploy the staged Desk artifacts on `erp.multimax.cloud`:
 
 1. Report `POS and Delivery Note Item Rate` (Script Report, Ref DocType POS Upload,
