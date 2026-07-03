@@ -1502,6 +1502,79 @@ class ApiProvider {
     return [];
   }
 
+  // ---------------------------------------------------------------------------
+  // POS AND DELIVERY NOTE ITEM RATE
+  // ---------------------------------------------------------------------------
+
+  /// Builds the `frappe.desk.query_report.run` filter map for the
+  /// "POS and Delivery Note Item Rate" report. Empty filters are omitted so
+  /// the report applies its own defaults. Checkboxes are encoded as `1` when on.
+  static Map<String, dynamic> buildPosDnItemRateFilters({
+    List<String> posUploads = const [],
+    String? fromDate,
+    String? toDate,
+    List<String> customers = const [],
+    List<String> customerGroups = const [],
+    List<String> itemGroups = const [],
+    bool showMapped = false,
+    bool onlyCoded = false,
+  }) {
+    final f = <String, dynamic>{};
+    if (posUploads.isNotEmpty) f['pos_upload'] = posUploads;
+    if (fromDate != null && fromDate.trim().isNotEmpty) {
+      f['from_date'] = fromDate.trim();
+    }
+    if (toDate != null && toDate.trim().isNotEmpty) {
+      f['to_date'] = toDate.trim();
+    }
+    if (customers.isNotEmpty) f['customer'] = customers;
+    if (customerGroups.isNotEmpty) f['customer_group'] = customerGroups;
+    if (itemGroups.isNotEmpty) f['item_group'] = itemGroups;
+    if (showMapped) f['show_mapped'] = 1;
+    if (onlyCoded) f['only_coded'] = 1;
+    return f;
+  }
+
+  /// Runs the "POS and Delivery Note Item Rate" scripted report.
+  ///
+  /// Returns the raw [Response] so the controller can parse `message.result`
+  /// (one row per upload line × mapped item, each carrying a server-computed
+  /// `status`). Read-only; the report never writes.
+  Future<Response> runPosDnItemRateReport({
+    List<String> posUploads = const [],
+    String? fromDate,
+    String? toDate,
+    List<String> customers = const [],
+    List<String> customerGroups = const [],
+    List<String> itemGroups = const [],
+    bool showMapped = false,
+    bool onlyCoded = false,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+
+    final filters = buildPosDnItemRateFilters(
+      posUploads: posUploads,
+      fromDate: fromDate,
+      toDate: toDate,
+      customers: customers,
+      customerGroups: customerGroups,
+      itemGroups: itemGroups,
+      showMapped: showMapped,
+      onlyCoded: onlyCoded,
+    );
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        'report_name'           : 'POS and Delivery Note Item Rate',
+        'filters'               : json.encode(filters),
+        'ignore_prepared_report': 'true',
+        'are_default_filters'   : 'false',
+        '_'                     : DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
   /// Searches a doctype's `name` field (`like %query%`) and returns the
   /// matching names, sorted ascending. Used to drive the Customer / POS Upload
   /// pickers without prefetching the whole table.
