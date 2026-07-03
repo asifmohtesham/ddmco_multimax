@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_grouping.dart';
 
 /// Controller for the "POS and Delivery Note Item Rate" report.
 ///
@@ -34,6 +35,49 @@ class PosDnItemRateController extends GetxController {
   final searchQuery  = ''.obs;
   void setStatusFilter(String v) => statusFilter.value = v;
   void setSearchQuery(String v)  => searchQuery.value = v;
+
+  // ── Grouping (two-level, client-side) ───────────────────────────────────
+  final primaryGroup   = Rxn<PosDnGroupField>();
+  final secondaryGroup = Rxn<PosDnGroupField>();
+  final collapsedGroups = <String>{}.obs;
+
+  bool get isGrouped => primaryGroup.value != null;
+
+  /// Ordered render items for the current grouping; empty when not grouped.
+  List<DisplayItem> get displayItems {
+    if (!isGrouped) return const [];
+    final tree = groupRows(filteredRows, primaryGroup.value!,
+        secondary: secondaryGroup.value);
+    return flattenForDisplay(tree, collapsedGroups);
+  }
+
+  void setPrimaryGroup(PosDnGroupField? f) {
+    primaryGroup.value = f;
+    secondaryGroup.value = sanitizeSecondary(f, secondaryGroup.value);
+    collapsedGroups.clear();
+  }
+
+  void setSecondaryGroup(PosDnGroupField? f) {
+    secondaryGroup.value = sanitizeSecondary(primaryGroup.value, f);
+    collapsedGroups.clear();
+  }
+
+  void toggleGroupCollapsed(String key) {
+    if (collapsedGroups.contains(key)) {
+      collapsedGroups.remove(key);
+    } else {
+      collapsedGroups.add(key);
+    }
+  }
+
+  void expandAllGroups() => collapsedGroups.clear();
+
+  void collapseAllGroups() {
+    if (!isGrouped) return;
+    final tree = groupRows(filteredRows, primaryGroup.value!,
+        secondary: secondaryGroup.value);
+    collapsedGroups.assignAll(collapseKeysFor(tree));
+  }
 
   // ── Result state ────────────────────────────────────────────────────────
   final reportRows   = <Map<String, dynamic>>[].obs;
@@ -133,6 +177,9 @@ class PosDnItemRateController extends GetxController {
     onlyCoded.value = false;
     statusFilter.value = 'ALL';
     searchQuery.value = '';
+    primaryGroup.value = null;
+    secondaryGroup.value = null;
+    collapsedGroups.clear();
     activeFilters.clear();
   }
 
