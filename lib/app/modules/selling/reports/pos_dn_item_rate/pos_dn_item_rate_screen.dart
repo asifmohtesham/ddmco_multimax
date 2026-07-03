@@ -48,6 +48,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
       case DisplayKind.secondaryHeader:
         final key = item.collapseKey!;
         return PosDnGroupHeader(
+          key: ValueKey(key),
           node: item.node!,
           isSecondary: item.kind == DisplayKind.secondaryHeader,
           isExpanded: !controller.collapsedGroups.contains(key),
@@ -55,6 +56,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
         );
       case DisplayKind.row:
         return Padding(
+          key: ObjectKey(item.row!),
           padding: const EdgeInsets.only(bottom: 10),
           child: PosDnItemRateTile(row: item.row!),
         );
@@ -276,27 +278,33 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                       ),
                     ),
                   ),
-                ] else ...[
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) => _buildDisplayItem(
-                            context, controller.displayItems[index]),
-                        childCount: controller.displayItems.length,
+                ] else
+                  ...(() {
+                    // Capture once — displayItems reruns groupRows+flatten
+                    // on every access, so read it exactly once per build.
+                    final display = controller.displayItems;
+                    return [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) =>
+                                _buildDisplayItem(context, display[index]),
+                            childCount: display.length,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding:
-                          EdgeInsets.fromLTRB(12, 4, 12, 16 + bottomInset),
-                      child: _EndOfListFooter(
-                        totals: PosDnItemRateController.sumTotals(rows),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding:
+                              EdgeInsets.fromLTRB(12, 4, 12, 16 + bottomInset),
+                          child: _EndOfListFooter(
+                            totals: PosDnItemRateController.sumTotals(rows),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ],
+                    ];
+                  })(),
               ],
             ),
           ),

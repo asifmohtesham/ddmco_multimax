@@ -22,6 +22,9 @@ enum PosDnGroupField {
   /// The group key for [row] under this field (formatted, never empty).
   String valueOf(Map<String, dynamic> row) {
     if (numeric) {
+      // The group key is the FORMATTED rate string (via formatQty), not the
+      // raw numeric value — rates that format identically (e.g. 10.001 and
+      // 10.004 both -> "10.00") intentionally merge into a single group.
       final n = toNum(row[key]);
       return n == null ? blank : formatQty(n);
     }
