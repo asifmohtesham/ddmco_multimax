@@ -98,4 +98,64 @@ void main() {
           '2025-12-06');
     });
   });
+
+  group('parseRows drops the server total row', () {
+    test('keeps only the four known statuses', () {
+      final rows = PosDnItemRateController.parseRows(const {
+        'columns': [
+          {'fieldname': 'status'},
+          {'fieldname': 'ref_code'},
+        ],
+        'result': [
+          {'status': 'New', 'ref_code': '1'},
+          {'status': 'No code', 'ref_code': null},
+          {'status': 'Total', 'ref_code': null},          // add_total_row
+          {'status': '', 'ref_code': null},               // stray blank
+        ],
+      });
+      expect(rows.length, 2);
+      expect(rows.map((r) => r['status']), ['New', 'No code']);
+    });
+  });
+
+  group('attachImages', () {
+    const rows = [
+      {'item_code': 'A'},
+      {'item_code': 'B'},
+      {'item_code': ''},
+    ];
+
+    test('prefixes relative paths with base (one trailing slash trimmed)', () {
+      final out = PosDnItemRateController.attachImages(
+        rows, {'A': '/files/a.jpg'}, 'https://erp.example.com/');
+      expect(out[0]['item_image'], 'https://erp.example.com/files/a.jpg');
+    });
+
+    test('keeps http URLs as-is and leaves un-imaged rows unchanged', () {
+      final out = PosDnItemRateController.attachImages(
+        rows, {'A': 'https://cdn/x.png'}, 'https://erp.example.com');
+      expect(out[0]['item_image'], 'https://cdn/x.png');
+      expect(out[1].containsKey('item_image'), isFalse);
+      expect(out[2].containsKey('item_image'), isFalse);
+    });
+
+    test('empty imgMap returns rows unchanged', () {
+      final out = PosDnItemRateController.attachImages(rows, {}, 'https://x');
+      expect(out, same(rows));
+    });
+  });
+
+  group('sumTotals', () {
+    test('sums qty columns and counts rows, ignoring rate and null/dash', () {
+      final t = PosDnItemRateController.sumTotals(const [
+        {'upload_qty': 84, 'upload_rate': 140, 'dn_qty': 12},
+        {'upload_qty': 12, 'upload_rate': 360, 'dn_qty': 12},
+        {'upload_qty': null, 'upload_rate': '—', 'dn_qty': '—'},
+      ]);
+      expect(t['count'], 3);
+      expect(t['pos_qty'], 96);
+      expect(t['dn_qty'], 24);
+      expect(t.containsKey('pos_rate'), isFalse); // rate is never summed
+    });
+  });
 }

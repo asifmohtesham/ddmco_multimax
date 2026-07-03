@@ -77,7 +77,21 @@ class PosDnItemRateController extends GetxController {
         onlyCoded:      onlyCoded.value,
       );
       if (resp.statusCode == 200) {
-        reportRows.assignAll(parseRows(resp.data['message']));
+        var rows = parseRows(resp.data['message']);
+        final codes = <String>{
+          for (final r in rows)
+            if ((r['item_code'] ?? '').toString().isNotEmpty)
+              r['item_code'].toString(),
+        }.toList();
+        if (codes.isNotEmpty) {
+          try {
+            final imgMap = await _api.getItemImages(codes);
+            rows = attachImages(rows, imgMap, _api.baseUrl);
+          } catch (_) {
+            // Image enrichment is best-effort; rows still render without it.
+          }
+        }
+        reportRows.assignAll(rows);
         hasRun.value = true;
         errorMessage.value = null;
       }
@@ -177,7 +191,10 @@ class PosDnItemRateController extends GetxController {
         });
       }
     }
-    return rows;
+    const known = {statusNew, statusMapped, statusNoDelivery, statusNoCode};
+    return rows
+        .where((r) => known.contains((r['status'] ?? '').toString()))
+        .toList();
   }
 
   /// Row count per server `status` value.
@@ -218,4 +235,41 @@ class PosDnItemRateController extends GetxController {
         '${d.month.toString().padLeft(2, '0')}-'
         '${d.day.toString().padLeft(2, '0')}';
   }
+
+  /// Returns [rows] with an absolute `item_image` URL set from [imgMap]
+  /// (keyed by item code). Relative frappe paths are prefixed with [baseUrl]
+  /// (one trailing slash trimmed); `http…` values are kept as-is; rows whose
+  /// code has no image are left untouched. Mirrors Stock Balance.
+  static List<Map<String, dynamic>> attachImages(
+    List<Map<String, dynamic>> rows,
+    Map<String, String> imgMap,
+    String baseUrl,
+  ) {
+    if (imgMap.isEmpty) return rows;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    return rows.map((r) {
+      final code = (r['item_code'] ?? '').toString();
+      final img = imgMap[code];
+      if (img == null || img.isEmpty) return r;
+      final url = img.startsWith('http') ? img : '$base$img';
+      return {...r, 'item_image': url};
+    }).toList();
+  }
+
+  /// Row count + summed quantity columns over [rows]. Rate is intentionally
+  /// NOT summed (summing rates across items is meaningless). Non-numeric /
+  /// null qty values contribute 0.
+  static Map<String, num> sumTotals(List<Map<String, dynamic>> rows) {
+    num pos = 0, dn = 0;
+    for (final r in rows) {
+      pos += _numOrZero(r['upload_qty']);
+      dn += _numOrZero(r['dn_qty']);
+    }
+    return {'count': rows.length, 'pos_qty': pos, 'dn_qty': dn};
+  }
+
+  static num _numOrZero(dynamic v) =>
+      v is num ? v : (num.tryParse(v?.toString() ?? '') ?? 0);
 }
