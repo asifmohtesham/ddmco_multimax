@@ -70,7 +70,10 @@ class SttVoiceSearchEngine implements VoiceSearchEngine {
         listenOptions: SpeechListenOptions(
           partialResults: true,
           localeId: localeId,
-          cancelOnError: true,
+          // The sheet owns the error UX (retry / close), so we don't
+          // auto-cancel the session on error — that would emit
+          // notListening/done and pop the sheet before the user sees it.
+          cancelOnError: false,
         ),
       );
     } catch (_) {

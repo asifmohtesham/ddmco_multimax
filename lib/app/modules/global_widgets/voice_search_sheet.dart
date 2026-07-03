@@ -86,6 +86,18 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
     }
   }
 
+  Future<void> _retry() async {
+    await widget.engine.cancel(); // clean slate before restarting
+    if (!mounted) return;
+    setState(() {
+      _state = VoiceEngineState.listening;
+      _text = '';
+      _busy = false;
+      _closed = false; // was never closed in these states, but be explicit
+    });
+    await _start();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
@@ -165,11 +177,11 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
   String _detail() {
     switch (_state) {
       case VoiceEngineState.permissionDenied:
-        return 'Microphone permission is needed. Enable it in Settings and try again.';
+        return 'Microphone permission is needed. Enable it in Settings, then tap Retry.';
       case VoiceEngineState.notAvailable:
         return "Voice input isn't available on this device.";
       case VoiceEngineState.error:
-        return "Didn't catch that. Tap the mic to try again.";
+        return "Didn't catch that — tap Retry to try again.";
       default:
         return '';
     }
@@ -192,9 +204,28 @@ class _VoiceSearchSheetState extends State<VoiceSearchSheet> {
         label: const Text('Done'),
       );
     }
-    return TextButton(
+
+    final closeButton = TextButton(
       onPressed: _cancel,
       child: const Text('Close'),
+    );
+
+    // A retry can't help when there is no recognizer at all.
+    if (_state == VoiceEngineState.notAvailable) {
+      return closeButton;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        closeButton,
+        const SizedBox(width: 12),
+        FilledButton.icon(
+          onPressed: _retry,
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Retry'),
+        ),
+      ],
     );
   }
 }

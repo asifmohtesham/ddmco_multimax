@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/global_widgets/voice_search_sheet.dart';
 class FakeVoiceSearchEngine implements VoiceSearchEngine {
   void Function(String text, bool isFinal)? onResult;
   void Function(VoiceEngineState state)? onState;
+  int startCalls = 0;
   int stopCalls = 0;
   int cancelCalls = 0;
 
@@ -16,6 +17,7 @@ class FakeVoiceSearchEngine implements VoiceSearchEngine {
     required void Function(String text, bool isFinal) onResult,
     required void Function(VoiceEngineState state) onState,
   }) async {
+    startCalls++;
     this.onResult = onResult;
     this.onState = onState;
     onState(VoiceEngineState.listening);
@@ -146,5 +148,32 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining("isn't available"), findsOneWidget);
+    // No recognizer → no point retrying; only Close is offered.
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('error state offers Retry which restarts listening',
+      (tester) async {
+    final fake = FakeVoiceSearchEngine();
+    final result = _ShowResult();
+    await _openSheet(tester, fake, result);
+    expect(fake.startCalls, 1); // started once on open
+
+    fake.onState!(VoiceEngineState.error);
+    await tester.pump();
+
+    // Error UI is reachable and offers a Retry.
+    expect(find.textContaining('Retry'), findsWidgets);
+    final retry = find.widgetWithText(FilledButton, 'Retry');
+    expect(retry, findsOneWidget);
+
+    await tester.tap(retry);
+    await tester.pumpAndSettle();
+
+    // Back to the listening UI (the Done/stop control) and re-started.
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Retry'), findsNothing);
+    expect(fake.startCalls, 2); // once on open, once on retry
+    expect(result.completed, isFalse); // sheet stayed open
   });
 }
