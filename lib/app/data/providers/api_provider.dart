@@ -204,6 +204,7 @@ class ApiProvider {
     List<String>? fields,
     String? groupBy = '',
     Map<String, dynamic>? filters,
+    List<List<dynamic>>? filterTuples,
     Map<String, dynamic>? orFilters,
     List<List<dynamic>>? orFilterTuples,
     String orderBy = 'modified desc',
@@ -222,8 +223,12 @@ class ApiProvider {
       queryParameters['fields'] = json.encode(fields);
     }
 
-    // Process Standard Filters (AND)
-    if (filters != null && filters.isNotEmpty) {
+    // Process Standard Filters (AND). An explicit pre-built tuple list (each
+    // entry a complete Frappe [doctype, field, op, value]) wins; otherwise
+    // expand the Map form.
+    if (filterTuples != null && filterTuples.isNotEmpty) {
+      queryParameters['filters'] = json.encode(filterTuples);
+    } else if (filters != null && filters.isNotEmpty) {
       final List<List<dynamic>> filterList = filters.entries.map((entry) {
         final val = entry.value;
         if (val is List) {

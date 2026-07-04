@@ -56,14 +56,17 @@ class GlobalSearchService extends GetxService {
       // Fallback description
       // if (!selectFields.contains('description')) selectFields.add('description');
 
-      // 3. Tokenise the query. ≤1 token keeps the classic single-phrase LIKE;
-      // ≥2 tokens match "all words, any order" (server OR superset + client AND).
+      // 3. Tokenise. ≤1 token → single-phrase LIKE across all fields (matches
+      // code OR name). ≥2 tokens → AND each token on the PRIMARY field
+      // server-side (all-words, any order) so genuine matches aren't diluted by
+      // an OR-superset.
       final fieldSet = searchTargets.toSet();
       final tokens = searchTokens(query);
+      final primaryField = resolvePrimarySearchField(meta, searchTargets);
 
       if (kDebugMode) {
         print('GlobalSearchService: Searching "$query" $tokens in $doctype '
-            'on fields: $searchTargets');
+            'on fields: $searchTargets (primary: $primaryField)');
       }
 
       // 4. API Call
@@ -78,26 +81,18 @@ class GlobalSearchService extends GetxService {
             )
           : await _apiProvider.getDocumentList(
               doctype,
-              orFilterTuples: [
-                for (final field in fieldSet)
-                  for (final token in tokens)
-                    [doctype, field, 'like', '%$token%'],
+              filterTuples: [
+                for (final token in tokens)
+                  [doctype, primaryField, 'like', '%$token%'],
               ],
-              limit: 50,
+              limit: 20,
               fields: selectFields.toSet().toList(),
             );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List data = response.data['data'];
-        // 5. For multi-token queries, keep only rows containing EVERY token.
-        final searchFields = fieldSet.toList();
-        final rows = tokens.length <= 1
-            ? data
-            : data
-                .where((e) => rowMatchesAllTokens(
-                    e as Map<String, dynamic>, searchFields, tokens))
-                .toList();
-        return rows.map((e) => _mapToModel(e, meta)).toList();
+        // The AND ran server-side, so the result is authoritative — no filter.
+        return data.map((e) => _mapToModel(e, meta)).toList();
       }
     } catch (e) {
       print('GlobalSearchService Error ($doctype): $e');
@@ -112,17 +107,19 @@ class GlobalSearchService extends GetxService {
       .where((t) => t.isNotEmpty)
       .toList();
 
-  /// True when EVERY token in [tokens] appears (case-insensitive substring) in
-  /// the concatenation of [fields]' values on [row] — "all words, any order".
-  /// Pure. Empty [tokens] → true (no constraint).
-  static bool rowMatchesAllTokens(
-    Map<String, dynamic> row,
-    List<String> fields,
-    List<String> tokens,
+  /// The field to AND multi-word tokens against server-side: the doctype's
+  /// [title_field] when it is a non-empty String (e.g. `item_name` for Item),
+  /// else the first search target that isn't `name`, else `name`. Pure.
+  static String resolvePrimarySearchField(
+    Map<String, dynamic>? meta,
+    List<String> searchTargets,
   ) {
-    final hay =
-        fields.map((f) => (row[f] ?? '').toString()).join(' ').toLowerCase();
-    return tokens.every((t) => hay.contains(t.toLowerCase()));
+    final title = meta?['title_field'];
+    if (title is String && title.isNotEmpty) return title;
+    for (final f in searchTargets) {
+      if (f != 'name') return f;
+    }
+    return 'name';
   }
 
   /// Max hits shown per doctype group.

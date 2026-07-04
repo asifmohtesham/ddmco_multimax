@@ -13,48 +13,44 @@ void main() {
     });
   });
 
-  group('rowMatchesAllTokens', () {
-    const fields = ['name', 'item_name'];
-
-    test('matches all tokens in any order, case-insensitive', () {
-      final row = {'name': 'FG-1', 'item_name': 'Reversible Belts 30mm'};
+  group('resolvePrimarySearchField', () {
+    test('uses title_field when present', () {
       expect(
-          GlobalSearchService.rowMatchesAllTokens(
-              row, fields, ['belts', 'reversible']),
-          isTrue);
-      expect(
-          GlobalSearchService.rowMatchesAllTokens(
-              row, fields, ['REVERSIBLE', 'BELTS']),
-          isTrue);
+          GlobalSearchService.resolvePrimarySearchField(
+              {'title_field': 'item_name'}, ['name', 'item_name']),
+          'item_name');
     });
 
-    test('fails when a token is absent', () {
-      final row = {'name': 'FG-1', 'item_name': 'Reversible Belts 30mm'};
+    test('falls back to the first non-name search target', () {
       expect(
-          GlobalSearchService.rowMatchesAllTokens(
-              row, fields, ['belts', 'strap']),
-          isFalse);
+          GlobalSearchService.resolvePrimarySearchField(
+              {}, ['name', 'item_name', 'item_group']),
+          'item_name');
     });
 
-    test('matches a token found in the code (name) field', () {
-      final row = {'name': 'BELT-RED-01', 'item_name': 'Reversible'};
+    test('falls back to name when only name is searchable', () {
+      expect(GlobalSearchService.resolvePrimarySearchField({}, ['name']),
+          'name');
+    });
+
+    test('null meta falls back to the searchTargets rule', () {
       expect(
-          GlobalSearchService.rowMatchesAllTokens(
-              row, fields, ['belt', 'reversible']),
-          isTrue);
+          GlobalSearchService.resolvePrimarySearchField(null, ['name']), 'name');
+      expect(
+          GlobalSearchService.resolvePrimarySearchField(
+              null, ['name', 'customer_name']),
+          'customer_name');
     });
 
-    test('empty tokens -> true (no constraint)', () {
-      expect(GlobalSearchService.rowMatchesAllTokens({'name': 'x'}, fields, []),
-          isTrue);
-    });
-
-    test('missing field is treated as empty', () {
-      final row = {'name': 'FG-1'}; // no item_name key
-      expect(GlobalSearchService.rowMatchesAllTokens(row, fields, ['fg-1']),
-          isTrue);
-      expect(GlobalSearchService.rowMatchesAllTokens(row, fields, ['belts']),
-          isFalse);
+    test('empty / non-String title_field is ignored', () {
+      expect(
+          GlobalSearchService.resolvePrimarySearchField(
+              {'title_field': ''}, ['name', 'item_name']),
+          'item_name');
+      expect(
+          GlobalSearchService.resolvePrimarySearchField(
+              {'title_field': 1}, ['name', 'item_name']),
+          'item_name');
     });
   });
 }
