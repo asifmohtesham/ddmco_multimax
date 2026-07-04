@@ -399,4 +399,81 @@ void main() {
     expect(find.byIcon(Icons.chevron_right), findsWidgets); // rows show chevron ("unknown"), not "0"
     expect(find.text('0'), findsNothing);
   });
+
+  testWidgets('Item group shows the set-warehouse banner and taps through',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    var taps = 0;
+    final groups = [
+      GlobalSearchGroup(target: _target('Item'), items: [
+        GlobalSearchItem(id: 'FG-1', title: 'Blue Strap', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+            onSetWarehouse: () => taps++,
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('Set a Default Warehouse to see stock balances'),
+        findsOneWidget);
+    await tester.tap(find.text('Set a Default Warehouse to see stock balances'));
+    expect(taps, 1);
+  });
+
+  testWidgets('no set-warehouse banner when onSetWarehouse is null',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Item'), items: [
+        GlobalSearchItem(id: 'FG-1', title: 'Blue Strap', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) =>
+              delegate.buildResultsList(context, groups, (t, i) {}),
+        ),
+      ),
+    ));
+
+    expect(find.text('Set a Default Warehouse to see stock balances'),
+        findsNothing);
+  });
+
+  testWidgets('non-Item group gets no set-warehouse banner even with the callback',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Delivery Note'), items: [
+        GlobalSearchItem(id: 'KA-DN-1', title: 'Acme', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+            onSetWarehouse: () {},
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('Set a Default Warehouse to see stock balances'),
+        findsNothing);
+  });
 }

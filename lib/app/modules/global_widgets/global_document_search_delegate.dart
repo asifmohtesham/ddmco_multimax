@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
@@ -64,6 +65,17 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
   bool get _itemReadable {
     if (!Get.isRegistered<PermissionService>()) return true;
     return Get.find<PermissionService>().hasAccess('Item') != false;
+  }
+
+  /// Callback for the "set a Default Warehouse" hint, or null when it should not
+  /// show. Non-null only when no Default Warehouse is set and Item is readable —
+  /// tapping closes search and opens Session Defaults.
+  VoidCallback? _onSetWarehouse(BuildContext context) {
+    if (_defaultWarehouse != null || !_itemReadable) return null;
+    return () {
+      close(context, null);
+      Get.toNamed(AppRoutes.SESSION_DEFAULTS);
+    };
   }
 
   static const int _kMinChars = 3;
@@ -209,6 +221,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
           close(context, null);
           Get.toNamed(scope.route, arguments: scope.argsFor(item.id));
         },
+        onSetWarehouse: _onSetWarehouse(context),
       );
     }
 
@@ -251,6 +264,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
             close(context, null);
             Get.toNamed(target.route, arguments: target.argsFor(item.id));
           },
+          onSetWarehouse: _onSetWarehouse(context),
         );
       },
     );
@@ -318,11 +332,15 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
     void Function(GlobalSearchTarget target, GlobalSearchItem item) onTap, {
     Map<String, WarehouseStockLine>? balances,
     bool balancesLoading = false,
+    VoidCallback? onSetWarehouse,
   }) {
     final scheme = context.scheme;
     final children = <Widget>[];
     for (final group in groups) {
       children.add(_sectionHeader(context, group.target));
+      if (group.target.doctype == 'Item' && onSetWarehouse != null) {
+        children.add(_setWarehouseBanner(context, onSetWarehouse));
+      }
       for (final item in group.items) {
         children.add(_resultTile(
           context,
@@ -428,6 +446,38 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
     );
   }
 
+  /// Tappable hint shown above Item results when no Default Warehouse is set.
+  Widget _setWarehouseBanner(BuildContext context, VoidCallback onTap) {
+    final scheme = context.scheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+      child: Material(
+        color: scheme.subtle,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: scheme.textMuted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Set a Default Warehouse to see stock balances',
+                    style: TextStyle(fontSize: 13, color: scheme.text),
+                  ),
+                ),
+                Icon(Icons.chevron_right, size: 18, color: scheme.textSubtle),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _leadingIcon(GlobalSearchTarget target, String? imageUrl) {
     if (imageUrl != null &&
         imageUrl.isNotEmpty &&
@@ -505,6 +555,7 @@ class _SearchResultsList extends StatefulWidget {
     required this.itemReadable,
     required this.service,
     required this.onTap,
+    this.onSetWarehouse,
   });
 
   final GlobalDocumentSearchDelegate delegate;
@@ -513,6 +564,7 @@ class _SearchResultsList extends StatefulWidget {
   final bool itemReadable;
   final GlobalSearchService service;
   final void Function(GlobalSearchTarget, GlobalSearchItem) onTap;
+  final VoidCallback? onSetWarehouse;
 
   @override
   State<_SearchResultsList> createState() => _SearchResultsListState();
@@ -598,6 +650,7 @@ class _SearchResultsListState extends State<_SearchResultsList> {
       widget.onTap,
       balances: _balances,
       balancesLoading: _loading,
+      onSetWarehouse: widget.onSetWarehouse,
     );
   }
 }
@@ -635,6 +688,7 @@ class _ScopedResults extends StatefulWidget {
     required this.fetchPage,
     required this.onTap,
     this.fetchBalances,
+    this.onSetWarehouse,
   });
 
   final GlobalDocumentSearchDelegate delegate;
@@ -645,6 +699,7 @@ class _ScopedResults extends StatefulWidget {
   final Future<Map<String, WarehouseStockLine>> Function(List<String> codes)?
       fetchBalances;
   final void Function(GlobalSearchItem item) onTap;
+  final VoidCallback? onSetWarehouse;
 
   @override
   State<_ScopedResults> createState() => _ScopedResultsState();
@@ -789,7 +844,19 @@ class _ScopedResultsState extends State<_ScopedResults> {
         itemCount: _items.length + 2, // header + rows + footer
         itemBuilder: (context, i) {
           if (i == 0) {
-            return widget.delegate._sectionHeader(context, widget.target);
+            final header = widget.delegate._sectionHeader(context, widget.target);
+            if (widget.target.doctype == 'Item' &&
+                widget.onSetWarehouse != null) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  header,
+                  widget.delegate
+                      ._setWarehouseBanner(context, widget.onSetWarehouse!),
+                ],
+              );
+            }
+            return header;
           }
           if (i == _items.length + 1) {
             return ListEndFooter(hasMore: _hasMore, bottomPadding: bottom);
