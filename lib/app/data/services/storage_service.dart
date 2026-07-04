@@ -25,6 +25,9 @@ class StorageService {
   // Auto Save Keys
   static const String _autoSaveDelayKey = 'auto_save_delay';
 
+  // Default Warehouse (optional; unset = no Stock Balance search shortcut)
+  static const String _defaultWarehouseKey = 'session_default_warehouse';
+
   // Stock Balance view preferences
   static const String _sbHideEmptyKey  = 'sb_hide_empty';
   static const String _sbShowImagesKey = 'sb_show_images';
@@ -77,6 +80,21 @@ class StorageService {
 
   bool hasSessionDefaults() {
     return _box.hasData(_companyKey);
+  }
+
+  // --- Default Warehouse (optional) ---
+  Future<void> saveDefaultWarehouse(String? warehouse) async {
+    final w = warehouse?.trim() ?? '';
+    if (w.isEmpty) {
+      await _box.remove(_defaultWarehouseKey);
+    } else {
+      await _box.write(_defaultWarehouseKey, w);
+    }
+  }
+
+  String? getDefaultWarehouse() {
+    final w = _box.read<String>(_defaultWarehouseKey);
+    return (w == null || w.isEmpty) ? null : w;
   }
 
   // --- Auto Submit Settings ---
