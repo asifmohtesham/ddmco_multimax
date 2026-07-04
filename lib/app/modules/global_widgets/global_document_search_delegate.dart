@@ -318,7 +318,12 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
     if (footer != null) children.add(footer);
     return Container(
       color: scheme.bg,
-      child: ListView(children: children),
+      child: ListView(
+        // Clear the Android gesture/nav bar so the last row — including the
+        // appended Stock Balance section — isn't hidden beneath it.
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+        children: children,
+      ),
     );
   }
 
