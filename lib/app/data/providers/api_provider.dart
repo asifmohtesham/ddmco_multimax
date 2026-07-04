@@ -428,6 +428,15 @@ class ApiProvider {
     );
   }
 
+  /// DocType metadata via the desk `getdoctype` endpoint — reachable for
+  /// ordinary operators, unlike `/api/resource/DocType/<name>` (which 403s
+  /// without read access on the DocType doctype). Returns the raw method
+  /// response; callers pull the target doc from `data['docs']`.
+  Future<Response> getDocTypeMeta(String doctype) => callMethod(
+        'frappe.desk.form.load.getdoctype',
+        params: {'doctype': doctype, 'with_parent': 1},
+      );
+
   /// Extracts the roles granting [permKey] (`create`, `write`, …) at
   /// permlevel 0 for [doctype] from a `getdoctype` response.
   ///

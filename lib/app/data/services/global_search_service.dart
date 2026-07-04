@@ -305,19 +305,25 @@ class GlobalSearchService extends GetxService {
   }
 
   /// Fetches and caches DocType metadata to understand fields and types.
+  ///
+  /// Uses the desk `getdoctype` endpoint (reachable for operators) rather than
+  /// `/api/resource/DocType/<name>`, which 403s for non-System-Manager users and
+  /// would leave search matching only the document `name` (e.g. item_code), never
+  /// descriptive fields like item_name.
   Future<void> _ensureMetadata(String doctype) async {
     if (_metadataCache.containsKey(doctype)) return;
 
     try {
-      final response = await _apiProvider.getDocument('DocType', doctype);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final meta = response.data['data'];
+      final response = await _apiProvider.getDocTypeMeta(doctype);
+      final meta = extractDocTypeMeta(response.data, doctype);
+      if (meta != null) {
         _metadataCache[doctype] = meta;
 
         // Parse Field Types
         final Map<String, String> types = {};
-        if (meta['fields'] != null && meta['fields'] is List) {
-          for (var field in meta['fields']) {
+        final fields = meta['fields'];
+        if (fields is List) {
+          for (final field in fields) {
             if (field is Map) {
               final fname = field['fieldname'];
               final ftype = field['fieldtype'];
@@ -332,6 +338,28 @@ class GlobalSearchService extends GetxService {
     } catch (e) {
       print('GlobalSearchService: Metadata fetch failed for $doctype: $e');
     }
+  }
+
+  /// The DocType meta doc for [doctype] from a `frappe.desk.form.load.getdoctype`
+  /// response — the entry in `docs` with `doctype == 'DocType'` and matching
+  /// `name`. Tolerates the `{docs: […]}` and `{message: {docs: […]}}` shapes.
+  /// Returns null on any unexpected shape (fail-closed → name-only search). Pure.
+  static Map<String, dynamic>? extractDocTypeMeta(
+    dynamic data,
+    String doctype,
+  ) {
+    if (data is! Map) return null;
+    final docs = data['docs'] ??
+        (data['message'] is Map ? data['message']['docs'] : null);
+    if (docs is! List) return null;
+    for (final doc in docs) {
+      if (doc is Map &&
+          doc['doctype'] == 'DocType' &&
+          doc['name'] == doctype) {
+        return doc.cast<String, dynamic>();
+      }
+    }
+    return null;
   }
 
   /// Validates if a field is safe for text-based searching (LIKE operator).
