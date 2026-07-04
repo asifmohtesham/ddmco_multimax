@@ -1,2 +1,2 @@
-• Default Warehouse now lets you pick a warehouse group (shown with a "Group" tag), not just a single warehouse.
-• Dashboard search shows each matching item's stock in your Default Warehouse right on the result row — summed across all child warehouses when you pick a group.
+• Search now matches all your words in any order — e.g. "belts reversible" finds "Reversible Belts".
+• Search now looks at item names and other details, not just document codes, so you find things by description (fixes empty results for many operator accounts).
