@@ -1,2 +1,2 @@
-• Stock Balance: a cleaner header — the counts strip and the search / sort / view-toggle row have been removed to free up screen space.
-• Stock Balance: tap a warehouse pill to filter the report to that warehouse in a single tap (shown when the results span more than one warehouse).
+• Session Defaults: set a Default Warehouse (Menu → Account & settings → Session Defaults).
+• Dashboard search: each matching item now shows its stock balance in your Default Warehouse, right on the result row — summed across child warehouses when the default is a group warehouse.
