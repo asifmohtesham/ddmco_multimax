@@ -400,6 +400,34 @@ void main() {
     expect(find.text('0'), findsNothing);
   });
 
+  testWidgets('scoped Items view shows the set-warehouse banner and taps through',
+      (tester) async {
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    var taps = 0;
+    Future<List<GlobalSearchItem>> fetchPage(int start, int size) async =>
+        List.generate(
+            3, (i) => GlobalSearchItem(id: 'B$i', title: 'Belt $i', rawData: const {}));
+
+    await tester.pumpWidget(GetMaterialApp(
+      theme: theme,
+      home: Scaffold(
+        body: scopedResultsForTest(
+          target: _target('Item'),
+          query: 'belt',
+          fetchPage: fetchPage,
+          onTap: (_) {},
+          onSetWarehouse: () => taps++,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Set a Default Warehouse to see stock balances'),
+        findsOneWidget);
+    await tester.tap(find.text('Set a Default Warehouse to see stock balances'));
+    expect(taps, 1);
+  });
+
   testWidgets('Item group shows the set-warehouse banner and taps through',
       (tester) async {
     final delegate = GlobalDocumentSearchDelegate();

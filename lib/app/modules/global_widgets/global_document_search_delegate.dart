@@ -665,6 +665,7 @@ Widget scopedResultsForTest({
   Future<Map<String, WarehouseStockLine>> Function(List<String> codes)?
       fetchBalances,
   required void Function(GlobalSearchItem item) onTap,
+  VoidCallback? onSetWarehouse,
 }) =>
     _ScopedResults(
       delegate: GlobalDocumentSearchDelegate(),
@@ -673,6 +674,7 @@ Widget scopedResultsForTest({
       fetchPage: fetchPage,
       fetchBalances: fetchBalances,
       onTap: onTap,
+      onSetWarehouse: onSetWarehouse,
     );
 
 /// One doctype's results as a paginated, infinite-scroll list. Loads page 1 on
