@@ -59,6 +59,16 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
   static bool _sbScopeAllowed(GlobalSearchTarget? scope) =>
       scope == null || scope.doctype == 'Item';
 
+  /// Item read access, mirroring [_permittedTargets] semantics: permissive when
+  /// PermissionService isn't registered (widget tests) or access is unknown
+  /// (null / cache not warm); only a definite `false` hides the section. The
+  /// Stock Balance footer surfaces item data via a direct Item search, so it
+  /// must honour the same Item gate the grouped results already apply.
+  bool get _itemReadable {
+    if (!Get.isRegistered<PermissionService>()) return true;
+    return Get.find<PermissionService>().hasAccess('Item') != false;
+  }
+
   static final GlobalSearchTarget _itemTarget =
       kGlobalSearchTargets.firstWhere((t) => t.doctype == 'Item');
 
@@ -210,7 +220,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
           );
         }
         final wh = _defaultWarehouse;
-        final footer = (wh != null && _sbScopeAllowed(scope))
+        final footer = (wh != null && _itemReadable && _sbScopeAllowed(scope))
             ? _StockBalanceSection(
                 query: query.trim(),
                 warehouse: wh,
