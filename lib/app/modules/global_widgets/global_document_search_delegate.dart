@@ -6,6 +6,8 @@ import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+import 'package:multimax/app/data/models/warehouse_stock_line.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/voice_search_sheet.dart';
@@ -47,6 +49,18 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
           : Get.put(GlobalSearchService()));
 
   ApiProvider get _apiProvider => Get.find<ApiProvider>();
+
+  /// The saved Default Warehouse, or null when unset / DI not warm (tests).
+  String? get _defaultWarehouse => Get.isRegistered<StorageService>()
+      ? Get.find<StorageService>().getDefaultWarehouse()
+      : null;
+
+  /// The Stock Balance section only shows under the All or Item scopes.
+  static bool _sbScopeAllowed(GlobalSearchTarget? scope) =>
+      scope == null || scope.doctype == 'Item';
+
+  static final GlobalSearchTarget _itemTarget =
+      kGlobalSearchTargets.firstWhere((t) => t.doctype == 'Item');
 
   static const int _kMinChars = 3;
 
@@ -195,6 +209,21 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
             message: 'No documents found matching "$query"',
           );
         }
+        final wh = _defaultWarehouse;
+        final footer = (wh != null && _sbScopeAllowed(scope))
+            ? _StockBalanceSection(
+                query: query.trim(),
+                warehouse: wh,
+                service: _service,
+                onTapItem: (line) {
+                  close(context, null);
+                  Get.toNamed(
+                    _itemTarget.route,
+                    arguments: _itemTarget.argsFor(line.itemCode),
+                  );
+                },
+              )
+            : null;
         return buildResultsList(
           context,
           groups,
@@ -202,6 +231,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
             close(context, null);
             Get.toNamed(target.route, arguments: target.argsFor(item.id));
           },
+          footer: footer,
         );
       },
     );
@@ -264,8 +294,9 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
   Widget buildResultsList(
     BuildContext context,
     List<GlobalSearchGroup> groups,
-    void Function(GlobalSearchTarget target, GlobalSearchItem item) onTap,
-  ) {
+    void Function(GlobalSearchTarget target, GlobalSearchItem item) onTap, {
+    Widget? footer,
+  }) {
     final scheme = context.scheme;
     final children = <Widget>[];
     for (final group in groups) {
@@ -274,6 +305,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
         children.add(_resultTile(context, group.target, item, onTap));
       }
     }
+    if (footer != null) children.add(footer);
     return Container(
       color: scheme.bg,
       child: ListView(children: children),
@@ -390,4 +422,166 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
       ),
     );
   }
+}
+
+/// Async wrapper: fetches Stock Balance for [query] in [warehouse] and renders
+/// it via [buildStockBalanceSection]. Its own future so it fills in AFTER the
+/// document results (loading feedback), and re-fires when query/warehouse change.
+class _StockBalanceSection extends StatefulWidget {
+  const _StockBalanceSection({
+    required this.query,
+    required this.warehouse,
+    required this.service,
+    required this.onTapItem,
+  });
+
+  final String query;
+  final String warehouse;
+  final GlobalSearchService service;
+  final void Function(WarehouseStockLine) onTapItem;
+
+  @override
+  State<_StockBalanceSection> createState() => _StockBalanceSectionState();
+}
+
+class _StockBalanceSectionState extends State<_StockBalanceSection> {
+  late Future<List<WarehouseStockLine>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.service.stockBalanceForQuery(widget.query, widget.warehouse);
+  }
+
+  @override
+  void didUpdateWidget(_StockBalanceSection old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query || old.warehouse != widget.warehouse) {
+      _future =
+          widget.service.stockBalanceForQuery(widget.query, widget.warehouse);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<WarehouseStockLine>>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return buildStockBalanceSection(context, widget.warehouse, null);
+        }
+        // Hide the section entirely on error — never break document search.
+        if (snap.hasError) return const SizedBox.shrink();
+        return buildStockBalanceSection(
+          context,
+          widget.warehouse,
+          snap.data ?? const [],
+          onTap: widget.onTapItem,
+        );
+      },
+    );
+  }
+}
+
+String _qtyLabel(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+/// Pure renderer for the search Stock Balance section. [lines] == null renders
+/// the loading state; empty renders a message; non-empty renders tappable rows.
+@visibleForTesting
+Widget buildStockBalanceSection(
+  BuildContext context,
+  String warehouse,
+  List<WarehouseStockLine>? lines, {
+  void Function(WarehouseStockLine)? onTap,
+}) {
+  final scheme = context.scheme;
+  final header = Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+    child: Row(
+      children: [
+        const Icon(Icons.warehouse_outlined, size: 15, color: Colors.teal),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'STOCK BALANCE · $warehouse'.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: scheme.textMuted,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  if (lines == null) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: LinearProgressIndicator(),
+        ),
+      ],
+    );
+  }
+
+  if (lines.isEmpty) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        header,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: Text(
+            'No stock for matching items in $warehouse',
+            style: TextStyle(color: scheme.textMuted),
+          ),
+        ),
+      ],
+    );
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      header,
+      for (final line in lines)
+        ListTile(
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.teal.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.inventory_2_outlined,
+                color: Colors.teal, size: 20),
+          ),
+          title: Text(
+            line.itemName.isEmpty ? line.itemCode : line.itemName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontWeight: FontWeight.w600, color: scheme.text),
+          ),
+          subtitle: Text(
+            line.itemCode,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: scheme.textMuted),
+          ),
+          trailing: Text(
+            '${_qtyLabel(line.balanceQty)} ${line.uom}'.trim(),
+            style: TextStyle(fontWeight: FontWeight.w700, color: scheme.text),
+          ),
+          onTap: onTap == null ? null : () => onTap(line),
+        ),
+    ],
+  );
 }
