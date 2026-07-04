@@ -734,20 +734,26 @@ class _ScopedResultsState extends State<_ScopedResults> {
     // Balances are ancillary: a failure must NOT drop the page (fail-open,
     // mirroring _SearchResultsList — rows just fall back to the chevron).
     var bal = const <String, WarehouseStockLine>{};
+    var balanceFailed = false;
     if (widget.fetchBalances != null && page.isNotEmpty) {
       final codes = page.map((i) => i.id).where((c) => c.isNotEmpty).toList();
       try {
         bal = await widget.fetchBalances!(codes);
       } catch (_) {
-        bal = const {};
+        balanceFailed = true; // fail-open: leave balances unknown → chevron
       }
     }
     if (!mounted || id != _fetchId) return;
     setState(() {
       _items = [...(reset ? const <GlobalSearchItem>[] : _items), ...page];
-      if (widget.fetchBalances != null) {
+      if (widget.fetchBalances != null && !balanceFailed) {
         _balances = reset ? {...bal} : {...?_balances, ...bal};
+      } else if (widget.fetchBalances != null && balanceFailed && reset) {
+        // First page's balances unavailable → null so rows show the chevron
+        // ("unknown"), not a misleading "0". Mirrors _SearchResultsList.
+        _balances = null;
       }
+      // load-more + balanceFailed: keep the prior _balances untouched.
       _hasMore = page.length == _kPageSize;
       _isLoadingMore = false;
       _initialLoading = false;

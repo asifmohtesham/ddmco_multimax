@@ -396,5 +396,7 @@ void main() {
     expect(find.text('Belt 0'), findsOneWidget); // items shown despite balance failure
     expect(find.textContaining('Search failed'), findsNothing);
     expect(find.text('End of results'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right), findsWidgets); // rows show chevron ("unknown"), not "0"
+    expect(find.text('0'), findsNothing);
   });
 }
