@@ -19,6 +19,8 @@ class _FakeBox {
 /// Skips the network `load()` so the screen renders from injected state.
 class _TestController extends SessionDefaultsController {
   _TestController(StorageService s) : super(storage: s);
+  // Intentionally skips super.onInit() to avoid the network load() during the widget test.
+  // ignore: must_call_super
   @override
   void onInit() {}
 }
