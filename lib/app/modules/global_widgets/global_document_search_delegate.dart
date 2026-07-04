@@ -9,6 +9,7 @@ import 'package:multimax/app/data/services/global_search_service.dart';
 import 'package:multimax/app/data/models/warehouse_stock_line.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/voice_search_sheet.dart';
 
@@ -184,6 +185,34 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
         message: 'Type at least $_kMinChars characters',
       );
     }
+
+    // Scoped to a single doctype → paginated infinite-scroll list.
+    if (scope != null) {
+      final wh = _defaultWarehouse;
+      final balancesApply =
+          scope.doctype == 'Item' && wh != null && _itemReadable;
+      return _ScopedResults(
+        key: ValueKey(scope.doctype),
+        delegate: this,
+        target: scope,
+        query: query.trim(),
+        fetchPage: (limitStart, pageSize) => _service.search(
+          scope.doctype,
+          query.trim(),
+          limitStart: limitStart,
+          pageSize: pageSize,
+        ),
+        fetchBalances: balancesApply
+            ? (codes) => _service.warehouseBalances(codes, wh)
+            : null,
+        onTap: (item) {
+          close(context, null);
+          Get.toNamed(scope.route, arguments: scope.argsFor(item.id));
+        },
+      );
+    }
+
+    // "All" → grouped capped preview (unchanged).
     return FutureBuilder<List<GlobalSearchGroup>>(
       future: _search(query.trim(), scope),
       builder: (context, snapshot) {
@@ -569,6 +598,196 @@ class _SearchResultsListState extends State<_SearchResultsList> {
       widget.onTap,
       balances: _balances,
       balancesLoading: _loading,
+    );
+  }
+}
+
+/// Test-only builder for [_ScopedResults] (its constructor is library-private).
+@visibleForTesting
+Widget scopedResultsForTest({
+  required GlobalSearchTarget target,
+  required String query,
+  required Future<List<GlobalSearchItem>> Function(int limitStart, int pageSize)
+      fetchPage,
+  Future<Map<String, WarehouseStockLine>> Function(List<String> codes)?
+      fetchBalances,
+  required void Function(GlobalSearchItem item) onTap,
+}) =>
+    _ScopedResults(
+      delegate: GlobalDocumentSearchDelegate(),
+      target: target,
+      query: query,
+      fetchPage: fetchPage,
+      fetchBalances: fetchBalances,
+      onTap: onTap,
+    );
+
+/// One doctype's results as a paginated, infinite-scroll list. Loads page 1 on
+/// mount, the next page at 90% scroll depth (page size 20), and stops when a
+/// page comes back short → [ListEndFooter] shows "End of results". Item-scope
+/// rows carry their Default-Warehouse balance (fetched per page).
+class _ScopedResults extends StatefulWidget {
+  const _ScopedResults({
+    super.key,
+    required this.delegate,
+    required this.target,
+    required this.query,
+    required this.fetchPage,
+    required this.onTap,
+    this.fetchBalances,
+  });
+
+  final GlobalDocumentSearchDelegate delegate;
+  final GlobalSearchTarget target;
+  final String query;
+  final Future<List<GlobalSearchItem>> Function(int limitStart, int pageSize)
+      fetchPage;
+  final Future<Map<String, WarehouseStockLine>> Function(List<String> codes)?
+      fetchBalances;
+  final void Function(GlobalSearchItem item) onTap;
+
+  @override
+  State<_ScopedResults> createState() => _ScopedResultsState();
+}
+
+class _ScopedResultsState extends State<_ScopedResults> {
+  static const int _kPageSize = 20;
+
+  final _scrollController = ScrollController();
+  Timer? _debounce;
+  int _fetchId = 0;
+
+  List<GlobalSearchItem> _items = [];
+  Map<String, WarehouseStockLine>? _balances;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  bool _initialLoading = true;
+  bool _error = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _fetch(reset: true);
+  }
+
+  @override
+  void didUpdateWidget(_ScopedResults old) {
+    super.didUpdateWidget(old);
+    if (old.query != widget.query ||
+        old.target.doctype != widget.target.doctype) {
+      // Debounce so per-keystroke rebuilds don't each fire a network search.
+      _debounce?.cancel();
+      _debounce =
+          Timer(const Duration(milliseconds: 300), () => _fetch(reset: true));
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    if (max > 0 &&
+        _scrollController.offset >= max * 0.9 &&
+        _hasMore &&
+        !_isLoadingMore) {
+      _fetch(reset: false);
+    }
+  }
+
+  Future<void> _fetch({required bool reset}) async {
+    if (!reset && (_isLoadingMore || !_hasMore)) return;
+    final id = ++_fetchId;
+    setState(() {
+      _isLoadingMore = true;
+      if (reset) _error = false;
+    });
+    final start = reset ? 0 : _items.length;
+    try {
+      final page = await widget.fetchPage(start, _kPageSize);
+      var bal = const <String, WarehouseStockLine>{};
+      if (widget.fetchBalances != null && page.isNotEmpty) {
+        final codes =
+            page.map((i) => i.id).where((c) => c.isNotEmpty).toList();
+        bal = await widget.fetchBalances!(codes);
+      }
+      if (!mounted || id != _fetchId) return;
+      setState(() {
+        _items = [...(reset ? const <GlobalSearchItem>[] : _items), ...page];
+        if (widget.fetchBalances != null) {
+          _balances = reset ? {...bal} : {...?_balances, ...bal};
+        }
+        _hasMore = page.length == _kPageSize;
+        _isLoadingMore = false;
+        _initialLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || id != _fetchId) return;
+      setState(() {
+        _isLoadingMore = false;
+        _initialLoading = false;
+        if (reset) {
+          _error = true;
+        } else {
+          _hasMore = false;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    if (_initialLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error && _items.isEmpty) {
+      return widget.delegate._messageState(
+        context,
+        icon: Icons.error_outline,
+        message: 'Search failed. Please try again.',
+        isError: true,
+      );
+    }
+    if (_items.isEmpty) {
+      return widget.delegate._messageState(
+        context,
+        icon: Icons.search_off,
+        message: 'No documents found matching "${widget.query}"',
+      );
+    }
+    final bottom = MediaQuery.of(context).padding.bottom;
+    return Container(
+      color: scheme.bg,
+      child: ListView.builder(
+        controller: _scrollController,
+        itemCount: _items.length + 2, // header + rows + footer
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            return widget.delegate._sectionHeader(context, widget.target);
+          }
+          if (i == _items.length + 1) {
+            return ListEndFooter(hasMore: _hasMore, bottomPadding: bottom);
+          }
+          final item = _items[i - 1];
+          return widget.delegate._resultTile(
+            context,
+            widget.target,
+            item,
+            (_, it) => widget.onTap(it),
+            balances: _balances,
+            balancesLoading: false,
+          );
+        },
+      ),
     );
   }
 }

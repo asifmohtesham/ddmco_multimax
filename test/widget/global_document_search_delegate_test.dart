@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
 import 'package:multimax/app/data/models/warehouse_stock_line.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
+import 'package:multimax/main.dart' show buildAppTheme;
 
 GlobalSearchTarget _target(String d) => GlobalSearchTarget(
       doctype: d,
@@ -270,5 +273,99 @@ void main() {
     );
     expect(itemChip.selected, isTrue);
     expect(allChip.selected, isFalse);
+  });
+
+  // ── _ScopedResults pagination ──────────────────────────────────────────────
+  // Uses the public test entrypoint the delegate exposes for the scoped list.
+  testWidgets('scoped results load page 1, then load more on scroll to the end',
+      (tester) async {
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    final calls = <List<int>>[];
+    Future<List<GlobalSearchItem>> fetchPage(int start, int size) async {
+      calls.add([start, size]);
+      final n = start == 0 ? 20 : 5; // page 2 is short → end of list
+      final tag = start == 0 ? 'A' : 'B';
+      return List.generate(
+        n,
+        (i) => GlobalSearchItem(id: '$tag$i', title: 'Item $tag$i', rawData: const {}),
+      );
+    }
+
+    await tester.pumpWidget(GetMaterialApp(
+      theme: theme,
+      home: Scaffold(
+        body: scopedResultsForTest(
+          target: _target('Item'),
+          query: 'belts reversible',
+          fetchPage: fetchPage,
+          onTap: (_) {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(calls, [
+      [0, 20]
+    ]);
+    expect(find.text('Item A0'), findsOneWidget);
+
+    // Scroll to the bottom → triggers load-more.
+    await tester.drag(find.byType(ListView), const Offset(0, -6000));
+    await tester.pumpAndSettle();
+
+    expect(calls.any((c) => c[0] == 20), isTrue); // page 2 requested at offset 20
+
+    // Page 2 landed, so the list is now longer and the drag above only
+    // reached the *old* bottom — the footer is further down and not yet
+    // built. Drag again to reach the new (grown) bottom so it's visible.
+    await tester.drag(find.byType(ListView), const Offset(0, -6000));
+    await tester.pumpAndSettle();
+
+    expect(find.text('End of results'), findsOneWidget);
+  });
+
+  testWidgets('scoped results: a short first page shows End of results',
+      (tester) async {
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    Future<List<GlobalSearchItem>> fetchPage(int start, int size) async =>
+        List.generate(
+            3, (i) => GlobalSearchItem(id: 'X$i', title: 'X$i', rawData: const {}));
+
+    await tester.pumpWidget(GetMaterialApp(
+      theme: theme,
+      home: Scaffold(
+        body: scopedResultsForTest(
+          target: _target('Item'),
+          query: 'belts',
+          fetchPage: fetchPage,
+          onTap: (_) {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('X0'), findsOneWidget);
+    expect(find.text('End of results'), findsOneWidget);
+  });
+
+  testWidgets('scoped results: empty first page shows the no-documents message',
+      (tester) async {
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    Future<List<GlobalSearchItem>> fetchPage(int start, int size) async => [];
+
+    await tester.pumpWidget(GetMaterialApp(
+      theme: theme,
+      home: Scaffold(
+        body: scopedResultsForTest(
+          target: _target('Item'),
+          query: 'zzz',
+          fetchPage: fetchPage,
+          onTap: (_) {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('No documents found'), findsOneWidget);
   });
 }
