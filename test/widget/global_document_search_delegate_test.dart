@@ -368,4 +368,33 @@ void main() {
 
     expect(find.textContaining('No documents found'), findsOneWidget);
   });
+
+  testWidgets('scoped results: a balance-fetch failure still shows the items',
+      (tester) async {
+    final theme = buildAppTheme(AppScheme.light, Brightness.light);
+    Future<List<GlobalSearchItem>> fetchPage(int start, int size) async =>
+        List.generate(3,
+            (i) => GlobalSearchItem(id: 'B$i', title: 'Belt $i', rawData: const {}));
+    Future<Map<String, WarehouseStockLine>> fetchBalances(
+            List<String> codes) async =>
+        throw Exception('stock 403');
+
+    await tester.pumpWidget(GetMaterialApp(
+      theme: theme,
+      home: Scaffold(
+        body: scopedResultsForTest(
+          target: _target('Item'),
+          query: 'belt',
+          fetchPage: fetchPage,
+          fetchBalances: fetchBalances,
+          onTap: (_) {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Belt 0'), findsOneWidget); // items shown despite balance failure
+    expect(find.textContaining('Search failed'), findsNothing);
+    expect(find.text('End of results'), findsOneWidget);
+  });
 }

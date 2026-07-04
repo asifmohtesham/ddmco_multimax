@@ -698,7 +698,8 @@ class _ScopedResultsState extends State<_ScopedResults> {
     if (max > 0 &&
         _scrollController.offset >= max * 0.9 &&
         _hasMore &&
-        !_isLoadingMore) {
+        !_isLoadingMore &&
+        !(_debounce?.isActive ?? false)) {
       _fetch(reset: false);
     }
   }
@@ -711,24 +712,10 @@ class _ScopedResultsState extends State<_ScopedResults> {
       if (reset) _error = false;
     });
     final start = reset ? 0 : _items.length;
+
+    List<GlobalSearchItem> page;
     try {
-      final page = await widget.fetchPage(start, _kPageSize);
-      var bal = const <String, WarehouseStockLine>{};
-      if (widget.fetchBalances != null && page.isNotEmpty) {
-        final codes =
-            page.map((i) => i.id).where((c) => c.isNotEmpty).toList();
-        bal = await widget.fetchBalances!(codes);
-      }
-      if (!mounted || id != _fetchId) return;
-      setState(() {
-        _items = [...(reset ? const <GlobalSearchItem>[] : _items), ...page];
-        if (widget.fetchBalances != null) {
-          _balances = reset ? {...bal} : {...?_balances, ...bal};
-        }
-        _hasMore = page.length == _kPageSize;
-        _isLoadingMore = false;
-        _initialLoading = false;
-      });
+      page = await widget.fetchPage(start, _kPageSize);
     } catch (_) {
       if (!mounted || id != _fetchId) return;
       setState(() {
@@ -740,7 +727,31 @@ class _ScopedResultsState extends State<_ScopedResults> {
           _hasMore = false;
         }
       });
+      return;
     }
+    if (!mounted || id != _fetchId) return; // stale/unmounted → skip balance call
+
+    // Balances are ancillary: a failure must NOT drop the page (fail-open,
+    // mirroring _SearchResultsList — rows just fall back to the chevron).
+    var bal = const <String, WarehouseStockLine>{};
+    if (widget.fetchBalances != null && page.isNotEmpty) {
+      final codes = page.map((i) => i.id).where((c) => c.isNotEmpty).toList();
+      try {
+        bal = await widget.fetchBalances!(codes);
+      } catch (_) {
+        bal = const {};
+      }
+    }
+    if (!mounted || id != _fetchId) return;
+    setState(() {
+      _items = [...(reset ? const <GlobalSearchItem>[] : _items), ...page];
+      if (widget.fetchBalances != null) {
+        _balances = reset ? {...bal} : {...?_balances, ...bal};
+      }
+      _hasMore = page.length == _kPageSize;
+      _isLoadingMore = false;
+      _initialLoading = false;
+    });
   }
 
   @override
