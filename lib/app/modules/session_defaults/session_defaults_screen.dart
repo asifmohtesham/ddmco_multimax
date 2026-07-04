@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/global_widgets/settings_group.dart';
 import 'package:multimax/app/modules/global_widgets/settings_row.dart';
 import 'package:multimax/app/modules/global_widgets/settings_controls.dart';
 import 'package:multimax/app/modules/session_defaults/session_defaults_controller.dart';
+import 'package:multimax/app/modules/global_widgets/warehouse_picker_sheet.dart';
 
 class SessionDefaultsScreen extends GetView<SessionDefaultsController> {
   const SessionDefaultsScreen({super.key});
@@ -26,7 +27,10 @@ class SessionDefaultsScreen extends GetView<SessionDefaultsController> {
             children: [
               SettingsGroup(
                 label: 'Session',
-                children: [_companyField(context)],
+                children: [
+                  _companyField(context),
+                  _warehouseField(context),
+                ],
               ),
               const SizedBox(height: AppSpace.s4),
               SettingsGroup(
@@ -169,6 +173,74 @@ class SessionDefaultsScreen extends GetView<SessionDefaultsController> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _warehouseField(BuildContext context) {
+    final s = context.scheme;
+    final selected = controller.selectedWarehouse.value;
+    return Padding(
+      padding: const EdgeInsets.all(AppSpace.s3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Default Warehouse',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: s.textMuted)),
+          const SizedBox(height: 7),
+          InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            onTap: () => _pickWarehouse(context),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 46),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: s.subtle,
+                border: Border.all(color: s.borderStrong),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warehouse_outlined, size: 18, color: s.textSubtle),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      selected ?? 'Select warehouse (optional)',
+                      style: TextStyle(
+                          fontSize: 15,
+                          color: selected == null ? s.textSubtle : s.text),
+                    ),
+                  ),
+                  if (selected != null)
+                    InkWell(
+                      onTap: controller.clearWarehouse,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Icon(Icons.close, size: 18, color: s.textSubtle),
+                    )
+                  else
+                    Icon(Icons.expand_more, size: 18, color: s.textSubtle),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text('Used for the Dashboard search Stock Balance shortcut.',
+              style: TextStyle(fontSize: 11.5, color: s.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  void _pickWarehouse(BuildContext context) {
+    Get.bottomSheet(
+      Obx(() => WarehousePickerSheet(
+            warehouses: controller.warehouses.toList(),
+            isLoading: controller.isLoadingWarehouses.value,
+            onSelected: (wh) => controller.selectedWarehouse.value = wh,
+          )),
+      isScrollControlled: true,
     );
   }
 }
