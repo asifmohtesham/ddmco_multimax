@@ -20,8 +20,8 @@ class _FakeBox {
 class _TestController extends SessionDefaultsController {
   _TestController(StorageService s) : super(storage: s);
   // Intentionally skips super.onInit() to avoid the network load() during the widget test.
-  // ignore: must_call_super
   @override
+  // ignore: must_call_super
   void onInit() {}
 }
 
