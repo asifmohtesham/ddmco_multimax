@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+import 'package:multimax/app/data/models/warehouse_stock_line.dart';
 import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
 
 GlobalSearchTarget _target(String d) => GlobalSearchTarget(
@@ -128,6 +129,118 @@ void main() {
     await tester.tap(find.text('All'));
     expect(selectCalls, 2);
     expect(selected, isNull);
+  });
+
+  testWidgets('Item row shows the inline warehouse balance and no chevron',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Item'), items: [
+        GlobalSearchItem(id: 'FG-1', title: 'Blue Strap', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+            balances: const {
+              'FG-1': WarehouseStockLine(
+                  itemCode: 'FG-1',
+                  itemName: 'Blue Strap',
+                  balanceQty: 12,
+                  uom: 'Nos'),
+            },
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('12 Nos'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right), findsNothing);
+  });
+
+  testWidgets('Item row shows a loader while balances are loading',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Item'), items: [
+        GlobalSearchItem(id: 'FG-1', title: 'Blue Strap', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+            balancesLoading: true,
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right), findsNothing);
+  });
+
+  testWidgets('Item with no stock row shows 0 once balances are loaded',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Item'), items: [
+        GlobalSearchItem(id: 'FG-9', title: 'Ghost Item', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+            balances: const <String, WarehouseStockLine>{}, // loaded, empty
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('0'), findsOneWidget);
+  });
+
+  testWidgets('non-Item row keeps the chevron even when balances are present',
+      (tester) async {
+    final delegate = GlobalDocumentSearchDelegate();
+    final groups = [
+      GlobalSearchGroup(target: _target('Delivery Note'), items: [
+        GlobalSearchItem(id: 'KA-DN-1', title: 'Acme', rawData: const {}),
+      ]),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => delegate.buildResultsList(
+            context,
+            groups,
+            (t, i) {},
+            balances: const {
+              'KA-DN-1': WarehouseStockLine(
+                  itemCode: 'KA-DN-1', itemName: '', balanceQty: 5, uom: 'Nos'),
+            },
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+    expect(find.text('5 Nos'), findsNothing);
   });
 
   testWidgets('scope chip reflects the selected target', (tester) async {
