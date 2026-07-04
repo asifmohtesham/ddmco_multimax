@@ -56,34 +56,73 @@ class GlobalSearchService extends GetxService {
       // Fallback description
       // if (!selectFields.contains('description')) selectFields.add('description');
 
-      // 3. Construct Query
-      final Map<String, dynamic> orFilters = {};
-      for (var field in searchTargets.toSet()) {
-        orFilters[field] = ['like', '%$query%'];
-      }
+      // 3. Tokenise the query. ≤1 token keeps the classic single-phrase LIKE;
+      // ≥2 tokens match "all words, any order" (server OR superset + client AND).
+      final fieldSet = searchTargets.toSet();
+      final tokens = searchTokens(query);
 
-      // Debug Log
       if (kDebugMode) {
-        print('GlobalSearchService: Searching "$query" in $doctype on fields: $searchTargets');
+        print('GlobalSearchService: Searching "$query" $tokens in $doctype '
+            'on fields: $searchTargets');
       }
 
       // 4. API Call
-      final response = await _apiProvider.getDocumentList(
-        doctype,
-        orFilters: orFilters,
-        limit: 20,
-        fields: selectFields.toSet().toList(),
-      );
+      final response = tokens.length <= 1
+          ? await _apiProvider.getDocumentList(
+              doctype,
+              orFilters: {
+                for (final field in fieldSet) field: ['like', '%$query%'],
+              },
+              limit: 20,
+              fields: selectFields.toSet().toList(),
+            )
+          : await _apiProvider.getDocumentList(
+              doctype,
+              orFilterTuples: [
+                for (final field in fieldSet)
+                  for (final token in tokens)
+                    [doctype, field, 'like', '%$token%'],
+              ],
+              limit: 50,
+              fields: selectFields.toSet().toList(),
+            );
 
       if (response.statusCode == 200 && response.data['data'] != null) {
         final List data = response.data['data'];
-        // 5. Map to Model
-        return data.map((e) => _mapToModel(e, meta)).toList();
+        // 5. For multi-token queries, keep only rows containing EVERY token.
+        final searchFields = fieldSet.toList();
+        final rows = tokens.length <= 1
+            ? data
+            : data
+                .where((e) => rowMatchesAllTokens(
+                    e as Map<String, dynamic>, searchFields, tokens))
+                .toList();
+        return rows.map((e) => _mapToModel(e, meta)).toList();
       }
     } catch (e) {
       print('GlobalSearchService Error ($doctype): $e');
     }
     return [];
+  }
+
+  /// Whitespace-separated, non-empty search tokens from [query]. Pure.
+  static List<String> searchTokens(String query) => query
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((t) => t.isNotEmpty)
+      .toList();
+
+  /// True when EVERY token in [tokens] appears (case-insensitive substring) in
+  /// the concatenation of [fields]' values on [row] — "all words, any order".
+  /// Pure. Empty [tokens] → true (no constraint).
+  static bool rowMatchesAllTokens(
+    Map<String, dynamic> row,
+    List<String> fields,
+    List<String> tokens,
+  ) {
+    final hay =
+        fields.map((f) => (row[f] ?? '').toString()).join(' ').toLowerCase();
+    return tokens.every((t) => hay.contains(t.toLowerCase()));
   }
 
   /// Max hits shown per doctype group.

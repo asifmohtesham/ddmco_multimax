@@ -205,6 +205,7 @@ class ApiProvider {
     String? groupBy = '',
     Map<String, dynamic>? filters,
     Map<String, dynamic>? orFilters,
+    List<List<dynamic>>? orFilterTuples,
     String orderBy = 'modified desc',
   }) async {
     if (!_dioInitialised) await _initDio();
@@ -242,8 +243,11 @@ class ApiProvider {
       queryParameters['filters'] = json.encode(filterList);
     }
 
-    // Process OR Filters — same tuple expansion rules as the AND block.
-    if (orFilters != null && orFilters.isNotEmpty) {
+    // Process OR Filters. An explicit pre-built tuple list (each entry a complete
+    // Frappe [doctype, field, op, value]) wins; otherwise expand the Map form.
+    if (orFilterTuples != null && orFilterTuples.isNotEmpty) {
+      queryParameters['or_filters'] = json.encode(orFilterTuples);
+    } else if (orFilters != null && orFilters.isNotEmpty) {
       final List<List<dynamic>> orFilterList = orFilters.entries.map((entry) {
         final val = entry.value;
         if (val is List) {
