@@ -21,7 +21,12 @@ class GlobalSearchService extends GetxService {
   final Map<String, Map<String, String>> _fieldTypesCache = {};
 
   /// Performs a robust, contextual search for the given [doctype].
-  Future<List<GlobalSearchItem>> search(String doctype, String query) async {
+  Future<List<GlobalSearchItem>> search(
+    String doctype,
+    String query, {
+    int limitStart = 0,
+    int pageSize = 20,
+  }) async {
     try {
       // 1. Prepare Metadata (Cached)
       await _ensureMetadata(doctype);
@@ -76,7 +81,8 @@ class GlobalSearchService extends GetxService {
               orFilters: {
                 for (final field in fieldSet) field: ['like', '%$query%'],
               },
-              limit: 20,
+              limit: pageSize,
+              limitStart: limitStart,
               fields: selectFields.toSet().toList(),
             )
           : await _apiProvider.getDocumentList(
@@ -85,7 +91,8 @@ class GlobalSearchService extends GetxService {
                 for (final token in tokens)
                   [doctype, primaryField, 'like', '%$token%'],
               ],
-              limit: 20,
+              limit: pageSize,
+              limitStart: limitStart,
               fields: selectFields.toSet().toList(),
             );
 
@@ -173,7 +180,7 @@ class GlobalSearchService extends GetxService {
     return runSearchAll(
       targets: kGlobalSearchTargets,
       canRead: (doctype) => permission.hasAccess(doctype),
-      searcher: (doctype) => search(doctype, query),
+      searcher: (doctype) => search(doctype, query, pageSize: kGroupCap),
     );
   }
 
