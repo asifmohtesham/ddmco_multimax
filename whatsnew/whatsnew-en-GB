@@ -1,2 +1,3 @@
-• Search now matches all your words in any order — e.g. "belts reversible" finds "Reversible Belts".
-• Search now looks at item names and other details, not just document codes, so you find things by description (fixes empty results for many operator accounts).
+• Search: choose a category (e.g. Items) and scroll to load all matching results, not just the first few.
+• Search: multi-word queries now return every match (e.g. "belts reversible" finds them all, in any word order).
+• Search: a prompt to set a Default Warehouse so item stock balances appear right in the results.
