@@ -1,2 +1,2 @@
-• Session Defaults: set a Default Warehouse (Menu → Account & settings → Session Defaults).
-• Dashboard search: each matching item now shows its stock balance in your Default Warehouse, right on the result row — summed across child warehouses when the default is a group warehouse.
+• Default Warehouse now lets you pick a warehouse group (shown with a "Group" tag), not just a single warehouse.
+• Dashboard search shows each matching item's stock in your Default Warehouse right on the result row — summed across all child warehouses when you pick a group.
