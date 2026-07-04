@@ -48,4 +48,19 @@ void main() {
     expect(await c.persist(), isTrue);
     expect(storage.getDefaultWarehouse(), isNull);
   });
+
+  test('partitionWarehouses splits names and the group-name set', () {
+    final data = <Map<String, dynamic>>[
+      {'name': 'Stores A - M', 'is_group': 0},
+      {'name': 'All Warehouses - M', 'is_group': 1},
+      {'name': 'Finished Goods - M', 'is_group': true},
+      {'name': 'Raw - M', 'is_group': '1'},
+      {'name': '', 'is_group': 0},
+    ];
+    final r = SessionDefaultsController.partitionWarehouses(data);
+    expect(r.names,
+        ['Stores A - M', 'All Warehouses - M', 'Finished Goods - M', 'Raw - M']);
+    expect(r.groups,
+        {'All Warehouses - M', 'Finished Goods - M', 'Raw - M'});
+  });
 }

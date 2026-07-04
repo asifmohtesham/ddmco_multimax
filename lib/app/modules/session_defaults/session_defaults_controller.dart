@@ -32,6 +32,7 @@ class SessionDefaultsController extends GetxController {
   final warehouses = <String>[].obs;
   final selectedWarehouse = RxnString();
   final isLoadingWarehouses = false.obs;
+  final groupWarehouses = <String>{}.obs;
 
   @override
   void onInit() {
@@ -64,18 +65,34 @@ class SessionDefaultsController extends GetxController {
   Future<void> _loadWarehouses() async {
     isLoadingWarehouses.value = true;
     try {
-      final res = await _warehouseProvider.getWarehouses();
+      final res = await _warehouseProvider.getWarehouses(includeGroups: true);
       final data = res.data['data'] as List? ?? const [];
-      warehouses.assignAll(
-        data
-            .map((w) => (w['name'] ?? '').toString())
-            .where((s) => s.isNotEmpty),
-      );
+      final parsed = partitionWarehouses(data);
+      warehouses.assignAll(parsed.names);
+      groupWarehouses.assignAll(parsed.groups);
     } catch (_) {
       AppNotification.error('Failed to load warehouses');
     } finally {
       isLoadingWarehouses.value = false;
     }
+  }
+
+  /// Splits raw Warehouse rows into a name list (kept in received order) and the
+  /// set of names that are group warehouses (`is_group` truthy: `1`, `true`, or
+  /// `'1'`). Blank names are skipped. Pure — no GetX/DI, so it is unit-testable.
+  static ({List<String> names, Set<String> groups}) partitionWarehouses(
+    List<dynamic> data,
+  ) {
+    final names = <String>[];
+    final groups = <String>{};
+    for (final w in data) {
+      final name = (w['name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      names.add(name);
+      final g = w['is_group'];
+      if (g == 1 || g == true || g == '1') groups.add(name);
+    }
+    return (names: names, groups: groups);
   }
 
   /// Writes current settings to storage. Returns false if no company chosen.
