@@ -238,6 +238,7 @@ class SessionDefaultsScreen extends GetView<SessionDefaultsController> {
       Obx(() => WarehousePickerSheet(
             warehouses: controller.warehouses.toList(),
             isLoading: controller.isLoadingWarehouses.value,
+            groupNames: controller.groupWarehouses.toSet(),
             onSelected: (wh) => controller.selectedWarehouse.value = wh,
           )),
       isScrollControlled: true,

@@ -22,12 +22,14 @@ class WarehousePickerSheet extends StatefulWidget {
     required this.isLoading,
     required this.onSelected,
     this.title = 'Select Warehouse',
+    this.groupNames = const {},
   });
 
   final List<String> warehouses;
   final bool isLoading;
   final ValueChanged<String> onSelected;
   final String title;
+  final Set<String> groupNames;
 
   @override
   State<WarehousePickerSheet> createState() => _WarehousePickerSheetState();
@@ -59,6 +61,25 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Widget _groupTag(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        'Group',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
   }
 
   @override
@@ -100,8 +121,10 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
                             const Divider(height: 1),
                         itemBuilder: (ctx, i) {
                           final wh = _filtered[i];
+                          final isGroup = widget.groupNames.contains(wh);
                           return ListTile(
                             title: Text(wh),
+                            trailing: isGroup ? _groupTag(ctx) : null,
                             onTap: () {
                               // Use Navigator.of(ctx).pop() instead of Get.back().
                               // Get.back() unconditionally calls
