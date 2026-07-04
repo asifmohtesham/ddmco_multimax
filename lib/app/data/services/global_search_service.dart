@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
+import 'package:multimax/app/data/models/warehouse_stock_line.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 
@@ -138,6 +139,76 @@ class GlobalSearchService extends GetxService {
       canRead: (doctype) => permission.hasAccess(doctype),
       searcher: (doctype) => search(doctype, query),
     );
+  }
+
+  /// Stock Balance lines for the items matching [query], scoped to [warehouse].
+  /// Resolves matching item codes via the existing Item search, then queries
+  /// the Stock Balance report for those items in [warehouse] for today. Returns
+  /// an empty list when nothing matches. Errors propagate to the caller (the
+  /// delegate hides the section on error).
+  Future<List<WarehouseStockLine>> stockBalanceForQuery(
+    String query,
+    String warehouse,
+  ) async {
+    final codes = itemCodesFrom(await search('Item', query));
+    if (codes.isEmpty) return const [];
+    final today = _today();
+    final result = await _apiProvider.getStockBalanceReport(
+      fromDate: today,
+      toDate: today,
+      itemCodes: codes,
+      warehouse: warehouse,
+    );
+    final allowed = codes.toSet();
+    final rows = result.rows
+        .where((r) => allowed.contains((r['item_code'] ?? '').toString()))
+        .toList();
+    return mapStockLines(rows);
+  }
+
+  /// Non-blank item codes from [items], capped at [kGroupCap]. Pure.
+  static List<String> itemCodesFrom(List<GlobalSearchItem> items) => items
+      .map((i) => i.id)
+      .where((c) => c.isNotEmpty)
+      .take(kGroupCap)
+      .toList();
+
+  /// Maps Stock Balance report rows to [WarehouseStockLine]s, reading the
+  /// balance from `bal_qty` (falling back to legacy `balance_qty`). Rows with a
+  /// blank item code are skipped. Pure.
+  static List<WarehouseStockLine> mapStockLines(
+    List<Map<String, dynamic>> rows,
+  ) {
+    final out = <WarehouseStockLine>[];
+    for (final r in rows) {
+      final code = (r['item_code'] ?? '').toString();
+      if (code.isEmpty) continue;
+      out.add(WarehouseStockLine(
+        itemCode: code,
+        itemName: (r['item_name'] ?? '').toString(),
+        balanceQty: _num(r, const ['bal_qty', 'balance_qty']),
+        uom: (r['stock_uom'] ?? '').toString(),
+      ));
+    }
+    return out;
+  }
+
+  static double _num(Map<String, dynamic> row, List<String> keys) {
+    for (final k in keys) {
+      final v = row[k];
+      if (v == null) continue;
+      if (v is num) return v.toDouble();
+      final p = double.tryParse(v.toString().trim());
+      if (p != null) return p;
+    }
+    return 0.0;
+  }
+
+  static String _today() {
+    final d = DateTime.now();
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
   }
 
   /// Maps a raw API JSON object to a standardized [GlobalSearchItem].
