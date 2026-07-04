@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 /// A reusable warehouse-picker bottom sheet.
 ///
