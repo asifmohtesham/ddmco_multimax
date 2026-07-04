@@ -141,17 +141,18 @@ class GlobalSearchService extends GetxService {
     );
   }
 
-  /// Stock Balance lines for the items matching [query], scoped to [warehouse].
-  /// Resolves matching item codes via the existing Item search, then queries
-  /// the Stock Balance report for those items in [warehouse] for today. Returns
-  /// an empty list when nothing matches. Errors propagate to the caller (the
-  /// delegate hides the section on error).
-  Future<List<WarehouseStockLine>> stockBalanceForQuery(
-    String query,
+  /// Default-warehouse balances for [itemCodes], aggregated per item code.
+  /// Returns an empty map for empty input. Errors propagate to the caller (the
+  /// delegate falls back to the chevron). A group warehouse is summed via
+  /// [aggregateByItem]. The returned rows are narrowed to [itemCodes] first, so
+  /// an older instance that couldn't push a multi-item filter server-side still
+  /// yields only the requested items.
+  Future<Map<String, WarehouseStockLine>> warehouseBalances(
+    List<String> itemCodes,
     String warehouse,
   ) async {
-    final codes = itemCodesFrom(await search('Item', query));
-    if (codes.isEmpty) return const [];
+    final codes = itemCodes.where((c) => c.isNotEmpty).toList();
+    if (codes.isEmpty) return const {};
     final today = _today();
     final result = await _apiProvider.getStockBalanceReport(
       fromDate: today,
@@ -163,34 +164,50 @@ class GlobalSearchService extends GetxService {
     final rows = result.rows
         .where((r) => allowed.contains((r['item_code'] ?? '').toString()))
         .toList();
-    return mapStockLines(rows);
+    return aggregateByItem(rows);
   }
 
-  /// Non-blank item codes from [items], capped at [kGroupCap]. Pure.
-  static List<String> itemCodesFrom(List<GlobalSearchItem> items) => items
-      .map((i) => i.id)
-      .where((c) => c.isNotEmpty)
-      .take(kGroupCap)
-      .toList();
-
-  /// Maps Stock Balance report rows to [WarehouseStockLine]s, reading the
-  /// balance from `bal_qty` (falling back to legacy `balance_qty`). Rows with a
-  /// blank item code are skipped. Pure.
-  static List<WarehouseStockLine> mapStockLines(
+  /// Aggregates Stock Balance report [rows] into one [WarehouseStockLine] per
+  /// item code, SUMMING the balance (`bal_qty`, legacy `balance_qty`) across all
+  /// rows for that item — so a group warehouse (which the report expands to its
+  /// descendant leaf rows) yields the group total. `item_name` / `stock_uom` are
+  /// taken from the first row that carries a non-empty value. Blank item codes
+  /// are skipped. Pure.
+  static Map<String, WarehouseStockLine> aggregateByItem(
     List<Map<String, dynamic>> rows,
   ) {
-    final out = <WarehouseStockLine>[];
+    final qty = <String, double>{};
+    final name = <String, String>{};
+    final uom = <String, String>{};
+    final order = <String>[];
     for (final r in rows) {
       final code = (r['item_code'] ?? '').toString();
       if (code.isEmpty) continue;
-      out.add(WarehouseStockLine(
-        itemCode: code,
-        itemName: (r['item_name'] ?? '').toString(),
-        balanceQty: _num(r, const ['bal_qty', 'balance_qty']),
-        uom: (r['stock_uom'] ?? '').toString(),
-      ));
+      if (!qty.containsKey(code)) {
+        qty[code] = 0;
+        name[code] = '';
+        uom[code] = '';
+        order.add(code);
+      }
+      qty[code] = qty[code]! + _num(r, const ['bal_qty', 'balance_qty']);
+      if (name[code]!.isEmpty) {
+        final n = (r['item_name'] ?? '').toString();
+        if (n.isNotEmpty) name[code] = n;
+      }
+      if (uom[code]!.isEmpty) {
+        final u = (r['stock_uom'] ?? '').toString();
+        if (u.isNotEmpty) uom[code] = u;
+      }
     }
-    return out;
+    return {
+      for (final code in order)
+        code: WarehouseStockLine(
+          itemCode: code,
+          itemName: name[code]!,
+          balanceQty: qty[code]!,
+          uom: uom[code]!,
+        ),
+    };
   }
 
   static double _num(Map<String, dynamic> row, List<String> keys) {
