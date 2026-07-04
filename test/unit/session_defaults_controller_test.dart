@@ -33,4 +33,19 @@ void main() {
     expect(storage.getAutoSubmitDelay(), 4);
     expect(storage.getAutoSaveDelay(), 12);
   });
+
+  test('persist saves and clears the default warehouse', () async {
+    final storage = StorageService.withStorage(_FakeBox());
+    final c = SessionDefaultsController(storage: storage);
+    c.selectedCompany.value = 'Multimax';
+
+    c.selectedWarehouse.value = 'Stores - M';
+    expect(await c.persist(), isTrue);
+    expect(storage.getDefaultWarehouse(), 'Stores - M');
+
+    c.clearWarehouse();
+    expect(c.selectedWarehouse.value, isNull);
+    expect(await c.persist(), isTrue);
+    expect(storage.getDefaultWarehouse(), isNull);
+  });
 }
