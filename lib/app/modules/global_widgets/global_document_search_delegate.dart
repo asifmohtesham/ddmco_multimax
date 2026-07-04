@@ -492,6 +492,7 @@ class _SearchResultsList extends StatefulWidget {
 class _SearchResultsListState extends State<_SearchResultsList> {
   Map<String, WarehouseStockLine>? _balances; // null = feature off / loading / error
   bool _loading = false;
+  int _fetchId = 0; // guards against a stale in-flight fetch resolving last
 
   @override
   void initState() {
@@ -520,6 +521,7 @@ class _SearchResultsListState extends State<_SearchResultsList> {
   }
 
   Future<void> _fetch() async {
+    final int id = ++_fetchId;
     final codesKey = _itemCodesOf(widget.groups);
     if (!_active || codesKey.isEmpty) {
       setState(() {
@@ -536,13 +538,13 @@ class _SearchResultsListState extends State<_SearchResultsList> {
     try {
       final result =
           await widget.service.warehouseBalances(codes, widget.warehouse!);
-      if (!mounted) return;
+      if (!mounted || id != _fetchId) return;
       setState(() {
         _balances = result;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || id != _fetchId) return;
       // Fail closed: fall back to the chevron; never break document search.
       setState(() {
         _balances = null;
