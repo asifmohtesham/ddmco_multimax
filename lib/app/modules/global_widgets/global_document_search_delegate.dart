@@ -520,17 +520,25 @@ class _SearchResultsListState extends State<_SearchResultsList> {
     return '';
   }
 
+  static List<String> _itemCodesListOf(List<GlobalSearchGroup> groups) {
+    for (final g in groups) {
+      if (g.target.doctype == 'Item') {
+        return g.items.map((i) => i.id).where((c) => c.isNotEmpty).toList();
+      }
+    }
+    return const [];
+  }
+
   Future<void> _fetch() async {
     final int id = ++_fetchId;
-    final codesKey = _itemCodesOf(widget.groups);
-    if (!_active || codesKey.isEmpty) {
+    final codes = _itemCodesListOf(widget.groups);
+    if (!_active || codes.isEmpty) {
       setState(() {
         _balances = null;
         _loading = false;
       });
       return;
     }
-    final codes = codesKey.split(',').where((c) => c.isNotEmpty).toList();
     setState(() {
       _balances = null;
       _loading = true;
