@@ -52,6 +52,20 @@ class _FakeToDoProvider extends ToDoProvider {
       data: updateTodoData == null ? null : {'data': updateTodoData},
     );
   }
+
+  String? lastDeleteName;
+  int deleteTodoStatusCode = 202;
+  Object? throwOnDelete;
+
+  @override
+  Future<Response> deleteTodo(String name) async {
+    lastDeleteName = name;
+    if (throwOnDelete != null) throw throwOnDelete!;
+    return Response(
+      requestOptions: RequestOptions(path: '/api/resource/ToDo/$name'),
+      statusCode: deleteTodoStatusCode,
+    );
+  }
 }
 
 class _FakeUserProvider extends UserProvider {
@@ -443,6 +457,55 @@ void main() {
       expect(fakeProvider.lastCreatePayload, isNull);
       expect(ctrl.saveResult.value, SaveResult.error);
       expect(ctrl.isSaving.value, isFalse);
+    });
+  });
+
+  group('performDelete', () {
+    test('deletes on the server and clears the dirty flag', () async {
+      final ctrl = ToDoFormController()..name = 'TD-0001';
+      ctrl.mode.value = 'edit';
+      ctrl.isDirty.value = true;
+
+      final deleted = await ctrl.performDelete();
+
+      expect(deleted, isTrue);
+      expect(fakeProvider.lastDeleteName, 'TD-0001');
+      expect(ctrl.isDirty.value, isFalse,
+          reason: 'PopScope must allow the post-delete pop');
+      expect(ctrl.isDeleting.value, isFalse);
+    });
+
+    test('reports failure and stays put on a server error', () async {
+      fakeProvider.deleteTodoStatusCode = 500;
+      final ctrl = ToDoFormController()..name = 'TD-0001';
+      ctrl.mode.value = 'edit';
+
+      final deleted = await ctrl.performDelete();
+
+      expect(deleted, isFalse);
+      expect(ctrl.isDeleting.value, isFalse);
+    });
+
+    test('re-entrancy guard skips a delete already in flight', () async {
+      final ctrl = ToDoFormController()..name = 'TD-0001';
+      ctrl.isDeleting.value = true;
+
+      final deleted = await ctrl.performDelete();
+
+      expect(deleted, isFalse);
+      expect(fakeProvider.lastDeleteName, isNull);
+    });
+
+    test('reports failure on a Dio exception', () async {
+      fakeProvider.throwOnDelete = DioException(
+        requestOptions: RequestOptions(path: '/api/resource/ToDo/TD-0001'),
+      );
+      final ctrl = ToDoFormController()..name = 'TD-0001';
+
+      final deleted = await ctrl.performDelete();
+
+      expect(deleted, isFalse);
+      expect(ctrl.isDeleting.value, isFalse);
     });
   });
 }

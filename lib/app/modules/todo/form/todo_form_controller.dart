@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/core/utils/html_text.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/enums/save_result.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
@@ -55,6 +56,9 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
 
   /// `true` while [toggleCloseReopen] is in flight.
   var isClosing = false.obs;
+
+  /// `true` while [performDelete] is in flight.
+  var isDeleting = false.obs;
 
   /// `true` when the form has unsaved changes. Always `true` in new mode.
   var isDirty = false.obs;
@@ -464,6 +468,60 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
       GlobalSnackbar.error(message: 'Failed to update ToDo status: $e');
     } finally {
       isClosing.value = false;
+    }
+  }
+
+  // ── Delete ────────────────────────────────────────────────────────────
+
+  /// Confirms, deletes, and pops the form. Frappe's `on_trash` also removes
+  /// the assignment from the referenced document's `_assign` — the dialog
+  /// says so when a reference is present.
+  Future<void> deleteDocument() async {
+    if (isDeleting.value) return;
+    final t = todo.value;
+    final refNote = (t != null && t.hasReference)
+        ? ' This also removes the assignment from '
+            '${t.referenceType} ${t.referenceName}.'
+        : '';
+    final confirmed = await GlobalDialog.confirm(
+      title: 'Delete ToDo?',
+      message: 'This cannot be undone.$refNote',
+      confirmText: 'Delete',
+      confirmColor: AppColors.red700,
+      icon: Icons.delete_outline,
+    );
+    if (confirmed != true) return;
+
+    final deleted = await performDelete();
+    if (deleted) Get.back();
+  }
+
+  /// Core delete network logic, split from [deleteDocument] so it can be
+  /// exercised without the confirmation dialog (which needs a widget tree).
+  /// Returns `true` when the server accepted the deletion. Frappe's REST
+  /// DELETE answers 202 Accepted.
+  Future<bool> performDelete() async {
+    if (isDeleting.value) return false;
+    isDeleting.value = true;
+    try {
+      final response = await _provider.deleteTodo(name);
+      if (response.statusCode == 200 ||
+          response.statusCode == 202 ||
+          response.statusCode == 204) {
+        GlobalSnackbar.success(message: 'ToDo Deleted');
+        isDirty.value = false;
+        return true;
+      }
+      GlobalSnackbar.error(message: 'Failed to delete ToDo');
+      return false;
+    } on DioException catch (e) {
+      GlobalSnackbar.error(message: 'Failed to delete ToDo: ${e.message}');
+      return false;
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Failed to delete ToDo: $e');
+      return false;
+    } finally {
+      isDeleting.value = false;
     }
   }
 }
