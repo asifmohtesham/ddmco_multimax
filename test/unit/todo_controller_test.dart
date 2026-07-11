@@ -15,13 +15,17 @@ class _FakeToDoProvider extends ToDoProvider {
   int updateStatusCode = 200;
   String? lastCloseName;
   String? lastCloseModified;
+  Object? throwOnGetTodo;
 
   @override
-  Future<Response> getTodo(String name) async => Response(
-        requestOptions: RequestOptions(path: '/api/resource/ToDo/$name'),
-        statusCode: getTodoStatusCode,
-        data: getTodoData == null ? null : {'data': getTodoData},
-      );
+  Future<Response> getTodo(String name) async {
+    if (throwOnGetTodo != null) throw throwOnGetTodo!;
+    return Response(
+      requestOptions: RequestOptions(path: '/api/resource/ToDo/$name'),
+      statusCode: getTodoStatusCode,
+      data: getTodoData == null ? null : {'data': getTodoData},
+    );
+  }
 
   @override
   Future<Response> closeTodo(String name, {String? modified}) async {
@@ -100,6 +104,42 @@ void main() {
 
       expect(ctrl.todos.first.status, 'Open',
           reason: 'a failed refresh must not blank already-shown data');
+    });
+
+    // After a delete on the form screen, the list's post-return refresh gets
+    // a 404 — that must silently evict the row, not error-snackbar and leave
+    // a ghost card behind.
+    test('a thrown 404 evicts the deleted ToDo from list, cache, and expansion',
+        () async {
+      fakeProvider.getTodoData = _canned();
+      final ctrl = ToDoController();
+      ctrl.todos.add(ToDo.fromJson(_canned()));
+      ctrl.filteredTodos.add(ToDo.fromJson(_canned()));
+      ctrl.expandedTodoName.value = 'TD-0001';
+
+      fakeProvider.throwOnGetTodo = DioException(
+        requestOptions: RequestOptions(path: '/api/resource/ToDo/TD-0001'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/resource/ToDo/TD-0001'),
+          statusCode: 404,
+        ),
+      );
+      await ctrl.refreshTodoDetail('TD-0001');
+
+      expect(ctrl.todos, isEmpty);
+      expect(ctrl.filteredTodos, isEmpty);
+      expect(ctrl.expandedTodoName.value, '');
+      expect(ctrl.detailedTodo, isNull);
+    });
+
+    test('a non-throwing 404 response also evicts', () async {
+      final ctrl = ToDoController();
+      ctrl.todos.add(ToDo.fromJson(_canned()));
+      fakeProvider.getTodoStatusCode = 404;
+
+      await ctrl.refreshTodoDetail('TD-0001');
+
+      expect(ctrl.todos, isEmpty);
     });
   });
 

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
@@ -176,6 +177,7 @@ class ToDoController extends GetxController {
   /// its cache-hit guard) and only overwrites the cache once the new data
   /// has arrived, so a transient failure leaves the previously-shown
   /// detail intact instead of blanking it.
+  /// A 404 means the document was deleted — the row is evicted instead.
   Future<void> refreshTodoDetail(String name) async {
     if (name.isEmpty) return;
     try {
@@ -188,12 +190,30 @@ class ToDoController extends GetxController {
           todos[idx] = updated;
           _applyLocalSearch();
         }
+      } else if (response.statusCode == 404) {
+        _evictTodo(name);
       } else {
         AppNotification.error('Failed to refresh ToDo');
+      }
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        _evictTodo(name);
+      } else {
+        AppNotification.error(e.toString());
       }
     } catch (e) {
       AppNotification.error(e.toString());
     }
+  }
+
+  /// Removes a ToDo the server no longer has (deleted on the form screen)
+  /// from the list, the detail cache, and the expansion state — silently,
+  /// since a 404 after a delete is expected, not an error.
+  void _evictTodo(String name) {
+    _detailedTodosCache.remove(name);
+    todos.removeWhere((t) => t.name == name);
+    _applyLocalSearch();
+    if (expandedTodoName.value == name) expandedTodoName.value = '';
   }
 
   // ── Close quick action ──────────────────────────────────────────────────
