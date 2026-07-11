@@ -34,6 +34,7 @@ class StorageService {
 
   // Dashboard view preferences
   static const String _dashboardColumnsKey = 'dashboard_columns';
+  static const String _dashboardTasksFirstKey = 'dashboard_tasks_first';
 
   // --- User Data ---
   Future<void> saveUser(User user) async {
@@ -142,4 +143,13 @@ class StorageService {
 
   int getDashboardColumns() =>
       _box.read<int>(_dashboardColumnsKey) == 2 ? 2 : 1;
+
+  // Last computed "Upcoming tasks lead" verdict, PER USER, so the initial
+  // dashboard build matches the previous session instead of reflowing when
+  // the async ToDo fetch lands. Missing key = false (operator layout).
+  Future<void> saveDashboardTasksFirst(String user, bool value) async =>
+      _box.write('$_dashboardTasksFirstKey::$user', value);
+
+  bool getDashboardTasksFirst(String user) =>
+      _box.read<bool>('$_dashboardTasksFirstKey::$user') ?? false;
 }

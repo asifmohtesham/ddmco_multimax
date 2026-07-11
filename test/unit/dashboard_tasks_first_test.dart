@@ -1,5 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+
+/// In-memory stand-in for the GetStorage box used by StorageService.
+class _FakeBox {
+  final Map<String, dynamic> _m = {};
+  T? read<T>(String key) => _m[key] as T?;
+  Future<void> write(String key, dynamic value) async => _m[key] = value;
+  bool hasData(String key) => _m.containsKey(key);
+  Future<void> remove(String key) async => _m.remove(key);
+}
 
 void main() {
   group('HomeController.showTasksFirst', () {
@@ -77,6 +87,27 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('StorageService dashboard tasks-first verdict', () {
+    test('defaults to false (operator layout) when never stored', () {
+      final s = StorageService.withStorage(_FakeBox());
+      expect(s.getDashboardTasksFirst('manager@multimax.cloud'), isFalse);
+    });
+
+    test('round-trips true and false', () async {
+      final s = StorageService.withStorage(_FakeBox());
+      await s.saveDashboardTasksFirst('manager@multimax.cloud', true);
+      expect(s.getDashboardTasksFirst('manager@multimax.cloud'), isTrue);
+      await s.saveDashboardTasksFirst('manager@multimax.cloud', false);
+      expect(s.getDashboardTasksFirst('manager@multimax.cloud'), isFalse);
+    });
+
+    test('verdicts are per user — one user never leaks to another', () async {
+      final s = StorageService.withStorage(_FakeBox());
+      await s.saveDashboardTasksFirst('manager@multimax.cloud', true);
+      expect(s.getDashboardTasksFirst('operator@multimax.cloud'), isFalse);
     });
   });
 }
