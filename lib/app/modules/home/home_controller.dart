@@ -293,6 +293,12 @@ class HomeController extends GetxController {
   /// and the just-fetched ToDo list, then persists it per user so the NEXT
   /// session's initial build starts from this verdict. On a failed fetch
   /// the previous verdict is deliberately kept (no recompute call).
+  ///
+  /// [tasksFirst.value] always reflects whatever is currently on screen,
+  /// including while viewing a direct report's dashboard via the
+  /// user-switcher (`selectedFilterUser`). Persistence, however, is
+  /// skipped in that case — it only happens when viewing self — so a
+  /// manager's own seed is never polluted by a viewed report's ToDo count.
   void _recomputeTasksFirst() {
     final user = _authController.currentUser.value;
     final v = showTasksFirst(
@@ -301,7 +307,9 @@ class HomeController extends GetxController {
     );
     tasksFirst.value = v;
     final email = user?.email;
-    if (email != null && email.isNotEmpty) {
+    final isViewingSelf = selectedFilterUser.value == null ||
+        selectedFilterUser.value?.email == email;
+    if (email != null && email.isNotEmpty && isViewingSelf) {
       _storageService.saveDashboardTasksFirst(email, v);
     }
   }
