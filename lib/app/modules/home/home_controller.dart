@@ -147,16 +147,15 @@ class HomeController extends GetxController {
   /// nothing from leading with an empty section, and an operator's layout
   /// must not flip whenever a task lands.
   ///
-  /// Manager-ish = any role whose name contains "manage" (case-insensitive)
+  /// Manager-ish = any role whose name contains "manager" (case-insensitive)
   /// — covers Stock/Purchase/Manufacturing/System Manager and custom
-  /// "* Manager" roles with no maintained list. The "manage" substring also
-  /// catches "Management *" roles like Management Trainee (accepted caveat).
+  /// "* Manager" roles with no maintained list.
   static bool showTasksFirst({
     required List<String> roles,
     required bool hasOpenTodos,
   }) {
     if (!hasOpenTodos) return false;
-    return roles.any((r) => r.toLowerCase().contains('manage'));
+    return roles.any((r) => r.toLowerCase().contains('manager'));
   }
 
   Future<void> _initDashboard() async {

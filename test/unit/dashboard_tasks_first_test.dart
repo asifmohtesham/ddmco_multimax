@@ -67,15 +67,15 @@ void main() {
       );
     });
 
-    // Documented, accepted caveat from the spec: contains('manager') also
-    // matches "Management Trainee". Locks in current intended behaviour.
-    test('accepted caveat: "Management Trainee" counts as managerish', () {
+    // "management" does not contain the substring "manager" (no trailing
+    // 'r') — so trainee/management-adjacent roles correctly do NOT count.
+    test('"Management Trainee" is NOT managerish', () {
       expect(
         HomeController.showTasksFirst(
           roles: ['Management Trainee'],
           hasOpenTodos: true,
         ),
-        isTrue,
+        isFalse,
       );
     });
   });
