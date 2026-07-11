@@ -29,15 +29,27 @@ void main() {
       final rows = PosUploadFormController.buildDnRows(
         items: [_dnItem(serial: '3', variantOf: 'VAR-1', country: 'India')],
         itemNameByIdx: {'3': 'POS Item Name'},
+        refCodeByIdx: {'3': 'CUST-REF-3'},
         compact: false,
       );
       expect(rows, hasLength(1));
       expect(rows.first.serial, 3);
+      expect(rows.first.refCode, 'CUST-REF-3');
       expect(rows.first.itemName, 'POS Item Name');
       expect(rows.first.variantOf, 'VAR-1');
       expect(rows.first.itemCode, 'ITEM-001');
       expect(rows.first.country, 'India');
       expect(rows.first.qty, 1);
+    });
+
+    test('ref code defaults to empty when serial not in refCodeByIdx', () {
+      final rows = PosUploadFormController.buildDnRows(
+        items: [_dnItem(serial: '9')],
+        itemNameByIdx: {},
+        refCodeByIdx: {'3': 'CUST-REF-3'},
+        compact: false,
+      );
+      expect(rows.single.refCode, '');
     });
 
     test('falls back to DN item name when serial not in POS upload map', () {
@@ -156,6 +168,7 @@ void main() {
       final params = DeliveryNoteExcelParams(
         docName: 'DN-001',
         itemNameByIdx: {'1': 'POS Item'},
+        refCodeByIdx: {'1': 'CUST-REF-1'},
         // Fractional qty: the excel package decodes whole-number doubles
         // back as IntCellValue, so 2.5 keeps the round-trip type stable.
         items: [_dnItem(serial: '1', qty: 2.5, country: 'India')],
@@ -177,33 +190,36 @@ void main() {
 
       // Table headers at row 4 (compact set)
       expect((cell(0, 4) as TextCellValue).value.text, 'Invoice Serial #');
-      expect((cell(1, 4) as TextCellValue).value.text, 'Item Name');
-      expect((cell(2, 4) as TextCellValue).value.text, 'Qty');
-      expect((cell(3, 4) as TextCellValue).value.text, 'Country of Origin');
+      expect((cell(1, 4) as TextCellValue).value.text, 'Ref Code');
+      expect((cell(2, 4) as TextCellValue).value.text, 'Item Name');
+      expect((cell(3, 4) as TextCellValue).value.text, 'Qty');
+      expect((cell(4, 4) as TextCellValue).value.text, 'Country of Origin');
 
       // Data row at row 5
       expect((cell(0, 5) as IntCellValue).value, 1);
-      expect((cell(1, 5) as TextCellValue).value.text, 'POS Item');
-      expect((cell(2, 5) as DoubleCellValue).value, 2.5);
-      expect((cell(3, 5) as TextCellValue).value.text, 'India');
+      expect((cell(1, 5) as TextCellValue).value.text, 'CUST-REF-1');
+      expect((cell(2, 5) as TextCellValue).value.text, 'POS Item');
+      expect((cell(3, 5) as DoubleCellValue).value, 2.5);
+      expect((cell(4, 5) as TextCellValue).value.text, 'India');
 
       // Totals row at row 6: label in the first column, SUBTOTAL over Qty.
       expect((cell(0, 6) as TextCellValue).value.text, 'Total');
-      expect((cell(2, 6) as FormulaCellValue).formula,
+      expect((cell(3, 6) as FormulaCellValue).formula,
           contains('SUBTOTAL(109'));
     });
 
-    test('full mode includes Variant Of and Item Code columns', () {
+    test('full mode includes Ref Code, Variant Of and Item Code columns', () {
       final params = DeliveryNoteExcelParams(
         docName: 'DN-002',
         itemNameByIdx: {},
+        refCodeByIdx: {'1': 'CUST-REF-1'},
         items: [_dnItem(serial: '1', variantOf: 'VAR', itemCode: 'CODE')],
         compact: false,
       );
       final decoded = Excel.decodeBytes(buildDeliveryNoteExcelBytes(params));
       final sheet = decoded['DN-002'];
       final headers = List.generate(
-        6,
+        7,
         (c) => (sheet
                 .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 4))
                 .value as TextCellValue)
@@ -212,12 +228,18 @@ void main() {
       );
       expect(headers, [
         'Invoice Serial #',
+        'Ref Code',
         'Variant Of',
         'Item Code',
         'Item Name',
         'Qty',
         'Country of Origin',
       ]);
+      // Ref Code data cell resolves from the POS Upload map by serial.
+      final refCell = sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 5))
+          .value;
+      expect((refCell as TextCellValue).value.text, 'CUST-REF-1');
     });
 
     test('sorted column moves to the first position', () {

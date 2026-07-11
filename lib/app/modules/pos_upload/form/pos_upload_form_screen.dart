@@ -81,10 +81,12 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
   // Must match the column names in the controller's export builders
   // (_buildPackingSlipExcel / buildDeliveryNoteExcelBytes).
   static List<String> _columnNames(ExportDocType docType, bool compact) {
+    // Ref Code resolves from the POS Upload items by invoice serial.
     final base = compact
-        ? ['Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
+        ? ['Invoice Serial #', 'Ref Code', 'Item Name', 'Qty', 'Country of Origin']
         : [
             'Invoice Serial #',
+            'Ref Code',
             'Variant Of',
             'Item Code',
             'Item Name',
@@ -97,6 +99,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
   static const _shortLabels = {
     'Case #': 'Case',
     'Invoice Serial #': 'Serial',
+    'Ref Code': 'Ref',
     'Variant Of': 'Variant',
     'Item Code': 'Code',
     'Item Name': 'Item',

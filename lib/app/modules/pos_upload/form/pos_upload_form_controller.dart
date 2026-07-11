@@ -83,6 +83,7 @@ typedef _PSRow = ({
   CellValue caseCell,
   String    caseKey,
   int       serial,
+  String    refCode,
   String    variantOf,
   String    itemCode,
   String    itemName,
@@ -96,6 +97,7 @@ typedef _PSCol = (String, CellValue Function(_PSRow));
 /// Public (unlike _PSRow) so unit tests can call buildDnRows directly.
 typedef DnRow = ({
   int    serial,
+  String refCode,
   String variantOf,
   String itemCode,
   String itemName,
@@ -110,6 +112,7 @@ typedef _DnCol = (String, CellValue Function(DnRow));
 class _PackingSlipExcelParams {
   final String docName;
   final Map<String, String> itemNameByIdx;
+  final Map<String, String> refCodeByIdx;
   final List<PackingSlip> packingSlips;
   final bool compact;
   final String? sortByColumn;
@@ -117,6 +120,7 @@ class _PackingSlipExcelParams {
   const _PackingSlipExcelParams({
     required this.docName,
     required this.itemNameByIdx,
+    required this.refCodeByIdx,
     required this.packingSlips,
     required this.compact,
     this.sortByColumn,
@@ -135,6 +139,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
       ? <_PSCol>[
           ('Case #',            (r) => r.caseCell),
           ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
           ('Item Name',         (r) => TextCellValue(r.itemName)),
           ('Qty',               (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
@@ -142,6 +147,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
       : <_PSCol>[
           ('Case #',            (r) => r.caseCell),
           ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
           ('Variant Of',        (r) => TextCellValue(r.variantOf)),
           ('Item Code',         (r) => TextCellValue(r.itemCode)),
           ('Item Name',         (r) => TextCellValue(r.itemName)),
@@ -157,6 +163,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
       final posItemName =
           p.itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
       final serial    = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+      final refCode   = p.refCodeByIdx[psItem.customInvoiceSerialNumber] ?? '';
       final variantOf = psItem.customVariantOf ?? '';
       final itemCode  = psItem.itemCode;
       final country   = psItem.customCountryOfOrigin ?? '';
@@ -171,6 +178,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
               caseCell:  caseCell,
               caseKey:   caseKey,
               serial:    serial,
+              refCode:   refCode,
               variantOf: variantOf,
               itemCode:  itemCode,
               itemName:  posItemName,
@@ -181,6 +189,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
               caseCell:  existing.caseCell,
               caseKey:   existing.caseKey,
               serial:    existing.serial,
+              refCode:   existing.refCode,
               variantOf: existing.variantOf,
               itemCode:  existing.itemCode,
               itemName:  existing.itemName,
@@ -274,6 +283,7 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
 class DeliveryNoteExcelParams {
   final String docName;
   final Map<String, String> itemNameByIdx;
+  final Map<String, String> refCodeByIdx;
   final List<DeliveryNoteItem> items;
   final bool compact;
   final String? sortByColumn;
@@ -281,6 +291,7 @@ class DeliveryNoteExcelParams {
   const DeliveryNoteExcelParams({
     required this.docName,
     required this.itemNameByIdx,
+    this.refCodeByIdx = const {},
     required this.items,
     required this.compact,
     this.sortByColumn,
@@ -298,12 +309,14 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
   var columns = p.compact
       ? <_DnCol>[
           ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
           ('Item Name',         (r) => TextCellValue(r.itemName)),
           ('Qty',               (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ]
       : <_DnCol>[
           ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
+          ('Ref Code',          (r) => TextCellValue(r.refCode)),
           ('Variant Of',        (r) => TextCellValue(r.variantOf)),
           ('Item Code',         (r) => TextCellValue(r.itemCode)),
           ('Item Name',         (r) => TextCellValue(r.itemName)),
@@ -314,6 +327,7 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
   final sortedRows = PosUploadFormController.buildDnRows(
     items: p.items,
     itemNameByIdx: p.itemNameByIdx,
+    refCodeByIdx: p.refCodeByIdx,
     compact: p.compact,
     sortByColumn: p.sortByColumn,
   );
@@ -514,6 +528,8 @@ class PosUploadFormController extends GetxController
         return a.caseKey.compareTo(b.caseKey);
       case 'Invoice Serial #':
         return a.serial.compareTo(b.serial);
+      case 'Ref Code':
+        return a.refCode.toLowerCase().compareTo(b.refCode.toLowerCase());
       case 'Qty':
         return a.qty.compareTo(b.qty);
       case 'Item Name':
@@ -536,6 +552,7 @@ class PosUploadFormController extends GetxController
   static List<DnRow> buildDnRows({
     required List<DeliveryNoteItem> items,
     required Map<String, String> itemNameByIdx,
+    Map<String, String> refCodeByIdx = const {},
     required bool compact,
     String? sortByColumn,
   }) {
@@ -545,6 +562,7 @@ class PosUploadFormController extends GetxController
       final itemName =
           itemNameByIdx[serialStr] ?? dnItem.itemName ?? dnItem.itemCode;
       final serial    = int.tryParse(serialStr) ?? 0;
+      final refCode   = refCodeByIdx[serialStr] ?? '';
       final variantOf = dnItem.customVariantOf ?? '';
       final itemCode  = dnItem.itemCode;
       final country   = dnItem.countryOfOrigin ?? '';
@@ -557,6 +575,7 @@ class PosUploadFormController extends GetxController
       rowMap[key] = existing == null
           ? (
               serial:    serial,
+              refCode:   refCode,
               variantOf: variantOf,
               itemCode:  itemCode,
               itemName:  itemName,
@@ -565,6 +584,7 @@ class PosUploadFormController extends GetxController
             )
           : (
               serial:    existing.serial,
+              refCode:   existing.refCode,
               variantOf: existing.variantOf,
               itemCode:  existing.itemCode,
               itemName:  existing.itemName,
@@ -584,6 +604,8 @@ class PosUploadFormController extends GetxController
     switch (col) {
       case 'Invoice Serial #':
         return a.serial.compareTo(b.serial);
+      case 'Ref Code':
+        return a.refCode.toLowerCase().compareTo(b.refCode.toLowerCase());
       case 'Qty':
         return a.qty.compareTo(b.qty);
       case 'Item Name':
@@ -933,6 +955,9 @@ class PosUploadFormController extends GetxController
       itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
       },
+      refCodeByIdx: {
+        for (final item in upload.items) item.idx.toString(): item.refCode,
+      },
       packingSlips:
           packingSlips.where((p) => p.customPoNo == upload.name).toList(),
       compact: compact,
@@ -969,6 +994,9 @@ class PosUploadFormController extends GetxController
       docName: dn.name,
       itemNameByIdx: {
         for (final item in upload.items) item.idx.toString(): item.itemName,
+      },
+      refCodeByIdx: {
+        for (final item in upload.items) item.idx.toString(): item.refCode,
       },
       items: dn.items,
       compact: compact,

@@ -44,6 +44,7 @@ class PosUpload {
 
 class PosUploadItem {
   final int idx;
+  final String refCode;
   final String itemName;
   final double quantity;
   final double rate;
@@ -51,6 +52,7 @@ class PosUploadItem {
 
   PosUploadItem({
     required this.idx,
+    this.refCode = '',
     required this.itemName,
     required this.quantity,
     required this.rate,
@@ -60,6 +62,7 @@ class PosUploadItem {
   factory PosUploadItem.fromJson(Map<String, dynamic> json) {
     return PosUploadItem(
       idx: json['idx'] ?? 0,
+      refCode: json['ref_code'] ?? '',
       itemName: json['item_name'] ?? '',
       // Map 'qty' to 'quantity', fallback to 'quantity' if 'qty' is missing, defaulting to 0.0
       quantity: (json['qty'] as num?)?.toDouble() ?? (json['quantity'] as num?)?.toDouble() ?? 0.0,
