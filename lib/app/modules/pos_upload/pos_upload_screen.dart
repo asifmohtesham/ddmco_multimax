@@ -132,7 +132,10 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
             DocTypeListHeader(
               title: 'POS Upload',
               automaticallyImplyLeading: false,
-              searchDoctype: 'POS Invoice',
+              // Must be the module's own doctype — the tapped result id is
+              // routed to POS_UPLOAD_FORM as the POS Upload name. Searching
+              // 'POS Invoice' here fed invoice ids to the wrong form.
+              searchDoctype: 'POS Upload',
               searchRoute: AppRoutes.POS_UPLOAD_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
