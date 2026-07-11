@@ -18,6 +18,7 @@ class ToDoProvider {
     int limit = 20,
     int limitStart = 0,
     Map<String, dynamic>? filters,
+    List<List<dynamic>>? orFilterTuples,
     String orderBy = 'modified desc',
   }) async {
     return _apiProvider.getDocumentList(
@@ -25,6 +26,7 @@ class ToDoProvider {
       limit: limit,
       limitStart: limitStart,
       filters: filters,
+      orFilterTuples: orFilterTuples,
       orderBy: orderBy,
       fields: _listFields,
     );

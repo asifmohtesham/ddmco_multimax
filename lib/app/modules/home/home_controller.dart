@@ -23,6 +23,10 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/models/todo_model.dart';
+import 'package:multimax/app/data/providers/todo_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -37,6 +41,8 @@ class HomeController extends GetxController {
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+  final ToDoProvider _todoProvider = Get.find<ToDoProvider>();
+  final StorageService _storageService = Get.find<StorageService>();
 
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
@@ -75,6 +81,13 @@ class HomeController extends GetxController {
   final activeWipJcName      = RxnString();
   final activeWipJcOperation = RxnString();
 
+  /// Actionable open ToDos for the selected user — soonest due date first,
+  /// capped for the dashboard "Upcoming tasks" section.
+  var upcomingTodos = <ToDo>[].obs;
+
+  /// Quick Create card layout — 1 or 2 columns, persisted across sessions.
+  var dashboardColumns = 1.obs;
+
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
   var isRackScanning = false.obs;
@@ -96,6 +109,7 @@ class HomeController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    dashboardColumns.value = _storageService.getDashboardColumns();
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
 
@@ -116,6 +130,15 @@ class HomeController extends GetxController {
 
   void openSessionDefaults() {
     Get.toNamed(AppRoutes.SESSION_DEFAULTS);
+  }
+
+  /// Switches the Quick Create grid between the 1- and 2-column layouts and
+  /// persists the choice. Any other value clamps to 1 (the default).
+  void setDashboardColumns(int columns) {
+    final cols = columns == 2 ? 2 : 1;
+    if (dashboardColumns.value == cols) return;
+    dashboardColumns.value = cols;
+    _storageService.saveDashboardColumns(cols);
   }
 
   Future<void> _initDashboard() async {
@@ -199,11 +222,43 @@ class HomeController extends GetxController {
       activeJobCardsCount.value   = _extractCount(results[1]);
       activeBomCount.value        = _extractCount(results[2]);
 
-      await _fetchActiveWipJc();
+      await Future.wait([_fetchActiveWipJc(), fetchUpcomingTodos()]);
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
       isLoadingStats.value = false;
+    }
+  }
+
+  /// Fetches open ToDos allocated to — or created by — the selected filter
+  /// user (self-created ToDos often have no `allocated_to`). The server
+  /// orders by due date ascending, but empty dates sort first there —
+  /// [selectUpcomingTodos] reorders them to the end and caps the list.
+  Future<void> fetchUpcomingTodos() async {
+    try {
+      final email = selectedFilterUser.value?.email ??
+          _authController.currentUser.value?.email;
+      if (email == null || email.isEmpty) {
+        upcomingTodos.clear();
+        return;
+      }
+      final res = await _todoProvider.getTodos(
+        limit: 20,
+        filters: {'status': 'Open'},
+        orFilterTuples: [
+          ['ToDo', 'allocated_to', '=', email],
+          ['ToDo', 'owner', '=', email],
+        ],
+        orderBy: 'date asc',
+      );
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final list = (res.data['data'] as List)
+            .map((e) => ToDo.fromJson(e))
+            .toList();
+        upcomingTodos.assignAll(selectUpcomingTodos(list));
+      }
+    } catch (e) {
+      print('Error fetching upcoming todos: $e');
     }
   }
 

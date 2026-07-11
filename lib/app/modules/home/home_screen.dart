@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class HomeScreen extends GetView<HomeController> {
@@ -73,7 +74,14 @@ class HomeScreen extends GetView<HomeController> {
                   const SizedBox(height: 18),
 
                   // 3 ── Quick Create ─────────────────────────────────────────
-                  _buildSectionHeader(context, 'Quick Create'),
+                  _buildSectionHeader(
+                    context,
+                    'Quick Create',
+                    trailing: Obx(() => DashboardColumnsToggle(
+                          columns: controller.dashboardColumns.value,
+                          onChanged: controller.setDashboardColumns,
+                        )),
+                  ),
                   const SizedBox(height: 12),
                   _buildQuickAccessGrid(context),
                   const SizedBox(height: 18),
@@ -81,7 +89,10 @@ class HomeScreen extends GetView<HomeController> {
                   // 4 ── Needs attention ──────────────────────────────────────
                   _buildNeedsAttention(context),
 
-                  // 5 ── Today's pulse ────────────────────────────────────────
+                  // 5 ── Upcoming tasks (actionable open ToDos) ───────────────
+                  _buildUpcomingTasks(context),
+
+                  // 6 ── Today's pulse ────────────────────────────────────────
                   _buildSectionHeader(context, "Today's pulse"),
                   const SizedBox(height: 12),
                   Obx(() {
@@ -145,7 +156,7 @@ class HomeScreen extends GetView<HomeController> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Good morning, $firstName',
+                  'Welcome back, $firstName',
                   style: text.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: scheme.text,
@@ -170,7 +181,8 @@ class HomeScreen extends GetView<HomeController> {
   // Section header — major section label with optional count badge + rule
   // ---------------------------------------------------------------------------
 
-  Widget _buildSectionHeader(BuildContext context, String label, {int? count}) {
+  Widget _buildSectionHeader(BuildContext context, String label,
+      {int? count, Widget? trailing}) {
     final cs = Theme.of(context).colorScheme;
     final scheme = context.scheme;
     return Row(
@@ -197,6 +209,10 @@ class HomeScreen extends GetView<HomeController> {
         ],
         const SizedBox(width: 10),
         Expanded(child: Divider(color: scheme.border, height: 1)),
+        if (trailing != null) ...[
+          const SizedBox(width: 10),
+          trailing,
+        ],
       ],
     );
   }
@@ -269,6 +285,45 @@ class HomeScreen extends GetView<HomeController> {
   }
 
   // ---------------------------------------------------------------------------
+  // Upcoming tasks — actionable open ToDos for the selected user
+  // ---------------------------------------------------------------------------
+  //
+  // Rows navigate to the ToDo LIST screen (where details expand) — the ToDo
+  // form route is still a stub, so it is intentionally not a tap target here.
+  Widget _buildUpcomingTasks(BuildContext context) {
+    return DocTypeGuard(
+      doctype: 'ToDo',
+      child: Obx(() {
+        final todos = controller.upcomingTodos;
+        if (todos.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader(context, 'Upcoming tasks', count: todos.length),
+            const SizedBox(height: 11),
+            for (var i = 0; i < todos.length; i++) ...[
+              if (i > 0) const SizedBox(height: 9),
+              DashboardTodoCard(
+                todo: todos[i],
+                onTap: controller.goToToDo,
+              ),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: controller.goToToDo,
+                child: const Text('View all tasks'),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+        );
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Today's pulse
   // ---------------------------------------------------------------------------
 
@@ -333,9 +388,13 @@ class HomeScreen extends GetView<HomeController> {
   /// in each section list below. Satisfies OCP: open for extension, no inline
   /// mutation of the builder method.
   Widget _buildQuickAccessGrid(BuildContext context) {
-    return LayoutBuilder(
+    return Obx(() {
+      final int columns = controller.dashboardColumns.value;
+      return LayoutBuilder(
       builder: (context, constraints) {
-        final double itemWidth = (constraints.maxWidth - 24) / 3;
+        final double itemWidth = columns == 1
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 12) / 2;
 
         // ── Operations row ────────────────────────────────────────────────────
         final operationItems = [
@@ -419,7 +478,8 @@ class HomeScreen extends GetView<HomeController> {
               spacing: 12,
               runSpacing: 12,
               children: operationItems.map((cfg) {
-                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                final tile = _buildQuickActionItem(context, cfg, itemWidth,
+                    horizontal: columns == 1);
                 if (cfg.doctype == null) return tile;
                 return DocTypeGuard(
                   doctype: cfg.doctype!,
@@ -434,7 +494,8 @@ class HomeScreen extends GetView<HomeController> {
               spacing: 12,
               runSpacing: 12,
               children: manufacturingItems.map((cfg) {
-                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                final tile = _buildQuickActionItem(context, cfg, itemWidth,
+                    horizontal: columns == 1);
                 if (cfg.doctype == null) return tile;
                 return DocTypeGuard(
                   doctype: cfg.doctype!,
@@ -445,7 +506,8 @@ class HomeScreen extends GetView<HomeController> {
           ],
         );
       },
-    );
+      );
+    });
   }
 
   /// Slim labelled divider between quick-create sections.
@@ -473,9 +535,76 @@ class HomeScreen extends GetView<HomeController> {
   Widget _buildQuickActionItem(
     BuildContext context,
     _QuickActionConfig cfg,
-    double width,
-  ) {
+    double width, {
+    bool horizontal = false,
+  }) {
     final scheme = context.scheme;
+
+    // 1-column layout — full-width row: accent bar, icon, label, "+" affordance.
+    if (horizontal) {
+      return SizedBox(
+        width: width,
+        child: Material(
+          color: scheme.fg,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: cfg.onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: scheme.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: cfg.color.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cfg.color.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(cfg.icon, color: cfg.color, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      cfg.label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.text,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    width: 17,
+                    height: 17,
+                    decoration: BoxDecoration(
+                      color: scheme.subtle,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.add, size: 11, color: scheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return SizedBox(
       width: width,
       child: Material(
@@ -818,6 +947,72 @@ class _ContextChip extends StatelessWidget {
             Icon(Icons.keyboard_arrow_down, size: 14, color: scheme.textSubtle),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// DashboardColumnsToggle — 1↔2 column switch for the Quick Create grid
+// =============================================================================
+
+/// Segmented two-icon pill. Public (like the other dashboard widgets) so it
+/// can be exercised in widget tests without the full HomeController DI graph.
+class DashboardColumnsToggle extends StatelessWidget {
+  /// Current layout — 1 or 2.
+  final int columns;
+  final ValueChanged<int> onChanged;
+
+  const DashboardColumnsToggle({
+    super.key,
+    required this.columns,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scheme = context.scheme;
+
+    Widget option(int value, IconData icon, String tooltip) {
+      final selected = columns == value;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: () => onChanged(value),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.13)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Icon(
+              icon,
+              size: 15,
+              color: selected ? cs.primary : scheme.textSubtle,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: scheme.subtle,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: scheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          option(1, Icons.view_agenda_outlined, 'Single column'),
+          const SizedBox(width: 2),
+          option(2, Icons.grid_view_rounded, 'Two columns'),
+        ],
       ),
     );
   }

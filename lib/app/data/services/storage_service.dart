@@ -32,6 +32,9 @@ class StorageService {
   static const String _sbHideEmptyKey  = 'sb_hide_empty';
   static const String _sbShowImagesKey = 'sb_show_images';
 
+  // Dashboard view preferences
+  static const String _dashboardColumnsKey = 'dashboard_columns';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -130,4 +133,13 @@ class StorageService {
       _box.write(_sbShowImagesKey, value);
 
   bool getSbShowImages() => _box.read<bool>(_sbShowImagesKey) ?? true;
+
+  // --- Dashboard view preferences ---
+  // Quick Create card layout: 1 or 2 columns. Anything else clamps to the
+  // 1-column default so a stale/corrupt value can never break the grid.
+  Future<void> saveDashboardColumns(int value) async =>
+      _box.write(_dashboardColumnsKey, value);
+
+  int getDashboardColumns() =>
+      _box.read<int>(_dashboardColumnsKey) == 2 ? 2 : 1;
 }
