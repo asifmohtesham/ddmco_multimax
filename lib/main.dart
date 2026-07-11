@@ -15,12 +15,18 @@ import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:get_storage/get_storage.dart';
 
 /// Dark-mode on-secondary (near-black) — secondary swatch sits on light text in dark mode.
 const Color _kDarkOnSecondary = Color(0xFF0B1116);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Backs every StorageService preference (session defaults, auto-submit,
+  // Stock Balance toggles, dashboard layout…). Without this call GetStorage
+  // runs purely in memory and all of those silently reset on app restart.
+  await GetStorage.init();
 
   // Set up the database factory for desktop platforms.
   if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
