@@ -1,6 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/home/home_screen.dart';
 
 /// In-memory stand-in for the GetStorage box used by StorageService.
 class _FakeBox {
@@ -108,6 +110,44 @@ void main() {
       final s = StorageService.withStorage(_FakeBox());
       await s.saveDashboardTasksFirst('manager@multimax.cloud', true);
       expect(s.getDashboardTasksFirst('operator@multimax.cloud'), isFalse);
+    });
+  });
+
+  group('DashboardSectionOrder', () {
+    Future<void> pump(WidgetTester tester, {required bool tasksFirst}) {
+      return tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: DashboardSectionOrder(
+              tasksFirst: tasksFirst,
+              tasks: const SizedBox(key: Key('tasks'), height: 40),
+              middle: const SizedBox(key: Key('middle'), height: 40),
+            ),
+          ),
+        ),
+      ));
+    }
+
+    testWidgets('operator mode renders tasks BELOW the middle block',
+        (tester) async {
+      await pump(tester, tasksFirst: false);
+      final tasksY = tester.getTopLeft(find.byKey(const Key('tasks'))).dy;
+      final middleY = tester.getTopLeft(find.byKey(const Key('middle'))).dy;
+      expect(middleY, lessThan(tasksY));
+    });
+
+    testWidgets('manager mode renders tasks ABOVE the middle block',
+        (tester) async {
+      await pump(tester, tasksFirst: true);
+      final tasksY = tester.getTopLeft(find.byKey(const Key('tasks'))).dy;
+      final middleY = tester.getTopLeft(find.byKey(const Key('middle'))).dy;
+      expect(tasksY, lessThan(middleY));
+    });
+
+    testWidgets('both children are always in the tree', (tester) async {
+      await pump(tester, tasksFirst: true);
+      expect(find.byKey(const Key('tasks')), findsOneWidget);
+      expect(find.byKey(const Key('middle')), findsOneWidget);
     });
   });
 }

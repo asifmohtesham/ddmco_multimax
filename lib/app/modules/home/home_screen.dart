@@ -1593,3 +1593,38 @@ class PulseSkeletonState extends State<PulseSkeleton>
     );
   }
 }
+
+// =============================================================================
+// DashboardSectionOrder — persona-aware Tasks ↔ Quick-Create ordering
+// =============================================================================
+
+/// Places [tasks] above [middle] (manager persona: manager role + open
+/// ToDos) or below it (everyone else — exactly today's layout). Public and
+/// controller-free (like the other dashboard widgets) so widget tests can
+/// assert the flip without the full HomeController DI graph.
+class DashboardSectionOrder extends StatelessWidget {
+  const DashboardSectionOrder({
+    super.key,
+    required this.tasksFirst,
+    required this.tasks,
+    required this.middle,
+  });
+
+  /// True when Upcoming tasks lead.
+  final bool tasksFirst;
+
+  /// The Upcoming-tasks section (hides itself when there are no ToDos).
+  final Widget tasks;
+
+  /// The Quick Create + Needs attention block, kept in its existing
+  /// internal order in both modes.
+  final Widget middle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: tasksFirst ? [tasks, middle] : [middle, tasks],
+    );
+  }
+}
