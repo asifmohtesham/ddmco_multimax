@@ -1,29 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/core/utils/html_text.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
-
-// =============================================================================
-// Pure helpers — kept top-level so they are unit-testable without a widget
-// tree (same pattern as pos_dn_grouping.dart).
-// =============================================================================
-
-/// Flattens a ToDo's rich-text description to a single-line plain string.
-/// Frappe stores ToDo descriptions as HTML (text-editor field).
-String todoPlainText(String html) {
-  var s = html
-      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
-      .replaceAll(RegExp(r'</(p|div|li|h[1-6])>', caseSensitive: false), ' ')
-      .replaceAll(RegExp(r'<[^>]*>'), '');
-  s = s
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&#39;', "'")
-      .replaceAll('&quot;', '"');
-  return s.replaceAll(RegExp(r'\s+'), ' ').trim();
-}
 
 /// Orders ToDos for the dashboard: dated tasks first (soonest due date first),
 /// dateless tasks after (keeping their incoming order), capped at [max].
@@ -105,7 +84,7 @@ class DashboardTodoCard extends StatelessWidget {
     final due = dueLabelFor(todo.date, DateTime.now());
     final redInk = isDark ? AppColors.red300 : AppColors.red700;
 
-    final title = todoPlainText(todo.description);
+    final title = htmlToSingleLine(todo.description);
 
     return Material(
       color: scheme.fg,

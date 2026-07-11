@@ -21,30 +21,6 @@ ToDo _todo({
 }
 
 void main() {
-  group('todoPlainText', () {
-    test('strips tags and collapses whitespace', () {
-      expect(
-        todoPlainText('<div class="ql-editor"><p>Pack <b>DN-101</b></p>\n<p>today</p></div>'),
-        'Pack DN-101 today',
-      );
-    });
-
-    test('turns <br> into a space and decodes common entities', () {
-      expect(
-        todoPlainText('Check&nbsp;racks<br/>A &amp; B &lt;urgent&gt;'),
-        'Check racks A & B <urgent>',
-      );
-    });
-
-    test('plain text passes through unchanged', () {
-      expect(todoPlainText('Call supplier'), 'Call supplier');
-    });
-
-    test('empty input stays empty', () {
-      expect(todoPlainText(''), '');
-    });
-  });
-
   group('selectUpcomingTodos', () {
     test('orders dated todos ascending and puts dateless last', () {
       final todos = [
