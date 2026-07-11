@@ -80,8 +80,8 @@ transitions empty ↔ non-empty, not on every open.
 - Unit tests for the predicate: manager+todos → true; manager+empty → false;
   operator+todos → false; operator+empty → false; role-name variants
   ("Stock Manager", "manufacturing manager", custom "Delivery Manager",
-  non-match "Stock User", "Management Trainee" caveat is accepted —
-  `contains('manager')` matches it and that is fine).
+  non-matches "Stock User" and "Management Trainee" — "management" lacks
+  the trailing 'r', so `contains('manager')` correctly excludes it).
 - Unit test for GetStorage seeding: stored verdict drives initial value;
   fetch result overwrites and persists.
 - Widget test asserting the section order flips with the flag (Upcoming

@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Combine rule is **AND**, never OR: `tasksFirst = isManagerish && hasOpenTodos`.
-- `isManagerish` = any login role whose name contains `manager`, **case-insensitive** (`"Management Trainee"` matching is accepted per spec).
+- `isManagerish` = any login role whose name contains `manager`, **case-insensitive**. ("Management" does not contain "manager" — no trailing 'r' — so trainee/management-adjacent roles correctly do not count.)
 - Storage default is `false` (operator layout) — a missing/foreign key must never produce tasks-first.
 - Storage key is per user: `'dashboard_tasks_first::<email>'`.
 - The ONLY layout change is the Upcoming-tasks section moving; Quick Create → Needs attention keep their relative order in both modes. Operator mode must render exactly today's order.
@@ -127,15 +127,15 @@ void main() {
       );
     });
 
-    // Documented, accepted caveat from the spec: contains('manager') also
-    // matches "Management Trainee". Locks in current intended behaviour.
-    test('accepted caveat: "Management Trainee" counts as managerish', () {
+    // "management" does not contain the substring "manager" (no trailing
+    // 'r') — so trainee/management-adjacent roles correctly do NOT count.
+    test('"Management Trainee" is NOT managerish', () {
       expect(
         HomeController.showTasksFirst(
           roles: ['Management Trainee'],
           hasOpenTodos: true,
         ),
-        isTrue,
+        isFalse,
       );
     });
   });
