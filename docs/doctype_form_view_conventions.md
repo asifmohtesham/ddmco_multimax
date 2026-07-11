@@ -42,6 +42,7 @@ All in `lib/app/modules/global_widgets/`. **Do not** re-implement these privatel
 | Titled section card (group of fields)     | `DocSectionCard`        |
 | `label ── value` read-only row (+ copy)   | `DocDetailRow`          |
 | `label ── value` totals row (+ bold)      | `DocSummaryRow`         |
+| Tappable picker / date field (label+value)| `DocPickerField`        |
 | Passive in-tab empty state (icon+message) | `FormEmptyState`        |
 | Selectable in-screen filter chip          | `SelectableFilterChip`  |
 | Header                                     | `DocTypeFormHeader`     |
@@ -52,6 +53,11 @@ Notes:
   `margin: EdgeInsets.zero` if the call site already adds inter-card spacing.
 * `FormEmptyState` is the **form** empty state (no CTA). It is distinct from
   `ListEmptyState`, which is the list-screen empty state with Clear/Reload buttons.
+* `DocPickerField` is the standard field for any value chosen via a picker
+  (type sheets, warehouse pickers, date dialogs). Editable = surface fill +
+  strong border + trailing affordance; read-only = subtle fill, no affordance.
+  All inks are theme tokens — never wrap it in (or replace it with) a
+  hardcoded pastel-gradient banner; those break dark mode.
 * `SelectableFilterChip` is the toggle filter on an Items tab (All / Pending /
   Completed). It is distinct from `FilterChipWidget`, the read-only applied-filter
   pill (with ×) rendered in the list-header chip row. A form filter that needs extra

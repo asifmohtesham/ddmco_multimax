@@ -8,6 +8,7 @@ import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -1677,7 +1678,11 @@ class StockEntryFormController extends GetxController
     TimeOfDay initial;
     try {
       if (current.postingTime != null && current.postingTime!.isNotEmpty) {
-        final parsed = DateFormat('HH:mm:ss').parse(current.postingTime!);
+        // Normalise first — server-loaded times carry microseconds
+        // ('9:46:34.234513'), which the strict HH:mm:ss parse rejects and
+        // would silently reset the picker to "now".
+        final parsed = DateFormat('HH:mm:ss')
+            .parse(FormattingHelper.formatTime(current.postingTime)!);
         initial = TimeOfDay.fromDateTime(parsed);
       } else {
         initial = TimeOfDay.now();

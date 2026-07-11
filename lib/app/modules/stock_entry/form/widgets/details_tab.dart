@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/entry_type_card.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/compact_field.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/summary_row.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/warehouse_picker.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/entry_type_picker.dart';
 
@@ -35,7 +36,10 @@ class DetailsTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               EntryTypeCard(
-                controller: controller,
+                type: type,
+                helperText: controller.getTypeHelperText(type),
+                fromWarehouse: controller.fromWarehouse.value,
+                toWarehouse: controller.toWarehouse.value,
                 isEditable: isEditable,
                 onTypeTap: () => EntryTypePicker.show(context, controller),
                 onFromTap: () => WarehousePicker.show(
@@ -44,80 +48,76 @@ class DetailsTab extends StatelessWidget {
                     context, controller, isSource: false),
               ),
 
-              const Text(
-                'Reference & Schedule',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Row(
+              const SizedBox(height: 16),
+
+              DocSectionCard(
+                title: 'Reference & Schedule',
+                margin: EdgeInsets.zero,
                 children: [
-                  Expanded(
-                    child: CompactField(
-                      label: 'Date',
-                      value: entry.postingDate,
-                      icon: Icons.calendar_today,
-                      onTap: isEditable
-                          ? () => controller.pickPostingDate(context)
-                          : null,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DocPickerField(
+                          label: 'Date',
+                          value: entry.postingDate,
+                          icon: Icons.calendar_today_outlined,
+                          trailingIcon: Icons.edit_calendar_outlined,
+                          onTap: isEditable
+                              ? () => controller.pickPostingDate(context)
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DocPickerField(
+                          label: 'Time',
+                          value:
+                              FormattingHelper.formatTime(entry.postingTime),
+                          icon: Icons.access_time,
+                          onTap: isEditable
+                              ? () => controller.pickPostingTime(context)
+                              : null,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: CompactField(
-                      label: 'Time',
-                      value: entry.postingTime,
-                      icon: Icons.access_time,
-                      onTap: isEditable
-                          ? () => controller.pickPostingTime(context)
-                          : null,
+                  if (isMaterialIssue) ...[
+                    const SizedBox(height: 12),
+                    // System-populated, never user-edited — read-only field.
+                    // ValueListenableBuilder (not the Obx) tracks the text so
+                    // programmatic updates to the controller still repaint.
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable:
+                          controller.customReferenceNoController,
+                      builder: (context, ref, _) => DocPickerField(
+                        label: 'Reference No',
+                        icon: Icons.confirmation_number_outlined,
+                        value: ref.text,
+                        placeholder: '—',
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
 
-              if (isMaterialIssue) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: controller.customReferenceNoController,
-                  readOnly: true,
-                  decoration: InputDecoration(
-                    labelText: 'Reference No',
-                    hintText: 'Reference number',
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    prefixIcon:
-                        const Icon(Icons.confirmation_number_outlined),
-                    suffixIcon: const Icon(Icons.lock_outline,
-                        size: 16, color: Colors.grey),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 14),
-                  ),
-                ),
-              ],
+              const SizedBox(height: 16),
 
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: context.scheme.subtle,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    SummaryRow(
-                      label: 'Total Quantity',
-                      value:
-                          entry.customTotalQty?.toStringAsFixed(2) ?? '0',
-                    ),
-                    const Divider(),
-                    SummaryRow(
-                      label: 'Total Amount',
-                      value: entry.totalAmount.toStringAsFixed(2),
-                      isBold: true,
-                    ),
-                  ],
-                ),
+              DocSectionCard(
+                title: 'Summary',
+                margin: EdgeInsets.zero,
+                children: [
+                  DocSummaryRow(
+                    label: 'Total Quantity',
+                    value:
+                        entry.customTotalQty?.toStringAsFixed(2) ?? '0',
+                  ),
+                  const Divider(),
+                  DocSummaryRow(
+                    label: 'Total Amount',
+                    value: entry.totalAmount.toStringAsFixed(2),
+                    isBold: true,
+                  ),
+                ],
               ),
               const SizedBox(height: 80),
             ],

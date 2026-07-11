@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/doc_detail_row.dart';
 import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
+import 'package:multimax/main.dart' show buildAppTheme;
 
 Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
+
+/// WCAG 2.x contrast ratio between two opaque colours.
+double _contrast(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  final hi = la > lb ? la : lb;
+  final lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 void main() {
   group('FormEmptyState', () {
@@ -71,6 +82,30 @@ void main() {
       expect(find.text('Grand Total'), findsOneWidget);
       expect(find.text('\$ 100.00'), findsOneWidget);
     });
+
+    // Regression: the non-bold value used onSurface @ 0.6 alpha, which
+    // composited to 3.99:1 (sub-AA) on DocSectionCard's surfaceContainerLow
+    // fill in light mode.
+    for (final b in Brightness.values) {
+      testWidgets('non-bold value passes AA on DocSectionCard fill [$b]',
+          (tester) async {
+        final theme = buildAppTheme(AppScheme.of(b), b);
+        await tester.pumpWidget(MaterialApp(
+          theme: theme,
+          home: const Scaffold(
+            body: DocSummaryRow(label: 'Total Quantity', value: '194.00'),
+          ),
+        ));
+
+        final value = tester.widget<Text>(find.text('194.00'));
+        final ink = value.style!.color!;
+        final cardFill = theme.colorScheme.surfaceContainerLow;
+        expect(ink.a, 1.0,
+            reason: 'value ink must be opaque — alpha composites '
+                'unpredictably across surfaces');
+        expect(_contrast(ink, cardFill), greaterThanOrEqualTo(4.5));
+      });
+    }
   });
 
   group('SelectableFilterChip', () {

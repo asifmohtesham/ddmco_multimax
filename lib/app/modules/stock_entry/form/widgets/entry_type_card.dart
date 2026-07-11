@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
-import 'package:multimax/app/modules/stock_entry/form/widgets/warehouse_column.dart';
+import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 
-/// Gradient card showing the current Stock Entry type, a helper description,
-/// and the FROM → TO warehouse selector row.
-/// Step 4 — extracted from StockEntryFormScreen._buildDetailsView().
+/// 'Entry' section card on the Stock Entry Details tab: entry type picker
+/// (with helper description) plus the FROM / TO warehouse fields.
+///
+/// A dumb presentation widget — the caller (DetailsTab) reads the reactive
+/// values inside its own `Obx` and passes them in, which keeps this widget
+/// testable without a live [StockEntryFormController].
+///
+/// Warehouse applicability follows the entry type: Material Issue uses FROM
+/// only, Material Receipt uses TO only, transfers use both. A field that does
+/// not apply (or before a type is chosen) renders read-only with an 'N/A'
+/// placeholder.
 class EntryTypeCard extends StatelessWidget {
-  final StockEntryFormController controller;
+  final String type;
+  final String helperText;
+  final String? fromWarehouse;
+  final String? toWarehouse;
   final bool isEditable;
   final VoidCallback? onTypeTap;
   final VoidCallback? onFromTap;
@@ -15,7 +25,10 @@ class EntryTypeCard extends StatelessWidget {
 
   const EntryTypeCard({
     super.key,
-    required this.controller,
+    required this.type,
+    required this.helperText,
+    required this.fromWarehouse,
+    required this.toWarehouse,
     required this.isEditable,
     this.onTypeTap,
     this.onFromTap,
@@ -24,101 +37,53 @@ class EntryTypeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      final type = controller.stockEntryType.value;
-      final isMaterialIssue = type == 'Material Issue';
-      final isMaterialReceipt = type == 'Material Receipt';
-      final isMaterialTransfer =
-          type == 'Material Transfer' || type == 'Material Transfer for Manufacture';
+    final isMaterialIssue = type == 'Material Issue';
+    final isMaterialReceipt = type == 'Material Receipt';
+    final isMaterialTransfer = type == 'Material Transfer' ||
+        type == 'Material Transfer for Manufacture';
+    final fromActive = isMaterialIssue || isMaterialTransfer;
+    final toActive = isMaterialReceipt || isMaterialTransfer;
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 24),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Colors.deepOrange.shade50,
-              Colors.lightGreen.shade50,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.blue.shade100),
+    return DocSectionCard(
+      title: 'Entry',
+      margin: EdgeInsets.zero,
+      children: [
+        DocPickerField(
+          label: 'Entry Type',
+          icon: Icons.category_outlined,
+          value: type,
+          placeholder: 'Select Type',
+          helperText: helperText,
+          onTap: isEditable ? onTypeTap : null,
         ),
-        child: Column(
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Entry Type row ──
-            InkWell(
-              onTap: isEditable ? onTypeTap : null,
-              child: Row(
-                children: [
-                  Icon(Icons.category, size: 20, color: Colors.blue.shade700),
-                  const SizedBox(width: 8),
-                  Text(
-                    type.isEmpty ? 'Select type' : type,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: type.isEmpty
-                          ? Colors.blueGrey.shade400
-                          : Colors.blue.shade900,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (isEditable)
-                    const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
-                ],
+            Expanded(
+              child: DocPickerField(
+                label: 'From Warehouse',
+                icon: Icons.warehouse_outlined,
+                value: fromWarehouse,
+                placeholder: fromActive ? 'Select Source' : 'N/A',
+                trailingIcon: Icons.chevron_right,
+                onTap: (isEditable && fromActive) ? onFromTap : null,
               ),
             ),
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                controller.getTypeHelperText(type),
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Colors.blueGrey.shade700),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DocPickerField(
+                label: 'To Warehouse',
+                icon: Icons.warehouse_outlined,
+                value: toWarehouse,
+                placeholder: toActive ? 'Select Target' : 'N/A',
+                trailingIcon: Icons.chevron_right,
+                onTap: (isEditable && toActive) ? onToTap : null,
               ),
-            ),
-            const Divider(height: 24),
-
-            // ── FROM → TO warehouse row ──
-            Row(
-              children: [
-                WarehouseColumn(
-                  label: 'FROM',
-                  selectedValue: controller.fromWarehouse.value,
-                  fallbackText:
-                      isMaterialReceipt ? 'N/A' : 'Select Source',
-                  isActive: isMaterialIssue || isMaterialTransfer,
-                  isEditable: isEditable,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  labelAlignment: MainAxisAlignment.start,
-                  onTap: onFromTap,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Icon(Icons.arrow_forward_rounded,
-                      color: Colors.blue.shade300),
-                ),
-                WarehouseColumn(
-                  label: 'TO',
-                  selectedValue: controller.toWarehouse.value,
-                  fallbackText:
-                      isMaterialIssue ? 'N/A' : 'Select Target',
-                  isActive: isMaterialReceipt || isMaterialTransfer,
-                  isEditable: isEditable,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  labelAlignment: MainAxisAlignment.end,
-                  onTap: onToTap,
-                ),
-              ],
             ),
           ],
         ),
-      );
-    });
+      ],
+    );
   }
 }

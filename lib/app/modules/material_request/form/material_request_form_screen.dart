@@ -5,6 +5,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
+import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
 import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
@@ -111,8 +112,8 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Type + Warehouse banner ────────────────────────────────────
-          _buildTypeBanner(context),
+          // ── Request section (type + target warehouse) ─────────────────
+          _buildRequestSection(context),
 
           const SizedBox(height: 16),
 
@@ -127,11 +128,11 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                 return Row(
                   children: [
                     Expanded(
-                      child: _buildCompactField(
-                        context: context,
+                      child: DocPickerField(
                         label: 'Date',
                         value: controller.transactionDateController.text,
                         icon: Icons.calendar_today_outlined,
+                        trailingIcon: Icons.edit_calendar_outlined,
                         onTap: isEditable
                             ? () => controller
                                 .setDate(controller.transactionDateController)
@@ -140,11 +141,11 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _buildCompactField(
-                        context: context,
+                      child: DocPickerField(
                         label: 'Required By',
                         value: controller.scheduleDateController.text,
                         icon: Icons.event_outlined,
+                        trailingIcon: Icons.edit_calendar_outlined,
                         onTap: isEditable
                             ? () => controller
                                 .setDate(controller.scheduleDateController)
@@ -191,161 +192,43 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Type + Warehouse Banner ──────────────────────────────────────────
+  // ── Request section (type + target warehouse) ────────────────────────
   //
   // isEditable is derived HERE inside the Obx so every rebuild of this widget
   // (e.g. when selectedType changes) re-reads docstatus from the controller
-  // and always passes the correct live onTap callbacks to InkWell.
+  // and always passes the correct live onTap callbacks.
 
-  Widget _buildTypeBanner(BuildContext context) {
+  Widget _buildRequestSection(BuildContext context) {
     return Obx(() {
       // ⭐ Derive isEditable here, not from an outer parameter
       final isEditable = controller.materialRequest.value?.docstatus == 0;
       final type = controller.selectedType.value;
       final warehouseText = controller.setWarehouseController.text;
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.deepPurple.shade50, Colors.teal.shade50],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      return DocSectionCard(
+        title: 'Request',
+        margin: EdgeInsets.zero,
+        children: [
+          DocPickerField(
+            label: 'Request Type',
+            icon: Icons.category_outlined,
+            value: type,
+            placeholder: 'Select Type',
+            helperText: _typeHelperText(type),
+            onTap: isEditable ? () => _showTypePicker(context) : null,
           ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.teal.shade100),
-        ),
-        child: Column(
-          children: [
-            // ── Request Type row ───────────────────────────────────────────
-            InkWell(
-              // ⭐ onTap uses the live isEditable captured in this Obx frame
-              onTap: isEditable ? () => _showTypePicker(context) : null,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                child: Row(
-                  children: [
-                    Icon(Icons.category_outlined,
-                        size: 20, color: Colors.deepPurple.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'REQUEST TYPE',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: context.scheme.textMuted,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              if (isEditable) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.edit,
-                                    size: 10,
-                                    color: context.scheme.textMuted),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            type,
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color:
-                                    Theme.of(context).colorScheme.onSurface,
-                                fontSize: 15),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isEditable)
-                      Icon(Icons.arrow_drop_down, color: Colors.blueGrey.shade400),
-                  ],
-                ),
-              ),
-            ),
-
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 28, top: 2, bottom: 4),
-                child: Text(
-                  _typeHelperText(type),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: context.scheme.textMuted),
-                ),
-              ),
-            ),
-
-            const Divider(height: 20),
-
-            // ── Target Warehouse row ─────────────────────────────────────────
-            InkWell(
-              // ⭐ onTap uses the live isEditable captured in this Obx frame
-              onTap: isEditable
-                  ? () => controller.showWarehousePicker(forItem: false)
-                  : null,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                child: Row(
-                  children: [
-                    Icon(Icons.warehouse_outlined,
-                        size: 18, color: Colors.teal.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'TARGET WAREHOUSE',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: context.scheme.textMuted,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              if (isEditable) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.edit,
-                                    size: 10,
-                                    color: context.scheme.textMuted),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            warehouseText.isNotEmpty
-                                ? warehouseText
-                                : 'Select Warehouse',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: warehouseText.isNotEmpty
-                                  ? Theme.of(context).colorScheme.onSurface
-                                  : context.scheme.textMuted,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isEditable)
-                      Icon(Icons.chevron_right,
-                          color: Colors.blueGrey.shade300),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+          const SizedBox(height: 12),
+          DocPickerField(
+            label: 'Target Warehouse',
+            icon: Icons.warehouse_outlined,
+            value: warehouseText,
+            placeholder: 'Select Warehouse',
+            trailingIcon: Icons.chevron_right,
+            onTap: isEditable
+                ? () => controller.showWarehousePicker(forItem: false)
+                : null,
+          ),
+        ],
       );
     });
   }
@@ -411,61 +294,6 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
         margin: EdgeInsets.zero,
         children: children,
       );
-
-  Widget _buildCompactField({
-    required BuildContext context,
-    required String label,
-    required String? value,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
-    final scheme = context.scheme;
-    final content = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: onTap != null
-            ? Theme.of(context).colorScheme.surface
-            : scheme.subtle,
-        border: Border.all(
-            color:
-                onTap != null ? scheme.borderStrong : scheme.border),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon,
-              size: 16,
-              color:
-                  onTap != null ? scheme.textMuted : scheme.textSubtle),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style:
-                      TextStyle(fontSize: 10, color: scheme.textMuted)),
-              Text(
-                value ?? '—',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: onTap != null
-                        ? Theme.of(context).colorScheme.onSurface
-                        : scheme.textMuted),
-              ),
-            ],
-          ),
-          const Spacer(),
-          if (onTap != null)
-            Icon(Icons.edit_calendar_outlined,
-                size: 14, color: scheme.textSubtle),
-        ],
-      ),
-    );
-    if (onTap == null) return content;
-    return InkWell(
-        borderRadius: BorderRadius.circular(12), onTap: onTap, child: content);
-  }
 
   Widget _buildSummaryRow(String label, String value, {bool isBold = false}) =>
       DocSummaryRow(label: label, value: value, isBold: isBold);

@@ -38,9 +38,10 @@ class DocSummaryRow extends StatelessWidget {
             style: TextStyle(
               fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
               fontSize: isBold ? 16 : 14,
-              color: isBold
-                  ? cs.onSurface
-                  : cs.onSurface.withValues(alpha: 0.6),
+              // onSurfaceVariant, not onSurface @ 0.6 alpha — the alpha
+              // composite fell to 3.99:1 (sub-AA) on DocSectionCard's
+              // surfaceContainerLow fill in light mode.
+              color: isBold ? cs.onSurface : cs.onSurfaceVariant,
             ),
           ),
         ],

@@ -92,4 +92,17 @@ class FormattingHelper {
   /// (transaction_date, schedule_date, etc.). Centralised here so a
   /// single change propagates everywhere if the format ever needs to change.
   static String formatDate(DateTime date) => _dateFmt.format(date);
+
+  /// Normalises an ERPNext time string for display as HH:mm:ss.
+  ///
+  /// Server-loaded posting times carry microseconds ('9:46:34.234513');
+  /// locally-set ones are already 'HH:mm:ss'. Trims the fractional part and
+  /// zero-pads the hour. Anything that doesn't look like a time (or null)
+  /// is returned unchanged.
+  static String? formatTime(String? raw) {
+    if (raw == null || raw.isEmpty) return raw;
+    final m = RegExp(r'^(\d{1,2}):(\d{2}):(\d{2})').firstMatch(raw);
+    if (m == null) return raw;
+    return '${m[1]!.padLeft(2, '0')}:${m[2]}:${m[3]}';
+  }
 }
