@@ -1,2 +1,3 @@
-• Fixed: POS Upload search now finds POS Uploads (it previously looked up POS Invoices), so tapping a result opens the right document.
-• Fixed: a tiny layout glitch in the document header while scrolling forms.
+• To-Do: create, edit and delete To-Dos from the app, with a readable title and description right on the list.
+• Dashboard: if you have open To-Dos, your Upcoming tasks now show first.
+• Fixed: the list header could keep the old Light/Dark colours after switching theme on a screen left in the background.
