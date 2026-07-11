@@ -44,4 +44,45 @@ void main() {
       expect(_byDoctype('BOM').argsFor('BOM-1'), {'name': 'BOM-1'});
     });
   });
+
+  group('searchNavArgsFor', () {
+    test('Delivery Note form route gets the canonical name+mode map', () {
+      // Regression: DocTypeSearchDelegate used to pass a bare String id,
+      // which DeliveryNoteFormController indexed with ['name'] → runtime
+      // "type 'String' is not a subtype of type 'int' of 'index'".
+      expect(
+        searchNavArgsFor(AppRoutes.DELIVERY_NOTE_FORM, 'MAT-DN-00001'),
+        {'name': 'MAT-DN-00001', 'mode': 'view'},
+      );
+    });
+
+    test('Purchase Receipt and POS Upload form routes get name+mode maps', () {
+      expect(
+        searchNavArgsFor(AppRoutes.PURCHASE_RECEIPT_FORM, 'MAT-PRE-1'),
+        {'name': 'MAT-PRE-1', 'mode': 'view'},
+      );
+      expect(
+        searchNavArgsFor(AppRoutes.POS_UPLOAD_FORM, 'PU-1'),
+        {'name': 'PU-1', 'mode': 'view'},
+      );
+    });
+
+    test('Item form route keeps the itemCode key', () {
+      expect(
+        searchNavArgsFor(AppRoutes.ITEM_FORM, 'FG-1'),
+        {'itemCode': 'FG-1'},
+      );
+    });
+
+    test('Batch form route opens in edit mode', () {
+      expect(
+        searchNavArgsFor(AppRoutes.BATCH_FORM, 'B-1'),
+        {'name': 'B-1', 'mode': 'edit'},
+      );
+    });
+
+    test('unregistered route falls back to the bare id', () {
+      expect(searchNavArgsFor(AppRoutes.TODO_FORM, 'TD-1'), 'TD-1');
+    });
+  });
 }

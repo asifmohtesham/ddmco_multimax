@@ -141,3 +141,16 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
 Map<String, dynamic> _itemArgs(String id) => {'itemCode': id};
 Map<String, dynamic> _nameOnly(String id) => {'name': id};
 Map<String, dynamic> _batchArgs(String id) => {'name': id, 'mode': 'edit'};
+
+/// Canonical navigation arguments for opening document [id] on form [route].
+///
+/// Routes registered in [kGlobalSearchTargets] get that target's [argsFor]
+/// map — the shape the form controller actually reads (`{'name': …, 'mode':
+/// …}` etc.). Unregistered routes fall back to the bare [id] for callers
+/// whose forms accept a plain String argument.
+dynamic searchNavArgsFor(String route, String id) {
+  for (final t in kGlobalSearchTargets) {
+    if (t.route == route) return t.argsFor(id);
+  }
+  return id;
+}

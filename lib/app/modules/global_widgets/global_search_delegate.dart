@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
@@ -337,7 +338,11 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
       // onTap is a gesture handler → synchronous call is fine.
       onTap: () {
         close(context, null);
-        Get.toNamed(targetRoute, arguments: item.id);
+        // Resolve the argument shape the target form expects — a bare String
+        // crashes forms that read Get.arguments['name'] (String's [] wants an
+        // int index).
+        Get.toNamed(targetRoute,
+            arguments: searchNavArgsFor(targetRoute, item.id));
       },
     );
   }
