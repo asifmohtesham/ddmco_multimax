@@ -1,13 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/utils/html_text.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
+import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_controller.dart';
 
 class ToDoFormScreen extends GetView<ToDoFormController> {
@@ -24,8 +28,12 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
       final isLoading = controller.isLoading.value;
       final canShowClose = controller.canShowCloseAction;
 
-      final String title =
-          t == null ? 'Loading...' : (t.name == 'New ToDo' ? 'New ToDo' : t.name);
+      final plainTitle = t == null ? '' : htmlToSingleLine(t.description);
+      final String title = controller.mode.value == 'new'
+          ? 'New ToDo'
+          : t == null
+              ? 'Loading...'
+              : (plainTitle.isEmpty ? 'ToDo' : plainTitle);
 
       final VoidCallback? onSave = isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload =
@@ -51,6 +59,18 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
                 onSave: onSave,
                 onReload: onReload,
                 extraActions: [
+                  if (controller.mode.value == 'view' &&
+                      controller.name.isNotEmpty &&
+                      t != null)
+                    DocTypeGuard(
+                      doctype: 'ToDo',
+                      permType: 'write',
+                      child: IconButton(
+                        tooltip: 'Edit',
+                        onPressed: controller.enterEditMode,
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                    ),
                   if (canShowClose)
                     AsyncIconButton(
                       busy: controller.isClosing,
@@ -64,6 +84,19 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
                             : Icons.check_circle_outline,
                       ),
                     ),
+                  if (controller.mode.value == 'edit' &&
+                      controller.name.isNotEmpty &&
+                      t != null)
+                    DocTypeGuard(
+                      doctype: 'ToDo',
+                      permType: 'write',
+                      child: AsyncIconButton(
+                        busy: controller.isDeleting,
+                        onPressed: controller.deleteDocument,
+                        tooltip: 'Delete',
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -71,7 +104,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
                 ? const Center(child: CircularProgressIndicator())
                 : t == null
                     ? _buildNotFound(context)
-                    : _buildBody(context),
+                    : _buildBody(context, t),
           ),
         ),
       );
@@ -112,8 +145,9 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
 
   // ── Body ─────────────────────────────────────────────────────────────
 
-  Widget _buildBody(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildBody(BuildContext context, ToDo t) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
@@ -123,21 +157,44 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
             title: 'Task',
             margin: EdgeInsets.zero,
             children: [
-              TextFormField(
-                controller: controller.descriptionController,
-                readOnly: !controller.isEditable,
-                minLines: 3,
-                maxLines: 8,
-                style: TextStyle(color: colorScheme.onSurface),
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  hintText: 'What needs to be done?',
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
-                  filled: true,
-                  fillColor: colorScheme.surface,
+              if (controller.isEditable)
+                TextFormField(
+                  controller: controller.descriptionController,
+                  minLines: 3,
+                  maxLines: 8,
+                  style: TextStyle(color: colorScheme.onSurface),
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'What needs to be done?',
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: colorScheme.surface,
+                  ),
+                )
+              else if (t.description.trim().isEmpty)
+                Text(
+                  'No description',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
+              else
+                // Frappe stores the description as rich-text HTML — render
+                // it like the list card does instead of showing raw tags.
+                Html(
+                  data: t.description,
+                  style: {
+                    'body': Style(
+                      margin: Margins.zero,
+                      padding: HtmlPaddings.zero,
+                      fontSize:
+                          FontSize(theme.textTheme.bodyMedium?.fontSize ?? 14),
+                      color: colorScheme.onSurface,
+                    ),
+                  },
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -198,7 +255,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
           ),
           const SizedBox(height: 12),
           DocPickerField(
-            label: 'Date',
+            label: 'Due Date',
             icon: Icons.event_outlined,
             value: controller.date.value,
             placeholder: 'No date set',

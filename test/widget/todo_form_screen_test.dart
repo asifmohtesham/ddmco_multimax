@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_controller.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
 
@@ -30,10 +32,25 @@ class _FakeUserProvider extends UserProvider {
       );
 }
 
+/// Grants every permission immediately, so DocTypeGuard-wrapped header
+/// actions render without a network round-trip.
+///
+/// Reads a dummy `.obs` so DocTypeGuard's `Obx` still has a reactive
+/// dependency to track — an override that returns a bare `true` with no
+/// Rx read at all trips GetX's "improper use of Obx" assertion (Obx throws
+/// when its builder registers zero subscriptions).
+class _FakePermissionService extends PermissionService {
+  final _granted = true.obs;
+  @override
+  bool? hasAccess(String doctype, {String permType = 'read'}) =>
+      _granted.value;
+}
+
 Map<String, dynamic> _todoJson() => {
       'name': 'TD-0001',
       'status': 'Open',
-      'description': 'Pack DN-101',
+      'description':
+          '<div class="ql-editor read-mode"><p>Inventory: Price List</p></div>',
       'modified': '2026-07-11 09:00:00',
       'priority': 'High',
       'date': '2026-07-15',
@@ -58,7 +75,10 @@ void main() {
     Get.put<ApiProvider>(ApiProvider());
     Get.put<ToDoProvider>(_FakeToDoProvider(_todoJson()));
     Get.put<UserProvider>(_FakeUserProvider());
-    Get.put(ToDoFormController());
+    Get.put<PermissionService>(_FakePermissionService());
+    // Bare construction reads Get.arguments (null) → mode 'view', name '';
+    // the cascade sets the name so Edit/Delete gating sees a saved doc.
+    Get.put(ToDoFormController()..name = 'TD-0001');
   });
 
   tearDown(Get.reset);
@@ -73,19 +93,49 @@ void main() {
           brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
       home: const ToDoFormScreen(),
     ));
-    // Two pumps: the first lets the widget tree mount and onInit's
-    // fire-and-forget fetchDocument() start; the second flushes the
-    // now-resolved Future (the fake providers respond with zero delay).
+    // Two pumps: mount + flush the zero-delay fake fetch.
     await tester.pump();
     await tester.pump();
   }
 
-  testWidgets('renders the fetched ToDo in view mode', (tester) async {
+  testWidgets('titles the form with the description text, not the hash',
+      (tester) async {
     await pump(tester);
-    expect(find.text('TD-0001'), findsOneWidget);
-    expect(find.text('Pack DN-101'), findsOneWidget);
-    expect(find.text('High'), findsOneWidget);
+    // flutter_html renders its content as a plain Text (not RichText), so
+    // this appears twice: once as the header title, once as the rendered
+    // body. findsWidgets pins the actual regression under test — that the
+    // hash no longer appears — without over-asserting on flutter_html's
+    // internal rendering choice.
+    expect(find.text('Inventory: Price List'), findsWidgets);
+    expect(find.text('TD-0001'), findsNothing);
+  });
+
+  testWidgets('renders the description as rich text, not raw HTML',
+      (tester) async {
+    await pump(tester);
+    expect(find.byType(Html), findsOneWidget);
+    expect(find.textContaining('<div', findRichText: true), findsNothing);
+  });
+
+  testWidgets('labels the date field Due Date (v15 label)', (tester) async {
+    await pump(tester);
+    expect(find.text('Due Date'), findsOneWidget);
     expect(find.text('2026-07-15'), findsOneWidget);
+  });
+
+  testWidgets('view mode offers Edit; tapping flips to edit in place',
+      (tester) async {
+    await pump(tester);
+    expect(find.byTooltip('Edit'), findsOneWidget);
+    expect(find.byTooltip('Delete'), findsNothing);
+
+    await tester.tap(find.byTooltip('Edit'));
+    await tester.pump();
+
+    expect(find.byTooltip('Edit'), findsNothing);
+    expect(find.byTooltip('Delete'), findsOneWidget);
+    expect(find.byType(Html), findsNothing,
+        reason: 'edit mode swaps the rendered view for the text editor');
   });
 
   testWidgets('shows the reference document as an open-in-new chip in view mode',
@@ -102,6 +152,8 @@ void main() {
 
   testWidgets('renders in dark mode', (tester) async {
     await pump(tester, brightness: Brightness.dark);
-    expect(find.text('TD-0001'), findsOneWidget);
+    // See the fallback note above: flutter_html's plain-Text rendering
+    // means this text appears twice (title + body).
+    expect(find.text('Inventory: Price List'), findsWidgets);
   });
 }
