@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/core/utils/html_text.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/enums/save_result.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
@@ -36,19 +37,15 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
           : Get.put(GlobalSearchService());
 
   static const List<String> statusOptions = ['Open', 'Closed', 'Cancelled'];
-  static const List<String> priorityOptions = [
-    'Low',
-    'Medium',
-    'High',
-    'Urgent',
-  ];
+  static const List<String> priorityOptions = ['Low', 'Medium', 'High'];
 
   /// ToDo document name (ERPNext `name` field). Empty string in new mode.
   String name = (Get.arguments is Map ? Get.arguments['name'] : null) ?? '';
 
-  /// Form mode: `'new'`, `'edit'`, or `'view'`.
-  String mode =
-      (Get.arguments is Map ? Get.arguments['mode'] : null) ?? 'view';
+  /// Form mode: `'new'`, `'edit'`, or `'view'`. Reactive so the header's
+  /// Edit action can flip view→edit in place and the screen rebuilds.
+  final RxString mode =
+      RxString((Get.arguments is Map ? Get.arguments['mode'] : null) ?? 'view');
 
   /// `true` during any API fetch (initial load or reload).
   var isLoading = true.obs;
@@ -89,14 +86,23 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
 
   /// `true` when [mode] is not `'view'`. ToDo has no `docstatus`, so
   /// editability is derived from the form mode alone.
-  bool get isEditable => mode != 'view';
+  bool get isEditable => mode.value != 'view';
 
   /// Whether the quick Close/Reopen header action should render — only for
   /// an already-saved, editable, non-cancelled ToDo. Explicitly `mode ==
   /// 'edit'` (not just `!= 'new'`) so it stays hidden in 'view' mode, which
   /// is documented above as read-only.
   bool get canShowCloseAction =>
-      mode == 'edit' && name.isNotEmpty && status.value != 'Cancelled';
+      mode.value == 'edit' && name.isNotEmpty && status.value != 'Cancelled';
+
+  /// Flips a read-only 'view' form into 'edit' in place — used by the header
+  /// Edit action so deep-linked entry points (dashboard cards, search,
+  /// reference chips) can edit without re-navigating. No-op for unsaved docs
+  /// and non-view modes.
+  void enterEditMode() {
+    if (mode.value != 'view' || name.isEmpty) return;
+    mode.value = 'edit';
+  }
 
   /// Reference-type options the current user may read, sourced from the
   /// shared doctype→route registry so a ToDo can point at anything the
@@ -121,7 +127,7 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
     super.onInit();
     descriptionController.addListener(_checkForChanges);
 
-    if (mode == 'new') {
+    if (mode.value == 'new') {
       _initNewTodo();
     } else {
       fetchDocument();
@@ -146,7 +152,7 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
 
   void _checkForChanges() {
     if (!isEditable) return;
-    if (mode == 'new') {
+    if (mode.value == 'new') {
       isDirty.value = true;
       return;
     }
@@ -187,7 +193,7 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
         final t = ToDo.fromJson(response.data['data']);
         todo.value = t;
 
-        descriptionController.text = t.description;
+        descriptionController.text = htmlToPlainText(t.description);
         date.value = t.date;
         status.value = t.status;
         priority.value = t.priority;
@@ -347,6 +353,13 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
 
   Future<void> saveDocument() async {
     if (isSaving.value) return;
+    // ToDo.description is reqd:1 in v15 — block client-side instead of
+    // surfacing a raw server MandatoryError.
+    if (descriptionController.text.trim().isEmpty) {
+      saveResult.value = SaveResult.error;
+      GlobalSnackbar.error(message: 'Description is required');
+      return;
+    }
     if (checkStaleAndBlock()) return;
 
     isSaving.value = true;
@@ -362,16 +375,16 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
           referenceName.value.isEmpty ? null : referenceName.value,
       'allocated_to': allocatedTo.value.isEmpty ? null : allocatedTo.value,
     };
-    if (mode != 'new') {
+    if (mode.value != 'new') {
       data['modified'] = todo.value?.modified;
     }
 
     try {
-      if (mode == 'new') {
+      if (mode.value == 'new') {
         final response = await _provider.createTodo(data);
         if (response.statusCode == 200 && response.data['data'] != null) {
           name = response.data['data']['name'];
-          mode = 'edit';
+          mode.value = 'edit';
           await fetchDocument();
           saveResult.value = SaveResult.success;
           GlobalSnackbar.success(message: 'ToDo Created');

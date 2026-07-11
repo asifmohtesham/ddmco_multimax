@@ -29,7 +29,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
 
       final VoidCallback? onSave = isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload =
-          controller.mode != 'new' ? controller.reloadDocument : null;
+          controller.mode.value != 'new' ? controller.reloadDocument : null;
 
       return PopScope(
         canPop: !isDirty,

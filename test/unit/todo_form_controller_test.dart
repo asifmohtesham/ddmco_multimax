@@ -113,28 +113,28 @@ void main() {
 
   group('isEditable / canShowCloseAction', () {
     test('view mode is not editable', () {
-      final ctrl = ToDoFormController()..mode = 'view';
+      final ctrl = ToDoFormController()..mode.value = 'view';
       expect(ctrl.isEditable, isFalse);
     });
 
     test('new and edit modes are editable', () {
       final ctrl = ToDoFormController();
-      ctrl.mode = 'new';
+      ctrl.mode.value = 'new';
       expect(ctrl.isEditable, isTrue);
-      ctrl.mode = 'edit';
+      ctrl.mode.value = 'edit';
       expect(ctrl.isEditable, isTrue);
     });
 
     test('close action hidden for an unsaved (new) doc', () {
       final ctrl = ToDoFormController()
-        ..mode = 'new'
+        ..mode.value = 'new'
         ..name = '';
       expect(ctrl.canShowCloseAction, isFalse);
     });
 
     test('close action hidden for a cancelled doc', () {
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
       ctrl.status.value = 'Cancelled';
       expect(ctrl.canShowCloseAction, isFalse);
@@ -142,7 +142,7 @@ void main() {
 
     test('close action shown for an open, saved doc', () {
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
       ctrl.status.value = 'Open';
       expect(ctrl.canShowCloseAction, isTrue);
@@ -156,7 +156,7 @@ void main() {
     // fallback open this form.
     test('close action hidden in view mode even for an open, saved doc', () {
       final ctrl = ToDoFormController()
-        ..mode = 'view'
+        ..mode.value = 'view'
         ..name = 'TD-0001';
       ctrl.status.value = 'Open';
       expect(ctrl.canShowCloseAction, isFalse);
@@ -167,7 +167,7 @@ void main() {
     test('populates every field from the server response', () async {
       fakeProvider.getTodoData = _canned();
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
 
       await ctrl.fetchDocument();
@@ -186,7 +186,7 @@ void main() {
     test('leaves the form usable when the fetch fails', () async {
       fakeProvider.getTodoStatusCode = 404;
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'missing';
 
       await ctrl.fetchDocument();
@@ -201,7 +201,7 @@ void main() {
       fakeProvider.getTodoData = _canned(name: 'TD-0099');
 
       final ctrl = ToDoFormController()
-        ..mode = 'new'
+        ..mode.value = 'new'
         ..name = '';
       ctrl.descriptionController.text = 'New task';
       ctrl.isDirty.value = true;
@@ -209,7 +209,7 @@ void main() {
       await ctrl.saveDocument();
 
       expect(fakeProvider.lastCreatePayload?['description'], 'New task');
-      expect(ctrl.mode, 'edit');
+      expect(ctrl.mode.value, 'edit');
       expect(ctrl.name, 'TD-0099');
       expect(ctrl.saveResult.value, SaveResult.success);
       expect(ctrl.isSaving.value, isFalse);
@@ -219,13 +219,14 @@ void main() {
       fakeProvider.createTodoStatusCode = 500;
 
       final ctrl = ToDoFormController()
-        ..mode = 'new'
+        ..mode.value = 'new'
         ..name = '';
+      ctrl.descriptionController.text = 'x';
 
       await ctrl.saveDocument();
 
       expect(ctrl.saveResult.value, SaveResult.error);
-      expect(ctrl.mode, 'new', reason: 'should not flip modes on failure');
+      expect(ctrl.mode.value, 'new', reason: 'should not flip modes on failure');
       expect(ctrl.isSaving.value, isFalse);
     });
   });
@@ -237,23 +238,24 @@ void main() {
       fakeProvider.getTodoData = _canned(name: 'TD-0001', status: 'Closed');
 
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
       ctrl.status.value = 'Closed';
-      ctrl.priority.value = 'Urgent';
+      ctrl.priority.value = 'High';
+      ctrl.descriptionController.text = 'x';
 
       await ctrl.saveDocument();
 
       expect(fakeProvider.lastUpdateName, 'TD-0001');
       expect(fakeProvider.lastUpdatePayload?['status'], 'Closed');
-      expect(fakeProvider.lastUpdatePayload?['priority'], 'Urgent');
+      expect(fakeProvider.lastUpdatePayload?['priority'], 'High');
       expect(fakeProvider.lastUpdatePayload?.containsKey('modified'), isTrue);
       expect(ctrl.saveResult.value, SaveResult.success);
     });
 
     test('re-entrancy guard skips a call already in flight', () async {
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
       ctrl.isSaving.value = true;
 
@@ -278,8 +280,9 @@ void main() {
       );
 
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
+      ctrl.descriptionController.text = 'x';
 
       await ctrl.saveDocument();
 
@@ -290,7 +293,7 @@ void main() {
 
   group('field setters mark the form dirty (edit mode only)', () {
     test('setStatus updates the value and marks dirty', () {
-      final ctrl = ToDoFormController()..mode = 'edit';
+      final ctrl = ToDoFormController()..mode.value = 'edit';
       expect(ctrl.isDirty.value, isFalse);
 
       ctrl.setStatus('Closed');
@@ -307,12 +310,12 @@ void main() {
         () async {
       fakeProvider.getTodoData = _canned(priority: 'Medium');
       final ctrl = ToDoFormController()
-        ..mode = 'edit'
+        ..mode.value = 'edit'
         ..name = 'TD-0001';
       await ctrl.fetchDocument();
       expect(ctrl.isDirty.value, isFalse);
 
-      ctrl.setPriority('Urgent');
+      ctrl.setPriority('High');
       expect(ctrl.isDirty.value, isTrue);
 
       ctrl.setPriority('Medium');
@@ -321,7 +324,7 @@ void main() {
 
     test('setReferenceType clears the previously selected reference name',
         () {
-      final ctrl = ToDoFormController()..mode = 'edit';
+      final ctrl = ToDoFormController()..mode.value = 'edit';
       ctrl.referenceType.value = 'Delivery Note';
       ctrl.referenceName.value = 'DN-1';
 
@@ -332,7 +335,7 @@ void main() {
     });
 
     test('clearReference resets both reference fields', () {
-      final ctrl = ToDoFormController()..mode = 'edit';
+      final ctrl = ToDoFormController()..mode.value = 'edit';
       ctrl.referenceType.value = 'Delivery Note';
       ctrl.referenceName.value = 'DN-1';
 
@@ -343,7 +346,7 @@ void main() {
     });
 
     test('setAllocatedTo / clearAllocatedTo track the display name', () {
-      final ctrl = ToDoFormController()..mode = 'edit';
+      final ctrl = ToDoFormController()..mode.value = 'edit';
 
       ctrl.setAllocatedTo('ops@x.com', 'Ops Team');
       expect(ctrl.allocatedTo.value, 'ops@x.com');
@@ -355,10 +358,10 @@ void main() {
     });
 
     test('view mode ignores every field mutation', () {
-      final ctrl = ToDoFormController()..mode = 'view';
+      final ctrl = ToDoFormController()..mode.value = 'view';
 
       ctrl.setStatus('Closed');
-      ctrl.setPriority('Urgent');
+      ctrl.setPriority('High');
       ctrl.setAllocatedTo('ops@x.com', 'Ops Team');
 
       expect(ctrl.status.value, 'Open');
@@ -370,12 +373,76 @@ void main() {
 
   group('searchReferenceDocs', () {
     test('no-ops when no reference type is selected', () async {
-      final ctrl = ToDoFormController()..mode = 'edit';
+      final ctrl = ToDoFormController()..mode.value = 'edit';
 
       await ctrl.searchReferenceDocs('anything');
 
       expect(ctrl.isSearchingReference.value, isFalse);
       expect(ctrl.referenceSearchResults, isEmpty);
+    });
+  });
+
+  group('enterEditMode', () {
+    test('flips view to edit for a saved doc', () {
+      final ctrl = ToDoFormController()..name = 'TD-0001';
+      ctrl.mode.value = 'view';
+
+      ctrl.enterEditMode();
+
+      expect(ctrl.mode.value, 'edit');
+      expect(ctrl.isEditable, isTrue);
+    });
+
+    test('no-ops when the doc is unsaved', () {
+      final ctrl = ToDoFormController()..name = '';
+      ctrl.mode.value = 'view';
+
+      ctrl.enterEditMode();
+
+      expect(ctrl.mode.value, 'view');
+    });
+
+    test('no-ops in new mode', () {
+      final ctrl = ToDoFormController()..name = '';
+      ctrl.mode.value = 'new';
+
+      ctrl.enterEditMode();
+
+      expect(ctrl.mode.value, 'new');
+    });
+  });
+
+  group('v15 alignment', () {
+    test('priority options match v15 todo.json (no Urgent)', () {
+      expect(ToDoFormController.priorityOptions, ['Low', 'Medium', 'High']);
+    });
+
+    test('fetch converts a Desk HTML description to plain text and stays clean',
+        () async {
+      fakeProvider.getTodoData = _canned(
+          description:
+              '<div class="ql-editor read-mode"><p>Inventory: Price List</p></div>');
+      final ctrl = ToDoFormController()..name = 'TD-0001';
+      ctrl.mode.value = 'edit';
+
+      await ctrl.fetchDocument();
+
+      expect(ctrl.descriptionController.text, 'Inventory: Price List');
+      expect(ctrl.isDirty.value, isFalse,
+          reason: 'dirty snapshot must be taken AFTER the HTML conversion');
+    });
+
+    test('refuses to save when the description is empty (reqd:1 in v15)',
+        () async {
+      final ctrl = ToDoFormController()..name = '';
+      ctrl.mode.value = 'new';
+      ctrl.descriptionController.text = '   ';
+
+      await ctrl.saveDocument();
+
+      expect(fakeProvider.lastCreatePayload, isNull);
+      expect(ctrl.saveResult.value, SaveResult.error);
+      expect(ctrl.isSaving.value, isFalse);
     });
   });
 }
