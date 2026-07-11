@@ -1,4 +1,3 @@
-import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
@@ -110,6 +109,39 @@ void main() {
         const DocTypeFormHeader(title: 'MAT-STE-0001', canSubmit: true),
       ));
       expect(find.text('Submit'), findsNothing);
+    });
+
+    testWidgets('collapse animation never overflows the large-title area',
+        (tester) async {
+      // Regression: the large-title Column used to receive the animated
+      // (shrinking) SizedBox height as its layout constraint, so every
+      // intermediate frame below its natural content height threw
+      // "A RenderFlex overflowed" (seen as 0.234px on-device).
+      final scrollController = ScrollController();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CustomScrollView(
+            controller: scrollController,
+            slivers: const [
+              DocTypeFormHeader(
+                title: 'MAT-DN-2026-00042',
+                docType: 'Delivery Note',
+                statusLabel: 'Draft',
+              ),
+              SliverToBoxAdapter(child: SizedBox(height: 1000)),
+            ],
+          ),
+        ),
+      ));
+
+      // Sweep the whole 88dp shrink range, including fractional offsets.
+      for (double offset = 0; offset <= 96; offset += 3.7) {
+        scrollController.jumpTo(offset);
+        await tester.pump();
+        expect(tester.takeException(), isNull,
+            reason: 'layout exception at shrinkOffset $offset');
+      }
+      scrollController.dispose();
     });
 
     testWidgets('shows spinner instead of label while submitting',

@@ -324,9 +324,21 @@ class _DocTypeFormHeaderDelegate extends SliverPersistentHeaderDelegate {
                 mainAxisAlignment: MainAxisAlignment.end,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // The large area collapses by shrinking this window while the
+                  // content keeps its full-height layout — an OverflowBox pins
+                  // the Column at _kExpandedExtra so intermediate animation
+                  // frames never hand it a too-small constraint (RenderFlex
+                  // overflow); ClipRect crops it to the animated window.
                   SizedBox(
                     height: math.max(0.0, _kExpandedExtra * expandProgress),
-                    child: largeArea,
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.bottomLeft,
+                        minHeight: _kExpandedExtra,
+                        maxHeight: _kExpandedExtra,
+                        child: largeArea,
+                      ),
+                    ),
                   ),
                   toolbar,
                   if (bottom != null) _wrapBottomOnPrimary(context, bottom!),
