@@ -1,1 +1,2 @@
-• Fixed: tapping a search result on the Delivery Note, Purchase Receipt or POS Upload list no longer shows an error — it opens the document.
+• Fixed: POS Upload search now finds POS Uploads (it previously looked up POS Invoices), so tapping a result opens the right document.
+• Fixed: a tiny layout glitch in the document header while scrolling forms.
