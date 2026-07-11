@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class ToDoController extends GetxController {
   final ToDoProvider _provider = Get.find<ToDoProvider>();
@@ -19,6 +21,11 @@ class ToDoController extends GetxController {
 
   var expandedTodoName = ''.obs;
   var isLoadingDetails = false.obs;
+
+  /// Name of the ToDo currently being closed/reopened, or `null` when idle.
+  /// Scoped per-document (not a single shared flag) so closing one card's
+  /// ToDo doesn't disable every other card's Close button.
+  var closingTodoName = RxnString();
   final _detailedTodosCache = <String, ToDo>{}.obs;
 
   final activeFilters = <String, dynamic>{}.obs;
@@ -155,6 +162,78 @@ class ToDoController extends GetxController {
     } else {
       expandedTodoName.value = name;
       _fetchAndCacheTodoDetails(name);
+    }
+  }
+
+  // ── Refresh ──────────────────────────────────────────────────────────────
+
+  /// Re-fetches a single ToDo and patches both the detail cache and the
+  /// matching summary row — used after closing/reopening and after
+  /// returning from the form, so the list reflects changes without a full
+  /// reload.
+  ///
+  /// Unlike [_fetchAndCacheTodoDetails] this always re-fetches (bypassing
+  /// its cache-hit guard) and only overwrites the cache once the new data
+  /// has arrived, so a transient failure leaves the previously-shown
+  /// detail intact instead of blanking it.
+  Future<void> refreshTodoDetail(String name) async {
+    if (name.isEmpty) return;
+    try {
+      final response = await _provider.getTodo(name);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final updated = ToDo.fromJson(response.data['data']);
+        _detailedTodosCache[name] = updated;
+        final idx = todos.indexWhere((t) => t.name == name);
+        if (idx != -1) {
+          todos[idx] = updated;
+          _applyLocalSearch();
+        }
+      } else {
+        AppNotification.error('Failed to refresh ToDo');
+      }
+    } catch (e) {
+      AppNotification.error(e.toString());
+    }
+  }
+
+  // ── Close quick action ──────────────────────────────────────────────────
+
+  Future<void> closeTodo(String name, {String? modified}) async {
+    if (closingTodoName.value != null) return;
+    final confirmed = await GlobalDialog.confirm(
+      title: 'Close ToDo?',
+      message: 'Mark this task as closed.',
+      confirmText: 'Close',
+      icon: Icons.check_circle_outline,
+    );
+    if (confirmed != true) return;
+    await setTodoStatus(name, close: true, modified: modified);
+  }
+
+  /// Core close/reopen network + cache-update logic, split out from
+  /// [closeTodo] so it can be exercised without the confirmation dialog
+  /// (the dialog requires a live widget tree).
+  Future<void> setTodoStatus(
+    String name, {
+    required bool close,
+    String? modified,
+  }) async {
+    closingTodoName.value = name;
+    try {
+      final response = close
+          ? await _provider.closeTodo(name, modified: modified)
+          : await _provider.reopenTodo(name, modified: modified);
+      if (response.statusCode == 200) {
+        AppNotification.success(close ? 'ToDo Closed' : 'ToDo Reopened');
+        await refreshTodoDetail(name);
+      } else {
+        AppNotification.error(
+            close ? 'Failed to close ToDo' : 'Failed to reopen ToDo');
+      }
+    } catch (e) {
+      AppNotification.error(e.toString());
+    } finally {
+      closingTodoName.value = null;
     }
   }
 }

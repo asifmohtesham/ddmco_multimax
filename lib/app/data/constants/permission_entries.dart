@@ -3,6 +3,8 @@ typedef PermEntry = ({String doctype, String permType});
 // Top-level drawer items (outside any _ModuleGroup)
 const List<PermEntry> kTopLevelPermissions = [
   (doctype: 'ToDo', permType: 'read'),
+  (doctype: 'ToDo', permType: 'create'), // New ToDo FAB
+  (doctype: 'ToDo', permType: 'write'),  // ToDo Edit / Close / Delete
 ];
 
 const List<PermEntry> kStockPermissions = [

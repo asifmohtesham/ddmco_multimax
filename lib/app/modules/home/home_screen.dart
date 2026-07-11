@@ -296,8 +296,8 @@ class HomeScreen extends GetView<HomeController> {
   // Upcoming tasks — actionable open ToDos for the selected user
   // ---------------------------------------------------------------------------
   //
-  // Rows navigate to the ToDo LIST screen (where details expand) — the ToDo
-  // form route is still a stub, so it is intentionally not a tap target here.
+  // Each row deep-links straight to that ToDo's form (view mode); "View all
+  // tasks" still opens the ToDo LIST screen.
   Widget _buildUpcomingTasks(BuildContext context) {
     return DocTypeGuard(
       doctype: 'ToDo',
@@ -314,7 +314,10 @@ class HomeScreen extends GetView<HomeController> {
               if (i > 0) const SizedBox(height: 9),
               DashboardTodoCard(
                 todo: todos[i],
-                onTap: controller.goToToDo,
+                onTap: () => Get.toNamed(
+                  AppRoutes.TODO_FORM,
+                  arguments: {'name': todos[i].name, 'mode': 'view'},
+                ),
               ),
             ],
             Align(
