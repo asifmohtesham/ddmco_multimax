@@ -73,24 +73,32 @@ class HomeScreen extends GetView<HomeController> {
                   ScanHeroCard(onTap: () => _openScanner(context)),
                   const SizedBox(height: 18),
 
-                  // 3 ── Quick Create ─────────────────────────────────────────
-                  _buildSectionHeader(
-                    context,
-                    'Quick Create',
-                    trailing: Obx(() => DashboardColumnsToggle(
-                          columns: controller.dashboardColumns.value,
-                          onChanged: controller.setDashboardColumns,
-                        )),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuickAccessGrid(context),
-                  const SizedBox(height: 18),
-
-                  // 4 ── Needs attention ──────────────────────────────────────
-                  _buildNeedsAttention(context),
-
-                  // 5 ── Upcoming tasks (actionable open ToDos) ───────────────
-                  _buildUpcomingTasks(context),
+                  // 3-5 ── Quick Create / Needs attention / Upcoming tasks ────
+                  // Manager persona (manager role + open ToDos) leads with
+                  // Upcoming tasks; everyone else keeps Quick Create first.
+                  // Only the tasks section moves — the middle block keeps
+                  // today's internal order in both modes.
+                  Obx(() => DashboardSectionOrder(
+                        tasksFirst: controller.tasksFirst.value,
+                        tasks: _buildUpcomingTasks(context),
+                        middle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionHeader(
+                              context,
+                              'Quick Create',
+                              trailing: Obx(() => DashboardColumnsToggle(
+                                    columns: controller.dashboardColumns.value,
+                                    onChanged: controller.setDashboardColumns,
+                                  )),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildQuickAccessGrid(context),
+                            const SizedBox(height: 18),
+                            _buildNeedsAttention(context),
+                          ],
+                        ),
+                      )),
 
                   // 6 ── Today's pulse ────────────────────────────────────────
                   _buildSectionHeader(context, "Today's pulse"),

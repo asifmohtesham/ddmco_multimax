@@ -88,6 +88,12 @@ class HomeController extends GetxController {
   /// Quick Create card layout — 1 or 2 columns, persisted across sessions.
   var dashboardColumns = 1.obs;
 
+  /// Whether "Upcoming tasks" leads the dashboard (manager persona with
+  /// open ToDos). Seeded from the persisted per-user verdict so the initial
+  /// build doesn't reflow when the async ToDo fetch lands; recomputed by
+  /// [_recomputeTasksFirst] after each fetch.
+  var tasksFirst = false.obs;
+
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
   var isRackScanning = false.obs;
@@ -110,6 +116,8 @@ class HomeController extends GetxController {
   void onInit() {
     super.onInit();
     dashboardColumns.value = _storageService.getDashboardColumns();
+    tasksFirst.value = _storageService.getDashboardTasksFirst(
+        _authController.currentUser.value?.email ?? '');
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
 
@@ -257,6 +265,7 @@ class HomeController extends GetxController {
           _authController.currentUser.value?.email;
       if (email == null || email.isEmpty) {
         upcomingTodos.clear();
+        _recomputeTasksFirst();
         return;
       }
       final res = await _todoProvider.getTodos(
@@ -273,9 +282,27 @@ class HomeController extends GetxController {
             .map((e) => ToDo.fromJson(e))
             .toList();
         upcomingTodos.assignAll(selectUpcomingTodos(list));
+        _recomputeTasksFirst();
       }
     } catch (e) {
       print('Error fetching upcoming todos: $e');
+    }
+  }
+
+  /// Recomputes the section-order verdict from the logged-in user's roles
+  /// and the just-fetched ToDo list, then persists it per user so the NEXT
+  /// session's initial build starts from this verdict. On a failed fetch
+  /// the previous verdict is deliberately kept (no recompute call).
+  void _recomputeTasksFirst() {
+    final user = _authController.currentUser.value;
+    final v = showTasksFirst(
+      roles: user?.roles ?? const [],
+      hasOpenTodos: upcomingTodos.isNotEmpty,
+    );
+    tasksFirst.value = v;
+    final email = user?.email;
+    if (email != null && email.isNotEmpty) {
+      _storageService.saveDashboardTasksFirst(email, v);
     }
   }
 
