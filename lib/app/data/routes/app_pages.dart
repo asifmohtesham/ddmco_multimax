@@ -53,6 +53,7 @@ import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart
 import 'package:multimax/app/modules/todo/todo_binding.dart';
 import 'package:multimax/app/modules/todo/todo_screen.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
+import 'package:multimax/app/modules/todo/form/todo_form_binding.dart';
 import 'package:multimax/app/modules/item/item_binding.dart';
 import 'package:multimax/app/modules/item/item_screen.dart';
 import 'package:multimax/app/modules/item/form/item_form_binding.dart';
@@ -181,6 +182,7 @@ class AppPages {
     GetPage(
       name: AppRoutes.TODO_FORM,
       page: () => const ToDoFormScreen(),
+      binding: ToDoFormBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

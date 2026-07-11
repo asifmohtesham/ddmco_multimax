@@ -81,8 +81,27 @@ void main() {
       );
     });
 
+    test('ToDo form route gets the canonical name+mode map', () {
+      expect(
+        searchNavArgsFor(AppRoutes.TODO_FORM, 'TD-1'),
+        {'name': 'TD-1', 'mode': 'view'},
+      );
+    });
+
     test('unregistered route falls back to the bare id', () {
-      expect(searchNavArgsFor(AppRoutes.TODO_FORM, 'TD-1'), 'TD-1');
+      expect(searchNavArgsFor(AppRoutes.LOGIN, 'TD-1'), 'TD-1');
+    });
+  });
+
+  group('searchTargetForDoctype', () {
+    test('resolves a registered doctype to its target', () {
+      final target = searchTargetForDoctype('Delivery Note');
+      expect(target, isNotNull);
+      expect(target!.route, AppRoutes.DELIVERY_NOTE_FORM);
+    });
+
+    test('returns null for an unregistered doctype', () {
+      expect(searchTargetForDoctype('Sales Invoice'), isNull);
     });
   });
 }

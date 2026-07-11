@@ -135,6 +135,14 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     route: AppRoutes.BATCH_FORM,
     argsFor: _batchArgs,
   ),
+  GlobalSearchTarget(
+    doctype: 'ToDo',
+    label: 'ToDos',
+    icon: Icons.check_circle_outline,
+    color: Colors.cyan,
+    route: AppRoutes.TODO_FORM,
+    argsFor: _nameView,
+  ),
 ];
 
 // Top-level functions (const list requires const-tear-off-able references).
@@ -153,4 +161,15 @@ dynamic searchNavArgsFor(String route, String id) {
     if (t.route == route) return t.argsFor(id);
   }
   return id;
+}
+
+/// Looks up the registered [GlobalSearchTarget] for [doctype], e.g. to
+/// resolve where a ToDo's `reference_type` should navigate to. Returns
+/// `null` when the doctype has no registered form route — callers should
+/// render the reference as non-tappable in that case.
+GlobalSearchTarget? searchTargetForDoctype(String doctype) {
+  for (final t in kGlobalSearchTargets) {
+    if (t.doctype == doctype) return t;
+  }
+  return null;
 }

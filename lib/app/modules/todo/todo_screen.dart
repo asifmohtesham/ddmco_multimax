@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/modules/todo/todo_controller.dart';
 import 'package:multimax/app/modules/todo/widgets/todo_list_app_bar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
-import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
 class ToDoScreen extends StatefulWidget {
   const ToDoScreen({super.key});
@@ -53,16 +54,23 @@ class _ToDoScreenState extends State<ToDoScreen> {
     final colorScheme = theme.colorScheme;
 
     return AppShellScaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Get.toNamed(
-          AppRoutes.TODO_FORM,
-          arguments: {'name': '', 'mode': 'new'},
+      floatingActionButton: DocTypeGuard(
+        doctype: 'ToDo',
+        permType: 'create',
+        child: FloatingActionButton.extended(
+          onPressed: () async {
+            await Get.toNamed(
+              AppRoutes.TODO_FORM,
+              arguments: {'name': '', 'mode': 'new'},
+            );
+            controller.fetchTodos(clear: true);
+          },
+          tooltip: 'New To Do',
+          icon: const Icon(Icons.add),
+          label: const Text('New To Do'),
+          backgroundColor: colorScheme.primaryContainer,
+          foregroundColor: colorScheme.onPrimaryContainer,
         ),
-        tooltip: 'New To Do',
-        icon: const Icon(Icons.add),
-        label: const Text('New To Do'),
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -295,6 +303,27 @@ class ToDoCard extends StatelessWidget {
                               ],
                             ],
                           ),
+                          if (todo.hasReference) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.link,
+                                    size: 13,
+                                    color: colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    '${todo.referenceType}: ${todo.referenceName}',
+                                    style: theme.textTheme.labelSmall
+                                        ?.copyWith(
+                                            color: colorScheme
+                                                .onSurfaceVariant),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -334,6 +363,8 @@ class ToDoCard extends StatelessWidget {
                           detailed.name != todo.name) {
                         return const SizedBox.shrink();
                       }
+                      final isClosingThis =
+                          controller.closingTodoName.value == detailed.name;
                       return Container(
                         decoration: BoxDecoration(
                           border: Border(
@@ -368,39 +399,78 @@ class ToDoCard extends StatelessWidget {
                               style: theme.textTheme.labelSmall?.copyWith(
                                   color: colorScheme.outline),
                             ),
+                            if (detailed.hasReference) ...[
+                              const SizedBox(height: 8),
+                              _ReferenceChip(
+                                referenceType: detailed.referenceType,
+                                referenceName: detailed.referenceName,
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                if (detailed.status == 'Open') ...[
-                                  OutlinedButton(
-                                    // TODO: implement close ToDo action
-                                    onPressed: () => AppNotification.info(
-                                        'Close ToDo coming soon'),
-                                    child: const Text('Close'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilledButton.tonal(
-                                    onPressed: () => Get.toNamed(
-                                      AppRoutes.TODO_FORM,
-                                      arguments: {
-                                        'name': detailed.name,
-                                        'mode': 'edit',
-                                      },
+                                if (detailed.status == 'Open')
+                                  DocTypeGuard(
+                                    doctype: 'ToDo',
+                                    permType: 'write',
+                                    child: Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8),
+                                      child: OutlinedButton(
+                                        onPressed: isClosingThis
+                                            ? null
+                                            : () => controller.closeTodo(
+                                                detailed.name,
+                                                modified: detailed.modified),
+                                        child: isClosingThis
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2),
+                                              )
+                                            : const Text('Close'),
+                                      ),
                                     ),
-                                    child: const Text('Edit'),
                                   ),
-                                ] else
-                                  FilledButton.tonal(
-                                    onPressed: () => Get.toNamed(
-                                      AppRoutes.TODO_FORM,
-                                      arguments: {
-                                        'name': detailed.name,
-                                        'mode': 'view',
-                                      },
-                                    ),
+                                DocTypeGuard(
+                                  doctype: 'ToDo',
+                                  permType: 'write',
+                                  fallback: FilledButton.tonal(
+                                    onPressed: () async {
+                                      await Get.toNamed(
+                                        AppRoutes.TODO_FORM,
+                                        arguments: {
+                                          'name': detailed.name,
+                                          'mode': 'view',
+                                        },
+                                      );
+                                      controller
+                                          .refreshTodoDetail(detailed.name);
+                                    },
                                     child: const Text('View'),
                                   ),
+                                  child: FilledButton.tonal(
+                                    onPressed: () async {
+                                      await Get.toNamed(
+                                        AppRoutes.TODO_FORM,
+                                        arguments: {
+                                          'name': detailed.name,
+                                          'mode': detailed.status == 'Open'
+                                              ? 'edit'
+                                              : 'view',
+                                        },
+                                      );
+                                      controller
+                                          .refreshTodoDetail(detailed.name);
+                                    },
+                                    child: Text(detailed.status == 'Open'
+                                        ? 'Edit'
+                                        : 'View'),
+                                  ),
+                                ),
                               ],
                             ),
                           ],
@@ -411,6 +481,65 @@ class ToDoCard extends StatelessWidget {
           ],
         );
       }),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _ReferenceChip — tappable pill navigating to the referenced document's
+// form screen, when that doctype has a registered route. Non-tappable
+// (informational only) otherwise.
+// ---------------------------------------------------------------------------
+
+class _ReferenceChip extends StatelessWidget {
+  final String referenceType;
+  final String referenceName;
+
+  const _ReferenceChip({
+    required this.referenceType,
+    required this.referenceName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final target = searchTargetForDoctype(referenceType);
+
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(target?.icon ?? Icons.link, size: 14, color: target?.color ?? colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '$referenceType: $referenceName',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (target != null) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.open_in_new, size: 12, color: colorScheme.onSurfaceVariant),
+          ],
+        ],
+      ),
+    );
+
+    if (target == null) return chip;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () =>
+          Get.toNamed(target.route, arguments: target.argsFor(referenceName)),
+      child: chip,
     );
   }
 }
