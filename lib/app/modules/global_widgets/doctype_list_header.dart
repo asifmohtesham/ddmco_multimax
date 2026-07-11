@@ -287,6 +287,15 @@ class DocTypeListHeader extends StatelessWidget {
         onImageScanResult: onImageScanResult,
         bottom: bottom,
         statusBarHeight: statusBarHeight,
+        // Captured so shouldRebuild can detect a pure Theme/Brightness change
+        // (e.g. the user flips Light/Dark while this screen sits off-screen in
+        // the Navigator backstack). Without this, none of the other compared
+        // fields change, shouldRebuild returns false, SliverPersistentHeader
+        // never invalidates its cached child, and the header keeps painting
+        // the OLD theme's colorScheme.surface indefinitely — it was observed
+        // on-device as a header frozen on the dark surface colour while the
+        // rest of the (freshly-rebuilt) screen had already gone light.
+        themeSurface: Theme.of(context).colorScheme.surface,
       ),
     );
   }
@@ -335,6 +344,13 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// Height of the system status bar on this device / orientation.
   final double statusBarHeight;
 
+  /// [Theme.of(context).colorScheme.surface] at construction time — the exact
+  /// colour [build] paints the header's [Material] with. Compared in
+  /// [shouldRebuild] so a pure Theme/Brightness change (no title/filter/
+  /// search/action diff) still invalidates the cached child; see
+  /// [shouldRebuild] for why this is otherwise missed.
+  final Color themeSurface;
+
   // Snapshots captured at construction time so shouldRebuild can detect
   // in-place mutations to the shared RxMap / RxString objects. Without these,
   // both `this` and `old` delegates read the same post-mutation value and
@@ -359,6 +375,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onImageScanResult,
     required this.bottom,
     required this.statusBarHeight,
+    required this.themeSurface,
   })  : _filterCount = activeFilters?.length ?? 0,
         _searchValue = searchQuery?.value ?? '';
 
@@ -758,9 +775,14 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // of (canSave, isSaving, saveResult, hasOnSave) so that button state
     // changes (e.g. isDirty true → enabled icon) trigger an immediate rebuild
     // rather than being deferred until the next scroll layout pass.
+    // themeSurface IS compared: a pure Theme/Brightness change (e.g. toggling
+    // Light/Dark while this screen sits off-screen in the Navigator backstack)
+    // touches none of the fields above, so without this the cached header
+    // keeps painting the old theme's colour indefinitely — see [themeSurface].
     return _filterCount != old._filterCount ||
         _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
+        themeSurface != old.themeSurface ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         searchDoctype != old.searchDoctype ||
