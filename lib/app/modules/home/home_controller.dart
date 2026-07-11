@@ -141,6 +141,24 @@ class HomeController extends GetxController {
     _storageService.saveDashboardColumns(cols);
   }
 
+  /// Pure persona rule for dashboard section ordering: "Upcoming tasks"
+  /// leads only when the user holds a manager-ish role AND there are open
+  /// ToDos to show. AND, not OR — a manager with an empty list gains
+  /// nothing from leading with an empty section, and an operator's layout
+  /// must not flip whenever a task lands.
+  ///
+  /// Manager-ish = any role whose name contains "manage" (case-insensitive)
+  /// — covers Stock/Purchase/Manufacturing/System Manager and custom
+  /// "* Manager" roles with no maintained list. The "manage" substring also
+  /// catches "Management *" roles like Management Trainee (accepted caveat).
+  static bool showTasksFirst({
+    required List<String> roles,
+    required bool hasOpenTodos,
+  }) {
+    if (!hasOpenTodos) return false;
+    return roles.any((r) => r.toLowerCase().contains('manage'));
+  }
+
   Future<void> _initDashboard() async {
     await fetchUsers();
     if (selectedFilterUser.value == null) {
