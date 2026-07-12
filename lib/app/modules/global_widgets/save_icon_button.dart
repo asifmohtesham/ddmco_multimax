@@ -69,13 +69,18 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Builds the current visual state as a keyed child so [AnimatedSwitcher]
+  /// can cross-fade between saving/success/error/idle instead of an instant
+  /// swap — notably the 1.5s-later revert from success/error back to the
+  /// idle save icon, which this widget's own contract promises but a bare
+  /// conditional build() cannot deliver.
+  Widget _buildChild(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     // ── Saving spinner ────────────────────────────────────────────────────
     if (widget.isSaving) {
       return SizedBox.square(       // ← enforces equal width & height
+        key: const ValueKey('saving'),
         dimension: 20,
         child: Center(              // ← centres within the IconButton tap zone
           child: CircularProgressIndicator(
@@ -89,12 +94,14 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     // ── Post-save feedback ────────────────────────────────────────────────
     if (_displayed == SaveResult.success) {
       return Padding(
+        key: const ValueKey('success'),
         padding: const EdgeInsets.all(8.0),
         child: Icon(Icons.check_circle, color: Colors.greenAccent.shade400),
       );
     }
     if (_displayed == SaveResult.error) {
       return Padding(
+        key: const ValueKey('error'),
         padding: const EdgeInsets.all(8.0),
         child: Icon(Icons.error_outline, color: cs.error),
       );
@@ -107,6 +114,7 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     if (widget.showFilledWhenDirty && widget.isDirty) {
       final bool hasOnColor = widget.onColor != null;
       return IconButton(
+        key: const ValueKey('filled-dirty'),
         style: IconButton.styleFrom(
           backgroundColor: hasOnColor
               ? widget.onColor!.withValues(alpha: 0.18)
@@ -127,6 +135,7 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     // theme defaults (no explicit color — the fix from 48e1596b stands).
     final bool hasOnColor = widget.onColor != null;
     return IconButton(
+      key: const ValueKey('plain'),
       style: hasOnColor
           ? IconButton.styleFrom(
               foregroundColor:         widget.onColor,
@@ -136,6 +145,18 @@ class _SaveIconButtonState extends State<SaveIconButton> {
       icon:      const Icon(Icons.save),
       tooltip:   widget.tooltip,
       onPressed: widget.isDirty ? widget.onPressed : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: animation, child: child),
+      ),
+      child: _buildChild(context),
     );
   }
 }

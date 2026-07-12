@@ -34,6 +34,46 @@ void main() {
     expect(gestures.where((g) => g.onTap != null), isEmpty);
   });
 
+  testWidgets(
+      'wraps the thumbnail in a Hero keyed by item code when there is an image',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const ItemThumbnail(
+      imageUrl: 'https://example.com/x.jpg',
+      itemCode: '2001272',
+      itemName: 'STRAPS',
+    )));
+    final hero = tester.widget<Hero>(find.byType(Hero));
+    expect(hero.tag, 'item-image-2001272');
+  });
+
+  testWidgets('does not wrap the fallback initials in a Hero when there is no image',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const ItemThumbnail(
+      imageUrl: null, itemCode: '2001272', itemName: 'STRAPS',
+    )));
+    expect(find.byType(Hero), findsNothing);
+  });
+
+  testWidgets('preview dialog reuses the same Hero tag as its thumbnail',
+      (tester) async {
+    await tester.pumpWidget(_wrap(const ItemThumbnail(
+      imageUrl: 'https://example.com/x.jpg',
+      itemCode: '2001272',
+      itemName: 'STRAPS',
+    )));
+
+    await tester.tap(find.byType(GestureDetector));
+    // Same rationale as below: avoid pumpAndSettle with an unresolved
+    // network image placeholder; two pumps is enough for the dialog and
+    // its Hero-wrapped content to build.
+    await tester.pump();
+    await tester.pump();
+
+    final heroes = tester.widgetList<Hero>(find.byType(Hero)).toList();
+    expect(heroes, isNotEmpty);
+    expect(heroes.every((h) => h.tag == 'item-image-2001272'), isTrue);
+  });
+
   testWidgets('showItemImagePreview opens a dialog with an InteractiveViewer',
       (tester) async {
     late BuildContext ctx;

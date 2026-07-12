@@ -83,5 +83,32 @@ void main() {
       )));
       expect(find.byIcon(Icons.filter_alt), findsOneWidget);
     });
+
+    testWidgets('animates via AnimatedSwitcher and settles to the new label when count changes',
+        (tester) async {
+      int count = 5;
+      late StateSetter setState;
+
+      await tester.pumpWidget(_wrap(StatefulBuilder(builder: (context, setter) {
+        setState = setter;
+        return ResultCountPill(
+          count: count,
+          hasMore: false,
+          hasActiveFilters: false,
+          noun: 'item',
+          icon: Icons.inventory_2_outlined,
+        );
+      })));
+
+      expect(find.text('5 items'), findsOneWidget);
+      expect(find.byType(AnimatedSwitcher), findsOneWidget);
+
+      setState(() => count = 6);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('6 items'), findsOneWidget);
+      expect(find.text('5 items'), findsNothing);
+    });
   });
 }

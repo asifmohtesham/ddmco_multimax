@@ -37,4 +37,25 @@ void main() {
     final text = tester.widget<Text>(find.text('7'));
     expect((text.style as TextStyle).color, Colors.white);
   });
+
+  testWidgets('animates via AnimatedSwitcher and settles to the new count when it changes',
+      (tester) async {
+    int count = 3;
+    late StateSetter setState;
+
+    await tester.pumpWidget(_host(StatefulBuilder(builder: (context, setter) {
+      setState = setter;
+      return CountBadge(count: count);
+    })));
+
+    expect(find.text('3'), findsOneWidget);
+    expect(find.byType(AnimatedSwitcher), findsOneWidget);
+
+    setState(() => count = 4);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('3'), findsNothing);
+  });
 }

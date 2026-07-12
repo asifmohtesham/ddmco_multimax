@@ -13,6 +13,7 @@ import 'package:multimax/app/modules/item/widgets/item_image.dart';
 import 'package:multimax/app/modules/item/widgets/item_expanded_content.dart';
 import 'package:multimax/app/modules/item/widgets/item_grid_preview_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
+import 'package:multimax/app/modules/global_widgets/sliver_fade_in.dart';
 
 class ItemScreen extends GetView<ItemController> {
   const ItemScreen({super.key});
@@ -63,21 +64,38 @@ class ItemScreen extends GetView<ItemController> {
             ),
 
             // ── List / grid content ──────────────────────────────────────────
+            // Each branch is a different sliver type (skeleton/empty/grid/
+            // list) with its own scroll/pagination behavior, so they can't
+            // safely coexist mid cross-fade — SliverFadeIn instead fades in
+            // whichever branch just mounted; the key change on branch switch
+            // is what triggers a fresh fade (see SliverFadeIn's doc comment).
             Obx(() {
               if (controller.isLoading.value &&
                   controller.displayedItems.isEmpty) {
-                return const SliverToBoxAdapter(child: DocCardSkeletonList());
+                return const SliverFadeIn(
+                  key: ValueKey('skeleton'),
+                  sliver: SliverToBoxAdapter(child: DocCardSkeletonList()),
+                );
               }
 
               if (controller.displayedItems.isEmpty) {
-                return _buildEmptyState(context);
+                return SliverFadeIn(
+                  key: const ValueKey('empty'),
+                  sliver: _buildEmptyState(context),
+                );
               }
 
               if (controller.isGridView.value) {
-                return _buildGrid();
+                return SliverFadeIn(
+                  key: const ValueKey('grid'),
+                  sliver: _buildGrid(),
+                );
               }
 
-              return _buildList();
+              return SliverFadeIn(
+                key: const ValueKey('list'),
+                sliver: _buildList(),
+              );
             }),
 
             const SliverToBoxAdapter(child: SizedBox(height: 80)),

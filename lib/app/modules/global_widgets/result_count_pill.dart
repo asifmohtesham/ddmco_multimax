@@ -82,11 +82,25 @@ class ResultCountPill extends StatelessWidget {
               children: [
                 Icon(icon, size: 14, color: cs.onSecondaryContainer),
                 const SizedBox(width: 6),
-                Text(
-                  _label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: cs.onSecondaryContainer,
-                    fontWeight: FontWeight.w600,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.3),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: Text(
+                    _label,
+                    key: ValueKey(_label),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSecondaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 if (hasActiveFilters) ...[

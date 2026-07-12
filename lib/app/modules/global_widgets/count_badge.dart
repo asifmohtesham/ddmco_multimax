@@ -26,14 +26,22 @@ class CountBadge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(AppRadius.full),
       ),
-      child: Text(
-        '$count',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: muted ? s.text : Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          height: 1.0,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 150),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) =>
+            ScaleTransition(scale: animation, child: FadeTransition(opacity: animation, child: child)),
+        child: Text(
+          '$count',
+          key: ValueKey(count),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: muted ? s.text : Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            height: 1.0,
+          ),
         ),
       ),
     );

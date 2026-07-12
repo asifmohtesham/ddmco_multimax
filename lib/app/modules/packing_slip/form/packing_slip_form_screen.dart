@@ -13,6 +13,7 @@ import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart'
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/shake_on_trigger.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_dn_link_banner.dart';
 
 class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
@@ -284,12 +285,15 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           }),
         ),
         if (slip.docstatus == 0)
-          Obx(() => BarcodeInputWidget(
-                onScan:      (code) => controller.scanBarcode(code),
-                isLoading:   controller.isScanning.value,
-                hintText:    'Scan Item / Batch',
-                controller:  controller.barcodeController,
-                activeRoute: AppRoutes.PACKING_SLIP_FORM,
+          Obx(() => ShakeOnTrigger(
+                trigger: controller.shakeTrigger.value,
+                child: BarcodeInputWidget(
+                  onScan:      (code) => controller.scanBarcode(code),
+                  isLoading:   controller.isScanning.value,
+                  hintText:    'Scan Item / Batch',
+                  controller:  controller.barcodeController,
+                  activeRoute: AppRoutes.PACKING_SLIP_FORM,
+                ),
               )),
         Builder(builder: (ctx) =>
             SizedBox(height: MediaQuery.viewInsetsOf(ctx).bottom)),
@@ -327,6 +331,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           controller.isLoadingItemEdit.value &&
           controller.loadingForItemName.value ==
               (currentItem?.name ?? '');
+      final isHighlighted =
+          controller.recentlyPackedDnDetail.value == dnItem.name;
 
       final inner = InkWell(
         onTap: () {
@@ -456,22 +462,34 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             )
           : inner;
 
-      if (!isLoadingThis) return rowWidget;
-      return Stack(
-        children: [
-          rowWidget,
-          Positioned.fill(
-            child: Container(
-              color: cs.surface.withValues(alpha: 0.65),
-              child: const Center(
-                child: SizedBox(
-                  width: 22, height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
+      final Widget content = !isLoadingThis
+          ? rowWidget
+          : Stack(
+              children: [
+                rowWidget,
+                Positioned.fill(
+                  child: Container(
+                    color: cs.surface.withValues(alpha: 0.65),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ],
+              ],
+            );
+
+      // Flash-then-fade the row that was just packed by a scan, mirroring
+      // DocItemCard's isHighlighted tint (used by PO/PR/SE/DN).
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        color: isHighlighted
+            ? cs.tertiaryContainer.withValues(alpha: 0.35)
+            : Colors.transparent,
+        child: content,
       );
       });
     });

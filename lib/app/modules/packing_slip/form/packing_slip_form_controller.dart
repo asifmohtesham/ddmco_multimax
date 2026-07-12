@@ -93,6 +93,18 @@ class PackingSlipFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
+  /// Set to a DN item's row name briefly after a successful pack so the
+  /// matching checklist row can flash-then-fade. Mirrors
+  /// [DeliveryNoteFormController.addItem]'s `recentlyAddedItemCode` pattern;
+  /// cleared automatically by [_flashRecentlyPacked] after ~1.8s.
+  var recentlyPackedDnDetail = ''.obs;
+
+  /// Bumped on every rejected/invalid scan (Strap/Buckle gate, no DN match,
+  /// scan failure/error) so a [ShakeOnTrigger]-wrapped barcode field can
+  /// play a brief shake — a fast, pre-attentive cue a SnackBar alone can't
+  /// give. The value itself carries no meaning beyond "changed".
+  var shakeTrigger = 0.obs;
+
   String? currentItemDnDetail;
   String? currentItemCode;
   String? currentItemName;
@@ -793,6 +805,7 @@ class PackingSlipFormController extends GetxController
       // skipRow/remainingQty), so a null match here means "matches existed but were all skipped".
       final hasAnyMatch = dnItems.any((i) =>
           i.itemCode == code && (batch == null || i.batchNo == batch));
+      shakeTrigger.value++;
       if (hasAnyMatch) {
         GlobalSnackbar.error(
           message:
@@ -809,13 +822,17 @@ class PackingSlipFormController extends GetxController
 
   /// Called when [ScanService] returns a failed or unresolvable result.
   /// Single responsibility: failure-path feedback.
-  void _onScanFailed(ScanResult result) =>
-      GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+  void _onScanFailed(ScanResult result) {
+    shakeTrigger.value++;
+    GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+  }
 
   /// Called when an exception is thrown during scan processing.
   /// Single responsibility: exception-path feedback.
-  void _onScanError(Object e) =>
-      GlobalSnackbar.error(message: 'Scan processing error: $e');
+  void _onScanError(Object e) {
+    shakeTrigger.value++;
+    GlobalSnackbar.error(message: 'Scan processing error: $e');
+  }
 
   // ── Orchestrator ────────────────────────────────────────────────────────────
 
@@ -1115,6 +1132,7 @@ class PackingSlipFormController extends GetxController
     // serial directly and so bypasses the dropdown/scan navigation gates).
     final serial = item.customInvoiceSerialNumber ?? '';
     if (isStrapBuckleBlocked(item.itemGroup, serial)) {
+      shakeTrigger.value++;
       GlobalSnackbar.error(message: strapBuckleBlockMessage(serial));
       return;
     }
@@ -1427,6 +1445,7 @@ class PackingSlipFormController extends GetxController
     if (isEditing.value && currentItemNameKey != null) {
       updateItem(currentItemNameKey!, qty);
       Get.key.currentState?.pop();
+      _flashRecentlyPacked(currentItemDnDetail);
       _applyAndPersist(packingSlip.value?.items.toList() ?? []);
       return;
     }
@@ -1434,6 +1453,7 @@ class PackingSlipFormController extends GetxController
     // Backstop: never create a paired-item row on an unbalanced serial, even if
     // a future entry path reaches here without the proactive open-time guard.
     if (isStrapBuckleBlocked(currentItemGroup, currentSerial)) {
+      shakeTrigger.value++;
       GlobalSnackbar.error(
           message: strapBuckleBlockMessage(currentSerial ?? ''));
       Get.key.currentState?.pop();
@@ -1444,7 +1464,21 @@ class PackingSlipFormController extends GetxController
     final merged = _mergeItemQty(items, qty);
     if (!merged) _addItemToList(items, qty);
     Get.key.currentState?.pop();
+    _flashRecentlyPacked(currentItemDnDetail);
     _applyAndPersist(items);
+  }
+
+  /// Highlights the checklist row for [dnDetail] briefly after a successful
+  /// pack, then clears it — unless a newer pack has already replaced it.
+  /// Mirrors [DeliveryNoteFormController.addItem]'s flash-then-fade guard.
+  void _flashRecentlyPacked(String? dnDetail) {
+    if (dnDetail == null) return;
+    recentlyPackedDnDetail.value = dnDetail;
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (recentlyPackedDnDetail.value == dnDetail) {
+        recentlyPackedDnDetail.value = '';
+      }
+    });
   }
 
   /// Entry point called by the sheet's submit button and auto-submit.

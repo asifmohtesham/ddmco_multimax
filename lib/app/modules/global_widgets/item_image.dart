@@ -73,7 +73,10 @@ class ItemThumbnail extends StatelessWidget {
     if (url.isEmpty) return thumb;
     return GestureDetector(
       onTap: () => showItemImagePreview(context, url, itemCode, itemName),
-      child: thumb,
+      child: Hero(
+        tag: 'item-image-$itemCode',
+        child: thumb,
+      ),
     );
   }
 }
@@ -103,17 +106,20 @@ void showItemImagePreview(
                 minScale: 1,
                 maxScale: 5,
                 child: Center(
-                  child: CachedNetworkImage(
-                    imageUrl: url,
-                    fit: BoxFit.contain,
-                    placeholder: (_, __) => const Center(
-                      child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2),
-                    ),
-                    errorWidget: (_, __, ___) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 64,
+                  child: Hero(
+                    tag: 'item-image-$itemCode',
+                    child: CachedNetworkImage(
+                      imageUrl: url,
+                      fit: BoxFit.contain,
+                      placeholder: (_, __) => const Center(
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      ),
+                      errorWidget: (_, __, ___) => const Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white54,
+                        size: 64,
+                      ),
                     ),
                   ),
                 ),

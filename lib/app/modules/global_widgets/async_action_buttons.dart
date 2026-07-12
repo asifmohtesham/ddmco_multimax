@@ -43,16 +43,22 @@ class AsyncIconButton extends StatelessWidget {
       return IconButton(
         tooltip: tooltip,
         onPressed: isBusy ? null : onPressed,
-        icon: isBusy
-            ? SizedBox(
-                width: spinnerSize,
-                height: spinnerSize,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: spinnerColor ?? IconTheme.of(context).color,
-                ),
-              )
-            : icon,
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
+          child: isBusy
+              ? SizedBox(
+                  key: const ValueKey('spinner'),
+                  width: spinnerSize,
+                  height: spinnerSize,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: spinnerColor ?? IconTheme.of(context).color,
+                  ),
+                )
+              : KeyedSubtree(key: const ValueKey('icon'), child: icon),
+        ),
       );
     });
   }
@@ -91,17 +97,23 @@ class AsyncFilledButton extends StatelessWidget {
       final isBusy = busy.value;
       return FilledButton.icon(
         onPressed: isBusy ? null : onPressed,
-        icon: isBusy
-            ? SizedBox(
-                width: spinnerSize,
-                height: spinnerSize,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: spinnerColor ??
-                      Theme.of(context).colorScheme.onPrimary,
-                ),
-              )
-            : icon,
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
+          child: isBusy
+              ? SizedBox(
+                  key: const ValueKey('spinner'),
+                  width: spinnerSize,
+                  height: spinnerSize,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: spinnerColor ??
+                        Theme.of(context).colorScheme.onPrimary,
+                  ),
+                )
+              : KeyedSubtree(key: const ValueKey('icon'), child: icon),
+        ),
         label: Text(isBusy ? (loadingLabel ?? label) : label),
         style: style,
       );

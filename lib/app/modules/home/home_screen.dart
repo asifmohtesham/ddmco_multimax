@@ -1385,14 +1385,19 @@ class PulseStat extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Text(
-                    '$actual',
-                    style: TextStyle(
-                      fontSize: 27,
-                      fontWeight: FontWeight.w800,
-                      color: scheme.text,
-                      letterSpacing: -0.5,
-                      fontFeatures: const [FontFeature.tabularFigures()],
+                  TweenAnimationBuilder<int>(
+                    tween: IntTween(begin: 0, end: actual),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) => Text(
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 27,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.text,
+                        letterSpacing: -0.5,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -1416,10 +1421,15 @@ class PulseStat extends StatelessWidget {
                 child: Container(
                   height: 6,
                   color: scheme.border,
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: pct == 0 ? 0.001 : pct,
-                    child: Container(color: stateColor),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: pct == 0 ? 0.001 : pct),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) => FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: value,
+                      child: Container(color: stateColor),
+                    ),
                   ),
                 ),
               ),
@@ -1521,12 +1531,17 @@ class BomCountCard extends StatelessWidget {
                   color: Colors.teal.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
-                child: Text(
-                  '$count',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal,
+                child: TweenAnimationBuilder<int>(
+                  tween: IntTween(begin: 0, end: count),
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) => Text(
+                    '$value',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal,
+                    ),
                   ),
                 ),
               ),

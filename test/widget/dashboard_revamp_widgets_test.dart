@@ -33,7 +33,11 @@ void main() {
         ),
       ),
     );
-    await tester.pump(const Duration(milliseconds: 250)); // settle skeleton anim
+    // Bounded pump, not pumpAndSettle: PulseSkeleton's shimmer repeats
+    // forever (..repeat(reverse: true)) and would never settle. 600ms
+    // covers both the skeleton's first frame and PulseStat/BomCountCard's
+    // 500ms count-up animation.
+    await tester.pump(const Duration(milliseconds: 600));
     expect(tester.takeException(), isNull);
   }
 

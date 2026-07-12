@@ -48,6 +48,7 @@ void main() {
 
       busy.value = true;
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200)); // settle the cross-fade
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byIcon(Icons.receipt_long), findsNothing);
@@ -55,6 +56,35 @@ void main() {
       // Disabled: tapping does nothing (re-entrancy protection).
       await tester.tap(find.byType(IconButton));
       expect(taps, 0);
+    });
+
+    testWidgets('cross-fades between icon and spinner instead of an instant swap',
+        (tester) async {
+      final busy = false.obs;
+      addTearDown(busy.close);
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AsyncIconButton(
+            busy: busy,
+            onPressed: () {},
+            icon: const Icon(Icons.receipt_long),
+          ),
+        ),
+      ));
+
+      expect(
+        find.descendant(
+            of: find.byType(IconButton), matching: find.byType(AnimatedSwitcher)),
+        findsOneWidget,
+      );
+
+      busy.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200)); // settle the cross-fade
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.receipt_long), findsNothing);
     });
 
     testWidgets(
@@ -88,6 +118,7 @@ void main() {
 
       busy.value = true;
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200)); // settle the cross-fade
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byIcon(Icons.receipt_long), findsNothing);
@@ -140,6 +171,7 @@ void main() {
 
       busy.value = true;
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200)); // settle the cross-fade
 
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.text('Creating…'), findsOneWidget);
@@ -147,6 +179,37 @@ void main() {
 
       await tester.tap(find.byType(FilledButton));
       expect(taps, 0);
+    });
+
+    testWidgets('cross-fades between icon and spinner instead of an instant swap',
+        (tester) async {
+      final busy = false.obs;
+      addTearDown(busy.close);
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AsyncFilledButton(
+            busy: busy,
+            onPressed: () {},
+            icon: const Icon(Icons.receipt_long),
+            label: 'Create Purchase Receipt',
+            loadingLabel: 'Creating…',
+          ),
+        ),
+      ));
+
+      expect(
+        find.descendant(
+            of: find.byType(FilledButton), matching: find.byType(AnimatedSwitcher)),
+        findsOneWidget,
+      );
+
+      busy.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.receipt_long), findsNothing);
     });
   });
 }

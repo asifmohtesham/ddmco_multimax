@@ -84,8 +84,7 @@ class StatusPill extends StatelessWidget {
   /// The leading-dot color (`<hue>500`) for [status].
   static Color dotColorForStatus(String status) => _ramp(status).$1;
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildPill(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final (bg, textColour) = colourForStatus(status, brightness: brightness);
     final dot = dotColorForStatus(status);
@@ -123,6 +122,24 @@ class StatusPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Cross-fades the whole pill (background + dot + text together) so a
+    // status transition (e.g. Pending -> Completed) reads as one change
+    // instead of a hard replace next to the surrounding document content.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: animation, child: child),
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(status),
+        child: _buildPill(context),
       ),
     );
   }

@@ -203,14 +203,24 @@ class ValidatedFieldWidget extends StatelessWidget {
               (_) { if (!isValid) onValidate(); },
         ),
         if (chip != null) chip!,
-        if (errorText != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4.0, left: 4.0),
-            child: Text(
-              errorText!,
-              style: const TextStyle(color: Colors.red, fontSize: 12),
-            ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 150),
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+                sizeFactor: animation, alignment: Alignment.topCenter, child: child),
           ),
+          child: errorText == null
+              ? const SizedBox.shrink(key: ValueKey('no-error'))
+              : Padding(
+                  key: ValueKey('error-$errorText'),
+                  padding: const EdgeInsets.only(top: 4.0, left: 4.0),
+                  child: Text(
+                    errorText!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ),
+        ),
       ],
     );
   }
