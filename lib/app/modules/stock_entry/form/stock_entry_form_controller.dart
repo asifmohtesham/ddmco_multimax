@@ -1011,20 +1011,23 @@ class StockEntryFormController extends GetxController
     bool bypassPosCap = false,
   }) {
     final resolvedSerial = serial ?? '0';
+    final items = stockEntry.value?.items.toList() ?? [];
+
+    // A rescanned duplicate — same item, batch, source rack AND target rack,
+    // within the same POS invoice-serial context (so distinct POS invoice
+    // lines never get merged into one another).
+    final existingIdx = items.indexWhere((i) => isDuplicateLine(
+        i,
+        itemCode: currentItemCode,
+        batch: batch,
+        sourceRack: sourceRack,
+        targetRack: targetRack,
+        serial: serial));
 
     if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
-      final items       = stockEntry.value?.items.toList() ?? [];
       final cap         = posQtyCapForSerial(resolvedSerial);
       final alreadyUsed = scannedQtyForSerial(resolvedSerial);
-
-      final existingIdx = items.indexWhere((i) =>
-          i.itemCode.trim().toLowerCase() ==
-              currentItemCode.trim().toLowerCase() &&
-          (i.batchNo  ?? '') == (batch       ?? '') &&
-          (i.rack     ?? '') == (sourceRack  ?? '') &&
-          (i.customInvoiceSerialNumber ?? '0') == resolvedSerial);
-      final mergeQty  = existingIdx != -1 ? items[existingIdx].qty : 0.0;
-      final projected = alreadyUsed - mergeQty + qty;
+      final projected   = alreadyUsed + qty;
 
       if (projected > cap) {
         final posItem = posUpload.value!.items
@@ -1037,6 +1040,36 @@ class StockEntryFormController extends GetxController
         );
         return;
       }
+    }
+
+    if (existingIdx != -1) {
+      final existing = items[existingIdx];
+      var merged = StockEntryItem(
+        name:       existing.name,
+        itemCode:   currentItemCode,
+        qty:        existing.qty + qty,
+        basicRate:  existing.basicRate,
+        itemGroup:  existing.itemGroup,
+        customVariantOf: currentVariantOf,
+        batchNo:    batch,
+        itemName:   currentItemName,
+        rack:       sourceRack,
+        toRack:     targetRack,
+        sWarehouse: sWarehouse,
+        tWarehouse: tWarehouse,
+        customInvoiceSerialNumber: serial,
+        materialRequest:     existing.materialRequest,
+        materialRequestItem: existing.materialRequestItem,
+        isFinishedItem: existing.isFinishedItem,
+        owner:      existing.owner,
+        creation:   existing.creation,
+        modified:   existing.modified,
+        modifiedBy: existing.modifiedBy,
+      );
+      merged = _enrichItemWithSourceData(merged);
+      items[existingIdx] = merged;
+      stockEntry.update((val) => val?.items.assignAll(items));
+      return;
     }
 
     final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
@@ -1057,9 +1090,29 @@ class StockEntryFormController extends GetxController
     );
     newItem = _enrichItemWithSourceData(newItem);
     ensureItemKey(newItem);
-    final items = stockEntry.value?.items.toList() ?? [];
     items.add(newItem);
     stockEntry.update((val) => val?.items.assignAll(items));
+  }
+
+  /// Responsibility: identify a rescanned duplicate of [existing] — same
+  /// item, batch, source rack AND target rack, within the same POS
+  /// invoice-serial context (so distinct POS invoice lines are never merged
+  /// into one another). Pure/static so it is unit-testable without
+  /// constructing the full form controller.
+  static bool isDuplicateLine(
+    StockEntryItem existing, {
+    required String itemCode,
+    required String? batch,
+    required String? sourceRack,
+    required String? targetRack,
+    required String? serial,
+  }) {
+    return existing.itemCode.trim().toLowerCase() ==
+            itemCode.trim().toLowerCase() &&
+        (existing.batchNo ?? '') == (batch ?? '') &&
+        (existing.rack ?? '') == (sourceRack ?? '') &&
+        (existing.toRack ?? '') == (targetRack ?? '') &&
+        (existing.customInvoiceSerialNumber ?? '0') == (serial ?? '0');
   }
 
   // ── addItem coordinator ──────────────────────────────────────────────────────────────────────────────────

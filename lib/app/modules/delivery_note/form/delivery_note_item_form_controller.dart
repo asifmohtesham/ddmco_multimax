@@ -824,16 +824,40 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   /// Responsibility: write [item] into the parent document's items list —
-  /// replacing the row at [editingIndex] for edits, appending for new items.
+  /// replacing the row at [editingIndex] for edits; for new items, merging
+  /// the qty into an existing row with the same item/batch/rack/serial
+  /// (a rescanned duplicate) instead of appending a second line.
   void _commitToParent({required DeliveryNoteItem item}) {
     final items = _parent.deliveryNote.value?.items;
     if (items == null) return;
 
     if (isExistingItem.value && editingIndex.value >= 0) {
       items[editingIndex.value] = item;
+      return;
+    }
+
+    final dupIndex = items
+        .indexWhere((existing) => isDuplicateLine(existing, item));
+    if (dupIndex >= 0) {
+      items[dupIndex] =
+          items[dupIndex].copyWith(qty: items[dupIndex].qty + item.qty);
     } else {
       items.add(item);
     }
+  }
+
+  /// Responsibility: identify a rescanned duplicate line — same item, batch,
+  /// and rack, within the same POS invoice-serial context (so distinct POS
+  /// invoice lines are never merged into one another). Pure/static so it is
+  /// unit-testable without constructing the full sheet controller.
+  static bool isDuplicateLine(
+      DeliveryNoteItem existing, DeliveryNoteItem incoming) {
+    return existing.itemCode.trim().toLowerCase() ==
+            incoming.itemCode.trim().toLowerCase() &&
+        (existing.batchNo ?? '') == (incoming.batchNo ?? '') &&
+        (existing.rack ?? '') == (incoming.rack ?? '') &&
+        (existing.customInvoiceSerialNumber ?? '') ==
+            (incoming.customInvoiceSerialNumber ?? '');
   }
 
   /// Responsibility: defer the Rx rebuild to the next frame so the sheet's
