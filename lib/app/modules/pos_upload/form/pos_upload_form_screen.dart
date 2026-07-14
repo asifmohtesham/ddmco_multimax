@@ -450,21 +450,44 @@ class _DetailsTabState extends State<_DetailsTab> {
               ),
               const SizedBox(height: 16),
 
-              // Status dropdown — value is always guaranteed to be in statusItems
+              // Status dropdown — value is always guaranteed to be in statusItems.
+              // Editable only when the server confirmed document-level write
+              // permission (fail-closed); everyone else sees it read-only.
+              // The key re-syncs the field to the authoritative status after
+              // a reload or a failed update.
               DropdownButtonFormField<String>(
+                key: ValueKey(
+                    'status-${upload.status}-${ctrl.statusEditRevision.value}'),
                 // ignore: deprecated_member_use
                 value: upload.status,
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: 'Status',
                   border: const OutlineInputBorder(),
-                  filled: true,
+                  filled: !ctrl.canEditStatus,
                   fillColor: cs.surfaceContainerHighest,
+                  suffixIcon: ctrl.isSaving.value
+                      ? const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : ctrl.canEditStatus
+                          ? null
+                          : const Icon(Icons.lock,
+                              size: 16, color: Colors.grey),
                 ),
                 items: statusItems
                     .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                     .toList(),
-                onChanged: null,
+                onChanged: ctrl.canEditStatus
+                    ? (v) {
+                        if (v != null) ctrl.updateStatus(v);
+                      }
+                    : null,
               ),
               const SizedBox(height: 16),
 

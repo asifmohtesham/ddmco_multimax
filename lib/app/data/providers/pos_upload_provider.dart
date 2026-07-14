@@ -34,4 +34,17 @@ class PosUploadProvider {
   Future<Response> updatePosUpload(String name, Map<String, dynamic> data) async {
     return _apiProvider.updateDocument('POS Upload', name, data);
   }
+
+  /// Whether the current session user may write (update) the specific
+  /// POS Upload [name]. Fail-closed: returns `false` on any network or
+  /// permission error.
+  Future<bool> canWrite(String name) async {
+    try {
+      final res =
+          await _apiProvider.hasDocPermission('POS Upload', name, 'write');
+      return ApiProvider.parseHasDocPermissionResponse(res.data);
+    } catch (_) {
+      return false;
+    }
+  }
 }

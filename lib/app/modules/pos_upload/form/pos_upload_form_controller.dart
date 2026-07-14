@@ -422,13 +422,22 @@ class PosUploadFormController extends GetxController
   @override var isDirty = false.obs;
   @override var isSaving = false.obs;
 
-  /// POS Upload is a read-only view — no edits are made from this screen.
+  /// Status changes commit immediately via [updateStatus]; nothing else on
+  /// this screen is editable, so auto-save has nothing to do.
   @override
   Future<void> saveDocument() async {}
 
   // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
   var posUpload = Rx<PosUpload?>(null);
+
+  /// Server-confirmed write permission on this document (fail-closed:
+  /// stays `false` until the probe succeeds).
+  var canWriteStatus = false.obs;
+
+  /// Bumped when a status update fails so the dropdown re-syncs to the
+  /// authoritative server value instead of keeping the failed selection.
+  var statusEditRevision = 0.obs;
 
   // ── Search / filter ────────────────────────────────────────────────────────
   var searchQuery = ''.obs;
@@ -639,6 +648,7 @@ class PosUploadFormController extends GetxController
     isLoading.value = true;
     await fetchPosUpload().then((_) => initRealtimeSync());
     isLoading.value = false;
+    refreshWritePermission();
     fetchLinkedDocument();
   }
 
@@ -933,7 +943,66 @@ class PosUploadFormController extends GetxController
   Future<void> reloadDocument() async {
     await fetchPosUpload();
     await fetchLinkedDocument();
+    refreshWritePermission();
     GlobalSnackbar.success(message: 'Document reloaded successfully');
+  }
+
+  // ── Status update (write-gated) ────────────────────────────────────────────
+
+  /// Refreshes [canWriteStatus] from the server. Fail-closed on any error.
+  Future<void> refreshWritePermission() async {
+    canWriteStatus.value = await _provider.canWrite(name);
+  }
+
+  /// Pure gate for the Status dropdown. Static so unit tests can exercise
+  /// the truth table without instantiating the controller.
+  static bool computeCanEditStatus({
+    required bool canWritePerm,
+    required bool isSaving,
+    required bool isStale,
+  }) =>
+      canWritePerm && !isSaving && !isStale;
+
+  bool get canEditStatus => computeCanEditStatus(
+        canWritePerm: canWriteStatus.value,
+        isSaving: isSaving.value,
+        isStale: isStale.value,
+      );
+
+  /// Persists [newStatus] to the server. Callers must only enable this for
+  /// users that pass [canEditStatus]; the server re-checks permission anyway.
+  /// Sends `modified` so Frappe rejects the write with a
+  /// TimestampMismatchError if another user changed the document meanwhile.
+  Future<void> updateStatus(String newStatus) async {
+    final upload = posUpload.value;
+    if (upload == null || newStatus == upload.status) return;
+    if (isSaving.value) return;
+    if (checkStaleAndBlock()) {
+      statusEditRevision.value++;
+      return;
+    }
+
+    isSaving.value = true;
+    try {
+      final response = await _provider.updatePosUpload(name, {
+        'status': newStatus,
+        'modified': upload.modified,
+      });
+      if (response.statusCode == 200) {
+        await fetchPosUpload();
+        GlobalSnackbar.success(message: 'Status updated to $newStatus');
+      } else {
+        statusEditRevision.value++;
+        GlobalSnackbar.error(message: 'Failed to update status');
+      }
+    } catch (e) {
+      statusEditRevision.value++;
+      if (!handleVersionConflict(e)) {
+        GlobalSnackbar.error(message: 'Failed to update status: $e');
+      }
+    } finally {
+      isSaving.value = false;
+    }
   }
 
   // ── Excel export ───────────────────────────────────────────────────────────
