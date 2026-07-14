@@ -245,7 +245,18 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
                             const SizedBox(height: 6),
                             Row(
                               children: [
-                                StatusPill(status: upload.status),
+                                // The inner GestureDetector wins the gesture
+                                // arena over the ListTile's InkWell, so a tap
+                                // on the pill filters instead of navigating.
+                                Tooltip(
+                                  message: 'Filter by ${upload.status}',
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => controller
+                                        .toggleStatusFilter(upload.status),
+                                    child: StatusPill(status: upload.status),
+                                  ),
+                                ),
                                 const Spacer(),
                                 Text(
                                   FormattingHelper.getRelativeTime(

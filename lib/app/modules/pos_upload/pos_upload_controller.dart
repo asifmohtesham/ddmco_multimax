@@ -86,6 +86,18 @@ class PosUploadController extends GetxController {
     fetchPosUploads(isLoadMore: false, clear: true);
   }
 
+  /// Tap-to-filter from a list card's status pill. Tapping the status that
+  /// is already active clears the filter (toggle); any other status
+  /// replaces it. Other active filters are preserved.
+  void toggleStatusFilter(String status) {
+    if (activeFilters['status'] == status) {
+      activeFilters.remove('status');
+    } else {
+      activeFilters['status'] = status;
+    }
+    fetchPosUploads(isLoadMore: false, clear: true);
+  }
+
   void setSort(String field, String order) {
     sortField.value = field;
     sortOrder.value = order;
