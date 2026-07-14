@@ -11,6 +11,7 @@ import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_status_filter_bar.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 
 class PosUploadScreen extends StatefulWidget {
@@ -148,6 +149,9 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
               filterChipsBuilder: _buildActiveFilterChips,
               onClearAllFilters: controller.clearFilters,
             ),
+
+            // ── One-tap status facet ───────────────────────────────────────
+            const SliverToBoxAdapter(child: PosUploadStatusFilterBar()),
 
             // ── Result count pill ──────────────────────────────────────────
             SliverToBoxAdapter(

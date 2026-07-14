@@ -294,17 +294,10 @@ class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _qtyCtrl;
   late final Worker _posUploadWorker;
 
-  /// All possible status values a POS Upload can have.
-  /// Must be kept in sync with ERPNext so the DropdownButtonFormField
-  /// never receives a value that isn't in this list (prevents assertion crash).
-  static const _statusOptions = [
-    'Draft',
-    'Pending',
-    'In Progress',
-    'Completed',
-    'Cancelled',
-    'Submitted',
-  ];
+  /// All possible status values a POS Upload can have — the shared
+  /// [PosUpload.statusOptions] list, so the form dropdown, list quick-filter
+  /// bar and filter sheet can never drift apart.
+  static const _statusOptions = PosUpload.statusOptions;
 
   @override
   void initState() {

@@ -18,6 +18,7 @@ class SelectableFilterChip extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.count,
+    this.dotColor,
   });
 
   final String label;
@@ -25,13 +26,34 @@ class SelectableFilterChip extends StatelessWidget {
   /// When non-null, rendered as `label (count)`.
   final int? count;
 
+  /// When non-null, a small leading dot in this colour — e.g. the
+  /// [StatusPill] dot colour for a status facet chip. Lives inside the
+  /// label (not [ChoiceChip.avatar]) so it stays visible when the
+  /// selected-state checkmark is shown.
+  final Color? dotColor;
+
   final bool selected;
   final ValueChanged<bool> onSelected;
 
   @override
   Widget build(BuildContext context) {
+    final text = Text(count != null ? '$label ($count)' : label);
     return ChoiceChip(
-      label: Text(count != null ? '$label ($count)' : label),
+      label: dotColor == null
+          ? text
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                      color: dotColor, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                text,
+              ],
+            ),
       selected: selected,
       onSelected: onSelected,
       visualDensity: VisualDensity.compact,

@@ -5,9 +5,12 @@ import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_screen.dart';
+import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_status_filter_bar.dart';
 
 Response _ok(List<Map<String, dynamic>> rows) => Response(
       requestOptions: RequestOptions(path: ''),
@@ -129,5 +132,65 @@ void main() {
 
     expect(controller.activeFilters['status'], 'Pending');
     expect(controller.activeFilters['customer'], 'CUST-A');
+  });
+
+  testWidgets('quick-filter bar shows All plus every status option',
+      (tester) async {
+    await pumpList(tester);
+
+    expect(find.widgetWithText(SelectableFilterChip, 'All'), findsOneWidget);
+    for (final s in PosUpload.statusOptions) {
+      // The bar builds lazily — drag trailing chips into view before
+      // asserting on them.
+      await tester.dragUntilVisible(
+        find.widgetWithText(SelectableFilterChip, s),
+        find.byType(PosUploadStatusFilterBar),
+        const Offset(-80, 0),
+      );
+      expect(find.widgetWithText(SelectableFilterChip, s), findsOneWidget,
+          reason: 'missing status chip "$s"');
+    }
+  });
+
+  testWidgets('tapping a bar chip filters the list in one tap',
+      (tester) async {
+    await pumpList(tester);
+
+    await tester.tap(find.widgetWithText(SelectableFilterChip, 'Pending'));
+    await tester.pumpAndSettle();
+
+    final controller = Get.find<PosUploadController>();
+    expect(controller.activeFilters['status'], 'Pending');
+    expect(find.text('PU-0001'), findsOneWidget);
+    expect(find.text('PU-0002'), findsNothing);
+  });
+
+  testWidgets('bar chip toggles off on second tap', (tester) async {
+    await pumpList(tester);
+
+    await tester.tap(find.widgetWithText(SelectableFilterChip, 'Pending'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(SelectableFilterChip, 'Pending'));
+    await tester.pumpAndSettle();
+
+    final controller = Get.find<PosUploadController>();
+    expect(controller.activeFilters.containsKey('status'), isFalse);
+    expect(find.text('PU-0002'), findsOneWidget);
+  });
+
+  testWidgets('All chip clears an active status filter', (tester) async {
+    await pumpList(tester);
+
+    await tester.tap(find.widgetWithText(SelectableFilterChip, 'Completed'));
+    await tester.pumpAndSettle();
+    expect(find.text('PU-0001'), findsNothing);
+
+    await tester.tap(find.widgetWithText(SelectableFilterChip, 'All'));
+    await tester.pumpAndSettle();
+
+    final controller = Get.find<PosUploadController>();
+    expect(controller.activeFilters.containsKey('status'), isFalse);
+    expect(find.text('PU-0001'), findsOneWidget);
+    expect(find.text('PU-0002'), findsOneWidget);
   });
 }

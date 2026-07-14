@@ -1,4 +1,16 @@
 class PosUpload {
+  /// All status values a POS Upload can have, in ERPNext option order.
+  /// Must be kept in sync with the ERPNext DocType so status dropdowns
+  /// and filter chips never miss (or invent) a status.
+  static const List<String> statusOptions = [
+    'Draft',
+    'Pending',
+    'In Progress',
+    'Completed',
+    'Cancelled',
+    'Submitted',
+  ];
+
   final String name;
   final String customer;
   final String date;
