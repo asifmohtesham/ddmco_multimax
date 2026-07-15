@@ -202,7 +202,7 @@ class MultimaxApp extends StatelessWidget {
       final textFactor = themeController.textSize.value.factor;
       return GetMaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'KA-ML Fulfillment',
+        title: 'Multimax',
         initialRoute: initialRoute,
         getPages: AppPages.routes,
         theme: buildAppTheme(AppScheme.light, Brightness.light, accent: accent),
