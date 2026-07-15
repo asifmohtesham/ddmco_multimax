@@ -122,58 +122,13 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
 
       // Filter badge button — migrated from SearchBar trailing suffix.
       // onTap is a gesture handler → synchronous call.
-      if (onFilterTap != null)
-        Obx(() {
-          final count = activeFilters?.length ?? 0;
-          return Tooltip(
-            message: count > 0
-                ? '$count filter${count > 1 ? 's' : ''} active'
-                : 'Filter',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: onFilterTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(
-                      count > 0 ? Icons.filter_alt : Icons.filter_list,
-                      color: count > 0
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                    if (count > 0)
-                      Positioned(
-                        top: -4,
-                        right: -6,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: colorScheme.error,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                              minWidth: 16, minHeight: 16),
-                          child: Text(
-                            '$count',
-                            style: TextStyle(
-                              color: colorScheme.onError,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              height: 1.0,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
+      // Only wrap in Obx when there is an RxMap to observe: an Obx whose
+      // builder reads no observables (activeFilters == null short-circuits
+      // ?.length) throws GetX's improper-use error on first build.
+      if (onFilterTap != null && activeFilters == null)
+        _filterButton(colorScheme, 0),
+      if (onFilterTap != null && activeFilters != null)
+        Obx(() => _filterButton(colorScheme, activeFilters!.length)),
 
       // Camera icon — only shown when caller provides onImageScanResult.
       if (onImageScanResult != null)
@@ -189,6 +144,57 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
           },
         ),
     ];
+  }
+
+  Widget _filterButton(ColorScheme colorScheme, int count) {
+    return Tooltip(
+      message: count > 0
+          ? '$count filter${count > 1 ? 's' : ''} active'
+          : 'Filter',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onFilterTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                count > 0 ? Icons.filter_alt : Icons.filter_list,
+                color: count > 0
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+              if (count > 0)
+                Positioned(
+                  top: -4,
+                  right: -6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: colorScheme.error,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints:
+                        const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        color: colorScheme.onError,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        height: 1.0,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
