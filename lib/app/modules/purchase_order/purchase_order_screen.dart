@@ -114,7 +114,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => DocTypeGuard(
+      // No Obx here: DocTypeGuard is reactive internally, and an Obx whose
+      // builder reads no observables throws GetX's improper-use error.
+      floatingActionButton: DocTypeGuard(
         doctype: 'Purchase Order',
         permType: 'create',
         child: FloatingActionButton.extended(
@@ -123,7 +125,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           icon: const Icon(Icons.add),
           label: const Text('New Purchase Order'),
         ),
-      )),
+      ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchPurchaseOrders(clear: true),
         color: colorScheme.primary,
