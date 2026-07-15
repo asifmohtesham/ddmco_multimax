@@ -2,7 +2,7 @@
 
 **Audience:** whoever administers the ERPNext instance (server access, can run
 `bench`, change Stock Settings, upgrade patch level).
-**Author context:** raised from the Flutter app side (KA-ML Fulfillment). The app
+**Author context:** raised from the Flutter app side (Multimax). The app
 cannot influence any of the suspected causes — they are all server-side.
 **Goal:** determine *where* Delivery Note submit time actually goes, so we stop
 guessing and fix the right thing.

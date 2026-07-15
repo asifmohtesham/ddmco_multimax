@@ -1,6 +1,6 @@
 # Handoff: Global UI Components — App Bar & Filter Chips · Empty & Loading States · Badges / Avatars / Tabs
 
-> **For:** a developer using Claude Code (or Cowork) working inside the **`multimax` Flutter app** (`ddmco_multimax`, package name `multimax`, "KA-ML Fulfillment").
+> **For:** a developer using Claude Code (or Cowork) working inside the **`multimax` Flutter app** (`ddmco_multimax`, package name `multimax`).
 > **Goal:** roll out three families of shared widgets **globally** across all 16 feature modules, styled to the Multimax × ERPNext v15 design system, with **full light + dark (Timeless Night) support** as a hard requirement.
 
 ---

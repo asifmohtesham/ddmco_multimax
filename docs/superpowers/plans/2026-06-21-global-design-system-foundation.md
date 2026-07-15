@@ -732,7 +732,7 @@ class MultimaxApp extends StatelessWidget {
 
     return Obx(() => GetMaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'KA-ML Fulfillment',
+          title: 'Multimax',
           initialRoute: initialRoute,
           getPages: AppPages.routes,
           theme: buildAppTheme(AppScheme.light, Brightness.light),

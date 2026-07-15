@@ -106,8 +106,8 @@ void main() {
         Brightness.light,
         card(
           isEditable: false,
-          from: 'Stores - KAML',
-          to: 'WIP - KAML',
+          from: 'Stores - MX',
+          to: 'WIP - MX',
           onTypeTap: () {},
           onFromTap: () {},
           onToTap: () {},
@@ -116,8 +116,8 @@ void main() {
       expect(fieldByLabel(tester, 'Entry Type').onTap, isNull);
       expect(fieldByLabel(tester, 'From Warehouse').onTap, isNull);
       expect(fieldByLabel(tester, 'To Warehouse').onTap, isNull);
-      expect(find.text('Stores - KAML'), findsOneWidget);
-      expect(find.text('WIP - KAML'), findsOneWidget);
+      expect(find.text('Stores - MX'), findsOneWidget);
+      expect(find.text('WIP - MX'), findsOneWidget);
     });
   });
 
@@ -126,7 +126,7 @@ void main() {
         (tester) async {
       await tester.pumpWidget(app(
         Brightness.dark,
-        card(from: 'Stores - KAML', onFromTap: () {}, onToTap: () {}),
+        card(from: 'Stores - MX', onFromTap: () {}, onToTap: () {}),
       ));
 
       // Every decorated box inside the card must be gradient-free and dark.
@@ -145,7 +145,7 @@ void main() {
       }
 
       final cs = buildAppTheme(AppScheme.dark, Brightness.dark).colorScheme;
-      final value = tester.widget<Text>(find.text('Stores - KAML'));
+      final value = tester.widget<Text>(find.text('Stores - MX'));
       expect(value.style?.color, cs.onSurface);
     });
   });

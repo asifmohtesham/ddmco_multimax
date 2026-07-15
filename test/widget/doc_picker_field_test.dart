@@ -112,13 +112,13 @@ void main() {
         const DocPickerField(
           label: 'Target Warehouse',
           icon: Icons.warehouse_outlined,
-          value: 'Stores - KAML',
+          value: 'Stores - MX',
         ),
       ));
 
       final box = fieldBox(tester).decoration as BoxDecoration;
       expect(box.color, AppScheme.dark.subtle);
-      final value = tester.widget<Text>(find.text('Stores - KAML'));
+      final value = tester.widget<Text>(find.text('Stores - MX'));
       expect(value.style?.color, AppScheme.dark.textMuted);
     });
   });
