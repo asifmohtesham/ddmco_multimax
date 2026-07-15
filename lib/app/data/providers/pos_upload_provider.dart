@@ -47,4 +47,19 @@ class PosUploadProvider {
       return false;
     }
   }
+
+  /// Whether a user holding [userRoles] may write the `status` field, which
+  /// is permlevel-gated on the server (doc-level write alone is not enough —
+  /// Frappe silently discards higher-permlevel changes from users without a
+  /// write rule at that level). Complements [canWrite]; both must pass
+  /// before the Status control is enabled. Fail-closed on any error.
+  Future<bool> canWriteStatusField(Set<String> userRoles) async {
+    try {
+      final meta = await _apiProvider.getDocTypeMeta('POS Upload');
+      return ApiProvider.fieldWriteGranted(
+          meta.data, 'POS Upload', 'status', userRoles);
+    } catch (_) {
+      return false;
+    }
+  }
 }

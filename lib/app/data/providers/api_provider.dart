@@ -443,34 +443,77 @@ class ApiProvider {
       );
 
   /// Extracts the roles granting [permKey] (`create`, `write`, …) at
-  /// permlevel 0 for [doctype] from a `getdoctype` response.
+  /// [permlevel] (default 0) for [doctype] from a `getdoctype` response.
   ///
   /// getdoctype returns `{"docs": [<DocType meta>, …]}` (unwrapped); this also
   /// tolerates a `{"message": {"docs": …}}` shape defensively. Fail-closed:
   /// any unexpected shape yields an empty set. Exposed as a public static
   /// method so unit tests can exercise it without a live HTTP connection.
   static Set<String> rolesWithPermission(
-      dynamic data, String doctype, String permKey) {
+      dynamic data, String doctype, String permKey,
+      {int permlevel = 0}) {
     final roles = <String>{};
-    if (data is! Map) return roles;
-    final docs = data['docs'] ??
-        (data['message'] is Map ? data['message']['docs'] : null);
-    if (docs is! List) return roles;
-    for (final doc in docs) {
-      if (doc is! Map) continue;
-      if (doc['doctype'] != 'DocType' || doc['name'] != doctype) continue;
-      final perms = doc['permissions'];
-      if (perms is! List) continue;
-      for (final p in perms) {
-        if (p is! Map) continue;
-        final lvl = p['permlevel'];
-        if ((lvl == 0 || lvl == null) && p[permKey] == 1) {
-          final role = p['role'];
-          if (role is String && role.isNotEmpty) roles.add(role);
-        }
+    final meta = _docTypeMeta(data, doctype);
+    final perms = meta?['permissions'];
+    if (perms is! List) return roles;
+    for (final p in perms) {
+      if (p is! Map) continue;
+      // Frappe omits permlevel on some rows; an absent value means level 0.
+      final lvl = p['permlevel'] ?? 0;
+      if (lvl == permlevel && p[permKey] == 1) {
+        final role = p['role'];
+        if (role is String && role.isNotEmpty) roles.add(role);
       }
     }
     return roles;
+  }
+
+  /// The `permlevel` of [fieldname] on [doctype] from a `getdoctype`
+  /// response, or `null` when the meta or field cannot be found (callers
+  /// should fail closed on `null`). A field present without an explicit
+  /// `permlevel` is level 0 — Frappe's default.
+  static int? fieldPermlevel(dynamic data, String doctype, String fieldname) {
+    final meta = _docTypeMeta(data, doctype);
+    final fields = meta?['fields'];
+    if (fields is! List) return null;
+    for (final f in fields) {
+      if (f is! Map || f['fieldname'] != fieldname) continue;
+      final lvl = f['permlevel'];
+      return lvl is int ? lvl : 0;
+    }
+    return null;
+  }
+
+  /// Whether [userRoles] may write [fieldname] of [doctype] per a
+  /// `getdoctype` response. Fields at permlevel 0 are governed by the
+  /// doc-level write permission (checked separately by callers), so they
+  /// pass here; higher-permlevel fields need a DocPerm `write` rule at that
+  /// level for one of the user's roles. `System Manager` bypasses, mirroring
+  /// [PermissionService.roleGrants]. Fail-closed: unparseable meta or a
+  /// missing field denies.
+  static bool fieldWriteGranted(
+      dynamic data, String doctype, String fieldname, Set<String> userRoles) {
+    final permlevel = fieldPermlevel(data, doctype, fieldname);
+    if (permlevel == null) return false;
+    if (permlevel == 0) return true;
+    if (userRoles.contains('System Manager')) return true;
+    final writers =
+        rolesWithPermission(data, doctype, 'write', permlevel: permlevel);
+    return writers.any(userRoles.contains);
+  }
+
+  /// The DocType meta map for [doctype] inside a `getdoctype` response,
+  /// or `null` when the shape is unexpected.
+  static Map? _docTypeMeta(dynamic data, String doctype) {
+    if (data is! Map) return null;
+    final docs = data['docs'] ??
+        (data['message'] is Map ? data['message']['docs'] : null);
+    if (docs is! List) return null;
+    for (final doc in docs) {
+      if (doc is! Map) continue;
+      if (doc['doctype'] == 'DocType' && doc['name'] == doctype) return doc;
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------

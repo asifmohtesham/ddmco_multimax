@@ -16,6 +16,7 @@ import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 enum LinkedDocType { deliveryNote, stockEntry, none }
@@ -950,8 +951,28 @@ class PosUploadFormController extends GetxController
   // ── Status update (write-gated) ────────────────────────────────────────────
 
   /// Refreshes [canWriteStatus] from the server. Fail-closed on any error.
+  ///
+  /// Two independent checks must both pass: doc-level write on this
+  /// document, and a permlevel write rule for the `status` field. Checking
+  /// only doc-level write let operators with document write but no
+  /// permlevel-1 access (e.g. plain Sales User) open the dropdown, pick a
+  /// value, and have the server silently discard it.
   Future<void> refreshWritePermission() async {
-    canWriteStatus.value = await _provider.canWrite(name);
+    if (!await _provider.canWrite(name)) {
+      canWriteStatus.value = false;
+      return;
+    }
+    canWriteStatus.value = await _provider.canWriteStatusField(_userRoles());
+  }
+
+  Set<String> _userRoles() {
+    if (!Get.isRegistered<AuthenticationController>()) return const {};
+    return Get.find<AuthenticationController>()
+            .currentUser
+            .value
+            ?.roles
+            .toSet() ??
+        const {};
   }
 
   /// Pure gate for the Status dropdown. Static so unit tests can exercise
@@ -990,7 +1011,16 @@ class PosUploadFormController extends GetxController
       });
       if (response.statusCode == 200) {
         await fetchPosUpload();
-        GlobalSnackbar.success(message: 'Status updated to $newStatus');
+        // A 200 does not guarantee the change stuck: Frappe silently resets
+        // permlevel-gated fields for users without write access at that
+        // level. Trust only the refetched document.
+        if (posUpload.value?.status == newStatus) {
+          GlobalSnackbar.success(message: 'Status updated to $newStatus');
+        } else {
+          statusEditRevision.value++;
+          GlobalSnackbar.error(
+              message: 'Status change was rejected by the server');
+        }
       } else {
         statusEditRevision.value++;
         GlobalSnackbar.error(message: 'Failed to update status');
