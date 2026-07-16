@@ -16,6 +16,7 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/hid_wedge_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get_storage/get_storage.dart';
@@ -46,6 +47,19 @@ Future<void> main() async {
 
   // Initialise services & global controllers.
   await Get.putAsync<DatabaseService>(() => DatabaseService().init());
+
+  // Mirror the configured server URL (persisted in SQLite) into GetStorage so
+  // the background digest isolate — which has no DatabaseService — can resolve
+  // the correct instance. Without this it would always fall back to the default
+  // host and produce false "Session expired" digests for instance-switchers.
+  if (!kIsWeb && Platform.isAndroid) {
+    final serverUrl =
+        await Get.find<DatabaseService>().getConfig(DatabaseService.serverUrlKey);
+    if (serverUrl != null && serverUrl.isNotEmpty) {
+      await StorageService().saveBaseUrl(serverUrl);
+    }
+  }
+
   await Get.putAsync<ApiProvider>(() async => ApiProvider(), permanent: true);
 
   // Permission service must be registered before AuthenticationController so

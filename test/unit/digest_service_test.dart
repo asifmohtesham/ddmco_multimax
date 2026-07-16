@@ -10,6 +10,10 @@ class _FakeDigestService extends DigestService {
   String? loggedUser = 'asif@example.com';
   DioException? probeError;
 
+  /// Non-Dio throw for the probe (cookie-jar IO, a PlatformException, etc.).
+  /// Checked before [probeError] so tests can inject either shape.
+  Object? probeThrow;
+
   /// doctype name → count, DioException, or Exception.
   final Map<String, Object> countResults = {};
   final List<String> countedDoctypes = [];
@@ -33,6 +37,7 @@ class _FakeDigestService extends DigestService {
   @override
   Future<Response> callGet(String path, Map<String, dynamic> query) async {
     if (path == '/api/method/frappe.auth.get_logged_user') {
+      if (probeThrow != null) throw probeThrow!;
       if (probeError != null) throw probeError!;
       return Response(
         requestOptions: RequestOptions(path: path),
@@ -114,5 +119,21 @@ void main() {
         await svc.fetchDigest([kDigestDoctypes.first, kDigestDoctypes.last]);
     expect(result.status, DigestStatus.ok);
     expect(result.counts, {'pos_upload': 4}); // PO absent, not crashed
+  });
+
+  test('probe non-Dio throw → failed (must not escape fetchDigest)',
+      () async {
+    svc.probeThrow = Exception('boom');
+    final result = await svc.fetchDigest(kDigestDoctypes);
+    expect(result.status, DigestStatus.failed);
+    expect(svc.countedDoctypes, isEmpty);
+  });
+
+  test('count non-Dio throw → failed, not a permission skip', () async {
+    svc.countResults['Purchase Order'] = Exception('boom');
+    svc.countResults['POS Upload'] = 4;
+    final result =
+        await svc.fetchDigest([kDigestDoctypes.first, kDigestDoctypes.last]);
+    expect(result.status, DigestStatus.failed);
   });
 }

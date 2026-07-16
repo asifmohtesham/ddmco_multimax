@@ -100,8 +100,16 @@ class DigestScheduler {
       await _work.cancel(kDigestUniqueName);
       return;
     }
+    // Enabled with no doctypes selected would otherwise still wake the app
+    // every tick to run a no-op auth-probe and re-arm — same dead-schedule
+    // treatment as empty times/days.
+    if (_storage.getDigestDoctypes(user.id).isEmpty) {
+      await _work.cancel(kDigestUniqueName);
+      return;
+    }
+    final now = _now();
     final next = nextDigestOccurrence(
-      after: _now(),
+      after: now,
       times: _storage.getDigestTimes(user.id),
       weekdays: _storage.getDigestDays(user.id).toSet(),
     );
@@ -112,7 +120,7 @@ class DigestScheduler {
     await _work.registerOneOff(
       uniqueName: kDigestUniqueName,
       taskName: kDigestTaskName,
-      initialDelay: next.difference(_now()),
+      initialDelay: next.difference(now),
     );
   }
 }

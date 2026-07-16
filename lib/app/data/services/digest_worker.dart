@@ -52,39 +52,46 @@ Future<void> runDigestTask() async {
     baseUrl: storage.getBaseUrl() ?? ApiProvider.defaultBaseUrl,
     cookieDir: '${supportDir.path}/.cookies/',
   );
-  final result = await service.fetchDigest(doctypes);
-  final plan = DigestNotificationPlan.forResult(result);
 
-  if (plan.show) {
-    final fln = FlutterLocalNotificationsPlugin();
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    await fln.initialize(
-        settings: const InitializationSettings(android: androidInit));
-    final android = fln.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    await android?.createNotificationChannel(const AndroidNotificationChannel(
-      kDigestChannelId,
-      _kChannelName,
-      description: _kChannelDescription,
-      importance: Importance.defaultImportance,
-    ));
-    await fln.show(
-      id: kDigestNotificationId, // fixed id: new digest replaces the old one
-      title: plan.title,
-      body: plan.body,
-      notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
-          kDigestChannelId,
-          _kChannelName,
-          channelDescription: _kChannelDescription,
-          styleInformation: BigTextStyleInformation(plan.body ?? ''),
+  // Re-arm must run even if the fetch/notify block throws — otherwise a
+  // single non-Dio escape (cookie-jar IO, a PlatformException) would kill
+  // the one-off WorkManager chain until the app is relaunched.
+  try {
+    final result = await service.fetchDigest(doctypes);
+    final plan = DigestNotificationPlan.forResult(result);
+
+    if (plan.show) {
+      final fln = FlutterLocalNotificationsPlugin();
+      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      await fln.initialize(
+          settings: const InitializationSettings(android: androidInit));
+      final android = fln.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(
+          const AndroidNotificationChannel(
+        kDigestChannelId,
+        _kChannelName,
+        description: _kChannelDescription,
+        importance: Importance.defaultImportance,
+      ));
+      await fln.show(
+        id: kDigestNotificationId, // fixed id: new digest replaces the old one
+        title: plan.title,
+        body: plan.body,
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            kDigestChannelId,
+            _kChannelName,
+            channelDescription: _kChannelDescription,
+            styleInformation: BigTextStyleInformation(plan.body ?? ''),
+          ),
         ),
-      ),
-    );
+      );
+    }
+  } finally {
+    // Chain the next occurrence. Reads prefs only — no storage writes.
+    await DigestScheduler(storage: storage).rearm();
   }
-
-  // Chain the next occurrence. Reads prefs only — no storage writes.
-  await DigestScheduler(storage: storage).rearm();
 }
 
 /// Called from the main isolate on logout: drop pending work and clear any

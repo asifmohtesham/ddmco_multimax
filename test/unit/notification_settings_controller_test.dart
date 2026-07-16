@@ -122,6 +122,9 @@ void main() {
     await c.addTime(13, 0); // 5th → rejected
     expect(c.times, ['08:05', '09:00', '12:00', '16:00']);
     expect(storage.getDigestTimes(user), ['08:05', '09:00', '12:00', '16:00']);
+    // 3 persisting adds (16:00, 08:05, 12:00); the duplicate and the
+    // over-cap add both return before persisting/re-arming.
+    expect(scheduler.rearms, 3);
   });
 
   test('removeTime persists and re-arms', () async {
@@ -139,6 +142,7 @@ void main() {
     expect(storage.getDigestDays(user), [1, 2, 3, 4, 5, 6]);
     await c.toggleDay(7);
     expect(storage.getDigestDays(user), [1, 2, 3, 4, 5, 6, 7]);
+    expect(scheduler.rearms, 2);
   });
 
   test('toggleDoctype flips membership and persists in registry order',
@@ -152,5 +156,6 @@ void main() {
       'stock_entry',
       'pos_upload',
     ]);
+    expect(scheduler.rearms, 1);
   });
 }

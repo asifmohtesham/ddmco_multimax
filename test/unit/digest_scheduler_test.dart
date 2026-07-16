@@ -87,4 +87,14 @@ void main() {
     expect(work.cancelled, [kDigestUniqueName]);
     expect(work.registered, isEmpty);
   });
+
+  test('enabled but no doctypes selected → cancel (no-op wake avoided)',
+      () async {
+    box._data['currentUser'] = userJson;
+    await storage.saveDigestEnabled('asif@example.com', true);
+    await storage.saveDigestDoctypes('asif@example.com', []);
+    await scheduler.rearm();
+    expect(work.cancelled, [kDigestUniqueName]);
+    expect(work.registered, isEmpty);
+  });
 }

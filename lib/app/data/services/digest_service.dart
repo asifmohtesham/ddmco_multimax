@@ -170,6 +170,8 @@ class DigestService {
       final code = e.response?.statusCode;
       if (code == 401 || code == 403) return DigestResult.authExpired();
       return DigestResult.failed();
+    } catch (_) {
+      return DigestResult.failed();
     }
 
     final counts = <String, int>{};
@@ -183,6 +185,8 @@ class DigestService {
         if (n is int) counts[d.key] = n;
       } on DioException catch (e) {
         if (e.response?.statusCode == 403) continue; // no read permission
+        return DigestResult.failed();
+      } catch (_) {
         return DigestResult.failed();
       }
     }
