@@ -36,6 +36,13 @@ class StorageService {
   static const String _dashboardColumnsKey = 'dashboard_columns';
   static const String _dashboardTasksFirstKey = 'dashboard_tasks_first';
 
+  // Scheduled digest notification preferences (per user, keyed key::user —
+  // same convention as dashboard_tasks_first).
+  static const String _digestEnabledKey = 'notif_digest_enabled';
+  static const String _digestTimesKey = 'notif_digest_times';
+  static const String _digestDaysKey = 'notif_digest_days';
+  static const String _digestDoctypesKey = 'notif_digest_doctypes';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -152,4 +159,43 @@ class StorageService {
 
   bool getDashboardTasksFirst(String user) =>
       _box.read<bool>('$_dashboardTasksFirstKey::$user') ?? false;
+
+  // --- Scheduled digest notification preferences ---
+  Future<void> saveDigestEnabled(String user, bool value) async =>
+      _box.write('$_digestEnabledKey::$user', value);
+
+  bool getDigestEnabled(String user) =>
+      _box.read<bool>('$_digestEnabledKey::$user') ?? false;
+
+  Future<void> saveDigestTimes(String user, List<String> times) async =>
+      _box.write('$_digestTimesKey::$user', times);
+
+  List<String> getDigestTimes(String user) {
+    final raw = _box.read<List<dynamic>>('$_digestTimesKey::$user');
+    return raw == null ? const ['09:00'] : raw.cast<String>();
+  }
+
+  Future<void> saveDigestDays(String user, List<int> days) async =>
+      _box.write('$_digestDaysKey::$user', days);
+
+  List<int> getDigestDays(String user) {
+    final raw = _box.read<List<dynamic>>('$_digestDaysKey::$user');
+    return raw == null ? const [1, 2, 3, 4, 5, 6, 7] : raw.cast<int>();
+  }
+
+  Future<void> saveDigestDoctypes(String user, List<String> keys) async =>
+      _box.write('$_digestDoctypesKey::$user', keys);
+
+  List<String> getDigestDoctypes(String user) {
+    final raw = _box.read<List<dynamic>>('$_digestDoctypesKey::$user');
+    return raw == null
+        ? const [
+            'purchase_order',
+            'purchase_receipt',
+            'delivery_note',
+            'stock_entry',
+            'pos_upload',
+          ]
+        : raw.cast<String>();
+  }
 }
