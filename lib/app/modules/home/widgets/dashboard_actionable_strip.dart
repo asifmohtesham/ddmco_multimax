@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 /// Which population the actionable count strip reflects. [mine] scopes the
@@ -74,4 +75,165 @@ class ActionableChipData {
   });
 
   bool get muted => count == 0;
+}
+
+/// A compact pill: icon + short label + count. A [ActionableChipData.muted]
+/// (zero) chip renders dim and is not wrapped in an InkWell (non-interactive);
+/// otherwise the whole pill is tappable.
+class ActionableCountChip extends StatelessWidget {
+  final ActionableChipData data;
+  const ActionableCountChip({super.key, required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final cs = Theme.of(context).colorScheme;
+    final muted = data.muted;
+
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: scheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(data.icon,
+              size: 16, color: muted ? scheme.textSubtle : cs.primary),
+          const SizedBox(width: 6),
+          Text(
+            data.label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: muted ? scheme.textMuted : scheme.text,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '${data.count}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: muted ? scheme.textSubtle : cs.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (muted || data.onTap == null) {
+      return Opacity(opacity: 0.55, child: content);
+    }
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: data.onTap,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        child: content,
+      ),
+    );
+  }
+}
+
+/// Two-segment "Mine | Everyone" control, styled after DashboardColumnsToggle.
+class ActionableScopeToggle extends StatelessWidget {
+  final ActionableScope scope;
+  final ValueChanged<ActionableScope> onChanged;
+  const ActionableScopeToggle({
+    super.key,
+    required this.scope,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scheme = context.scheme;
+
+    Widget seg(ActionableScope value, String label) {
+      final selected = scope == value;
+      return InkWell(
+        onTap: () => onChanged(value),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: selected ? cs.primary.withValues(alpha: 0.13) : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.full),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: selected ? cs.primary : scheme.textSubtle,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: scheme.subtle,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: scheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          seg(ActionableScope.mine, 'Mine'),
+          const SizedBox(width: 2),
+          seg(ActionableScope.everyone, 'Everyone'),
+        ],
+      ),
+    );
+  }
+}
+
+/// The wrap of actionable-count chips. Shows muted placeholder pills while
+/// [isLoading]; otherwise a [Wrap] of [ActionableCountChip]s (one per [chips]).
+class DashboardActionableStrip extends StatelessWidget {
+  final List<ActionableChipData> chips;
+  final bool isLoading;
+  const DashboardActionableStrip({
+    super.key,
+    required this.chips,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+
+    if (isLoading) {
+      return Wrap(
+        key: const ValueKey('actionable-strip-loading'),
+        spacing: 8,
+        runSpacing: 8,
+        children: List.generate(
+          5,
+          (_) => Container(
+            width: 64,
+            height: 34,
+            decoration: BoxDecoration(
+              color: scheme.subtle,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              border: Border.all(color: scheme.border),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [for (final c in chips) ActionableCountChip(data: c)],
+    );
+  }
 }
