@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -41,6 +44,13 @@ class UserAreaScreen extends GetView<UserAreaController> {
                   value: controller.company,
                   onTap: () => Get.toNamed(AppRoutes.SESSION_DEFAULTS),
                 ),
+                if (!kIsWeb && Platform.isAndroid)
+                  SettingsRow(
+                    icon: Icons.notifications_outlined,
+                    iconTint: AppColors.orange500,
+                    title: 'Notifications',
+                    onTap: () => Get.toNamed(AppRoutes.NOTIFICATION_SETTINGS),
+                  ),
               ],
             ),
             const SizedBox(height: AppSpace.s4),

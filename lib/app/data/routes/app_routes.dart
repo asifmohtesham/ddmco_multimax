@@ -33,6 +33,7 @@ abstract class AppRoutes {
   static const USER_AREA             = _Paths.USER_AREA;
   static const THEME                 = _Paths.THEME;
   static const SESSION_DEFAULTS      = _Paths.SESSION_DEFAULTS;
+  static const NOTIFICATION_SETTINGS = _Paths.NOTIFICATION_SETTINGS;
   static const BATCH_WISE_BALANCE    = _Paths.BATCH_WISE_BALANCE;
   static const JOB_CARD_SUMMARY      = _Paths.JOB_CARD_SUMMARY;
   static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
@@ -46,6 +47,7 @@ abstract class _Paths {
   static const USER_AREA             = '/user-area';
   static const THEME                 = '/theme';
   static const SESSION_DEFAULTS      = '/session-defaults';
+  static const NOTIFICATION_SETTINGS = '/notification-settings';
   static const PURCHASE_RECEIPT      = '/purchase-receipt';
   static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
   static const PURCHASE_ORDER        = '/purchase-order';

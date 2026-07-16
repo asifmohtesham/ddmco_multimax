@@ -71,6 +71,8 @@ import 'package:multimax/app/modules/theme/theme_screen.dart';
 import 'package:multimax/app/modules/theme/theme_binding.dart';
 import 'package:multimax/app/modules/session_defaults/session_defaults_screen.dart';
 import 'package:multimax/app/modules/session_defaults/session_defaults_binding.dart';
+import 'package:multimax/app/modules/notification_settings/notification_settings_screen.dart';
+import 'package:multimax/app/modules/notification_settings/notification_settings_binding.dart';
 import 'package:multimax/app/modules/user_area/user_area_screen.dart';
 import 'package:multimax/app/modules/user_area/user_area_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_binding.dart';
@@ -290,6 +292,12 @@ class AppPages {
       name: AppRoutes.SESSION_DEFAULTS,
       page: () => const SessionDefaultsScreen(),
       binding: SessionDefaultsBinding(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
+      name: AppRoutes.NOTIFICATION_SETTINGS,
+      page: () => const NotificationSettingsScreen(),
+      binding: NotificationSettingsBinding(),
       transition: Transition.rightToLeft,
     ),
     GetPage(
