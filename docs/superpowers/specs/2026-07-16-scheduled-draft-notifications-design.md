@@ -38,7 +38,9 @@ Per-user persisted settings using the existing `key::user` convention
 - `notif_digest_enabled::<user>` — bool, default false
 - `notif_digest_times::<user>` — list of `"HH:mm"` strings, default `["09:00"]`, max 4
 - `notif_digest_days::<user>` — list of weekday ints 1–7 (Mon–Sun), default all
-- `notif_digest_doctypes::<user>` — list of enabled doctype keys, default all five
+- `notif_digest_doctypes::<user>` — list of enabled doctype keys from
+  `{purchase_order, purchase_receipt, delivery_note, stock_entry, pos_upload}`,
+  default all five
 
 ### 2. DigestService (`lib/app/data/services/digest_service.dart`)
 
@@ -47,6 +49,10 @@ GetX bindings exist. It:
 
 - builds its own Dio client from the stored base URL and the on-disk
   `PersistCookieJar` (same path the app already uses),
+- validates the session first via `/api/method/frappe.auth.get_logged_user`
+  (already used by the app) — failure here, and only here, means
+  `authExpired`; per-doctype 403s later are permission skips, never
+  mistaken for an expired session,
 - runs one count query per enabled doctype via
   `/api/method/frappe.client.get_count`:
   - PO / PR / DN / SE → `[[doctype, "docstatus", "=", 0]]`
@@ -124,7 +130,7 @@ Guiding principle: a background digest must never nag about its own failures.
 
 - **Network unreachable / server 5xx** → skip silently; the next scheduled
   tick is the retry. No retry storm.
-- **Auth expired** (401/403 on all queries) → session-expired notification;
+- **Auth expired** (session probe fails) → session-expired notification;
   later failures replace it (same ID), never stack.
 - **Per-doctype 403** (no read permission) → skip that doctype, count the rest.
 - **Broken chain** (crash, force-stop) → app-launch re-arm self-heals.
