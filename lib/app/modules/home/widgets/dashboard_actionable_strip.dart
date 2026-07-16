@@ -125,7 +125,7 @@ class ActionableCountChip extends StatelessWidget {
     );
 
     if (muted || data.onTap == null) {
-      return Opacity(opacity: 0.55, child: content);
+      return content;
     }
     return Material(
       color: Colors.transparent,
