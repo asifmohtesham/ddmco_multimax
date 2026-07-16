@@ -62,8 +62,10 @@ class PurchaseOrderController extends GetxController {
   @override
   void onReady() {
     super.onReady();
-    // onReady fires after the first frame; safe place for deferred work.
-    // Reserved for future use (e.g. deep-link argument handling).
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      applyFilters(Map<String, dynamic>.from(args['filters'] as Map));
+    }
   }
 
   Future<void> fetchSuppliers() async {
