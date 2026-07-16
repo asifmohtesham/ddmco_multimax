@@ -27,6 +27,8 @@ import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -85,6 +87,27 @@ class HomeController extends GetxController {
   /// capped for the dashboard "Upcoming tasks" section.
   var upcomingTodos = <ToDo>[].obs;
 
+  /// Draft counts for the four transactional DocTypes, keyed by doctype, for
+  /// the currently displayed [actionableScope]. Only DocTypes the user can
+  /// read appear as keys.
+  final actionableCounts = <String, int>{}.obs;
+
+  /// Number of open ToDos for the selected user (personal in both scopes) —
+  /// drives the Tasks chip. Derived from the [fetchUpcomingTodos] fetch.
+  final openTodoCount = 0.obs;
+
+  /// Mine/Everyone scope for the four document chips. Seeded from storage in
+  /// [onInit]; the Tasks chip is unaffected by it.
+  final actionableScope = ActionableScope.mine.obs;
+
+  /// True until the first count fetch for the current scope resolves (drives
+  /// the strip's loading placeholders). Starts true so the first build shows
+  /// placeholders rather than an empty strip.
+  final isLoadingActionable = true.obs;
+
+  /// Counts cache keyed by [actionableCacheKey] — `mine::<email>` / `all`.
+  final Map<String, Map<String, int>> _actionableCountCache = {};
+
   /// Quick Create card layout — 1 or 2 columns, persisted across sessions.
   var dashboardColumns = 1.obs;
 
@@ -118,6 +141,8 @@ class HomeController extends GetxController {
     dashboardColumns.value = _storageService.getDashboardColumns();
     tasksFirst.value = _storageService.getDashboardTasksFirst(
         _authController.currentUser.value?.email ?? '');
+    actionableScope.value =
+        actionableScopeFromString(_storageService.getDashboardActionableScope());
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
 
@@ -247,7 +272,11 @@ class HomeController extends GetxController {
       activeJobCardsCount.value   = _extractCount(results[1]);
       activeBomCount.value        = _extractCount(results[2]);
 
-      await Future.wait([_fetchActiveWipJc(), fetchUpcomingTodos()]);
+      await Future.wait([
+        _fetchActiveWipJc(),
+        fetchUpcomingTodos(),
+        fetchActionableCounts(force: true),
+      ]);
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
@@ -265,11 +294,12 @@ class HomeController extends GetxController {
           _authController.currentUser.value?.email;
       if (email == null || email.isEmpty) {
         upcomingTodos.clear();
+        openTodoCount.value = 0;
         _recomputeTasksFirst();
         return;
       }
       final res = await _todoProvider.getTodos(
-        limit: 20,
+        limit: 50,
         filters: {'status': 'Open'},
         orFilterTuples: [
           ['ToDo', 'allocated_to', '=', email],
@@ -281,12 +311,82 @@ class HomeController extends GetxController {
         final list = (res.data['data'] as List)
             .map((e) => ToDo.fromJson(e))
             .toList();
+        openTodoCount.value = list.length;
         upcomingTodos.assignAll(selectUpcomingTodos(list));
         _recomputeTasksFirst();
       }
     } catch (e) {
       print('Error fetching upcoming todos: $e');
     }
+  }
+
+  /// Fetches Draft counts for accessible document DocTypes in the current
+  /// [actionableScope]. Serves a cached result when present unless [force].
+  /// `mine` counts key by the viewed user's email; `everyone` counts are
+  /// user-independent. Only DocTypes the user can read are queried (no 403s).
+  Future<void> fetchActionableCounts({bool force = false}) async {
+    final scope = actionableScope.value;
+    final email = selectedFilterUser.value?.email ??
+        _authController.currentUser.value?.email;
+    final key = actionableCacheKey(scope, email);
+
+    if (force) _actionableCountCache.clear();
+
+    final cached = _actionableCountCache[key];
+    if (cached != null) {
+      actionableCounts.assignAll(cached);
+      isLoadingActionable.value = false;
+      return;
+    }
+
+    isLoadingActionable.value = true;
+    try {
+      final perm = Get.find<PermissionService>();
+      final doctypes = <String>[];
+      final requests = <Future<Response>>[];
+      for (final cfg in kActionableDocConfigs) {
+        if (perm.hasAccess(cfg.doctype) != true) continue;
+        doctypes.add(cfg.doctype);
+        requests.add(_apiProvider.getDocumentCount(
+          cfg.doctype,
+          filters: actionableFiltersFor(cfg.doctype, scope, email),
+        ));
+      }
+      final responses = await Future.wait(requests);
+      final counts = <String, int>{};
+      for (var i = 0; i < doctypes.length; i++) {
+        counts[doctypes[i]] = _extractCount(responses[i]);
+      }
+      _actionableCountCache[key] = counts;
+      // Guard against a scope flip landing before this fetch returns.
+      if (scope == actionableScope.value) actionableCounts.assignAll(counts);
+    } catch (e) {
+      print('Error fetching actionable counts: $e');
+    } finally {
+      if (scope == actionableScope.value) isLoadingActionable.value = false;
+    }
+  }
+
+  /// Flips the strip scope, persists it, and loads the new scope's counts
+  /// (served from cache when available, so a second flip is instant).
+  void setActionableScope(ActionableScope scope) {
+    if (actionableScope.value == scope) return;
+    actionableScope.value = scope;
+    _storageService.saveDashboardActionableScope(actionableScopeToString(scope));
+    fetchActionableCounts();
+  }
+
+  /// Opens [doctype]'s list pre-filtered to Draft (+ owner under Mine), via the
+  /// list controller's onReady `filters` hook (Task 4).
+  void openActionableList(String doctype) {
+    final cfg =
+        kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
+    if (cfg == null) return;
+    final email = selectedFilterUser.value?.email ??
+        _authController.currentUser.value?.email;
+    Get.toNamed(cfg.listRoute, arguments: {
+      'filters': actionableFiltersFor(doctype, actionableScope.value, email),
+    });
   }
 
   /// Recomputes the section-order verdict from the logged-in user's roles
