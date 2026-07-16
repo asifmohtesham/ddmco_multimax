@@ -1,3 +1,15 @@
+## [Unreleased] — Scheduled Digest Notifications (Android)
+
+- New User Area → Notifications screen: schedule a recurring digest of
+  draft Purchase Orders / Purchase Receipts / Delivery Notes / Stock
+  Entries and open POS Uploads (Pending / In Progress).
+- OS notification fires at chosen times/days even when the app is closed
+  (WorkManager background fetch); silent when nothing is pending.
+- Session-expiry and permission edge cases degrade silently — the digest
+  never nags about its own failures.
+
+---
+
 ## [Unreleased] — SharedRackField Universal Refactor
 
 > Architectural refactor of `SharedRackField` so any DocType controller can
