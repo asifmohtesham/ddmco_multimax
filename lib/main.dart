@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/digest_scheduler.dart';
+import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
@@ -16,6 +19,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get_storage/get_storage.dart';
+import 'package:workmanager/workmanager.dart';
 
 /// Dark-mode on-secondary (near-black) — secondary swatch sits on light text in dark mode.
 const Color _kDarkOnSecondary = Color(0xFF0B1116);
@@ -27,6 +31,12 @@ Future<void> main() async {
   // Stock Balance toggles, dashboard layout…). Without this call GetStorage
   // runs purely in memory and all of those silently reset on app restart.
   await GetStorage.init();
+
+  // Scheduled digest notifications (Android-only). Registers the background
+  // dispatcher; actual work is only ever scheduled by DigestScheduler.
+  if (!kIsWeb && Platform.isAndroid) {
+    await Workmanager().initialize(digestCallbackDispatcher);
+  }
 
   // Set up the database factory for desktop platforms.
   if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && !kIsWeb) {
@@ -63,6 +73,12 @@ Future<void> main() async {
 
   final authController = Get.find<AuthenticationController>();
   await authController.checkAuthenticationStatus();
+
+  // Self-heal a broken digest chain (crash/force-stop) on every launch.
+  // Fire-and-forget: startup must never block on WorkManager.
+  if (!kIsWeb && Platform.isAndroid && authController.isAuthenticated.value) {
+    unawaited(DigestScheduler().rearm().catchError((_) {}));
+  }
 
   runApp(MultimaxApp(initialRoute: authController.isAuthenticated.value
       ? AppRoutes.HOME

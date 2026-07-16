@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/core/utils/app_navigator.dart';
@@ -8,6 +10,8 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/digest_scheduler.dart';
+import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -92,6 +96,11 @@ class AuthenticationController extends GetxController {
 
           if (Get.isRegistered<StorageService>()) {
             await Get.find<StorageService>().saveUser(user);
+          }
+
+          // Arm the scheduled digest for the user who just signed in.
+          if (!kIsWeb && Platform.isAndroid) {
+            unawaited(DigestScheduler().rearm().catchError((_) {}));
           }
 
           if (Get.isRegistered<PermissionService>()) {
@@ -205,6 +214,11 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> _clearSessionAndLocalData() async {
+    // Cancel pending digest work and clear any posted digest notification
+    // before the user identity disappears from storage.
+    if (!kIsWeb && Platform.isAndroid) {
+      await cancelDigestOnLogout();
+    }
     await _apiProvider.clearSessionCookies();
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
