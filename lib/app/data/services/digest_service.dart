@@ -5,6 +5,12 @@
 /// bindings exist.
 library;
 
+import 'dart:convert';
+
+import 'package:cookie_jar/cookie_jar.dart';
+import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+
 /// One doctype tracked by the digest.
 class DigestDoctype {
   final String key; // pref key, e.g. 'purchase_order'
@@ -119,5 +125,67 @@ class DigestNotificationPlan {
           body: clauses,
         );
     }
+  }
+}
+
+/// Runs the digest count queries against ERPNext using the app's persisted
+/// session cookies. Safe to construct in any isolate.
+class DigestService {
+  final String baseUrl;
+
+  /// Directory of the app's PersistCookieJar — the same
+  /// `<appSupportDir>/.cookies/` path ApiProvider uses.
+  final String cookieDir;
+
+  Dio? _dio;
+
+  DigestService({required this.baseUrl, required this.cookieDir});
+
+  Dio _client() {
+    if (_dio != null) return _dio!;
+    final jar =
+        PersistCookieJar(ignoreExpires: true, storage: FileStorage(cookieDir));
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+    ))
+      ..interceptors.add(CookieManager(jar));
+    return _dio!;
+  }
+
+  /// Single HTTP seam — tests subclass and override this.
+  Future<Response> callGet(String path, Map<String, dynamic> query) =>
+      _client().get(path, queryParameters: query);
+
+  /// Session probe first (so a narrow-permission role is never misreported
+  /// as an expired session), then one get_count per doctype.
+  Future<DigestResult> fetchDigest(List<DigestDoctype> doctypes) async {
+    try {
+      final res =
+          await callGet('/api/method/frappe.auth.get_logged_user', const {});
+      final who = res.data is Map ? res.data['message'] : null;
+      if (who == null || who == 'Guest') return DigestResult.authExpired();
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401 || code == 403) return DigestResult.authExpired();
+      return DigestResult.failed();
+    }
+
+    final counts = <String, int>{};
+    for (final d in doctypes) {
+      try {
+        final res = await callGet('/api/method/frappe.client.get_count', {
+          'doctype': d.doctype,
+          'filters': jsonEncode(d.filters),
+        });
+        final n = res.data is Map ? res.data['message'] : null;
+        if (n is int) counts[d.key] = n;
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 403) continue; // no read permission
+        return DigestResult.failed();
+      }
+    }
+    return DigestResult.ok(counts);
   }
 }
