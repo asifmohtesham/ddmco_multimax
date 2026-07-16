@@ -40,13 +40,18 @@ class PurchaseReceiptController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      activeFilters.value = Map<String, dynamic>.from(args['filters'] as Map);
+    }
     fetchPurchaseReceipts();
   }
 
   @override
   void onReady() {
     super.onReady();
-    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+    final args = Get.arguments;
+    if (args is Map && args['openCreate'] == true) {
       openCreateDialog();
     }
   }

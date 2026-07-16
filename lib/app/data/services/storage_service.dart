@@ -35,6 +35,7 @@ class StorageService {
   // Dashboard view preferences
   static const String _dashboardColumnsKey = 'dashboard_columns';
   static const String _dashboardTasksFirstKey = 'dashboard_tasks_first';
+  static const _dashboardActionableScopeKey = 'dashboard_actionable_scope';
 
   // Scheduled digest notification preferences (per user, keyed key::user —
   // same convention as dashboard_tasks_first).
@@ -198,4 +199,14 @@ class StorageService {
           ]
         : raw.cast<String>();
   }
+
+  // Persisted Mine/Everyone choice for the "Upcoming & actionable" strip.
+  // Stored as 'mine' | 'everyone'; any other value reads back as 'mine'.
+  Future<void> saveDashboardActionableScope(String value) async =>
+      _box.write(_dashboardActionableScopeKey, value);
+
+  String getDashboardActionableScope() =>
+      _box.read<String>(_dashboardActionableScopeKey) == 'everyone'
+          ? 'everyone'
+          : 'mine';
 }

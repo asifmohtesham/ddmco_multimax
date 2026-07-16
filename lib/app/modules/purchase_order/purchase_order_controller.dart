@@ -51,19 +51,16 @@ class PurchaseOrderController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      activeFilters.value = Map<String, dynamic>.from(args['filters'] as Map);
+    }
     fetchPurchaseOrders();
     fetchSuppliers();
     fetchUsers();
     fetchWarehouses();
     debounce(searchQuery, (_) => fetchPurchaseOrders(clear: true),
         time: const Duration(milliseconds: 500));
-  }
-
-  @override
-  void onReady() {
-    super.onReady();
-    // onReady fires after the first frame; safe place for deferred work.
-    // Reserved for future use (e.g. deep-link argument handling).
   }
 
   Future<void> fetchSuppliers() async {
