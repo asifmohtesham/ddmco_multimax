@@ -234,7 +234,6 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   Widget _numberField(
       BuildContext context, String label, TextEditingController ctrl) {
     final scheme = context.scheme;
-    final cs = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +251,7 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
           decoration: InputDecoration(
             hintText: '0',
             filled: true,
-            fillColor: cs.surface,
+            fillColor: scheme.subtle,
             border: const OutlineInputBorder(),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
