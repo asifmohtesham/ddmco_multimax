@@ -151,6 +151,28 @@ class ItemProvider {
     final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
     return _apiProvider.getReport('Batch-Wise Balance History', filters: {'item_code': itemCode, 'from_date': fromDate, 'to_date': toDate});
   }
+
+  /// Writes `reorder_levels` back onto the Item.
+  ///
+  /// [data] must carry the full `reorder_levels` array — Frappe replaces the
+  /// child table wholesale, so any row omitted here is deleted — plus the
+  /// optimistic-lock `modified` token.
+  Future<Response> updateReorderLevels(
+    String itemCode,
+    Map<String, dynamic> data,
+  ) async {
+    return _apiProvider.updateDocument('Item', itemCode, data);
+  }
+
+  /// Reads the `Stock Settings` Single.
+  ///
+  /// Needed for `auto_indent`, which erpnext version-15 defaults to 0 — with
+  /// it off, reorder rows never raise Material Requests. Requires read
+  /// permission on Stock Settings; the resource API 403s for non-System
+  /// Managers, so callers must fail open rather than showing a false alarm.
+  Future<Response> getStockSettings() async {
+    return _apiProvider.getDocument('Stock Settings', 'Stock Settings');
+  }
 }
 
 extension StringExtension on String {
