@@ -28,6 +28,7 @@ Every task's requirements implicitly include this section.
   - Table description: `Will also apply for variants unless overrridden` — **three r's, misspelled in the ERPNext source**
   - Valid `Item Reorder.material_request_type` options: `Purchase`, `Transfer`, `Material Issue`, `Manufacture` (note: `Transfer`, **not** `Material Transfer`)
 - **Never run `flutter analyze` and `flutter test` concurrently** — they deadlock. Run test files individually.
+- **`lib/app/modules/item/` has 8 pre-existing analyze issues** (verified at base `fbd6d046`, before any of this work): unused `dart:io` import and two deprecated `Share`/`shareXFiles` uses in `item_form_controller.dart`; two `curly_braces_in_flow_control_structures` in `item_form_screen.dart`; unused `dart:ui` import and two `prefer_null_aware_operators` in `widgets/item_image.dart`. **These are not yours. Do not fix them** — that is scope creep into files this feature does not own. When a step says analyze the item module, the bar is "no *new* issues beyond these 8", not a clean run.
 - **CI does not run tests.** `.github/workflows/release.yml` only builds and uploads. Tests are a local-only gate — actually run them.
 - Test file command: `flutter test test/unit/foo_test.dart`
 - Single test command: `flutter test test/unit/foo_test.dart --plain-name "the test name"`
@@ -2320,7 +2321,7 @@ The modal path (`home_controller._openItemDetailSheet`) bypasses the binding, so
 - [ ] **Step 5: Verify it compiles**
 
 Run: `flutter analyze lib/app/modules/item/ lib/app/data/constants/permission_entries.dart`
-Expected: `No issues found!`
+Expected: **the 8 pre-existing issues listed in Global Constraints, and nothing else.** Any 9th issue is yours — fix it. Do not fix the 8.
 
 - [ ] **Step 6: Commit**
 
@@ -2511,7 +2512,7 @@ import 'package:multimax/app/data/providers/warehouse_provider.dart';
 - [ ] **Step 4: Run the tests**
 
 Run: `flutter analyze lib/app/modules/item/ lib/app/modules/home/home_controller.dart`
-Expected: `No issues found!`
+Expected: **the 8 pre-existing item-module issues listed in Global Constraints, and nothing else.** Any additional issue is yours — fix it. Do not fix the 8.
 
 Run: `flutter test test/widget/reorder_tab_test.dart`
 Expected: PASS — 1 test.
