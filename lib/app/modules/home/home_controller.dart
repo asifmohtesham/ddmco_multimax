@@ -418,6 +418,8 @@ class HomeController extends GetxController {
   /// [force]. Queries ApiProvider directly (PO/PR providers are not registered
   /// in HomeBinding) requesting only the fields a row renders.
   Future<void> fetchPreviewDocs({bool force = false}) async {
+    if (force) _previewCache.clear();
+
     final doctype = selectedActionable.value;
     if (doctype == null || doctype == 'ToDo') {
       previewDocs.clear();
@@ -436,8 +438,6 @@ class HomeController extends GetxController {
         _authController.currentUser.value?.email;
     final key = '$doctype::${actionableCacheKey(scope, email)}';
 
-    if (force) _previewCache.clear();
-
     final cached = _previewCache[key];
     if (cached != null) {
       previewDocs.assignAll(cached);
@@ -445,6 +445,7 @@ class HomeController extends GetxController {
       return;
     }
 
+    previewDocs.clear();
     isLoadingPreview.value = true;
     try {
       final res = await _apiProvider.getDocumentList(
@@ -481,13 +482,16 @@ class HomeController extends GetxController {
   }
 
   /// Flips the strip scope, persists it, and loads the new scope's counts
-  /// (served from cache when available, so a second flip is instant).
-  void setActionableScope(ActionableScope scope) {
+  /// (served from cache when available, so a second flip is instant), then
+  /// re-applies the default chip selection — the current selection may have
+  /// zero work under the new scope, and a chip with zero count is muted/
+  /// non-interactive, so it must not remain selected.
+  Future<void> setActionableScope(ActionableScope scope) async {
     if (actionableScope.value == scope) return;
     actionableScope.value = scope;
     _storageService.saveDashboardActionableScope(actionableScopeToString(scope));
-    fetchActionableCounts();
-    fetchPreviewDocs();
+    await fetchActionableCounts();
+    _applyDefaultSelection();
   }
 
   /// Opens [doctype]'s list pre-filtered to Draft (+ owner under Mine), via the
