@@ -49,10 +49,73 @@ void main() {
     });
   });
 
+  group('actionableFiltersFor — Packing Slip', () {
+    test('Packing Slip filters on docstatus 0, never status (virtual field)', () {
+      final f = actionableFiltersFor('Packing Slip', ActionableScope.everyone, 'x@y.com');
+      expect(f, {'docstatus': 0});
+      expect(f.containsKey('status'), isFalse);
+    });
+
+    test('Packing Slip under mine adds owner and still uses docstatus', () {
+      expect(actionableFiltersFor('Packing Slip', ActionableScope.mine, 'a@b.com'),
+          {'docstatus': 0, 'owner': 'a@b.com'});
+    });
+  });
+
   group('kActionableDocConfigs', () {
-    test('covers the four transactional DocTypes in strip order', () {
-      expect(kActionableDocConfigs.map((c) => c.doctype).toList(),
-          ['Purchase Order', 'Purchase Receipt', 'Stock Entry', 'Delivery Note']);
+    test('covers the five document DocTypes in strip order', () {
+      expect(kActionableDocConfigs.map((c) => c.doctype).toList(), [
+        'Purchase Order',
+        'Purchase Receipt',
+        'Stock Entry',
+        'Delivery Note',
+        'Packing Slip',
+      ]);
+    });
+
+    test('labels are the full DocType names', () {
+      for (final c in kActionableDocConfigs) {
+        expect(c.label, c.doctype);
+      }
+    });
+
+    test('every config carries preview fields incl. name and owner', () {
+      for (final c in kActionableDocConfigs) {
+        expect(c.previewFields, contains('name'));
+        expect(c.previewFields, contains('owner'));
+      }
+    });
+
+    test('Packing Slip never requests the virtual status field', () {
+      final ps = kActionableDocConfigs.firstWhere((c) => c.doctype == 'Packing Slip');
+      expect(ps.previewFields, isNot(contains('status')));
+      expect(ps.previewFields, contains('delivery_note'));
+    });
+  });
+
+  group('defaultActionableSelection', () {
+    test('defaults to Tasks when there are open todos', () {
+      expect(defaultActionableSelection({'Purchase Order': 5}, 2), 'ToDo');
+    });
+
+    test('falls through to the first doctype with work when Tasks is empty', () {
+      expect(
+        defaultActionableSelection(
+            {'Purchase Order': 0, 'Purchase Receipt': 0, 'Stock Entry': 4}, 0),
+        'Stock Entry',
+      );
+    });
+
+    test('respects config order when several have work', () {
+      expect(
+        defaultActionableSelection({'Delivery Note': 9, 'Purchase Order': 3}, 0),
+        'Purchase Order',
+      );
+    });
+
+    test('returns null when nothing is actionable', () {
+      expect(defaultActionableSelection({'Purchase Order': 0}, 0), isNull);
+      expect(defaultActionableSelection({}, 0), isNull);
     });
   });
 }

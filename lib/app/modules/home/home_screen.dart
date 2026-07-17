@@ -14,6 +14,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
@@ -295,19 +296,18 @@ class HomeScreen extends GetView<HomeController> {
   }
 
   // ---------------------------------------------------------------------------
-  // Upcoming & actionable — Draft counts across PO/PR/SE/DN + open ToDos,
-  // with a Mine/Everyone scope toggle, above the open-ToDo task cards.
+  // Upcoming & actionable — a horizontal DocType chip slider (Draft counts
+  // across PO/PR/SE/DN/PS + open ToDos) driving a 3-document preview.
   // ---------------------------------------------------------------------------
   Widget _buildUpcomingActionable(BuildContext context) {
     return Obx(() {
       final chips = _actionableChips(context);
-      final todos = controller.upcomingTodos;
       final loading = controller.isLoadingActionable.value;
+      final selected = controller.selectedActionable.value;
+      final todos = controller.upcomingTodos;
 
       // Nothing to show and nothing loading → collapse entirely.
-      if (chips.isEmpty && todos.isEmpty && !loading) {
-        return const SizedBox.shrink();
-      }
+      if (chips.isEmpty && !loading) return const SizedBox.shrink();
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -322,7 +322,7 @@ class HomeScreen extends GetView<HomeController> {
           ),
           const SizedBox(height: 11),
           DashboardActionableStrip(chips: chips, isLoading: loading),
-          if (todos.isNotEmpty) ...[
+          if (selected == 'ToDo' && todos.isNotEmpty) ...[
             const SizedBox(height: 14),
             for (var i = 0; i < todos.length; i++) ...[
               if (i > 0) const SizedBox(height: 9),
@@ -338,8 +338,15 @@ class HomeScreen extends GetView<HomeController> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: controller.goToToDo,
-                child: const Text('View all tasks'),
+                child: const Text('View All'),
               ),
+            ),
+          ] else if (selected != null && selected != 'ToDo') ...[
+            const SizedBox(height: 14),
+            ActionableDocPreview(
+              rows: controller.previewDocs.toList(),
+              isLoading: controller.isLoadingPreview.value,
+              onViewAll: () => controller.openActionableList(selected),
             ),
           ],
           const SizedBox(height: 6),
@@ -348,11 +355,25 @@ class HomeScreen extends GetView<HomeController> {
     });
   }
 
-  /// Builds the chip data: one per accessible document DocType (present in
-  /// [actionableCounts]) in [kActionableDocConfigs] order, then a personal
-  /// Tasks chip when the user can read ToDos. A zero count → non-tappable.
+  /// Chip data in slider order: Tasks first (personal, gated on ToDo access),
+  /// then one per accessible document DocType present in [actionableCounts].
+  /// A zero count → null onTap, so the chip is muted and cannot be selected.
   List<ActionableChipData> _actionableChips(BuildContext context) {
     final chips = <ActionableChipData>[];
+    final selected = controller.selectedActionable.value;
+
+    if (Get.find<PermissionService>().hasAccess('ToDo') == true) {
+      final count = controller.openTodoCount.value;
+      chips.add(ActionableChipData(
+        doctype: 'ToDo',
+        label: 'Tasks',
+        icon: Icons.check_circle_outline,
+        count: count,
+        selected: selected == 'ToDo',
+        onTap: count == 0 ? null : () => controller.selectActionable('ToDo'),
+      ));
+    }
+
     for (final cfg in kActionableDocConfigs) {
       if (!controller.actionableCounts.containsKey(cfg.doctype)) continue;
       final count = controller.actionableCounts[cfg.doctype] ?? 0;
@@ -361,17 +382,8 @@ class HomeScreen extends GetView<HomeController> {
         label: cfg.label,
         icon: cfg.icon,
         count: count,
-        onTap: count == 0 ? null : () => controller.openActionableList(cfg.doctype),
-      ));
-    }
-    if (Get.find<PermissionService>().hasAccess('ToDo') == true) {
-      final count = controller.openTodoCount.value;
-      chips.add(ActionableChipData(
-        doctype: 'ToDo',
-        label: 'Tasks',
-        icon: Icons.check_circle_outline,
-        count: count,
-        onTap: count == 0 ? null : controller.goToToDo,
+        selected: selected == cfg.doctype,
+        onTap: count == 0 ? null : () => controller.selectActionable(cfg.doctype),
       ));
     }
     return chips;

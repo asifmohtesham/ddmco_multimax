@@ -67,6 +67,12 @@ class PackingSlipController extends GetxController {
   void onInit() {
     super.onInit();
     _homeController.activeScreen.value = ActiveScreen.packingSlip;
+    // Seed a deep-linked filter BEFORE the initial fetch so only one, already
+    // filtered, request runs (an onReady applyFilters would race this fetch).
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      activeFilters.value = Map<String, dynamic>.from(args['filters'] as Map);
+    }
     fetchPackingSlips();
   }
 

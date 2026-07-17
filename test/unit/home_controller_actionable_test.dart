@@ -66,6 +66,53 @@ class _FakeApiProvider extends ApiProvider {
       data: {'message': value},
     );
   }
+
+  /// Rows [getDocumentList] returns for a doctype, keyed by doctype. A test
+  /// sets this before triggering a fetch; missing entries return an empty list.
+  final Map<String, List<Map<String, dynamic>>> listRows = {};
+
+  /// Per-doctype completers: when a doctype has an entry here, its
+  /// [getDocumentList] call awaits the completer before resolving — lets a
+  /// test hold two overlapping preview fetches in flight and resolve them out
+  /// of order to reproduce the stale-selection race.
+  final Map<String, Completer<void>> listGates = {};
+
+  /// Doctypes whose [getDocumentList] call throws instead of resolving —
+  /// reproduces a mid-fetch network/API error.
+  final Set<String> throwingDoctypes = {};
+
+  /// Every [getDocumentList] query issued, in call order.
+  final List<({String doctype, Map<String, dynamic>? filters})> listQueries =
+      [];
+
+  @override
+  Future<Response> getDocumentList(
+    String doctype, {
+    int limit = 20,
+    int limitStart = 0,
+    List<String>? fields,
+    String? groupBy = '',
+    Map<String, dynamic>? filters,
+    List<List<dynamic>>? filterTuples,
+    Map<String, dynamic>? orFilters,
+    List<List<dynamic>>? orFilterTuples,
+    String orderBy = 'modified desc',
+  }) async {
+    listQueries.add((doctype: doctype, filters: filters));
+    // Capture the rows BEFORE awaiting the gate, so a later map mutation
+    // can't change what an already-issued request resolves to.
+    final rows = listRows[doctype] ?? const <Map<String, dynamic>>[];
+    final gate = listGates[doctype];
+    if (gate != null) await gate.future;
+    if (throwingDoctypes.contains(doctype)) {
+      throw Exception('Simulated getDocumentList failure for $doctype');
+    }
+    return Response(
+      requestOptions: RequestOptions(path: '/api/resource/$doctype'),
+      statusCode: 200,
+      data: {'data': rows},
+    );
+  }
 }
 
 /// PermissionService fake: [hasAccess] returns whatever [access] holds for a
@@ -93,6 +140,11 @@ class _FakeStorageService extends StorageService {
 
   @override
   String? getBaseUrl() => null;
+
+  // setActionableScope persists the flipped scope via this — the real
+  // implementation writes through the (null, in this fake) GetStorage box.
+  @override
+  Future<void> saveDashboardActionableScope(String value) async {}
 }
 
 User _user(String email) =>
@@ -164,6 +216,36 @@ void main() {
   /// A plain snapshot of the controller's reactive count map, for equality.
   Map<String, int> snapshot() =>
       Map<String, int>.from(controller.actionableCounts);
+
+  /// A Purchase Order preview row — matches its config's previewFields
+  /// (`name`, `supplier`, `transaction_date`, `owner`).
+  Map<String, dynamic> poRow(String name,
+          {String supplier = 'Acme', String owner = 'a@b.com'}) =>
+      {
+        'name': name,
+        'supplier': supplier,
+        'transaction_date': '2026-07-10',
+        'owner': owner,
+      };
+
+  /// A Delivery Note preview row — matches its config's previewFields
+  /// (`name`, `customer`, `posting_date`, `owner`).
+  Map<String, dynamic> dnRow(String name,
+          {String customer = 'Beta Co', String owner = 'a@b.com'}) =>
+      {
+        'name': name,
+        'customer': customer,
+        'posting_date': '2026-07-11',
+        'owner': owner,
+      };
+
+  /// Flushes the microtask queue so a fire-and-forget `fetchPreviewDocs()`
+  /// call (launched via `selectActionable`, which is `void` and cannot be
+  /// awaited directly) has a chance to run to completion. `Future.delayed`
+  /// schedules a Timer, and Dart drains the entire microtask queue before any
+  /// Timer callback fires, so this deterministically waits out any pending
+  /// `await` chain rather than racing a fixed delay.
+  Future<void> flush() => Future<void>.delayed(Duration.zero);
 
   group('fetchActionableCounts', () {
     group('scope-flip race guard', () {
@@ -353,6 +435,397 @@ void main() {
         expect(snapshot(), allAt(9));
         expect(api.queries.length, kActionableDocConfigs.length * 2);
       });
+    });
+  });
+
+  group('fetchPreviewDocs', () {
+    group('stale-selection race guard', () {
+      test(
+          'a stale doctype fetch does not clobber the newer selection\'s '
+          'docs or loading', () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+        api.listRows['Delivery Note'] = [dnRow('DN-0001')];
+        api.listGates['Purchase Order'] = Completer<void>();
+        api.listGates['Delivery Note'] = Completer<void>();
+
+        // Fetch A: select Purchase Order — starts a gated fetch, left in
+        // flight (selectActionable is void, so the fetch runs fire-and-forget;
+        // it still executes synchronously up to its first await).
+        controller.selectActionable('Purchase Order');
+        expect(controller.isLoadingPreview.value, isTrue);
+
+        // The selection flips to Delivery Note before A resolves — fetch B
+        // starts, also gated.
+        controller.selectActionable('Delivery Note');
+        expect(controller.isLoadingPreview.value, isTrue);
+
+        // B (the current selection) resolves FIRST and wins.
+        api.listGates['Delivery Note']!.complete();
+        await flush();
+        expect(controller.previewDocs.map((r) => r.name).toList(),
+            ['DN-0001']);
+        expect(controller.isLoadingPreview.value, isFalse);
+
+        // A (now stale) resolves LAST — its `doctype == selectedActionable.value`
+        // guard must drop the result rather than overwrite Delivery Note's
+        // preview or re-toggle the loading flag.
+        api.listGates['Purchase Order']!.complete();
+        await flush();
+        expect(controller.previewDocs.map((r) => r.name).toList(),
+            ['DN-0001'],
+            reason:
+                'stale Purchase Order fetch must not overwrite Delivery Note preview');
+        expect(controller.isLoadingPreview.value, isFalse);
+      });
+
+      test('a stale fetch resolving mid-flight does not clear loading early',
+          () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+        api.listRows['Delivery Note'] = [dnRow('DN-0001')];
+        api.listGates['Purchase Order'] = Completer<void>();
+        api.listGates['Delivery Note'] = Completer<void>();
+
+        controller.selectActionable('Purchase Order');
+        controller.selectActionable('Delivery Note');
+
+        // The stale (Purchase Order) fetch completes while the current
+        // (Delivery Note) fetch is still in flight. Its guarded finally-block
+        // must leave loading = true and must not publish its docs.
+        api.listGates['Purchase Order']!.complete();
+        await flush();
+        expect(controller.isLoadingPreview.value, isTrue,
+            reason: 'current Delivery Note fetch is still loading');
+        expect(controller.previewDocs, isEmpty,
+            reason:
+                'stale fetch must not publish docs for the newer selection');
+
+        // Once the current fetch resolves it publishes its docs and clears
+        // loading.
+        api.listGates['Delivery Note']!.complete();
+        await flush();
+        expect(controller.previewDocs.map((r) => r.name).toList(),
+            ['DN-0001']);
+        expect(controller.isLoadingPreview.value, isFalse);
+      });
+    });
+
+    test(
+        'selecting ToDo with a doc fetch in flight synchronously clears docs '
+        'and leaves loading false', () async {
+      controller.selectedFilterUser.value = _user('a@b.com');
+      api.listRows['Purchase Order'] = [poRow('PO-0001')];
+      api.listGates['Purchase Order'] = Completer<void>();
+
+      controller.selectActionable('Purchase Order');
+      expect(controller.isLoadingPreview.value, isTrue);
+
+      // ToDo needs no fetch — the early return clears docs and loading
+      // synchronously, without waiting on the in-flight Purchase Order fetch.
+      controller.selectActionable('ToDo');
+      expect(controller.previewDocs, isEmpty);
+      expect(controller.isLoadingPreview.value, isFalse);
+
+      // The stale Purchase Order fetch resolving afterwards must not
+      // resurrect docs or loading: its `doctype == selectedActionable.value`
+      // guard fails ('Purchase Order' != 'ToDo').
+      api.listGates['Purchase Order']!.complete();
+      await flush();
+      expect(controller.previewDocs, isEmpty);
+      expect(controller.isLoadingPreview.value, isFalse);
+    });
+
+    group('cache keying', () {
+      test(
+          're-fetching the same selection serves from cache; force clears '
+          'and refetches', () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-0001']);
+        expect(api.listQueries.length, 1);
+
+        // Change the underlying data and re-fetch without force (mirrors the
+        // re-fetch setActionableScope issues for an unchanged selection):
+        // served from the cache, so no new query and the stale data change
+        // is NOT observed.
+        api.listRows['Purchase Order'] = [poRow('PO-9999')];
+        await controller.fetchPreviewDocs();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-0001'],
+            reason: 'served from cache');
+        expect(api.listQueries.length, 1, reason: 'no refetch on a cache hit');
+
+        // force=true clears the cache, so the new data lands.
+        await controller.fetchPreviewDocs(force: true);
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-9999']);
+        expect(api.listQueries.length, 2);
+      });
+
+      test('a different viewed user under mine scope is a cache miss',
+          () async {
+        controller.actionableScope.value = ActionableScope.mine;
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(api.listQueries.length, 1);
+
+        controller.selectedFilterUser.value = _user('c@d.com');
+        api.listRows['Purchase Order'] = [poRow('PO-2222')];
+        await controller.fetchPreviewDocs();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-2222']);
+        expect(api.listQueries.length, 2,
+            reason: 'different viewed user -> different cache key -> refetch');
+      });
+
+      // Fix 1 regression: the early ToDo/null return in fetchPreviewDocs used
+      // to run BEFORE the cache clear, so a force refresh while 'ToDo' is
+      // selected (exactly what _applyDefaultSelection triggers whenever the
+      // default selection resolves to Tasks) never cleared _previewCache.
+      // Re-selecting a doctype afterwards would then silently serve stale
+      // rows instead of refetching.
+      test(
+          'a force refresh while ToDo is selected still clears the preview '
+          'cache, so re-selecting a doctype refetches', () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+
+        // Select and cache Purchase Order's rows.
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-0001']);
+        expect(api.listQueries.length, 1);
+
+        // Return to Tasks — ToDo needs no fetch, so this only clears state.
+        controller.selectActionable('ToDo');
+        expect(controller.previewDocs, isEmpty);
+
+        // Force-refresh while ToDo is selected — mirrors what
+        // _applyDefaultSelection does when the resolved default is 'ToDo'.
+        await controller.fetchPreviewDocs(force: true);
+        expect(controller.previewDocs, isEmpty);
+        expect(api.listQueries.length, 1, reason: 'ToDo issues no doc fetch');
+
+        // Change the underlying data and re-select Purchase Order: if the
+        // cache had NOT been cleared, this would silently serve the stale
+        // PO-0001 row with no new query.
+        api.listRows['Purchase Order'] = [poRow('PO-9999')];
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-9999']);
+        expect(api.listQueries.length, 2,
+            reason:
+                'cache must have been cleared by the force refresh while ToDo '
+                'was selected');
+      });
+    });
+
+    // Fix 3 regression: on a non-cached fetch, previewDocs was only
+    // reassigned on SUCCESS — a thrown getDocumentList left the previously
+    // selected doctype's rows on screen under the newly selected chip.
+    group('error handling', () {
+      test(
+          'a thrown fetch clears the previous selection\'s rows instead of '
+          'leaving them on screen', () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+        api.throwingDoctypes.add('Delivery Note');
+
+        // Select Purchase Order — its rows land normally.
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-0001']);
+        expect(controller.isLoadingPreview.value, isFalse);
+
+        // Select Delivery Note — its fetch throws.
+        controller.selectActionable('Delivery Note');
+        await flush();
+
+        expect(controller.previewDocs, isEmpty,
+            reason:
+                'a thrown fetch must not leave Purchase Order\'s rows on '
+                'screen under the Delivery Note chip');
+        expect(controller.isLoadingPreview.value, isFalse);
+      });
+    });
+
+    test('a fetched row is mapped via docRowFor with an owner label in the subtitle',
+        () async {
+      controller.selectedFilterUser.value = _user('a@b.com');
+      api.listRows['Purchase Order'] =
+          [poRow('PO-0001', supplier: 'Acme', owner: 'jawwad@x.com')];
+
+      controller.selectActionable('Purchase Order');
+      await flush();
+
+      expect(controller.previewDocs, hasLength(1));
+      expect(controller.previewDocs.first.name, 'PO-0001');
+      // ownerLabelFor falls back to the email's local part when the owner is
+      // not in namesByEmail (userList is empty in this test setup).
+      expect(controller.previewDocs.first.subtitle, contains('jawwad'));
+    });
+  });
+
+  // Fix 2 regression: setActionableScope used to fire fetchActionableCounts +
+  // fetchPreviewDocs without re-applying the default selection. If the
+  // selected doctype's count dropped to 0 under the new scope, the chip
+  // stayed selected while rendering muted/inert, and the preview collapsed
+  // to empty with no fallback chip chosen.
+  group('setActionableScope', () {
+    test(
+        're-selects the first chip that still has work when the current '
+        'selection drops to zero under the new scope', () async {
+      grantAll();
+      auth.currentUser.value = _user('me@x.com'); // selectedFilterUser null
+      controller.actionableScope.value = ActionableScope.everyone;
+
+      // Under everyone scope only Purchase Order has work.
+      for (final c in kActionableDocConfigs) {
+        api.everyoneCounts[c.doctype] = 0;
+      }
+      api.everyoneCounts['Purchase Order'] = 5;
+      await controller.fetchActionableCounts(force: true);
+      controller.selectActionable('Purchase Order');
+      expect(controller.selectedActionable.value, 'Purchase Order');
+
+      // Under mine scope, Purchase Order has zero work, but Delivery Note
+      // (later in kActionableDocConfigs) does.
+      for (final c in kActionableDocConfigs) {
+        api.counts[c.doctype] = 0;
+      }
+      api.counts['Delivery Note'] = 2;
+
+      await controller.setActionableScope(ActionableScope.mine);
+
+      expect(controller.actionableScope.value, ActionableScope.mine);
+      expect(controller.selectedActionable.value, 'Delivery Note',
+          reason:
+              'Purchase Order has zero work under mine scope; the first '
+              'chip that still has work must be selected instead, not left '
+              'on the now-zero doctype');
+    });
+
+    test('selects null when no chip has work under the new scope', () async {
+      grantAll();
+      auth.currentUser.value = _user('me@x.com');
+      controller.actionableScope.value = ActionableScope.everyone;
+
+      for (final c in kActionableDocConfigs) {
+        api.everyoneCounts[c.doctype] = 0;
+      }
+      api.everyoneCounts['Purchase Order'] = 5;
+      await controller.fetchActionableCounts(force: true);
+      controller.selectActionable('Purchase Order');
+      expect(controller.selectedActionable.value, 'Purchase Order');
+
+      // Nothing has work under mine scope.
+      for (final c in kActionableDocConfigs) {
+        api.counts[c.doctype] = 0;
+      }
+
+      await controller.setActionableScope(ActionableScope.mine);
+
+      expect(controller.selectedActionable.value, isNull);
+    });
+
+    // Fix 4 regression: setActionableScope called _applyDefaultSelection()
+    // unconditionally after its `await fetchActionableCounts()`, without
+    // re-checking that its captured `scope` was still the current one.
+    // fetchActionableCounts already guards its OWN count/loading writes
+    // against a stale scope landing late (the `scope-flip race guard` tests
+    // above) — but that guard doesn't stop setActionableScope's caller-level
+    // continuation from running anyway. A stale call (superseded by a second
+    // setActionableScope before the first's count fetch resolved) could
+    // still apply a default selection from whatever counts happened to be on
+    // screen and fire a wasted forced preview fetch. The second (current)
+    // call self-heals the final selection, but the wasted fetch — and a
+    // transient wrong-chip flash — still happened without a guard here.
+    test(
+        "a stale scope's post-await continuation does not apply a default "
+        'selection or fire an extra preview fetch', () async {
+      grantAll();
+      auth.currentUser.value = _user('me@x.com'); // selectedFilterUser null
+
+      // Leftover state from before the race starts — simulates whatever was
+      // already on screen. Deliberately distinct from the real mine-scope
+      // counts set below, so a premature read is distinguishable from a
+      // correct one.
+      controller.actionableCounts.assignAll({
+        'Purchase Order': 0,
+        'Purchase Receipt': 0,
+        'Stock Entry': 0,
+        'Delivery Note': 2,
+        'Packing Slip': 0,
+      });
+
+      // Everyone-scope counts are irrelevant here: fetchActionableCounts's own
+      // guard already drops a stale scope's count write regardless of the fix
+      // under test, so C1 never gets to publish these.
+      for (final c in kActionableDocConfigs) {
+        api.everyoneCounts[c.doctype] = 0;
+      }
+      // Real mine-scope counts: only Stock Entry has work.
+      for (final c in kActionableDocConfigs) {
+        api.counts[c.doctype] = 0;
+      }
+      api.counts['Stock Entry'] = 4;
+      api.listRows['Stock Entry'] = [
+        {
+          'name': 'SE-0001',
+          'stock_entry_type': 'Material Issue',
+          'posting_date': '2026-07-12',
+          'owner': 'me@x.com',
+        }
+      ];
+      api.listRows['Delivery Note'] = [dnRow('DN-0001')];
+
+      api.mineGate = Completer<void>();
+      api.everyoneGate = Completer<void>();
+
+      // C1: scope flips mine -> everyone; its count fetch is left in flight.
+      final futA = controller.setActionableScope(ActionableScope.everyone);
+      // C2: scope flips back everyone -> mine before C1 resolves; also left
+      // in flight. Both fetches issued all their count queries synchronously
+      // (before suspending on Future.wait), so C1 captured everyone filters
+      // and C2 captured mine filters.
+      final futB = controller.setActionableScope(ActionableScope.mine);
+      expect(controller.actionableScope.value, ActionableScope.mine);
+
+      // C1 (now stale) resolves FIRST.
+      api.everyoneGate!.complete();
+      await futA;
+
+      // The guard must short-circuit C1's continuation entirely: no default
+      // selection applied, no preview fetch fired.
+      expect(controller.selectedActionable.value, isNull,
+          reason:
+              "C1's stale continuation must not select a chip after losing "
+              'the scope race');
+      expect(api.listQueries, isEmpty,
+          reason:
+              "C1's stale continuation must not fire a wasted preview fetch");
+
+      // C2 (current) resolves and applies the correct default selection.
+      api.mineGate!.complete();
+      await futB;
+
+      expect(controller.selectedActionable.value, 'Stock Entry',
+          reason: 'the only doctype with work under the final (mine) scope');
+      expect(api.listQueries.map((q) => q.doctype).toList(), ['Stock Entry'],
+          reason:
+              'exactly one preview fetch — C1 must not have queued a second, '
+              'wasted one for Delivery Note');
     });
   });
 }

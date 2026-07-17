@@ -3,7 +3,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 /// Which population the actionable count strip reflects. [mine] scopes the
-/// four document chips to the selected dashboard user (owner); [everyone] is
+/// five document chips to the selected dashboard user (owner); [everyone] is
 /// company-wide. The Tasks chip stays personal regardless.
 enum ActionableScope { mine, everyone }
 
@@ -14,18 +14,19 @@ ActionableScope actionableScopeFromString(String? raw) =>
     raw == 'everyone' ? ActionableScope.everyone : ActionableScope.mine;
 
 /// Frappe filter map for the "still a Draft" documents of [doctype]. Used for
-/// BOTH the `get_count` query and the tap-target list, so a chip's count and
-/// its opened list always agree.
+/// the `get_count` query, the 3-document preview, AND the tap-target list, so a
+/// chip's count, its preview, and its opened list always agree.
 ///
 /// PO/PR/DN filter on `status == 'Draft'` (equivalent to docstatus 0 for these
 /// submittables, and it renders a removable "Status: Draft" chip on the list).
-/// Stock Entry has no `status` field — its status is derived from docstatus —
-/// so it filters on `docstatus == 0`. Under [ActionableScope.mine] a non-empty
-/// [email] adds an `owner` equality.
+/// Stock Entry has no `status` field, and Packing Slip's `status` is a VIRTUAL
+/// field that raises a Frappe FieldError when queried — both filter on
+/// `docstatus == 0`. Under [ActionableScope.mine] a non-empty [email] adds an
+/// `owner` equality.
 Map<String, dynamic> actionableFiltersFor(
     String doctype, ActionableScope scope, String? email) {
   final filters = <String, dynamic>{};
-  if (doctype == 'Stock Entry') {
+  if (doctype == 'Stock Entry' || doctype == 'Packing Slip') {
     filters['docstatus'] = 0;
   } else {
     filters['status'] = 'Draft';
@@ -41,30 +42,91 @@ Map<String, dynamic> actionableFiltersFor(
 String actionableCacheKey(ActionableScope scope, String? email) =>
     scope == ActionableScope.mine ? 'mine::${email ?? ''}' : 'all';
 
-/// Static identity of one document chip — label/icon/route are presentation
-/// constants; the live count is supplied separately via [ActionableChipData].
+/// Static identity of one document chip. [label] is the presentation label
+/// (currently the full DocType name; the Tasks chip built in the screen uses a
+/// different label, which is why this is a separate field). [previewFields] are
+/// the ONLY fields the 3-document preview requests for this DocType.
 class ActionableDocConfig {
   final String doctype;
   final String label;
   final IconData icon;
   final String listRoute;
-  const ActionableDocConfig(this.doctype, this.label, this.icon, this.listRoute);
+  final String formRoute;
+  final List<String> previewFields;
+  const ActionableDocConfig({
+    required this.doctype,
+    required this.label,
+    required this.icon,
+    required this.listRoute,
+    required this.formRoute,
+    required this.previewFields,
+  });
 }
 
 const List<ActionableDocConfig> kActionableDocConfigs = [
-  ActionableDocConfig('Purchase Order', 'PO', Icons.shopping_cart_outlined, AppRoutes.PURCHASE_ORDER),
-  ActionableDocConfig('Purchase Receipt', 'PR', Icons.receipt_long_outlined, AppRoutes.PURCHASE_RECEIPT),
-  ActionableDocConfig('Stock Entry', 'SE', Icons.swap_horiz, AppRoutes.STOCK_ENTRY),
-  ActionableDocConfig('Delivery Note', 'DN', Icons.local_shipping_outlined, AppRoutes.DELIVERY_NOTE),
+  ActionableDocConfig(
+    doctype: 'Purchase Order',
+    label: 'Purchase Order',
+    icon: Icons.shopping_cart_outlined,
+    listRoute: AppRoutes.PURCHASE_ORDER,
+    formRoute: AppRoutes.PURCHASE_ORDER_FORM,
+    previewFields: ['name', 'supplier', 'transaction_date', 'owner'],
+  ),
+  ActionableDocConfig(
+    doctype: 'Purchase Receipt',
+    label: 'Purchase Receipt',
+    icon: Icons.receipt_long_outlined,
+    listRoute: AppRoutes.PURCHASE_RECEIPT,
+    formRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
+    previewFields: ['name', 'supplier', 'posting_date', 'owner'],
+  ),
+  ActionableDocConfig(
+    doctype: 'Stock Entry',
+    label: 'Stock Entry',
+    icon: Icons.swap_horiz,
+    listRoute: AppRoutes.STOCK_ENTRY,
+    formRoute: AppRoutes.STOCK_ENTRY_FORM,
+    previewFields: ['name', 'stock_entry_type', 'posting_date', 'owner'],
+  ),
+  ActionableDocConfig(
+    doctype: 'Delivery Note',
+    label: 'Delivery Note',
+    icon: Icons.local_shipping_outlined,
+    listRoute: AppRoutes.DELIVERY_NOTE,
+    formRoute: AppRoutes.DELIVERY_NOTE_FORM,
+    previewFields: ['name', 'customer', 'posting_date', 'owner'],
+  ),
+  // Packing Slip: `status` is virtual (FieldError if queried) and there is no
+  // posting_date on its list — the row falls back to `creation`.
+  ActionableDocConfig(
+    doctype: 'Packing Slip',
+    label: 'Packing Slip',
+    icon: Icons.inventory_2_outlined,
+    listRoute: AppRoutes.PACKING_SLIP,
+    formRoute: AppRoutes.PACKING_SLIP_FORM,
+    previewFields: ['name', 'delivery_note', 'creation', 'owner'],
+  ),
 ];
 
-/// One rendered chip's data. [muted] (a zero count) renders dim and passes a
-/// null [onTap] so the chip is non-interactive.
+/// The chip selected on load: 'ToDo' (Tasks) when it has work, else the first
+/// [kActionableDocConfigs] doctype with a non-zero count, else null (every chip
+/// is muted/inert, so nothing is selectable).
+String? defaultActionableSelection(Map<String, int> counts, int todoCount) {
+  if (todoCount > 0) return 'ToDo';
+  for (final cfg in kActionableDocConfigs) {
+    if ((counts[cfg.doctype] ?? 0) > 0) return cfg.doctype;
+  }
+  return null;
+}
+
+/// One rendered chip's data. [muted] (a zero count) renders dim with a null
+/// [onTap] so the chip is non-interactive and cannot be selected.
 class ActionableChipData {
   final String doctype;
   final String label;
   final IconData icon;
   final int count;
+  final bool selected;
   final VoidCallback? onTap;
   const ActionableChipData({
     required this.doctype,
@@ -72,6 +134,7 @@ class ActionableChipData {
     required this.icon,
     required this.count,
     required this.onTap,
+    this.selected = false,
   });
 
   bool get muted => count == 0;
@@ -89,13 +152,14 @@ class ActionableCountChip extends StatelessWidget {
     final scheme = context.scheme;
     final cs = Theme.of(context).colorScheme;
     final muted = data.muted;
+    final selected = data.selected;
 
     final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: scheme.fg,
+        color: selected ? cs.primary.withValues(alpha: 0.13) : scheme.fg,
         borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: scheme.border),
+        border: Border.all(color: selected ? cs.primary : scheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -108,7 +172,9 @@ class ActionableCountChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: muted ? scheme.textMuted : scheme.text,
+              color: muted
+                  ? scheme.textMuted
+                  : (selected ? cs.primary : scheme.text),
             ),
           ),
           const SizedBox(width: 6),
@@ -195,8 +261,10 @@ class ActionableScopeToggle extends StatelessWidget {
   }
 }
 
-/// The wrap of actionable-count chips. Shows muted placeholder pills while
-/// [isLoading]; otherwise a [Wrap] of [ActionableCountChip]s (one per [chips]).
+/// The horizontally-scrolling row of actionable chips — a DocType selector.
+/// Never wraps (the previous Wrap spilled onto a second row). Shows muted
+/// placeholder pills while [isLoading]. Selection is carried per-chip via
+/// [ActionableChipData.selected] / [ActionableChipData.onTap].
 class DashboardActionableStrip extends StatelessWidget {
   final List<ActionableChipData> chips;
   final bool isLoading;
@@ -211,29 +279,40 @@ class DashboardActionableStrip extends StatelessWidget {
     final scheme = context.scheme;
 
     if (isLoading) {
-      return Wrap(
+      return SingleChildScrollView(
         key: const ValueKey('actionable-strip-loading'),
-        spacing: 8,
-        runSpacing: 8,
-        children: List.generate(
-          5,
-          (_) => Container(
-            width: 64,
-            height: 34,
-            decoration: BoxDecoration(
-              color: scheme.subtle,
-              borderRadius: BorderRadius.circular(AppRadius.full),
-              border: Border.all(color: scheme.border),
-            ),
-          ),
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(
+          children: [
+            for (var i = 0; i < 6; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Container(
+                width: 96,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.subtle,
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                  border: Border.all(color: scheme.border),
+                ),
+              ),
+            ],
+          ],
         ),
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [for (final c in chips) ActionableCountChip(data: c)],
+    return SingleChildScrollView(
+      key: const ValueKey('actionable-strip'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            ActionableCountChip(data: chips[i]),
+          ],
+        ],
+      ),
     );
   }
 }
