@@ -29,6 +29,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -607,6 +608,11 @@ class HomeController extends GetxController {
   void _openItemDetailSheet(String itemCode, {String? batchNo}) {
     Get.put(ItemTabController());
     Get.put(ItemFormController())..loadItem(itemCode, batchNo: batchNo);
+    // The modal path bypasses ItemFormBinding; the Re-order tab's warehouse
+    // pickers need this.
+    if (!Get.isRegistered<WarehouseProvider>()) {
+      Get.put(WarehouseProvider());
+    }
     barcodeController.clear();
 
     Get.bottomSheet(
@@ -618,7 +624,11 @@ class HomeController extends GetxController {
         ),
       ),
       isScrollControlled: true,
-      enableDrag: true,
+      // Drag-dismiss calls Navigator.pop directly, which PopScope cannot
+      // intercept, so unsaved re-order rules could vanish with a swipe.
+      // enableDrag is fixed at open time and cannot track dirty state, so it
+      // is off; the Close button (guarded by _confirmDiscard) is the exit.
+      enableDrag: false,
     ).then((_) {
       Get.delete<ItemTabController>(force: true);
       Get.delete<ItemFormController>(force: true);

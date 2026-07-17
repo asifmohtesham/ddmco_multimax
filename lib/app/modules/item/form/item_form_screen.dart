@@ -22,6 +22,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_card.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -36,56 +37,82 @@ class ItemFormScreen extends GetView<ItemFormController> {
       final item      = controller.item.value;
       final isLoading = controller.isLoading.value;
 
-      return Scaffold(
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            DocTypeFormHeader(
-              title:   item?.name ?? controller.itemCode,
-              docType: 'Item',
-              extraActions: isModal
-                  ? [
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                        onPressed: Get.back,
-                      ),
-                    ]
-                  : null,
-              bottom: TabBar(
-                controller: tabCtrl.tabController,
-                isScrollable: true,
-                tabs: const [
-                  Tab(text: 'Overview'),
-                  Tab(text: 'Stock Levels'),
-                  Tab(text: 'Attributes'),
-                  Tab(text: 'Attachments'),
-                  Tab(text: 'Re-order'),
-                ],
+      return PopScope(
+        canPop: !controller.isReorderDirty.value,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          if (await _confirmDiscard()) Get.back();
+        },
+        child: Scaffold(
+          body: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              DocTypeFormHeader(
+                title:   item?.name ?? controller.itemCode,
+                docType: 'Item',
+                extraActions: isModal
+                    ? [
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Close',
+                          onPressed: () async {
+                            if (await _confirmDiscard()) Get.back();
+                          },
+                        ),
+                      ]
+                    : null,
+                bottom: TabBar(
+                  controller: tabCtrl.tabController,
+                  isScrollable: true,
+                  tabs: const [
+                    Tab(text: 'Overview'),
+                    Tab(text: 'Stock Levels'),
+                    Tab(text: 'Attributes'),
+                    Tab(text: 'Attachments'),
+                    Tab(text: 'Re-order'),
+                  ],
+                ),
               ),
-            ),
-          ],
-          body: (isLoading && item == null)
-              ? const Center(child: CircularProgressIndicator())
-              : item == null
-                  ? Center(
-                      child: const FormEmptyState(
-                        icon: Icons.error_outline,
-                        message: 'Item not found.',
+            ],
+            body: (isLoading && item == null)
+                ? const Center(child: CircularProgressIndicator())
+                : item == null
+                    ? Center(
+                        child: const FormEmptyState(
+                          icon: Icons.error_outline,
+                          message: 'Item not found.',
+                        ),
+                      )
+                    : TabBarView(
+                        controller: tabCtrl.tabController,
+                        children: [
+                          _buildOverviewTab(context, item, cs),
+                          _buildStockLevelsTab(context, cs),
+                          _buildAttributesTab(context, item, cs),
+                          _buildAttachmentsTab(context, cs),
+                          _buildReorderTab(context, item, cs),
+                        ],
                       ),
-                    )
-                  : TabBarView(
-                      controller: tabCtrl.tabController,
-                      children: [
-                        _buildOverviewTab(context, item, cs),
-                        _buildStockLevelsTab(context, cs),
-                        _buildAttributesTab(context, item, cs),
-                        _buildAttachmentsTab(context, cs),
-                        _buildReorderTab(context, item, cs),
-                      ],
-                    ),
+          ),
         ),
       );
     });
+  }
+
+  /// Confirms before discarding unsaved re-order rules. Returns true when the
+  /// caller should proceed with closing.
+  ///
+  /// GlobalDialog.confirm returns null when dismissed by tapping outside, so
+  /// only an explicit `true` discards — an accidental tap keeps the edits.
+  Future<bool> _confirmDiscard() async {
+    if (!controller.isReorderDirty.value) return true;
+    final discard = await GlobalDialog.confirm(
+      title: 'Discard changes?',
+      message: 'Your re-order rules have not been saved.',
+      confirmText: 'Discard',
+      confirmColor: AppColors.red700,
+      icon: Icons.warning_amber_outlined,
+    );
+    return discard == true;
   }
 
   // ── Overview Tab ──────────────────────────────────────────────────────────
