@@ -491,6 +491,9 @@ class HomeController extends GetxController {
     actionableScope.value = scope;
     _storageService.saveDashboardActionableScope(actionableScopeToString(scope));
     await fetchActionableCounts();
+    // Guard against a scope flip landing before this fetch returns — mirrors
+    // the fetchActionableCounts/fetchPreviewDocs guards above.
+    if (scope != actionableScope.value) return;
     _applyDefaultSelection();
   }
 

@@ -738,5 +738,94 @@ void main() {
 
       expect(controller.selectedActionable.value, isNull);
     });
+
+    // Fix 4 regression: setActionableScope called _applyDefaultSelection()
+    // unconditionally after its `await fetchActionableCounts()`, without
+    // re-checking that its captured `scope` was still the current one.
+    // fetchActionableCounts already guards its OWN count/loading writes
+    // against a stale scope landing late (the `scope-flip race guard` tests
+    // above) — but that guard doesn't stop setActionableScope's caller-level
+    // continuation from running anyway. A stale call (superseded by a second
+    // setActionableScope before the first's count fetch resolved) could
+    // still apply a default selection from whatever counts happened to be on
+    // screen and fire a wasted forced preview fetch. The second (current)
+    // call self-heals the final selection, but the wasted fetch — and a
+    // transient wrong-chip flash — still happened without a guard here.
+    test(
+        "a stale scope's post-await continuation does not apply a default "
+        'selection or fire an extra preview fetch', () async {
+      grantAll();
+      auth.currentUser.value = _user('me@x.com'); // selectedFilterUser null
+
+      // Leftover state from before the race starts — simulates whatever was
+      // already on screen. Deliberately distinct from the real mine-scope
+      // counts set below, so a premature read is distinguishable from a
+      // correct one.
+      controller.actionableCounts.assignAll({
+        'Purchase Order': 0,
+        'Purchase Receipt': 0,
+        'Stock Entry': 0,
+        'Delivery Note': 2,
+        'Packing Slip': 0,
+      });
+
+      // Everyone-scope counts are irrelevant here: fetchActionableCounts's own
+      // guard already drops a stale scope's count write regardless of the fix
+      // under test, so C1 never gets to publish these.
+      for (final c in kActionableDocConfigs) {
+        api.everyoneCounts[c.doctype] = 0;
+      }
+      // Real mine-scope counts: only Stock Entry has work.
+      for (final c in kActionableDocConfigs) {
+        api.counts[c.doctype] = 0;
+      }
+      api.counts['Stock Entry'] = 4;
+      api.listRows['Stock Entry'] = [
+        {
+          'name': 'SE-0001',
+          'stock_entry_type': 'Material Issue',
+          'posting_date': '2026-07-12',
+          'owner': 'me@x.com',
+        }
+      ];
+      api.listRows['Delivery Note'] = [dnRow('DN-0001')];
+
+      api.mineGate = Completer<void>();
+      api.everyoneGate = Completer<void>();
+
+      // C1: scope flips mine -> everyone; its count fetch is left in flight.
+      final futA = controller.setActionableScope(ActionableScope.everyone);
+      // C2: scope flips back everyone -> mine before C1 resolves; also left
+      // in flight. Both fetches issued all their count queries synchronously
+      // (before suspending on Future.wait), so C1 captured everyone filters
+      // and C2 captured mine filters.
+      final futB = controller.setActionableScope(ActionableScope.mine);
+      expect(controller.actionableScope.value, ActionableScope.mine);
+
+      // C1 (now stale) resolves FIRST.
+      api.everyoneGate!.complete();
+      await futA;
+
+      // The guard must short-circuit C1's continuation entirely: no default
+      // selection applied, no preview fetch fired.
+      expect(controller.selectedActionable.value, isNull,
+          reason:
+              "C1's stale continuation must not select a chip after losing "
+              'the scope race');
+      expect(api.listQueries, isEmpty,
+          reason:
+              "C1's stale continuation must not fire a wasted preview fetch");
+
+      // C2 (current) resolves and applies the correct default selection.
+      api.mineGate!.complete();
+      await futB;
+
+      expect(controller.selectedActionable.value, 'Stock Entry',
+          reason: 'the only doctype with work under the final (mine) scope');
+      expect(api.listQueries.map((q) => q.doctype).toList(), ['Stock Entry'],
+          reason:
+              'exactly one preview fetch — C1 must not have queued a second, '
+              'wasted one for Delivery Note');
+    });
   });
 }
