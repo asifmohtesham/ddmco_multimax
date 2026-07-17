@@ -314,11 +314,16 @@ the first time, since the form was previously read-only and had nothing to lose.
 **Known edge case — sheet dismissal.** `ItemFormScreen` serves both a route and a
 bottom sheet; the sheet is opened from the dashboard scan flow with
 `enableDrag: true` (`home_controller.dart:607-626`). `PopScope` guards the back
-button but does **not** reliably intercept drag-to-dismiss, so a user could drag away
-unsaved rules. Resolution: when the form is modal (`isModal` is already computed at
-`item_form_screen.dart:23`) and `isDirty` is true, the implementation must either
-flip the sheet to `enableDrag: false` or intercept dismissal — to be settled during
-planning, with a widget test covering it. Not left to chance.
+button but does **not** intercept drag-to-dismiss, which calls `Navigator.pop`
+directly, so a user could drag away unsaved rules.
+
+**Resolved during planning:** `Get.bottomSheet`'s `enableDrag` is fixed at open time
+and cannot track dirty state, so the item sheet is opened with
+`enableDrag: false` and the existing Close button
+(`item_form_screen.dart:37-45`) is routed through the same confirm-discard as
+`PopScope`. The trade-off — no swipe-to-dismiss on the item sheet — is accepted in
+exchange for a deterministic guard; the Close button already exists and is
+unchanged in position.
 
 ### Permissions
 
@@ -340,24 +345,40 @@ Gate on **`Item:write`** — exactly what the server enforces for
 
 | File | Purpose |
 |---|---|
+| `lib/app/modules/item/form/reorder_rules.dart` | Pure v15 validation + type-default logic (no GetX, no network) |
 | `lib/app/modules/item/form/widgets/reorder_rule_sheet.dart` | Bottom-sheet row editor |
 | `lib/app/modules/item/form/widgets/reorder_rule_card.dart` | One rule as a card |
-| `lib/app/modules/item/form/widgets/auto_indent_banner.dart` | auto_indent-off warning |
 | `test/unit/item_reorder_model_test.dart` | `fromJson`/`toJson` round-trip |
-| `test/unit/item_form_reorder_controller_test.dart` | Validation + save path |
-| `test/widget/reorder_rule_sheet_test.dart` | Dark-mode surfaces, spinner repaint |
+| `test/unit/reorder_rules_test.dart` | Pure validation rules |
+| `test/unit/item_form_reorder_controller_test.dart` | Controller state + save path |
+| `test/widget/reorder_rule_card_test.dart` | Card rendering + dark-mode/contrast |
+| `test/widget/reorder_rule_sheet_test.dart` | Sheet fields + dark-mode surface |
+| `test/widget/reorder_tab_test.dart` | Save-bar spinner repaint |
+
+> No `auto_indent_banner.dart`: the existing `InlineBanner`
+> (`lib/app/modules/global_widgets/inline_banner.dart`) already implements this
+> spec's status-tint convention exactly — `BannerType.warning` renders an
+> `orange500` α0.13 fill with `orange700`/`orange300` ink — and is already
+> covered by `test/widget/status_ink_contrast_test.dart`. Reuse it.
+>
+> Likewise no bespoke warehouse picker: `WarehousePickerSheet`
+> (`lib/app/modules/global_widgets/warehouse_picker_sheet.dart`) already offers
+> search, a themed surface, and a `groupNames` set for tagging group warehouses.
 
 ### Modified
 
 | File | Change |
 |---|---|
 | `lib/app/data/models/item_model.dart` | `ItemReorder` class (first `toJson`); `Item` gains `reorderLevels`, `isStockItem`, `defaultMaterialRequestType`, `modified` |
-| `lib/app/data/providers/item_provider.dart` | `updateReorderLevels()`, `getAutoIndentEnabled()` — first writes in this provider |
-| `lib/app/data/providers/warehouse_provider.dart` | `getWarehouses()` gains group-only support (currently hardcodes `is_group: 0` unless `includeGroups`) |
-| `lib/app/modules/item/form/item_form_controller.dart` | First write path: `reorderRows`, dirty snapshot, `isSavingReorder`, `saveReorderLevels()`, validation |
+| `lib/app/data/providers/item_provider.dart` | `updateReorderLevels()`, `getStockSettings()` — first write in this provider |
+| `lib/app/data/providers/warehouse_provider.dart` | `getWarehouses()` gains an `isGroup` filter (currently hardcodes `is_group: 0` unless `includeGroups`) |
+| `lib/app/modules/item/form/item_form_controller.dart` | First write path: `reorderRows`, dirty snapshot, `isSavingReorder`, `saveReorderLevels()`; gains `OptimisticLockingMixin` |
 | `lib/app/modules/item/form/item_tab_controller.dart` | `length: 4` → `5` |
-| `lib/app/modules/item/form/item_form_screen.dart` | 5th tab + body; `PopScope` |
+| `lib/app/modules/item/form/item_form_screen.dart` | 5th tab + body; `PopScope`; guarded Close |
+| `lib/app/modules/item/form/item_form_binding.dart` | Register `WarehouseProvider` |
+| `lib/app/modules/home/home_controller.dart` | `enableDrag: false` on the item sheet; register `WarehouseProvider` |
 | `lib/app/data/constants/permission_entries.dart` | `(doctype: 'Item', permType: 'write')` |
+| `pubspec.yaml` | `2.11.0+50` → `2.12.0+51` |
 
 ## Testing
 
@@ -421,11 +442,10 @@ It reads and writes stock `Item.reorder_levels` on a stock v15 instance.
 auto_indent handling) were resolved with the user on 2026-07-17. The seven remaining
 calls were made by Claude with rationale recorded inline above; each is reversible.
 
-**Deferred to planning (mechanism, not intent):**
+**Resolved during planning:**
 
-- How modal dismissal is blocked while dirty — `enableDrag: false` vs intercepting
-  the dismissal. The requirement is settled (unsaved rules must not be silently
-  droppable); only the mechanism is open. See *Dirty tracking*.
+- Modal dismissal while dirty → `enableDrag: false` on the item sheet plus a
+  confirm-guarded Close button. See *Dirty tracking*.
 
 **Flagged for empirical verification, does not block this build:**
 
