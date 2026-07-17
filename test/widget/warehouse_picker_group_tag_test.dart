@@ -33,4 +33,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Group'), findsNothing);
   });
+
+  // Regression: rendering a non-empty list must not throw the framework
+  // assertion "ListTile background color or ink splashes may be invisible ...
+  // wrapped in a DecoratedBox that has a background color". Tapping a row must
+  // select it and dismiss the sheet. Presented via showModalBottomSheet so the
+  // row's Navigator.pop() has a real route to pop.
+  testWidgets('tapping a row selects the warehouse and dismisses the sheet',
+      (tester) async {
+    String? selected;
+    await tester.pumpWidget(app(Builder(
+      builder: (context) => Center(
+        child: ElevatedButton(
+          onPressed: () => showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => WarehousePickerSheet(
+              warehouses: const ['Stores A - M', 'Stores B - M'],
+              isLoading: false,
+              onSelected: (wh) => selected = wh,
+            ),
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    )));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Non-empty list renders (no assertion thrown during build).
+    expect(find.text('Stores A - M'), findsOneWidget);
+    expect(find.text('Stores B - M'), findsOneWidget);
+
+    await tester.tap(find.text('Stores B - M'));
+    await tester.pumpAndSettle();
+
+    expect(selected, 'Stores B - M');
+    // Sheet dismissed.
+    expect(find.text('Stores A - M'), findsNothing);
+  });
 }
