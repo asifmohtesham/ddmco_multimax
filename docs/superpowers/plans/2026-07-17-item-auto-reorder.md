@@ -20,6 +20,7 @@ Every task's requirements implicitly include this section.
 - **Status colours as text** use the `AppColors` ramp: x700 in light, x300 in dark. Status tints: fill `x500.withValues(alpha: 0.13)`, border ≈ alpha 0.35.
 - **Async feedback:** any control triggering async work uses `AsyncFilledButton`/`AsyncIconButton` driven by a controller `RxBool`, set and cleared in a `finally`, with a re-entrancy guard `if (busy.value) return;` before launching work.
 - **Do not re-implement shared widgets privately.** Use `DocSectionCard`, `DocDetailRow`, `DocPickerField`, `FormEmptyState`, `InlineBanner`, `WarehousePickerSheet`, `DocTypeGuard`, `AsyncFilledButton`.
+- **Do not hand-roll number formatting.** `FormattingHelper` (`lib/app/data/utils/formatting_helper.dart`) already provides `formatQtyGrouped(double?)` → `2400.0` renders `"2,400"`, `2400.5` renders `"2,400.5"` (display) and `formatQty(double?)` → `2400.0` renders `"2400"` (plain — use for editable fields, since separators break `double.tryParse`).
 - **Dart import collision:** GetX and Dio both export `Response`. In providers and tests, import `package:get/get.dart' hide Response`. In `item_form_controller.dart` both are imported unhidden and it compiles only because the type name is never written — always use `final response = await ...`, never `Response response = ...`.
 - **Verbatim v15 strings** (copy exactly, do not "fix"):
   - Section label: `Auto re-order`
@@ -1462,6 +1463,7 @@ Create `lib/app/modules/item/form/widgets/reorder_rule_card.dart`:
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 /// One `Item.reorder_levels` row.
 ///
@@ -1544,8 +1546,10 @@ class ReorderRuleCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Re-order at ${_qty(rule.warehouseReorderLevel)} · '
-                  'Order ${_qty(rule.warehouseReorderQty)}',
+                  'Re-order at '
+                  '${FormattingHelper.formatQtyGrouped(rule.warehouseReorderLevel)}'
+                  ' · Order '
+                  '${FormattingHelper.formatQtyGrouped(rule.warehouseReorderQty)}',
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: scheme.textMuted),
                 ),
@@ -1579,21 +1583,12 @@ class ReorderRuleCard extends StatelessWidget {
       ),
     );
   }
-
-  /// Trims a trailing `.0` so 2400.0 reads as "2,400" not "2400.0".
-  String _qty(double v) {
-    final s = v == v.roundToDouble()
-        ? v.toStringAsFixed(0)
-        : v.toString();
-    final n = int.tryParse(s);
-    if (n == null) return s;
-    return n.toString().replaceAllMapped(
-          RegExp(r'(\d)(?=(\d{3})+$)'),
-          (m) => '${m[1]},',
-        );
-  }
 }
 ```
+
+> `FormattingHelper.formatQtyGrouped` (`lib/app/data/utils/formatting_helper.dart:80`)
+> already renders `2400.0` → `"2,400"` and `2400.5` → `"2,400.5"` via a shared
+> `NumberFormat('#,##0.##')`. Do not hand-roll a thousands separator.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1789,6 +1784,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
 import 'package:multimax/app/modules/global_widgets/warehouse_picker_sheet.dart';
 import 'package:multimax/app/modules/item/form/reorder_rules.dart';
@@ -1845,8 +1841,10 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   }
 
   /// Zero renders blank so the field reads as "unset" rather than "0".
-  String _initialNum(double v) =>
-      v == 0 ? '' : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString());
+  ///
+  /// Uses formatQty, not formatQtyGrouped: this seeds an editable numeric
+  /// field, and thousands separators would not survive double.tryParse.
+  String _initialNum(double v) => v == 0 ? '' : FormattingHelper.formatQty(v);
 
   @override
   void dispose() {
