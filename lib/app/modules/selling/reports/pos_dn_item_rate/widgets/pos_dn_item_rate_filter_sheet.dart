@@ -150,17 +150,26 @@ class _PosDnFilterSheetState extends State<_PosDnFilterSheet> {
                 const SizedBox(height: 8),
 
                 // ── Switches ────────────────────────────────────────────
-                Obx(() => SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Show already-mapped'),
-                      value: c.showMapped.value,
-                      onChanged: (v) => c.showMapped.value = v,
+                // Each SwitchListTile gets a transparent Material so its ink +
+                // background paint above the sheet's colour-painted Container
+                // instead of being hidden by it.
+                Obx(() => Material(
+                      color: Colors.transparent,
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Show already-mapped'),
+                        value: c.showMapped.value,
+                        onChanged: (v) => c.showMapped.value = v,
+                      ),
                     )),
-                Obx(() => SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Only lines with a customer code'),
-                      value: c.onlyCoded.value,
-                      onChanged: (v) => c.onlyCoded.value = v,
+                Obx(() => Material(
+                      color: Colors.transparent,
+                      child: SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Only lines with a customer code'),
+                        value: c.onlyCoded.value,
+                        onChanged: (v) => c.onlyCoded.value = v,
+                      ),
                     )),
                 ],
               ),
@@ -353,15 +362,19 @@ class _LinkSearchSheetState extends State<_LinkSearchSheet> {
                 ? const Center(child: CircularProgressIndicator())
                 : _options.isEmpty
                     ? const Center(child: Text('No matches'))
-                    : ListView.separated(
-                        itemCount: _options.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) => ListTile(
-                          title: Text(_options[i]),
-                          onTap: () {
-                            Navigator.of(ctx).pop();
-                            widget.onSelected(_options[i]);
-                          },
+                    : Material(
+                        color: Colors.transparent,
+                        child: ListView.separated(
+                          itemCount: _options.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (ctx, i) => ListTile(
+                            title: Text(_options[i]),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              widget.onSelected(_options[i]);
+                            },
+                          ),
                         ),
                       ),
           ),

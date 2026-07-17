@@ -100,54 +100,57 @@ class PurchaseReceiptPoLinkSheet extends StatelessWidget {
                           ),
                         ),
                       )
-                    : ListView.separated(
-                        controller: scrollController,
-                        padding: EdgeInsets.only(
-                          bottom:
-                              MediaQuery.of(context).padding.bottom + 16,
-                        ),
-                        itemCount: candidates.length,
-                        separatorBuilder: (_, __) => Divider(
-                          height: 1,
-                          indent: 20,
-                          endIndent: 16,
-                          color: cs.outlineVariant.withValues(alpha: 0.5),
-                        ),
-                        itemBuilder: (context, index) {
-                          final c = candidates[index];
-                          final remaining = (c.item.qty - c.item.receivedQty)
-                              .clamp(0, double.infinity)
-                              .toDouble();
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 4),
-                            leading: CircleAvatar(
-                              backgroundColor: cs.primaryContainer,
-                              foregroundColor: cs.onPrimaryContainer,
-                              child: const Icon(Icons.inventory_2_outlined,
-                                  size: 20),
-                            ),
-                            title: Text(
-                              '${c.poName} • ${c.item.name}',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'monospace',
-                                color: cs.onSurface,
+                    : Material(
+                        color: Colors.transparent,
+                        child: ListView.separated(
+                          controller: scrollController,
+                          padding: EdgeInsets.only(
+                            bottom:
+                                MediaQuery.of(context).padding.bottom + 16,
+                          ),
+                          itemCount: candidates.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            indent: 20,
+                            endIndent: 16,
+                            color: cs.outlineVariant.withValues(alpha: 0.5),
+                          ),
+                          itemBuilder: (context, index) {
+                            final c = candidates[index];
+                            final remaining = (c.item.qty - c.item.receivedQty)
+                                .clamp(0, double.infinity)
+                                .toDouble();
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 20, vertical: 4),
+                              leading: CircleAvatar(
+                                backgroundColor: cs.primaryContainer,
+                                foregroundColor: cs.onPrimaryContainer,
+                                child: const Icon(Icons.inventory_2_outlined,
+                                    size: 20),
                               ),
-                            ),
-                            subtitle: Text(
-                              'Ordered ${_fmt(c.item.qty)} • '
-                              'Received ${_fmt(c.item.receivedQty)} • '
-                              'Remaining ${_fmt(remaining)}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: cs.onSurfaceVariant,
+                              title: Text(
+                                '${c.poName} • ${c.item.name}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                  color: cs.onSurface,
+                                ),
                               ),
-                            ),
-                            trailing: Icon(Icons.chevron_right,
-                                color: cs.onSurfaceVariant),
-                            onTap: () => Navigator.of(context).pop(c),
-                          );
-                        },
+                              subtitle: Text(
+                                'Ordered ${_fmt(c.item.qty)} • '
+                                'Received ${_fmt(c.item.receivedQty)} • '
+                                'Remaining ${_fmt(remaining)}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                              trailing: Icon(Icons.chevron_right,
+                                  color: cs.onSurfaceVariant),
+                              onTap: () => Navigator.of(context).pop(c),
+                            );
+                          },
+                        ),
                       ),
               ),
             ],

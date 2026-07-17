@@ -114,28 +114,31 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
                 ? const Center(child: CircularProgressIndicator())
                 : _filtered.isEmpty
                     ? const Center(child: Text('No warehouses found'))
-                    : ListView.separated(
-                        itemCount: _filtered.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final wh = _filtered[i];
-                          final isGroup = widget.groupNames.contains(wh);
-                          return ListTile(
-                            title: Text(wh),
-                            trailing: isGroup ? _groupTag(ctx) : null,
-                            onTap: () {
-                              // Use Navigator.of(ctx).pop() instead of Get.back().
-                              // Get.back() unconditionally calls
-                              // Get.closeCurrentSnackbar() before popping; when a
-                              // SnackbarController is queued but not yet attached to
-                              // the Overlay, its late AnimationController throws
-                              // LateInitializationError.
-                              Navigator.of(ctx).pop();
-                              widget.onSelected(wh);
-                            },
-                          );
-                        },
+                    : Material(
+                        color: Colors.transparent,
+                        child: ListView.separated(
+                          itemCount: _filtered.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final wh = _filtered[i];
+                            final isGroup = widget.groupNames.contains(wh);
+                            return ListTile(
+                              title: Text(wh),
+                              trailing: isGroup ? _groupTag(ctx) : null,
+                              onTap: () {
+                                // Use Navigator.of(ctx).pop() instead of Get.back().
+                                // Get.back() unconditionally calls
+                                // Get.closeCurrentSnackbar() before popping; when a
+                                // SnackbarController is queued but not yet attached to
+                                // the Overlay, its late AnimationController throws
+                                // LateInitializationError.
+                                Navigator.of(ctx).pop();
+                                widget.onSelected(wh);
+                              },
+                            );
+                          },
+                        ),
                       ),
           ),
         ],
