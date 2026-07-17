@@ -73,46 +73,51 @@ class PurchaseReceiptResumeSheet extends StatelessWidget {
 
             // Draft list
             Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                itemCount: drafts.length,
-                separatorBuilder: (_, __) => Divider(
-                  height: 1,
-                  indent: 72,
-                  endIndent: 16,
-                  color: cs.outlineVariant.withValues(alpha: 0.5),
-                ),
-                itemBuilder: (context, index) {
-                  final d = drafts[index];
-                  return ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                    leading: CircleAvatar(
-                      backgroundColor: cs.primaryContainer,
-                      foregroundColor: cs.onPrimaryContainer,
-                      child: const Icon(Icons.edit_document, size: 20),
-                    ),
-                    title: Text(
-                      d.name,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'monospace',
-                        color: cs.onSurface,
+              // Transparent Material so ListTile ink + backgrounds paint above
+              // the sheet's colour-painted Container instead of being hidden.
+              child: Material(
+                color: Colors.transparent,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  itemCount: drafts.length,
+                  separatorBuilder: (_, __) => Divider(
+                    height: 1,
+                    indent: 72,
+                    endIndent: 16,
+                    color: cs.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                  itemBuilder: (context, index) {
+                    final d = drafts[index];
+                    return ListTile(
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                      leading: CircleAvatar(
+                        backgroundColor: cs.primaryContainer,
+                        foregroundColor: cs.onPrimaryContainer,
+                        child: const Icon(Icons.edit_document, size: 20),
                       ),
-                    ),
-                    subtitle: d.postingDate.isEmpty
-                        ? null
-                        : Text(
-                            d.postingDate,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant),
-                          ),
-                    trailing:
-                        Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
-                    onTap: () => onResume(d.name),
-                  );
-                },
+                      title: Text(
+                        d.name,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      subtitle: d.postingDate.isEmpty
+                          ? null
+                          : Text(
+                              d.postingDate,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                      trailing:
+                          Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                      onTap: () => onResume(d.name),
+                    );
+                  },
+                ),
               ),
             ),
 

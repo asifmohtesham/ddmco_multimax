@@ -354,10 +354,16 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
     }
     return Container(
       color: scheme.bg,
-      child: ListView(
-        // Clear the Android gesture/nav bar so the last row isn't hidden.
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-        children: children,
+      // Transparent Material so ListTile ink + backgrounds paint above the
+      // colour-painted Container instead of being hidden by it.
+      child: Material(
+        color: Colors.transparent,
+        child: ListView(
+          // Clear the Android gesture/nav bar so the last row isn't hidden.
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+          children: children,
+        ),
       ),
     );
   }
@@ -841,38 +847,44 @@ class _ScopedResultsState extends State<_ScopedResults> {
     final bottom = MediaQuery.of(context).padding.bottom;
     return Container(
       color: scheme.bg,
-      child: ListView.builder(
-        controller: _scrollController,
-        itemCount: _items.length + 2, // header + rows + footer
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            final header = widget.delegate._sectionHeader(context, widget.target);
-            if (widget.target.doctype == 'Item' &&
-                widget.onSetWarehouse != null) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  header,
-                  widget.delegate
-                      ._setWarehouseBanner(context, widget.onSetWarehouse!),
-                ],
-              );
+      // Transparent Material so ListTile ink + backgrounds paint above the
+      // colour-painted Container instead of being hidden by it.
+      child: Material(
+        color: Colors.transparent,
+        child: ListView.builder(
+          controller: _scrollController,
+          itemCount: _items.length + 2, // header + rows + footer
+          itemBuilder: (context, i) {
+            if (i == 0) {
+              final header =
+                  widget.delegate._sectionHeader(context, widget.target);
+              if (widget.target.doctype == 'Item' &&
+                  widget.onSetWarehouse != null) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    header,
+                    widget.delegate
+                        ._setWarehouseBanner(context, widget.onSetWarehouse!),
+                  ],
+                );
+              }
+              return header;
             }
-            return header;
-          }
-          if (i == _items.length + 1) {
-            return ListEndFooter(hasMore: _hasMore, bottomPadding: bottom);
-          }
-          final item = _items[i - 1];
-          return widget.delegate._resultTile(
-            context,
-            widget.target,
-            item,
-            (_, it) => widget.onTap(it),
-            balances: _balances,
-            balancesLoading: false,
-          );
-        },
+            if (i == _items.length + 1) {
+              return ListEndFooter(hasMore: _hasMore, bottomPadding: bottom);
+            }
+            final item = _items[i - 1];
+            return widget.delegate._resultTile(
+              context,
+              widget.target,
+              item,
+              (_, it) => widget.onTap(it),
+              balances: _balances,
+              balancesLoading: false,
+            );
+          },
+        ),
       ),
     );
   }
