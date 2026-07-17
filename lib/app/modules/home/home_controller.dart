@@ -427,6 +427,7 @@ class HomeController extends GetxController {
     final cfg = kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
     if (cfg == null) {
       previewDocs.clear();
+      isLoadingPreview.value = false;
       return;
     }
 

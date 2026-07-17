@@ -66,6 +66,46 @@ class _FakeApiProvider extends ApiProvider {
       data: {'message': value},
     );
   }
+
+  /// Rows [getDocumentList] returns for a doctype, keyed by doctype. A test
+  /// sets this before triggering a fetch; missing entries return an empty list.
+  final Map<String, List<Map<String, dynamic>>> listRows = {};
+
+  /// Per-doctype completers: when a doctype has an entry here, its
+  /// [getDocumentList] call awaits the completer before resolving — lets a
+  /// test hold two overlapping preview fetches in flight and resolve them out
+  /// of order to reproduce the stale-selection race.
+  final Map<String, Completer<void>> listGates = {};
+
+  /// Every [getDocumentList] query issued, in call order.
+  final List<({String doctype, Map<String, dynamic>? filters})> listQueries =
+      [];
+
+  @override
+  Future<Response> getDocumentList(
+    String doctype, {
+    int limit = 20,
+    int limitStart = 0,
+    List<String>? fields,
+    String? groupBy = '',
+    Map<String, dynamic>? filters,
+    List<List<dynamic>>? filterTuples,
+    Map<String, dynamic>? orFilters,
+    List<List<dynamic>>? orFilterTuples,
+    String orderBy = 'modified desc',
+  }) async {
+    listQueries.add((doctype: doctype, filters: filters));
+    // Capture the rows BEFORE awaiting the gate, so a later map mutation
+    // can't change what an already-issued request resolves to.
+    final rows = listRows[doctype] ?? const <Map<String, dynamic>>[];
+    final gate = listGates[doctype];
+    if (gate != null) await gate.future;
+    return Response(
+      requestOptions: RequestOptions(path: '/api/resource/$doctype'),
+      statusCode: 200,
+      data: {'data': rows},
+    );
+  }
 }
 
 /// PermissionService fake: [hasAccess] returns whatever [access] holds for a
@@ -164,6 +204,36 @@ void main() {
   /// A plain snapshot of the controller's reactive count map, for equality.
   Map<String, int> snapshot() =>
       Map<String, int>.from(controller.actionableCounts);
+
+  /// A Purchase Order preview row — matches its config's previewFields
+  /// (`name`, `supplier`, `transaction_date`, `owner`).
+  Map<String, dynamic> poRow(String name,
+          {String supplier = 'Acme', String owner = 'a@b.com'}) =>
+      {
+        'name': name,
+        'supplier': supplier,
+        'transaction_date': '2026-07-10',
+        'owner': owner,
+      };
+
+  /// A Delivery Note preview row — matches its config's previewFields
+  /// (`name`, `customer`, `posting_date`, `owner`).
+  Map<String, dynamic> dnRow(String name,
+          {String customer = 'Beta Co', String owner = 'a@b.com'}) =>
+      {
+        'name': name,
+        'customer': customer,
+        'posting_date': '2026-07-11',
+        'owner': owner,
+      };
+
+  /// Flushes the microtask queue so a fire-and-forget `fetchPreviewDocs()`
+  /// call (launched via `selectActionable`, which is `void` and cannot be
+  /// awaited directly) has a chance to run to completion. `Future.delayed`
+  /// schedules a Timer, and Dart drains the entire microtask queue before any
+  /// Timer callback fires, so this deterministically waits out any pending
+  /// `await` chain rather than racing a fixed delay.
+  Future<void> flush() => Future<void>.delayed(Duration.zero);
 
   group('fetchActionableCounts', () {
     group('scope-flip race guard', () {
@@ -353,6 +423,172 @@ void main() {
         expect(snapshot(), allAt(9));
         expect(api.queries.length, kActionableDocConfigs.length * 2);
       });
+    });
+  });
+
+  group('fetchPreviewDocs', () {
+    group('stale-selection race guard', () {
+      test(
+          'a stale doctype fetch does not clobber the newer selection\'s '
+          'docs or loading', () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+        api.listRows['Delivery Note'] = [dnRow('DN-0001')];
+        api.listGates['Purchase Order'] = Completer<void>();
+        api.listGates['Delivery Note'] = Completer<void>();
+
+        // Fetch A: select Purchase Order — starts a gated fetch, left in
+        // flight (selectActionable is void, so the fetch runs fire-and-forget;
+        // it still executes synchronously up to its first await).
+        controller.selectActionable('Purchase Order');
+        expect(controller.isLoadingPreview.value, isTrue);
+
+        // The selection flips to Delivery Note before A resolves — fetch B
+        // starts, also gated.
+        controller.selectActionable('Delivery Note');
+        expect(controller.isLoadingPreview.value, isTrue);
+
+        // B (the current selection) resolves FIRST and wins.
+        api.listGates['Delivery Note']!.complete();
+        await flush();
+        expect(controller.previewDocs.map((r) => r.name).toList(),
+            ['DN-0001']);
+        expect(controller.isLoadingPreview.value, isFalse);
+
+        // A (now stale) resolves LAST — its `doctype == selectedActionable.value`
+        // guard must drop the result rather than overwrite Delivery Note's
+        // preview or re-toggle the loading flag.
+        api.listGates['Purchase Order']!.complete();
+        await flush();
+        expect(controller.previewDocs.map((r) => r.name).toList(),
+            ['DN-0001'],
+            reason:
+                'stale Purchase Order fetch must not overwrite Delivery Note preview');
+        expect(controller.isLoadingPreview.value, isFalse);
+      });
+
+      test('a stale fetch resolving mid-flight does not clear loading early',
+          () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+        api.listRows['Delivery Note'] = [dnRow('DN-0001')];
+        api.listGates['Purchase Order'] = Completer<void>();
+        api.listGates['Delivery Note'] = Completer<void>();
+
+        controller.selectActionable('Purchase Order');
+        controller.selectActionable('Delivery Note');
+
+        // The stale (Purchase Order) fetch completes while the current
+        // (Delivery Note) fetch is still in flight. Its guarded finally-block
+        // must leave loading = true and must not publish its docs.
+        api.listGates['Purchase Order']!.complete();
+        await flush();
+        expect(controller.isLoadingPreview.value, isTrue,
+            reason: 'current Delivery Note fetch is still loading');
+        expect(controller.previewDocs, isEmpty,
+            reason:
+                'stale fetch must not publish docs for the newer selection');
+
+        // Once the current fetch resolves it publishes its docs and clears
+        // loading.
+        api.listGates['Delivery Note']!.complete();
+        await flush();
+        expect(controller.previewDocs.map((r) => r.name).toList(),
+            ['DN-0001']);
+        expect(controller.isLoadingPreview.value, isFalse);
+      });
+    });
+
+    test(
+        'selecting ToDo with a doc fetch in flight synchronously clears docs '
+        'and leaves loading false', () async {
+      controller.selectedFilterUser.value = _user('a@b.com');
+      api.listRows['Purchase Order'] = [poRow('PO-0001')];
+      api.listGates['Purchase Order'] = Completer<void>();
+
+      controller.selectActionable('Purchase Order');
+      expect(controller.isLoadingPreview.value, isTrue);
+
+      // ToDo needs no fetch — the early return clears docs and loading
+      // synchronously, without waiting on the in-flight Purchase Order fetch.
+      controller.selectActionable('ToDo');
+      expect(controller.previewDocs, isEmpty);
+      expect(controller.isLoadingPreview.value, isFalse);
+
+      // The stale Purchase Order fetch resolving afterwards must not
+      // resurrect docs or loading: its `doctype == selectedActionable.value`
+      // guard fails ('Purchase Order' != 'ToDo').
+      api.listGates['Purchase Order']!.complete();
+      await flush();
+      expect(controller.previewDocs, isEmpty);
+      expect(controller.isLoadingPreview.value, isFalse);
+    });
+
+    group('cache keying', () {
+      test(
+          're-fetching the same selection serves from cache; force clears '
+          'and refetches', () async {
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-0001']);
+        expect(api.listQueries.length, 1);
+
+        // Change the underlying data and re-fetch without force (mirrors the
+        // re-fetch setActionableScope issues for an unchanged selection):
+        // served from the cache, so no new query and the stale data change
+        // is NOT observed.
+        api.listRows['Purchase Order'] = [poRow('PO-9999')];
+        await controller.fetchPreviewDocs();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-0001'],
+            reason: 'served from cache');
+        expect(api.listQueries.length, 1, reason: 'no refetch on a cache hit');
+
+        // force=true clears the cache, so the new data lands.
+        await controller.fetchPreviewDocs(force: true);
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-9999']);
+        expect(api.listQueries.length, 2);
+      });
+
+      test('a different viewed user under mine scope is a cache miss',
+          () async {
+        controller.actionableScope.value = ActionableScope.mine;
+        controller.selectedFilterUser.value = _user('a@b.com');
+        api.listRows['Purchase Order'] = [poRow('PO-0001')];
+
+        controller.selectActionable('Purchase Order');
+        await flush();
+        expect(api.listQueries.length, 1);
+
+        controller.selectedFilterUser.value = _user('c@d.com');
+        api.listRows['Purchase Order'] = [poRow('PO-2222')];
+        await controller.fetchPreviewDocs();
+        expect(
+            controller.previewDocs.map((r) => r.name).toList(), ['PO-2222']);
+        expect(api.listQueries.length, 2,
+            reason: 'different viewed user -> different cache key -> refetch');
+      });
+    });
+
+    test('a fetched row is mapped via docRowFor with an owner label in the subtitle',
+        () async {
+      controller.selectedFilterUser.value = _user('a@b.com');
+      api.listRows['Purchase Order'] =
+          [poRow('PO-0001', supplier: 'Acme', owner: 'jawwad@x.com')];
+
+      controller.selectActionable('Purchase Order');
+      await flush();
+
+      expect(controller.previewDocs, hasLength(1));
+      expect(controller.previewDocs.first.name, 'PO-0001');
+      // ownerLabelFor falls back to the email's local part when the owner is
+      // not in namesByEmail (userList is empty in this test setup).
+      expect(controller.previewDocs.first.subtitle, contains('jawwad'));
     });
   });
 }
