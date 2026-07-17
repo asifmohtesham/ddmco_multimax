@@ -21,7 +21,7 @@ class ItemTabController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    tabController = TabController(length: 4, vsync: this);
+    tabController = TabController(length: 5, vsync: this);
     tabController.addListener(() {
       // indexIsChanging is true during the animation; we only want the
       // settled index after the user has fully committed to a tab.

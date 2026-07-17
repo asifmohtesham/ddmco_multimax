@@ -14,6 +14,14 @@ import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/doc_detail_row.dart';
 import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
+import 'package:multimax/app/modules/item/form/widgets/reorder_rule_card.dart';
+import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -51,6 +59,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                   Tab(text: 'Stock Levels'),
                   Tab(text: 'Attributes'),
                   Tab(text: 'Attachments'),
+                  Tab(text: 'Re-order'),
                 ],
               ),
             ),
@@ -71,6 +80,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                         _buildStockLevelsTab(context, cs),
                         _buildAttributesTab(context, item, cs),
                         _buildAttachmentsTab(context, cs),
+                        _buildReorderTab(context, item, cs),
                       ],
                     ),
         ),
@@ -755,6 +765,191 @@ class ItemFormScreen extends GetView<ItemFormController> {
           ),
         ),
       ),
+    );
+  }
+
+  // ── Re-order Tab ──────────────────────────────────────────────────────────
+
+  /// Loads warehouses for the rule sheet's pickers.
+  ///
+  /// Filters mirror erpnext item.js:449-473 — group warehouses for
+  /// "Check in (group)", leaf warehouses for "Request for".
+  Future<List<String>> _loadWarehouses({required bool isGroup}) async {
+    try {
+      final response =
+          await Get.find<WarehouseProvider>().getWarehouses(isGroup: isGroup);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return (response.data['data'] as List)
+            .map((w) => w['name'].toString())
+            .toList();
+      }
+    } catch (_) {
+      // Picker opens empty rather than throwing over the sheet.
+    }
+    return const [];
+  }
+
+  void _openRuleSheet(BuildContext context, {int? index}) {
+    final isNew = index == null;
+    final initial =
+        isNew ? controller.newReorderRowTemplate() : controller.reorderRows[index];
+
+    Get.bottomSheet(
+      ReorderRuleSheet(
+        initial: initial,
+        loadWarehouses: _loadWarehouses,
+        onSaved: (row) => isNew
+            ? controller.addReorderRow(row)
+            : controller.updateReorderRow(index, row),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  Widget _buildReorderTab(BuildContext context, Item item, ColorScheme cs) {
+    final scheme = context.scheme;
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    // Desk gates the section on `depends_on: "is_stock_item"`. The tab count
+    // stays static at 5 — resizing a TabController built on
+    // GetSingleTickerProviderStateMixin is fragile (see item_tab_controller.dart)
+    // — so a non-stock item gets an empty state instead of a vanishing tab.
+    if (!item.isStockItem) {
+      return Center(
+        child: const FormEmptyState(
+          icon: Icons.inventory_2_outlined,
+          message: 'Auto re-order applies to stock items only.',
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // auto_indent defaults to 0 in v15, in which case these rules never
+        // raise a Material Request. Desk only warns on save; warn always.
+        Obx(() => InlineBanner(
+              visible: !controller.autoIndentEnabled.value,
+              message: 'Auto re-order is disabled in Stock Settings. '
+                  'These rules will not raise Material Requests.',
+              type: BannerType.warning,
+            )),
+        Expanded(
+          child: Obx(() {
+            final rows = controller.reorderRows;
+            final canWrite =
+                Get.find<PermissionService>().hasAccess('Item', permType: 'write') ??
+                    false;
+
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DocSectionCard(
+                    title: 'Auto re-order',
+                    children: [
+                      Text(
+                        'Reorder level based on Warehouse',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: scheme.textMuted),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        // "overrridden" is misspelled in the ERPNext source;
+                        // kept verbatim.
+                        'Will also apply for variants unless overrridden',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: scheme.textSubtle),
+                      ),
+                      const SizedBox(height: 12),
+                      if (rows.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            'No re-order rules. Nothing will be re-ordered '
+                            'automatically for this item.',
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: scheme.textMuted),
+                          ),
+                        ),
+                      ...rows.asMap().entries.map(
+                            (e) => ReorderRuleCard(
+                              rule: e.value,
+                              index: e.key,
+                              onEdit: canWrite
+                                  ? () => _openRuleSheet(context, index: e.key)
+                                  : null,
+                              onDelete: canWrite
+                                  ? () => controller.removeReorderRow(e.key)
+                                  : null,
+                            ),
+                          ),
+                      DocTypeGuard(
+                        doctype: 'Item',
+                        permType: 'write',
+                        fallback: const SizedBox.shrink(),
+                        loading: const SizedBox.shrink(),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => _openRuleSheet(context),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add rule'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Mirrors the Desk description: a variant with no rules of
+                  // its own falls back to the template's at scheduler time.
+                  // Stored rows only are shown — inheritance is computed
+                  // server-side in memory and never persisted, so rendering the
+                  // template's rows here would misrepresent stored state.
+                  if (item.variantOf != null && rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        'No rules of its own. The template\'s rules apply '
+                        'unless you add rules here.',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: scheme.textSubtle),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ),
+        // The save bar appears only when there is something to save, so the
+        // button is never enabled-but-inert. AsyncFilledButton requires a
+        // non-null onPressed, so visibility is the disable mechanism.
+        Obx(() {
+          if (!controller.isReorderDirty.value) return const SizedBox.shrink();
+          return DocTypeGuard(
+            doctype: 'Item',
+            permType: 'write',
+            fallback: const SizedBox.shrink(),
+            loading: const SizedBox.shrink(),
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + bottomInset),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                border: Border(
+                    top: BorderSide(color: cs.outlineVariant)),
+              ),
+              child: AsyncFilledButton(
+                busy: controller.isSavingReorder,
+                onPressed: controller.saveReorderLevels,
+                icon: const Icon(Icons.save_outlined, size: 18),
+                label: 'Save re-order rules',
+                loadingLabel: 'Saving…',
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 }

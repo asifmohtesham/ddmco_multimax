@@ -16,6 +16,7 @@ const List<PermEntry> kStockPermissions = [
   (doctype: 'Packing Slip',     permType: 'read'),
   (doctype: 'Batch',            permType: 'report'), // Batch-Wise Balance History report
   (doctype: 'Item',             permType: 'report'), // Item Variant Details report
+  (doctype: 'Item',             permType: 'write'),  // Item Re-order rules editing
   (doctype: 'Stock Entry',      permType: 'report'), // Stock Balance report
   // Gate the create/edit affordances so they resolve at login (no on-screen
   // delay). create+write for one doctype share a single getdoctype fetch.
