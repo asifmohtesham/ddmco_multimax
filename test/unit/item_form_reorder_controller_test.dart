@@ -247,6 +247,44 @@ void main() {
       expect(ctrl.isSavingReorder.value, isFalse);
     });
 
+    test('a 200 save reseeds rows from the server and clears the dirty flag',
+        () async {
+      // Server persists the saved row and, per item.py:508-509, returns it
+      // with warehouse_group defaulted to the warehouse.
+      final ctrl = await loadedController();
+      ctrl.addReorderRow(const ItemReorder(
+        warehouse: 'WH-A',
+        materialRequestType: 'Purchase',
+        warehouseReorderLevel: 100,
+        warehouseReorderQty: 50,
+      ));
+      expect(ctrl.isReorderDirty.value, isTrue);
+
+      // Make the post-save re-fetch (fetchItemDetails, called again inside
+      // saveReorderLevels on a 200) return the row as the server would
+      // persist it — warehouse_group defaulted to the warehouse.
+      fakeApi.getDocumentData = _cannedItem(reorderLevels: [
+        {
+          'name': 'srv1',
+          'warehouse_group': 'WH-A',
+          'warehouse': 'WH-A',
+          'material_request_type': 'Purchase',
+          'warehouse_reorder_level': 100,
+          'warehouse_reorder_qty': 50,
+        }
+      ]);
+
+      await ctrl.saveReorderLevels();
+
+      expect(ctrl.isReorderDirty.value, isFalse,
+          reason:
+              'a successful save must reseed the dirty baseline from the server');
+      expect(ctrl.reorderRows.length, 1);
+      expect(ctrl.reorderRows.first.name, 'srv1',
+          reason: 'rows are reseeded from the server response, not the local edit');
+      expect(ctrl.reorderRows.first.warehouseGroup, 'WH-A');
+    });
+
     test('blocks a duplicate (warehouse, type) and never calls the provider',
         () async {
       final ctrl = await loadedController();
