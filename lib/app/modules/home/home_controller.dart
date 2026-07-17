@@ -29,6 +29,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -87,7 +88,7 @@ class HomeController extends GetxController {
   /// capped for the dashboard "Upcoming tasks" section.
   var upcomingTodos = <ToDo>[].obs;
 
-  /// Draft counts for the four transactional DocTypes, keyed by doctype, for
+  /// Draft counts for the five transactional DocTypes, keyed by doctype, for
   /// the currently displayed [actionableScope]. Only DocTypes the user can
   /// read appear as keys.
   final actionableCounts = <String, int>{}.obs;
@@ -96,7 +97,7 @@ class HomeController extends GetxController {
   /// drives the Tasks chip. Derived from the [fetchUpcomingTodos] fetch.
   final openTodoCount = 0.obs;
 
-  /// Mine/Everyone scope for the four document chips. Seeded from storage in
+  /// Mine/Everyone scope for the five document chips. Seeded from storage in
   /// [onInit]; the Tasks chip is unaffected by it.
   final actionableScope = ActionableScope.mine.obs;
 
@@ -107,6 +108,26 @@ class HomeController extends GetxController {
 
   /// Counts cache keyed by [actionableCacheKey] — `mine::<email>` / `all`.
   final Map<String, Map<String, int>> _actionableCountCache = {};
+
+  /// The doctype whose 3-document preview is shown ('ToDo' = the Tasks chip).
+  /// Null when nothing is actionable. Transient — not persisted.
+  final selectedActionable = RxnString();
+
+  /// The selected doctype's preview rows (empty for 'ToDo', whose rows render
+  /// as DashboardTodoCards from [upcomingTodos]).
+  final previewDocs = <ActionableDocRowData>[].obs;
+
+  /// True while the selected doctype's preview fetch is in flight.
+  final isLoadingPreview = false.obs;
+
+  /// Preview cache keyed by '<doctype>::<actionableCacheKey(scope, email)>'.
+  final Map<String, List<ActionableDocRowData>> _previewCache = {};
+
+  /// Display names for owner resolution, keyed by email, from the loaded users.
+  Map<String, String> get namesByEmail => {
+        for (final u in userList)
+          if (u.email.isNotEmpty) u.email: u.name,
+      };
 
   /// Quick Create card layout — 1 or 2 columns, persisted across sessions.
   var dashboardColumns = 1.obs;
@@ -277,6 +298,7 @@ class HomeController extends GetxController {
         fetchUpcomingTodos(),
         fetchActionableCounts(force: true),
       ]);
+      _applyDefaultSelection();
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
@@ -367,6 +389,96 @@ class HomeController extends GetxController {
     }
   }
 
+  /// Selects a chip and loads its preview. 'ToDo' renders from [upcomingTodos]
+  /// and needs no fetch.
+  void selectActionable(String doctype) {
+    if (selectedActionable.value == doctype) return;
+    selectedActionable.value = doctype;
+    fetchPreviewDocs();
+  }
+
+  /// Applies the default chip when nothing is selected or the current selection
+  /// no longer has work, then refreshes the preview. Called after counts and
+  /// todos land.
+  void _applyDefaultSelection() {
+    final current = selectedActionable.value;
+    final stillHasWork = current != null &&
+        (current == 'ToDo'
+            ? openTodoCount.value > 0
+            : (actionableCounts[current] ?? 0) > 0);
+    if (!stillHasWork) {
+      selectedActionable.value =
+          defaultActionableSelection(actionableCounts, openTodoCount.value);
+    }
+    fetchPreviewDocs(force: true);
+  }
+
+  /// Fetches the selected doctype's first 3 Draft documents, using the SAME
+  /// filter as its count and its View All list. Served from cache unless
+  /// [force]. Queries ApiProvider directly (PO/PR providers are not registered
+  /// in HomeBinding) requesting only the fields a row renders.
+  Future<void> fetchPreviewDocs({bool force = false}) async {
+    final doctype = selectedActionable.value;
+    if (doctype == null || doctype == 'ToDo') {
+      previewDocs.clear();
+      isLoadingPreview.value = false;
+      return;
+    }
+    final cfg = kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
+    if (cfg == null) {
+      previewDocs.clear();
+      return;
+    }
+
+    final scope = actionableScope.value;
+    final email = selectedFilterUser.value?.email ??
+        _authController.currentUser.value?.email;
+    final key = '$doctype::${actionableCacheKey(scope, email)}';
+
+    if (force) _previewCache.clear();
+
+    final cached = _previewCache[key];
+    if (cached != null) {
+      previewDocs.assignAll(cached);
+      isLoadingPreview.value = false;
+      return;
+    }
+
+    isLoadingPreview.value = true;
+    try {
+      final res = await _apiProvider.getDocumentList(
+        doctype,
+        filters: actionableFiltersFor(doctype, scope, email),
+        fields: cfg.previewFields,
+        limit: 3,
+        orderBy: 'creation desc',
+      );
+      final rows = <ActionableDocRowData>[];
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final names = namesByEmail;
+        for (final e in (res.data['data'] as List)) {
+          final json = Map<String, dynamic>.from(e as Map);
+          rows.add(docRowFor(
+            doctype,
+            json,
+            (owner) => ownerLabelFor(owner, names),
+            onTap: () => Get.toNamed(
+              cfg.formRoute,
+              arguments: {'name': (json['name'] ?? '').toString(), 'mode': 'view'},
+            ),
+          ));
+        }
+      }
+      _previewCache[key] = rows;
+      // Guard against a chip change landing before this fetch returns.
+      if (doctype == selectedActionable.value) previewDocs.assignAll(rows);
+    } catch (e) {
+      print('Error fetching preview docs: $e');
+    } finally {
+      if (doctype == selectedActionable.value) isLoadingPreview.value = false;
+    }
+  }
+
   /// Flips the strip scope, persists it, and loads the new scope's counts
   /// (served from cache when available, so a second flip is instant).
   void setActionableScope(ActionableScope scope) {
@@ -374,6 +486,7 @@ class HomeController extends GetxController {
     actionableScope.value = scope;
     _storageService.saveDashboardActionableScope(actionableScopeToString(scope));
     fetchActionableCounts();
+    fetchPreviewDocs();
   }
 
   /// Opens [doctype]'s list pre-filtered to Draft (+ owner under Mine), via the
