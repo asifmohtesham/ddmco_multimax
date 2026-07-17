@@ -3,7 +3,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 /// Which population the actionable count strip reflects. [mine] scopes the
-/// four document chips to the selected dashboard user (owner); [everyone] is
+/// five document chips to the selected dashboard user (owner); [everyone] is
 /// company-wide. The Tasks chip stays personal regardless.
 enum ActionableScope { mine, everyone }
 
@@ -152,13 +152,14 @@ class ActionableCountChip extends StatelessWidget {
     final scheme = context.scheme;
     final cs = Theme.of(context).colorScheme;
     final muted = data.muted;
+    final selected = data.selected;
 
     final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: scheme.fg,
+        color: selected ? cs.primary.withValues(alpha: 0.13) : scheme.fg,
         borderRadius: BorderRadius.circular(AppRadius.full),
-        border: Border.all(color: scheme.border),
+        border: Border.all(color: selected ? cs.primary : scheme.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -171,7 +172,9 @@ class ActionableCountChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: muted ? scheme.textMuted : scheme.text,
+              color: muted
+                  ? scheme.textMuted
+                  : (selected ? cs.primary : scheme.text),
             ),
           ),
           const SizedBox(width: 6),
@@ -258,8 +261,10 @@ class ActionableScopeToggle extends StatelessWidget {
   }
 }
 
-/// The wrap of actionable-count chips. Shows muted placeholder pills while
-/// [isLoading]; otherwise a [Wrap] of [ActionableCountChip]s (one per [chips]).
+/// The horizontally-scrolling row of actionable chips — a DocType selector.
+/// Never wraps (the previous Wrap spilled onto a second row). Shows muted
+/// placeholder pills while [isLoading]. Selection is carried per-chip via
+/// [ActionableChipData.selected] / [ActionableChipData.onTap].
 class DashboardActionableStrip extends StatelessWidget {
   final List<ActionableChipData> chips;
   final bool isLoading;
@@ -274,29 +279,40 @@ class DashboardActionableStrip extends StatelessWidget {
     final scheme = context.scheme;
 
     if (isLoading) {
-      return Wrap(
+      return SingleChildScrollView(
         key: const ValueKey('actionable-strip-loading'),
-        spacing: 8,
-        runSpacing: 8,
-        children: List.generate(
-          5,
-          (_) => Container(
-            width: 64,
-            height: 34,
-            decoration: BoxDecoration(
-              color: scheme.subtle,
-              borderRadius: BorderRadius.circular(AppRadius.full),
-              border: Border.all(color: scheme.border),
-            ),
-          ),
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(
+          children: [
+            for (var i = 0; i < 6; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Container(
+                width: 96,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.subtle,
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                  border: Border.all(color: scheme.border),
+                ),
+              ),
+            ],
+          ],
         ),
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [for (final c in chips) ActionableCountChip(data: c)],
+    return SingleChildScrollView(
+      key: const ValueKey('actionable-strip'),
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            ActionableCountChip(data: chips[i]),
+          ],
+        ],
+      ),
     );
   }
 }
