@@ -5,11 +5,12 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
 
 /// Orders ToDos for the dashboard: dated tasks first (soonest due date first),
-/// dateless tasks after (keeping their incoming order), capped at [max].
+/// dateless tasks after (keeping their incoming order), capped at [max] — three
+/// by default, matching the dashboard's 3-document preview.
 ///
 /// The server query orders by `date asc`, but MariaDB sorts NULL/empty dates
 /// FIRST in ascending order — this reorder puts them last where they belong.
-List<ToDo> selectUpcomingTodos(List<ToDo> todos, {int max = 5}) {
+List<ToDo> selectUpcomingTodos(List<ToDo> todos, {int max = 3}) {
   final dated = todos.where((t) => t.date.isNotEmpty).toList()
     ..sort((a, b) => a.date.compareTo(b.date));
   final dateless = todos.where((t) => t.date.isEmpty).toList();

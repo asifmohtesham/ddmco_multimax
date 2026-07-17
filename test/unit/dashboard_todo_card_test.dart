@@ -29,9 +29,15 @@ void main() {
         _todo(name: 'soon', date: '2026-07-12'),
         _todo(name: 'no-date-2'),
       ];
-      final result = selectUpcomingTodos(todos);
+      final result = selectUpcomingTodos(todos, max: 5);
       expect(result.map((t) => t.name).toList(),
           ['soon', 'late', 'no-date-1', 'no-date-2']);
+    });
+
+    test('defaults to a cap of 3 (the dashboard preview size)', () {
+      final todos = List.generate(
+          8, (i) => _todo(name: 'td-$i', date: '2026-07-1${i + 1}'));
+      expect(selectUpcomingTodos(todos).length, 3);
     });
 
     test('caps the result at max', () {
