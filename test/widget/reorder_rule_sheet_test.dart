@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
@@ -25,6 +28,16 @@ void main() {
   }
 
   Widget darkApp(Widget child) => MaterialApp(
+        theme: darkTheme,
+        darkTheme: darkTheme,
+        themeMode: ThemeMode.dark,
+        home: Scaffold(body: child),
+      );
+
+  // GetMaterialApp, not plain MaterialApp: Get.bottomSheet() (used by
+  // _pickWarehouse) resolves its Navigator via Get's own GlobalKey, which
+  // only attaches when the tree is rooted in a GetMaterialApp.
+  Widget darkGetApp(Widget child) => GetMaterialApp(
         theme: darkTheme,
         darkTheme: darkTheme,
         themeMode: ThemeMode.dark,
@@ -134,5 +147,44 @@ void main() {
     expect(saved!.name, 'r1', reason: 'the child-row name must survive an edit');
     expect(saved!.warehouseReorderLevel, 300);
     expect(saved!.warehouseReorderQty, 150);
+  });
+
+  testWidgets('a second tap while warehouses load does not re-fire the loader',
+      (tester) async {
+    // Get.testMode + addTearDown(Get.reset): the resolved load below reaches
+    // Get.bottomSheet(), which registers with Get's global navigation state.
+    Get.testMode = true;
+    addTearDown(Get.reset);
+
+    var calls = 0;
+    final gate = Completer<List<String>>();
+    Future<List<String>> gatedLoader({required bool isGroup}) {
+      calls++;
+      return gate.future;
+    }
+
+    await tester.pumpWidget(darkGetApp(ReorderRuleSheet(
+      initial: const ItemReorder(warehouse: '', materialRequestType: 'Purchase'),
+      loadWarehouses: gatedLoader,
+      onSaved: (_) {},
+    )));
+
+    // First tap starts the load (still pending on the gate).
+    await tester.tap(find.text('Check in (group)'));
+    await tester.pump();
+    // Second tap while in flight must be ignored.
+    await tester.tap(find.text('Check in (group)'));
+    await tester.pump();
+
+    expect(calls, 1);
+
+    // Let the pending future resolve so the widget tree settles cleanly.
+    // Resolved empty (rather than with a warehouse) so the picker sheet
+    // renders its "No warehouses found" placeholder instead of a ListTile —
+    // WarehousePickerSheet's ListTile-in-a-decorated-Container is a
+    // pre-existing, unrelated framework-assertion trap that is out of scope
+    // for this fix.
+    gate.complete(const <String>[]);
+    await tester.pumpAndSettle();
   });
 }

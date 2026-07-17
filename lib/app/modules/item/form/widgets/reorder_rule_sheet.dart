@@ -47,6 +47,8 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   late final TextEditingController _levelCtrl;
   late final TextEditingController _qtyCtrl;
 
+  bool _loadingWarehouses = false;
+
   @override
   void initState() {
     super.initState();
@@ -73,25 +75,31 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   }
 
   Future<void> _pickWarehouse({required bool isGroup}) async {
-    final warehouses = await widget.loadWarehouses(isGroup: isGroup);
-    if (!mounted) return;
+    if (_loadingWarehouses) return;
+    setState(() => _loadingWarehouses = true);
+    try {
+      final warehouses = await widget.loadWarehouses(isGroup: isGroup);
+      if (!mounted) return;
 
-    Get.bottomSheet(
-      WarehousePickerSheet(
-        warehouses: warehouses,
-        isLoading: false,
-        title: isGroup ? 'Select group warehouse' : 'Select warehouse',
-        groupNames: isGroup ? warehouses.toSet() : const {},
-        onSelected: (wh) => setState(() {
-          if (isGroup) {
-            _warehouseGroup = wh;
-          } else {
-            _warehouse = wh;
-          }
-        }),
-      ),
-      isScrollControlled: true,
-    );
+      Get.bottomSheet(
+        WarehousePickerSheet(
+          warehouses: warehouses,
+          isLoading: false,
+          title: isGroup ? 'Select group warehouse' : 'Select warehouse',
+          groupNames: isGroup ? warehouses.toSet() : const {},
+          onSelected: (wh) => setState(() {
+            if (isGroup) {
+              _warehouseGroup = wh;
+            } else {
+              _warehouse = wh;
+            }
+          }),
+        ),
+        isScrollControlled: true,
+      );
+    } finally {
+      if (mounted) setState(() => _loadingWarehouses = false);
+    }
   }
 
   void _pickType() {
@@ -178,7 +186,9 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
                 placeholder: 'Same as Request for',
                 helperText: 'Where stock is measured',
                 trailingIcon: Icons.chevron_right,
-                onTap: () => _pickWarehouse(isGroup: true),
+                onTap: _loadingWarehouses
+                    ? null
+                    : () => _pickWarehouse(isGroup: true),
               ),
               const SizedBox(height: 12),
               DocPickerField(
@@ -188,7 +198,9 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
                 placeholder: 'Select warehouse',
                 helperText: 'Where the Material Request is raised',
                 trailingIcon: Icons.chevron_right,
-                onTap: () => _pickWarehouse(isGroup: false),
+                onTap: _loadingWarehouses
+                    ? null
+                    : () => _pickWarehouse(isGroup: false),
               ),
               const SizedBox(height: 12),
               _numberField(context, 'Re-order Level', _levelCtrl),
