@@ -104,9 +104,11 @@ Future<void> main() async {
   final authController = Get.find<AuthenticationController>();
   await authController.checkAuthenticationStatus();
 
-  // Self-heal a broken digest chain (crash/force-stop) on every launch.
-  // Fire-and-forget: startup must never block on WorkManager.
-  if (!kIsWeb && Platform.isAndroid && authController.isAuthenticated.value) {
+  // Self-heal the digest schedule on every launch (Android: WorkManager chain;
+  // iOS: the weekly reminder set). Fire-and-forget — startup never blocks.
+  if (!kIsWeb &&
+      (Platform.isAndroid || Platform.isIOS) &&
+      authController.isAuthenticated.value) {
     unawaited(DigestScheduler().rearm().catchError((_) {}));
   }
 
