@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -50,6 +51,7 @@ void main() {
   });
 
   tearDown(() => Get.deleteAll(force: true));
+  tearDown(() => debugDefaultTargetPlatformOverride = null);
 
   Future<void> pump(WidgetTester tester) => tester.pumpWidget(
         GetMaterialApp(home: const NotificationSettingsScreen()),
@@ -67,18 +69,29 @@ void main() {
 
   testWidgets('enabling reveals times, days and documents sections',
       (tester) async {
-    await pump(tester);
-    await tester.tap(find.byType(Switch));
-    await tester.pumpAndSettle();
-    expect(find.text('TIMES'), findsOneWidget);
-    expect(find.text('09:00'), findsOneWidget);
-    expect(find.text('DAYS'), findsOneWidget);
-    expect(find.text('Mon'), findsOneWidget);
-    expect(find.text('DOCUMENTS'), findsOneWidget);
-    expect(find.text('Purchase Order'), findsOneWidget);
-    expect(find.text('POS Upload'), findsOneWidget);
-    // master + five doctype switches
-    expect(find.byType(Switch), findsNWidgets(6));
+    // debugDefaultTargetPlatformOverride must be reset *inside* the test body
+    // (not just via the outer tearDown) — flutter_test's end-of-test
+    // invariant check (debugAssertAllFoundationVarsUnset) runs before the
+    // package:test tearDown queue, so a leaked override fails the test even
+    // when every expectation passed. See form_test.dart in the Flutter SDK
+    // for the same try/finally idiom.
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await pump(tester);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(find.text('TIMES'), findsOneWidget);
+      expect(find.text('09:00'), findsOneWidget);
+      expect(find.text('DAYS'), findsOneWidget);
+      expect(find.text('Mon'), findsOneWidget);
+      expect(find.text('DOCUMENTS'), findsOneWidget);
+      expect(find.text('Purchase Order'), findsOneWidget);
+      expect(find.text('POS Upload'), findsOneWidget);
+      // master + five doctype switches
+      expect(find.byType(Switch), findsNWidgets(6));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('renders in dark theme without contrast crashes',
@@ -88,5 +101,35 @@ void main() {
       home: const NotificationSettingsScreen(),
     ));
     expect(find.text('Scheduled digest'), findsOneWidget);
+  });
+
+  testWidgets('Android: shows Documents + alert-style segments',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await pump(tester);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(
+          find.text('DOCUMENTS'), findsOneWidget); // SectionLabel uppercases
+      expect(find.text('ALERT STYLE'), findsOneWidget);
+      expect(find.text('Standard'), findsOneWidget);
+      expect(find.text('Alarm'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('iOS: hides Documents, keeps alert-style', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      await pump(tester);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(find.text('DOCUMENTS'), findsNothing);
+      expect(find.text('ALERT STYLE'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 }
