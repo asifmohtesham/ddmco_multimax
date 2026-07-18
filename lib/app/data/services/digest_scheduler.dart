@@ -1,4 +1,5 @@
-/// Digest schedule computation + WorkManager arming.
+/// Digest schedule computation + arming. Android arms a WorkManager one-off;
+/// iOS schedules a weekly local-notification reminder set instead.
 ///
 /// GetX-free by design — also used from the background isolate.
 library;
@@ -81,10 +82,13 @@ class WorkmanagerScheduler implements WorkScheduler {
       Workmanager().cancelByUniqueName(uniqueName);
 }
 
-/// Arms exactly one pending WorkManager task at the next schedule occurrence.
-/// Cancel-then-replace semantics come from ExistingWorkPolicy.replace plus
-/// the fixed unique name. Reads prefs only — never writes storage, so it is
-/// safe to call from the background isolate (see digest_worker.dart).
+/// Manager-gated digest arming, branching by platform. On Android, arms
+/// exactly one pending WorkManager task at the next schedule occurrence
+/// (cancel-then-replace semantics come from ExistingWorkPolicy.replace plus
+/// the fixed unique name). On iOS, (re)schedules the weekly reminder set via
+/// [ReminderScheduler] instead (no WorkManager on iOS). Reads prefs only —
+/// never writes storage, so it is safe to call from the background isolate
+/// (see digest_worker.dart).
 class DigestScheduler {
   final StorageService _storage;
   final WorkScheduler _work;

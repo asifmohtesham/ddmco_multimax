@@ -45,7 +45,9 @@ Future<void> main() async {
       final info = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(info.identifier));
     } catch (_) {
-      // Leaves tz.local unset; iOS reminder scheduling will no-op on failure.
+      // On failure tz.local stays at its UTC default, so iOS reminders would
+      // fire at UTC wall-clock rather than local time. Rare (only if the
+      // plugin throws); accepted — better than blocking startup.
     }
   }
 

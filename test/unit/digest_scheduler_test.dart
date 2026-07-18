@@ -170,4 +170,29 @@ void main() {
     expect(reminders.rescheduled, isEmpty);
     expect(reminders.cancelAllCount, greaterThan(0));
   });
+
+  test('iOS manager, standard style -> reschedules with timeSensitive:false',
+      () async {
+    box._data['currentUser'] = userJson; // manager
+    await storage.saveDigestEnabled('asif@example.com', true);
+    await storage.saveDigestTimes('asif@example.com', ['09:00']);
+    await storage.saveDigestAlarmStyle('asif@example.com', 'standard');
+    final reminders = _FakeReminders();
+    final scheduler = DigestScheduler(
+        storage: storage, reminders: reminders, now: () => now, isIos: true);
+    await scheduler.rearm();
+    expect(reminders.lastTimeSensitive, isFalse);
+  });
+
+  test('iOS manager, empty times -> cancelAll, no reschedule', () async {
+    box._data['currentUser'] = userJson; // manager
+    await storage.saveDigestEnabled('asif@example.com', true);
+    await storage.saveDigestTimes('asif@example.com', <String>[]);
+    final reminders = _FakeReminders();
+    final scheduler = DigestScheduler(
+        storage: storage, reminders: reminders, now: () => now, isIos: true);
+    await scheduler.rearm();
+    expect(reminders.rescheduled, isEmpty);
+    expect(reminders.cancelAllCount, greaterThan(0));
+  });
 }

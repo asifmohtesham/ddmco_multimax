@@ -46,17 +46,20 @@ List<ReminderSpec> buildReminderSpecs({
     parsed.add((h, m));
   }
   parsed.sort((a, b) => (a.$1 * 60 + a.$2).compareTo(b.$1 * 60 + b.$2));
+  // Defensive: keep the id space self-contained even if a caller ever passes
+  // more than _slotsPerDay times (currently the controller caps at 4).
+  final cappedTimes = parsed.take(_slotsPerDay).toList();
 
   final days = weekdays.where((d) => d >= 1 && d <= 7).toList()..sort();
 
   final specs = <ReminderSpec>[];
   for (final wd in days) {
-    for (var i = 0; i < parsed.length; i++) {
+    for (var i = 0; i < cappedTimes.length; i++) {
       specs.add(ReminderSpec(
         id: kIosReminderIdBase + (wd - 1) * _slotsPerDay + i,
         weekday: wd,
-        hour: parsed[i].$1,
-        minute: parsed[i].$2,
+        hour: cappedTimes[i].$1,
+        minute: cappedTimes[i].$2,
       ));
     }
   }

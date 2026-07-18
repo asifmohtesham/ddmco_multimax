@@ -40,6 +40,18 @@ void main() {
       final specs = buildReminderSpecs(times: ['09:00'], weekdays: {0, 8, 5});
       expect(specs.map((s) => s.weekday).toList(), [5]);
     });
+
+    test('caps times at the per-day slot budget (id space cannot overflow)',
+        () {
+      final tooMany = List.generate(12, (i) => '${i.toString().padLeft(2, '0')}:00');
+      final specs = buildReminderSpecs(times: tooMany, weekdays: {1});
+      expect(specs.length, lessThanOrEqualTo(8));
+      // every id stays within this weekday's reserved slot block
+      expect(
+          specs.every((s) =>
+              s.id >= kIosReminderIdBase && s.id < kIosReminderIdBase + 8),
+          isTrue);
+    });
   });
 
   group('reservedIosReminderIds', () {
