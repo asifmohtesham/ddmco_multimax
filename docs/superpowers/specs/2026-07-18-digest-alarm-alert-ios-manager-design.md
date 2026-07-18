@@ -30,7 +30,7 @@ meaningful. Time editing stays hours + minutes.
 | Seconds | Dropped — time stays HH:mm |
 | iOS | Static scheduled local notifications, generic text, no counts |
 | iOS alert style | `alarm` → Time-Sensitive interruption level; `standard` → active. No looping (no iOS equivalent) |
-| Default alert style | `alarm` (honours the "alert like an alarm" request); user can switch to `standard` |
+| Default alert style | `standard` (single sound + vibration — least-surprising for existing enabled managers); managers opt **up** to `alarm` |
 
 ## Manager gate
 
@@ -60,8 +60,10 @@ Gate applied at every layer so it cannot leak:
 ## Alert styles
 
 New per-user pref `notif_digest_alarm_style::<user>` (String, `'alarm'` |
-`'standard'`, default `'alarm'`) on `StorageService`, following the existing
-`key::user` convention.
+`'standard'`, default `'standard'`) on `StorageService`, following the existing
+`key::user` convention. Default `standard` (single sound + vibration) is the
+least-surprising behaviour for existing managers who already have the digest
+enabled; managers opt **up** to `alarm` (insistent) via the toggle.
 
 The style is applied at post/schedule time (it changes *how* the notification
 alerts, not *when* it fires), so changing it does **not** require a re-arm —
