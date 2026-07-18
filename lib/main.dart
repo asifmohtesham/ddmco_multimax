@@ -21,6 +21,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get_storage/get_storage.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 /// Dark-mode on-secondary (near-black) — secondary swatch sits on light text in dark mode.
 const Color _kDarkOnSecondary = Color(0xFF0B1116);
@@ -32,6 +35,21 @@ Future<void> main() async {
   // Stock Balance toggles, dashboard layout…). Without this call GetStorage
   // runs purely in memory and all of those silently reset on app restart.
   await GetStorage.init();
+
+  // Timezone DB for iOS scheduled digest reminders (zonedSchedule throws
+  // without tz.local set). iOS-only — Android uses WorkManager, not
+  // zonedSchedule. Best-effort — a failure here must never block startup.
+  if (!kIsWeb && Platform.isIOS) {
+    try {
+      tzdata.initializeTimeZones();
+      final info = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(info.identifier));
+    } catch (_) {
+      // On failure tz.local stays at its UTC default, so iOS reminders would
+      // fire at UTC wall-clock rather than local time. Rare (only if the
+      // plugin throws); accepted — better than blocking startup.
+    }
+  }
 
   // Scheduled digest notifications (Android-only). Registers the background
   // dispatcher; actual work is only ever scheduled by DigestScheduler.
@@ -88,9 +106,11 @@ Future<void> main() async {
   final authController = Get.find<AuthenticationController>();
   await authController.checkAuthenticationStatus();
 
-  // Self-heal a broken digest chain (crash/force-stop) on every launch.
-  // Fire-and-forget: startup must never block on WorkManager.
-  if (!kIsWeb && Platform.isAndroid && authController.isAuthenticated.value) {
+  // Self-heal the digest schedule on every launch (Android: WorkManager chain;
+  // iOS: the weekly reminder set). Fire-and-forget — startup never blocks.
+  if (!kIsWeb &&
+      (Platform.isAndroid || Platform.isIOS) &&
+      authController.isAuthenticated.value) {
     unawaited(DigestScheduler().rearm().catchError((_) {}));
   }
 

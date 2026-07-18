@@ -1,6 +1,5 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -11,6 +10,18 @@ import 'package:multimax/app/modules/global_widgets/main_app_bar.dart';
 import 'package:multimax/app/modules/global_widgets/settings_group.dart';
 import 'package:multimax/app/modules/global_widgets/settings_row.dart';
 import 'package:multimax/app/modules/user_area/user_area_controller.dart';
+
+/// The Notifications entry is mobile-only (Android/iOS) and manager-only.
+bool showNotificationsEntry({
+  required User? user,
+  required TargetPlatform platform,
+  required bool isWeb,
+}) {
+  if (isWeb) return false;
+  final isMobile =
+      platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+  return isMobile && (user?.isManager ?? false);
+}
 
 class UserAreaScreen extends GetView<UserAreaController> {
   const UserAreaScreen({super.key});
@@ -44,13 +55,21 @@ class UserAreaScreen extends GetView<UserAreaController> {
                   value: controller.company,
                   onTap: () => Get.toNamed(AppRoutes.SESSION_DEFAULTS),
                 ),
-                if (!kIsWeb && Platform.isAndroid)
-                  SettingsRow(
+                Obx(() {
+                  if (!showNotificationsEntry(
+                    user: controller.user.value,
+                    platform: defaultTargetPlatform,
+                    isWeb: kIsWeb,
+                  )) {
+                    return const SizedBox.shrink();
+                  }
+                  return SettingsRow(
                     icon: Icons.notifications_outlined,
                     iconTint: AppColors.orange500,
                     title: 'Notifications',
                     onTap: () => Get.toNamed(AppRoutes.NOTIFICATION_SETTINGS),
-                  ),
+                  );
+                }),
               ],
             ),
             const SizedBox(height: AppSpace.s4),

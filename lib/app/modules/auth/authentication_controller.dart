@@ -13,6 +13,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
@@ -99,7 +100,7 @@ class AuthenticationController extends GetxController {
           }
 
           // Arm the scheduled digest for the user who just signed in.
-          if (!kIsWeb && Platform.isAndroid) {
+          if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
             unawaited(DigestScheduler().rearm().catchError((_) {}));
           }
 
@@ -218,6 +219,9 @@ class AuthenticationController extends GetxController {
     // before the user identity disappears from storage.
     if (!kIsWeb && Platform.isAndroid) {
       await cancelDigestOnLogout();
+    }
+    if (!kIsWeb && Platform.isIOS) {
+      await cancelIosDigestReminders();
     }
     await _apiProvider.clearSessionCookies();
     if (Get.isRegistered<StorageService>()) {

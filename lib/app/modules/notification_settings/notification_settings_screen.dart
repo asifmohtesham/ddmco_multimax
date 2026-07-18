@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -58,16 +59,44 @@ class NotificationSettingsScreen
                 ),
                 const SizedBox(height: AppSpace.s4),
                 SettingsGroup(
-                  label: 'Documents',
+                  label: 'Alert style',
                   children: [
-                    for (final d in kDigestDoctypes)
-                      SettingsSwitchRow(
-                        title: d.doctype,
-                        value: controller.doctypeKeys.contains(d.key),
-                        onChanged: (_) => controller.toggleDoctype(d.key),
+                    Padding(
+                      padding: const EdgeInsets.all(AppSpace.s3),
+                      child: SettingsSegmented<String>(
+                        value: controller.alarmStyle.value,
+                        onChanged: controller.setAlarmStyle,
+                        options: const [
+                          SegmentOption(
+                              value: 'standard',
+                              label: 'Standard',
+                              icon: Icons.notifications_active_outlined),
+                          SegmentOption(
+                              value: 'alarm',
+                              label: 'Alarm',
+                              icon: Icons.alarm),
+                        ],
                       ),
+                    ),
                   ],
                 ),
+                // iOS reminders are generic text (no per-doctype counts), so
+                // the Documents selector only applies on Android.
+                if (!kIsWeb &&
+                    defaultTargetPlatform == TargetPlatform.android) ...[
+                  const SizedBox(height: AppSpace.s4),
+                  SettingsGroup(
+                    label: 'Documents',
+                    children: [
+                      for (final d in kDigestDoctypes)
+                        SettingsSwitchRow(
+                          title: d.doctype,
+                          value: controller.doctypeKeys.contains(d.key),
+                          onChanged: (_) => controller.toggleDoctype(d.key),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ],
           ),

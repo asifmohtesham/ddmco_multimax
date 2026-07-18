@@ -6,6 +6,8 @@
 /// would clobber main-isolate writes).
 library;
 
+import 'dart:typed_data';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -16,8 +18,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:workmanager/workmanager.dart';
 
 const int kDigestNotificationId = 1001;
-const String kDigestChannelId = 'pending_documents';
-const String _kChannelName = 'Pending documents';
+// The released default-importance channel — deleted so it doesn't linger as a
+// stale, silent entry once the two new channels exist.
+const String _kOldChannelId = 'pending_documents';
+const String kDigestAlarmChannelId = 'pending_documents_alarm';
+const String kDigestAlertChannelId = 'pending_documents_alert';
+const String _kAlarmChannelName = 'Pending documents (alarm)';
+const String _kAlertChannelName = 'Pending documents';
 const String _kChannelDescription =
     'Scheduled digest of documents needing action';
 
@@ -41,6 +48,7 @@ Future<void> runDigestTask() async {
   final storage = StorageService();
   final user = storage.getUser();
   if (user == null) return; // logged out since scheduling — do nothing
+  if (!user.isManager) return; // role revoked since scheduling
   if (!storage.getDigestEnabled(user.id)) return;
 
   final enabledKeys = storage.getDigestDoctypes(user.id).toSet();
@@ -61,29 +69,59 @@ Future<void> runDigestTask() async {
     final plan = DigestNotificationPlan.forResult(result);
 
     if (plan.show) {
+      final isAlarm = storage.getDigestAlarmStyle(user.id) == 'alarm';
       final fln = FlutterLocalNotificationsPlugin();
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       await fln.initialize(
           settings: const InitializationSettings(android: androidInit));
       final android = fln.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-      await android?.createNotificationChannel(
-          const AndroidNotificationChannel(
-        kDigestChannelId,
-        _kChannelName,
+
+      // Retire the old default-importance channel and (idempotently) create the
+      // two new ones. Channel sound/importance is immutable after creation, so
+      // each alert style gets its own pre-configured channel.
+      await android?.deleteNotificationChannel(channelId: _kOldChannelId);
+      await android?.createNotificationChannel(AndroidNotificationChannel(
+        kDigestAlarmChannelId,
+        _kAlarmChannelName,
         description: _kChannelDescription,
-        importance: Importance.defaultImportance,
+        importance: Importance.max,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+        enableVibration: true,
+        vibrationPattern:
+            Int64List.fromList(<int>[0, 500, 250, 500, 250, 500]),
       ));
+      await android?.createNotificationChannel(AndroidNotificationChannel(
+        kDigestAlertChannelId,
+        _kAlertChannelName,
+        description: _kChannelDescription,
+        importance: Importance.high,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList(<int>[0, 400]),
+      ));
+
+      final channelId = isAlarm ? kDigestAlarmChannelId : kDigestAlertChannelId;
+      final channelName = isAlarm ? _kAlarmChannelName : _kAlertChannelName;
       await fln.show(
         id: kDigestNotificationId, // fixed id: new digest replaces the old one
         title: plan.title,
         body: plan.body,
         notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
-            kDigestChannelId,
-            _kChannelName,
+            channelId,
+            channelName,
             channelDescription: _kChannelDescription,
+            importance: isAlarm ? Importance.max : Importance.high,
+            priority: isAlarm ? Priority.max : Priority.high,
+            category:
+                isAlarm ? AndroidNotificationCategory.alarm : null,
+            audioAttributesUsage: isAlarm
+                ? AudioAttributesUsage.alarm
+                : AudioAttributesUsage.notification,
             styleInformation: BigTextStyleInformation(plan.body ?? ''),
+            // FLAG_INSISTENT (4): loops the sound until dismissed/opened.
+            additionalFlags:
+                isAlarm ? Int32List.fromList(<int>[4]) : null,
           ),
         ),
       );

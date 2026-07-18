@@ -1,3 +1,16 @@
+## [Unreleased] — Digest Alerts: Alarm Style, iOS Reminders, Manager Gate
+
+- Scheduled digest notifications are now available only to **Manager** roles
+  (any "* Manager" role), on both Android and iOS.
+- New **Alert style** toggle: *Standard* (single sound + vibration) or *Alarm*
+  (insistent, alarm-volume, loops until dismissed) — default Standard.
+- **iOS support**: the digest now delivers as reliable scheduled reminders at
+  the chosen times (generic text — iOS cannot query live counts in the
+  background; the per-document selector is Android-only). Time-Sensitive when
+  Alarm style is selected.
+
+---
+
 ## [Unreleased] — Scheduled Digest Notifications (Android)
 
 - New User Area → Notifications screen: schedule a recurring digest of

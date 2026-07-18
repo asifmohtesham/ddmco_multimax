@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
@@ -5,12 +8,19 @@ import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 
-/// Android 13+ POST_NOTIFICATIONS prompt. Kept as a free function so the
-/// controller can take a test seam instead of touching the plugin.
+/// Requests the platform notification permission. Kept as a free function so
+/// the controller can take a test seam instead of touching the plugin.
 Future<bool> requestNotificationsPermission() async {
-  final android = FlutterLocalNotificationsPlugin()
-      .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+  final plugin = FlutterLocalNotificationsPlugin();
+  if (!kIsWeb && Platform.isIOS) {
+    final ios = plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    return await ios?.requestPermissions(
+            alert: true, badge: true, sound: true) ??
+        false;
+  }
+  final android = plugin.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>();
   return await android?.requestNotificationsPermission() ?? false;
 }
 
@@ -33,6 +43,7 @@ class NotificationSettingsController extends GetxController {
   final times = <String>[].obs;
   final days = <int>{}.obs;
   final doctypeKeys = <String>{}.obs;
+  final alarmStyle = 'standard'.obs;
 
   String get _user => _storage.getUser()?.id ?? '';
 
@@ -43,6 +54,7 @@ class NotificationSettingsController extends GetxController {
     times.assignAll(_storage.getDigestTimes(_user));
     days.assignAll(_storage.getDigestDays(_user));
     doctypeKeys.assignAll(_storage.getDigestDoctypes(_user));
+    alarmStyle.value = _storage.getDigestAlarmStyle(_user);
   }
 
   Future<void> setEnabled(bool value) async {
@@ -98,6 +110,15 @@ class NotificationSettingsController extends GetxController {
 
   Future<void> _persistTimes() async {
     await _storage.saveDigestTimes(_user, times.toList());
+    await _scheduler.rearm();
+  }
+
+  /// 'standard' | 'alarm'. Re-arms because on iOS the interruption level is
+  /// baked into the scheduled reminders (Android reads it at post time, where
+  /// a re-arm is a harmless no-op).
+  Future<void> setAlarmStyle(String style) async {
+    alarmStyle.value = style;
+    await _storage.saveDigestAlarmStyle(_user, style);
     await _scheduler.rearm();
   }
 }

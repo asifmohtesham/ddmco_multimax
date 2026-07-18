@@ -158,4 +158,17 @@ void main() {
     ]);
     expect(scheduler.rearms, 1);
   });
+
+  test('loads alarm style default standard on init', () {
+    final c = build()..onInit();
+    expect(c.alarmStyle.value, 'standard');
+  });
+
+  test('setAlarmStyle persists and re-arms', () async {
+    final c = build()..onInit();
+    await c.setAlarmStyle('alarm');
+    expect(c.alarmStyle.value, 'alarm');
+    expect(storage.getDigestAlarmStyle(user), 'alarm');
+    expect(scheduler.rearms, greaterThan(0));
+  });
 }

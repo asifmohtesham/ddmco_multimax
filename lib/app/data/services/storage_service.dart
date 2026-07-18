@@ -43,6 +43,7 @@ class StorageService {
   static const String _digestTimesKey = 'notif_digest_times';
   static const String _digestDaysKey = 'notif_digest_days';
   static const String _digestDoctypesKey = 'notif_digest_doctypes';
+  static const String _digestAlarmStyleKey = 'notif_digest_alarm_style';
 
   // --- User Data ---
   Future<void> saveUser(User user) async {
@@ -199,6 +200,14 @@ class StorageService {
           ]
         : raw.cast<String>();
   }
+
+  Future<void> saveDigestAlarmStyle(String user, String style) async =>
+      _box.write('$_digestAlarmStyleKey::$user', style);
+
+  /// 'alarm' (insistent) or 'standard' (single sound + vibration). Default
+  /// 'standard' — least-surprising for existing enabled managers.
+  String getDigestAlarmStyle(String user) =>
+      _box.read<String>('$_digestAlarmStyleKey::$user') ?? 'standard';
 
   // Persisted Mine/Everyone choice for the "Upcoming & actionable" strip.
   // Stored as 'mine' | 'everyone'; any other value reads back as 'mine'.
