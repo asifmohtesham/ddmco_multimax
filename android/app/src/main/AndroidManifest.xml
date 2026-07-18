@@ -6,6 +6,9 @@
          (Also merged in by flutter_local_notifications; declared explicitly
          for self-documentation.) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Alarm-style digest alert vibration. (Also merged from the plugin;
+         declared explicitly for self-documentation.) -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
