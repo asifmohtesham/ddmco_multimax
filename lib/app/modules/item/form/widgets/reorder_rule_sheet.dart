@@ -103,33 +103,40 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   }
 
   void _pickType() {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     Get.bottomSheet(
       Container(
-        padding: const EdgeInsets.all(16),
+        // Bottom inset clears the Android system nav bar (shown edge-to-edge).
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Material Request Type',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 12),
-            ...kReorderMaterialRequestTypes.map(
-              (t) => ListTile(
-                title: Text(t),
-                trailing: t == _type ? const Icon(Icons.check) : null,
-                onTap: () {
-                  // Navigator.of(ctx).pop() rather than Get.back(): Get.back()
-                  // calls closeCurrentSnackbar first, which throws when a
-                  // Snackbar is queued but not yet attached to the Overlay.
-                  Navigator.of(context).pop();
-                  setState(() => _type = t);
-                },
+        // Transparent Material so the ListTile ink splashes paint on this layer
+        // rather than being hidden behind the colour-painted Container above.
+        child: Material(
+          color: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Material Request Type',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 12),
+              ...kReorderMaterialRequestTypes.map(
+                (t) => ListTile(
+                  title: Text(t),
+                  trailing: t == _type ? const Icon(Icons.check) : null,
+                  onTap: () {
+                    // Navigator.of(ctx).pop() rather than Get.back(): Get.back()
+                    // calls closeCurrentSnackbar first, which throws when a
+                    // Snackbar is queued but not yet attached to the Overlay.
+                    Navigator.of(context).pop();
+                    setState(() => _type = t);
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       isScrollControlled: true,
@@ -152,13 +159,19 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final cs = Theme.of(context).colorScheme;
+    // Clears the Android system nav bar: the sheet is shown edge-to-edge
+    // (Get.bottomSheet, no safe area), so the footer must add this inset or the
+    // Done button sits under the nav bar. Goes to 0 when the keyboard is open
+    // (MediaQuery.padding already nets out viewInsets), so it never
+    // double-counts the keyboard lift applied by the outer Padding below.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Padding(
       // Lifts the sheet above the keyboard when the numeric fields focus.
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),

@@ -149,6 +149,70 @@ void main() {
     expect(saved!.warehouseReorderQty, 150);
   });
 
+  testWidgets('Done button clears the system navigation-bar inset',
+      (tester) async {
+    // Regression: the sheet is shown edge-to-edge (Get.bottomSheet, no safe
+    // area), so its footer must add MediaQuery.padding.bottom or the Done
+    // button sits under the Android nav bar.
+    const inset = 48.0;
+    await tester.pumpWidget(MaterialApp(
+      theme: darkTheme,
+      darkTheme: darkTheme,
+      themeMode: ThemeMode.dark,
+      // Inject a bottom system inset above the Navigator so the pushed modal
+      // sheet inherits it (mirrors an Android gesture/3-button nav bar).
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(padding: const EdgeInsets.only(bottom: inset)),
+        child: child!,
+      ),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => sheet(),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    final screenBottom = tester.getSize(find.byType(MaterialApp)).height;
+    final doneBottom =
+        tester.getRect(find.widgetWithText(FilledButton, 'Done')).bottom;
+    expect(doneBottom, lessThanOrEqualTo(screenBottom - inset),
+        reason: 'Done must sit above the ${inset}px system nav bar');
+  });
+
+  testWidgets('Material Request Type picker renders its options without the '
+      'ListTile ink-splash assertion', (tester) async {
+    // _pickType shows its own Get.bottomSheet; Get.testMode + Get.reset keep
+    // that global navigation state isolated per test.
+    Get.testMode = true;
+    addTearDown(Get.reset);
+
+    await tester.pumpWidget(darkGetApp(sheet(
+      initial: const ItemReorder(warehouse: '', materialRequestType: 'Purchase'),
+    )));
+
+    await tester.tap(find.text('Material Request Type'));
+    await tester.pumpAndSettle();
+
+    // The option rows render (build throws no ListTile-in-a-coloured-Container
+    // assertion). Assert on non-selected types so the match can only be a
+    // picker row, not the field value.
+    expect(find.text('Manufacture'), findsOneWidget);
+    expect(find.text('Material Issue'), findsOneWidget);
+  });
+
   testWidgets('a second tap while warehouses load does not re-fire the loader',
       (tester) async {
     // Get.testMode + addTearDown(Get.reset): the resolved load below reaches
