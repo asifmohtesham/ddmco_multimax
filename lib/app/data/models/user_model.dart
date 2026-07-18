@@ -89,4 +89,11 @@ class User {
   }
 
   bool hasRole(String role) => roles.contains(role);
+
+  /// True when the user holds any "*manager" role (case-insensitive) — System
+  /// Manager, Stock/Purchase/Manufacturing/Sales Manager, or any custom
+  /// "* Manager". Mirrors the dashboard persona rule
+  /// (HomeController.showTasksFirst).
+  bool get isManager =>
+      roles.any((r) => r.toLowerCase().contains('manager'));
 }
