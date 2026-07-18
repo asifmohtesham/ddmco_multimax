@@ -4,6 +4,9 @@
 /// unit-tested; the actual zonedSchedule calls live in [FlnReminderScheduler].
 library;
 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+
 /// First id of the reserved range for iOS digest reminders (distinct from the
 /// Android digest notification id 1001).
 const int kIosReminderIdBase = 2000;
@@ -64,3 +67,96 @@ List<ReminderSpec> buildReminderSpecs({
 /// prior schedule before rescheduling (or on logout).
 List<int> reservedIosReminderIds() =>
     [for (var i = 0; i < 7 * _slotsPerDay; i++) kIosReminderIdBase + i];
+
+/// Seam over flutter_local_notifications so DigestScheduler stays testable.
+abstract class ReminderScheduler {
+  /// Cancel any prior reminders and (re)schedule the given weekly set.
+  Future<void> reschedule(List<ReminderSpec> specs,
+      {required bool timeSensitive});
+
+  /// Cancel the whole reserved reminder range.
+  Future<void> cancelAll();
+}
+
+class FlnReminderScheduler implements ReminderScheduler {
+  static const String _title = 'Pending documents';
+  static const String _body = 'You have documents to review — open Multimax';
+
+  Future<FlutterLocalNotificationsPlugin> _plugin() async {
+    final fln = FlutterLocalNotificationsPlugin();
+    await fln.initialize(
+      settings: const InitializationSettings(
+        iOS: DarwinInitializationSettings(),
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+    );
+    return fln;
+  }
+
+  @override
+  Future<void> reschedule(List<ReminderSpec> specs,
+      {required bool timeSensitive}) async {
+    final fln = await _plugin();
+    for (final id in reservedIosReminderIds()) {
+      await fln.cancel(id: id);
+    }
+    final details = NotificationDetails(
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        interruptionLevel: timeSensitive
+            ? InterruptionLevel.timeSensitive
+            : InterruptionLevel.active,
+      ),
+    );
+    for (final s in specs) {
+      await fln.zonedSchedule(
+        id: s.id,
+        title: _title,
+        body: _body,
+        scheduledDate: _nextInstanceOf(s.weekday, s.hour, s.minute),
+        notificationDetails: details,
+        // Required by the signature; irrelevant on iOS (this path is iOS-only).
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+  }
+
+  @override
+  Future<void> cancelAll() async {
+    final fln = await _plugin();
+    for (final id in reservedIosReminderIds()) {
+      await fln.cancel(id: id);
+    }
+  }
+
+  tz.TZDateTime _nextInstanceOf(int weekday, int hour, int minute) {
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    while (scheduled.weekday != weekday || !scheduled.isAfter(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
+  }
+}
+
+/// Logout teardown for iOS: cancel every scheduled digest reminder. Best-effort.
+Future<void> cancelIosDigestReminders() async {
+  try {
+    final fln = FlutterLocalNotificationsPlugin();
+    await fln.initialize(
+      settings: const InitializationSettings(
+        iOS: DarwinInitializationSettings(),
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      ),
+    );
+    for (final id in reservedIosReminderIds()) {
+      await fln.cancel(id: id);
+    }
+  } catch (_) {
+    // Never block logout on notification plumbing.
+  }
+}
