@@ -1,3 +1,2 @@
-• To-Do: create, edit and delete To-Dos from the app, with a readable title and description right on the list.
-• Dashboard: if you have open To-Dos, your Upcoming tasks now show first.
-• Fixed: the list header could keep the old Light/Dark colours after switching theme on a screen left in the background.
+• Notifications (managers): the scheduled digest of documents needing action can now alert like an alarm — loud, with vibration, and it keeps ringing until you open it — or stay a standard notification. Pick your style in Account → Notifications.
+• iPhone: the scheduled digest now works on iOS too, sending reminders at your chosen times.
