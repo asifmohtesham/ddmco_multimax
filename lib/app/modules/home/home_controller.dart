@@ -6,6 +6,7 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/modules/home/widgets/pos_upload_scan_sheets.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -19,8 +20,10 @@ import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/scan_constants.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
@@ -47,6 +50,16 @@ class HomeController extends GetxController {
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
   final ToDoProvider _todoProvider = Get.find<ToDoProvider>();
   final StorageService _storageService = Get.find<StorageService>();
+
+  /// Resolved lazily so HomeController construction never *requires* a Packing
+  /// Slip provider: home_binding registers one for production, and unit tests
+  /// that don't register it can still construct the controller. Falls back to a
+  /// fresh instance, which resolves ApiProvider from the container like every
+  /// other provider.
+  PackingSlipProvider get _packingSlipProvider =>
+      Get.isRegistered<PackingSlipProvider>()
+          ? Get.find<PackingSlipProvider>()
+          : Get.put(PackingSlipProvider());
 
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
@@ -688,6 +701,16 @@ class HomeController extends GetxController {
 
     isScanning.value = true;
     try {
+      // POS Upload document labels (e.g. ML-2026-02011) are scanned on the
+      // Dashboard to jump straight to fulfillment work. Recognise them before
+      // ScanService, which would otherwise misread the hyphenated name as a
+      // rack asset-code and fail.
+      final trimmed = code.trim();
+      if (ScanConstants.isPosUploadDocName(trimmed)) {
+        await _handlePosUploadScan(trimmed);
+        return;
+      }
+
       final result = await _scanService.processScan(code);
 
       if (result.type == ScanType.rack && result.rackId != null) {
@@ -846,24 +869,178 @@ class HomeController extends GetxController {
     GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
     final name = posUpload.name.toUpperCase();
     if (name.startsWith('KX') || name.startsWith('MX')) {
-      try {
-        final res = await _stockEntryProvider.getStockEntries(limit: 1, filters: {'custom_reference_no': posUpload.name});
-        if(res.statusCode == 200 && res.data['data'] != null && (res.data['data'] as List).isNotEmpty) {
-          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
-        } else {
-          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': '', 'mode': 'new', 'stockEntryType': 'Material Issue', 'customReferenceNo': posUpload.name});
-        }
-      } catch(e) { GlobalSnackbar.error(message: 'Error processing Stock Entry'); }
+      await _openLinkedStockEntry(posUpload);
     } else {
-      try {
-        final res = await _deliveryNoteProvider.getDeliveryNotes(limit: 1, filters: {'po_no': posUpload.name});
-        if(res.statusCode == 200 && res.data['data'] != null && (res.data['data'] as List).isNotEmpty) {
-          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
-        } else {
-          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': '', 'mode': 'new', 'posUploadCustomer': posUpload.customer, 'posUploadName': posUpload.name});
-        }
-      } catch(e) { GlobalSnackbar.error(message: 'Error processing Delivery Note'); }
+      await _openLinkedDeliveryNote(posUpload);
     }
+  }
+
+  // ── POS Upload scan → linked document ────────────────────────────────────
+  // A POS Upload document label scanned on the Dashboard jumps to its
+  // fulfillment work. MX/KX uploads link to a Stock Entry (opened directly);
+  // ML/KA uploads link to a Delivery Note whose cartons are packed via Packing
+  // Slips, so the operator is asked which of the two to open.
+
+  Future<void> _handlePosUploadScan(String name) async {
+    final PosUpload? upload = await _fetchPosUploadByName(name);
+    if (upload == null) {
+      GlobalSnackbar.error(
+          title: 'Not Found', message: 'POS Upload "$name" was not found.');
+      return;
+    }
+
+    if (ScanConstants.isStockEntryFamilyUpload(name)) {
+      GlobalSnackbar.info(message: 'Opening Stock Entry for ${upload.name}…');
+      await _openLinkedStockEntry(upload);
+      return;
+    }
+
+    // Delivery-Note-family (ML/KA): let the operator choose DN vs Packing Slip.
+    Get.bottomSheet(
+      PosUploadScanTargetSheet(
+        posUpload: upload,
+        onDeliveryNote: () {
+          Get.back();
+          _openLinkedDeliveryNote(upload);
+        },
+        onPackingSlip: () {
+          Get.back();
+          _openLinkedPackingSlip(upload);
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  Future<PosUpload?> _fetchPosUploadByName(String name) async {
+    try {
+      final res = await _posUploadProvider.getPosUpload(name);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        return PosUpload.fromJson(res.data['data']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _openLinkedStockEntry(PosUpload posUpload) async {
+    try {
+      final res = await _stockEntryProvider.getStockEntries(
+          limit: 1, filters: {'custom_reference_no': posUpload.name});
+      if (res.statusCode == 200 &&
+          res.data['data'] != null &&
+          (res.data['data'] as List).isNotEmpty) {
+        Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+            arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
+      } else {
+        Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+          'name': '',
+          'mode': 'new',
+          'stockEntryType': 'Material Issue',
+          'customReferenceNo': posUpload.name
+        });
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error processing Stock Entry');
+    }
+  }
+
+  Future<void> _openLinkedDeliveryNote(PosUpload posUpload) async {
+    try {
+      final res = await _deliveryNoteProvider.getDeliveryNotes(
+          limit: 1, filters: {'po_no': posUpload.name});
+      if (res.statusCode == 200 &&
+          res.data['data'] != null &&
+          (res.data['data'] as List).isNotEmpty) {
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+            arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
+      } else {
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+          'name': '',
+          'mode': 'new',
+          'posUploadCustomer': posUpload.customer,
+          'posUploadName': posUpload.name
+        });
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error processing Delivery Note');
+    }
+  }
+
+  /// Opens the Packing Slip for a scanned ML/KA upload. A Packing Slip hangs
+  /// off the Delivery Note (not the upload), so the DN is resolved first: with
+  /// no DN the upload can have no slip (per product decision, we just say so);
+  /// with none yet a new case is started; with one it opens directly; with
+  /// several the operator picks the case.
+  Future<void> _openLinkedPackingSlip(PosUpload posUpload) async {
+    try {
+      final dnRes = await _deliveryNoteProvider.getDeliveryNotes(
+          limit: 1, filters: {'po_no': posUpload.name});
+      final dnList = (dnRes.data['data'] as List?) ?? const [];
+      if (dnRes.statusCode != 200 || dnList.isEmpty) {
+        GlobalSnackbar.error(
+            title: 'No Delivery Note',
+            message:
+                'No Delivery Note exists for ${posUpload.name} yet, so it has no Packing Slip.');
+        return;
+      }
+      final dnName = dnList.first['name'].toString();
+
+      final psRes = await _packingSlipProvider.getPackingSlips(
+          limit: 0,
+          filters: {'delivery_note': dnName},
+          orderBy: 'from_case_no asc');
+      if (psRes.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to load Packing Slips');
+        return;
+      }
+      final psList = ((psRes.data['data'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+
+      if (psList.isEmpty) {
+        _openNewPackingSlip(dnName, posUpload.name, 1);
+      } else if (psList.length == 1) {
+        Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+          'name': psList.first['name'].toString(),
+          'mode': 'edit'
+        });
+      } else {
+        final nextCase = psList
+                .map((e) => (e['to_case_no'] as num?)?.toInt() ?? 0)
+                .fold<int>(0, (a, b) => a > b ? a : b) +
+            1;
+        Get.bottomSheet(
+          PackingSlipPickerSheet(
+            deliveryNote: dnName,
+            nextCaseNo: nextCase,
+            packingSlips: psList,
+            onSelect: (psName) {
+              Get.back();
+              Get.toNamed(AppRoutes.PACKING_SLIP_FORM,
+                  arguments: {'name': psName, 'mode': 'edit'});
+            },
+            onNewCase: () {
+              Get.back();
+              _openNewPackingSlip(dnName, posUpload.name, nextCase);
+            },
+          ),
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+        );
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error opening Packing Slip');
+    }
+  }
+
+  void _openNewPackingSlip(String dnName, String poNo, int nextCaseNo) {
+    Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+      'name': '',
+      'mode': 'new',
+      'deliveryNote': dnName,
+      'customPoNo': poNo,
+      'nextCaseNo': nextCaseNo,
+    });
   }
 
   // Helpers
