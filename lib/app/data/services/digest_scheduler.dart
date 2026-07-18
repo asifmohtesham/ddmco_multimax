@@ -3,6 +3,10 @@
 /// GetX-free by design — also used from the background isolate.
 library;
 
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -84,37 +88,54 @@ class WorkmanagerScheduler implements WorkScheduler {
 class DigestScheduler {
   final StorageService _storage;
   final WorkScheduler _work;
+  final ReminderScheduler _reminders;
   final DateTime Function() _now;
+  final bool _isIos;
 
   DigestScheduler({
     StorageService? storage,
     WorkScheduler? work,
+    ReminderScheduler? reminders,
     DateTime Function()? now,
+    bool? isIos,
   })  : _storage = storage ?? StorageService(),
         _work = work ?? WorkmanagerScheduler(),
-        _now = now ?? DateTime.now;
+        _reminders = reminders ?? FlnReminderScheduler(),
+        _now = now ?? DateTime.now,
+        _isIos = isIos ?? (!kIsWeb && Platform.isIOS);
 
   Future<void> rearm() async {
     final user = _storage.getUser();
-    if (user == null || !_storage.getDigestEnabled(user.id)) {
-      await _work.cancel(kDigestUniqueName);
+    // Manager-only, enabled, and at least one doctype selected — otherwise the
+    // schedule is dead and everything is cancelled.
+    final live = user != null &&
+        user.isManager &&
+        _storage.getDigestEnabled(user.id) &&
+        _storage.getDigestDoctypes(user.id).isNotEmpty;
+    if (!live) {
+      await _cancelAll();
       return;
     }
-    // Enabled with no doctypes selected would otherwise still wake the app
-    // every tick to run a no-op auth-probe and re-arm — same dead-schedule
-    // treatment as empty times/days.
-    if (_storage.getDigestDoctypes(user.id).isEmpty) {
-      await _work.cancel(kDigestUniqueName);
+
+    final times = _storage.getDigestTimes(user.id);
+    final weekdays = _storage.getDigestDays(user.id).toSet();
+
+    if (_isIos) {
+      final specs = buildReminderSpecs(times: times, weekdays: weekdays);
+      if (specs.isEmpty) {
+        await _cancelAll();
+        return;
+      }
+      final timeSensitive = _storage.getDigestAlarmStyle(user.id) == 'alarm';
+      await _reminders.reschedule(specs, timeSensitive: timeSensitive);
       return;
     }
+
     final now = _now();
-    final next = nextDigestOccurrence(
-      after: now,
-      times: _storage.getDigestTimes(user.id),
-      weekdays: _storage.getDigestDays(user.id).toSet(),
-    );
+    final next =
+        nextDigestOccurrence(after: now, times: times, weekdays: weekdays);
     if (next == null) {
-      await _work.cancel(kDigestUniqueName);
+      await _cancelAll();
       return;
     }
     await _work.registerOneOff(
@@ -122,5 +143,13 @@ class DigestScheduler {
       taskName: kDigestTaskName,
       initialDelay: next.difference(now),
     );
+  }
+
+  Future<void> _cancelAll() async {
+    if (_isIos) {
+      await _reminders.cancelAll();
+    } else {
+      await _work.cancel(kDigestUniqueName);
+    }
   }
 }

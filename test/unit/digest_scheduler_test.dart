@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
+import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 
 class _FakeGetStorage {
@@ -32,11 +33,30 @@ class _FakeWork implements WorkScheduler {
   Future<void> cancel(String uniqueName) async => cancelled.add(uniqueName);
 }
 
+class _FakeReminders implements ReminderScheduler {
+  final rescheduled = <List<ReminderSpec>>[];
+  bool? lastTimeSensitive;
+  int cancelAllCount = 0;
+
+  @override
+  Future<void> reschedule(List<ReminderSpec> specs,
+      {required bool timeSensitive}) async {
+    rescheduled.add(specs);
+    lastTimeSensitive = timeSensitive;
+  }
+
+  @override
+  Future<void> cancelAll() async => cancelAllCount++;
+}
+
 void main() {
   const userJson = {
     'name': 'asif@example.com',
     'full_name': 'Asif',
     'email': 'asif@example.com',
+    'roles': [
+      {'role': 'Stock Manager'}
+    ],
   };
   // Wed 2026-07-15 10:00 local.
   final now = DateTime(2026, 7, 15, 10, 0);
@@ -50,7 +70,8 @@ void main() {
     box = _FakeGetStorage();
     storage = StorageService.withStorage(box as dynamic);
     work = _FakeWork();
-    scheduler = DigestScheduler(storage: storage, work: work, now: () => now);
+    scheduler = DigestScheduler(
+        storage: storage, work: work, now: () => now, isIos: false);
   });
 
   test('no logged-in user → cancel', () async {
@@ -96,5 +117,57 @@ void main() {
     await scheduler.rearm();
     expect(work.cancelled, [kDigestUniqueName]);
     expect(work.registered, isEmpty);
+  });
+
+  test('non-manager user -> cancel, never arms (Android path)', () async {
+    box._data['currentUser'] = {
+      'name': 'op@example.com',
+      'full_name': 'Op',
+      'email': 'op@example.com',
+      'roles': [
+        {'role': 'Stock User'}
+      ],
+    };
+    await storage.saveDigestEnabled('op@example.com', true);
+    final work = _FakeWork();
+    final scheduler = DigestScheduler(
+        storage: storage, work: work, now: () => now, isIos: false);
+    await scheduler.rearm();
+    expect(work.registered, isEmpty);
+    expect(work.cancelled, [kDigestUniqueName]);
+  });
+
+  test('iOS manager -> reschedules the reminder set, timeSensitive from style',
+      () async {
+    box._data['currentUser'] = userJson; // manager
+    await storage.saveDigestEnabled('asif@example.com', true);
+    await storage.saveDigestTimes('asif@example.com', ['09:00']);
+    await storage.saveDigestDays('asif@example.com', [1, 2]);
+    await storage.saveDigestAlarmStyle('asif@example.com', 'alarm');
+    final reminders = _FakeReminders();
+    final scheduler = DigestScheduler(
+        storage: storage, reminders: reminders, now: () => now, isIos: true);
+    await scheduler.rearm();
+    expect(reminders.rescheduled.single.map((s) => (s.weekday, s.hour)).toList(),
+        [(1, 9), (2, 9)]);
+    expect(reminders.lastTimeSensitive, isTrue);
+  });
+
+  test('iOS non-manager -> cancelAll reminders, no reschedule', () async {
+    box._data['currentUser'] = {
+      'name': 'op@example.com',
+      'full_name': 'Op',
+      'email': 'op@example.com',
+      'roles': [
+        {'role': 'Sales User'}
+      ],
+    };
+    await storage.saveDigestEnabled('op@example.com', true);
+    final reminders = _FakeReminders();
+    final scheduler = DigestScheduler(
+        storage: storage, reminders: reminders, now: () => now, isIos: true);
+    await scheduler.rearm();
+    expect(reminders.rescheduled, isEmpty);
+    expect(reminders.cancelAllCount, greaterThan(0));
   });
 }
