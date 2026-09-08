@@ -103,7 +103,10 @@ void main() {
         _todo(
           description: '<p>Pack <b>DN-101</b></p>',
           priority: 'High',
-          date: '2026-09-01',
+          date: DateTime.now()
+              .add(const Duration(days: 30))
+              .toIso8601String()
+              .substring(0, 10),
         ),
       );
       expect(find.text('Pack DN-101'), findsOneWidget);
