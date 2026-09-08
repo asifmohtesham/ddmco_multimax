@@ -40,6 +40,8 @@ abstract class AppRoutes {
   static const STOCK_BALANCE              = _Paths.STOCK_BALANCE;
   static const BOM_STOCK_CUSTOMER_CODE    = _Paths.BOM_STOCK_CUSTOMER_CODE;
   static const POS_DN_ITEM_RATE       = _Paths.POS_DN_ITEM_RATE;
+  static const ATTENDANCE             = _Paths.ATTENDANCE;
+  static const ATTENDANCE_MONTH       = _Paths.ATTENDANCE_MONTH;
 }
 
 abstract class _Paths {
@@ -81,4 +83,6 @@ abstract class _Paths {
   static const STOCK_BALANCE              = '/stock/reports/stock-balance';
   static const BOM_STOCK_CUSTOMER_CODE    = '/manufacturing/reports/bom-stock-customer-code';
   static const POS_DN_ITEM_RATE       = '/selling/reports/pos-dn-item-rate';
+  static const ATTENDANCE             = '/hr/attendance';
+  static const ATTENDANCE_MONTH       = '/hr/attendance/month';
 }

@@ -24,11 +24,15 @@ class StatusPill extends StatelessWidget {
       case 'Rejected':
       case 'Expired':
       case 'Overdue':
+      case 'Absent':
+      case 'Absent so far':
         return (AppColors.red500, AppColors.red700, AppColors.red300);
       case 'Submitted':
       case 'Enabled':
       case 'Stock Reserved':
       case 'Material Transferred':
+      case 'Holiday':
+      case 'On Leave':
         return (AppColors.blue500, AppColors.blue700, AppColors.blue300);
       case 'Not Saved':
       case 'Not Started':
@@ -42,12 +46,14 @@ class StatusPill extends StatelessWidget {
       case 'To Receive':
       case 'Stock Partially Reserved':
       case 'Material Returned from WIP':
+      case 'Late':
         return (AppColors.orange500, AppColors.orange700, AppColors.orange300);
       case 'Partially Billed':
       case 'Partly Billed':
       case 'In Transit':
       case 'Partially Ordered':
       case 'Partially Received':
+      case 'Half Day':
         return (AppColors.yellow500, AppColors.yellow700, AppColors.yellow300);
       case 'Completed':
       case 'Active':
@@ -59,7 +65,10 @@ class StatusPill extends StatelessWidget {
       case 'Issued':
       case 'Received':
       case 'Goods Transferred':
+      case 'Present':
         return (AppColors.green500, AppColors.green700, AppColors.green300);
+      case 'Work From Home':
+        return (AppColors.purple500, AppColors.purple700, AppColors.purple300);
       case 'In Progress':
       case 'Disabled':
       case 'Passive':
