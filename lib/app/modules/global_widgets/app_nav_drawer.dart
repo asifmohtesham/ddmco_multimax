@@ -446,6 +446,27 @@ class AppNavDrawer extends StatelessWidget {
                       ),
                     ],
                   ),
+
+                  // ---- HR ----
+                  _ModuleGroup(
+                    title: 'HR',
+                    icon: Icons.badge_rounded,
+                    currentRoute: currentRoute,
+                    drawerController: drawerController,
+                    guardEntries: kHrPermissions,
+                    children: [
+                      DocTypeGuard(
+                        doctype: 'Attendance',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Attendance',
+                          icon: Icons.how_to_reg_rounded,
+                          route: AppRoutes.ATTENDANCE,
+                          currentRoute: currentRoute,
+                        ),
+                      ),
+                    ],
+                  ),
                 ];
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 12.0),

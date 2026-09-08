@@ -50,10 +50,15 @@ const List<PermEntry> kSellingPermissions = [
   (doctype: 'POS Upload', permType: 'report'), // POS & DN Item Rate report
 ];
 
+const List<PermEntry> kHrPermissions = [
+  (doctype: 'Attendance', permType: 'read'), // Attendance monitor (needs HR User)
+];
+
 const List<PermEntry> kAppPermissions = [
   ...kTopLevelPermissions,
   ...kStockPermissions,
   ...kBuyingPermissions,
   ...kManufacturingPermissions,
   ...kSellingPermissions,
+  ...kHrPermissions,
 ];

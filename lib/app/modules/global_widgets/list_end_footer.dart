@@ -14,10 +14,14 @@ class ListEndFooter extends StatelessWidget {
     super.key,
     required this.hasMore,
     this.bottomPadding = 0,
+    this.label,
   });
 
   final bool hasMore;
   final double bottomPadding;
+
+  /// Replaces "End of results" — report lists put their count summary here.
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +37,8 @@ class ListEndFooter extends StatelessWidget {
       padding: EdgeInsets.only(top: 16, bottom: 16 + bottomPadding),
       child: Center(
         child: Text(
-          'End of results',
+          label ?? 'End of results',
+          textAlign: TextAlign.center,
           style: theme.textTheme.bodySmall
               ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),

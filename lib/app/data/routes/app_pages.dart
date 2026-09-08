@@ -11,6 +11,10 @@ import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_screen.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_binding.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_screen.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_binding.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_screen.dart';
+import 'package:multimax/app/modules/hr/attendance/month/attendance_month_binding.dart';
+import 'package:multimax/app/modules/hr/attendance/month/attendance_month_screen.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_binding.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
@@ -231,6 +235,17 @@ class AppPages {
       name: AppRoutes.POS_DN_ITEM_RATE,
       page: () => const PosDnItemRateScreen(),
       binding: PosDnItemRateBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.ATTENDANCE,
+      page: () => const AttendanceScreen(),
+      binding: AttendanceBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.ATTENDANCE_MONTH,
+      page: () => const AttendanceMonthScreen(),
+      binding: AttendanceMonthBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
