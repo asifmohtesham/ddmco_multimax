@@ -1,2 +1,1 @@
-• Notifications (managers): the scheduled digest of documents needing action can now alert like an alarm — loud, with vibration, and it keeps ringing until you open it — or stay a standard notification. Pick your style in Account → Notifications.
-• iPhone: the scheduled digest now works on iOS too, sending reminders at your chosen times.
+• Attendance (HR): see who is in, who came late and who has not turned up, live from the terminal punches. Summary tiles filter by status, tap an employee for their punches, and open a month view with a calendar. Past days read the attendance ledger; Sundays and holidays are marked. Needs the HR User role.
