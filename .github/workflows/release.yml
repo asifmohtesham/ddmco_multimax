@@ -49,6 +49,10 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2.23.0
         with:
           channel: stable
+          # Pinned to the version the app is built and tested with locally.
+          # Unpinned "stable" drifted to a Flutter that requires Gradle >= 8.14
+          # while the project wrapper is 8.13 (run 34292890861 failed on that).
+          flutter-version: 3.44.4
           cache: true
 
       - name: Write keystore and key.properties
