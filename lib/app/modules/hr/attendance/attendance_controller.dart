@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/attendance_models.dart';
 import 'package:multimax/app/data/providers/attendance_provider.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 
@@ -128,6 +129,16 @@ class AttendanceController extends GetxController {
   /// most likely not uploaded. Before the cut-off an empty list is normal.
   bool get looksOffline =>
       isToday && !isHoliday && !beforeCutoff && checkins.isEmpty && employees.any((e) => e.isTracked);
+
+  /// Only a System Manager is told the terminal may be offline; everyone else
+  /// can't tell a dead terminal from nobody punching (spec §2).
+  bool get isSystemManager =>
+      Get.isRegistered<AuthenticationController>() &&
+      (Get.find<AuthenticationController>().currentUser.value?.hasRole('System Manager') ??
+          false);
+
+  /// Active employees with no terminal ID — HRMS marks them Absent every day.
+  int get untrackedCount => employees.where((e) => !e.isTracked).length;
 
   String? get selectedStatusKey => statusCtrl.text.trim().isEmpty ? null : statusCtrl.text;
 
