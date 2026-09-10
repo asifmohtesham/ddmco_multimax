@@ -82,7 +82,8 @@ the viewer's month calendar.
 
 A one-line banner, reusing the screen's existing info-banner widget:
 "{n} employee(s) aren't enrolled on the terminal". Tap = set the status filter to
-`Not tracked`. Hidden when n = 0.
+`Not tracked`. Hidden when n = 0, and also hidden while any search or filter is active
+(tapping the banner itself sets the `Not tracked` filter, which then hides it).
 
 ## 4. Data flow
 
@@ -149,7 +150,10 @@ TDD, pure logic first.
 - Widget: update `dashboard_attendance_card_test.dart` (System Manager vs not; no Me line);
   Attendance screen offline copy per role.
 - `flutter analyze`, then the full suite — sequentially, never concurrently.
-- On-device smoke: a System Manager session and an Employee-role session (e.g. Jawwad).
+- On-device smoke: a System Manager session, an Employee-role session (e.g. Jawwad), and a
+  session for a user WITHOUT Attendance read access (e.g. a warehouse operator) — the
+  Dashboard should render cleanly with no "My attendance" or "Today's attendance" card and
+  no error widget.
 
 ## 8. Out of scope here
 

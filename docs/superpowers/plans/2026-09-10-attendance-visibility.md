@@ -1447,6 +1447,7 @@ If you see "Failed to load" errors for a package, the pub cache is corrupt: run 
 4. Dashboard → team-card row → detail sheet → "View month" → Sundays are still labelled Holiday. This is the self-loaded-holidays path.
 5. Pull-to-refresh on the Dashboard updates "My attendance" (the freshness label on the team card changes too).
 6. Light and dark mode: dots are readable, and today is outlined.
+7. **No-Attendance-access session** (e.g. a warehouse operator): Dashboard renders with no attendance cards and no red error widget or "improper use of GetX" log.
 
 - [ ] **Step 4: Report**
 
