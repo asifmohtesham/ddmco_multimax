@@ -34,6 +34,9 @@ import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
+import 'package:multimax/app/data/models/attendance_models.dart';
+import 'package:multimax/app/data/providers/attendance_provider.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -60,6 +63,13 @@ class HomeController extends GetxController {
       Get.isRegistered<PackingSlipProvider>()
           ? Get.find<PackingSlipProvider>()
           : Get.put(PackingSlipProvider());
+
+  /// Same lazy pattern as [_packingSlipProvider]: home_binding registers one,
+  /// controller unit tests need not.
+  AttendanceProvider get _attendanceProvider =>
+      Get.isRegistered<AttendanceProvider>()
+          ? Get.find<AttendanceProvider>()
+          : Get.put(AttendanceProvider());
 
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
@@ -136,6 +146,114 @@ class HomeController extends GetxController {
 
   /// Preview cache keyed by '<doctype>::<actionableCacheKey(scope, email)>'.
   final Map<String, List<ActionableDocRowData>> _previewCache = {};
+
+  // --- Today's attendance (site-wide; does NOT follow selectedFilterUser) ---
+  //
+  // Mirrors AttendanceController for today only: master data once, punches +
+  // ledger per refresh, status derived by the shared attendance_logic. No poll:
+  // pull-to-refresh / header refresh reload it with the rest of the dashboard.
+  final isLoadingAttendance = true.obs;
+  final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
+  final attendanceShift = Rx<ShiftRules>(ShiftRules.fallback);
+  final attendanceHolidays = <String>{}.obs;
+  final attendanceLoadedAt = Rxn<DateTime>();
+  final attendanceLatestPunch = Rxn<EmployeeCheckin>();
+  List<TrackedEmployee> _attendanceEmployees = const [];
+  bool _attendanceMasterLoaded = false;
+
+  /// Same fail-closed gate as the drawer entry for the Attendance screen.
+  bool get attendanceVisible =>
+      Get.find<PermissionService>().hasAccess('Attendance') == true;
+
+  bool get attendanceIsHoliday =>
+      attendanceHolidays.contains(kFrappeDate.format(DateTime.now()));
+
+  bool get beforeAttendanceCutoff =>
+      DateTime.now().isBefore(attendanceShift.value.cutoffOn(DateTime.now()));
+
+  /// Past the cut-off with zero punches for anyone → the terminal has most
+  /// likely not uploaded; before the cut-off an empty day is normal.
+  bool get attendanceLooksOffline =>
+      !attendanceIsHoliday &&
+      !beforeAttendanceCutoff &&
+      attendanceRows.isNotEmpty &&
+      attendanceRows.every((r) => r.punches.isEmpty);
+
+  AttendanceCounts get attendanceCounts => AttendanceCounts.of(attendanceRows);
+
+  /// The logged-in employee's own row, if they are an active employee.
+  EmployeeDayStatus? get myAttendance {
+    final id = _authController.currentUser.value?.employeeId;
+    if (id == null || id.isEmpty) return null;
+    return attendanceRows.firstWhereOrNull((r) => r.employee.name == id);
+  }
+
+  Future<void> fetchTodayAttendance() async {
+    if (!attendanceVisible) {
+      attendanceRows.clear();
+      isLoadingAttendance.value = false;
+      return;
+    }
+    try {
+      if (!_attendanceMasterLoaded) {
+        _attendanceEmployees = await _attendanceProvider.fetchActiveEmployees();
+        final shiftName = _attendanceEmployees
+            .map((e) => e.defaultShift ?? '')
+            .firstWhere((s) => s.isNotEmpty, orElse: () => '')
+            .trim();
+        try {
+          attendanceShift.value = await _attendanceProvider.fetchShiftRules(
+              shiftName.isEmpty ? ShiftRules.fallback.name : shiftName);
+        } catch (_) {
+          attendanceShift.value = ShiftRules.fallback;
+        }
+        try {
+          attendanceHolidays.assignAll(await _attendanceProvider
+              .fetchHolidays(attendanceShift.value.holidayList));
+        } catch (_) {}
+        _attendanceMasterLoaded = true;
+      }
+      final today = dateOnly(DateTime.now());
+      final results = await Future.wait([
+        _attendanceProvider.fetchCheckins(today),
+        _attendanceProvider.fetchAttendance(today, today),
+      ]);
+      final checkins = results[0] as List<EmployeeCheckin>;
+      final ledger = results[1] as List<AttendanceRecord>;
+      if (checkins.isEmpty) {
+        try {
+          attendanceLatestPunch.value = await _attendanceProvider.fetchLatestCheckin();
+        } catch (_) {}
+      }
+      final byEmp = <String, List<EmployeeCheckin>>{};
+      for (final c in checkins) {
+        byEmp.putIfAbsent(c.employee, () => []).add(c);
+      }
+      final ledgerByEmp = {for (final r in ledger) r.employee: r};
+      final hol = attendanceIsHoliday;
+      final now = DateTime.now();
+      final rows = _attendanceEmployees
+          .map((e) => deriveDayStatus(
+                employee: e,
+                day: today,
+                now: now,
+                shift: attendanceShift.value,
+                isHoliday: hol,
+                punches: byEmp[e.name] ?? const [],
+                ledger: ledgerByEmp[e.name],
+              ))
+          .toList()
+        ..sort(compareDayStatus);
+      attendanceRows.assignAll(rows);
+      attendanceLoadedAt.value = DateTime.now();
+    } catch (e) {
+      print("Error fetching today's attendance: $e");
+    } finally {
+      isLoadingAttendance.value = false;
+    }
+  }
+
+  void goToAttendance() => Get.toNamed(AppRoutes.ATTENDANCE);
 
   /// Display names for owner resolution, keyed by email, from the loaded users.
   Map<String, String> get namesByEmail => {
@@ -311,6 +429,7 @@ class HomeController extends GetxController {
         _fetchActiveWipJc(),
         fetchUpcomingTodos(),
         fetchActionableCounts(force: true),
+        fetchTodayAttendance(), // swallows its own errors
       ]);
       _applyDefaultSelection();
     } catch (e) {

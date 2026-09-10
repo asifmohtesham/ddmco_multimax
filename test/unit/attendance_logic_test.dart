@@ -200,4 +200,36 @@ void main() {
     expect(tracked.initials, 'AM');
     expect(const TrackedEmployee(name: 'x', employeeName: 'Ashal').initials, 'A');
   });
+  group('dashboardAttendanceHighlights', () {
+    EmployeeDayStatus row(String name, AttendanceStatus st, {String? id}) =>
+        EmployeeDayStatus(
+            employee: TrackedEmployee(
+                name: id ?? name, employeeName: name, deviceId: '1'),
+            status: st);
+
+    test('drops untracked and self, orders attention-first, caps', () {
+      final rows = [
+        row('Zed Present', AttendanceStatus.present),
+        row('Amy Late', AttendanceStatus.late),
+        row('Bob Absent', AttendanceStatus.absentSoFar),
+        row('Cal Not in', AttendanceStatus.notInYet),
+        EmployeeDayStatus(employee: untracked, status: AttendanceStatus.untracked),
+        row('Me Absent', AttendanceStatus.absentSoFar, id: 'ME'),
+      ];
+      final out = dashboardAttendanceHighlights(rows, selfEmployee: 'ME');
+      expect(out.map((r) => r.employee.employeeName).toList(),
+          ['Bob Absent', 'Amy Late', 'Cal Not in']);
+    });
+
+    test('max 0 returns nothing; holiday rows never appear', () {
+      final rows = [
+        row('A', AttendanceStatus.holiday),
+        row('B', AttendanceStatus.holiday),
+      ];
+      expect(dashboardAttendanceHighlights(rows), isEmpty);
+      expect(
+          dashboardAttendanceHighlights([row('C', AttendanceStatus.late)], max: 0),
+          isEmpty);
+    });
+  });
 }

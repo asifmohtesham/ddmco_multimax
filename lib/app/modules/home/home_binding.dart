@@ -11,6 +11,7 @@ import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:multimax/app/data/providers/attendance_provider.dart';
 class HomeBinding extends Bindings {
   @override
   void dependencies() {
@@ -31,6 +32,7 @@ class HomeBinding extends Bindings {
     Get.lazyPut<JobCardProvider>(() => JobCardProvider());
     Get.lazyPut<UserProvider>(() => UserProvider());
     Get.lazyPut<StockEntryProvider>(() => StockEntryProvider());
+    Get.lazyPut<AttendanceProvider>(() => AttendanceProvider());
 
     // Controller
     Get.lazyPut<HomeController>(() => HomeController());

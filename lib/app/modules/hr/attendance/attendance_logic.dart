@@ -171,6 +171,24 @@ int compareDayStatus(EmployeeDayStatus a, EmployeeDayStatus b) {
       .compareTo(b.employee.employeeName.toLowerCase());
 }
 
+/// Rows worth a line on the Dashboard card: untracked never, the viewer's
+/// own row never (it has its own "Me" line), nobody on a holiday; the rest
+/// attention-first ([compareDayStatus]) and capped at [max].
+List<EmployeeDayStatus> dashboardAttendanceHighlights(
+  Iterable<EmployeeDayStatus> rows, {
+  String? selfEmployee,
+  int max = 3,
+}) {
+  final list = rows
+      .where((r) =>
+          r.status != AttendanceStatus.untracked &&
+          r.status != AttendanceStatus.holiday &&
+          r.employee.name != selfEmployee)
+      .toList()
+    ..sort(compareDayStatus);
+  return list.length > max ? list.sublist(0, max) : list;
+}
+
 /// Counts for the summary strip; untracked rows are never counted.
 class AttendanceCounts {
   final int present, late, notIn, absent, holiday, tracked;
