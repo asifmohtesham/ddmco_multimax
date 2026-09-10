@@ -48,18 +48,19 @@ the viewer's month calendar.
 | Holiday | Holiday | {Weekday} · no attendance expected |
 | Ledger status for today (On Leave / Half Day / WFH) | {status label} | leave type, if any |
 
-- Dot strip: one dot per day of the current month. Colours use the StatusPill ramp —
-  green Present, orange Late, red Absent, blue Holiday, purple On Leave, grey Half Day / WFH.
-  Future days faint; today outlined while it has no status, filled once it does.
+- Dot strip: one dot per day of the current month. Each dot uses
+  `StatusPill.colourForStatus(status.label)` ink, so it always matches the pill — green
+  Present, orange Late, red Absent, blue Holiday **and** On Leave, yellow Half Day, purple
+  WFH. Future days faint; today outlined while it has no status, filled once it does.
 - Tally line: `{Month} · {p} present · {l} late · {a} absent` (+ ` · {v} leave` when > 0).
   Late days are **not** counted in present.
 - Hidden when the user has no linked Employee (`currentUser.employeeId` empty) or the
   employee is not in the loaded rows.
 - Linked but not enrolled on the terminal (`!isTracked`): one line "You're not enrolled on
   the attendance terminal" — no strip, no tally.
-- Loading (first load): skeleton headline + grey strip. Month-ledger fetch failure: keep
-  the headline and today's dot, hide the tally (fail soft, no snackbar — dashboard
-  convention).
+- Loading (first load): skeleton headline + grey strip. Month-ledger fetch failure:
+  headline only — no strip, no tally, since an empty ledger would draw a wrong month
+  (fail soft, no snackbar — dashboard convention).
 
 ### 3.2 "Today's attendance" team card (Dashboard, middle block)
 
@@ -74,7 +75,8 @@ the viewer's month calendar.
   since {d MMM}" / "The attendance terminal may be offline…", plus the last-punch line.
 - **Everyone else**: title "No check-ins recorded yet today", message "Statuses will appear
   as check-ins arrive." Same icon and Reload action, **no** last-punch line, no mention of
-  the terminal. Team-card sub-line becomes "No check-ins recorded yet".
+  the terminal. Team-card headline becomes "No check-ins recorded yet", sub-line "Statuses
+  will appear as check-ins arrive".
 
 ### 3.4 Unenrolled-staff nudge (Attendance screen, System Manager only)
 
@@ -121,7 +123,8 @@ Today's dot/headline come from the existing `myAttendance` getter (the viewer's
 | `dashboard_attendance_card.dart` | `isSystemManager` flag selects offline copy; remove `_MeLine`, `myRow`, `_selfOnly` |
 | `attendance_screen.dart` | `_TerminalOffline` role-aware copy; unenrolled banner for System Managers |
 | `attendance_controller.dart` | `untrackedCount` getter |
-| `attendance_month_controller.dart` | accept `holidays` (Set<String>) and `shift` (ShiftRules) arguments; fall back to the registered list controller, then to `ShiftRules.fallback` |
+| `attendance_month_controller.dart` | accept `holidays` (Set<String>) and `shift` (ShiftRules) arguments; fall back to the registered list controller, then to `ShiftRules.fallback`; when holidays are still empty, `load()` fetches them from `shift.holidayList` — fixes every entry path, including Dashboard → detail sheet → View month |
+| `employee_detail_sheet.dart` | "View month" also passes `'shift': shift` |
 
 ## 6. Error handling
 
@@ -138,7 +141,8 @@ TDD, pure logic first.
 - Unit (`test/unit/attendance_logic_test.dart`): `buildMonthStrip` — Sunday holiday, late
   ledger row counted as late not present, On Leave, unknown past day, today outlined vs
   filled, future null, 1st-of-month, 28/30/31-day months; tally counts.
-- Unit: `showTeamAttendance`, offline-copy selection by role.
+- Unit: `myAttendanceHeadline`, `unenrolledLabel`. (`showTeamAttendance` is a one-line
+  getter — no test; offline copy by role is covered by the widget tests.)
 - Widget (`test/widget/my_attendance_card_test.dart`): the six states of §3.1 + not-enrolled
   + skeleton, × light/dark, at 360 px. Use `Wrap` / `Flexible` + `FittedBox` — the Ahem test
   font inflates widths.
