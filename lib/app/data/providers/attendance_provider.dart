@@ -85,15 +85,45 @@ class AttendanceProvider {
   }
 
   /// `yyyy-MM-dd` strings of every holiday (weekly offs included).
+  ///
+  /// HR roles read the Holiday List itself. The Employee role gets 403 there,
+  /// so fall back to HRMS's self-service calendar for the logged-in employee;
+  /// if that fails too, the original error surfaces.
   Future<Set<String>> fetchHolidays(String holidayList) async {
     if (holidayList.trim().isEmpty) return const {};
-    final r = await _api.getDocument('Holiday List', holidayList);
-    final d = (r.data as Map?)?['data'];
-    final rows = (d is Map ? d['holidays'] : null) as List? ?? const [];
-    return rows
-        .whereType<Map>()
-        .map((h) => (h['holiday_date'] ?? '').toString().substring(0, 10))
-        .where((s) => s.length == 10)
-        .toSet();
+    try {
+      final r = await _api.getDocument('Holiday List', holidayList);
+      final d = (r.data as Map?)?['data'];
+      final rows = (d is Map ? d['holidays'] : null) as List? ?? const [];
+      return rows
+          .whereType<Map>()
+          .map((h) => (h['holiday_date'] ?? '').toString().substring(0, 10))
+          .where((s) => s.length == 10)
+          .toSet();
+    } catch (e, st) {
+      try {
+        return await _fetchOwnHolidays(DateTime.now().year);
+      } catch (_) {
+        Error.throwWithStackTrace(e, st);
+      }
+    }
+  }
+
+  /// The logged-in employee's holiday dates in [year] (weekly offs included)
+  /// from `hrms.api.get_attendance_calendar_events`, which maps each date to
+  /// "Holiday" or an Attendance status.
+  // ponytail: current year only — as an Employee, months of a previous year
+  // show no holiday labels; pass the viewed range if that ever matters.
+  Future<Set<String>> _fetchOwnHolidays(int year) async {
+    final r = await _api.callMethod(
+      'hrms.api.get_attendance_calendar_events',
+      params: {'from_date': '$year-01-01', 'to_date': '$year-12-31'},
+    );
+    final events = (r.data as Map?)?['message'];
+    if (events is! Map) return const {};
+    return {
+      for (final e in events.entries)
+        if (e.value == 'Holiday') e.key.toString(),
+    };
   }
 }
