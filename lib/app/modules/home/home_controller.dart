@@ -188,6 +188,70 @@ class HomeController extends GetxController {
     return attendanceRows.firstWhereOrNull((r) => r.employee.name == id);
   }
 
+  /// The viewer's own Attendance rows from the 1st to yesterday. Today stays
+  /// punch-derived until HRMS writes its row after 22:00, so one source per
+  /// day. Null = not loaded or the request failed → headline only.
+  final myMonthLedger = Rxn<List<AttendanceRecord>>();
+
+  bool get hasLinkedEmployee =>
+      (_authController.currentUser.value?.employeeId ?? '').isNotEmpty;
+
+  /// Only a System Manager is told the terminal may be offline.
+  bool get isSystemManager =>
+      _authController.currentUser.value?.hasRole('System Manager') ?? false;
+
+  /// The team card only helps viewers who can see more than their own row;
+  /// for an Employee-role viewer it would duplicate "My attendance".
+  bool get showTeamAttendance => attendanceCounts.tracked > 1;
+
+  MonthStrip? get myMonthStrip {
+    final me = myAttendance;
+    final ledger = myMonthLedger.value;
+    if (me == null || ledger == null || !me.employee.isTracked) return null;
+    final now = DateTime.now();
+    return buildMonthStrip(
+      month: DateTime(now.year, now.month),
+      ledger: ledger,
+      holidays: attendanceHolidays,
+      today: me,
+      now: now,
+      shift: attendanceShift.value,
+      employee: me.employee,
+    );
+  }
+
+  /// Opens the viewer's own month calendar with the dashboard's shift and
+  /// holidays, so Sundays and late minutes match (no dependency on the
+  /// Attendance list screen being underneath).
+  void openMyMonth() {
+    final me = myAttendance;
+    if (me == null || !me.employee.isTracked) return;
+    final now = DateTime.now();
+    Get.toNamed(AppRoutes.ATTENDANCE_MONTH, arguments: {
+      'employee': me.employee,
+      'month': DateTime(now.year, now.month),
+      'today': me,
+      'shift': attendanceShift.value,
+      'holidays': attendanceHolidays.toSet(),
+    });
+  }
+
+  /// Own rows 1st → yesterday; `[]` on the 1st, null when not linked or failed.
+  Future<List<AttendanceRecord>?> _fetchMyMonth(DateTime today) async {
+    final id = _authController.currentUser.value?.employeeId;
+    if (id == null || id.isEmpty) return null;
+    if (today.day == 1) return const [];
+    try {
+      return await _attendanceProvider.fetchAttendance(
+        DateTime(today.year, today.month),
+        today.subtract(const Duration(days: 1)),
+        employee: id,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> fetchTodayAttendance() async {
     if (!attendanceVisible) {
       attendanceRows.clear();
@@ -214,12 +278,14 @@ class HomeController extends GetxController {
         _attendanceMasterLoaded = true;
       }
       final today = dateOnly(DateTime.now());
-      final results = await Future.wait([
+      final results = await Future.wait<Object?>([
         _attendanceProvider.fetchCheckins(today),
         _attendanceProvider.fetchAttendance(today, today),
+        _fetchMyMonth(today),
       ]);
       final checkins = results[0] as List<EmployeeCheckin>;
       final ledger = results[1] as List<AttendanceRecord>;
+      myMonthLedger.value = results[2] as List<AttendanceRecord>?;
       if (checkins.isEmpty) {
         try {
           attendanceLatestPunch.value = await _attendanceProvider.fetchLatestCheckin();
