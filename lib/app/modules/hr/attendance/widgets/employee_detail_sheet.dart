@@ -133,6 +133,7 @@ class EmployeeDetailSheet extends StatelessWidget {
                     'employee': e,
                     'month': DateTime(day.year, day.month),
                     'today': row,
+                    'shift': shift,
                   });
                 },
                 icon: const Icon(Icons.calendar_month_outlined, size: 18),
