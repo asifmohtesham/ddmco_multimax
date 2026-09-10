@@ -349,6 +349,13 @@ void main() {
     test('holiday names the weekday', () {
       expect(h(AttendanceStatus.holiday), ('Holiday', 'Thursday · no attendance expected'));
     });
+    test('late without minutes never says on time', () {
+      expect(h(AttendanceStatus.late, inTime: DateTime(2026, 9, 10, 8, 27)),
+          ('In · 08:27', 'After the 08:15 cut-off'));
+    });
+    test('late with no in-time', () {
+      expect(h(AttendanceStatus.late), ('Late', 'After the 08:15 cut-off'));
+    });
   });
 
   test('unenrolledLabel pluralises', () {

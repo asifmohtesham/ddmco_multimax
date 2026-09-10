@@ -173,7 +173,8 @@ int compareDayStatus(EmployeeDayStatus a, EmployeeDayStatus b) {
 }
 
 /// Rows worth a line on the Dashboard card: untracked never, the viewer's
-/// own row never (it has its own "Me" line), nobody on a holiday; the rest
+/// own row never (shown instead in the separate "My attendance" card), nobody
+/// on a holiday; the rest
 /// attention-first ([compareDayStatus]) and capped at [max].
 List<EmployeeDayStatus> dashboardAttendanceHighlights(
   Iterable<EmployeeDayStatus> rows, {
@@ -397,7 +398,9 @@ MonthStrip buildMonthStrip({
           row.inTime == null ? row.status.label : 'In · ${kHHmm.format(row.inTime!)}',
           row.lateBy != null && row.lateBy!.inMinutes > 0
               ? '${row.lateBy!.inMinutes} min late'
-              : 'On time',
+              : row.status == AttendanceStatus.late
+                  ? 'After the ${shift.cutoffLabel} cut-off'
+                  : 'On time',
         ),
       AttendanceStatus.holiday =>
         ('Holiday', '${DateFormat('EEEE').format(now)} · no attendance expected'),
