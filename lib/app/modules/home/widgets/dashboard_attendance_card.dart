@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/attendance_models.dart';
-import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
-import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/attendance_summary_strip.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/employee_attendance_card.dart';
 
 /// "Today's attendance" summary on the Dashboard — headline, four count
-/// tiles, the viewer's own row, up to three attention-first employee rows and
+/// tiles, up to three attention-first employee rows and
 /// a View all link. Public and controller-free (like the other dashboard
 /// widgets) so widget tests can pump it in every state.
 ///
 /// Everything inside is reused from the Attendance screen; the only decision
 /// made here is which headline / tile / row set fits the day:
-/// holiday › beforeCutoff › looksOffline › one-row viewer › counts.
+/// holiday › beforeCutoff › looksOffline › counts. The viewer's own status
+/// lives in MyAttendanceCard, and only a System Manager is told the terminal
+/// may be offline.
 class DashboardAttendanceCard extends StatelessWidget {
   const DashboardAttendanceCard({
     super.key,
@@ -29,7 +29,7 @@ class DashboardAttendanceCard extends StatelessWidget {
     this.looksOffline = false,
     this.latestPunch,
     this.highlights = const [],
-    this.myRow,
+    this.isSystemManager = false,
     this.loadedAt,
     this.isLoading = false,
   });
@@ -42,7 +42,9 @@ class DashboardAttendanceCard extends StatelessWidget {
   final bool looksOffline;
   final DateTime? latestPunch;
   final List<EmployeeDayStatus> highlights;
-  final EmployeeDayStatus? myRow;
+
+  /// Only a System Manager sees the terminal diagnosis (spec §3.3).
+  final bool isSystemManager;
   final DateTime? loadedAt;
   final bool isLoading;
   final VoidCallback onViewAll;
@@ -54,15 +56,10 @@ class DashboardAttendanceCard extends StatelessWidget {
   /// far — rows nobody can act on, so the card hides them and dashes the tiles.
   bool get _showRows => !_skeleton && !looksOffline;
 
-  /// An Employee-role viewer gets only their own row back: "1 of 1 in" reads
-  /// oddly, so the headline speaks to them directly.
-  bool get _selfOnly => myRow != null && counts.tracked == 1;
-
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
     final rows = _showRows ? highlights : const <EmployeeDayStatus>[];
-    final me = _showRows ? myRow : null;
 
     return Material(
       color: s.fg,
@@ -79,10 +76,6 @@ class DashboardAttendanceCard extends StatelessWidget {
             _buildHeadline(context),
             const SizedBox(height: 12),
             _buildTiles(),
-            if (me != null) ...[
-              const SizedBox(height: 12),
-              _MeLine(row: me),
-            ],
             for (var i = 0; i < rows.length; i++) ...[
               SizedBox(height: i == 0 ? 12 : 9),
               EmployeeAttendanceCard(row: rows[i], onTap: () => onRowTap(rows[i])),
@@ -122,24 +115,13 @@ class DashboardAttendanceCard extends StatelessWidget {
           '$inCount in so far · late after ${shift.cutoffLabel}');
     }
     if (looksOffline) {
+      if (!isSystemManager) {
+        return ('No check-ins recorded yet', 'Statuses will appear as check-ins arrive');
+      }
       final last = latestPunch == null
           ? 'terminal may be offline'
           : 'Last punch ${DateFormat('d MMM HH:mm').format(latestPunch!)} · terminal may be offline';
       return ('No punches yet today', last);
-    }
-    if (_selfOnly) {
-      final r = myRow!;
-      return switch (r.status) {
-        AttendanceStatus.present ||
-        AttendanceStatus.late =>
-          ("You're in · ${kHHmm.format(r.inTime!)}",
-              r.lateBy != null
-                  ? '${r.lateBy!.inMinutes} min after the ${shift.cutoffLabel} cut-off'
-                  : 'Before the ${shift.cutoffLabel} cut-off'),
-        AttendanceStatus.notInYet => ('Not in yet', 'Shift starts ${shift.startLabel}'),
-        AttendanceStatus.absentSoFar => ('Absent so far', 'No punch since ${shift.cutoffLabel}'),
-        _ => (r.status.label, r.flag ?? ''),
-      };
     }
     return ('$inCount of ${counts.tracked} in',
         '${counts.late} late · ${counts.absent} absent so far');
@@ -264,59 +246,6 @@ class DashboardAttendanceCard extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// The viewer's own row — the only tinted block in the card, so they find
-/// themself first: avatar · "You" · compact pill · In time · late flag.
-class _MeLine extends StatelessWidget {
-  const _MeLine({required this.row});
-  final EmployeeDayStatus row;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.scheme;
-    final e = row.employee;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-      decoration: BoxDecoration(
-        color: s.subtle,
-        borderRadius: BorderRadius.circular(AppRadius.md + 2),
-        border: Border.all(color: s.border),
-      ),
-      child: Row(
-        children: [
-          AppAvatar(initials: e.initials, image: employeeImage(e.image), size: 30),
-          const SizedBox(width: 10),
-          Text('You',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: s.text)),
-          const SizedBox(width: 10),
-          Flexible(child: StatusPill(status: row.status.label, compact: true)),
-          // Flexible + scaleDown: the line never overflows at large text scales.
-          if (row.inTime != null) ...[
-            const SizedBox(width: 10),
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: InOutStat(label: 'In', time: row.inTime),
-              ),
-            ),
-          ],
-          if (row.flag != null) ...[
-            const Spacer(),
-            const SizedBox(width: 8),
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: AttendanceFlag(text: row.flag!, warning: row.flagIsWarning),
-              ),
-            ),
-          ],
-        ],
-      ),
     );
   }
 }

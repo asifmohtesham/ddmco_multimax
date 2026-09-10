@@ -341,7 +341,6 @@ class HomeScreen extends GetView<HomeController> {
             looksOffline: controller.attendanceLooksOffline,
             latestPunch: controller.attendanceLatestPunch.value?.time,
             highlights: dashboardAttendanceHighlights(rows, selfEmployee: selfId),
-            myRow: controller.myAttendance,
             loadedAt: controller.attendanceLoadedAt.value,
             isLoading: loading,
             onViewAll: controller.goToAttendance,
