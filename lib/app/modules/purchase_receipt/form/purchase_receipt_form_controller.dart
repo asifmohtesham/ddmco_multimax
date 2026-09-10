@@ -150,7 +150,7 @@ class PurchaseReceiptFormController extends GetxController
     supplierController.dispose();
     postingDateController.dispose();
     postingTimeController.dispose();
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     scrollController.dispose();
     super.onClose();
   }

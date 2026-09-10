@@ -133,7 +133,7 @@ class DeliveryNoteFormController extends GetxController
     _saveResultTimer?.cancel();
     disposeFeedback();
     log('[DN:onClose] _scanWorker disposed', name: 'DN');
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     scrollController.dispose();
     super.onClose();
   }

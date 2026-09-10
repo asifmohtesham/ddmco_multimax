@@ -166,7 +166,7 @@ class MaterialRequestFormController extends GetxController
     bsQtyController.dispose();
     bsDateController.dispose();
     bsWarehouseController.dispose();
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     scrollController.dispose();
     super.onClose();
   }

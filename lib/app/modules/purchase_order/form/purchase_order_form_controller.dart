@@ -255,7 +255,7 @@ class PurchaseOrderFormController extends GetxController
     _removeListeners();
     supplierController.dispose();
     dateController.dispose();
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     scrollController.dispose();
     super.onClose();
   }

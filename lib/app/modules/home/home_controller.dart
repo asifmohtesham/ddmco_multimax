@@ -376,7 +376,12 @@ class HomeController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
-    barcodeController.dispose();
+    // barcodeController is deliberately NOT disposed. GetX runs onClose
+    // synchronously when the route is disposed (router_report.dart), while the
+    // screen can still rebuild once before it unmounts; its scan box then
+    // re-attaches to a disposed controller ("used after being disposed" →
+    // '_dependents.isEmpty' red screen on logout). A TextEditingController
+    // holds no native resources, so it is simply garbage-collected.
     super.onClose();
   }
 
