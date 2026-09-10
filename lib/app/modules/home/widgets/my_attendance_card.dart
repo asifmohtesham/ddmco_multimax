@@ -57,6 +57,25 @@ class MyAttendanceCard extends StatelessWidget {
   Widget _content(BuildContext context, EmployeeDayStatus r) {
     final s = context.scheme;
     final e = r.employee;
+
+    // Not enrolled: single line only
+    if (!e.isTracked) {
+      return Row(
+        children: [
+          AppAvatar(initials: e.initials, image: employeeImage(e.image), size: 32),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "You're not enrolled on the attendance terminal",
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, color: s.textMuted),
+            ),
+          ),
+        ],
+      );
+    }
+
     final (h1, h2) = myAttendanceHeadline(r, shift, now);
     final st = strip;
     final showMonth = st != null && e.isTracked;

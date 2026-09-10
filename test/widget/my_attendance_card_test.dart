@@ -156,8 +156,9 @@ void main() {
         brightness,
       );
       expect(find.text("You're not enrolled on the attendance terminal"), findsOneWidget);
+      expect(find.text('Not enrolled'), findsNothing);
       expect(find.byType(MonthDotStrip), findsNothing);
-      await tester.tap(find.text('Not enrolled'));
+      await tester.tap(find.text("You're not enrolled on the attendance terminal"));
       expect(taps, 0);
     });
 
