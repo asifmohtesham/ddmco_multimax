@@ -161,6 +161,7 @@ class HomeController extends GetxController {
   final attendanceLatestPunch = Rxn<EmployeeCheckin>();
   List<TrackedEmployee> _attendanceEmployees = const [];
   bool _attendanceMasterLoaded = false;
+  bool _attendanceHolidaysLoaded = false;
 
   /// The last successfully loaded Shift Assignments for today, and the day
   /// they were loaded for — a failed re-read on the same day keeps them
@@ -277,6 +278,21 @@ class HomeController extends GetxController {
     } catch (_) {}
   }
 
+  /// Reads holidays from today's own shifts' `holiday_list` (Morning/
+  /// Afternoon), else the default shift's, once per successful read — a
+  /// failure retries on the next load instead of sticking for the session
+  /// (unlike [_attendanceMasterLoaded], which never retries).
+  Future<void> _ensureAttendanceHolidays() async {
+    if (_attendanceHolidaysLoaded) return;
+    final list = _attendanceDayShifts
+        .map((s) => s.holidayList)
+        .firstWhere((h) => h.isNotEmpty, orElse: () => _attendanceDefaultShift.holidayList);
+    try {
+      attendanceHolidays.assignAll(await _attendanceProvider.fetchHolidays(list));
+      _attendanceHolidaysLoaded = true;
+    } catch (_) {}
+  }
+
   /// Own rows 1st → yesterday; `[]` on the 1st, null when not linked or failed.
   Future<List<AttendanceRecord>?> _fetchMyMonth(DateTime today) async {
     final id = _authController.currentUser.value?.employeeId;
@@ -314,10 +330,6 @@ class HomeController extends GetxController {
         }
         attendanceCatalog[_attendanceDefaultShift.name] = _attendanceDefaultShift;
         attendanceShift.value = _attendanceDefaultShift;
-        try {
-          attendanceHolidays.assignAll(await _attendanceProvider
-              .fetchHolidays(_attendanceDefaultShift.holidayList));
-        } catch (_) {}
         _attendanceMasterLoaded = true;
       }
       final today = dateOnly(DateTime.now());
@@ -350,7 +362,6 @@ class HomeController extends GetxController {
       for (final r in ledger) {
         ledgerByEmp.putIfAbsent(r.employee, () => []).add(r);
       }
-      final hol = attendanceIsHoliday;
       final now = DateTime.now();
       // Falls back to the employee's own Attendance-row shift names for today
       // when no assignment covers it — HRMS already wrote them, so a stale/
@@ -363,6 +374,15 @@ class HomeController extends GetxController {
             fallback: _attendanceDefaultShift,
             ledgerNames: (ledgerByEmp[e.name] ?? const []).map((r) => r.shift),
           );
+      _attendanceDayShifts =
+          distinctShifts(_attendanceEmployees.where((e) => e.isTracked).map(shiftsFor));
+      if (_attendanceDayShifts.isNotEmpty) {
+        attendanceShift.value = focusShift(_attendanceDayShifts, today, now);
+      }
+      // Needs today's resolved shifts to pick the right holiday_list, so this
+      // must run before `hol`/`rows` below are computed from it.
+      await _ensureAttendanceHolidays();
+      final hol = attendanceIsHoliday;
       final rows = _attendanceEmployees.map((e) {
         final shifts = shiftsFor(e);
         return deriveDayStatus(
@@ -377,11 +397,6 @@ class HomeController extends GetxController {
         );
       }).toList()
         ..sort(compareDayStatus);
-      _attendanceDayShifts =
-          distinctShifts(_attendanceEmployees.where((e) => e.isTracked).map(shiftsFor));
-      if (_attendanceDayShifts.isNotEmpty) {
-        attendanceShift.value = focusShift(_attendanceDayShifts, today, now);
-      }
       attendanceRows.assignAll(rows);
       attendanceLoadedAt.value = DateTime.now();
     } catch (e) {

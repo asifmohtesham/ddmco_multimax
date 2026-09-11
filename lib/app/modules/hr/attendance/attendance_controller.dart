@@ -59,6 +59,7 @@ class AttendanceController extends GetxController {
 
   Timer? _poll;
   bool _masterLoaded = false;
+  bool _holidaysLoaded = false;
 
   /// The last successfully loaded Shift Assignments, and the day they were
   /// loaded for — a failed re-read on the same day keeps them rather than
@@ -203,10 +204,22 @@ class AttendanceController extends GetxController {
     }
     catalog[_defaultShift.name] = _defaultShift;
     shift.value = _defaultShift;
-    try {
-      holidays.assignAll(await _provider.fetchHolidays(_defaultShift.holidayList));
-    } catch (_) {}
     _masterLoaded = true;
+  }
+
+  /// Reads holidays from the day's own shifts' `holiday_list` (Morning/
+  /// Afternoon), else the default shift's, once per successful read — a
+  /// failure retries on the next load instead of sticking for the session
+  /// (unlike [_masterLoaded], which never retries).
+  Future<void> _ensureHolidays() async {
+    if (_holidaysLoaded) return;
+    final list = dayShifts
+        .map((s) => s.holidayList)
+        .firstWhere((h) => h.isNotEmpty, orElse: () => _defaultShift.holidayList);
+    try {
+      holidays.assignAll(await _provider.fetchHolidays(list));
+      _holidaysLoaded = true;
+    } catch (_) {}
   }
 
   /// Reads the Shift Types among [names] not cached yet. On failure they fall
@@ -257,6 +270,7 @@ class AttendanceController extends GetxController {
       checkins.assignAll(results[0] as List<EmployeeCheckin>);
       ledger.assignAll(dayLedger);
       shift.value = focusShift(dayShifts, day, DateTime.now());
+      await _ensureHolidays();
       if (checkins.isEmpty) {
         try {
           latestPunch.value = await _provider.fetchLatestCheckin();
