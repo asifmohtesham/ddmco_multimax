@@ -141,7 +141,9 @@ class EmployeeDetailSheet extends StatelessWidget {
                   Get.toNamed(AppRoutes.ATTENDANCE_MONTH, arguments: {
                     'employee': e,
                     'month': DateTime(day.year, day.month),
-                    'today': row,
+                    // Only today's own row is "live"; a past day's row must
+                    // not be painted onto today's calendar cell.
+                    'today': isToday ? row : null,
                     'shift': shift,
                   });
                 },
