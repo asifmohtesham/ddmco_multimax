@@ -164,6 +164,16 @@ void main() {
     test('search matches name case-insensitively', () {
       expect(filterRows(rows, query: 'chen').single.employee, untracked);
     });
+
+    test('No check-out counts toward Present and is included by the Present filter', () {
+      final noOutRows = [
+        EmployeeDayStatus(employee: tracked, status: AttendanceStatus.noCheckOut),
+      ];
+      final c = AttendanceCounts.of(noOutRows);
+      expect(c.present, 1);
+      expect(c.noOut, 1);
+      expect(filterRows(noOutRows, statusKey: 'Present'), noOutRows);
+    });
   });
 
   group('freshness', () {
@@ -523,7 +533,9 @@ void main() {
         day2(now: DateTime(2026, 9, 12, 13, 10), punches: [p(7, 58, 'IN'), p(12, 2, 'OUT')]),
       ];
       final c = AttendanceCounts.of(rows);
-      expect((c.noOut, c.present, c.tracked), (1, 1, 2));
+      // No check-out is on site (just missing an OUT), so it also counts
+      // toward Present (F3) — was (1, 1, 2) before that counted them nowhere.
+      expect((c.noOut, c.present, c.tracked), (1, 2, 2));
       expect(filterRows(rows, statusKey: 'No check-out').length, 1);
     });
 

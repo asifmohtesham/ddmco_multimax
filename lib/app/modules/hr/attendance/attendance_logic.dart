@@ -553,6 +553,7 @@ class AttendanceCounts {
         case AttendanceStatus.absentSoFar:
           a++;
         case AttendanceStatus.noCheckOut:
+          p++; // on site (just missing an OUT) — counts toward Present too
           o++;
         case AttendanceStatus.holiday:
         case AttendanceStatus.onLeave:
@@ -565,9 +566,11 @@ class AttendanceCounts {
   }
 }
 
-/// Status-filter keys used by the summary tiles and the filter sheet.
+/// Status-filter keys used by the summary tiles and the filter sheet. Present
+/// also matches No check-out (they're on site, just missing an OUT) — the
+/// dedicated 'No check-out' option below still isolates just them.
 const kStatusFilterOptions = <String, List<AttendanceStatus>>{
-  'Present': [AttendanceStatus.present],
+  'Present': [AttendanceStatus.present, AttendanceStatus.noCheckOut],
   'Late': [AttendanceStatus.late],
   'Not in yet': [AttendanceStatus.notInYet],
   'Absent': [AttendanceStatus.absent, AttendanceStatus.absentSoFar],

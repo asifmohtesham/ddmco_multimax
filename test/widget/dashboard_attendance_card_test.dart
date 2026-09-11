@@ -82,6 +82,24 @@ void main() {
       expect(tapped?.employee.name, 'E2');
     });
 
+    testWidgets('a No check-out row still counts as in ($mode)', (tester) async {
+      final rows = [row('E5', 'Noor Fatima', AttendanceStatus.noCheckOut)];
+      await pump(
+        tester,
+        DashboardAttendanceCard(
+          counts: AttendanceCounts.of(rows),
+          shift: shift,
+          now: now,
+          loadedAt: loadedAt,
+          highlights: rows,
+          onViewAll: () {},
+          onRowTap: (_) {},
+        ),
+        brightness,
+      );
+      expect(find.text('1 of 1 in'), findsOneWidget);
+    });
+
     testWidgets('before cut-off: calm headline, Absent tile dashed ($mode)',
         (tester) async {
       await pump(

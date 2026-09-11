@@ -266,8 +266,9 @@ class AttendanceScreen extends GetView<AttendanceController> {
             ? '${tracked.length} of $total employees shown'
             : controller.isHoliday
                 ? '${counts.holiday} on holiday'
-                : '${counts.present} present · ${counts.late} late · '
-                    '${counts.noOut > 0 ? '${counts.noOut} no check-out · ' : ''}'
+                : '${counts.present} present'
+                    '${counts.noOut > 0 ? ' (${counts.noOut} no check-out)' : ''} · '
+                    '${counts.late} late · '
                     '${controller.beforeCutoff ? '${counts.notIn} not in yet' : '${counts.absent} absent${controller.isToday ? ' so far' : ''}'}',
       ),
     ];
