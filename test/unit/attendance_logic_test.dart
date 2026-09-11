@@ -584,6 +584,28 @@ void main() {
       expect(names(DateTime(2026, 9, 11), e: withDefault), ['Night']);
     });
 
+    test('resolveShifts: no assignment falls back to the ledger\'s own shift names', () {
+      const cat = {'Morning': morning, 'Afternoon': afternoon};
+      final withLedger = resolveShifts(
+        employee: tracked,
+        day: sat,
+        assignments: const [],
+        catalog: cat,
+        ledgerNames: const ['Morning', 'Afternoon'],
+      ).map((s) => s.name).toList();
+      expect(withLedger, ['Morning', 'Afternoon']);
+
+      // A Leave Application's blank shift name is not a usable ledger name.
+      final blankOnly = resolveShifts(
+        employee: tracked,
+        day: sat,
+        assignments: const [],
+        catalog: cat,
+        ledgerNames: const [''],
+      ).map((s) => s.name).toList();
+      expect(blankOnly, ['General']); // default/fallback, unaffected by ledgerNames
+    });
+
     test('ShiftRules windows, short name and the new Frappe fields', () {
       expect(morning.windowEndOn(sat), DateTime(2026, 9, 12, 13));
       expect(afternoon.windowStartOn(sat), DateTime(2026, 9, 12, 13));

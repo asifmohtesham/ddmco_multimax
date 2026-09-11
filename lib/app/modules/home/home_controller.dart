@@ -162,6 +162,12 @@ class HomeController extends GetxController {
   List<TrackedEmployee> _attendanceEmployees = const [];
   bool _attendanceMasterLoaded = false;
 
+  /// The last successfully loaded Shift Assignments for today, and the day
+  /// they were loaded for — a failed re-read on the same day keeps them
+  /// rather than dropping to `[]` (see [_fetchTodayAssignments]).
+  List<ShiftAssignmentRow> _lastAttendanceAssignments = const [];
+  DateTime? _lastAttendanceAssignmentsDay;
+
   /// Shift Types by name: the default shift, today's assignments, ledger rows.
   final Map<String, ShiftRules> attendanceCatalog = {};
   List<ShiftAssignmentRow> _attendanceAssignments = const [];
@@ -247,12 +253,17 @@ class HomeController extends GetxController {
     });
   }
 
-  /// A failed read falls back to default shifts rather than hiding the card.
+  /// A failed read keeps the last assignments successfully loaded for this
+  /// same day rather than dropping to `[]` and collapsing everyone to a
+  /// single fallback shift; `[]` only when nothing has ever loaded for today.
   Future<List<ShiftAssignmentRow>> _fetchTodayAssignments(DateTime today) async {
     try {
-      return await _attendanceProvider.fetchShiftAssignments(today, today);
+      final result = await _attendanceProvider.fetchShiftAssignments(today, today);
+      _lastAttendanceAssignments = result;
+      _lastAttendanceAssignmentsDay = today;
+      return result;
     } catch (_) {
-      return const [];
+      return _lastAttendanceAssignmentsDay == today ? _lastAttendanceAssignments : const [];
     }
   }
 
@@ -341,12 +352,16 @@ class HomeController extends GetxController {
       }
       final hol = attendanceIsHoliday;
       final now = DateTime.now();
+      // Falls back to the employee's own Attendance-row shift names for today
+      // when no assignment covers it — HRMS already wrote them, so a stale/
+      // failed assignment read doesn't collapse a two-shift day to General.
       List<ShiftRules> shiftsFor(TrackedEmployee e) => resolveShifts(
             employee: e,
             day: today,
             assignments: _attendanceAssignments,
             catalog: attendanceCatalog,
             fallback: _attendanceDefaultShift,
+            ledgerNames: (ledgerByEmp[e.name] ?? const []).map((r) => r.shift),
           );
       final rows = _attendanceEmployees.map((e) {
         final shifts = shiftsFor(e);

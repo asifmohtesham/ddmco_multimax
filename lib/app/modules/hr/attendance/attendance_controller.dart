@@ -60,6 +60,12 @@ class AttendanceController extends GetxController {
   Timer? _poll;
   bool _masterLoaded = false;
 
+  /// The last successfully loaded Shift Assignments, and the day they were
+  /// loaded for — a failed re-read on the same day keeps them rather than
+  /// dropping to `[]` (see [_fetchAssignments]).
+  List<ShiftAssignmentRow> _lastAssignments = const [];
+  DateTime? _lastAssignmentsDay;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   @override
   void onInit() {
@@ -121,13 +127,17 @@ class AttendanceController extends GetxController {
     return list;
   }
 
-  /// [e]'s shifts on the selected day (two on a Morning/Afternoon day).
+  /// [e]'s shifts on the selected day (two on a Morning/Afternoon day). Falls
+  /// back to the employee's own Attendance-row shift names for the day when
+  /// no assignment covers it — HRMS already wrote them, so a stale/failed
+  /// assignment read doesn't collapse a two-shift day to a single "General".
   List<ShiftRules> shiftsFor(TrackedEmployee e) => resolveShifts(
         employee: e,
         day: selectedDate.value,
         assignments: assignments,
         catalog: catalog,
         fallback: _defaultShift,
+        ledgerNames: ledger.where((r) => r.employee == e.name).map((r) => r.shift),
       );
 
   /// Every shift worked on the selected day, earliest first.
@@ -209,12 +219,18 @@ class AttendanceController extends GetxController {
     } catch (_) {}
   }
 
-  /// A failed read falls back to default shifts rather than failing the day.
+  /// A failed read keeps the last assignments successfully loaded for this
+  /// same day (the list reloads every 60 s) rather than dropping to `[]` and
+  /// collapsing everyone to a single fallback shift; `[]` only when nothing
+  /// has ever loaded for this day.
   Future<List<ShiftAssignmentRow>> _fetchAssignments(DateTime day) async {
     try {
-      return await _provider.fetchShiftAssignments(day, day);
+      final result = await _provider.fetchShiftAssignments(day, day);
+      _lastAssignments = result;
+      _lastAssignmentsDay = day;
+      return result;
     } catch (_) {
-      return const [];
+      return _lastAssignmentsDay == day ? _lastAssignments : const [];
     }
   }
 

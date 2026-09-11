@@ -416,20 +416,26 @@ EmployeeDayStatus _deriveShiftedDay({
 }
 
 /// The shifts [employee] works on [day], earliest first: their Shift
-/// Assignments covering the day, with rules from [catalog]; without any, their
-/// default shift, else [fallback]. Names missing from [catalog] get
-/// [ShiftRules.named].
+/// Assignments covering the day, with rules from [catalog]; without any, the
+/// day's own Attendance-row shift names in [ledgerNames] (HRMS already wrote
+/// them, so they're authoritative even with no assignment loaded yet); without
+/// either, their default shift, else [fallback]. Names missing from [catalog]
+/// get [ShiftRules.named].
 List<ShiftRules> resolveShifts({
   required TrackedEmployee employee,
   required DateTime day,
   required Iterable<ShiftAssignmentRow> assignments,
   required Map<String, ShiftRules> catalog,
   ShiftRules fallback = ShiftRules.fallback,
+  Iterable<String> ledgerNames = const [],
 }) {
-  final names = {
+  var names = {
     for (final a in assignments)
       if (a.employee == employee.name && a.covers(day)) a.shiftType,
   };
+  if (names.isEmpty) {
+    names = {for (final n in ledgerNames) if (n.trim().isNotEmpty) n.trim()};
+  }
   if (names.isEmpty) {
     final d = (employee.defaultShift ?? '').trim();
     if (d.isEmpty) return [catalog[fallback.name] ?? fallback];
