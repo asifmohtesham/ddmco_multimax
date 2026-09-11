@@ -11,6 +11,8 @@ import 'dart:typed_data';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
+import 'package:multimax/app/data/services/attendance_notify_worker.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -32,14 +34,27 @@ const String _kChannelDescription =
 void digestCallbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
     try {
-      await runDigestTask();
+      await runBackgroundTask(taskName);
     } catch (_) {
-      // A digest must never nag about its own failures, and returning false
+      // Neither feature may nag about its own failures, and returning false
       // would trigger WorkManager backoff retries — the next scheduled tick
       // is the retry.
     }
     return true;
   });
+}
+
+/// WorkManager allows one dispatcher per app, so both chains arrive here and
+/// are routed by task name. Runners are injectable for tests.
+Future<void> runBackgroundTask(
+  String taskName, {
+  Future<void> Function()? digest,
+  Future<void> Function()? attendance,
+}) async {
+  if (taskName == kAttendanceTaskName) {
+    return (attendance ?? runAttendanceTask)();
+  }
+  return (digest ?? runDigestTask)();
 }
 
 /// One digest tick: read prefs, count, notify, chain the next occurrence.

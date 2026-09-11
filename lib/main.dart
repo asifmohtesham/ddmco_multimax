@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -112,6 +113,9 @@ Future<void> main() async {
       (Platform.isAndroid || Platform.isIOS) &&
       authController.isAuthenticated.value) {
     unawaited(DigestScheduler().rearm().catchError((_) {}));
+    if (Platform.isAndroid) {
+      unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
+    }
   }
 
   runApp(MultimaxApp(initialRoute: authController.isAuthenticated.value

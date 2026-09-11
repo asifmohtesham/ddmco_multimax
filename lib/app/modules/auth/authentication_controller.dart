@@ -10,6 +10,8 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
+import 'package:multimax/app/data/services/attendance_notify_worker.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
@@ -102,6 +104,12 @@ class AuthenticationController extends GetxController {
           // Arm the scheduled digest for the user who just signed in.
           if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
             unawaited(DigestScheduler().rearm().catchError((_) {}));
+          }
+
+          // Arm attendance notifications for the user who just signed in
+          // (Android only — iOS cannot check punches at fire time).
+          if (!kIsWeb && Platform.isAndroid) {
+            unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
           }
 
           if (Get.isRegistered<PermissionService>()) {
@@ -219,6 +227,7 @@ class AuthenticationController extends GetxController {
     // before the user identity disappears from storage.
     if (!kIsWeb && Platform.isAndroid) {
       await cancelDigestOnLogout();
+      await cancelAttendanceOnLogout();
     }
     if (!kIsWeb && Platform.isIOS) {
       await cancelIosDigestReminders();
