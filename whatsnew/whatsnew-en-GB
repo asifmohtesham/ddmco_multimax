@@ -1,2 +1,1 @@
-• My attendance: your own attendance now sits at the top of the Dashboard — today's status (in, late or not in yet) and a dot for every day of the month, with present, late and absent totals. Tap it for your month calendar. Sundays and holidays now show for every employee.
-• Fixed an error screen that could appear after logging out.
+• Stock Entry: a POS Upload Material Issue item now can't be saved until you pick its Invoice Serial Number, so every issued quantity is counted against the right POS line.
