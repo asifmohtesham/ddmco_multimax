@@ -45,6 +45,11 @@ class StorageService {
   static const String _digestDoctypesKey = 'notif_digest_doctypes';
   static const String _digestAlarmStyleKey = 'notif_digest_alarm_style';
 
+  // Attendance notification preferences (#2b), per user. Absent = on.
+  static const String _attEnabledKey = 'notif_att_enabled';
+  static const String _attTerminalKey = 'notif_att_terminal';
+  static const String _attPromptedKey = 'notif_att_prompted';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -218,4 +223,27 @@ class StorageService {
       _box.read<String>(_dashboardActionableScopeKey) == 'everyone'
           ? 'everyone'
           : 'mine';
+
+  // --- Attendance notification preferences ---
+  Future<void> saveAttendanceRemindersEnabled(String user, bool value) async =>
+      _box.write('$_attEnabledKey::$user', value);
+
+  /// Attendance reminders are on by default for linked employees.
+  bool getAttendanceRemindersEnabled(String user) =>
+      _box.read<bool>('$_attEnabledKey::$user') ?? true;
+
+  Future<void> saveAttendanceTerminalAlerts(String user, bool value) async =>
+      _box.write('$_attTerminalKey::$user', value);
+
+  /// Terminal quiet/back alerts are on by default for System Managers.
+  bool getAttendanceTerminalAlerts(String user) =>
+      _box.read<bool>('$_attTerminalKey::$user') ?? true;
+
+  /// Written by the main isolate once the Dashboard has asked for
+  /// notification permission, so the prompt never repeats.
+  Future<void> saveAttendancePermissionPrompted(String user) async =>
+      _box.write('$_attPromptedKey::$user', true);
+
+  bool getAttendancePermissionPrompted(String user) =>
+      _box.read<bool>('$_attPromptedKey::$user') ?? false;
 }
