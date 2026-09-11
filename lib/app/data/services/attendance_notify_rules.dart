@@ -55,7 +55,12 @@ List<ShiftRules> reminderShifts({
       if (a.employee == employee && a.covers(day)) a.shiftType,
   };
   if (names.isEmpty) {
-    names.addAll(ledger.map((r) => r.shift).where((n) => n.trim().isNotEmpty));
+    // A ledger row naming the General/fallback shift only means "no real
+    // shift was assigned yet" (pre-go-live data) — never a schedule to remind
+    // against. An explicit Shift Assignment for it, above, is a real schedule.
+    names.addAll(ledger
+        .map((r) => r.shift)
+        .where((n) => n.trim().isNotEmpty && n != ShiftRules.fallback.name));
   }
   return [
     for (final n in names)
@@ -162,9 +167,9 @@ ReminderOutcome decideReminders({
     final st = deriveShiftStatus(
         shift: s, day: day, now: now, punches: byShift[s.name]!, ledger: ledgerFor(s.name));
     final id = kShiftReminderIdBase + i;
-    final postedIn = postedKeys.contains('${s.name}|${ReminderKind.headsUp.name}') ||
-        postedKeys.contains('${s.name}|${ReminderKind.missedIn.name}');
-    final postedOut = postedKeys.contains('${s.name}|${ReminderKind.checkOut.name}');
+    final postedIn = postedKeys.contains(momentKey(s.name, ReminderKind.headsUp)) ||
+        postedKeys.contains(momentKey(s.name, ReminderKind.missedIn));
+    final postedOut = postedKeys.contains(momentKey(s.name, ReminderKind.checkOut));
     if ((st.inTime != null && postedIn && !postedOut) || (st.outTime != null && postedOut)) {
       cancel.add(id);
     }
@@ -199,7 +204,8 @@ class RecapOutcome {
 }
 
 String? _problem(AttendanceRecord r, Map<String, ShiftRules> catalog) {
-  final label = r.shift.trim().isEmpty ? 'Day' : _short(r.shift);
+  final label =
+      r.shift.trim().isEmpty ? 'Day' : catalog[r.shift]?.shortName ?? _short(r.shift);
   if (r.status == 'Absent') return '$label: absent';
   if (r.status != 'Present') return null; // On Leave, Half Day, Work From Home
   final issues = <String>[];

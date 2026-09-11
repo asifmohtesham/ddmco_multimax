@@ -24,8 +24,11 @@ class ShiftMoment {
       {required this.kind, required this.shiftIndex, required this.shift, required this.at});
 
   /// `<shift>|<kind>` — the handled/posted key in the worker state.
-  String get key => '${shift.name}|${kind.name}';
+  String get key => momentKey(shift.name, kind);
 }
+
+/// The worker-state key for one shift's reminder moment: `<shift>|<kind>`.
+String momentKey(String shiftName, ReminderKind kind) => '$shiftName|${kind.name}';
 
 /// Heads-up (cut-off − 10), missed check-in (cut-off) and check-out
 /// (end + 10) for each of [shifts] on [day], in time order.

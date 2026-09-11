@@ -55,6 +55,15 @@ void main() {
           assignments: [ShiftAssignmentRow(employee: 'E1', shiftType: 'Night', startDate: sat)],
           ledger: const [], catalog: catalog), isEmpty);
     });
+    test('a ledger row naming the fallback shift never produces reminders', () {
+      final withGeneral = {...catalog, 'General': ShiftRules.fallback};
+      expect(reminderShifts(employee: 'E1', day: sat, assignments: const [],
+          ledger: [row(sat, 'General')], catalog: withGeneral), isEmpty);
+      // An explicit assignment for it is a real schedule and still resolves.
+      expect(reminderShifts(employee: 'E1', day: sat,
+          assignments: [ShiftAssignmentRow(employee: 'E1', shiftType: 'General', startDate: sat)],
+          ledger: const [], catalog: withGeneral).map((s) => s.name), ['General']);
+    });
   });
 
   group('decideReminders', () {
