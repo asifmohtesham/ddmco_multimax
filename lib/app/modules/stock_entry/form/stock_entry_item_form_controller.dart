@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/models/mr_item_row.dart';
 import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
@@ -841,7 +842,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
             isFinishedItem.value &&
             batchController.text.isNotEmpty);
 
-    final valid = batchOk && qtyOk && ceilOk && rackOk;
+    final serialOk = isInvoiceSerialSatisfied(
+      source:         _parent.entrySource,
+      stockEntryType: _parent.stockEntryType.value,
+      serial:         selectedSerial.value,
+    );
+
+    final valid = batchOk && qtyOk && ceilOk && rackOk && serialOk;
 
     isSheetValid.value = valid;
 
@@ -864,6 +871,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final mr = _mrQty;
     if (mr != null && mr > 0) parts.add('MR: ${mr.toStringAsFixed(0)}');
     qtyInfoTooltip.value = parts.isEmpty ? null : parts.join('  \u00b7  ');
+  }
+
+  /// Invoice Serial Number is mandatory only for a POS Upload-sourced
+  /// Material Issue — a blank serial there reaches ERPNext as 0 and the
+  /// qty is never counted against any POS line. Every other SE ignores it.
+  static bool isInvoiceSerialSatisfied({
+    required StockEntrySource source,
+    required String? stockEntryType,
+    required String? serial,
+  }) {
+    if (source != StockEntrySource.posUpload ||
+        stockEntryType != 'Material Issue') {
+      return true;
+    }
+    return serial != null && serial.isNotEmpty && serial != '0';
   }
 
   // ── adjustQty ───────────────────────────────────────────────────────────────────
@@ -1215,6 +1237,12 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final srcRack    = isSourceRackValid.value ? sourceRackController.text : null;
     final tgtRack    = isTargetRackValid.value ? targetRackController.text : null;
     final serial     = selectedSerial.value;
+    if (!isInvoiceSerialSatisfied(
+        source: _parent.entrySource,
+        stockEntryType: _parent.stockEntryType.value,
+        serial: serial)) {
+      throw Exception('Select an Invoice Serial Number');
+    }
 
     final sWh = itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
     final tWh = itemTargetWarehouse.value ?? _parent.toWarehouse.value;
@@ -1240,9 +1268,15 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   /// and API-overwrite writes.
   Worker? _batchRescopeWorker;
 
+  /// Picking a serial in the dropdown must re-run the Save gate.
+  Worker? _serialWorker;
+
   @override
   void onInit() {
     super.onInit();
+    _serialWorker = ever<String?>(selectedSerial, (_) {
+      if (!isClosed) validateSheet();
+    });
     // debounce (not ever): resolveRackWarehouse writes itemSourceWarehouse
     // twice in quick succession (optimistic parse, then API overwrite) —
     // coalesce into one re-fetch so a stale intermediate balance never lands.
@@ -1261,6 +1295,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   void onClose() {
     _batchRescopeWorker?.dispose();
+    _serialWorker?.dispose();
     disposeBarcodeListener();   // BarcodeAwareMixin: safety-net disposal
     disposeAutoFillListener();
     super.onClose();
