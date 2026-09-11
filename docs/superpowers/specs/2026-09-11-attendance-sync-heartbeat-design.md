@@ -124,3 +124,19 @@ Rollback: restore the `.bak`, restart the task. The DocType can stay; nothing de
 
 - Rotate the System Manager API key used for step 2, and adnan's key shared earlier.
 - #2 attendance notifications consume §5.
+
+## 10. Deployment record (2026-09-11, KA-IT-SYS6 clock)
+
+- DocType `Attendance Sync Status` created 12:38 by `asif@multimax.cloud`. Frappe filled the omitted
+  DocPerm flags with defaults (write/create/delete/share/print/email = 1); corrected by `PUT` so
+  Employee and HR User are read-only, HR Manager and System Manager read+write, every other flag 0.
+- Agent heartbeat version uploaded (sha256 `efa646c532a3b8eb187db59ef8e80e18143c97d93a168e31a9e0c4678efbd1b4`);
+  original kept as `agent\biotime-pull.py.bak-2026-09-11` (sha256 `4eb13a57…c1fa2ffa`).
+- The agent's `ERP_TOKEN` (asif's key) was invalidated when asif's API secret was regenerated. It now
+  uses the dedicated `biotime-sync@multimax.cloud` user (HR Manager only); the previous `.env` is kept as
+  `agent\.env.bak-2026-09-11-keyfix`.
+- A concurrent session built the two-shift IN/OUT labelling on top of the heartbeat version (backup
+  `agent\biotime-pull.py.bak-2026-09-11-shifts`; live sha256 `a0486e28bf5c27b6…`, 500 lines, heartbeat
+  code intact) and restarted the daemon at 13:19:54.
+- Verified live: the daemon published at 13:19:56 and again at 13:25:00 as `biotime-sync`, with no
+  `heartbeat error`. Agent `README.md` / `PLAN.md` updated (hash-guarded upload).
