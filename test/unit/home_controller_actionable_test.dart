@@ -202,6 +202,17 @@ void main() {
 
   tearDown(() => Get.deleteAll(force: true));
 
+  // GetX runs onClose synchronously when the route is disposed, while the
+  // Dashboard can still rebuild once more; its scan box then re-attaches to
+  // barcodeController. Disposing it in onClose crashed logout ("used after
+  // being disposed" → '_dependents.isEmpty' red screen).
+  test('onClose leaves barcodeController usable for a still-mounted scan box',
+      () {
+    controller.onClose();
+    expect(() => controller.barcodeController.addListener(() {}),
+        returnsNormally);
+  });
+
   /// Grants read on all four actionable DocTypes.
   void grantAll() {
     for (final c in kActionableDocConfigs) {

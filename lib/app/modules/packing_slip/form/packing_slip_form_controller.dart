@@ -157,7 +157,7 @@ class PackingSlipFormController extends GetxController
     disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     super.onClose();
   }
 

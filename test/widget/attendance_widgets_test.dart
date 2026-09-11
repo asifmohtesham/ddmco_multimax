@@ -5,6 +5,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/attendance_models.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_screen.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/attendance_summary_strip.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/date_context_row.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/employee_attendance_card.dart';
@@ -97,5 +98,24 @@ void main() {
     final label = tester.widget<Text>(find.text('Updated 42 min ago'));
     expect(label.style?.color, AppColors.orange700);
     expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+  });
+
+  final latest = EmployeeCheckin(name: 'p', employee: emp.name, time: DateTime(2026, 9, 9, 10, 19));
+
+  testWidgets('no punches: System Manager gets the terminal diagnosis', (tester) async {
+    await tester.pumpWidget(
+        app(NoPunchesState(latest: latest, isSystemManager: true, onReload: () {})));
+    expect(find.text('No punches since 9 Sep'), findsOneWidget);
+    expect(find.textContaining('terminal may be offline'), findsOneWidget);
+    expect(find.text('Last punch · 9 Sep, 10:19'), findsOneWidget);
+  });
+
+  testWidgets('no punches: everyone else gets neutral wording', (tester) async {
+    await tester.pumpWidget(
+        app(NoPunchesState(latest: latest, isSystemManager: false, onReload: () {})));
+    expect(find.text('No check-ins recorded yet today'), findsOneWidget);
+    expect(find.text('Statuses will appear as check-ins arrive.'), findsOneWidget);
+    expect(find.textContaining('terminal'), findsNothing);
+    expect(find.textContaining('Last punch'), findsNothing);
   });
 }

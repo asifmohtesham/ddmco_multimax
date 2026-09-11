@@ -168,7 +168,11 @@ class AttendanceScreen extends GetView<AttendanceController> {
                     if (controller.looksOffline) {
                       return SliverFillRemaining(
                         hasScrollBody: false,
-                        child: _TerminalOffline(latest: controller.latestPunch.value),
+                        child: NoPunchesState(
+                          latest: controller.latestPunch.value,
+                          isSystemManager: controller.isSystemManager,
+                          onReload: controller.loadDay,
+                        ),
                       );
                     }
                     return _buildList(context, bottomInset);
@@ -216,6 +220,16 @@ class AttendanceScreen extends GetView<AttendanceController> {
           icon: Icons.people_outline,
         ),
       ),
+      if (controller.isSystemManager && controller.untrackedCount > 0 && !controller.hasFilters)
+        InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          onTap: () => controller.toggleStatusFilter('Not tracked'),
+          child: _Banner(
+            icon: Icons.person_off_outlined,
+            calm: true,
+            child: Text(unenrolledLabel(controller.untrackedCount)),
+          ),
+        ),
       if (controller.isHoliday)
         _Banner(
           icon: Icons.wb_sunny_outlined,
@@ -317,14 +331,24 @@ class _Banner extends StatelessWidget {
   }
 }
 
-class _TerminalOffline extends StatelessWidget {
-  const _TerminalOffline({required this.latest});
+/// Today, past the cut-off, with no punches for anyone. Only a System Manager
+/// sees the terminal diagnosis and the last punch; everyone else gets wording
+/// that is true whatever the cause (spec §3.3). Controller-free for tests.
+class NoPunchesState extends StatelessWidget {
+  const NoPunchesState({
+    super.key,
+    required this.latest,
+    required this.isSystemManager,
+    required this.onReload,
+  });
+
   final EmployeeCheckin? latest;
+  final bool isSystemManager;
+  final VoidCallback onReload;
 
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
-    final c = Get.find<AttendanceController>();
     final since = latest == null ? '' : ' since ${latest!.time.day} ${_mon(latest!.time.month)}';
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -332,15 +356,16 @@ class _TerminalOffline extends StatelessWidget {
         ListEmptyState(
           hasActiveFilters: false,
           emptyIcon: Icons.cloud_off_outlined,
-          emptyTitle: 'No punches$since',
-          emptyMessage:
-              "The attendance terminal may be offline. Employee statuses can't be worked out until it reconnects.",
+          emptyTitle: isSystemManager ? 'No punches$since' : 'No check-ins recorded yet today',
+          emptyMessage: isSystemManager
+              ? "The attendance terminal may be offline. Employee statuses can't be worked out until it reconnects."
+              : 'Statuses will appear as check-ins arrive.',
           filteredTitle: '',
           filteredMessage: '',
-          onClearFilters: c.clearFilters,
-          onReload: c.loadDay,
+          onClearFilters: () {},
+          onReload: onReload,
         ),
-        if (latest != null)
+        if (isSystemManager && latest != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 40),
             child: Text(

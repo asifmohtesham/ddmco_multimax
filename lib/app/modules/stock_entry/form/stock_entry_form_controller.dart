@@ -377,7 +377,7 @@ class StockEntryFormController extends GetxController
     _fromWarehouseWorker?.dispose();
     _toWarehouseWorker?.dispose();
     _stockEntryTypeWorker?.dispose();
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     customReferenceNoController.dispose();
     super.onClose();
   }

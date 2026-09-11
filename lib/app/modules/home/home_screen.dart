@@ -15,6 +15,11 @@ import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart
 import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_attendance_card.dart';
+import 'package:multimax/app/modules/home/widgets/my_attendance_card.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
+import 'package:multimax/app/modules/hr/attendance/widgets/employee_detail_sheet.dart';
+import 'package:multimax/app/data/models/attendance_models.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
@@ -72,6 +77,9 @@ class HomeScreen extends GetView<HomeController> {
                   _buildGreeting(context),
                   const SizedBox(height: 18),
 
+                  // 1b ── My attendance: own day + month, above the fold ──────
+                  _buildMyAttendance(),
+
                   // 2 ── Hero scan ────────────────────────────────────────────
                   ScanHeroCard(onTap: () => _openScanner(context)),
                   const SizedBox(height: 18),
@@ -99,6 +107,7 @@ class HomeScreen extends GetView<HomeController> {
                             _buildQuickAccessGrid(context),
                             const SizedBox(height: 18),
                             _buildNeedsAttention(context),
+                            _buildTodayAttendance(context),
                           ],
                         ),
                       )),
@@ -289,6 +298,95 @@ class HomeScreen extends GetView<HomeController> {
           _buildSectionHeader(context, 'Needs attention', count: rows.length),
           const SizedBox(height: 11),
           ...stacked,
+          const SizedBox(height: 18),
+        ],
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // My attendance — the viewer's own status today + the month dot strip.
+  // Hidden without a linked Employee or Attendance access (the Employee role
+  // has read on Attendance, so ordinary staff see their own).
+  // ---------------------------------------------------------------------------
+  Widget _buildMyAttendance() {
+    return Obx(() {
+      // hasLinkedEmployee reads currentUser (an Rx) on every path — keep it first.
+      if (!controller.hasLinkedEmployee || !controller.attendanceVisible) {
+        return const SizedBox.shrink();
+      }
+      final me = controller.myAttendance;
+      final loading = controller.isLoadingAttendance.value &&
+          controller.attendanceLoadedAt.value == null;
+      if (me == null && !loading) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: MyAttendanceCard(
+          row: me,
+          shift: controller.attendanceShift.value,
+          now: DateTime.now(),
+          strip: controller.myMonthStrip,
+          isLoading: loading,
+          onTap: controller.openMyMonth,
+        ),
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Today's attendance — site-wide summary of the HR attendance monitor.
+  // Hidden (SizedBox.shrink) for users without Attendance access, so operator
+  // Dashboards are unchanged. Does NOT follow the "Viewing {user}" chip: the
+  // terminal is one site. Hidden for self-only viewers (MyAttendanceCard covers them).
+  // ---------------------------------------------------------------------------
+  Widget _buildTodayAttendance(BuildContext context) {
+    return Obx(() {
+      if (!controller.attendanceVisible) return const SizedBox.shrink();
+      final loading = controller.isLoadingAttendance.value;
+      final rows = controller.attendanceRows;
+      if (!loading && rows.isEmpty) return const SizedBox.shrink();
+      if (!loading && !controller.showTeamAttendance) return const SizedBox.shrink();
+      final now = DateTime.now();
+      final selfId = controller.myAttendance?.employee.name;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            context,
+            "Today's attendance",
+            trailing: TextButton(
+              onPressed: controller.goToAttendance,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              child: const Text('Open',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 11),
+          DashboardAttendanceCard(
+            counts: controller.attendanceCounts,
+            shift: controller.attendanceShift.value,
+            now: now,
+            isHoliday: controller.attendanceIsHoliday,
+            beforeCutoff: controller.beforeAttendanceCutoff,
+            looksOffline: controller.attendanceLooksOffline,
+            latestPunch: controller.attendanceLatestPunch.value?.time,
+            isSystemManager: controller.isSystemManager,
+            highlights: dashboardAttendanceHighlights(rows, selfEmployee: selfId),
+            loadedAt: controller.attendanceLoadedAt.value,
+            isLoading: loading,
+            onViewAll: controller.goToAttendance,
+            onRowTap: (EmployeeDayStatus row) => showEmployeeDetailSheet(
+              context,
+              row: row,
+              day: dateOnly(now),
+              shift: controller.attendanceShift.value,
+              loadedAt: controller.attendanceLoadedAt.value,
+            ),
+          ),
           const SizedBox(height: 18),
         ],
       );

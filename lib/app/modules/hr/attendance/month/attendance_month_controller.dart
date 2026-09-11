@@ -19,8 +19,10 @@ class AttendanceMonthController extends GetxController {
   EmployeeDayStatus? today;
   final scrollController = ScrollController();
 
-  /// Real shift rules from the list screen when it is underneath us; the
-  /// fallback only matters for "minutes late" on ledger rows.
+  /// Shift rules and holidays come from the route arguments (Dashboard,
+  /// detail sheet), else the list screen if it is underneath us; [load]
+  /// fetches holidays itself if still unknown, so every entry path shows
+  /// Sundays and real late minutes.
   ShiftRules shift = ShiftRules.fallback;
 
   @override
@@ -31,11 +33,11 @@ class AttendanceMonthController extends GetxController {
     final m = args['month'] as DateTime?;
     if (m != null) month.value = DateTime(m.year, m.month);
     today = args['today'] as EmployeeDayStatus?;
-    if (Get.isRegistered<AttendanceController>()) {
-      final list = Get.find<AttendanceController>();
-      holidays.assignAll(list.holidays);
-      shift = list.shift.value;
-    }
+    final list = Get.isRegistered<AttendanceController>()
+        ? Get.find<AttendanceController>()
+        : null;
+    shift = args['shift'] as ShiftRules? ?? list?.shift.value ?? ShiftRules.fallback;
+    holidays.assignAll(args['holidays'] as Set<String>? ?? list?.holidays ?? const <String>{});
   }
 
   @override
@@ -58,6 +60,11 @@ class AttendanceMonthController extends GetxController {
   Future<void> load() async {
     isLoading.value = true;
     try {
+      if (holidays.isEmpty && shift.holidayList.isNotEmpty) {
+        try {
+          holidays.assignAll(await _provider.fetchHolidays(shift.holidayList));
+        } catch (_) {} // a month without holiday labels beats no month
+      }
       records.assignAll(await _provider.fetchAttendance(first, last, employee: employee.name));
     } catch (e) {
       GlobalSnackbar.error(message: 'Could not load month: $e');

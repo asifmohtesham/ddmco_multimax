@@ -34,6 +34,9 @@ import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
+import 'package:multimax/app/data/models/attendance_models.dart';
+import 'package:multimax/app/data/providers/attendance_provider.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -60,6 +63,13 @@ class HomeController extends GetxController {
       Get.isRegistered<PackingSlipProvider>()
           ? Get.find<PackingSlipProvider>()
           : Get.put(PackingSlipProvider());
+
+  /// Same lazy pattern as [_packingSlipProvider]: home_binding registers one,
+  /// controller unit tests need not.
+  AttendanceProvider get _attendanceProvider =>
+      Get.isRegistered<AttendanceProvider>()
+          ? Get.find<AttendanceProvider>()
+          : Get.put(AttendanceProvider());
 
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
@@ -137,6 +147,180 @@ class HomeController extends GetxController {
   /// Preview cache keyed by '<doctype>::<actionableCacheKey(scope, email)>'.
   final Map<String, List<ActionableDocRowData>> _previewCache = {};
 
+  // --- Today's attendance (site-wide; does NOT follow selectedFilterUser) ---
+  //
+  // Mirrors AttendanceController for today only: master data once, punches +
+  // ledger per refresh, status derived by the shared attendance_logic. No poll:
+  // pull-to-refresh / header refresh reload it with the rest of the dashboard.
+  final isLoadingAttendance = true.obs;
+  final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
+  final attendanceShift = Rx<ShiftRules>(ShiftRules.fallback);
+  final attendanceHolidays = <String>{}.obs;
+  final attendanceLoadedAt = Rxn<DateTime>();
+  final attendanceLatestPunch = Rxn<EmployeeCheckin>();
+  List<TrackedEmployee> _attendanceEmployees = const [];
+  bool _attendanceMasterLoaded = false;
+
+  /// Same fail-closed gate as the drawer entry for the Attendance screen.
+  bool get attendanceVisible =>
+      Get.find<PermissionService>().hasAccess('Attendance') == true;
+
+  bool get attendanceIsHoliday =>
+      attendanceHolidays.contains(kFrappeDate.format(DateTime.now()));
+
+  bool get beforeAttendanceCutoff =>
+      DateTime.now().isBefore(attendanceShift.value.cutoffOn(DateTime.now()));
+
+  /// Past the cut-off with zero punches for anyone → the terminal has most
+  /// likely not uploaded; before the cut-off an empty day is normal.
+  bool get attendanceLooksOffline =>
+      !attendanceIsHoliday &&
+      !beforeAttendanceCutoff &&
+      attendanceRows.isNotEmpty &&
+      attendanceRows.every((r) => r.punches.isEmpty);
+
+  AttendanceCounts get attendanceCounts => AttendanceCounts.of(attendanceRows);
+
+  /// The logged-in employee's own row, if they are an active employee.
+  EmployeeDayStatus? get myAttendance {
+    final id = _authController.currentUser.value?.employeeId;
+    if (id == null || id.isEmpty) return null;
+    return attendanceRows.firstWhereOrNull((r) => r.employee.name == id);
+  }
+
+  /// The viewer's own Attendance rows from the 1st to yesterday. Today stays
+  /// punch-derived until HRMS writes its row after 22:00, so one source per
+  /// day. Null = not loaded or the request failed → headline only.
+  final myMonthLedger = Rxn<List<AttendanceRecord>>();
+
+  bool get hasLinkedEmployee =>
+      (_authController.currentUser.value?.employeeId ?? '').isNotEmpty;
+
+  /// Only a System Manager is told the terminal may be offline.
+  bool get isSystemManager =>
+      _authController.currentUser.value?.hasRole('System Manager') ?? false;
+
+  /// The team card only helps viewers who can see more than their own row;
+  /// for an Employee-role viewer it would duplicate "My attendance".
+  bool get showTeamAttendance => attendanceCounts.tracked > 1;
+
+  MonthStrip? get myMonthStrip {
+    final me = myAttendance;
+    final ledger = myMonthLedger.value;
+    if (me == null || ledger == null || !me.employee.isTracked) return null;
+    final now = DateTime.now();
+    return buildMonthStrip(
+      month: DateTime(now.year, now.month),
+      ledger: ledger,
+      holidays: attendanceHolidays,
+      today: me,
+      now: now,
+      shift: attendanceShift.value,
+      employee: me.employee,
+    );
+  }
+
+  /// Opens the viewer's own month calendar with the dashboard's shift and
+  /// holidays, so Sundays and late minutes match (no dependency on the
+  /// Attendance list screen being underneath).
+  void openMyMonth() {
+    final me = myAttendance;
+    if (me == null || !me.employee.isTracked) return;
+    final now = DateTime.now();
+    Get.toNamed(AppRoutes.ATTENDANCE_MONTH, arguments: {
+      'employee': me.employee,
+      'month': DateTime(now.year, now.month),
+      'today': me,
+      'shift': attendanceShift.value,
+      'holidays': attendanceHolidays.toSet(),
+    });
+  }
+
+  /// Own rows 1st → yesterday; `[]` on the 1st, null when not linked or failed.
+  Future<List<AttendanceRecord>?> _fetchMyMonth(DateTime today) async {
+    final id = _authController.currentUser.value?.employeeId;
+    if (id == null || id.isEmpty) return null;
+    if (today.day == 1) return const [];
+    try {
+      return await _attendanceProvider.fetchAttendance(
+        DateTime(today.year, today.month),
+        today.subtract(const Duration(days: 1)),
+        employee: id,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> fetchTodayAttendance() async {
+    if (!attendanceVisible) {
+      attendanceRows.clear();
+      isLoadingAttendance.value = false;
+      return;
+    }
+    try {
+      if (!_attendanceMasterLoaded) {
+        _attendanceEmployees = await _attendanceProvider.fetchActiveEmployees();
+        final shiftName = _attendanceEmployees
+            .map((e) => e.defaultShift ?? '')
+            .firstWhere((s) => s.isNotEmpty, orElse: () => '')
+            .trim();
+        try {
+          attendanceShift.value = await _attendanceProvider.fetchShiftRules(
+              shiftName.isEmpty ? ShiftRules.fallback.name : shiftName);
+        } catch (_) {
+          attendanceShift.value = ShiftRules.fallback;
+        }
+        try {
+          attendanceHolidays.assignAll(await _attendanceProvider
+              .fetchHolidays(attendanceShift.value.holidayList));
+        } catch (_) {}
+        _attendanceMasterLoaded = true;
+      }
+      final today = dateOnly(DateTime.now());
+      final results = await Future.wait<Object?>([
+        _attendanceProvider.fetchCheckins(today),
+        _attendanceProvider.fetchAttendance(today, today),
+        _fetchMyMonth(today),
+      ]);
+      final checkins = results[0] as List<EmployeeCheckin>;
+      final ledger = results[1] as List<AttendanceRecord>;
+      myMonthLedger.value = results[2] as List<AttendanceRecord>?;
+      if (checkins.isEmpty) {
+        try {
+          attendanceLatestPunch.value = await _attendanceProvider.fetchLatestCheckin();
+        } catch (_) {}
+      }
+      final byEmp = <String, List<EmployeeCheckin>>{};
+      for (final c in checkins) {
+        byEmp.putIfAbsent(c.employee, () => []).add(c);
+      }
+      final ledgerByEmp = {for (final r in ledger) r.employee: r};
+      final hol = attendanceIsHoliday;
+      final now = DateTime.now();
+      final rows = _attendanceEmployees
+          .map((e) => deriveDayStatus(
+                employee: e,
+                day: today,
+                now: now,
+                shift: attendanceShift.value,
+                isHoliday: hol,
+                punches: byEmp[e.name] ?? const [],
+                ledger: ledgerByEmp[e.name],
+              ))
+          .toList()
+        ..sort(compareDayStatus);
+      attendanceRows.assignAll(rows);
+      attendanceLoadedAt.value = DateTime.now();
+    } catch (e) {
+      print("Error fetching today's attendance: $e");
+    } finally {
+      isLoadingAttendance.value = false;
+    }
+  }
+
+  void goToAttendance() => Get.toNamed(AppRoutes.ATTENDANCE);
+
   /// Display names for owner resolution, keyed by email, from the loaded users.
   Map<String, String> get namesByEmail => {
         for (final u in userList)
@@ -192,7 +376,12 @@ class HomeController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
-    barcodeController.dispose();
+    // barcodeController is deliberately NOT disposed. GetX runs onClose
+    // synchronously when the route is disposed (router_report.dart), while the
+    // screen can still rebuild once before it unmounts; its scan box then
+    // re-attaches to a disposed controller ("used after being disposed" →
+    // '_dependents.isEmpty' red screen on logout). A TextEditingController
+    // holds no native resources, so it is simply garbage-collected.
     super.onClose();
   }
 
@@ -311,6 +500,7 @@ class HomeController extends GetxController {
         _fetchActiveWipJc(),
         fetchUpcomingTodos(),
         fetchActionableCounts(force: true),
+        fetchTodayAttendance(), // swallows its own errors
       ]);
       _applyDefaultSelection();
     } catch (e) {

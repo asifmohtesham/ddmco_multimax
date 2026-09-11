@@ -200,4 +200,166 @@ void main() {
     expect(tracked.initials, 'AM');
     expect(const TrackedEmployee(name: 'x', employeeName: 'Ashal').initials, 'A');
   });
+  group('dashboardAttendanceHighlights', () {
+    EmployeeDayStatus row(String name, AttendanceStatus st, {String? id}) =>
+        EmployeeDayStatus(
+            employee: TrackedEmployee(
+                name: id ?? name, employeeName: name, deviceId: '1'),
+            status: st);
+
+    test('drops untracked and self, orders attention-first, caps', () {
+      final rows = [
+        row('Zed Present', AttendanceStatus.present),
+        row('Amy Late', AttendanceStatus.late),
+        row('Bob Absent', AttendanceStatus.absentSoFar),
+        row('Cal Not in', AttendanceStatus.notInYet),
+        EmployeeDayStatus(employee: untracked, status: AttendanceStatus.untracked),
+        row('Me Absent', AttendanceStatus.absentSoFar, id: 'ME'),
+      ];
+      final out = dashboardAttendanceHighlights(rows, selfEmployee: 'ME');
+      expect(out.map((r) => r.employee.employeeName).toList(),
+          ['Bob Absent', 'Amy Late', 'Cal Not in']);
+    });
+
+    test('max 0 returns nothing; holiday rows never appear', () {
+      final rows = [
+        row('A', AttendanceStatus.holiday),
+        row('B', AttendanceStatus.holiday),
+      ];
+      expect(dashboardAttendanceHighlights(rows), isEmpty);
+      expect(
+          dashboardAttendanceHighlights([row('C', AttendanceStatus.late)], max: 0),
+          isEmpty);
+    });
+  });
+
+  group('buildMonthStrip', () {
+    final sep = DateTime(2026, 9);
+    const hol = {'2026-09-06', '2026-09-13', '2026-09-20', '2026-09-27'};
+    AttendanceRecord rec(int d, String status, {bool late = false, String leave = ''}) =>
+        AttendanceRecord(
+          name: 'ATT-$d',
+          employee: tracked.name,
+          employeeName: tracked.employeeName,
+          date: DateTime(2026, 9, d),
+          status: status,
+          lateEntry: late,
+          inTime: status == 'Present'
+              ? DateTime(2026, 9, d, late ? 8 : 7, late ? 30 : 55)
+              : null,
+          leaveType: leave,
+        );
+    // 1–9 Sep: 5 present, 2 late (3rd, 8th), 1 absent (5th), Sun 6th holiday.
+    final ledger = [
+      rec(1, 'Present'), rec(2, 'Present'), rec(3, 'Present', late: true),
+      rec(4, 'Present'), rec(5, 'Absent'), rec(7, 'Present'),
+      rec(8, 'Present', late: true), rec(9, 'Present'),
+    ];
+    MonthStrip strip({
+      List<AttendanceRecord>? l,
+      AttendanceStatus todaySt = AttendanceStatus.notInYet,
+      DateTime? now,
+      DateTime? month,
+    }) =>
+        buildMonthStrip(
+          month: month ?? sep,
+          ledger: l ?? ledger,
+          holidays: hol,
+          today: EmployeeDayStatus(employee: tracked, status: todaySt),
+          now: now ?? DateTime(2026, 9, 10, 8, 32),
+          shift: shift,
+          employee: tracked,
+        );
+
+    test('September so far: 5 present, 2 late, 1 absent, Sunday holiday', () {
+      final s = strip();
+      expect(s.days.length, 30);
+      expect(s.days[0], AttendanceStatus.present);
+      expect(s.days[2], AttendanceStatus.late);
+      expect(s.days[4], AttendanceStatus.absent);
+      expect(s.days[5], AttendanceStatus.holiday);
+      expect((s.present, s.late, s.absent, s.leave), (5, 2, 1, 0));
+      expect(s.tallyLabel, 'September · 5 present · 2 late · 1 absent');
+    });
+
+    test('today pending is null with todayIndex; future days null', () {
+      final s = strip();
+      expect(s.todayIndex, 9);
+      expect(s.days[9], isNull);
+      expect(s.days[10], isNull);
+      expect(s.days[12], isNull); // a future Sunday stays faint
+    });
+
+    test('today late is drawn and counted once', () {
+      final s = strip(todaySt: AttendanceStatus.late);
+      expect(s.days[9], AttendanceStatus.late);
+      expect(s.late, 3);
+    });
+
+    test('past working day with no ledger row is unknown, not absent', () {
+      final s = strip(l: [rec(1, 'Present')]);
+      expect(s.days[1], isNull);
+      expect(s.absent, 0);
+    });
+
+    test('On Leave counts as leave and appears in the tally', () {
+      final s = strip(l: [rec(2, 'On Leave', leave: 'Casual Leave')]);
+      expect(s.days[1], AttendanceStatus.onLeave);
+      expect(s.leave, 1);
+      expect(s.tallyLabel, 'September · 0 present · 0 late · 0 absent · 1 leave');
+    });
+
+    test('a past month has no today', () {
+      final s = strip(month: DateTime(2026, 8), l: const [], now: DateTime(2026, 9, 10, 9));
+      expect(s.days.length, 31);
+      expect(s.todayIndex, isNull);
+    });
+
+    test('February 2027 has 28 days', () {
+      final s = strip(month: DateTime(2027, 2), l: const [], now: DateTime(2027, 2, 1, 9));
+      expect(s.days.length, 28);
+      expect(s.todayIndex, 0);
+    });
+  });
+
+  group('myAttendanceHeadline', () {
+    final now = DateTime(2026, 9, 10, 8, 32); // a Thursday
+    (String, String) h(AttendanceStatus s, {DateTime? inTime, Duration? lateBy}) =>
+        myAttendanceHeadline(
+            EmployeeDayStatus(employee: tracked, status: s, inTime: inTime, lateBy: lateBy),
+            shift,
+            now);
+
+    test('before the cut-off tells them what to do', () {
+      expect(h(AttendanceStatus.notInYet), ('Not in yet', 'Punch before 08:15 to be on time'));
+    });
+    test('after the cut-off is true whatever the cause', () {
+      expect(h(AttendanceStatus.absentSoFar), ('No check-in recorded yet', 'Shift started 08:00'));
+    });
+    test('on time', () {
+      expect(h(AttendanceStatus.present, inTime: DateTime(2026, 9, 10, 7, 58)),
+          ('In · 07:58', 'On time'));
+    });
+    test('late', () {
+      expect(
+          h(AttendanceStatus.late,
+              inTime: DateTime(2026, 9, 10, 8, 27), lateBy: const Duration(minutes: 12)),
+          ('In · 08:27', '12 min late'));
+    });
+    test('holiday names the weekday', () {
+      expect(h(AttendanceStatus.holiday), ('Holiday', 'Thursday · no attendance expected'));
+    });
+    test('late without minutes never says on time', () {
+      expect(h(AttendanceStatus.late, inTime: DateTime(2026, 9, 10, 8, 27)),
+          ('In · 08:27', 'After the 08:15 cut-off'));
+    });
+    test('late with no in-time', () {
+      expect(h(AttendanceStatus.late), ('Late', 'After the 08:15 cut-off'));
+    });
+  });
+
+  test('unenrolledLabel pluralises', () {
+    expect(unenrolledLabel(1), "1 employee isn't enrolled on the terminal");
+    expect(unenrolledLabel(10), "10 employees aren't enrolled on the terminal");
+  });
 }
