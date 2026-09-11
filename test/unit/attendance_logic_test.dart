@@ -527,6 +527,41 @@ void main() {
       expect(filterRows(rows, statusKey: 'No check-out').length, 1);
     });
 
+    test('an On Leave row with no matching shift wins the whole day', () {
+      final onLeave = AttendanceRecord(
+          name: 'A-leave',
+          employee: tracked.name,
+          employeeName: '',
+          date: sat,
+          status: 'On Leave',
+          shift: '', // Leave Application rows carry no shift
+          leaveType: 'Casual Leave');
+      final r = day2(now: DateTime(2026, 9, 12, 15), ledgers: [onLeave]);
+      expect(r.status, AttendanceStatus.onLeave);
+    });
+
+    test('buildMonthStrip agrees: the same On Leave row paints onLeave, not absent', () {
+      final onLeave = AttendanceRecord(
+          name: 'A-leave',
+          employee: tracked.name,
+          employeeName: '',
+          date: sat,
+          status: 'On Leave',
+          shift: '',
+          leaveType: 'Casual Leave');
+      final s = buildMonthStrip(
+        month: DateTime(2026, 9),
+        ledger: [onLeave],
+        holidays: const {},
+        today: null,
+        now: DateTime(2026, 9, 16, 9),
+        shift: morning,
+        employee: tracked,
+        catalog: const {'Morning': morning, 'Afternoon': afternoon},
+      );
+      expect(s.days[11], AttendanceStatus.onLeave); // the 12th, index 11
+    });
+
     test('headline follows the shift in progress and names it', () {
       final now = DateTime(2026, 9, 12, 14);
       final r = day2(now: now, punches: [p(7, 58, 'IN'), p(12, 2, 'OUT'), p(13, 50, 'IN')]);

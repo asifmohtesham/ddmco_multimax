@@ -363,6 +363,22 @@ EmployeeDayStatus _deriveShiftedDay({
     );
   }
 
+  // A ledger row whose shift matches none of the day's shifts (e.g. '' from a
+  // Leave Application, or a manual row) decides the whole day rather than
+  // being silently dropped.
+  final stray = ledgers.where((r) => !ordered.any((s) => s.name == r.shift));
+  if (stray.isNotEmpty) {
+    return deriveDayStatus(
+      employee: employee,
+      day: day,
+      now: now,
+      shift: ordered.first,
+      isHoliday: false,
+      punches: punches,
+      ledger: stray.first,
+    );
+  }
+
   final byShift = {for (final s in ordered) s.name: <EmployeeCheckin>[]};
   for (final p in sorted) {
     byShift[shiftForPunch(p.time, ordered, day).name]!.add(p);
