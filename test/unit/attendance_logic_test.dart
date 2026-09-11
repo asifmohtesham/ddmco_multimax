@@ -362,4 +362,237 @@ void main() {
     expect(unenrolledLabel(1), "1 employee isn't enrolled on the terminal");
     expect(unenrolledLabel(10), "10 employees aren't enrolled on the terminal");
   });
+
+  group('two shifts', () {
+    // The live Shift Types (setup-two-shifts.py): windows touch at 13:00 (Fri 13:15).
+    const morning = ShiftRules(
+        name: 'Morning', start: Duration(hours: 8), end: Duration(hours: 12, minutes: 15),
+        graceMinutes: 15, earlyExitGraceMinutes: 15, checkInBeforeMinutes: 120, checkOutAfterMinutes: 45);
+    const afternoon = ShiftRules(
+        name: 'Afternoon', start: Duration(hours: 13, minutes: 30), end: Duration(hours: 20),
+        graceMinutes: 15, earlyExitGraceMinutes: 15, checkInBeforeMinutes: 30, checkOutAfterMinutes: 120);
+    const morningFri = ShiftRules(
+        name: 'Morning (Fri)', start: Duration(hours: 8), end: Duration(hours: 12),
+        graceMinutes: 15, earlyExitGraceMinutes: 15, checkInBeforeMinutes: 120, checkOutAfterMinutes: 75);
+    const afternoonFri = ShiftRules(
+        name: 'Afternoon (Fri)', start: Duration(hours: 14, minutes: 30), end: Duration(hours: 20),
+        graceMinutes: 15, earlyExitGraceMinutes: 15, checkInBeforeMinutes: 75, checkOutAfterMinutes: 120);
+    final sat = DateTime(2026, 9, 12);
+
+    EmployeeCheckin p(int h, int m, [String logType = '', DateTime? on]) {
+      final d = on ?? sat;
+      return EmployeeCheckin(
+          name: 'p$h:$m', employee: tracked.name, time: DateTime(d.year, d.month, d.day, h, m), logType: logType);
+    }
+
+    EmployeeDayStatus day2({
+      required DateTime now,
+      List<EmployeeCheckin> punches = const [],
+      List<AttendanceRecord> ledgers = const [],
+      DateTime? on,
+      List<ShiftRules> shifts = const [morning, afternoon],
+    }) =>
+        deriveDayStatus(
+          employee: tracked,
+          day: on ?? sat,
+          now: now,
+          shift: shifts.first,
+          shifts: shifts,
+          isHoliday: false,
+          punches: punches,
+          ledgers: ledgers,
+        );
+
+    test('morning done and afternoon in: present, one segment per shift', () {
+      final r = day2(
+          now: DateTime(2026, 9, 12, 15), punches: [p(7, 58, 'IN'), p(12, 2, 'OUT'), p(13, 31, 'IN')]);
+      expect(r.status, AttendanceStatus.present);
+      expect(r.shifts.map((s) => s.shift.name), ['Morning', 'Afternoon']);
+      expect(r.shifts[0].inTime, DateTime(2026, 9, 12, 7, 58));
+      expect(r.shifts[0].outTime, DateTime(2026, 9, 12, 12, 2));
+      expect(r.shifts[1].inTime, DateTime(2026, 9, 12, 13, 31));
+      expect(r.shifts[1].outTime, isNull);
+      expect(r.inTime, DateTime(2026, 9, 12, 7, 58));
+    });
+
+    test('late into the afternoon: late by the minutes past 13:45', () {
+      final r = day2(
+          now: DateTime(2026, 9, 12, 15), punches: [p(7, 58, 'IN'), p(12, 14, 'OUT'), p(13, 50, 'IN')]);
+      expect(r.status, AttendanceStatus.late);
+      expect(r.lateBy, const Duration(minutes: 5));
+      expect(r.shifts[0].status, AttendanceStatus.present);
+      expect(r.shifts[1].status, AttendanceStatus.late);
+    });
+
+    test('before the afternoon cut-off an unstarted afternoon does not count', () {
+      final r = day2(now: DateTime(2026, 9, 12, 13, 40), punches: [p(7, 58, 'IN'), p(12, 5, 'OUT')]);
+      expect(r.status, AttendanceStatus.present);
+      expect(r.shifts[1].status, AttendanceStatus.notInYet);
+    });
+
+    test('no OUT once the morning window closes (13:00) is No check-out', () {
+      final r = day2(now: DateTime(2026, 9, 12, 13, 10), punches: [p(7, 58, 'IN')]);
+      expect(r.shifts[0].status, AttendanceStatus.noCheckOut);
+      expect(r.status, AttendanceStatus.noCheckOut);
+    });
+
+    test('inside the morning window with no OUT yet is just present', () {
+      expect(day2(now: DateTime(2026, 9, 12, 12, 30), punches: [p(7, 58, 'IN')]).status,
+          AttendanceStatus.present);
+    });
+
+    test('missing the afternoon past its cut-off outranks a done morning', () {
+      final r = day2(now: DateTime(2026, 9, 12, 14), punches: [p(7, 58, 'IN'), p(12, 2, 'OUT')]);
+      expect(r.status, AttendanceStatus.absentSoFar);
+    });
+
+    test('a double tap keeps its direction; OUT comes from log_type', () {
+      final r = day2(
+          now: DateTime(2026, 9, 12, 15),
+          punches: [p(7, 58, 'IN'), p(7, 59, 'IN'), p(12, 3, 'OUT'), p(13, 29, 'IN')]);
+      expect(r.shifts[0].directions, [true, true, false]);
+      expect(r.shifts[0].outTime, DateTime(2026, 9, 12, 12, 3));
+      expect(r.status, AttendanceStatus.present);
+    });
+
+    test('rows without log_type alternate within each shift', () {
+      final r = day2(now: DateTime(2026, 9, 12, 15), punches: [p(7, 58), p(12, 2), p(13, 31)]);
+      expect(r.shifts[0].directions, [true, false]);
+      expect(r.shifts[1].directions, [true]);
+    });
+
+    test('12:50 is still a Morning OUT; 13:00 belongs to the Afternoon', () {
+      final r = day2(
+          now: DateTime(2026, 9, 12, 15), punches: [p(7, 58, 'IN'), p(12, 50, 'OUT'), p(13, 0, 'IN')]);
+      expect(r.shifts[0].punches.length, 2);
+      expect(r.shifts[1].punches.single.time, DateTime(2026, 9, 12, 13));
+    });
+
+    test('Friday: 13:10 still closes the Morning; 14:25 is on time', () {
+      final fri = DateTime(2026, 9, 18);
+      final r = day2(
+        on: fri,
+        shifts: const [morningFri, afternoonFri],
+        now: DateTime(2026, 9, 18, 15),
+        punches: [p(7, 58, 'IN', fri), p(13, 10, 'OUT', fri), p(14, 25, 'IN', fri)],
+      );
+      expect(r.shifts[0].outTime, DateTime(2026, 9, 18, 13, 10));
+      expect(r.shifts[1].status, AttendanceStatus.present);
+    });
+
+    test('early exit when the last OUT is before end − 15 min', () {
+      final r = day2(
+          now: DateTime(2026, 9, 12, 15), punches: [p(7, 58, 'IN'), p(11, 40, 'OUT'), p(13, 31, 'IN')]);
+      expect(r.shifts[0].earlyExit, isTrue);
+      expect(r.flag, 'Early exit');
+    });
+
+    AttendanceRecord rec(String shift, String status, {DateTime? inT, DateTime? outT}) => AttendanceRecord(
+        name: 'A-$shift', employee: tracked.name, employeeName: '', date: sat, status: status,
+        shift: shift, inTime: inT, outTime: outT);
+
+    test('past day: two ledger rows, an Absent afternoon makes the day Absent', () {
+      final r = day2(now: DateTime(2026, 9, 14, 9), ledgers: [
+        rec('Morning', 'Present', inT: DateTime(2026, 9, 12, 7, 58), outT: DateTime(2026, 9, 12, 12, 2)),
+        rec('Afternoon', 'Absent'),
+      ]);
+      expect(r.shifts[0].status, AttendanceStatus.present);
+      expect(r.shifts[1].status, AttendanceStatus.absent);
+      expect(r.status, AttendanceStatus.absent);
+    });
+
+    test('a Present ledger row with no out time is No check-out', () {
+      final r = day2(now: DateTime(2026, 9, 14, 9), ledgers: [
+        rec('Morning', 'Present', inT: DateTime(2026, 9, 12, 7, 58)),
+        rec('Afternoon', 'Present',
+            inT: DateTime(2026, 9, 12, 13, 29), outT: DateTime(2026, 9, 12, 20, 1)),
+      ]);
+      expect(r.shifts[0].status, AttendanceStatus.noCheckOut);
+      expect(r.status, AttendanceStatus.noCheckOut);
+    });
+
+    test('a single-shift day never reports No check-out', () {
+      final r = derive(now: DateTime(2026, 9, 10, 9), punches: [punch(8, 0)]);
+      expect(r.status, AttendanceStatus.present);
+      expect(r.shifts, isEmpty);
+    });
+
+    test('counts and the No check-out filter', () {
+      final rows = [
+        day2(now: DateTime(2026, 9, 12, 13, 10), punches: [p(7, 58, 'IN')]),
+        day2(now: DateTime(2026, 9, 12, 13, 10), punches: [p(7, 58, 'IN'), p(12, 2, 'OUT')]),
+      ];
+      final c = AttendanceCounts.of(rows);
+      expect((c.noOut, c.present, c.tracked), (1, 1, 2));
+      expect(filterRows(rows, statusKey: 'No check-out').length, 1);
+    });
+
+    test('headline follows the shift in progress and names it', () {
+      final now = DateTime(2026, 9, 12, 14);
+      final r = day2(now: now, punches: [p(7, 58, 'IN'), p(12, 2, 'OUT'), p(13, 50, 'IN')]);
+      expect(myAttendanceHeadline(r, morning, now), ('In · 13:50', 'Afternoon · 5 min late'));
+
+      final noon = DateTime(2026, 9, 12, 13, 10);
+      final r2 = day2(now: noon, punches: [p(7, 58, 'IN')]);
+      expect(myAttendanceHeadline(r2, morning, noon),
+          ('Not in yet', 'Afternoon · Punch before 13:45 to be on time'));
+    });
+
+    test('month strip: two rows a day, the worst shift wins, No check-out tallied', () {
+      AttendanceRecord r2(int d, String shift, String status, {bool noOut = false}) => AttendanceRecord(
+          name: 'A$d$shift', employee: tracked.name, employeeName: '', date: DateTime(2026, 9, d),
+          status: status, shift: shift,
+          inTime: status == 'Present' ? DateTime(2026, 9, d, 8) : null,
+          outTime: status == 'Present' && !noOut ? DateTime(2026, 9, d, 12) : null);
+      final s = buildMonthStrip(
+        month: DateTime(2026, 9),
+        ledger: [
+          r2(12, 'Morning', 'Present'), r2(12, 'Afternoon', 'Present'),
+          r2(14, 'Morning', 'Present'), r2(14, 'Afternoon', 'Absent'),
+          r2(15, 'Morning', 'Present', noOut: true), r2(15, 'Afternoon', 'Present'),
+        ],
+        holidays: const {},
+        today: null,
+        now: DateTime(2026, 9, 16, 9),
+        shift: morning,
+        employee: tracked,
+        catalog: const {'Morning': morning, 'Afternoon': afternoon},
+      );
+      expect(s.days[11], AttendanceStatus.present);
+      expect(s.days[13], AttendanceStatus.absent);
+      expect(s.days[14], AttendanceStatus.noCheckOut);
+      expect((s.present, s.absent, s.noOut), (1, 1, 1));
+      expect(s.tallyLabel, 'September · 1 present · 0 late · 1 absent · 1 no check-out');
+    });
+
+    test('resolveShifts: assignments first, then default shift, then fallback', () {
+      final a = [
+        ShiftAssignmentRow(
+            employee: tracked.name, shiftType: 'Afternoon',
+            startDate: DateTime(2026, 9, 12), endDate: DateTime(2026, 9, 12)),
+        ShiftAssignmentRow(employee: tracked.name, shiftType: 'Morning', startDate: DateTime(2026, 9, 12)),
+        ShiftAssignmentRow(employee: 'OTHER', shiftType: 'Night', startDate: DateTime(2026, 9, 1)),
+      ];
+      const cat = {'Morning': morning, 'Afternoon': afternoon};
+      List<String> names(DateTime d, {TrackedEmployee e = tracked}) =>
+          resolveShifts(employee: e, day: d, assignments: a, catalog: cat).map((s) => s.name).toList();
+      expect(names(sat), ['Morning', 'Afternoon']);
+      expect(names(DateTime(2026, 9, 13)), ['Morning']); // Afternoon ended on the 12th
+      expect(names(DateTime(2026, 9, 11)), ['General']); // before any assignment
+      const withDefault = TrackedEmployee(
+          name: 'HR-EMP-00001', employeeName: 'x', deviceId: '7', defaultShift: 'Night');
+      expect(names(DateTime(2026, 9, 11), e: withDefault), ['Night']);
+    });
+
+    test('ShiftRules windows, short name and the new Frappe fields', () {
+      expect(morning.windowEndOn(sat), DateTime(2026, 9, 12, 13));
+      expect(afternoon.windowStartOn(sat), DateTime(2026, 9, 12, 13));
+      expect(morningFri.shortName, 'Morning');
+      final j = ShiftRules.fromJson({
+        'name': 'Afternoon', 'start_time': '13:30:00', 'end_time': '20:00:00',
+        'early_exit_grace_period': 15, 'allow_check_out_after_shift_end_time': 120,
+      });
+      expect((j.earlyExitGraceMinutes, j.checkOutAfterMinutes), (15, 120));
+    });
+  });
 }

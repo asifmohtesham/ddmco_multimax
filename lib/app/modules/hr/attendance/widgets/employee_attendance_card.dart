@@ -67,7 +67,14 @@ class EmployeeAttendanceCard extends StatelessWidget {
                         const SizedBox(height: 1),
                         Text(e.department, style: TextStyle(fontSize: 12, color: s.textMuted)),
                       ],
-                      if (!untracked) ...[
+                      if (!untracked && row.shifts.length > 1) ...[
+                        const SizedBox(height: 8),
+                        for (final seg in row.shifts)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: ShiftInOutLine(segment: seg),
+                          ),
+                      ] else if (!untracked) ...[
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 14,
@@ -97,6 +104,48 @@ class EmployeeAttendanceCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Morning  In 07:58  Out 12:02" for one shift of a two-shift day. The shift
+/// name takes its status ink when the shift needs attention (late, absent, no
+/// check-out); otherwise it stays muted.
+class ShiftInOutLine extends StatelessWidget {
+  const ShiftInOutLine({super.key, required this.segment});
+  final ShiftDayStatus segment;
+
+  static const _attention = {
+    AttendanceStatus.late,
+    AttendanceStatus.absent,
+    AttendanceStatus.absentSoFar,
+    AttendanceStatus.noCheckOut,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    final b = Theme.of(context).brightness;
+    final nameColor = _attention.contains(segment.status)
+        ? StatusPill.colourForStatus(segment.status.label, brightness: b).$2
+        : s.textMuted;
+    return Wrap(
+      spacing: 12,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(
+            segment.shift.shortName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: nameColor),
+          ),
+        ),
+        InOutStat(label: 'In', time: segment.inTime),
+        InOutStat(label: 'Out', time: segment.outTime),
+      ],
     );
   }
 }

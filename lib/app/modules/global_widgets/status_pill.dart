@@ -54,6 +54,7 @@ class StatusPill extends StatelessWidget {
       case 'Partially Ordered':
       case 'Partially Received':
       case 'Half Day':
+      case 'No check-out':
         return (AppColors.yellow500, AppColors.yellow700, AppColors.yellow300);
       case 'Completed':
       case 'Active':

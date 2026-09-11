@@ -78,7 +78,12 @@ class AttendanceMonthScreen extends GetView<AttendanceMonthController> {
               if (controller.isLoading.value) {
                 return const SliverToBoxAdapter(child: DocCardSkeletonList(count: 4));
               }
-              final rows = [...controller.records]..sort((a, b) => b.date.compareTo(a.date));
+              // Newest day first; within a day, Morning before Afternoon.
+              Duration start(AttendanceRecord r) => controller.catalog[r.shift]?.start ?? Duration.zero;
+              final rows = [...controller.records]..sort((a, b) {
+                  final byDate = b.date.compareTo(a.date);
+                  return byDate != 0 ? byDate : start(a).compareTo(start(b));
+                });
               return SliverPadding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 sliver: SliverList(
@@ -107,13 +112,17 @@ class AttendanceMonthScreen extends GetView<AttendanceMonthController> {
                         ),
                       ),
                     for (final r in rows) ...[
-                      _LedgerRow(record: r, employee: controller.employee, shift: controller.shift),
+                      _LedgerRow(
+                        record: r,
+                        seg: controller.ledgerRowStatus(r),
+                        showShift: controller.shiftsOn(r.date).length > 1,
+                      ),
                       const SizedBox(height: 8),
                     ],
                     ListEndFooter(
                       hasMore: false,
                       bottomPadding: bottomInset + 48,
-                      label: '${rows.length} day${rows.length == 1 ? '' : 's'} recorded',
+                      label: '${rows.length} record${rows.length == 1 ? '' : 's'}',
                     ),
                   ]),
                 ),
@@ -130,7 +139,7 @@ Color _dotColor(AttendanceStatus s) => switch (s) {
       AttendanceStatus.present || AttendanceStatus.workFromHome => AppColors.green500,
       AttendanceStatus.late => AppColors.orange500,
       AttendanceStatus.absent || AttendanceStatus.absentSoFar => AppColors.red500,
-      AttendanceStatus.halfDay => AppColors.yellow500,
+      AttendanceStatus.halfDay || AttendanceStatus.noCheckOut => AppColors.yellow500,
       AttendanceStatus.holiday || AttendanceStatus.onLeave => AppColors.blue500,
       AttendanceStatus.notInYet || AttendanceStatus.untracked => AppColors.gray400,
     };
@@ -267,24 +276,17 @@ class _Legend extends StatelessWidget {
   }
 }
 
-/// One ledger day: date block · pill + In/Out + flags · hours.
+/// One ledger row (one shift of a day): date block · pill (+ the shift's name
+/// on a two-shift day) + In/Out + flags · hours.
 class _LedgerRow extends StatelessWidget {
-  const _LedgerRow({required this.record, required this.employee, required this.shift});
+  const _LedgerRow({required this.record, required this.seg, this.showShift = false});
   final AttendanceRecord record;
-  final TrackedEmployee employee;
-  final ShiftRules shift;
+  final ShiftDayStatus seg;
+  final bool showShift;
 
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
-    final row = deriveDayStatus(
-      employee: employee,
-      day: record.date,
-      now: DateTime.now(),
-      shift: shift,
-      isHoliday: false,
-      ledger: record,
-    );
     final hasHours = record.workingHours > 0;
     final h = record.workingHours.floor();
     final m = ((record.workingHours - h) * 60).round();
@@ -318,19 +320,31 @@ class _LedgerRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                StatusPill(status: row.status.label),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    StatusPill(status: seg.status.label),
+                    if (showShift)
+                      Text(
+                        seg.shift.shortName,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: s.textMuted),
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 5),
                 Wrap(
                   spacing: 12,
                   runSpacing: 2,
                   children: [
-                    InOutStat(label: 'In', time: row.inTime),
-                    InOutStat(label: 'Out', time: row.outTime),
+                    InOutStat(label: 'In', time: seg.inTime),
+                    InOutStat(label: 'Out', time: seg.outTime),
                   ],
                 ),
-                if (row.flag != null) ...[
+                if (seg.flag != null) ...[
                   const SizedBox(height: 4),
-                  AttendanceFlag(text: row.flag!, warning: row.flagIsWarning),
+                  AttendanceFlag(text: seg.flag!),
                 ],
               ],
             ),

@@ -1,1 +1,1 @@
-• Stock Entry: a POS Upload Material Issue item now can't be saved until you pick its Invoice Serial Number, so every issued quantity is counted against the right POS line.
+• Attendance: every working day now has a Morning and an Afternoon shift, each with its own check-in and check-out. The Attendance screen, month view and Dashboard show both shifts, flag late arrivals and early exits for each, and mark a shift "No check-out" when there is no out punch.

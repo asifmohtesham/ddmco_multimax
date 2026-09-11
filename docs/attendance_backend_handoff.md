@@ -1,7 +1,7 @@
 # Attendance backend handoff (for the Attendance monitoring screen)
 
 State of the ERPNext side as of 2026-09-11, written for the attendance screens in this app.
-Those screens exist but still assume one shift a day; section 6 lists what has to change.
+Section 6 describes how those screens handle two shifts (release 2.17.0).
 Everything below was verified against `https://erp.multimax.cloud`.
 The sync project itself lives in `C:\Users\asifm\biotime-erpnext-sync` (see its PLAN.md).
 
@@ -225,34 +225,39 @@ Realtime option: `FrappeSocket` can subscribe to the `Employee Checkin` doctype 
 (`doctype_subscribe`) and refresh today's view on `list_update`; a 60-second poll is an
 acceptable first version.
 
-## 6. The existing screens and what two shifts change
+## 6. How the screens handle two shifts
 
-Built 2026-09-09 to 2026-09-11 against the single General shift (merged in `c6228378` and
-`9fec58c3`):
+Implemented in `7e5457ed` on branch `claude/attendance-two-shifts`, release 2.17.0. The screens
+were first built against the single General shift (`c6228378`, `9fec58c3`); the table shows
+what changed and where.
 
-- `lib/app/data/providers/attendance_provider.dart` and `lib/app/data/models/attendance_models.dart`
-  (`ShiftRules`, whose fallback is `General` 08:00-20:00, 15 min grace)
-- `lib/app/modules/hr/attendance/`: the monitor (`attendance_controller.dart`,
-  `attendance_logic.dart`, `attendance_screen.dart`, `widgets/`) and the month view (`month/`)
-- Dashboard: `lib/app/modules/home/home_controller.dart`, `widgets/dashboard_attendance_card.dart`,
-  `widgets/my_attendance_card.dart`
-
-What breaks or goes stale with two shifts:
-
-| Where | Today | Needed |
+| Where | Before | Now |
 |---|---|---|
-| Shift lookup: `attendance_controller.dart:150`, `home_controller.dart:264` | The first employee's `default_shift`, else `General` | `default_shift` is cleared on the night of 2026-09-11. Resolve each employee's shifts per date from Shift Assignment (section 5) and load all four Shift Types. Until then the app falls back to the General Shift Type, which still exists: 08:00-20:00, late after 08:15. Nothing crashes, but afternoons are never judged. |
-| Ledger join: `attendance_controller.dart:88`, `home_controller.dart:298` | `{for (r in ledger) r.employee: r}` | Two Attendance rows per employee per day; the map keeps whichever comes last, and the query has no shift tie-break, so a day can show only the Afternoon's Absent. Key by (employee, shift). |
-| `deriveDayStatus` in `attendance_logic.dart` | One status per day. A ledger row overrides punches, even today. OUT = last punch when the count is even. | Derive per shift (section 4). The Morning row exists from ~13:00 while the Afternoon is still running, so a ledger row only settles its own shift. Use `log_type` when set; fall back to punch-count parity only for rows with an empty `log_type`. |
-| `PunchTimeline` in `widgets/employee_detail_sheet.dart` | IN/OUT by index | Show `log_type`; group punches under Morning and Afternoon. |
-| Dashboard cards, `myAttendanceHeadline` | "Shift starts 08:00", late after 08:15 | The current or next shift's times; the Afternoon cut-off is 13:45 (Friday 14:45). |
-| Month view | One `ShiftRules` for the whole month | Friday has different times; there are two ledger rows per date. |
-| Status set (`AttendanceStatus`) | No "missing check-out" state | Add **No check-out** (IN with no OUT after the shift ended), with its own colour; it is the case HR has to chase. |
-| Tests: `test/unit/attendance_logic_test.dart`, `test/widget/*attendance*` | Single shift | Add two-shift, Friday and no-check-out cases. |
+| Shift lookup: `resolveShifts` in `attendance_logic.dart`, used by `attendance_controller.dart`, `home_controller.dart` and `month/attendance_month_controller.dart` | The first employee's `default_shift`, else `General` | Each employee's Shift Assignments covering the date (`AttendanceProvider.fetchShiftAssignments`), with rules read by `fetchShiftTypes` and cached. With no assignment (days before 2026-09-12, or a failed read): the employee's default shift, else `General`. |
+| Punch → shift: `shiftForPunch` | One shift | The shift whose check-in/check-out window holds the punch. Where two windows meet (13:00, Friday 13:15) the later shift wins, as in the sync agent. |
+| IN/OUT: `punchDirections` | By position | The punch's `log_type` when set; alternating for older rows without one. |
+| Status: `deriveDayStatus`, `deriveShiftStatus` | One status per day | One `ShiftDayStatus` per shift, on `EmployeeDayStatus.shifts`. The day takes the most attention-worthy status among the shifts that have started (a ledger row, a punch, or its cut-off passed). A single-shift day still uses the old path, unchanged. |
+| No check-out: `AttendanceStatus.noCheckOut` | Not a state | An IN with no OUT once the shift's window has closed, or a Present ledger row with no `out_time`. Two-shift days only. Yellow pill; counted in `AttendanceCounts.noOut`, a status filter, and the month strip tally. |
+| Ledger join | `{for (r in ledger) r.employee: r}` | Rows grouped per employee and matched to shifts by name. |
+| Month view | One `ShiftRules`, one row per date | Shifts per date from its ledger rows and Shift Assignments; one ledger row per shift, labelled with the shift. Today uses the live row, because the Morning row exists from ~13:00 while the Afternoon is still running. |
+| Employee card, detail sheet | One In/Out; IN/OUT by index | A line per shift (`ShiftInOutLine`); shift context and punch timeline per shift. |
+| Dashboard headline | "Shift starts 08:00", late after 08:15 | `focusShift` / `currentSegment`: the shift in progress, named in the sub-line ("Afternoon · 5 min late"). |
 
-Keep the existing conventions: `AppColors` ramp for status colours (x700 light, x300 dark),
-`Scrollbar`, bottom-inset padding, and an end-of-list marker with count summaries (per shift),
-never a sum of anything numeric.
+Choices worth knowing:
+
+- A day with the Morning worked and the Afternoon missed shows **Absent**; the per-shift lines
+  show which shift was missed.
+- The Dashboard's four count tiles have no No check-out tile; it shows in the Attendance
+  footer, the status filter and the month tally.
+
+Tests: two-shift, Friday, double-tap, `log_type`-versus-parity, ledger and month-strip cases in
+`test/unit/attendance_logic_test.dart`; the Shift Assignment and Shift Type queries in
+`test/unit/attendance_provider_test.dart`; the two-shift card in
+`test/widget/attendance_widgets_test.dart`.
+
+Still to do: an on-device check with a System Manager, an Employee-role user and a user
+without Attendance access. The Employee role reads its own Shift Assignments through HRMS's
+default permissions; confirm that on this site.
 
 ## 7. Known gaps the screen should tolerate
 
@@ -262,8 +267,8 @@ never a sum of anything numeric.
 - The terminal's default key still says Check-In all day. Switching it to Check-Out on a
   timetable has to be set on the device (Personalize > Punch State Options / Shortcut Key
   Mappings). The agent's IN/OUT labels work either way.
-- Shift Assignments from 2026-09-12 appear only after HRMS's hourly job runs. If today has no
-  Shift Assignment for someone, fall back to the weekday rule in section 2 and log it.
+- Shift Assignments from 2026-09-12 appear only after HRMS's hourly job runs. Until someone
+  has one for the day, the app uses their default shift, else General (section 6).
 - Five people exist in BioTime but not in ERPNext (Jaffer Potey, Ashal, Hunain, Khalid,
   Ehtisham); the agent drops their punches as "unmatched". The ten ERPNext employees without a
   device ID are not on any shift and get no attendance.

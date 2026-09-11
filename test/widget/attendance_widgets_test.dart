@@ -118,4 +118,40 @@ void main() {
     expect(find.textContaining('terminal'), findsNothing);
     expect(find.textContaining('Last punch'), findsNothing);
   });
+
+  const morning = ShiftRules(
+      name: 'Morning', start: Duration(hours: 8), end: Duration(hours: 12, minutes: 15),
+      graceMinutes: 15, earlyExitGraceMinutes: 15, checkInBeforeMinutes: 120, checkOutAfterMinutes: 45);
+  const afternoon = ShiftRules(
+      name: 'Afternoon', start: Duration(hours: 13, minutes: 30), end: Duration(hours: 20),
+      graceMinutes: 15, earlyExitGraceMinutes: 15, checkInBeforeMinutes: 30, checkOutAfterMinutes: 120);
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testWidgets('two-shift row: a line per shift, No check-out pill [$b]', (tester) async {
+      // 13:10 Saturday: in at 07:58, never out, Morning window closed at 13:00.
+      final row = deriveDayStatus(
+        employee: emp,
+        day: DateTime(2026, 9, 12),
+        now: DateTime(2026, 9, 12, 13, 10),
+        shift: morning,
+        shifts: const [morning, afternoon],
+        isHoliday: false,
+        punches: [
+          EmployeeCheckin(
+              name: 'a', employee: emp.name, time: DateTime(2026, 9, 12, 7, 58), logType: 'IN'),
+        ],
+      );
+      await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {}), brightness: b));
+      expect(find.text('No check-out'), findsOneWidget);
+      expect(find.text('Morning'), findsOneWidget);
+      expect(find.text('Afternoon'), findsOneWidget);
+      expect(find.textContaining('07:58', findRichText: true), findsOneWidget);
+
+      // The pill and the shift needing attention share the yellow ramp: 700 light, 300 dark.
+      final (_, ink) = StatusPill.colourForStatus('No check-out', brightness: b);
+      expect(ink, b == Brightness.dark ? AppColors.yellow300 : AppColors.yellow700);
+      expect(tester.widget<Text>(find.text('Morning')).style?.color, ink);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

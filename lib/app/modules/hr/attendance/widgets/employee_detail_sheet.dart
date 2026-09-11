@@ -104,7 +104,16 @@ class EmployeeDetailSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            _ShiftContext(shift: shift),
+            if (row.shifts.length > 1)
+              ...[
+                for (final seg in row.shifts)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: _ShiftContext(shift: seg.shift, status: seg.status),
+                  ),
+              ]
+            else
+              _ShiftContext(shift: shift),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -147,9 +156,12 @@ class EmployeeDetailSheet extends StatelessWidget {
   }
 }
 
+/// "Shift Morning · 08:00–12:15 · late after 08:15", plus that shift's status
+/// on a two-shift day.
 class _ShiftContext extends StatelessWidget {
-  const _ShiftContext({required this.shift});
+  const _ShiftContext({required this.shift, this.status});
   final ShiftRules shift;
+  final AttendanceStatus? status;
 
   @override
   Widget build(BuildContext context) {
@@ -183,15 +195,29 @@ class _ShiftContext extends StatelessWidget {
               ),
             ),
           ),
+          if (status != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              status!.label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: StatusPill.colourForStatus(status!.label,
+                        brightness: Theme.of(context).brightness)
+                    .$2,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// Vertical list of punches. Alternating IN/OUT by index (the shift rule);
-/// the first punch is tinted orange when it caused the late flag. A ghost row
-/// closes the list when the last punch was an IN and the day is still open.
+/// Vertical list of punches, grouped by shift on a two-shift day. IN/OUT comes
+/// from each punch's `log_type`, or alternates for older rows without one; the
+/// first IN is tinted orange when it caused the late flag. A ghost row closes
+/// a shift whose last punch was an IN while the day is still open.
 class PunchTimeline extends StatelessWidget {
   const PunchTimeline({super.key, required this.row, required this.shift, this.showGhost = true});
   final EmployeeDayStatus row;
@@ -201,35 +227,81 @@ class PunchTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
-    final punches = row.punches;
-    if (punches.isEmpty) {
+    if (row.punches.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Text('No punches recorded.', style: TextStyle(fontSize: 13, color: s.textSubtle)),
       );
     }
-    final needsGhost = showGhost && punches.length.isOdd;
+    if (row.shifts.length > 1) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final seg in row.shifts) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 6),
+              child: Text(
+                '${seg.shift.shortName.toUpperCase()} · ${seg.shift.startLabel}–${seg.shift.endLabel}',
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: s.textSubtle),
+              ),
+            ),
+            if (seg.punches.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 60, bottom: 10),
+                child: Text('No punches', style: TextStyle(fontSize: 12.5, color: s.textSubtle)),
+              )
+            else
+              ..._rows(
+                seg.punches,
+                seg.directions,
+                lateBy: seg.lateBy,
+                ghost: showGhost && seg.directions.last,
+                endLabel: seg.shift.endLabel,
+              ),
+          ],
+        ],
+      );
+    }
+    final dirs = punchDirections(row.punches);
     return Column(
-      children: [
-        for (var i = 0; i < punches.length; i++)
-          _PunchRow(
-            time: kHHmm.format(punches[i].time),
-            isIn: i.isEven,
-            late: i == 0 && row.lateBy != null,
-            device: punches[i].deviceId.isEmpty ? 'Terminal' : 'Terminal ${punches[i].deviceId}',
-            last: i == punches.length - 1 && !needsGhost,
-          ),
-        if (needsGhost)
-          _PunchRow(
-            time: '—',
-            isIn: false,
-            ghost: true,
-            title: 'No out punch yet',
-            device: 'Shift ends ${shift.endLabel}',
-            last: true,
-          ),
-      ],
+      children: _rows(
+        row.punches,
+        dirs,
+        lateBy: row.lateBy,
+        ghost: showGhost && dirs.last,
+        endLabel: shift.endLabel,
+      ),
     );
+  }
+
+  static List<Widget> _rows(
+    List<EmployeeCheckin> punches,
+    List<bool> dirs, {
+    required Duration? lateBy,
+    required bool ghost,
+    required String endLabel,
+  }) {
+    final firstIn = dirs.indexOf(true);
+    return [
+      for (var i = 0; i < punches.length; i++)
+        _PunchRow(
+          time: kHHmm.format(punches[i].time),
+          isIn: dirs[i],
+          late: i == firstIn && lateBy != null,
+          device: punches[i].deviceId.isEmpty ? 'Terminal' : 'Terminal ${punches[i].deviceId}',
+          last: i == punches.length - 1 && !ghost,
+        ),
+      if (ghost)
+        _PunchRow(
+          time: '—',
+          isIn: false,
+          ghost: true,
+          title: 'No out punch yet',
+          device: 'Shift ends $endLabel',
+          last: true,
+        ),
+    ];
   }
 }
 

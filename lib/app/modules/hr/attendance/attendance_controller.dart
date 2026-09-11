@@ -23,7 +23,19 @@ class AttendanceController extends GetxController {
   final employees = <TrackedEmployee>[].obs;
   final checkins = <EmployeeCheckin>[].obs;
   final ledger = <AttendanceRecord>[].obs;
+  /// The shift in focus (in progress, else the day's first): banner copy and
+  /// the detail sheet on a single-shift day.
   final shift = Rx<ShiftRules>(ShiftRules.fallback);
+
+  /// Shift Types by name, read as assignments and ledger rows name them.
+  final catalog = <String, ShiftRules>{}.obs;
+
+  /// Shift Assignments covering the selected day (two per employee on a
+  /// Morning/Afternoon day).
+  final assignments = <ShiftAssignmentRow>[].obs;
+
+  /// The shift for days without assignments (before 2026-09-12).
+  ShiftRules _defaultShift = ShiftRules.fallback;
   final holidays = <String>{}.obs;
   final loadedAt = Rxn<DateTime>();
   final latestPunch = Rxn<EmployeeCheckin>();
@@ -85,21 +97,43 @@ class AttendanceController extends GetxController {
     for (final c in checkins) {
       byEmp.putIfAbsent(c.employee, () => []).add(c);
     }
-    final ledgerByEmp = {for (final r in ledger) r.employee: r};
+    // Two ledger rows per employee on a Morning/Afternoon day.
+    final ledgerByEmp = <String, List<AttendanceRecord>>{};
+    for (final r in ledger) {
+      ledgerByEmp.putIfAbsent(r.employee, () => []).add(r);
+    }
     final hol = isHoliday;
-    final list = employees
-        .map((e) => deriveDayStatus(
-              employee: e,
-              day: day,
-              now: DateTime.now(),
-              shift: shift.value,
-              isHoliday: hol,
-              punches: byEmp[e.name] ?? const [],
-              ledger: ledgerByEmp[e.name],
-            ))
-        .toList()
+    final now = DateTime.now();
+    final list = employees.map((e) {
+      final shifts = shiftsFor(e);
+      return deriveDayStatus(
+        employee: e,
+        day: day,
+        now: now,
+        shift: shifts.first,
+        shifts: shifts,
+        isHoliday: hol,
+        punches: byEmp[e.name] ?? const [],
+        ledgers: ledgerByEmp[e.name] ?? const [],
+      );
+    }).toList()
       ..sort(compareDayStatus);
     return list;
+  }
+
+  /// [e]'s shifts on the selected day (two on a Morning/Afternoon day).
+  List<ShiftRules> shiftsFor(TrackedEmployee e) => resolveShifts(
+        employee: e,
+        day: selectedDate.value,
+        assignments: assignments,
+        catalog: catalog,
+        fallback: _defaultShift,
+      );
+
+  /// Every shift worked on the selected day, earliest first.
+  List<ShiftRules> get dayShifts {
+    final l = distinctShifts(employees.where((e) => e.isTracked).map(shiftsFor));
+    return l.isEmpty ? [_defaultShift] : l;
   }
 
   List<EmployeeDayStatus> get visibleRows => filterRows(
@@ -120,10 +154,10 @@ class AttendanceController extends GetxController {
 
   bool get hasFilters => activeFilters.isNotEmpty || searchQuery.value.isNotEmpty;
 
-  /// Before the cut-off nobody can be absent yet; on a holiday nobody is
-  /// counted at all. Drives the "—" tile states.
+  /// Before the day's first cut-off nobody can be absent yet; on a holiday
+  /// nobody is counted at all. Drives the "—" tile states.
   bool get beforeCutoff =>
-      isToday && DateTime.now().isBefore(shift.value.cutoffOn(selectedDate.value));
+      isToday && DateTime.now().isBefore(dayShifts.first.cutoffOn(selectedDate.value));
 
   /// Today, past the cut-off, with zero punches for anyone: the terminal has
   /// most likely not uploaded. Before the cut-off an empty list is normal.
@@ -152,15 +186,36 @@ class AttendanceController extends GetxController {
             .firstWhere((s) => s.isNotEmpty, orElse: () => '')
             .trim();
     try {
-      shift.value = await _provider.fetchShiftRules(
+      _defaultShift = await _provider.fetchShiftRules(
           shiftName.isEmpty ? ShiftRules.fallback.name : shiftName);
     } catch (_) {
-      shift.value = ShiftRules.fallback; // ponytail: fixed 08:00/08:15 if Shift Type is unreadable
+      _defaultShift = ShiftRules.fallback; // ponytail: fixed 08:00/08:15 if Shift Type is unreadable
     }
+    catalog[_defaultShift.name] = _defaultShift;
+    shift.value = _defaultShift;
     try {
-      holidays.assignAll(await _provider.fetchHolidays(shift.value.holidayList));
+      holidays.assignAll(await _provider.fetchHolidays(_defaultShift.holidayList));
     } catch (_) {}
     _masterLoaded = true;
+  }
+
+  /// Reads the Shift Types among [names] not cached yet. On failure they fall
+  /// back to [ShiftRules.named] in [resolveShifts].
+  Future<void> _ensureCatalog(Iterable<String> names) async {
+    final missing = names.where((n) => n.isNotEmpty && !catalog.containsKey(n)).toSet();
+    if (missing.isEmpty) return;
+    try {
+      catalog.addAll(await _provider.fetchShiftTypes(missing));
+    } catch (_) {}
+  }
+
+  /// A failed read falls back to default shifts rather than failing the day.
+  Future<List<ShiftAssignmentRow>> _fetchAssignments(DateTime day) async {
+    try {
+      return await _provider.fetchShiftAssignments(day, day);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Full reload of the selected day. [silent] keeps the list on screen
@@ -171,12 +226,21 @@ class AttendanceController extends GetxController {
     try {
       await _loadMaster();
       final day = selectedDate.value;
-      final results = await Future.wait([
+      final results = await Future.wait<Object>([
         _provider.fetchCheckins(day),
         _provider.fetchAttendance(day, day),
+        _fetchAssignments(day),
       ]);
+      final dayLedger = results[1] as List<AttendanceRecord>;
+      final dayAssignments = results[2] as List<ShiftAssignmentRow>;
+      await _ensureCatalog([
+        for (final a in dayAssignments) a.shiftType,
+        for (final r in dayLedger) r.shift,
+      ]);
+      assignments.assignAll(dayAssignments);
       checkins.assignAll(results[0] as List<EmployeeCheckin>);
-      ledger.assignAll(results[1] as List<AttendanceRecord>);
+      ledger.assignAll(dayLedger);
+      shift.value = focusShift(dayShifts, day, DateTime.now());
       if (checkins.isEmpty) {
         try {
           latestPunch.value = await _provider.fetchLatestCheckin();

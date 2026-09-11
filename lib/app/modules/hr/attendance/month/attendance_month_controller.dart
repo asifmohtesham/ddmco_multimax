@@ -6,24 +6,27 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_controller.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 
-/// One employee's month: Attendance ledger rows plus today's derived status
-/// (there is no ledger row for today until the shift closes).
+/// One employee's month: Attendance ledger rows (two per day on a
+/// Morning/Afternoon day) plus today's derived status (a shift has no ledger
+/// row until its check-out window closes).
 class AttendanceMonthController extends GetxController {
   final AttendanceProvider _provider = Get.find<AttendanceProvider>();
 
   late final TrackedEmployee employee;
   final month = DateTime(DateTime.now().year, DateTime.now().month).obs;
   final records = <AttendanceRecord>[].obs;
+  final assignments = <ShiftAssignmentRow>[].obs;
   final isLoading = true.obs;
   final holidays = <String>{}.obs;
   EmployeeDayStatus? today;
   final scrollController = ScrollController();
 
-  /// Shift rules and holidays come from the route arguments (Dashboard,
-  /// detail sheet), else the list screen if it is underneath us; [load]
-  /// fetches holidays itself if still unknown, so every entry path shows
-  /// Sundays and real late minutes.
+  /// Shift rules, the Shift Type catalog and holidays come from the route
+  /// arguments (Dashboard, detail sheet), else the list screen if it is
+  /// underneath us; [load] fetches whatever is still unknown, so every entry
+  /// path shows Sundays, both shifts and real late minutes.
   ShiftRules shift = ShiftRules.fallback;
+  final catalog = <String, ShiftRules>{};
 
   @override
   void onInit() {
@@ -38,6 +41,11 @@ class AttendanceMonthController extends GetxController {
         : null;
     shift = args['shift'] as ShiftRules? ?? list?.shift.value ?? ShiftRules.fallback;
     holidays.assignAll(args['holidays'] as Set<String>? ?? list?.holidays ?? const <String>{});
+    catalog
+      ..addAll(args['catalog'] as Map<String, ShiftRules>? ??
+          list?.catalog ??
+          const <String, ShiftRules>{})
+      ..putIfAbsent(shift.name, () => shift);
   }
 
   @override
@@ -65,12 +73,37 @@ class AttendanceMonthController extends GetxController {
           holidays.assignAll(await _provider.fetchHolidays(shift.holidayList));
         } catch (_) {} // a month without holiday labels beats no month
       }
-      records.assignAll(await _provider.fetchAttendance(first, last, employee: employee.name));
+      final results = await Future.wait<Object>([
+        _provider.fetchAttendance(first, last, employee: employee.name),
+        _fetchAssignments(),
+      ]);
+      final recs = results[0] as List<AttendanceRecord>;
+      final asg = results[1] as List<ShiftAssignmentRow>;
+      await _ensureCatalog([for (final a in asg) a.shiftType, for (final r in recs) r.shift]);
+      assignments.assignAll(asg);
+      records.assignAll(recs);
     } catch (e) {
       GlobalSnackbar.error(message: 'Could not load month: $e');
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// A failed read leaves the ledger rows to name the shifts.
+  Future<List<ShiftAssignmentRow>> _fetchAssignments() async {
+    try {
+      return await _provider.fetchShiftAssignments(first, last, employee: employee.name);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _ensureCatalog(Iterable<String> names) async {
+    final missing = names.where((n) => n.isNotEmpty && !catalog.containsKey(n)).toSet();
+    if (missing.isEmpty) return;
+    try {
+      catalog.addAll(await _provider.fetchShiftTypes(missing));
+    } catch (_) {}
   }
 
   void previousMonth() {
@@ -86,42 +119,76 @@ class AttendanceMonthController extends GetxController {
 
   bool isHoliday(DateTime d) => holidays.contains(kFrappeDate.format(d));
 
-  /// Status for a calendar day, or null when there is nothing to show.
-  AttendanceStatus? statusOn(DateTime d) {
+  List<AttendanceRecord> recordsOn(DateTime d) {
     final key = kFrappeDate.format(d);
-    for (final r in records) {
-      if (kFrappeDate.format(r.date) == key) {
-        return deriveDayStatus(
-          employee: employee,
-          day: d,
-          now: DateTime.now(),
-          shift: shift,
-          isHoliday: false,
-          ledger: r,
-        ).status;
-      }
-    }
+    return [for (final r in records) if (kFrappeDate.format(r.date) == key) r];
+  }
+
+  /// The shifts of [d], earliest first: those its ledger rows and Shift
+  /// Assignments name; the route's shift when neither names one.
+  List<ShiftRules> shiftsOn(DateTime d) {
+    final names = <String>{
+      for (final r in recordsOn(d))
+        if (r.shift.isNotEmpty) r.shift,
+      for (final a in assignments)
+        if (a.employee == employee.name && a.covers(d)) a.shiftType,
+    };
+    if (names.isEmpty) return [shift];
+    return [for (final n in names) catalog[n] ?? ShiftRules.named(n)]
+      ..sort((a, b) => a.start.compareTo(b.start));
+  }
+
+  /// Status for a calendar day, or null when there is nothing to show. Today
+  /// is the live row: a Morning ledger row exists from ~13:00 while the
+  /// Afternoon is still running, so the ledger alone would call it absent.
+  AttendanceStatus? statusOn(DateTime d) {
     if (today != null && dateOnly(d) == dateOnly(DateTime.now())) return today!.status;
+    final recs = recordsOn(d);
+    if (recs.isNotEmpty) {
+      final shifts = shiftsOn(d);
+      return deriveDayStatus(
+        employee: employee,
+        day: d,
+        now: DateTime.now(),
+        shift: shifts.first,
+        shifts: shifts,
+        isHoliday: false,
+        ledgers: recs,
+      ).status;
+    }
     if (isHoliday(d)) return AttendanceStatus.holiday;
     return null;
   }
 
-  /// "8 working days · 6 present · 1 absent" for the elapsed part of the month.
+  /// One ledger row as its own shift: status, in/out, flags. A row with no
+  /// out time is No check-out only on a two-shift day.
+  ShiftDayStatus ledgerRowStatus(AttendanceRecord r) => deriveShiftStatus(
+        shift: catalog[r.shift] ?? (r.shift.isEmpty ? shift : ShiftRules.named(r.shift)),
+        day: r.date,
+        now: DateTime.now(),
+        ledger: r,
+        requireCheckOut: shiftsOn(r.date).length > 1,
+      );
+
+  /// "8 working days · 6 present · 1 absent" (+ " · 2 no check-out") for the
+  /// elapsed part of the month, counted by day.
   String get summary {
     final end = isCurrentMonth ? dateOnly(DateTime.now()) : last;
-    var working = 0;
+    var working = 0, present = 0, absent = 0, noOut = 0;
     for (var d = first; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
       if (!isHoliday(d)) working++;
+      switch (statusOn(d)) {
+        case AttendanceStatus.present || AttendanceStatus.late:
+          present++;
+        case AttendanceStatus.absent || AttendanceStatus.absentSoFar:
+          absent++;
+        case AttendanceStatus.noCheckOut:
+          noOut++;
+        default:
+          break;
+      }
     }
-    var present = 0, absent = 0;
-    for (final r in records) {
-      if (r.status == 'Present') present++;
-      if (r.status == 'Absent') absent++;
-    }
-    if (today != null && isCurrentMonth) {
-      if (today!.status == AttendanceStatus.present || today!.status == AttendanceStatus.late) present++;
-      if (today!.status.isAbsent) absent++;
-    }
-    return '$working working day${working == 1 ? '' : 's'} · $present present · $absent absent';
+    return '$working working day${working == 1 ? '' : 's'} · $present present · $absent absent'
+        '${noOut > 0 ? ' · $noOut no check-out' : ''}';
   }
 }

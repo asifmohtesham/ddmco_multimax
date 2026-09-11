@@ -154,12 +154,19 @@ class HomeController extends GetxController {
   // pull-to-refresh / header refresh reload it with the rest of the dashboard.
   final isLoadingAttendance = true.obs;
   final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
+  /// The shift in focus now (in progress, else the day's first).
   final attendanceShift = Rx<ShiftRules>(ShiftRules.fallback);
   final attendanceHolidays = <String>{}.obs;
   final attendanceLoadedAt = Rxn<DateTime>();
   final attendanceLatestPunch = Rxn<EmployeeCheckin>();
   List<TrackedEmployee> _attendanceEmployees = const [];
   bool _attendanceMasterLoaded = false;
+
+  /// Shift Types by name: the default shift, today's assignments, ledger rows.
+  final Map<String, ShiftRules> attendanceCatalog = {};
+  List<ShiftAssignmentRow> _attendanceAssignments = const [];
+  List<ShiftRules> _attendanceDayShifts = const [];
+  ShiftRules _attendanceDefaultShift = ShiftRules.fallback;
 
   /// Same fail-closed gate as the drawer entry for the Attendance screen.
   bool get attendanceVisible =>
@@ -168,8 +175,10 @@ class HomeController extends GetxController {
   bool get attendanceIsHoliday =>
       attendanceHolidays.contains(kFrappeDate.format(DateTime.now()));
 
-  bool get beforeAttendanceCutoff =>
-      DateTime.now().isBefore(attendanceShift.value.cutoffOn(DateTime.now()));
+  /// Before the day's first cut-off (the Morning's on a two-shift day).
+  bool get beforeAttendanceCutoff => DateTime.now().isBefore(
+      (_attendanceDayShifts.isEmpty ? attendanceShift.value : _attendanceDayShifts.first)
+          .cutoffOn(DateTime.now()));
 
   /// Past the cut-off with zero punches for anyone → the terminal has most
   /// likely not uploaded; before the cut-off an empty day is normal.
@@ -217,6 +226,7 @@ class HomeController extends GetxController {
       now: now,
       shift: attendanceShift.value,
       employee: me.employee,
+      catalog: attendanceCatalog,
     );
   }
 
@@ -233,7 +243,27 @@ class HomeController extends GetxController {
       'today': me,
       'shift': attendanceShift.value,
       'holidays': attendanceHolidays.toSet(),
+      'catalog': Map<String, ShiftRules>.of(attendanceCatalog),
     });
+  }
+
+  /// A failed read falls back to default shifts rather than hiding the card.
+  Future<List<ShiftAssignmentRow>> _fetchTodayAssignments(DateTime today) async {
+    try {
+      return await _attendanceProvider.fetchShiftAssignments(today, today);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Reads the Shift Types among [names] not cached yet.
+  Future<void> _ensureAttendanceCatalog(Iterable<String> names) async {
+    final missing =
+        names.where((n) => n.isNotEmpty && !attendanceCatalog.containsKey(n)).toSet();
+    if (missing.isEmpty) return;
+    try {
+      attendanceCatalog.addAll(await _attendanceProvider.fetchShiftTypes(missing));
+    } catch (_) {}
   }
 
   /// Own rows 1st → yesterday; `[]` on the 1st, null when not linked or failed.
@@ -266,14 +296,16 @@ class HomeController extends GetxController {
             .firstWhere((s) => s.isNotEmpty, orElse: () => '')
             .trim();
         try {
-          attendanceShift.value = await _attendanceProvider.fetchShiftRules(
+          _attendanceDefaultShift = await _attendanceProvider.fetchShiftRules(
               shiftName.isEmpty ? ShiftRules.fallback.name : shiftName);
         } catch (_) {
-          attendanceShift.value = ShiftRules.fallback;
+          _attendanceDefaultShift = ShiftRules.fallback;
         }
+        attendanceCatalog[_attendanceDefaultShift.name] = _attendanceDefaultShift;
+        attendanceShift.value = _attendanceDefaultShift;
         try {
           attendanceHolidays.assignAll(await _attendanceProvider
-              .fetchHolidays(attendanceShift.value.holidayList));
+              .fetchHolidays(_attendanceDefaultShift.holidayList));
         } catch (_) {}
         _attendanceMasterLoaded = true;
       }
@@ -282,10 +314,17 @@ class HomeController extends GetxController {
         _attendanceProvider.fetchCheckins(today),
         _attendanceProvider.fetchAttendance(today, today),
         _fetchMyMonth(today),
+        _fetchTodayAssignments(today),
       ]);
       final checkins = results[0] as List<EmployeeCheckin>;
       final ledger = results[1] as List<AttendanceRecord>;
       myMonthLedger.value = results[2] as List<AttendanceRecord>?;
+      _attendanceAssignments = results[3] as List<ShiftAssignmentRow>;
+      await _ensureAttendanceCatalog([
+        for (final a in _attendanceAssignments) a.shiftType,
+        for (final r in ledger) r.shift,
+        for (final r in myMonthLedger.value ?? const <AttendanceRecord>[]) r.shift,
+      ]);
       if (checkins.isEmpty) {
         try {
           attendanceLatestPunch.value = await _attendanceProvider.fetchLatestCheckin();
@@ -295,21 +334,39 @@ class HomeController extends GetxController {
       for (final c in checkins) {
         byEmp.putIfAbsent(c.employee, () => []).add(c);
       }
-      final ledgerByEmp = {for (final r in ledger) r.employee: r};
+      // Two ledger rows per employee on a Morning/Afternoon day.
+      final ledgerByEmp = <String, List<AttendanceRecord>>{};
+      for (final r in ledger) {
+        ledgerByEmp.putIfAbsent(r.employee, () => []).add(r);
+      }
       final hol = attendanceIsHoliday;
       final now = DateTime.now();
-      final rows = _attendanceEmployees
-          .map((e) => deriveDayStatus(
-                employee: e,
-                day: today,
-                now: now,
-                shift: attendanceShift.value,
-                isHoliday: hol,
-                punches: byEmp[e.name] ?? const [],
-                ledger: ledgerByEmp[e.name],
-              ))
-          .toList()
+      List<ShiftRules> shiftsFor(TrackedEmployee e) => resolveShifts(
+            employee: e,
+            day: today,
+            assignments: _attendanceAssignments,
+            catalog: attendanceCatalog,
+            fallback: _attendanceDefaultShift,
+          );
+      final rows = _attendanceEmployees.map((e) {
+        final shifts = shiftsFor(e);
+        return deriveDayStatus(
+          employee: e,
+          day: today,
+          now: now,
+          shift: shifts.first,
+          shifts: shifts,
+          isHoliday: hol,
+          punches: byEmp[e.name] ?? const [],
+          ledgers: ledgerByEmp[e.name] ?? const [],
+        );
+      }).toList()
         ..sort(compareDayStatus);
+      _attendanceDayShifts =
+          distinctShifts(_attendanceEmployees.where((e) => e.isTracked).map(shiftsFor));
+      if (_attendanceDayShifts.isNotEmpty) {
+        attendanceShift.value = focusShift(_attendanceDayShifts, today, now);
+      }
       attendanceRows.assignAll(rows);
       attendanceLoadedAt.value = DateTime.now();
     } catch (e) {
