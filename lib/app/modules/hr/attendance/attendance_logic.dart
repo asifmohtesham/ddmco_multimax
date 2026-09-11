@@ -436,7 +436,10 @@ EmployeeDayStatus _deriveShiftedDay({
 /// day's own Attendance-row shift names in [ledgerNames] (HRMS already wrote
 /// them, so they're authoritative even with no assignment loaded yet); without
 /// either, their default shift, else [fallback]. Names missing from [catalog]
-/// get [ShiftRules.named].
+/// normally get [ShiftRules.named], but when more than one name resolves and
+/// any of them is unreadable, a single [fallback] shift is returned instead —
+/// several [ShiftRules.named] shifts would silently share identical
+/// fallback-width windows and make everyone read "Absent so far".
 List<ShiftRules> resolveShifts({
   required TrackedEmployee employee,
   required DateTime day,
@@ -456,6 +459,9 @@ List<ShiftRules> resolveShifts({
     final d = (employee.defaultShift ?? '').trim();
     if (d.isEmpty) return [catalog[fallback.name] ?? fallback];
     return [catalog[d] ?? ShiftRules.named(d)];
+  }
+  if (names.length > 1 && names.any((n) => !catalog.containsKey(n))) {
+    return [catalog[fallback.name] ?? fallback];
   }
   return [for (final n in names) catalog[n] ?? ShiftRules.named(n)]
     ..sort((a, b) => a.start.compareTo(b.start));

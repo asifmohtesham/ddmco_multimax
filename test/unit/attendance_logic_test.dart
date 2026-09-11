@@ -653,6 +653,24 @@ void main() {
       expect(blankOnly, ['General']); // default/fallback, unaffected by ledgerNames
     });
 
+    test('resolveShifts: an unresolved catalog name falls back to a single shift', () {
+      final a = [
+        ShiftAssignmentRow(
+            employee: tracked.name, shiftType: 'Morning', startDate: DateTime(2026, 9, 12), endDate: DateTime(2026, 9, 12)),
+        ShiftAssignmentRow(
+            employee: tracked.name, shiftType: 'Afternoon', startDate: DateTime(2026, 9, 12), endDate: DateTime(2026, 9, 12)),
+      ];
+      // Afternoon is missing from the catalog (a transient fetchShiftTypes
+      // failure, or a renamed/deleted Shift Type).
+      final names = resolveShifts(
+        employee: tracked,
+        day: sat,
+        assignments: a,
+        catalog: const {'Morning': morning},
+      ).map((s) => s.name).toList();
+      expect(names, ['General']); // single fallback shift, not two overlapping guesses
+    });
+
     test('ShiftRules windows, short name and the new Frappe fields', () {
       expect(morning.windowEndOn(sat), DateTime(2026, 9, 12, 13));
       expect(afternoon.windowStartOn(sat), DateTime(2026, 9, 12, 13));
