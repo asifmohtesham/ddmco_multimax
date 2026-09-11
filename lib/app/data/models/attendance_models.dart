@@ -258,3 +258,20 @@ class ShiftAssignmentRow {
         endDate: _parseDt(j['end_date']),
       );
 }
+
+/// The Single DocType `Attendance Sync Status` the BioTime agent publishes
+/// (sub-project #0). Times are naive site-local (Asia/Dubai).
+class SyncStatus {
+  final bool terminalOnline;
+  final DateTime? terminalLastSeen;
+  final DateTime? agentLastRun;
+
+  const SyncStatus({required this.terminalOnline, this.terminalLastSeen, this.agentLastRun});
+
+  factory SyncStatus.fromJson(Map<String, dynamic> j) => SyncStatus(
+        terminalOnline:
+            j['terminal_online'] == true || '${j['terminal_online'] ?? 0}' == '1',
+        terminalLastSeen: _parseDt(j['terminal_last_seen']),
+        agentLastRun: _parseDt(j['agent_last_run']),
+      );
+}
