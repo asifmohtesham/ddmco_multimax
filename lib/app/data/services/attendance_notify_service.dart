@@ -93,6 +93,8 @@ class AttendanceNotifyService {
   }
 
   /// One document, or null when it can't be read (403 / 404 / network).
+  /// Fully tolerant — for reads the brief marks tolerant on purpose (the
+  /// heartbeat, the Holiday List).
   Future<Map<String, dynamic>?> _doc(String doctype, String name) async {
     try {
       final res = await callGet('/api/resource/$doctype/$name', const {});
@@ -100,6 +102,25 @@ class AttendanceNotifyService {
       return data is Map ? Map<String, dynamic>.from(data) : null;
     } on DioException {
       return null;
+    }
+  }
+
+  /// The Employee doc, narrowly tolerant: only 403 (no read permission) and
+  /// 404 (no such Employee) are treated as "the document isn't there" and
+  /// return null. Any other DioException (a 500, a connection error with no
+  /// response, a timeout) or non-Dio throw propagates, so [fetch]'s outer
+  /// catch turns a failed Employee read into a failed run rather than a
+  /// false "not tracked" — same narrow-tolerance shape as
+  /// DigestService.fetchDigest.
+  Future<Map<String, dynamic>?> _employeeDoc(String name) async {
+    try {
+      final res = await callGet('/api/resource/Employee/$name', const {});
+      final data = res.data is Map ? res.data['data'] : null;
+      return data is Map ? Map<String, dynamic>.from(data) : null;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 403 || code == 404) return null;
+      rethrow;
     }
   }
 
@@ -129,7 +150,10 @@ class AttendanceNotifyService {
       var onLeave = false;
 
       if (employee.isNotEmpty) {
-        final emp = await _doc('Employee', employee);
+        // 403/404 on the Employee read means "not tracked"; anything else
+        // (500, connection error, timeout) is a failed run — propagates to
+        // the outer catch below, which turns it into null.
+        final emp = await _employeeDoc(employee);
         tracked = '${emp?['attendance_device_id'] ?? ''}'.trim().isNotEmpty;
       }
       if (tracked) {
@@ -241,18 +265,16 @@ class AttendanceNotifyService {
         final msg = res.data is Map ? res.data['message'] : null;
         return msg is Map && msg[d] == 'Holiday';
       }
+      // No employee ⇒ not tracked ⇒ catalog is always empty (it's built
+      // from assignment/ledger shift names, only read when tracked) — so
+      // the only source for a holiday list here is a fresh Shift Type read.
       var list = '';
-      for (final s in catalog.values) {
-        if (s.holidayList.trim().isNotEmpty) list = s.holidayList;
-      }
-      if (list.isEmpty) {
-        final rows = await _list('Shift Type', fields: ['name', 'holiday_list']);
-        for (final j in rows) {
-          final h = '${j['holiday_list'] ?? ''}'.trim();
-          if (h.isNotEmpty) {
-            list = h;
-            break;
-          }
+      final rows = await _list('Shift Type', fields: ['name', 'holiday_list']);
+      for (final j in rows) {
+        final h = '${j['holiday_list'] ?? ''}'.trim();
+        if (h.isNotEmpty) {
+          list = h;
+          break;
         }
       }
       if (list.isEmpty) return false;

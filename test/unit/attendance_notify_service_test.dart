@@ -124,6 +124,30 @@ void main() {
     expect(await f.fetch(employee: 'E1', day: day), isNull);
   });
 
+  test('a 500 on the Employee read fails the run', () async {
+    final f = _FakeService();
+    _seedEmployee(f);
+    f.responses['/api/resource/Employee/E1'] = _FakeService.err(500);
+    expect(await f.fetch(employee: 'E1', day: day), isNull);
+  });
+
+  test('a connection error on the Employee read fails the run', () async {
+    final f = _FakeService();
+    _seedEmployee(f);
+    f.responses['/api/resource/Employee/E1'] = _FakeService.err(null);
+    expect(await f.fetch(employee: 'E1', day: day), isNull);
+  });
+
+  test('404 on the Employee read means not tracked', () async {
+    final f = _FakeService();
+    _seedEmployee(f);
+    f.responses['/api/resource/Employee/E1'] = _FakeService.err(404);
+    final d = await f.fetch(employee: 'E1', day: day);
+    expect(d, isNotNull);
+    expect(d!.tracked, isFalse);
+    expect(f.paths, isNot(contains('/api/resource/Shift Assignment')));
+  });
+
   test('System Manager without an employee: holiday from the shift holiday list', () async {
     final f = _FakeService();
     f.responses['/api/resource/Shift Type'] = [
