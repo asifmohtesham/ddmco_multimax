@@ -1,1 +1,2 @@
-• Attendance (HR): see who is in, who came late and who has not turned up, live from the terminal punches. Summary tiles filter by status, tap an employee for their punches, and open a month view with a calendar. Past days read the attendance ledger; Sundays and holidays are marked. Needs the HR User role.
+• My attendance: your own attendance now sits at the top of the Dashboard — today's status (in, late or not in yet) and a dot for every day of the month, with present, late and absent totals. Tap it for your month calendar. Sundays and holidays now show for every employee.
+• Fixed an error screen that could appear after logging out.
