@@ -195,4 +195,28 @@ void main() {
     expect(find.text('Terminal alerts'), findsOneWidget);
     expect(find.textContaining('Allow them in Android settings'), findsOneWidget);
   });
+
+  testWidgets('neither manager nor linked employee: renders empty without throwing',
+      (tester) async {
+    Get.deleteAll(force: true);
+    final box = _FakeGetStorage();
+    box._data['currentUser'] = {
+      'name': 'op@x.com', 'full_name': 'Op', 'email': 'op@x.com',
+      'roles': <Map<String, String>>[],
+    };
+    final s = StorageService.withStorage(box as dynamic);
+    Get.put<NotificationSettingsController>(NotificationSettingsController(
+      storage: s,
+      scheduler: DigestScheduler(storage: s, work: _FakeWork()),
+      attendanceScheduler: AttendanceNotifyScheduler(storage: s, work: _FakeWork(), isAndroid: true),
+      isAndroid: false,
+      requestPermission: () async => true,
+      notificationsAllowed: () async => true,
+    ));
+    await pump(tester);
+    expect(tester.takeException(), isNull);
+    expect(find.text('Scheduled digest'), findsNothing);
+    expect(find.text('Attendance reminders'), findsNothing);
+    expect(find.text('Terminal alerts'), findsNothing);
+  });
 }

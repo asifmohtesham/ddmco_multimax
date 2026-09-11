@@ -27,8 +27,14 @@ class NotificationSettingsScreen
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const MainAppBar(title: 'Notifications'),
-      body: Obx(
-        () => SingleChildScrollView(
+      body: Obx(() {
+        // Read unconditionally so every build path — including "neither
+        // manager nor linked employee", where every branch below is gated
+        // off — still reads at least one Rx. An Obx that reads zero
+        // observables throws in GetX 4.7.2 (the same crash class as the PO
+        // list FAB fix).
+        final blocked = controller.notificationsBlocked.value;
+        return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
               AppSpace.s4, AppSpace.s2, AppSpace.s4, AppSpace.s6),
           child: Column(
@@ -55,7 +61,7 @@ class NotificationSettingsScreen
                       ),
                   ],
                 ),
-                if (controller.notificationsBlocked.value)
+                if (blocked)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(AppSpace.s3, AppSpace.s2, AppSpace.s3, 0),
                     child: Text(
@@ -134,8 +140,8 @@ class NotificationSettingsScreen
               ],
             ],
           ),
-        ),
-      ),
+        );
+      }),
     );
   }
 
