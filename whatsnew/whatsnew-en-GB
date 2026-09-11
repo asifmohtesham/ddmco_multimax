@@ -1,1 +1,1 @@
-• Attendance: every working day now has a Morning and an Afternoon shift, each with its own check-in and check-out. The Attendance screen, month view and Dashboard show both shifts, flag late arrivals and early exits for each, and mark a shift "No check-out" when there is no out punch.
+• Attendance fixes for Morning and Afternoon shifts: people on approved leave now show On Leave instead of Absent, anyone missing a check-out is still counted as present, and shifts and holidays keep showing correctly when the server is slow to respond.
