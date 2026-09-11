@@ -50,16 +50,18 @@ class AttendanceNotifyState {
       return AttendanceNotifyState(user: user, day: today);
     }
     Set<String> set(Object? v) => v is List ? v.map((e) => '$e').toSet() : <String>{};
+    String? readString(Object? v) => v is String ? v : null;
+    bool? readBool(Object? v) => v is bool ? v : null;
     final sameDay = raw['day'] == today;
     return AttendanceNotifyState(
       user: user,
       day: today,
       handled: sameDay ? set(raw['handled']) : const {},
       posted: sameDay ? set(raw['posted']) : const {},
-      lastRecapped: raw['lastRecapped'] as String?,
-      recapRunDay: raw['recapRunDay'] as String?,
-      terminalQuiet: raw['terminalQuiet'] as bool?,
-      lastAuthNotice: raw['lastAuthNotice'] as String?,
+      lastRecapped: readString(raw['lastRecapped']),
+      recapRunDay: readString(raw['recapRunDay']),
+      terminalQuiet: readBool(raw['terminalQuiet']),
+      lastAuthNotice: readString(raw['lastAuthNotice']),
     );
   }
 

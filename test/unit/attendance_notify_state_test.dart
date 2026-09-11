@@ -46,4 +46,17 @@ void main() {
     expect(back.posted, {'Morning|missedIn'});
     expect(back.terminalQuiet, isFalse);
   });
+
+  test('malformed stored values degrade instead of throwing', () {
+    final s = AttendanceNotifyState.fromMap({
+      'user': 'a', 'day': '2026-09-12', 'handled': 'not-a-list', 'posted': 7,
+      'lastRecapped': 3, 'recapRunDay': false, 'terminalQuiet': 'yes', 'lastAuthNotice': [],
+    }, user: 'a', today: '2026-09-12');
+    expect(s.handled, isEmpty);
+    expect(s.posted, isEmpty);
+    expect(s.lastRecapped, isNull);
+    expect(s.recapRunDay, isNull);
+    expect(s.terminalQuiet, isNull);
+    expect(s.lastAuthNotice, isNull);
+  });
 }
