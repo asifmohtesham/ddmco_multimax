@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
@@ -41,12 +42,19 @@ void main() {
       'name': 'a@b.c',
       'full_name': 'A',
       'email': 'a@b.c',
+      'roles': [
+        {'role': 'Stock Manager'}
+      ],
     };
     storage = StorageService.withStorage(box as dynamic);
     Get.put<NotificationSettingsController>(NotificationSettingsController(
       storage: storage,
       scheduler: DigestScheduler(storage: storage, work: _FakeWork()),
+      attendanceScheduler:
+          AttendanceNotifyScheduler(storage: storage, work: _FakeWork(), isAndroid: true),
+      isAndroid: false,
       requestPermission: () async => true,
+      notificationsAllowed: () async => true,
     ));
   });
 
@@ -131,5 +139,60 @@ void main() {
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
+  });
+
+  testWidgets('a linked employee sees Attendance reminders and no digest', (tester) async {
+    Get.deleteAll(force: true);
+    final box = _FakeGetStorage();
+    box._data['currentUser'] = {
+      'name': 'e@x.com', 'full_name': 'E', 'email': 'e@x.com',
+      'employee_id': 'HR-EMP-00001',
+      'roles': [
+        {'role': 'Employee'}
+      ],
+    };
+    final s = StorageService.withStorage(box as dynamic);
+    Get.put<NotificationSettingsController>(NotificationSettingsController(
+      storage: s,
+      scheduler: DigestScheduler(storage: s, work: _FakeWork()),
+      attendanceScheduler: AttendanceNotifyScheduler(storage: s, work: _FakeWork(), isAndroid: true),
+      isAndroid: true,
+      requestPermission: () async => true,
+      notificationsAllowed: () async => true,
+    ));
+    await pump(tester);
+    expect(find.text('Attendance reminders'), findsOneWidget);
+    expect(find.text('Scheduled digest'), findsNothing);
+    expect(find.text('Terminal alerts'), findsNothing);
+    final sw = tester.widget<Switch>(find.byType(Switch).first);
+    expect(sw.value, isTrue); // on by default
+  });
+
+  testWidgets('a System Manager sees the digest, reminders and terminal alerts',
+      (tester) async {
+    Get.deleteAll(force: true);
+    final box = _FakeGetStorage();
+    box._data['currentUser'] = {
+      'name': 'sm@x.com', 'full_name': 'SM', 'email': 'sm@x.com',
+      'employee_id': 'HR-EMP-00002',
+      'roles': [
+        {'role': 'System Manager'}
+      ],
+    };
+    final s = StorageService.withStorage(box as dynamic);
+    Get.put<NotificationSettingsController>(NotificationSettingsController(
+      storage: s,
+      scheduler: DigestScheduler(storage: s, work: _FakeWork()),
+      attendanceScheduler: AttendanceNotifyScheduler(storage: s, work: _FakeWork(), isAndroid: true),
+      isAndroid: true,
+      requestPermission: () async => true,
+      notificationsAllowed: () async => false, // notifications blocked in Android settings
+    ));
+    await pump(tester);
+    await tester.pumpAndSettle();
+    expect(find.text('Scheduled digest'), findsOneWidget);
+    expect(find.text('Attendance reminders'), findsOneWidget);
+    expect(find.text('Terminal alerts'), findsOneWidget);
+    expect(find.textContaining('Allow them in Android settings'), findsOneWidget);
   });
 }

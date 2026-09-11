@@ -11,16 +11,19 @@ import 'package:multimax/app/modules/global_widgets/settings_group.dart';
 import 'package:multimax/app/modules/global_widgets/settings_row.dart';
 import 'package:multimax/app/modules/user_area/user_area_controller.dart';
 
-/// The Notifications entry is mobile-only (Android/iOS) and manager-only.
+/// The Notifications entry: managers on Android/iOS (documents digest), and
+/// Android users linked to an Employee (attendance reminders).
 bool showNotificationsEntry({
   required User? user,
   required TargetPlatform platform,
   required bool isWeb,
 }) {
-  if (isWeb) return false;
+  if (isWeb || user == null) return false;
   final isMobile =
       platform == TargetPlatform.android || platform == TargetPlatform.iOS;
-  return isMobile && (user?.isManager ?? false);
+  if (isMobile && user.isManager) return true;
+  return platform == TargetPlatform.android &&
+      (user.employeeId ?? '').trim().isNotEmpty;
 }
 
 class UserAreaScreen extends GetView<UserAreaController> {

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
@@ -49,6 +50,10 @@ void main() {
   NotificationSettingsController build() => NotificationSettingsController(
         storage: storage,
         scheduler: scheduler,
+        attendanceScheduler:
+            AttendanceNotifyScheduler(storage: storage, work: _FakeWork()),
+        isAndroid: false,
+        notificationsAllowed: () async => true,
         requestPermission: () async {
           permissionAsks++;
           return permissionAnswer;

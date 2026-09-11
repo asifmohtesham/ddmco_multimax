@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
@@ -37,6 +41,7 @@ import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.d
 import 'package:multimax/app/data/models/attendance_models.dart';
 import 'package:multimax/app/data/providers/attendance_provider.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
+import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -451,6 +456,7 @@ class HomeController extends GetxController {
         actionableScopeFromString(_storageService.getDashboardActionableScope());
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
+    unawaited(_maybePromptAttendancePermission());
 
     // ── DataWedge hardware-scan worker ────────────────────────────────────
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
@@ -458,6 +464,25 @@ class HomeController extends GetxController {
       if (Get.currentRoute != AppRoutes.HOME) return;
       onScan(code);
     });
+  }
+
+  /// Attendance reminders are on by default, so ask for notification
+  /// permission the first time a linked employee opens the Dashboard. The
+  /// answer is remembered either way; Notifications settings explains how to
+  /// turn it on later.
+  Future<void> _maybePromptAttendancePermission() async {
+    final user = _authController.currentUser.value;
+    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (!shouldPromptAttendancePermission(
+        user: user, isAndroid: isAndroid, storage: _storageService)) {
+      return;
+    }
+    await _storageService.saveAttendancePermissionPrompted(user!.id);
+    try {
+      await requestNotificationsPermission();
+    } catch (_) {
+      // Plugin failure must never break the Dashboard.
+    }
   }
 
   @override

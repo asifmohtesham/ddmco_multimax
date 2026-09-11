@@ -34,68 +34,102 @@ class NotificationSettingsScreen
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SettingsGroup(
-                children: [
-                  SettingsSwitchRow(
-                    title: 'Scheduled digest',
-                    subtitle:
-                        'Notify me about documents that need action, even '
-                        'when the app is closed',
-                    value: controller.enabled.value,
-                    onChanged: controller.setEnabled,
-                  ),
-                ],
-              ),
-              if (controller.enabled.value) ...[
-                const SizedBox(height: AppSpace.s4),
+              if (controller.showAttendance || controller.showTerminal) ...[
                 SettingsGroup(
-                  label: 'Times',
-                  children: [_timesEditor(context)],
-                ),
-                const SizedBox(height: AppSpace.s4),
-                SettingsGroup(
-                  label: 'Days',
-                  children: [_daysEditor()],
-                ),
-                const SizedBox(height: AppSpace.s4),
-                SettingsGroup(
-                  label: 'Alert style',
+                  label: 'Attendance',
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(AppSpace.s3),
-                      child: SettingsSegmented<String>(
-                        value: controller.alarmStyle.value,
-                        onChanged: controller.setAlarmStyle,
-                        options: const [
-                          SegmentOption(
-                              value: 'standard',
-                              label: 'Standard',
-                              icon: Icons.notifications_active_outlined),
-                          SegmentOption(
-                              value: 'alarm',
-                              label: 'Alarm',
-                              icon: Icons.alarm),
-                        ],
+                    if (controller.showAttendance)
+                      SettingsSwitchRow(
+                        title: 'Attendance reminders',
+                        subtitle: 'Check-in and check-out reminders for your shifts, '
+                            'and a morning recap when something was missed',
+                        value: controller.attendanceEnabled.value,
+                        onChanged: controller.setAttendanceEnabled,
                       ),
+                    if (controller.showTerminal)
+                      SettingsSwitchRow(
+                        title: 'Terminal alerts',
+                        subtitle: 'Tell me when the attendance terminal or its sync goes quiet',
+                        value: controller.terminalEnabled.value,
+                        onChanged: controller.setTerminalEnabled,
+                      ),
+                  ],
+                ),
+                if (controller.notificationsBlocked.value)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(AppSpace.s3, AppSpace.s2, AppSpace.s3, 0),
+                    child: Text(
+                      'Notifications are turned off for Multimax. Allow them in Android settings '
+                      'to get these reminders.',
+                      style: TextStyle(fontSize: 12.5, color: context.scheme.textMuted),
+                    ),
+                  ),
+                const SizedBox(height: AppSpace.s4),
+              ],
+              if (controller.showDigest) ...[
+                SettingsGroup(
+                  children: [
+                    SettingsSwitchRow(
+                      title: 'Scheduled digest',
+                      subtitle:
+                          'Notify me about documents that need action, even '
+                          'when the app is closed',
+                      value: controller.enabled.value,
+                      onChanged: controller.setEnabled,
                     ),
                   ],
                 ),
-                // iOS reminders are generic text (no per-doctype counts), so
-                // the Documents selector only applies on Android.
-                if (!kIsWeb &&
-                    defaultTargetPlatform == TargetPlatform.android) ...[
+                if (controller.enabled.value) ...[
                   const SizedBox(height: AppSpace.s4),
                   SettingsGroup(
-                    label: 'Documents',
+                    label: 'Times',
+                    children: [_timesEditor(context)],
+                  ),
+                  const SizedBox(height: AppSpace.s4),
+                  SettingsGroup(
+                    label: 'Days',
+                    children: [_daysEditor()],
+                  ),
+                  const SizedBox(height: AppSpace.s4),
+                  SettingsGroup(
+                    label: 'Alert style',
                     children: [
-                      for (final d in kDigestDoctypes)
-                        SettingsSwitchRow(
-                          title: d.doctype,
-                          value: controller.doctypeKeys.contains(d.key),
-                          onChanged: (_) => controller.toggleDoctype(d.key),
+                      Padding(
+                        padding: const EdgeInsets.all(AppSpace.s3),
+                        child: SettingsSegmented<String>(
+                          value: controller.alarmStyle.value,
+                          onChanged: controller.setAlarmStyle,
+                          options: const [
+                            SegmentOption(
+                                value: 'standard',
+                                label: 'Standard',
+                                icon: Icons.notifications_active_outlined),
+                            SegmentOption(
+                                value: 'alarm',
+                                label: 'Alarm',
+                                icon: Icons.alarm),
+                          ],
                         ),
+                      ),
                     ],
                   ),
+                  // iOS reminders are generic text (no per-doctype counts), so
+                  // the Documents selector only applies on Android.
+                  if (!kIsWeb &&
+                      defaultTargetPlatform == TargetPlatform.android) ...[
+                    const SizedBox(height: AppSpace.s4),
+                    SettingsGroup(
+                      label: 'Documents',
+                      children: [
+                        for (final d in kDigestDoctypes)
+                          SettingsSwitchRow(
+                            title: d.doctype,
+                            value: controller.doctypeKeys.contains(d.key),
+                            onChanged: (_) => controller.toggleDoctype(d.key),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ],
             ],
