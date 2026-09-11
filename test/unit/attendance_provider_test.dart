@@ -18,6 +18,39 @@ class _FakeApi extends ApiProvider {
   Map<String, dynamic>? calendar;
   final calls = <({String method, Map<String, dynamic>? params})>[];
 
+  /// Rows returned by getDocumentList, and the arguments of the last call.
+  List<Map<String, dynamic>> listRows = const [];
+  ({
+    String doctype,
+    Map<String, dynamic>? filters,
+    List<List<dynamic>>? filterTuples,
+    List<List<dynamic>>? orFilterTuples,
+  })? lastList;
+
+  @override
+  Future<Response> getDocumentList(String doctype,
+      {int limit = 20,
+      int limitStart = 0,
+      List<String>? fields,
+      String? groupBy = '',
+      Map<String, dynamic>? filters,
+      List<List<dynamic>>? filterTuples,
+      Map<String, dynamic>? orFilters,
+      List<List<dynamic>>? orFilterTuples,
+      String orderBy = 'modified desc'}) async {
+    lastList = (
+      doctype: doctype,
+      filters: filters,
+      filterTuples: filterTuples,
+      orFilterTuples: orFilterTuples,
+    );
+    return Response(
+      requestOptions: RequestOptions(path: '/api/resource/$doctype'),
+      statusCode: 200,
+      data: {'data': listRows},
+    );
+  }
+
   @override
   Future<Response> getDocument(String doctype, String name) async {
     if (holidayListError != null) throw holidayListError!;
@@ -114,5 +147,39 @@ void main() {
     api.holidayListError = err;
     await expectLater(
         provider.fetchHolidays('Multimax 2026'), throwsA(same(err)));
+  });
+
+  test('shift assignments: open-ended OR on end_date, rows parsed', () async {
+    api.listRows = [
+      {'employee': 'HR-EMP-00001', 'shift_type': 'Morning', 'start_date': '2026-09-12', 'end_date': null},
+    ];
+    final rows = await provider.fetchShiftAssignments(
+        DateTime(2026, 9, 12), DateTime(2026, 9, 12), employee: 'HR-EMP-00001');
+    expect(rows.single.shiftType, 'Morning');
+    expect(rows.single.endDate, isNull);
+    expect(rows.single.covers(DateTime(2027, 1, 1)), isTrue);
+    expect(api.lastList!.doctype, 'Shift Assignment');
+    expect(api.lastList!.filterTuples, containsAll([
+      ['Shift Assignment', 'start_date', '<=', '2026-09-12'],
+      ['Shift Assignment', 'employee', '=', 'HR-EMP-00001'],
+    ]));
+    expect(api.lastList!.orFilterTuples, [
+      ['Shift Assignment', 'end_date', '>=', '2026-09-12'],
+      ['Shift Assignment', 'end_date', 'is', 'not set'],
+    ]);
+  });
+
+  test('shift types keyed by name; nothing to fetch, no request', () async {
+    api.listRows = [
+      {'name': 'Morning', 'start_time': '8:00:00', 'end_time': '12:15:00',
+       'allow_check_out_after_shift_end_time': 45},
+    ];
+    final m = await provider.fetchShiftTypes(['Morning', '']);
+    expect(m['Morning']!.checkOutAfterMinutes, 45);
+    expect(m['Morning']!.startLabel, '08:00');
+    expect(api.lastList!.filters, {'name': ['in', ['Morning']]});
+    api.lastList = null;
+    expect(await provider.fetchShiftTypes(const []), isEmpty);
+    expect(api.lastList, isNull);
   });
 }

@@ -77,6 +77,53 @@ class AttendanceProvider {
     return _rows(r.data).map(AttendanceRecord.fromJson).toList();
   }
 
+  /// Active, submitted Shift Assignments overlapping [from]..[to] (inclusive),
+  /// optionally for one employee. Open-ended assignments have no end_date, so
+  /// the end bound is an OR: ends on/after [from], or never ends.
+  Future<List<ShiftAssignmentRow>> fetchShiftAssignments(DateTime from, DateTime to,
+      {String? employee}) async {
+    final r = await _api.getDocumentList(
+      'Shift Assignment',
+      fields: ['employee', 'shift_type', 'start_date', 'end_date'],
+      filterTuples: [
+        ['Shift Assignment', 'docstatus', '=', 1],
+        ['Shift Assignment', 'status', '=', 'Active'],
+        ['Shift Assignment', 'start_date', '<=', kFrappeDate.format(to)],
+        if (employee != null && employee.isNotEmpty)
+          ['Shift Assignment', 'employee', '=', employee],
+      ],
+      orFilterTuples: [
+        ['Shift Assignment', 'end_date', '>=', kFrappeDate.format(from)],
+        ['Shift Assignment', 'end_date', 'is', 'not set'],
+      ],
+      orderBy: 'start_date asc',
+      limit: 0,
+    );
+    return _rows(r.data).map(ShiftAssignmentRow.fromJson).toList();
+  }
+
+  /// Shift Types by name, keyed by name. Names that do not come back are
+  /// simply missing from the map.
+  Future<Map<String, ShiftRules>> fetchShiftTypes(Iterable<String> names) async {
+    final list = names.where((n) => n.trim().isNotEmpty).toSet().toList();
+    if (list.isEmpty) return const {};
+    final r = await _api.getDocumentList(
+      'Shift Type',
+      fields: [
+        'name', 'start_time', 'end_time', 'late_entry_grace_period',
+        'early_exit_grace_period', 'begin_check_in_before_shift_start_time',
+        'allow_check_out_after_shift_end_time', 'holiday_list',
+      ],
+      filters: {'name': ['in', list]},
+      orderBy: 'start_time asc',
+      limit: 0,
+    );
+    return {
+      for (final j in _rows(r.data))
+        (j['name'] ?? '').toString(): ShiftRules.fromJson(j),
+    };
+  }
+
   Future<ShiftRules> fetchShiftRules(String shift) async {
     final r = await _api.getDocument('Shift Type', shift);
     final d = (r.data as Map?)?['data'];
