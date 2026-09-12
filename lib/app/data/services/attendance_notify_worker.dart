@@ -73,6 +73,7 @@ Future<void> runAttendanceTask() async {
       final workingDay = !data.holiday;
       final canRemind = reminders && data.tracked;
       var moments = const <ShiftMoment>[];
+      var heldBack = false;
 
       if (canRemind) {
         final shifts = reminderShifts(
@@ -100,6 +101,7 @@ Future<void> runAttendanceTask() async {
         cancel.addAll(out.cancel);
         state = state.copyWith(handled: out.handled, posted: out.posted);
         moments = shiftMoments(shifts, today);
+        heldBack = out.heldBack;
 
         if (workingDay &&
             !now.isBefore(recapTimeOn(today)) &&
@@ -128,6 +130,11 @@ Future<void> runAttendanceTask() async {
         recap: canRemind && state.recapRunDay != todayKey,
         terminalWatch: terminal,
       );
+      if (heldBack) {
+        // A reminder was withheld waiting on the sync — retry soon rather
+        // than sitting until the next scheduled moment.
+        wake = wake.isAfter(now.add(kAttendanceRetry)) ? now.add(kAttendanceRetry) : wake;
+      }
     }
 
     await showAttendanceNotifications(post: post, cancel: cancel);

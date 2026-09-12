@@ -98,8 +98,18 @@ class ReminderOutcome {
   final Set<String> handled;
   final Set<String> posted;
 
+  /// At least one due moment was withheld this run because the sync hasn't
+  /// caught up (not syncing, or a missed check-in short of `syncedUpTo`) —
+  /// never because it was no longer needed. The worker uses this to wake
+  /// sooner and retry rather than waiting for the next scheduled moment.
+  final bool heldBack;
+
   const ReminderOutcome(
-      {required this.post, required this.cancel, required this.handled, required this.posted});
+      {required this.post,
+      required this.cancel,
+      required this.handled,
+      required this.posted,
+      this.heldBack = false});
 }
 
 /// [msg] is the reminder to post, if any. [heldForSync] means a `missedIn`
@@ -166,6 +176,7 @@ ReminderOutcome decideReminders({
   final postedKeys = {...posted};
   final post = <NotifyMessage>[];
   final cancel = <int>[];
+  var heldBack = false;
   if (ordered.isEmpty) {
     return ReminderOutcome(post: post, cancel: cancel, handled: doneKeys, posted: postedKeys);
   }
@@ -204,19 +215,26 @@ ReminderOutcome decideReminders({
         continue;
       }
       final (:msg, :heldForSync) = _reminder(m, st, now, facts.syncedUpTo);
-      if (heldForSync) continue; // sync hasn't caught up past the cut-off yet
+      if (heldForSync) {
+        heldBack = true; // sync hasn't caught up past the cut-off yet
+        continue;
+      }
       if (msg == null) {
         doneKeys.add(m.key);
         continue;
       }
-      if (!facts.syncing) continue; // held back: never blame a person for the terminal
+      if (!facts.syncing) {
+        heldBack = true; // held back: never blame a person for the terminal
+        continue;
+      }
       post.add(msg);
       doneKeys.add(m.key);
       postedKeys.add(m.key);
       cancel.remove(id);
     }
   }
-  return ReminderOutcome(post: post, cancel: cancel, handled: doneKeys, posted: postedKeys);
+  return ReminderOutcome(
+      post: post, cancel: cancel, handled: doneKeys, posted: postedKeys, heldBack: heldBack);
 }
 
 class RecapOutcome {

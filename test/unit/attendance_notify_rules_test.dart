@@ -135,6 +135,17 @@ void main() {
       expect(o.post.single.title, 'Check in for the Morning shift');
     });
 
+    test('heldBack is set when the sync gate withholds a reminder, and clear when nothing is withheld', () {
+      final notSynced = run(at(sat, 8, 15), syncing: false);
+      expect(notSynced.heldBack, isTrue);
+
+      final headsUp = run(at(sat, 8, 5));
+      expect(headsUp.heldBack, isFalse);
+
+      final alreadyPunched = run(at(sat, 8, 5), punches: [punch(at(sat, 7, 50))]);
+      expect(alreadyPunched.heldBack, isFalse);
+    });
+
     test('a late run catches up once and never repeats', () {
       final first = run(at(sat, 10, 0), syncedUpTo: at(sat, 10, 0));
       expect(first.post.map((m) => m.title), ['No check-in for the Morning shift']);
