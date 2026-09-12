@@ -72,8 +72,14 @@ void main() {
       expect(next(at(sat, 6, 10), watch: true, ms: const [], recap: false), at(sat, 6, 30));
     });
     test('holiday: no moments, no watch, planning run tomorrow', () {
-      expect(next(at(sat, 10, 0), working: false, watch: true, ms: const []),
+      expect(next(at(sat, 10, 0), working: false, watch: false, ms: const []),
           DateTime(2026, 9, 13, 5, 55));
+    });
+    test('the watch runs on a day the employee is off', () {
+      // workingDay only gates the recap now — the caller (a System Manager's
+      // terminal watch) decides its own calendar, so a personal holiday must
+      // not blank out the watch slots.
+      expect(next(at(sat, 10, 0), working: false, watch: true, ms: const []), at(sat, 10, 30));
     });
     test('before 05:55 the planning run is today', () {
       expect(planningRunAfter(at(sat, 5, 0)), at(sat, 5, 55));

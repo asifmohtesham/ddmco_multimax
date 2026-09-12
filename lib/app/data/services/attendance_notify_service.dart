@@ -22,6 +22,13 @@ class AttendanceNotifyData {
   final bool holiday;
   final bool onLeave;
 
+  /// The organisation's Holiday List (Shift Type → `holiday_list`), read
+  /// independently of the employee's own calendar. Only populated when
+  /// [fetch] is called with `withOrgHoliday: true`; unreadable ⇒ false (a
+  /// working day). For a System Manager's terminal watch, which must not go
+  /// dark just because that person is personally off.
+  final bool orgHoliday;
+
   /// Null when the heartbeat document could not be read.
   final SyncStatus? sync;
 
@@ -34,6 +41,7 @@ class AttendanceNotifyData {
     this.ledger = const [],
     this.holiday = false,
     this.onLeave = false,
+    this.orgHoliday = false,
     this.sync,
   });
 
@@ -127,7 +135,8 @@ class AttendanceNotifyService {
   /// Everything for [employee] (empty for a System Manager without one) on
   /// [day]. `expired` when the session probe says so; null when a required
   /// read fails — the worker then posts nothing and retries soon.
-  Future<AttendanceNotifyData?> fetch({required String employee, required DateTime day}) async {
+  Future<AttendanceNotifyData?> fetch(
+      {required String employee, required DateTime day, bool withOrgHoliday = false}) async {
     try {
       final res = await callGet('/api/method/frappe.auth.get_logged_user', const {});
       final who = res.data is Map ? res.data['message'] : null;
@@ -220,6 +229,8 @@ class AttendanceNotifyService {
       }
 
       final holiday = await _isHoliday(d, employee: tracked ? employee : '', catalog: catalog);
+      final orgHoliday =
+          withOrgHoliday ? await _isHoliday(d, employee: '', catalog: catalog) : false;
       final syncDoc = await _doc('Attendance Sync Status', 'Attendance Sync Status');
       return AttendanceNotifyData(
         tracked: tracked,
@@ -229,6 +240,7 @@ class AttendanceNotifyService {
         ledger: ledger,
         holiday: holiday,
         onLeave: onLeave,
+        orgHoliday: orgHoliday,
         sync: syncDoc == null ? null : SyncStatus.fromJson(syncDoc),
       );
     } catch (_) {

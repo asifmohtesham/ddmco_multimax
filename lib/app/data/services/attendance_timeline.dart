@@ -71,8 +71,9 @@ DateTime? _nextWatchSlot(DateTime now) {
 }
 
 /// The next time after [now] the worker must run: the next shift moment,
-/// the 07:30 recap ([recap], working days), the next terminal watch slot
-/// ([terminalWatch], working days) — else the planning run.
+/// the 07:30 recap ([recap], working days only), the next terminal watch
+/// slot ([terminalWatch] alone — [workingDay] does not gate it, since the
+/// caller decides which calendar the watch follows) — else the planning run.
 DateTime nextAttendanceWake({
   required DateTime now,
   required List<ShiftMoment> moments,
@@ -81,7 +82,7 @@ DateTime nextAttendanceWake({
   required bool terminalWatch,
 }) {
   final day = dateOnly(now);
-  final watch = workingDay && terminalWatch ? _nextWatchSlot(now) : null;
+  final watch = terminalWatch ? _nextWatchSlot(now) : null;
   final candidates = <DateTime>[
     for (final m in moments)
       if (m.at.isAfter(now)) m.at,

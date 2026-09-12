@@ -58,7 +58,8 @@ Future<void> runAttendanceTask() async {
       baseUrl: storage.getBaseUrl() ?? ApiProvider.defaultBaseUrl,
       cookieDir: '${supportDir.path}/.cookies/',
     );
-    final data = await service.fetch(employee: reminders ? employee : '', day: today);
+    final data = await service.fetch(
+        employee: reminders ? employee : '', day: today, withOrgHoliday: terminal);
     final post = <NotifyMessage>[];
     final cancel = <int>[];
 
@@ -117,7 +118,11 @@ Future<void> runAttendanceTask() async {
         }
       }
 
-      if (terminal && workingDay && inWatchHours(now)) {
+      // The terminal watch follows the organisation's calendar, not this
+      // person's own leave/holiday — a System Manager off on their own day
+      // must not leave the terminal unwatched.
+      final terminalWatch = terminal && !data.orgHoliday;
+      if (terminalWatch && inWatchHours(now)) {
         final t = decideTerminal(now: now, status: data.sync, wasQuiet: state.terminalQuiet);
         if (t.message != null) post.add(t.message!);
         state = state.copyWith(terminalQuiet: t.quiet);
@@ -128,7 +133,7 @@ Future<void> runAttendanceTask() async {
         moments: moments,
         workingDay: workingDay,
         recap: canRemind && state.recapRunDay != todayKey,
-        terminalWatch: terminal,
+        terminalWatch: terminalWatch,
       );
       if (heldBack) {
         // A reminder was withheld waiting on the sync — retry soon rather

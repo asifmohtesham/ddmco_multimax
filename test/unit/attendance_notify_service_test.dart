@@ -148,6 +148,35 @@ void main() {
     expect(f.paths, isNot(contains('/api/resource/Shift Assignment')));
   });
 
+  test('withOrgHoliday reads the organisation holiday list', () async {
+    final f = _FakeService();
+    _seedEmployee(f);
+    // The employee's own calendar says nothing for the day (default hrms
+    // response is {}), but the Shift Type points at an org Holiday List
+    // that does cover it.
+    f.responses['/api/resource/Shift Type'] = [
+      {'name': 'Morning', 'start_time': '8:00:00', 'end_time': '12:15:00',
+        'late_entry_grace_period': 15, 'holiday_list': 'Multimax 2026'},
+      {'name': 'Afternoon', 'start_time': '13:30:00', 'end_time': '20:00:00', 'late_entry_grace_period': 15},
+    ];
+    f.responses['/api/resource/Holiday List/Multimax 2026'] = {
+      'holidays': [
+        {'holiday_date': '2026-09-12'},
+      ],
+    };
+    final d = (await f.fetch(employee: 'E1', day: day, withOrgHoliday: true))!;
+    expect(d.holiday, isFalse);
+    expect(d.orgHoliday, isTrue);
+  });
+
+  test('withOrgHoliday: false (the default) never requests the Holiday List path', () async {
+    final f = _FakeService();
+    _seedEmployee(f);
+    final d = (await f.fetch(employee: 'E1', day: day))!;
+    expect(d.orgHoliday, isFalse);
+    expect(f.paths.where((p) => p.startsWith('/api/resource/Holiday List/')), isEmpty);
+  });
+
   test('System Manager without an employee: holiday from the shift holiday list', () async {
     final f = _FakeService();
     f.responses['/api/resource/Shift Type'] = [
