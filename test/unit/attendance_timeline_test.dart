@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/models/attendance_models.dart';
+import 'package:multimax/app/data/services/attendance_notify_rules.dart';
+import 'package:multimax/app/data/services/attendance_notify_worker.dart' show kAttendanceRetry;
 import 'package:multimax/app/data/services/attendance_timeline.dart';
 
 const morning = ShiftRules(
@@ -125,6 +127,48 @@ void main() {
       expect(p.terminalLastSeen, DateTime(2026, 9, 12, 9, 15));
       expect(p.agentLastRun, DateTime(2026, 9, 12, 9, 16, 30));
       expect(SyncStatus.fromJson({'terminal_online': 0}).terminalOnline, isFalse);
+    });
+  });
+
+  group('wake decision (whole-branch review fixes)', () {
+    test('a held-back reminder brings the wake forward', () {
+      final now = at(sat, 8, 15);
+      final out = decideReminders(
+        now: now,
+        facts: EmployeeDayFacts(shifts: const [morning, afternoon], syncedUpTo: at(sat, 8, 14)),
+      );
+      expect(out.heldBack, isTrue);
+
+      var wake = nextAttendanceWake(
+        now: now,
+        moments: shiftMoments(const [morning, afternoon], sat),
+        workingDay: true,
+        recap: true,
+        terminalWatch: false,
+      );
+      expect(wake, at(sat, 12, 25)); // Morning's own check-out moment, next up
+
+      if (out.heldBack) {
+        wake = wake.isAfter(now.add(kAttendanceRetry)) ? now.add(kAttendanceRetry) : wake;
+      }
+      expect(wake, at(sat, 8, 30)); // pulled forward to the retry window
+    });
+
+    test('a silenced day (holiday) does not force a retry, and still schedules something', () {
+      final now = at(sat, 8, 15);
+      final out =
+          decideReminders(now: now, facts: EmployeeDayFacts(shifts: const [morning, afternoon], holiday: true));
+      expect(out.heldBack, isFalse);
+
+      final wake =
+          nextAttendanceWake(now: now, moments: const [], workingDay: false, recap: false, terminalWatch: false);
+      expect(wake, DateTime(2026, 9, 13, 5, 55)); // falls back to the planning run
+    });
+
+    test('a System Manager on their own day off still gets watch slots', () {
+      final wake = nextAttendanceWake(
+          now: at(sat, 10, 0), moments: const [], workingDay: false, recap: false, terminalWatch: true);
+      expect(wake, at(sat, 10, 30));
     });
   });
 }

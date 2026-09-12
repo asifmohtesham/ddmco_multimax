@@ -30,6 +30,25 @@ class _FakeWork implements WorkScheduler {
   Future<void> cancel(String uniqueName) async {}
 }
 
+/// Same seam, but records what it saw — for asserting AttendanceNotifyScheduler
+/// actually re-armed (cancel vs registerOneOff) rather than just counting calls.
+class _RecordingWork implements WorkScheduler {
+  final List<String> calls = [];
+
+  @override
+  Future<void> registerOneOff(
+      {required String uniqueName,
+      required String taskName,
+      required Duration initialDelay}) async {
+    calls.add('registerOneOff:$uniqueName');
+  }
+
+  @override
+  Future<void> cancel(String uniqueName) async {
+    calls.add('cancel:$uniqueName');
+  }
+}
+
 class _CountingScheduler extends DigestScheduler {
   int rearms = 0;
   _CountingScheduler(StorageService storage)
@@ -175,5 +194,64 @@ void main() {
     expect(c.alarmStyle.value, 'alarm');
     expect(storage.getDigestAlarmStyle(user), 'alarm');
     expect(scheduler.rearms, greaterThan(0));
+  });
+
+  group('attendance toggles rearm the attendance scheduler', () {
+    // A linked employee, not a System Manager — so the attendance-reminders
+    // toggle alone decides whether AttendanceNotifyScheduler.wants() is true,
+    // with no interference from the terminal-alerts toggle.
+    const employeeUser = {
+      'name': user, 'full_name': 'Asif', 'email': user,
+      'employee_id': 'HR-EMP-00001',
+      'roles': [
+        {'role': 'Employee'}
+      ],
+    };
+
+    late _RecordingWork work;
+
+    NotificationSettingsController buildAndroid() {
+      work = _RecordingWork();
+      return NotificationSettingsController(
+        storage: storage,
+        scheduler: scheduler,
+        attendanceScheduler: AttendanceNotifyScheduler(storage: storage, work: work, isAndroid: true),
+        isAndroid: true,
+        notificationsAllowed: () async => true,
+        requestPermission: () async => true,
+      );
+    }
+
+    test('setAttendanceEnabled persists and rearms: cancel then registerOneOff', () async {
+      box._data['currentUser'] = employeeUser;
+      final c = buildAndroid()..onInit();
+
+      await c.setAttendanceEnabled(false);
+      expect(storage.getAttendanceRemindersEnabled(user), isFalse);
+      expect(work.calls, ['cancel:$kAttendanceUniqueName']);
+
+      await c.setAttendanceEnabled(true);
+      expect(storage.getAttendanceRemindersEnabled(user), isTrue);
+      expect(work.calls, ['cancel:$kAttendanceUniqueName', 'registerOneOff:$kAttendanceUniqueName']);
+    });
+
+    test('setTerminalEnabled persists and rearms: cancel then registerOneOff', () async {
+      const managerUser = {
+        'name': user, 'full_name': 'Asif', 'email': user,
+        'roles': [
+          {'role': 'System Manager'}
+        ],
+      };
+      box._data['currentUser'] = managerUser;
+      final c = buildAndroid()..onInit();
+
+      await c.setTerminalEnabled(false);
+      expect(storage.getAttendanceTerminalAlerts(user), isFalse);
+      expect(work.calls, ['cancel:$kAttendanceUniqueName']);
+
+      await c.setTerminalEnabled(true);
+      expect(storage.getAttendanceTerminalAlerts(user), isTrue);
+      expect(work.calls, ['cancel:$kAttendanceUniqueName', 'registerOneOff:$kAttendanceUniqueName']);
+    });
   });
 }
