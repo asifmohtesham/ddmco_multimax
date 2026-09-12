@@ -1,1 +1,1 @@
-• Attendance fixes for Morning and Afternoon shifts: people on approved leave now show On Leave instead of Absent, anyone missing a check-out is still counted as present, and shifts and holidays keep showing correctly when the server is slow to respond.
+• Attendance reminders: your phone reminds you to check in before each shift's cut-off and to check out after it, tells you the next morning if a shift was late or missed, and alerts System Managers when the attendance terminal goes quiet. Turn them off any time in Account › Notifications.
