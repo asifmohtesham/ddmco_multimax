@@ -77,6 +77,10 @@ class EmployeeDayFacts {
   final bool onLeave;
   final bool syncing;
 
+  /// The heartbeat's `agent_last_run`: punches up to this instant have been
+  /// polled. Null when the heartbeat couldn't be read.
+  final DateTime? syncedUpTo;
+
   const EmployeeDayFacts({
     required this.shifts,
     this.punches = const [],
@@ -84,6 +88,7 @@ class EmployeeDayFacts {
     this.holiday = false,
     this.onLeave = false,
     this.syncing = true,
+    this.syncedUpTo,
   });
 }
 
@@ -97,31 +102,49 @@ class ReminderOutcome {
       {required this.post, required this.cancel, required this.handled, required this.posted});
 }
 
-NotifyMessage? _reminder(ShiftMoment m, ShiftDayStatus st, DateTime now) {
+/// [msg] is the reminder to post, if any. [heldForSync] means a `missedIn`
+/// would otherwise fire but the sync hasn't caught up past the shift's
+/// cut-off yet — the caller must leave that moment open, not mark it done.
+({NotifyMessage? msg, bool heldForSync}) _reminder(
+    ShiftMoment m, ShiftDayStatus st, DateTime now, DateTime? syncedUpTo) {
   final s = m.shift;
   final day = dateOnly(now);
   final id = kShiftReminderIdBase + m.shiftIndex;
   final hasIn = st.inTime != null;
   switch (m.kind) {
     case ReminderKind.headsUp:
-      if (hasIn || !now.isBefore(s.cutoffOn(day))) return null;
-      return NotifyMessage(
-          id: id,
-          title: 'Check in for the ${s.shortName} shift',
-          body: 'Punch before ${s.cutoffLabel} to be on time.');
+      if (hasIn || !now.isBefore(s.cutoffOn(day))) return (msg: null, heldForSync: false);
+      return (
+        msg: NotifyMessage(
+            id: id,
+            title: 'Check in for the ${s.shortName} shift',
+            body: 'Punch before ${s.cutoffLabel} to be on time.'),
+        heldForSync: false,
+      );
     case ReminderKind.missedIn:
-      if (hasIn || !now.isBefore(s.endOn(day))) return null;
-      return NotifyMessage(
-          id: id,
-          title: 'No check-in for the ${s.shortName} shift',
-          body: 'Nothing recorded since ${s.startLabel}. Punch now; this shift will show late.');
+      if (hasIn || !now.isBefore(s.endOn(day))) return (msg: null, heldForSync: false);
+      if (syncedUpTo == null || syncedUpTo.isBefore(s.cutoffOn(day))) {
+        return (msg: null, heldForSync: true);
+      }
+      return (
+        msg: NotifyMessage(
+            id: id,
+            title: 'No check-in for the ${s.shortName} shift',
+            body: 'Nothing recorded since ${s.startLabel}. Punch now; this shift will show late.'),
+        heldForSync: false,
+      );
     case ReminderKind.checkOut:
-      if (!hasIn || st.outTime != null || !now.isBefore(s.windowEndOn(day))) return null;
-      return NotifyMessage(
-          id: id,
-          title: 'Check out of the ${s.shortName} shift',
-          body: 'In at ${kHHmm.format(st.inTime!)}, no check-out yet. '
-              'Punch before ${kHHmm.format(s.windowEndOn(day))}.');
+      if (!hasIn || st.outTime != null || !now.isBefore(s.windowEndOn(day))) {
+        return (msg: null, heldForSync: false);
+      }
+      return (
+        msg: NotifyMessage(
+            id: id,
+            title: 'Check out of the ${s.shortName} shift',
+            body: 'In at ${kHHmm.format(st.inTime!)}, no check-out yet. '
+                'Punch before ${kHHmm.format(s.windowEndOn(day))}.'),
+        heldForSync: false,
+      );
   }
 }
 
@@ -180,7 +203,8 @@ ReminderOutcome decideReminders({
         doneKeys.add(m.key);
         continue;
       }
-      final msg = _reminder(m, st, now);
+      final (:msg, :heldForSync) = _reminder(m, st, now, facts.syncedUpTo);
+      if (heldForSync) continue; // sync hasn't caught up past the cut-off yet
       if (msg == null) {
         doneKeys.add(m.key);
         continue;

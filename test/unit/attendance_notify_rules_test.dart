@@ -69,12 +69,12 @@ void main() {
   group('decideReminders', () {
     ReminderOutcome run(DateTime now,
             {List<EmployeeCheckin> punches = const [], List<AttendanceRecord> ledger = const [],
-            bool holiday = false, bool onLeave = false, bool syncing = true,
+            bool holiday = false, bool onLeave = false, bool syncing = true, DateTime? syncedUpTo,
             Set<String> handled = const {}, Set<String> posted = const {}, List<ShiftRules> shifts = both}) =>
         decideReminders(
           now: now,
           facts: EmployeeDayFacts(shifts: shifts, punches: punches, ledger: ledger,
-              holiday: holiday, onLeave: onLeave, syncing: syncing),
+              holiday: holiday, onLeave: onLeave, syncing: syncing, syncedUpTo: syncedUpTo),
           handled: handled,
           posted: posted,
         );
@@ -102,7 +102,7 @@ void main() {
     });
 
     test('missed check-in at the cut-off; the late heads-up is dropped', () {
-      final o = run(at(sat, 8, 15));
+      final o = run(at(sat, 8, 15), syncedUpTo: at(sat, 8, 15));
       expect(o.post.single.title, 'No check-in for the Morning shift');
       expect(o.post.single.body, 'Nothing recorded since 08:00. Punch now; this shift will show late.');
       expect(o.handled, {'Morning|headsUp', 'Morning|missedIn'});
@@ -110,16 +110,35 @@ void main() {
     });
 
     test('terminal not syncing: held back and retried later, never marked handled', () {
-      final o = run(at(sat, 8, 15), syncing: false);
+      final o = run(at(sat, 8, 15), syncing: false, syncedUpTo: at(sat, 8, 15));
       expect(o.post, isEmpty);
       expect(o.handled, {'Morning|headsUp'}); // dropped: its cut-off passed
       expect(o.handled.contains('Morning|missedIn'), isFalse);
     });
 
+    test('a missed check-in waits until the sync has run past the cut-off', () {
+      final o = run(at(sat, 8, 15), syncedUpTo: at(sat, 8, 14));
+      expect(o.post, isEmpty);
+      expect(o.handled.contains('Morning|missedIn'), isFalse);
+      expect(o.posted.contains('Morning|missedIn'), isFalse);
+    });
+
+    test('it posts once the sync has caught up', () {
+      final o = run(at(sat, 8, 15), syncedUpTo: at(sat, 8, 15));
+      expect(o.post.single.title, 'No check-in for the Morning shift');
+      expect(o.handled, contains('Morning|missedIn'));
+      expect(o.posted, contains('Morning|missedIn'));
+    });
+
+    test('a heads-up is unaffected by syncedUpTo', () {
+      final o = run(at(sat, 8, 5), syncedUpTo: null);
+      expect(o.post.single.title, 'Check in for the Morning shift');
+    });
+
     test('a late run catches up once and never repeats', () {
-      final first = run(at(sat, 10, 0));
+      final first = run(at(sat, 10, 0), syncedUpTo: at(sat, 10, 0));
       expect(first.post.map((m) => m.title), ['No check-in for the Morning shift']);
-      final second = run(at(sat, 10, 30), handled: first.handled, posted: first.posted);
+      final second = run(at(sat, 10, 30), handled: first.handled, posted: first.posted, syncedUpTo: at(sat, 10, 30));
       expect(second.post, isEmpty);
     });
 
@@ -146,7 +165,8 @@ void main() {
 
     test('the Afternoon shift uses id 3001 and its own times', () {
       final o = run(at(sat, 13, 45),
-          punches: [punch(at(sat, 7, 58)), punch(at(sat, 12, 16))], handled: morningDone);
+          punches: [punch(at(sat, 7, 58)), punch(at(sat, 12, 16))], handled: morningDone,
+          syncedUpTo: at(sat, 13, 45));
       expect(o.post.single.id, 3001);
       expect(o.post.single.title, 'No check-in for the Afternoon shift');
       expect(o.post.single.body, 'Nothing recorded since 13:30. Punch now; this shift will show late.');

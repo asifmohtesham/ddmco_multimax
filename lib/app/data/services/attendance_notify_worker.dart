@@ -91,6 +91,7 @@ Future<void> runAttendanceTask() async {
             holiday: data.holiday,
             onLeave: data.onLeave,
             syncing: isSyncing(data.sync, now),
+            syncedUpTo: data.sync?.agentLastRun,
           ),
           handled: state.handled,
           posted: state.posted,
