@@ -19,7 +19,8 @@ ImageProvider? employeeImage(String? path) {
   }
 }
 
-/// One employee row: avatar · name / department / In–Out · status pill + flag.
+/// One employee row: avatar · name / department / In–Out · status pill + flag;
+/// on a two-shift day each shift line carries its own pill instead.
 /// Untracked rows drop the time row and render dimmed.
 class EmployeeAttendanceCard extends StatelessWidget {
   const EmployeeAttendanceCard({super.key, required this.row, required this.onTap});
@@ -31,6 +32,7 @@ class EmployeeAttendanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = context.scheme;
     final untracked = row.status == AttendanceStatus.untracked;
+    final split = !untracked && row.shifts.length > 1;
     final e = row.employee;
 
     return Opacity(
@@ -67,11 +69,11 @@ class EmployeeAttendanceCard extends StatelessWidget {
                         const SizedBox(height: 1),
                         Text(e.department, style: TextStyle(fontSize: 12, color: s.textMuted)),
                       ],
-                      if (!untracked && row.shifts.length > 1) ...[
+                      if (split) ...[
                         const SizedBox(height: 8),
                         for (final seg in row.shifts)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 2),
+                            padding: const EdgeInsets.only(bottom: 4),
                             child: ShiftInOutLine(segment: seg),
                           ),
                       ] else if (!untracked) ...[
@@ -88,17 +90,20 @@ class EmployeeAttendanceCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    StatusPill(status: row.status.label),
-                    if (row.flag != null) ...[
-                      const SizedBox(height: 7),
-                      AttendanceFlag(text: row.flag!, warning: row.flagIsWarning),
+                // A two-shift day has no status of its own: each shift line has its pill.
+                if (!split) ...[
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      StatusPill(status: row.status.label),
+                      if (row.flag != null) ...[
+                        const SizedBox(height: 7),
+                        AttendanceFlag(text: row.flag!, warning: row.flagIsWarning),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -108,9 +113,10 @@ class EmployeeAttendanceCard extends StatelessWidget {
   }
 }
 
-/// "Morning  In 07:58  Out 12:02" for one shift of a two-shift day. The shift
-/// name takes its status ink when the shift needs attention (late, absent, no
-/// check-out); otherwise it stays muted.
+/// "Morning  In 07:58  Out 12:02  [Present]" for one shift of a two-shift day,
+/// closed by that shift's own status pill. The shift name takes its status ink
+/// when the shift needs attention (late, absent, no check-out); otherwise it
+/// stays muted.
 class ShiftInOutLine extends StatelessWidget {
   const ShiftInOutLine({super.key, required this.segment});
   final ShiftDayStatus segment;
@@ -118,7 +124,6 @@ class ShiftInOutLine extends StatelessWidget {
   static const _attention = {
     AttendanceStatus.late,
     AttendanceStatus.absent,
-    AttendanceStatus.absentSoFar,
     AttendanceStatus.noCheckOut,
   };
 
@@ -129,10 +134,7 @@ class ShiftInOutLine extends StatelessWidget {
     final nameColor = _attention.contains(segment.status)
         ? StatusPill.colourForStatus(segment.status.label, brightness: b).$2
         : s.textMuted;
-    return Wrap(
-      spacing: 12,
-      runSpacing: 2,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    return Row(
       children: [
         SizedBox(
           width: 72,
@@ -143,8 +145,19 @@ class ShiftInOutLine extends StatelessWidget {
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: nameColor),
           ),
         ),
-        InOutStat(label: 'In', time: segment.inTime),
-        InOutStat(label: 'Out', time: segment.outTime),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 2,
+            children: [
+              InOutStat(label: 'In', time: segment.inTime),
+              InOutStat(label: 'Out', time: segment.outTime),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        StatusPill(status: segment.status.label),
       ],
     );
   }

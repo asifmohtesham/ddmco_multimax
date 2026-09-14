@@ -180,7 +180,7 @@ class AttendanceMonthController extends GetxController {
       switch (statusOn(d)) {
         case AttendanceStatus.present || AttendanceStatus.late:
           present++;
-        case AttendanceStatus.absent || AttendanceStatus.absentSoFar:
+        case AttendanceStatus.absent:
           absent++;
         case AttendanceStatus.noCheckOut:
           noOut++;

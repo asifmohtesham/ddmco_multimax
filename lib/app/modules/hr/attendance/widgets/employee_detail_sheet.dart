@@ -93,16 +93,19 @@ class EmployeeDetailSheet extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                StatusPill(status: row.status.label),
-                if (row.flag != null) ...[
-                  const SizedBox(width: 8),
-                  AttendanceFlag(text: row.flag!, warning: row.flagIsWarning),
+            // A two-shift day has no status of its own: each shift below has its pill.
+            if (row.shifts.length <= 1) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  StatusPill(status: row.status.label),
+                  if (row.flag != null) ...[
+                    const SizedBox(width: 8),
+                    AttendanceFlag(text: row.flag!, warning: row.flagIsWarning),
+                  ],
                 ],
-              ],
-            ),
+              ),
+            ],
             const SizedBox(height: 14),
             if (row.shifts.length > 1)
               ...[
@@ -159,7 +162,7 @@ class EmployeeDetailSheet extends StatelessWidget {
 }
 
 /// "Shift Morning · 08:00–12:15 · late after 08:15", plus that shift's status
-/// on a two-shift day.
+/// pill on a two-shift day.
 class _ShiftContext extends StatelessWidget {
   const _ShiftContext({required this.shift, this.status});
   final ShiftRules shift;
@@ -199,16 +202,7 @@ class _ShiftContext extends StatelessWidget {
           ),
           if (status != null) ...[
             const SizedBox(width: 8),
-            Text(
-              status!.label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: StatusPill.colourForStatus(status!.label,
-                        brightness: Theme.of(context).brightness)
-                    .$2,
-              ),
-            ),
+            StatusPill(status: status!.label),
           ],
         ],
       ),

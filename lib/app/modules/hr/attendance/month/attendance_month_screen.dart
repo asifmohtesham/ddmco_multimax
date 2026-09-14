@@ -138,7 +138,7 @@ class AttendanceMonthScreen extends GetView<AttendanceMonthController> {
 Color _dotColor(AttendanceStatus s) => switch (s) {
       AttendanceStatus.present || AttendanceStatus.workFromHome => AppColors.green500,
       AttendanceStatus.late => AppColors.orange500,
-      AttendanceStatus.absent || AttendanceStatus.absentSoFar => AppColors.red500,
+      AttendanceStatus.absent => AppColors.red500,
       AttendanceStatus.halfDay || AttendanceStatus.noCheckOut => AppColors.yellow500,
       AttendanceStatus.holiday || AttendanceStatus.onLeave => AppColors.blue500,
       AttendanceStatus.notInYet || AttendanceStatus.untracked => AppColors.gray400,

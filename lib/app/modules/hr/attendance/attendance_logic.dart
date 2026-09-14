@@ -10,7 +10,6 @@ enum AttendanceStatus {
   present('Present'),
   late('Late'),
   notInYet('Not in yet'),
-  absentSoFar('Absent so far'),
   absent('Absent'),
   noCheckOut('No check-out'),
   holiday('Holiday'),
@@ -25,7 +24,7 @@ enum AttendanceStatus {
   /// Sort order: attention first. Absent › No check-out › Late › Not in ›
   /// Present › rest.
   int get severity => switch (this) {
-        absentSoFar || absent => 0,
+        absent => 0,
         noCheckOut => 1,
         late => 2,
         notInYet => 3,
@@ -37,7 +36,7 @@ enum AttendanceStatus {
         untracked => 99,
       };
 
-  bool get isAbsent => this == absent || this == absentSoFar;
+  bool get isAbsent => this == absent;
 }
 
 /// Derived view row for one employee on the selected day.
@@ -220,15 +219,13 @@ EmployeeDayStatus deriveDayStatus({
     );
   }
 
+  // No punch: Absent (ERPNext's own status) as soon as the cut-off passes.
   final isPastDay = dateOnly(day).isBefore(dateOnly(now));
-  if (isPastDay) {
-    return EmployeeDayStatus(employee: employee, status: AttendanceStatus.absent);
-  }
   return EmployeeDayStatus(
     employee: employee,
-    status: now.isBefore(cutoff)
+    status: !isPastDay && now.isBefore(cutoff)
         ? AttendanceStatus.notInYet
-        : AttendanceStatus.absentSoFar,
+        : AttendanceStatus.absent,
   );
 }
 
@@ -302,14 +299,11 @@ ShiftDayStatus deriveShiftStatus({
   }
 
   if (sorted.isEmpty) {
-    final over = dateOnly(day).isBefore(dateOnly(now)) || now.isAfter(shift.windowEndOn(day));
+    // Absent as soon as the late cut-off passes, not only once the window closes.
+    final pending = !dateOnly(day).isBefore(dateOnly(now)) && now.isBefore(cutoff);
     return ShiftDayStatus(
       shift: shift,
-      status: over
-          ? AttendanceStatus.absent
-          : now.isBefore(cutoff)
-              ? AttendanceStatus.notInYet
-              : AttendanceStatus.absentSoFar,
+      status: pending ? AttendanceStatus.notInYet : AttendanceStatus.absent,
     );
   }
 
@@ -335,7 +329,9 @@ ShiftDayStatus deriveShiftStatus({
 }
 
 /// A Morning/Afternoon day: each shift derived on its own, then the day takes
-/// the most attention-worthy status among the shifts that have started.
+/// the most attention-worthy status among the shifts that have started. Cards
+/// and the detail sheet show each shift's own status instead; the day status
+/// only orders, counts and filters rows.
 EmployeeDayStatus _deriveShiftedDay({
   required TrackedEmployee employee,
   required DateTime day,
@@ -439,7 +435,7 @@ EmployeeDayStatus _deriveShiftedDay({
 /// normally get [ShiftRules.named], but when more than one name resolves and
 /// any of them is unreadable, a single [fallback] shift is returned instead —
 /// several [ShiftRules.named] shifts would silently share identical
-/// fallback-width windows and make everyone read "Absent so far".
+/// fallback-width windows and make everyone read "Absent".
 List<ShiftRules> resolveShifts({
   required TrackedEmployee employee,
   required DateTime day,
@@ -556,7 +552,6 @@ class AttendanceCounts {
         case AttendanceStatus.notInYet:
           n++;
         case AttendanceStatus.absent:
-        case AttendanceStatus.absentSoFar:
           a++;
         case AttendanceStatus.noCheckOut:
           p++; // on site (just missing an OUT) — counts toward Present too
@@ -579,7 +574,7 @@ const kStatusFilterOptions = <String, List<AttendanceStatus>>{
   'Present': [AttendanceStatus.present, AttendanceStatus.noCheckOut],
   'Late': [AttendanceStatus.late],
   'Not in yet': [AttendanceStatus.notInYet],
-  'Absent': [AttendanceStatus.absent, AttendanceStatus.absentSoFar],
+  'Absent': [AttendanceStatus.absent],
   'No check-out': [AttendanceStatus.noCheckOut],
   'Holiday': [AttendanceStatus.holiday, AttendanceStatus.onLeave],
   'Not tracked': [AttendanceStatus.untracked],
@@ -662,7 +657,8 @@ class MonthStrip {
 /// Builds the [MonthStrip] for [month]. Past days trust [ledger] (the
 /// viewer's own rows; `late_entry` → Late; two rows on a Morning/Afternoon
 /// day, rules from [catalog]), holidays read Holiday, today comes from [today]
-/// (Not in yet / Absent so far stay null — the day is not over), future days
+/// (Not in yet, or Absent with no ledger row yet, stays null — the day is not
+/// over), future days
 /// are null. Late is counted apart from present.
 MonthStrip buildMonthStrip({
   required DateTime month,
@@ -693,7 +689,9 @@ MonthStrip buildMonthStrip({
     if (d == todayDate) {
       todayIndex = i;
       final t = today?.status;
-      st = t == AttendanceStatus.notInYet || t == AttendanceStatus.absentSoFar ? null : t;
+      final pending = t == AttendanceStatus.notInYet ||
+          (t == AttendanceStatus.absent && today?.ledger == null);
+      st = pending ? null : t;
     } else if (d.isAfter(todayDate)) {
       st = null;
     } else if (byDate[key] != null) {
@@ -776,8 +774,6 @@ MonthStrip buildMonthStrip({
         ('No check-out', 'Ended ${shift.endLabel} with no out punch'),
       AttendanceStatus.notInYet =>
         ('Not in yet', 'Punch before ${shift.cutoffLabel} to be on time'),
-      AttendanceStatus.absentSoFar =>
-        ('No check-in recorded yet', 'Shift started ${shift.startLabel}'),
       AttendanceStatus.present || AttendanceStatus.late => (
           row.inTime == null ? row.status.label : 'In · ${kHHmm.format(row.inTime!)}',
           row.lateBy != null && row.lateBy!.inMinutes > 0

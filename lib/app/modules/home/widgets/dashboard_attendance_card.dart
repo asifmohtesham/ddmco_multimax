@@ -52,8 +52,8 @@ class DashboardAttendanceCard extends StatelessWidget {
 
   bool get _skeleton => isLoading && loadedAt == null;
 
-  /// With zero punches for anyone, every tracked row derives as Absent so
-  /// far — rows nobody can act on, so the card hides them and dashes the tiles.
+  /// With zero punches for anyone, every tracked row derives as Absent — rows
+  /// nobody can act on, so the card hides them and dashes the tiles.
   bool get _showRows => !_skeleton && !looksOffline;
 
   @override
@@ -124,7 +124,7 @@ class DashboardAttendanceCard extends StatelessWidget {
       return ('No punches yet today', last);
     }
     return ('$inCount of ${counts.tracked} in',
-        '${counts.late} late · ${counts.absent} absent so far');
+        '${counts.late} late · ${counts.absent} absent');
   }
 
   Widget _buildHeadline(BuildContext context) {

@@ -76,11 +76,11 @@ void main() {
       await pump(
         tester,
         MyAttendanceCard(
-            row: row(AttendanceStatus.absentSoFar), shift: shift, now: now, strip: strip),
+            row: row(AttendanceStatus.absent), shift: shift, now: now, strip: strip),
         brightness,
       );
-      expect(find.text('No check-in recorded yet'), findsOneWidget);
-      expect(find.text('Shift started 08:00'), findsOneWidget);
+      expect(find.text('Absent'), findsOneWidget);
+      expect(find.text('No check-in recorded'), findsOneWidget);
       expect(find.textContaining('terminal'), findsNothing);
     });
 

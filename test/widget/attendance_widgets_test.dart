@@ -143,6 +143,7 @@ void main() {
       );
       await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {}), brightness: b));
       expect(find.text('No check-out'), findsOneWidget);
+      expect(find.text('Not in yet'), findsOneWidget); // each shift carries its own pill
       expect(find.text('Morning'), findsOneWidget);
       expect(find.text('Afternoon'), findsOneWidget);
       expect(find.textContaining('07:58', findRichText: true), findsOneWidget);
@@ -151,6 +152,30 @@ void main() {
       final (_, ink) = StatusPill.colourForStatus('No check-out', brightness: b);
       expect(ink, b == Brightness.dark ? AppColors.yellow300 : AppColors.yellow700);
       expect(tester.widget<Text>(find.text('Morning')).style?.color, ink);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('two-shift row: Morning Present, Afternoon Absent, no day pill [$b]', (tester) async {
+      // 13:59 Saturday: in 08:04, out 12:21, nothing since the 13:45 afternoon cut-off.
+      final row = deriveDayStatus(
+        employee: emp,
+        day: DateTime(2026, 9, 12),
+        now: DateTime(2026, 9, 12, 13, 59),
+        shift: morning,
+        shifts: const [morning, afternoon],
+        isHoliday: false,
+        punches: [
+          EmployeeCheckin(
+              name: 'a', employee: emp.name, time: DateTime(2026, 9, 12, 8, 4), logType: 'IN'),
+          EmployeeCheckin(
+              name: 'b', employee: emp.name, time: DateTime(2026, 9, 12, 12, 21), logType: 'OUT'),
+        ],
+      );
+      await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {}), brightness: b));
+      expect(find.byType(StatusPill), findsNWidgets(2));
+      expect(find.text('Present'), findsOneWidget);
+      expect(find.text('Absent'), findsOneWidget);
+      expect(find.textContaining('so far'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

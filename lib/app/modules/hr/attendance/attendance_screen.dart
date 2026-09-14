@@ -269,7 +269,7 @@ class AttendanceScreen extends GetView<AttendanceController> {
                 : '${counts.present} present'
                     '${counts.noOut > 0 ? ' (${counts.noOut} no check-out)' : ''} · '
                     '${counts.late} late · '
-                    '${controller.beforeCutoff ? '${counts.notIn} not in yet' : '${counts.absent} absent${controller.isToday ? ' so far' : ''}'}',
+                    '${controller.beforeCutoff ? '${counts.notIn} not in yet' : '${counts.absent} absent'}',
       ),
     ];
 

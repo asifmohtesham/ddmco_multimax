@@ -29,8 +29,8 @@ void main() {
           employee: emp(id, name), status: st, inTime: inTime, lateBy: lateBy);
 
   final highlights = [
-    row('E1', 'Rashid Al Mansoori', AttendanceStatus.absentSoFar),
-    row('E2', 'Priya Nair', AttendanceStatus.absentSoFar),
+    row('E1', 'Rashid Al Mansoori', AttendanceStatus.absent),
+    row('E2', 'Priya Nair', AttendanceStatus.absent),
     row('E3', 'Ayesha Mohammed', AttendanceStatus.late,
         inTime: DateTime(2026, 9, 9, 8, 31), lateBy: const Duration(minutes: 16)),
   ];
@@ -70,7 +70,7 @@ void main() {
         brightness,
       );
       expect(find.text('14 of 16 in'), findsOneWidget);
-      expect(find.text('3 late · 2 absent so far'), findsOneWidget);
+      expect(find.text('3 late · 2 absent'), findsOneWidget);
       expect(find.text('Updated 5 min ago'), findsOneWidget);
       expect(find.text('You'), findsNothing);
       expect(find.byType(EmployeeAttendanceCard), findsNWidgets(3));

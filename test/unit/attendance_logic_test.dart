@@ -65,9 +65,9 @@ void main() {
           AttendanceStatus.notInYet);
     });
 
-    test('no punch at/after cut-off is Absent so far', () {
+    test('no punch at/after cut-off is Absent', () {
       expect(derive(now: DateTime(2026, 9, 9, 8, 15)).status,
-          AttendanceStatus.absentSoFar);
+          AttendanceStatus.absent);
     });
 
     test('no punch on a past day is Absent', () {
@@ -139,7 +139,7 @@ void main() {
 
     test('absent › late › present › untracked', () {
       expect(rows.map((r) => r.status), [
-        AttendanceStatus.absentSoFar,
+        AttendanceStatus.absent,
         AttendanceStatus.late,
         AttendanceStatus.present,
         AttendanceStatus.untracked,
@@ -155,7 +155,7 @@ void main() {
       expect(c.notIn, 0);
     });
 
-    test('status filter Absent matches both absent variants', () {
+    test('status filter Absent matches absent rows', () {
       expect(filterRows(rows, statusKey: 'Absent').length, 1);
       expect(filterRows(rows, statusKey: 'Late').single.status,
           AttendanceStatus.late);
@@ -221,10 +221,10 @@ void main() {
       final rows = [
         row('Zed Present', AttendanceStatus.present),
         row('Amy Late', AttendanceStatus.late),
-        row('Bob Absent', AttendanceStatus.absentSoFar),
+        row('Bob Absent', AttendanceStatus.absent),
         row('Cal Not in', AttendanceStatus.notInYet),
         EmployeeDayStatus(employee: untracked, status: AttendanceStatus.untracked),
-        row('Me Absent', AttendanceStatus.absentSoFar, id: 'ME'),
+        row('Me Absent', AttendanceStatus.absent, id: 'ME'),
       ];
       final out = dashboardAttendanceHighlights(rows, selfEmployee: 'ME');
       expect(out.map((r) => r.employee.employeeName).toList(),
@@ -343,8 +343,8 @@ void main() {
     test('before the cut-off tells them what to do', () {
       expect(h(AttendanceStatus.notInYet), ('Not in yet', 'Punch before 08:15 to be on time'));
     });
-    test('after the cut-off is true whatever the cause', () {
-      expect(h(AttendanceStatus.absentSoFar), ('No check-in recorded yet', 'Shift started 08:00'));
+    test('after the cut-off reads Absent, never blaming the terminal', () {
+      expect(h(AttendanceStatus.absent), ('Absent', 'No check-in recorded'));
     });
     test('on time', () {
       expect(h(AttendanceStatus.present, inTime: DateTime(2026, 9, 10, 7, 58)),
@@ -451,9 +451,29 @@ void main() {
           AttendanceStatus.present);
     });
 
-    test('missing the afternoon past its cut-off outranks a done morning', () {
+    test('missing the afternoon past its cut-off: Morning Present, Afternoon Absent', () {
       final r = day2(now: DateTime(2026, 9, 12, 14), punches: [p(7, 58, 'IN'), p(12, 2, 'OUT')]);
-      expect(r.status, AttendanceStatus.absentSoFar);
+      expect(r.shifts[0].status, AttendanceStatus.present);
+      expect(r.shifts[1].status, AttendanceStatus.absent);
+      // The day status still orders and counts the row by its attention-worthy shift.
+      expect(r.status, AttendanceStatus.absent);
+    });
+
+    test('an open afternoon read as Absent stays pending in today\'s month strip', () {
+      final now = DateTime(2026, 9, 12, 14);
+      final r = day2(now: now, punches: [p(7, 58, 'IN'), p(12, 2, 'OUT')]);
+      final s = buildMonthStrip(
+        month: DateTime(2026, 9),
+        ledger: const [],
+        holidays: const {},
+        today: r,
+        now: now,
+        shift: morning,
+        employee: tracked,
+      );
+      expect(s.todayIndex, 11);
+      expect(s.days[11], isNull);
+      expect(s.absent, 0);
     });
 
     test('a double tap keeps its direction; OUT comes from log_type', () {
