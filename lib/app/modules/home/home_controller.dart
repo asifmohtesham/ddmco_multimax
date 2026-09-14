@@ -154,8 +154,8 @@ class HomeController extends GetxController {
 
   // --- Today's attendance (site-wide; does NOT follow selectedFilterUser) ---
   //
-  // Mirrors AttendanceController for today only: master data once, punches +
-  // ledger per refresh, status derived by the shared attendance_logic. No poll:
+  // Mirrors AttendanceController for today only: default shift once; employees,
+  // punches + ledger per refresh, status derived by the shared attendance_logic. No poll:
   // pull-to-refresh / header refresh reload it with the rest of the dashboard.
   final isLoadingAttendance = true.obs;
   final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
@@ -321,8 +321,14 @@ class HomeController extends GetxController {
       return;
     }
     try {
-      if (!_attendanceMasterLoaded) {
+      // Employees reload on every refresh, like AttendanceController, so a new
+      // or newly enrolled employee appears; a failed re-read keeps the last list.
+      try {
         _attendanceEmployees = await _attendanceProvider.fetchActiveEmployees();
+      } catch (_) {
+        if (!_attendanceMasterLoaded) rethrow;
+      }
+      if (!_attendanceMasterLoaded) {
         final shiftName = _attendanceEmployees
             .map((e) => e.defaultShift ?? '')
             .firstWhere((s) => s.isNotEmpty, orElse: () => '')

@@ -10,9 +10,9 @@ import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
 
 /// Drives the Attendance list for one selected day.
 ///
-/// Master data (employees, shift rules, holidays) loads once; the day's
-/// punches and ledger rows reload on date change, pull-to-refresh, the refresh
-/// icon, and a 60-second poll while today is selected.
+/// The default shift and holidays load once; employees, the day's punches and
+/// ledger rows reload on date change, pull-to-refresh, the refresh icon, and a
+/// 60-second poll while today is selected.
 class AttendanceController extends GetxController {
   final AttendanceProvider _provider = Get.find<AttendanceProvider>();
 
@@ -188,11 +188,18 @@ class AttendanceController extends GetxController {
   String? get selectedStatusKey => statusCtrl.text.trim().isEmpty ? null : statusCtrl.text;
 
   // ── Loading ───────────────────────────────────────────────────────────────
+  /// Employees reload on every load (poll, refresh icon, pull-to-refresh) so
+  /// someone created or given a terminal ID while the screen is open appears
+  /// without leaving it; a failed re-read keeps the last list. The default
+  /// shift still loads once.
   Future<void> _loadMaster() async {
+    try {
+      employees.assignAll(await _provider.fetchActiveEmployees());
+    } catch (_) {
+      if (!_masterLoaded) rethrow;
+    }
     if (_masterLoaded) return;
-    final emps = await _provider.fetchActiveEmployees();
-    employees.assignAll(emps);
-    final shiftName = emps
+    final shiftName = employees
             .map((e) => e.defaultShift ?? '')
             .firstWhere((s) => s.isNotEmpty, orElse: () => '')
             .trim();
