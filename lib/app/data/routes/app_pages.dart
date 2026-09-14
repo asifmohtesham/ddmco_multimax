@@ -15,6 +15,8 @@ import 'package:multimax/app/modules/hr/attendance/attendance_binding.dart';
 import 'package:multimax/app/modules/hr/attendance/attendance_screen.dart';
 import 'package:multimax/app/modules/hr/attendance/month/attendance_month_binding.dart';
 import 'package:multimax/app/modules/hr/attendance/month/attendance_month_screen.dart';
+import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_binding.dart';
+import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_screen.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_binding.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
@@ -246,6 +248,12 @@ class AppPages {
       name: AppRoutes.ATTENDANCE_MONTH,
       page: () => const AttendanceMonthScreen(),
       binding: AttendanceMonthBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.MONTHLY_ATTENDANCE_SHEET,
+      page: () => const MonthlyAttendanceSheetScreen(),
+      binding: MonthlyAttendanceSheetBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

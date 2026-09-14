@@ -42,6 +42,7 @@ abstract class AppRoutes {
   static const POS_DN_ITEM_RATE       = _Paths.POS_DN_ITEM_RATE;
   static const ATTENDANCE             = _Paths.ATTENDANCE;
   static const ATTENDANCE_MONTH       = _Paths.ATTENDANCE_MONTH;
+  static const MONTHLY_ATTENDANCE_SHEET = _Paths.MONTHLY_ATTENDANCE_SHEET;
 }
 
 abstract class _Paths {
@@ -85,4 +86,5 @@ abstract class _Paths {
   static const POS_DN_ITEM_RATE       = '/selling/reports/pos-dn-item-rate';
   static const ATTENDANCE             = '/hr/attendance';
   static const ATTENDANCE_MONTH       = '/hr/attendance/month';
+  static const MONTHLY_ATTENDANCE_SHEET = '/hr/reports/monthly-attendance-sheet';
 }

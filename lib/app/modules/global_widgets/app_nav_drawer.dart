@@ -465,6 +465,25 @@ class AppNavDrawer extends StatelessWidget {
                           currentRoute: currentRoute,
                         ),
                       ),
+                      // ── HR > Reports ─────────────────────────────────────
+                      _GuardedSection(
+                        doctypes: ['Attendance'],
+                        permType: 'report',
+                        children: [
+                          const _NavSubheading('Reports'),
+                          DocTypeGuard(
+                            doctype: 'Attendance',
+                            permType: 'report',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'Monthly Attendance Sheet',
+                              icon: Icons.calendar_month_rounded,
+                              route: AppRoutes.MONTHLY_ATTENDANCE_SHEET,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ];
