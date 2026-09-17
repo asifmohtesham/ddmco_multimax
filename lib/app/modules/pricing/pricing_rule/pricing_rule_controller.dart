@@ -71,7 +71,7 @@ class PricingRuleController extends GetxController {
 
   Future<void> loadCounts() async {
     const dt = 'Pricing Rule';
-    final t = frappeDate(DateTime.now());
+    final today = DateTime.now();
     try {
       final c = await Future.wait([
         _provider.count(const []),
@@ -80,12 +80,11 @@ class PricingRuleController extends GetxController {
         ]),
         _provider.count([
           [dt, 'disable', '=', 0],
-          [dt, 'valid_from', '>', t],
+          ...validityQuery(dt, ValidityState.upcoming, today).filters,
         ]),
         _provider.count([
           [dt, 'disable', '=', 0],
-          [dt, 'valid_upto', 'is', 'set'],
-          [dt, 'valid_upto', '<', t],
+          ...validityQuery(dt, ValidityState.expired, today).filters,
         ]),
       ]);
       final all = c[0], disabled = c[1], upcoming = c[2], expired = c[3];

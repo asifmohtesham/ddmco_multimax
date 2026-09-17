@@ -25,6 +25,7 @@ class ListEmptyState extends StatelessWidget {
     required this.filteredMessage,
     required this.onClearFilters,
     required this.onReload,
+    this.emptyAction,
   });
 
   /// Whether any filter or search query is active.
@@ -40,6 +41,11 @@ class ListEmptyState extends StatelessWidget {
 
   final VoidCallback onClearFilters;
   final VoidCallback onReload;
+
+  /// Shown in place of the "Reload" button in the unfiltered (empty) variant,
+  /// when non-null (e.g. a "New \<doc\>" create CTA). The filtered variant is
+  /// unaffected — it always shows "Clear Filters".
+  final Widget? emptyAction;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +93,8 @@ class ListEmptyState extends StatelessWidget {
                 icon: const Icon(Icons.filter_alt_off),
                 label: const Text('Clear Filters'),
               )
+            else if (emptyAction != null)
+              emptyAction!
             else
               FilledButton.tonalIcon(
                 onPressed: onReload,

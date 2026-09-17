@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
-import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
@@ -61,40 +60,28 @@ class PricingRuleScreen extends GetView<PricingRuleController> {
                     child: Center(child: CircularProgressIndicator()),
                   );
                 }
-                if (controller.rules.isEmpty && !controller.hasActiveFilters) {
-                  return SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: FormEmptyState(
-                        icon: Icons.percent,
-                        title: 'No pricing rules yet',
-                        message:
-                            'Rules apply special rates or discounts automatically on Delivery Notes.',
-                        action: DocTypeGuard(
-                          doctype: 'Pricing Rule',
-                          permType: 'create',
-                          child: FilledButton.icon(
-                            onPressed: () => controller.openRule(null),
-                            icon: const Icon(Icons.add),
-                            label: const Text('New pricing rule'),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }
                 if (controller.rules.isEmpty) {
                   return SliverFillRemaining(
                     hasScrollBody: false,
                     child: ListEmptyState(
-                      hasActiveFilters: true,
+                      hasActiveFilters: controller.hasActiveFilters,
                       emptyIcon: Icons.percent,
                       emptyTitle: 'No pricing rules yet',
-                      emptyMessage: '',
+                      emptyMessage:
+                          'Rules apply special rates or discounts automatically on Delivery Notes.',
                       filteredTitle: 'No matching rules',
                       filteredMessage: 'Try another status, side or search.',
                       onClearFilters: controller.clearFilters,
                       onReload: controller.fetchRules,
+                      emptyAction: DocTypeGuard(
+                        doctype: 'Pricing Rule',
+                        permType: 'create',
+                        child: FilledButton.icon(
+                          onPressed: () => controller.openRule(null),
+                          icon: const Icon(Icons.add),
+                          label: const Text('New pricing rule'),
+                        ),
+                      ),
                     ),
                   );
                 }
