@@ -34,6 +34,18 @@ void main() {
     expect(money.text, '25.00');
   });
 
+  testWidgets('MoneyField rejects a second decimal point', (tester) async {
+    final money = TextEditingController(text: '12.5');
+    await pumpIn(
+      tester,
+      MoneyField(label: 'Rate', controller: money, prefix: 'AED'),
+    );
+    await tester.enterText(find.byType(TextField).first, '12..5');
+    expect(money.text, '12.5');
+    await tester.enterText(find.byType(TextField).first, '1.2.3');
+    expect(money.text, '12.5');
+  });
+
   testWidgets('MoneyField percent mode does not reformat; shows error', (tester) async {
     final pct = TextEditingController(text: '10');
     await pumpIn(

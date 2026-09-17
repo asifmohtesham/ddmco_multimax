@@ -28,15 +28,16 @@ void main() {
       for (final d in const [
         'Delivery Note', 'Purchase Receipt', 'Stock Entry', 'Purchase Order',
         'Packing Slip', 'Material Request', 'POS Upload', 'Work Order',
-        'Pricing Rule',
       ]) {
         expect(_byDoctype(d).argsFor('X'), {'name': 'X', 'mode': 'view'},
             reason: d);
       }
     });
 
-    test('Pricing Rule opens its form in view mode; Item Price is not searchable', () {
+    test('Pricing Rule opens its form in edit mode; Item Price is not searchable', () {
       expect(_byDoctype('Pricing Rule').route, AppRoutes.PRICING_RULE_FORM);
+      expect(_byDoctype('Pricing Rule').argsFor('PRLE-1'),
+          {'name': 'PRLE-1', 'mode': 'edit'});
       expect(
         kGlobalSearchTargets.any((t) => t.doctype == 'Item Price'),
         isFalse,

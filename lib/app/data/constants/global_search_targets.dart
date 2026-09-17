@@ -36,6 +36,7 @@ class GlobalSearchTarget {
 }
 
 Map<String, dynamic> _nameView(String id) => {'name': id, 'mode': 'view'};
+Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
 
 /// Every routed doctype the Dashboard search can reach, in display order.
 const List<GlobalSearchTarget> kGlobalSearchTargets = [
@@ -149,7 +150,7 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     icon: Icons.discount_outlined,
     color: Colors.deepOrange,
     route: AppRoutes.PRICING_RULE_FORM,
-    argsFor: _nameView,
+    argsFor: _nameEdit,
   ),
 ];
 

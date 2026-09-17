@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 
+/// Rejects any edit that would leave more than one decimal point (and any
+/// non-digit/non-dot character), so a slipped double-tap like '12..5' or
+/// '1.2.3' can never parse to 0 on save.
+final TextInputFormatter decimalInputFormatter =
+    TextInputFormatter.withFunction((oldValue, newValue) =>
+        RegExp(r'^\d*\.?\d*$').hasMatch(newValue.text) ? newValue : oldValue);
+
 /// Large tabular numeric input with an optional currency prefix and unit
 /// suffix (DESIGN_SPEC "MoneyField"). Reformats to [decimals] places on blur;
 /// pass `decimals: null` for percentages.
@@ -112,9 +119,7 @@ class _MoneyFieldState extends State<MoneyField> {
                       readOnly: widget.readOnly,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                      ],
+                      inputFormatters: [decimalInputFormatter],
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,

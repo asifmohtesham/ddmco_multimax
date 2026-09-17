@@ -68,7 +68,9 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
   // ── Prices tab ────────────────────────────────────────────────────────────
   var itemPrices = <ItemPrice>[].obs;
   var itemRules = <PricingRule>[].obs;
-  var isLoadingPricing = false.obs;
+  // Starts true (not false) so the Prices tab shows its spinner instead of
+  // flashing "No price set" / "Add price" before fetchPricing runs.
+  var isLoadingPricing = true.obs;
 
   /// False once the server denies the DocType (Sales/Stock Users get 403 on
   /// Item Price) — the section hides instead of erroring.
@@ -576,7 +578,10 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
 
   // ── Prices tab ────────────────────────────────────────────────────────────
   Future<void> fetchPricing() async {
-    if (itemCode.isEmpty) return;
+    if (itemCode.isEmpty) {
+      isLoadingPricing.value = false;
+      return;
+    }
     // The Item form can open as a sheet without ItemFormBinding.
     if (!Get.isRegistered<ItemPriceProvider>()) {
       Get.lazyPut<ItemPriceProvider>(() => ItemPriceProvider(), fenix: true);

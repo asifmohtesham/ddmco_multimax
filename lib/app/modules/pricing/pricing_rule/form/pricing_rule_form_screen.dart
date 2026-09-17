@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/pricing_rule_model.dart';
@@ -162,7 +161,7 @@ Widget _numField(TextEditingController ctrl, String label, bool editable,
       controller: ctrl,
       readOnly: !editable,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+      inputFormatters: [decimalInputFormatter],
       decoration: InputDecoration(
         labelText: label,
         hintText: '0',

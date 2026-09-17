@@ -194,6 +194,7 @@ class ItemPriceController extends GetxController {
       loadPriceLists();
       fetchPrices();
     } else {
+      loadPriceLists();
       await refreshPrice(price.name);
     }
   }

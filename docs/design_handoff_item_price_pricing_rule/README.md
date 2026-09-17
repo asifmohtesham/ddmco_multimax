@@ -166,3 +166,4 @@ REST 403 on Item Price and must not see the entries. `PermissionService` has no 
 - `PricingRuleProvider.attachTargets` logs join failures with `debugPrint` (still best-effort).
 - Item form Prices tab loaders also catch non-network errors (snackbar), and the header count reads "<n> prices" (a list can hold several prices), not the mockup's "<n> lists".
 - The header chip row under `DocTypeListHeader.bottom` needs an explicit `SizedBox(height: 52)`.
+- Pricing Rule opens from global search in edit mode (view mode had Delete but no Edit).
