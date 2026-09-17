@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/models/pricing_rule_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -83,8 +84,9 @@ class PricingRuleProvider {
         for (final r in owners) {
           r.targets = grouped[r.name] ?? [];
         }
-      } catch (_) {
+      } catch (e) {
         // Rows still render; see doc comment.
+        debugPrint('PricingRuleProvider.attachTargets(${entry.key}) failed: $e');
       }
     }
   }
