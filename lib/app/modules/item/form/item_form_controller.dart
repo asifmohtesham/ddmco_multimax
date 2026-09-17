@@ -7,8 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/models/item_price_model.dart';
+import 'package:multimax/app/data/models/pricing_rule_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/item_price_provider.dart';
+import 'package:multimax/app/data/providers/pricing_rule_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/item/form/reorder_rules.dart';
 import 'package:path_provider/path_provider.dart';
@@ -57,6 +63,18 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
   String _originalReorderJson = '';
 
   bool _reorderTabLoaded = false;
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Prices tab ────────────────────────────────────────────────────────────
+  var itemPrices = <ItemPrice>[].obs;
+  var itemRules = <PricingRule>[].obs;
+  var isLoadingPricing = false.obs;
+
+  /// False once the server denies the DocType (Sales/Stock Users get 403 on
+  /// Item Price) — the section hides instead of erroring.
+  var pricesVisible = true.obs;
+  var rulesVisible = true.obs;
+  bool _pricesTabLoaded = false;
   // ──────────────────────────────────────────────────────────────────────────
 
   /// Batch No from the last scan that opened this sheet. Null when the item
@@ -155,6 +173,12 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
           fetchAutoIndentSetting();
         }
         break;
+      case 5:
+        if (!_pricesTabLoaded) {
+          _pricesTabLoaded = true;
+          fetchPricing();
+        }
+        break;
     }
   }
 
@@ -162,10 +186,12 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     itemCode = code;
     highlightedBatchNo.value = batchNo;
     // Reset lazy-load flags so every fresh open of the sheet reloads
-    // Stock and Attachments tabs when visited for the first time.
+    // Stock, Attachments, Re-order and Prices tabs when visited for the
+    // first time.
     _stockTabLoaded = false;
     _attachmentsTabLoaded = false;
     _reorderTabLoaded = false;
+    _pricesTabLoaded = false;
     _loadCoreData();
   }
 
@@ -545,6 +571,92 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     } finally {
       isSavingReorder.value = false;
     }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Prices tab ────────────────────────────────────────────────────────────
+  Future<void> fetchPricing() async {
+    if (itemCode.isEmpty) return;
+    // The Item form can open as a sheet without ItemFormBinding.
+    if (!Get.isRegistered<ItemPriceProvider>()) {
+      Get.lazyPut<ItemPriceProvider>(() => ItemPriceProvider(), fenix: true);
+    }
+    if (!Get.isRegistered<PricingRuleProvider>()) {
+      Get.lazyPut<PricingRuleProvider>(() => PricingRuleProvider(), fenix: true);
+    }
+    isLoadingPricing.value = true;
+    try {
+      await Future.wait([_loadItemPrices(), _loadItemRules()]);
+    } finally {
+      isLoadingPricing.value = false;
+    }
+  }
+
+  Future<void> _loadItemPrices() async {
+    if (Get.find<PermissionService>().hasAccess('Item Price') == false) {
+      pricesVisible.value = false;
+      return;
+    }
+    if (item.value?.hasVariants == true) {
+      itemPrices.clear();
+      return;
+    }
+    try {
+      final res = await Get.find<ItemPriceProvider>().getItemPrices(
+        limit: 0,
+        filters: [
+          ['Item Price', 'item_code', '=', itemCode]
+        ],
+        orderBy: 'price_list asc',
+      );
+      itemPrices.assignAll([
+        for (final e in (res.data['data'] as List?) ?? const [])
+          ItemPrice.fromJson(Map<String, dynamic>.from(e as Map)),
+      ]);
+      pricesVisible.value = true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        pricesVisible.value = false;
+      } else {
+        GlobalSnackbar.error(message: 'Could not load item prices');
+      }
+    }
+  }
+
+  Future<void> _loadItemRules() async {
+    if (Get.find<PermissionService>().hasAccess('Pricing Rule') == false) {
+      rulesVisible.value = false;
+      return;
+    }
+    try {
+      itemRules.assignAll(await Get.find<PricingRuleProvider>()
+          .rulesForItem(itemCode, item.value?.variantOf));
+      rulesVisible.value = true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        rulesVisible.value = false;
+      } else {
+        GlobalSnackbar.error(message: 'Could not load pricing rules');
+      }
+    }
+  }
+
+  Future<void> openItemPrice(ItemPrice price) async {
+    await Get.toNamed(AppRoutes.ITEM_PRICE_FORM,
+        arguments: {'name': price.name, 'mode': 'edit'});
+    fetchPricing();
+  }
+
+  Future<void> addItemPrice() async {
+    await Get.toNamed(AppRoutes.ITEM_PRICE_FORM,
+        arguments: {'name': '', 'mode': 'new', 'item_code': itemCode});
+    fetchPricing();
+  }
+
+  Future<void> openPricingRule(PricingRule rule) async {
+    await Get.toNamed(AppRoutes.PRICING_RULE_FORM,
+        arguments: {'name': rule.name, 'mode': 'edit'});
+    fetchPricing();
   }
   // ──────────────────────────────────────────────────────────────────────────
 
