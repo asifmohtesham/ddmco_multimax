@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_controller.dart';
 
 class ToDoFormScreen extends GetView<ToDoFormController> {
@@ -224,7 +225,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
                   icon: Icons.flag_outlined,
                   value: controller.status.value,
                   onTap: editable
-                      ? () => _showOptionPicker(
+                      ? () => showOptionPickerSheet(
                             context,
                             title: 'Select Status',
                             options: ToDoFormController.statusOptions,
@@ -241,7 +242,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
                   icon: Icons.priority_high_outlined,
                   value: controller.priority.value,
                   onTap: editable
-                      ? () => _showOptionPicker(
+                      ? () => showOptionPickerSheet(
                             context,
                             title: 'Select Priority',
                             options: ToDoFormController.priorityOptions,
@@ -343,41 +344,6 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
     });
   }
 
-  // ── Status / Priority option picker ─────────────────────────────────
-
-  void _showOptionPicker(
-    BuildContext context, {
-    required String title,
-    required List<String> options,
-    required String selected,
-    required ValueChanged<String> onSelected,
-  }) {
-    Get.bottomSheet(
-      SafeArea(
-        child: _PickerSheetShell(
-          title: title,
-          mainAxisSize: MainAxisSize.min,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final option in options)
-                ListTile(
-                  title: Text(option),
-                  trailing:
-                      option == selected ? const Icon(Icons.check) : null,
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    onSelected(option);
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
-
   // ── Reference-type picker ────────────────────────────────────────────
 
   void _showReferenceTypePicker(BuildContext context) {
@@ -390,7 +356,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
           maxChildSize: 0.9,
           expand: false,
           builder: (context, scrollController) {
-            return _PickerSheetShell(
+            return OptionPickerSheetShell(
               title: 'Select Reference Type',
               child: Expanded(
                 child: ListView(
@@ -440,7 +406,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
           maxChildSize: 0.95,
           expand: false,
           builder: (context, scrollController) {
-            return _PickerSheetShell(
+            return OptionPickerSheetShell(
               title: 'Select ${controller.referenceType.value}',
               child: Expanded(
                 child: Column(
@@ -505,52 +471,5 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
       ),
       isScrollControlled: true,
     ).whenComplete(() => debounce?.cancel());
-  }
-}
-
-// ---------------------------------------------------------------------------
-// _PickerSheetShell — shared chrome for this screen's bottom-sheet pickers:
-// a rounded surface container with a title row (+ close button). Extracted
-// so a future contrast/safe-area fix only needs applying once for all
-// three ToDo-form pickers, instead of three hand-rolled copies.
-// ---------------------------------------------------------------------------
-
-class _PickerSheetShell extends StatelessWidget {
-  final String title;
-  final Widget child;
-  final MainAxisSize mainAxisSize;
-
-  const _PickerSheetShell({
-    required this.title,
-    required this.child,
-    this.mainAxisSize = MainAxisSize.max,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16.0)),
-      ),
-      child: Column(
-        mainAxisSize: mainAxisSize,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    );
   }
 }

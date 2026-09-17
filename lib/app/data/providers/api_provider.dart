@@ -1948,13 +1948,16 @@ class ApiProvider {
   Future<Response> getDocumentCount(
     String doctype, {
     Map<String, dynamic>? filters,
+    List<List<dynamic>>? filterTuples,
   }) async {
     if (!_dioInitialised) await _initDio();
     return _dio.get(
       '/api/method/frappe.client.get_count',
       queryParameters: {
         'doctype': doctype,
-        if (filters != null && filters.isNotEmpty)
+        if (filterTuples != null && filterTuples.isNotEmpty)
+          'filters': jsonEncode(filterTuples)
+        else if (filters != null && filters.isNotEmpty)
           'filters': jsonEncode(filters),
       },
     );

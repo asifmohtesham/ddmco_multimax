@@ -22,6 +22,14 @@ class GenericDocumentCard extends StatelessWidget {
   final Widget? expandedContent;
   final Widget? leading;
 
+  /// Optional widget shown in place of the [status] pill at the header's
+  /// trailing edge (e.g. a rate block on price rows).
+  final Widget? trailing;
+
+  /// Optional block rendered between the header and the stats row
+  /// (e.g. a two-line summary sentence).
+  final Widget? body;
+
   /// When `true` the trailing chevron renders as a static
   /// [Icons.chevron_right] (tooltip: 'Open'), clearly communicating that
   /// [onTap] **navigates** rather than expands the card in-place.
@@ -56,6 +64,8 @@ class GenericDocumentCard extends StatelessWidget {
     this.isLoadingDetails = false,
     this.expandedContent,
     this.leading,
+    this.trailing,
+    this.body,
     this.navigatesOnTap = false,
   });
 
@@ -179,26 +189,35 @@ class GenericDocumentCard extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  subtitle,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontFamily: 'ShureTechMono',
-                                    fontSize: 11,
+                                if (subtitle.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    subtitle,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontFamily: 'ShureTechMono',
+                                      fontSize: 11,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                ],
                               ],
                             ),
                           ),
-                          if (status != null) ...[
+                          if (trailing != null) ...[
+                            const SizedBox(width: 8),
+                            trailing!,
+                          ] else if (status != null) ...[
                             const SizedBox(width: 8),
                             StatusPill(status: status!),
                           ],
                         ],
                       ),
+                      if (body != null) ...[
+                        const SizedBox(height: 6),
+                        body!,
+                      ],
 
                       // ── Row 1: primary stats + trailing chevron ─────────
                       if (stats.isNotEmpty) ...[

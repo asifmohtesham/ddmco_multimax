@@ -135,6 +135,9 @@ class Item {
   /// (`depends_on: "is_stock_item"`).
   final bool isStockItem;
 
+  /// Whether this Item is a variant template (Desk: `has_variants` check).
+  final bool hasVariants;
+
   /// Seeds a new reorder row's type — see `defaultReorderTypeFor`.
   final String? defaultMaterialRequestType;
 
@@ -155,6 +158,7 @@ class Item {
     this.customerItems = const [], // Added
     this.reorderLevels = const [],
     this.isStockItem = false,
+    this.hasVariants = false,
     this.defaultMaterialRequestType,
     this.modified,
   });
@@ -189,6 +193,7 @@ class Item {
       isStockItem: json['is_stock_item'] == 1 ||
           json['is_stock_item'] == true ||
           json['is_stock_item'] == '1',
+      hasVariants: json['has_variants'] == 1 || json['has_variants'] == true,
       defaultMaterialRequestType: json['default_material_request_type'],
       modified: json['modified'],
     );
