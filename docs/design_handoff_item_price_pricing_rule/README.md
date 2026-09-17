@@ -144,3 +144,25 @@ REST 403 on Item Price and must not see the entries. `PermissionService` has no 
    unverified live). No "items without a price" report (needs a server anti-join).
 6. Not in Quick Create / chip slider. Pricing Rule in global search (it has a title);
    Item Price not (hash names — search it from its own list by item).
+
+## 6. Build deviations (mockup / build prompt vs. what shipped)
+
+- Summary sentence follows the Claude Design notes grammar (supersedes the build prompt's), money as currency CODE (`AED 25.00`), not a symbol.
+- `validatePricingRule` / `validateItemPrice` return `field → message` maps (not `List<String>`) so errors sit under fields and tabs get an error dot; messages mirror the server text, not the mockup copy ("Max must be at least min (50)").
+- Models are mutable and edited through `Rx.update`; no `copyWith`.
+- Item Price search: digits-only → `item_code like`, else `item_name like` (keeps `or_filters` free for the Active validity filter).
+- Filter sheet: validity is single-choice (Any/Active/Upcoming/Expired); price list lives only in the header chips; "Has customer or supplier" = `reference is set`.
+- Status counts: Active is derived (all − disabled − upcoming − expired).
+- Rows use `GenericDocumentCard` (new `trailing` / `body` slots): item NAME is the title and CODE the mono subtitle (mockup had code above name); no status accent stripe.
+- Delete is a header icon (like ToDo), not a ⋯ overflow menu.
+- Pricing Rule form: Side and For are stacked (not a 120/1fr row); Brand segment stays enabled (0 brands → empty picker); the unit chip toggles: tap a set unit to clear it ("Any unit"), tap "Any unit" to pick.
+- Discount amount suffix is "per unit" (ERPNext applies `discount_amount` to the item rate), not "per line".
+- Priority picker has no "In use: P3 …" note.
+- Item form Prices tab reuses the full list rows (`ItemPriceRow`, `PricingRuleRow`) instead of compact rows.
+- Pricing Rule list refetches the page after the form closes (rules are few) instead of patching one row.
+- New Item Price defaults to the list named `Standard Selling` (ERPNext setup-wizard name), else the first enabled list.
+- UNVERIFIED on the live site: child-table fields (`` `tabPricing Rule Item Code`.`item_code` ``) through `/api/resource` for list targets and `rulesForItem`; on failure rows fall back to "on items".
+- `ListEmptyState` gained an optional `emptyAction` (shown instead of Reload when unfiltered); the Pricing Rule list uses it for "New pricing rule" instead of `FormEmptyState`.
+- `PricingRuleProvider.attachTargets` logs join failures with `debugPrint` (still best-effort).
+- Item form Prices tab loaders also catch non-network errors (snackbar), and the header count reads "<n> prices" (a list can hold several prices), not the mockup's "<n> lists".
+- The header chip row under `DocTypeListHeader.bottom` needs an explicit `SizedBox(height: 52)`.

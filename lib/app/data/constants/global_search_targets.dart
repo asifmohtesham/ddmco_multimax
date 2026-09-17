@@ -143,6 +143,14 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     route: AppRoutes.TODO_FORM,
     argsFor: _nameView,
   ),
+  GlobalSearchTarget(
+    doctype: 'Pricing Rule',
+    label: 'Pricing Rules',
+    icon: Icons.discount_outlined,
+    color: Colors.deepOrange,
+    route: AppRoutes.PRICING_RULE_FORM,
+    argsFor: _nameView,
+  ),
 ];
 
 // Top-level functions (const list requires const-tear-off-able references).

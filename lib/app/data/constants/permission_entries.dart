@@ -48,6 +48,12 @@ const List<PermEntry> kManufacturingPermissions = [
 const List<PermEntry> kSellingPermissions = [
   (doctype: 'POS Upload', permType: 'read'),
   (doctype: 'POS Upload', permType: 'report'), // POS & DN Item Rate report
+  (doctype: 'Item Price',   permType: 'read'),   // Selling › Pricing (Sales/Purchase Master Manager)
+  (doctype: 'Item Price',   permType: 'create'), // New price FAB
+  (doctype: 'Item Price',   permType: 'write'),  // Edit / Delete (delete roles == write roles)
+  (doctype: 'Pricing Rule', permType: 'read'),   // Selling › Pricing (Sales/Purchase/Accounts Manager)
+  (doctype: 'Pricing Rule', permType: 'create'), // New rule FAB
+  (doctype: 'Pricing Rule', permType: 'write'),  // Edit / Delete
 ];
 
 const List<PermEntry> kHrPermissions = [

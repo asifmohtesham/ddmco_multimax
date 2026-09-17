@@ -28,10 +28,20 @@ void main() {
       for (final d in const [
         'Delivery Note', 'Purchase Receipt', 'Stock Entry', 'Purchase Order',
         'Packing Slip', 'Material Request', 'POS Upload', 'Work Order',
+        'Pricing Rule',
       ]) {
         expect(_byDoctype(d).argsFor('X'), {'name': 'X', 'mode': 'view'},
             reason: d);
       }
+    });
+
+    test('Pricing Rule opens its form in view mode; Item Price is not searchable', () {
+      expect(_byDoctype('Pricing Rule').route, AppRoutes.PRICING_RULE_FORM);
+      expect(
+        kGlobalSearchTargets.any((t) => t.doctype == 'Item Price'),
+        isFalse,
+        reason: 'Item Price names are random hashes',
+      );
     });
 
     test('Batch opens in edit mode', () {

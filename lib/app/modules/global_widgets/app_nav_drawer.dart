@@ -425,6 +425,34 @@ class AppNavDrawer extends StatelessWidget {
                           currentRoute: currentRoute,
                         ),
                       ),
+                      // ── Selling > Pricing ────────────────────────────────────
+                      _GuardedSection(
+                        doctypes: ['Item Price', 'Pricing Rule'],
+                        permType: 'read',
+                        children: [
+                          const _NavSubheading('Pricing'),
+                          DocTypeGuard(
+                            doctype: 'Item Price',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'Item Price',
+                              icon: Icons.sell_outlined,
+                              route: AppRoutes.ITEM_PRICE,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
+                          DocTypeGuard(
+                            doctype: 'Pricing Rule',
+                            loading: skeleton,
+                            child: _DrawerItem(
+                              title: 'Pricing Rule',
+                              icon: Icons.discount_outlined,
+                              route: AppRoutes.PRICING_RULE,
+                              currentRoute: currentRoute,
+                            ),
+                          ),
+                        ],
+                      ),
                       // ── Selling > Reports ────────────────────────────────────
                       _GuardedSection(
                         doctypes: ['POS Upload'],
