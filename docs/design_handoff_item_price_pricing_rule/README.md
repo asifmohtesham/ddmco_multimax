@@ -196,3 +196,19 @@ Regression tests: `test/unit/item_price_controller_filters_test.dart` (1),
 
 Known, not fixed: a rule's target rows show only the item code after a reload (the child-table
 join returns codes, names are attached best-effort).
+
+### Second smoke pass (2026-09-18)
+
+5. **The in-form error banner rendered at zero height on device** — a failed save left only a
+   snackbar, and once that expired the form looked untouched. Isolated with a probe widget
+   placed next to the banner: the probe painted, so the Obx rebuild and the conditional mount
+   were fine and only `InlineBanner` collapsed. Its `AnimatedSwitcher` entrance is what fails
+   (it cannot be reproduced in a widget test, where `pumpAndSettle` always completes the
+   animation). `InlineBanner` gained `animate: false`, which skips the switcher and returns the
+   content directly; all four pricing call sites mount conditionally and now pass it. Verified
+   on device: the banner paints with the server's message.
+6. **A reloaded Item Code rule lost its item names** — the child table carries only the code, so
+   `label` (and `variantOf`) were null after a fetch. Beyond the cosmetics this disabled the
+   variant-vs-template check, which only ran for targets added in the same session.
+   `PricingRuleProvider.attachItemLabels` now fills both from one `Item` query after the form
+   paints. NOT yet verified against the live site (no Pricing Rules exist there).

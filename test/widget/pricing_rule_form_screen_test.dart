@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/models/pricing_rule_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pricing_rule_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
@@ -15,6 +16,11 @@ class _FakeProvider extends PricingRuleProvider {
   @override
   Future<Response> getRule(String name) async => Response(
       requestOptions: RequestOptions(path: '/'), statusCode: 200, data: {'data': doc});
+
+  /// Loading an Item Code rule looks item names up; without this the real
+  /// implementation reaches Dio and leaves a pending timer.
+  @override
+  Future<void> attachItemLabels(List<PricingRuleTarget> targets) async {}
 }
 
 class _Perms extends PermissionService {

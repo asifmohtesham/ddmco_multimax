@@ -5,6 +5,7 @@ import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_controller.dart';
 import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_screen.dart';
 
@@ -91,12 +92,22 @@ void main() {
 
     expect(c.serverError.value, isNotEmpty,
         reason: 'the controller must capture the server message');
+    // Specifically the in-form banner: a plain textContaining also matches the
+    // snackbar, which is how the missing banner passed unnoticed.
     expect(
-      find.textContaining('Item Price appears multiple times',
-          findRichText: true),
-      findsWidgets,
-      reason: 'the failure must be on screen (banner and/or snackbar), '
-          'not only in the controller',
+      find.descendant(
+        of: find.byType(InlineBanner),
+        matching: find.textContaining('Item Price appears multiple times',
+            findRichText: true),
+      ),
+      findsOneWidget,
+      reason: 'the failure must stay on the form, not only in a snackbar',
     );
+    // A pumped tree always runs the entrance animation to completion, so the
+    // zero-height banner seen on device cannot be reproduced here — pin the
+    // setting that avoids it instead.
+    expect(tester.widget<InlineBanner>(find.byType(InlineBanner)).animate,
+        isFalse,
+        reason: 'the animated banner collapses to zero height on device');
   });
 }

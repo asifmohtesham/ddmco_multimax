@@ -39,6 +39,17 @@ class _FakeProvider extends PricingRuleProvider {
 
   @override
   Future<Response> deleteRule(String name) async => _res(202);
+
+  List<String>? labelledCodes;
+
+  @override
+  Future<void> attachItemLabels(List<PricingRuleTarget> targets) async {
+    labelledCodes = [for (final t in targets) t.value];
+    for (final t in targets) {
+      t.label = 'WALLETS COW';
+      t.variantOf = 'TPL-1';
+    }
+  }
 }
 
 class _Perms extends PermissionService {
@@ -202,5 +213,22 @@ void main() {
   test('performDelete accepts 202', () async {
     final c = await open(doc: _existing());
     expect(await c.performDelete(), isTrue);
+  });
+
+  test('loading an Item Code rule attaches item names without dirtying it',
+      () async {
+    final c = await open(doc: _existing());
+    // The child rows carry only the code, so on device a reloaded rule showed
+    // bare codes and the variant-vs-template check never fired.
+    expect(provider.labelledCodes, ['1000001']);
+    expect(c.rule.value.targets.first.label, 'WALLETS COW');
+    expect(c.rule.value.targets.first.variantOf, 'TPL-1');
+    expect(c.isDirty.value, isFalse,
+        reason: 'label/variantOf are client-only and are not sent back');
+  });
+
+  test('a Brand rule does not look up item names', () async {
+    await open(doc: {..._existing(), 'apply_on': 'Brand', 'items': []});
+    expect(provider.labelledCodes, isNull);
   });
 }

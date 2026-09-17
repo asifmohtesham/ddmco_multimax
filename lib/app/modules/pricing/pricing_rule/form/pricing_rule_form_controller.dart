@@ -145,6 +145,13 @@ class PricingRuleFormController extends GetxController with OptimisticLockingMix
     } finally {
       isLoading.value = false;
     }
+    // `label`/`variantOf` are client-only and absent from the child rows, so a
+    // reloaded rule would show bare codes and skip the variant/template check.
+    // After isLoading, so the form paints without waiting on this.
+    if (!notFound.value && rule.value.applyOn == 'Item Code') {
+      await _provider.attachItemLabels(rule.value.targets);
+      rule.refresh();
+    }
   }
 
   @override

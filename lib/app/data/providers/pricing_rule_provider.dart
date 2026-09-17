@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/models/item_price_model.dart' show pricingLink;
 import 'package:multimax/app/data/models/pricing_rule_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/pricing/pricing_logic.dart';
@@ -88,6 +89,40 @@ class PricingRuleProvider {
         // Rows still render; see doc comment.
         debugPrint('PricingRuleProvider.attachTargets(${entry.key}) failed: $e');
       }
+    }
+  }
+
+  /// Fills the client-only `label` (item name) and `variantOf` on Item Code
+  /// targets read back from the server — the child table carries only the
+  /// code, so a reloaded rule would otherwise show bare codes and skip the
+  /// variant-vs-template check. Best-effort: on failure rows keep the code.
+  Future<void> attachItemLabels(List<PricingRuleTarget> targets) async {
+    final codes = [
+      for (final t in targets)
+        if (t.label == null && t.value.isNotEmpty) t.value
+    ];
+    if (codes.isEmpty) return;
+    try {
+      final res = await _api.getDocumentList(
+        'Item',
+        limit: 0,
+        fields: const ['name', 'item_name', 'variant_of'],
+        filterTuples: [
+          ['Item', 'name', 'in', codes],
+        ],
+      );
+      final rows = {
+        for (final row in (res.data['data'] as List?) ?? const [])
+          if (row is Map) (row['name'] ?? '').toString(): row,
+      };
+      for (final t in targets) {
+        final row = rows[t.value];
+        if (row == null) continue;
+        t.label = pricingLink(row['item_name']);
+        t.variantOf = pricingLink(row['variant_of']);
+      }
+    } catch (e) {
+      debugPrint('PricingRuleProvider.attachItemLabels failed: $e');
     }
   }
 
