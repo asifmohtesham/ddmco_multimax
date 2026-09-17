@@ -66,6 +66,8 @@ import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_bin
 import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_screen.dart';
 import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_binding.dart';
 import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_screen.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/form/pricing_rule_form_binding.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/form/pricing_rule_form_screen.dart';
 import 'package:multimax/app/modules/item/item_binding.dart';
 import 'package:multimax/app/modules/item/item_screen.dart';
 import 'package:multimax/app/modules/item/form/item_form_binding.dart';
@@ -214,6 +216,12 @@ class AppPages {
       name: AppRoutes.PRICING_RULE,
       page: () => const PricingRuleScreen(),
       binding: PricingRuleBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.PRICING_RULE_FORM,
+      page: () => const PricingRuleFormScreen(),
+      binding: PricingRuleFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.ITEM,
