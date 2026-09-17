@@ -46,8 +46,24 @@ class _MoneyFieldState extends State<MoneyField> {
   }
 
   void _onFocus() {
-    if (!_focus.hasFocus) _format();
+    if (_focus.hasFocus) {
+      _selectAll();
+    } else {
+      _format();
+    }
     setState(() {});
+  }
+
+  /// The field is seeded with the current amount (0.00 on a new price), so
+  /// typing over it must replace rather than append — otherwise "25" becomes
+  /// "0.0025". Runs on focus AND on every tap, because tapping a field that
+  /// already has focus does not fire the focus listener.
+  void _selectAll() {
+    if (widget.readOnly) return;
+    widget.controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: widget.controller.text.length,
+    );
   }
 
   void _format() {
@@ -117,6 +133,7 @@ class _MoneyFieldState extends State<MoneyField> {
                       controller: widget.controller,
                       focusNode: _focus,
                       readOnly: widget.readOnly,
+                      onTap: _selectAll,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: [decimalInputFormatter],

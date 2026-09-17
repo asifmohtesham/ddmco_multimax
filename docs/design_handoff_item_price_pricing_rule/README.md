@@ -167,3 +167,32 @@ REST 403 on Item Price and must not see the entries. `PermissionService` has no 
 - Item form Prices tab loaders also catch non-network errors (snackbar), and the header count reads "<n> prices" (a list can hold several prices), not the mockup's "<n> lists".
 - The header chip row under `DocTypeListHeader.bottom` needs an explicit `SizedBox(height: 52)`.
 - Pricing Rule opens from global search in edit mode (view mode had Delete but no Edit).
+
+## 7. On-device smoke (2026-09-17/18, live ERPNext, side-by-side `.smoke` build)
+
+Both DocTypes exercised end to end — create / read / update / delete / duplicate-reject,
+Item Prices tab, drawer entries, global search — against the live site. All test data
+removed afterwards (1,661 item prices and 0 pricing rules, matching the pre-smoke counts).
+
+Bugs found on device and fixed:
+
+1. **Price-list chip was not an "active filter".** Tapping a list with no prices showed the
+   unfiltered empty state ("No item prices" + Reload) instead of the filtered one.
+   `hasActiveFilters` now counts `selectedPriceList`; a separate `_hasCountNarrowingFilters`
+   keeps the count pill on the server total, and `clearFilters()` resets the chip to All.
+2. **MoneyField appended instead of replacing.** The field is seeded with `0.00`, so typing
+   `25` produced `0.0025`. The text is selected on focus *and* on every tap — tapping a field
+   that already holds focus fires no focus event.
+3. **A failed save was silent.** The 417 duplicate error only ever reached `serverError`.
+   Both form controllers now also raise `GlobalSnackbar.error`, and the Item Price form mounts
+   its `InlineBanner` conditionally (a permanently-mounted banner stayed collapsed at zero
+   height inside the form's `NestedScrollView`).
+4. **PriorityBadge stretched across the row.** A `Container` with an `alignment` and no width
+   expands to its constraints; replaced with a `Center(widthFactor: 1)` child.
+
+Regression tests: `test/unit/item_price_controller_filters_test.dart` (1),
+`test/widget/item_price_duplicate_banner_test.dart` (3),
+`test/widget/pricing_widgets_test.dart` (2 + a badge-width assertion).
+
+Known, not fixed: a rule's target rows show only the item code after a reload (the child-table
+join returns codes, names are attached best-effort).

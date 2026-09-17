@@ -94,12 +94,18 @@ class ItemPriceFormScreen extends GetView<ItemPriceFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          InlineBanner(
-            visible: controller.serverError.value.isNotEmpty,
-            type: BannerType.error,
-            message: "Couldn't save\n${controller.serverError.value}",
-          ),
-          if (controller.serverError.value.isNotEmpty) const SizedBox(height: 12),
+          // Mounted only when there is an error (same as the Pricing Rule
+          // form): a permanently-mounted InlineBanner relies on its entrance
+          // animation, which on device left the banner collapsed to zero
+          // height after a failed save.
+          if (controller.serverError.value.isNotEmpty) ...[
+            InlineBanner(
+              visible: true,
+              type: BannerType.error,
+              message: "Couldn't save\n${controller.serverError.value}",
+            ),
+            const SizedBox(height: 12),
+          ],
           DocSectionCard(
             title: 'Price',
             margin: const EdgeInsets.only(bottom: 12),

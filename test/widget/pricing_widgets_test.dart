@@ -88,6 +88,9 @@ void main() {
     expect(find.text('P5'), findsOneWidget);
     expect(find.text('THIS RULE'), findsOneWidget);
     expect(tester.takeException(), isNull);
+    // Regression: the badge used to stretch across the whole row on device
+    // (a Container with an alignment and no width fills its constraints).
+    expect(tester.getSize(find.byType(PriorityBadge)).width, lessThan(60));
   });
 
   testWidgets('priority picker returns the tapped priority', (tester) async {

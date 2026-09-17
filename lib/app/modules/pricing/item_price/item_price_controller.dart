@@ -56,19 +56,32 @@ class ItemPriceController extends GetxController {
     super.onClose();
   }
 
+  /// The price-list chip narrows the list exactly like a filter does, so an
+  /// empty result under a chip must read "No matching prices", not the
+  /// unfiltered "No item prices" state.
   bool get hasActiveFilters =>
+      activeFilters.isNotEmpty ||
+      searchQuery.value.isNotEmpty ||
+      selectedPriceList.value.isNotEmpty;
+
+  /// Search and the filter sheet narrow beyond what the per-list counts know;
+  /// the price-list chip does not (each chip carries its own server count).
+  bool get _hasCountNarrowingFilters =>
       activeFilters.isNotEmpty || searchQuery.value.isNotEmpty;
 
   /// Server total for the selected list when nothing narrows it; otherwise
   /// the loaded rows (with "more" affordance).
   int get displayCount {
     final key = selectedPriceList.value;
-    if (!hasActiveFilters && listCounts.containsKey(key)) return listCounts[key]!;
+    if (!_hasCountNarrowingFilters && listCounts.containsKey(key)) {
+      return listCounts[key]!;
+    }
     return prices.length;
   }
 
   bool get countHasMore {
-    if (!hasActiveFilters && listCounts.containsKey(selectedPriceList.value)) {
+    if (!_hasCountNarrowingFilters &&
+        listCounts.containsKey(selectedPriceList.value)) {
       return false;
     }
     return hasMore.value;
@@ -182,6 +195,9 @@ class ItemPriceController extends GetxController {
   void clearFilters() {
     activeFilters.clear();
     searchQuery.value = '';
+    // The chip counts as an active filter (see [hasActiveFilters]), so
+    // "Clear filters" has to put the list back on All.
+    selectedPriceList.value = '';
     fetchPrices();
   }
 

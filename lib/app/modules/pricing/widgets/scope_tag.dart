@@ -75,18 +75,24 @@ class PriorityBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
+    // No `alignment:` — a Container with an alignment and no width expands to
+    // the incoming max width, which stretched the badge across the whole row.
     return Container(
       height: 20,
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Color.alphaBlend(s.primary.withValues(alpha: 0.12), s.fg),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(
-        'P$priority',
-        style: TextStyle(
-            fontSize: 11, fontWeight: FontWeight.w700, color: s.primary),
+      // widthFactor keeps the box tight around the label while still
+      // centring it vertically inside the fixed 20dp height.
+      child: Center(
+        widthFactor: 1,
+        child: Text(
+          'P$priority',
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w700, color: s.primary),
+        ),
       ),
     );
   }

@@ -374,9 +374,13 @@ class ItemPriceFormController extends GetxController with OptimisticLockingMixin
       if (handleVersionConflict(e)) return;
       saveResult.value = SaveResult.error;
       serverError.value = ItemFormController.parseServerMessage(e.response?.data);
+      // The banner alone is easy to miss (it sits above the fold of a scrolled
+      // form), and a silent failure reads as a successful save.
+      GlobalSnackbar.error(message: serverError.value);
     } catch (e) {
       saveResult.value = SaveResult.error;
       serverError.value = e.toString();
+      GlobalSnackbar.error(message: serverError.value);
     } finally {
       isSaving.value = false;
     }
