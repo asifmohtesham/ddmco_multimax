@@ -60,6 +60,8 @@ import 'package:multimax/app/modules/todo/todo_binding.dart';
 import 'package:multimax/app/modules/todo/todo_screen.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/item_price_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/item_price_screen.dart';
 import 'package:multimax/app/modules/item/item_binding.dart';
 import 'package:multimax/app/modules/item/item_screen.dart';
 import 'package:multimax/app/modules/item/form/item_form_binding.dart';
@@ -192,6 +194,11 @@ class AppPages {
       page: () => const ToDoFormScreen(),
       binding: ToDoFormBinding(),
       transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.ITEM_PRICE,
+      page: () => const ItemPriceScreen(),
+      binding: ItemPriceBinding(),
     ),
     GetPage(
       name: AppRoutes.ITEM,

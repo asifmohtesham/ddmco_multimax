@@ -29,6 +29,10 @@ abstract class AppRoutes {
   static const BATCH_FORM            = _Paths.BATCH_FORM;
   static const MATERIAL_REQUEST      = _Paths.MATERIAL_REQUEST;
   static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
+  static const ITEM_PRICE            = _Paths.ITEM_PRICE;
+  static const ITEM_PRICE_FORM       = _Paths.ITEM_PRICE_FORM;
+  static const PRICING_RULE          = _Paths.PRICING_RULE;
+  static const PRICING_RULE_FORM     = _Paths.PRICING_RULE_FORM;
   static const ABOUT                 = '/about';
   static const USER_AREA             = _Paths.USER_AREA;
   static const THEME                 = _Paths.THEME;
@@ -78,6 +82,10 @@ abstract class _Paths {
   static const BATCH_FORM            = '/batch/form';
   static const MATERIAL_REQUEST      = '/material-request';
   static const MATERIAL_REQUEST_FORM = '/material-request/form';
+  static const ITEM_PRICE            = '/item-price';
+  static const ITEM_PRICE_FORM       = '/item-price/form';
+  static const PRICING_RULE          = '/pricing-rule';
+  static const PRICING_RULE_FORM     = '/pricing-rule/form';
   static const BATCH_WISE_BALANCE    = '/stock/batch-wise-balance';
   static const JOB_CARD_SUMMARY      = '/manufacturing/reports/job-card-summary';
   static const ITEM_VARIANT_DETAILS  = '/stock/reports/item-variant-details';
