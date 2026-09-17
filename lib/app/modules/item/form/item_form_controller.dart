@@ -599,6 +599,9 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     }
     if (item.value?.hasVariants == true) {
       itemPrices.clear();
+      // A prior 403 on another item must not hide the template's
+      // "Prices are set on variants" state.
+      pricesVisible.value = true;
       return;
     }
     try {
@@ -620,6 +623,8 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
       } else {
         GlobalSnackbar.error(message: 'Could not load item prices');
       }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load item prices');
     }
   }
 
@@ -638,6 +643,8 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
       } else {
         GlobalSnackbar.error(message: 'Could not load pricing rules');
       }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load pricing rules');
     }
   }
 
