@@ -64,13 +64,13 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 bottom: TabBar(
                   controller: tabCtrl.tabController,
                   isScrollable: true,
-                  tabs: const [
-                    Tab(text: 'Overview'),
-                    Tab(text: 'Stock Levels'),
-                    Tab(text: 'Attributes'),
-                    Tab(text: 'Attachments'),
-                    Tab(text: 'Re-order'),
-                    Tab(text: 'Prices'),
+                  tabs: [
+                    const Tab(text: 'Overview'),
+                    const Tab(text: 'Stock Levels'),
+                    const Tab(text: 'Attributes'),
+                    const Tab(text: 'Attachments'),
+                    const Tab(text: 'Re-order'),
+                    if (tabCtrl.showPrices) const Tab(text: 'Prices'),
                   ],
                 ),
               ),
@@ -92,21 +92,22 @@ class ItemFormScreen extends GetView<ItemFormController> {
                           _buildAttributesTab(context, item, cs),
                           _buildAttachmentsTab(context, cs),
                           _buildReorderTab(context, item, cs),
-                          Obx(() => ItemPricesTab(
-                                isTemplate: item.hasVariants,
-                                isLoading: controller.isLoadingPricing.value,
-                                prices: controller.itemPrices.toList(),
-                                rules: controller.itemRules.toList(),
-                                pricesVisible: controller.pricesVisible.value,
-                                rulesVisible: controller.rulesVisible.value,
-                                canAddPrice: Get.find<PermissionService>()
-                                        .hasAccess('Item Price',
-                                            permType: 'create') ==
-                                    true,
-                                onOpenPrice: controller.openItemPrice,
-                                onAddPrice: controller.addItemPrice,
-                                onOpenRule: controller.openPricingRule,
-                              )),
+                          if (tabCtrl.showPrices)
+                            Obx(() => ItemPricesTab(
+                                  isTemplate: item.hasVariants,
+                                  isLoading: controller.isLoadingPricing.value,
+                                  prices: controller.itemPrices.toList(),
+                                  rules: controller.itemRules.toList(),
+                                  pricesVisible: controller.pricesVisible.value,
+                                  rulesVisible: controller.rulesVisible.value,
+                                  canAddPrice: Get.find<PermissionService>()
+                                          .hasAccess('Item Price',
+                                              permType: 'create') ==
+                                      true,
+                                  onOpenPrice: controller.openItemPrice,
+                                  onAddPrice: controller.addItemPrice,
+                                  onOpenRule: controller.openPricingRule,
+                                )),
                         ],
                       ),
           ),
