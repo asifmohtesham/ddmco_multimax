@@ -77,9 +77,7 @@ class InlineBanner extends StatelessWidget {
   final IconData? icon;
 
   /// Set false when the caller already mounts the banner only while there is
-  /// something to say. The entrance animation then has nothing to animate —
-  /// and on device it was observed collapsing the banner to zero height even
-  /// on a first mount, i.e. a failed save read as no feedback at all.
+  /// something to say, so there is no entrance worth animating.
   final bool animate;
 
   const InlineBanner({
@@ -103,30 +101,13 @@ class InlineBanner extends StatelessWidget {
           : const SizedBox.shrink();
     }
 
-    // AnimatedSwitcher drives a combined slide-down + fade so the banner
-    // appears/disappears without causing layout jumps in scroll views.
-    // The ClipRect + Align height-tween collapses the banner to zero height
-    // when hidden, matching the approach used in SaveIconButton transitions.
+    // AnimatedSwitcher drives a combined grow + slide-down + fade so the
+    // banner appears/disappears without causing layout jumps in scroll views.
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
       switchInCurve:  Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        final slide = Tween<Offset>(
-          begin: const Offset(0, -0.4),
-          end:   Offset.zero,
-        ).animate(animation);
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: animation.value,
-            child: FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: slide, child: child),
-            ),
-          ),
-        );
-      },
+      transitionBuilder: _transition,
       child: visible
           ? _BannerContent(
               key:      ValueKey('${type.name}:$message'),
@@ -138,6 +119,30 @@ class InlineBanner extends StatelessWidget {
           : const SizedBox.shrink(key: ValueKey('__empty__')),
     );
   }
+
+  static final _slideIn = Tween<Offset>(
+    begin: const Offset(0, -0.4),
+    end:   Offset.zero,
+  );
+
+  // Every piece of this transition must LISTEN to [animation]. AnimatedSwitcher
+  // calls the builder once per entry and caches the result — and it does so
+  // before it sets `controller.value = 1.0`, so the builder always sees 0.0.
+  // The old `Align(heightFactor: animation.value)` froze that 0.0 into the
+  // tree: the banner mounted but laid out at zero height and never painted.
+  // SizeTransition is the listening equivalent of that ClipRect + Align.
+  static Widget _transition(Widget child, Animation<double> animation) =>
+      SizeTransition(
+        sizeFactor: animation,
+        alignment:  Alignment.topCenter,
+        child: FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: _slideIn.animate(animation),
+            child:    child,
+          ),
+        ),
+      );
 }
 
 // ── Private content widget (extracted for clean key targeting) ────────────────
