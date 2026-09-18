@@ -23,6 +23,10 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
       final isLoading  = controller.isLoading.value;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track the
+      // permission cache (an RxMap) behind canCreateReceipt.
+      final canCreateReceipt = controller.canCreateReceipt;
 
       return PopScope(
         canPop: !isDirty,
@@ -51,7 +55,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                       ? controller.reloadDocument
                       : null,
                   extraActions: [
-                    if (controller.canCreateReceipt)
+                    if (canCreateReceipt)
                       // AsyncIconButton carries its own Obx, so it repaints the
                       // icon↔spinner swap even though the SliverPersistentHeader
                       // delegate's shouldRebuild keys on action count.

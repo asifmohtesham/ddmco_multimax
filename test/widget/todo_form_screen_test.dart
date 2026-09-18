@@ -8,6 +8,8 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_controller.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
 
@@ -155,5 +157,22 @@ void main() {
     // See the fallback note above: flutter_html's plain-Text rendering
     // means this text appears twice (title + body).
     expect(find.text('Inventory: Price List'), findsWidgets);
+  });
+
+  testWidgets('header status pill repaints when only status changes',
+      (tester) async {
+    // View mode: canShowCloseAction short-circuits before reading status, so
+    // only the hoisted read keeps the lazily-built header subscribed.
+    await pump(tester);
+    final c = Get.find<ToDoFormController>();
+    Finder pill(String s) => find.descendant(
+        of: find.byType(DocTypeFormHeader),
+        matching: find.byWidgetPredicate(
+            (w) => w is StatusPill && w.status == s));
+    expect(pill('Open'), findsWidgets);
+    c.status.value = 'Closed';
+    await tester.pump();
+    expect(pill('Closed'), findsWidgets);
+    expect(pill('Open'), findsNothing);
   });
 }
