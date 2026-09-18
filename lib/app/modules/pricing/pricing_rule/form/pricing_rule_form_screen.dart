@@ -135,7 +135,6 @@ List<Widget> _prelude(PricingRuleFormController c, PricingRule r,
     if ((r.promotionalScheme ?? '').isNotEmpty) ...[
       InlineBanner(
         visible: true,
-        animate: false,
         type: BannerType.info,
         icon: Icons.lock_outline,
         message:
@@ -146,7 +145,6 @@ List<Widget> _prelude(PricingRuleFormController c, PricingRule r,
     if (c.serverError.value.isNotEmpty) ...[
       InlineBanner(
         visible: true,
-        animate: false,
         type: BannerType.error,
         message: "Couldn't save\n${c.serverError.value}",
       ),
@@ -338,7 +336,6 @@ class _DiscountTab extends GetView<PricingRuleFormController> {
                 const SizedBox(height: 12),
                 const InlineBanner(
                   visible: true,
-                  animate: false,
                   type: BannerType.info,
                   message:
                       'Product rules are read-only in the app. Free-item rules are set up and changed on desktop.',

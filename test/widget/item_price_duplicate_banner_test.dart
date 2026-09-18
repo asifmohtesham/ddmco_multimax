@@ -103,11 +103,9 @@ void main() {
       findsOneWidget,
       reason: 'the failure must stay on the form, not only in a snackbar',
     );
-    // A pumped tree always runs the entrance animation to completion, so the
-    // zero-height banner seen on device cannot be reproduced here — pin the
-    // setting that avoids it instead.
-    expect(tester.widget<InlineBanner>(find.byType(InlineBanner)).animate,
-        isFalse,
-        reason: 'the animated banner collapses to zero height on device');
+    // In the tree is not enough — it must also take up space. The banner once
+    // mounted at zero height, invisible, while every text finder still passed.
+    expect(tester.getSize(find.byType(InlineBanner)).height, greaterThan(0),
+        reason: 'the banner must actually paint, not just mount');
   });
 }

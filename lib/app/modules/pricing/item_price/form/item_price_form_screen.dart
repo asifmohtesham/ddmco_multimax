@@ -99,14 +99,10 @@ class ItemPriceFormScreen extends GetView<ItemPriceFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Mounted only when there is an error, and `animate: false` because
-          // on device the entrance animation left the banner at zero height —
-          // a failed save then looked like no feedback at all. Verified with a
-          // probe widget: the rebuild fires, only the banner was collapsed.
+          // Mounted only when there is an error.
           if (controller.serverError.value.isNotEmpty) ...[
             InlineBanner(
               visible: true,
-              animate: false,
               type: BannerType.error,
               message: "Couldn't save\n${controller.serverError.value}",
             ),

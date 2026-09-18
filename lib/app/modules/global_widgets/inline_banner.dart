@@ -76,17 +76,12 @@ class InlineBanner extends StatelessWidget {
   /// Optional override icon. Defaults to the canonical icon for [type].
   final IconData? icon;
 
-  /// Set false when the caller already mounts the banner only while there is
-  /// something to say, so there is no entrance worth animating.
-  final bool animate;
-
   const InlineBanner({
     super.key,
     required this.visible,
     required this.message,
     this.type    = BannerType.info,
     this.icon,
-    this.animate = true,
   });
 
   @override
@@ -94,12 +89,6 @@ class InlineBanner extends StatelessWidget {
     final bg      = _bgFor(type);
     final fg      = _textFor(type, Theme.of(context).brightness);
     final leadIcon = icon ?? _iconFor(type);
-
-    if (!animate) {
-      return visible
-          ? _BannerContent(bg: bg, fg: fg, leadIcon: leadIcon, message: message)
-          : const SizedBox.shrink();
-    }
 
     // AnimatedSwitcher drives a combined grow + slide-down + fade so the
     // banner appears/disappears without causing layout jumps in scroll views.
