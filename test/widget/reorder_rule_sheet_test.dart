@@ -102,6 +102,64 @@ void main() {
     expect(fields[1].controller?.text, '50');
   });
 
+  // Sales/Item-Manager smoke (2026-09-18): Done accepted a blank row, which
+  // then sat in the list as "Re-order at 0 · Order 0" with no warehouse and
+  // only failed later, by row number, on Save re-order rules.
+  Future<void> openModal(WidgetTester tester, ItemReorder initial,
+      ValueChanged<ItemReorder> onSaved) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: darkTheme,
+      darkTheme: darkTheme,
+      themeMode: ThemeMode.dark,
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => sheet(initial: initial, onSaved: onSaved),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Done refuses a rule without a warehouse and stays open',
+      (tester) async {
+    ItemReorder? saved;
+    await openModal(tester,
+        const ItemReorder(warehouse: '', materialRequestType: 'Purchase'),
+        (r) => saved = r);
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNull);
+    expect(find.text('Re-order rule'), findsOneWidget, reason: 'sheet stays open');
+    expect(find.text('Please select a warehouse in "Request for"'),
+        findsOneWidget);
+  });
+
+  testWidgets('Done refuses a level without a quantity', (tester) async {
+    ItemReorder? saved;
+    await openModal(tester,
+        const ItemReorder(warehouse: 'WH-A', materialRequestType: 'Purchase'),
+        (r) => saved = r);
+
+    await tester.enterText(find.byType(TextField).first, '10');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNull);
+    expect(find.text('Please set reorder quantity'), findsOneWidget);
+  });
+
   testWidgets('Done emits the edited row', (tester) async {
     ItemReorder? saved;
 

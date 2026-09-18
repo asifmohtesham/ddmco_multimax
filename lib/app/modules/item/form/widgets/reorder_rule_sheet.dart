@@ -49,6 +49,9 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
 
   bool _loadingWarehouses = false;
 
+  /// Why Done was refused; cleared when the user changes a picker.
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -88,6 +91,7 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
           title: isGroup ? 'Select group warehouse' : 'Select warehouse',
           groupNames: isGroup ? warehouses.toSet() : const {},
           onSelected: (wh) => setState(() {
+            _error = null;
             if (isGroup) {
               _warehouseGroup = wh;
             } else {
@@ -131,7 +135,10 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
                     // calls closeCurrentSnackbar first, which throws when a
                     // Snackbar is queued but not yet attached to the Overlay.
                     Navigator.of(context).pop();
-                    setState(() => _type = t);
+                    setState(() {
+                      _type = t;
+                      _error = null;
+                    });
                   },
                 ),
               ),
@@ -144,14 +151,22 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
   }
 
   void _save() {
-    widget.onSaved(widget.initial.copyWith(
+    final row = widget.initial.copyWith(
       warehouseGroup: _warehouseGroup,
       clearWarehouseGroup: _warehouseGroup == null,
       warehouse: _warehouse,
       materialRequestType: _type,
       warehouseReorderLevel: double.tryParse(_levelCtrl.text.trim()) ?? 0,
       warehouseReorderQty: double.tryParse(_qtyCtrl.text.trim()) ?? 0,
-    ));
+    );
+    // Refuse a row that can never be saved: it would otherwise sit in the
+    // list and only fail later as "Row #n: ..." on Save re-order rules.
+    final error = validateReorderRow(row);
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
+    widget.onSaved(row);
     Navigator.of(context).pop();
   }
 
@@ -229,6 +244,19 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
                 onTap: _pickType,
               ),
               const SizedBox(height: 20),
+              if (_error != null) ...[
+                Text(
+                  _error!,
+                  key: const ValueKey('reorder-rule-error'),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? AppColors.red300
+                        : AppColors.red700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(

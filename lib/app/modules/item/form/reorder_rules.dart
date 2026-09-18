@@ -42,12 +42,8 @@ String? validateReorderRows(List<ItemReorder> rows) {
     final r = rows[i];
     final rowNo = i + 1;
 
-    if (r.warehouse.trim().isEmpty) {
-      return 'Row #$rowNo: Please select a warehouse in "Request for"';
-    }
-    if (r.materialRequestType.trim().isEmpty) {
-      return 'Row #$rowNo: Please set the material request type';
-    }
+    final rowError = validateReorderRow(r);
+    if (rowError != null) return 'Row #$rowNo: $rowError';
 
     // item.py:510-518 — uniqueness is the (warehouse, type) TUPLE. Two rows
     // for one warehouse with different types are legal.
@@ -56,12 +52,24 @@ String? validateReorderRows(List<ItemReorder> rows) {
       return 'Row #$rowNo: A reorder entry already exists for warehouse '
           '${r.warehouse} with reorder type ${r.materialRequestType}.';
     }
-
-    // item.py:520-521 — one-directional: qty-without-level is allowed.
-    if (r.warehouseReorderLevel != 0 && r.warehouseReorderQty == 0) {
-      return 'Row #$rowNo: Please set reorder quantity';
-    }
   }
 
+  return null;
+}
+
+/// The checks that need only the row itself, so the rule sheet can refuse an
+/// unsaveable row on Done instead of letting it surface later by row number.
+/// The duplicate check needs the sibling rows and stays in [validateReorderRows].
+String? validateReorderRow(ItemReorder r) {
+  if (r.warehouse.trim().isEmpty) {
+    return 'Please select a warehouse in "Request for"';
+  }
+  if (r.materialRequestType.trim().isEmpty) {
+    return 'Please set the material request type';
+  }
+  // item.py:520-521 — one-directional: qty-without-level is allowed.
+  if (r.warehouseReorderLevel != 0 && r.warehouseReorderQty == 0) {
+    return 'Please set reorder quantity';
+  }
   return null;
 }
