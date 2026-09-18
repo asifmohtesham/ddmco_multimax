@@ -28,9 +28,13 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
       final saveResult = controller.saveResult.value;
       final isLoading = controller.isLoading.value;
       final canShowClose = controller.canShowCloseAction;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track it.
+      final status = controller.status.value;
+      final mode = controller.mode.value;
 
       final plainTitle = t == null ? '' : htmlToSingleLine(t.description);
-      final String title = controller.mode.value == 'new'
+      final String title = mode == 'new'
           ? 'New ToDo'
           : t == null
               ? 'Loading...'
@@ -38,7 +42,7 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
 
       final VoidCallback? onSave = isEditable ? controller.saveDocument : null;
       final VoidCallback? onReload =
-          controller.mode.value != 'new' ? controller.reloadDocument : null;
+          mode != 'new' ? controller.reloadDocument : null;
 
       return PopScope(
         canPop: !isDirty,
@@ -53,14 +57,14 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
               DocTypeFormHeader(
                 title: title,
                 docType: 'ToDo',
-                statusLabel: controller.status.value,
+                statusLabel: status,
                 canSave: isDirty,
                 isSaving: isSaving,
                 saveResult: saveResult,
                 onSave: onSave,
                 onReload: onReload,
                 extraActions: [
-                  if (controller.mode.value == 'view' &&
+                  if (mode == 'view' &&
                       controller.name.isNotEmpty &&
                       t != null)
                     DocTypeGuard(
@@ -76,16 +80,16 @@ class ToDoFormScreen extends GetView<ToDoFormController> {
                     AsyncIconButton(
                       busy: controller.isClosing,
                       onPressed: controller.toggleCloseReopen,
-                      tooltip: controller.status.value == 'Closed'
+                      tooltip: status == 'Closed'
                           ? 'Reopen'
                           : 'Close',
                       icon: Icon(
-                        controller.status.value == 'Closed'
+                        status == 'Closed'
                             ? Icons.replay
                             : Icons.check_circle_outline,
                       ),
                     ),
-                  if (controller.mode.value == 'edit' &&
+                  if (mode == 'edit' &&
                       controller.name.isNotEmpty &&
                       t != null)
                     DocTypeGuard(

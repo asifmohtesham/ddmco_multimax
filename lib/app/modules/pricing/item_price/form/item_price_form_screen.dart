@@ -26,6 +26,11 @@ class ItemPriceFormScreen extends GetView<ItemPriceFormController> {
       final editable = controller.isEditable;
       final dirty = controller.isDirty.value;
       final loading = controller.isLoading.value;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track it.
+      final isSaving = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final notFound = controller.notFound.value;
       final status = dirty
           ? 'Not Saved'
           : pricingStatusLabel(
@@ -48,12 +53,12 @@ class ItemPriceFormScreen extends GetView<ItemPriceFormController> {
                 docType: 'Item Price',
                 statusLabel: loading ? null : status,
                 canSave: editable && dirty,
-                isSaving: controller.isSaving.value,
-                saveResult: controller.saveResult.value,
+                isSaving: isSaving,
+                saveResult: saveResult,
                 onSave: editable ? controller.saveDocument : null,
                 onReload: isNew ? null : controller.reloadDocument,
                 extraActions: [
-                  if (!isNew && !loading && !controller.notFound.value)
+                  if (!isNew && !loading && !notFound)
                     // Item Price delete roles == write roles (v15 DocPerm);
                     // PermissionService has no real delete check.
                     DocTypeGuard(

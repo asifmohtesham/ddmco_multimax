@@ -45,6 +45,10 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
       final isLoading  = controller.isLoading.value;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track it.
+      final isSubmitting = controller.isSubmitting.value;
+      final canSubmit    = controller.canSubmit;
 
       return PopScope(
         canPop: !isDirty,
@@ -69,8 +73,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   onSave:     onSave,
                   onReload:   onReload,
                   onSubmit:     controller.submitDocument,
-                  canSubmit:    controller.canSubmit,
-                  isSubmitting: controller.isSubmitting.value,
+                  canSubmit:    canSubmit,
+                  isSubmitting: isSubmitting,
                   extraActions: [
                     RealtimeSyncStatusIcon(
                       isConnected: controller.isRealtimeConnected,

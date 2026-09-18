@@ -6,6 +6,7 @@ import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
 import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_controller.dart';
 import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_screen.dart';
 
@@ -137,5 +138,24 @@ void main() {
     await pump(tester, brightness: Brightness.dark);
     expect(tester.takeException(), isNull);
     expect(find.text('25.00'), findsOneWidget);
+  });
+
+  testWidgets('header repaints when only isSaving / notFound change',
+      (tester) async {
+    // The header is built lazily by NestedScrollView, outside the screen
+    // Obx's tracking scope; Rx read only there would never repaint it.
+    final c = await pump(tester);
+    final headerSpinner = find.descendant(
+        of: find.byType(DocTypeFormHeader),
+        matching: find.byType(CircularProgressIndicator));
+    expect(headerSpinner, findsNothing);
+    c.isSaving.value = true;
+    await tester.pump();
+    expect(headerSpinner, findsOneWidget);
+
+    expect(find.byTooltip('Delete'), findsOneWidget);
+    c.notFound.value = true;
+    await tester.pump();
+    expect(find.byTooltip('Delete'), findsNothing);
   });
 }
