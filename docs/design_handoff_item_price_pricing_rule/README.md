@@ -161,7 +161,7 @@ REST 403 on Item Price and must not see the entries. `PermissionService` has no 
 - Item form Prices tab reuses the full list rows (`ItemPriceRow`, `PricingRuleRow`) instead of compact rows.
 - Pricing Rule list refetches the page after the form closes (rules are few) instead of patching one row.
 - New Item Price defaults to the list named `Standard Selling` (ERPNext setup-wizard name), else the first enabled list.
-- UNVERIFIED on the live site: child-table fields (`` `tabPricing Rule Item Code`.`item_code` ``) through `/api/resource` for list targets and `rulesForItem`; on failure rows fall back to "on items".
+- VERIFIED live 2026-09-18: child-table fields (`` `tabPricing Rule Item Code`.`item_code` ``) do come back through `/api/resource` — a rule's list row named its target item and the Item form's Prices tab found the rule. The "on items" fallback stays for safety.
 - `ListEmptyState` gained an optional `emptyAction` (shown instead of Reload when unfiltered); the Pricing Rule list uses it for "New pricing rule" instead of `FormEmptyState`.
 - `PricingRuleProvider.attachTargets` logs join failures with `debugPrint` (still best-effort).
 - Item form Prices tab loaders also catch non-network errors (snackbar), and the header count reads "<n> prices" (a list can hold several prices), not the mockup's "<n> lists".
@@ -212,3 +212,17 @@ join returns codes, names are attached best-effort).
    variant-vs-template check, which only ran for targets added in the same session.
    `PricingRuleProvider.attachItemLabels` now fills both from one `Item` query after the form
    paints. NOT yet verified against the live site (no Pricing Rules exist there).
+
+### Pricing Rule live pass (2026-09-18)
+
+Created one disabled rule (50% off item 1000001, Selling, everyone) on the live site,
+reloaded it, viewed it from the list and from the item, then deleted it. Site restored:
+1,661 item prices, 0 pricing rules.
+
+- The reloaded rule keeps its item name, so `attachItemLabels` works against the real
+  `Item` endpoint (one request, after the form paints).
+- The list row reads "…on item 1000001", not the "on items" fallback, so the child-table
+  join is real (see §6).
+- The Item form's Prices tab listed both the price and the rule for that item.
+- The rule was saved **disabled** on purpose: an enabled 50%-off rule would have applied
+  to live Delivery Notes for as long as it existed.
