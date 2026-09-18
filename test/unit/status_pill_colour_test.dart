@@ -64,7 +64,7 @@ void main() {
       AppColors.orange700: [
         'Not Saved', 'Not Started', 'To Bill', 'On Hold', 'Hold', 'In Process',
         'Work In Progress', 'Pending', 'To Receive and Bill', 'To Receive',
-        'Stock Partially Reserved', 'Material Returned from WIP',
+        'Stock Partially Reserved', 'Material Returned from WIP', 'Upcoming',
       ],
       AppColors.yellow700: [
         'Partially Billed', 'Partly Billed', 'In Transit', 'Partially Ordered', 'Partially Received',

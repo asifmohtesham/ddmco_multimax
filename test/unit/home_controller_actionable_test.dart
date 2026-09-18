@@ -48,7 +48,8 @@ class _FakeApiProvider extends ApiProvider {
 
   @override
   Future<Response> getDocumentCount(String doctype,
-      {Map<String, dynamic>? filters}) async {
+      {Map<String, dynamic>? filters,
+      List<List<dynamic>>? filterTuples}) async {
     queries.add((doctype: doctype, filters: filters));
     // Mine-scope filters carry an `owner` equality; everyone-scope don't.
     final isMine = filters?.containsKey('owner') ?? false;

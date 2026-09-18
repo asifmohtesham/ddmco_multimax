@@ -20,6 +20,7 @@ import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
+import 'package:multimax/app/modules/item/form/widgets/item_prices_tab.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_card.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -69,6 +70,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                     Tab(text: 'Attributes'),
                     Tab(text: 'Attachments'),
                     Tab(text: 'Re-order'),
+                    Tab(text: 'Prices'),
                   ],
                 ),
               ),
@@ -90,6 +92,21 @@ class ItemFormScreen extends GetView<ItemFormController> {
                           _buildAttributesTab(context, item, cs),
                           _buildAttachmentsTab(context, cs),
                           _buildReorderTab(context, item, cs),
+                          Obx(() => ItemPricesTab(
+                                isTemplate: item.hasVariants,
+                                isLoading: controller.isLoadingPricing.value,
+                                prices: controller.itemPrices.toList(),
+                                rules: controller.itemRules.toList(),
+                                pricesVisible: controller.pricesVisible.value,
+                                rulesVisible: controller.rulesVisible.value,
+                                canAddPrice: Get.find<PermissionService>()
+                                        .hasAccess('Item Price',
+                                            permType: 'create') ==
+                                    true,
+                                onOpenPrice: controller.openItemPrice,
+                                onAddPrice: controller.addItemPrice,
+                                onOpenRule: controller.openPricingRule,
+                              )),
                         ],
                       ),
           ),

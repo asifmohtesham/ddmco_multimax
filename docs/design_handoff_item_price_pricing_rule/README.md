@@ -1,0 +1,228 @@
+# Item Price + Pricing Rule — research record
+
+Sources: ERPNext `version-15` source (paths below, relative to `erpnext/`), the live
+site `erp.multimax.cloud` (read-only queries, 2026-09-17; Frappe 15.120.1 / ERPNext
+15.121.1), and this repo at `origin/release/play-store` @ `273447f1` (2.20.0+63).
+
+Prompts in this folder:
+- `CLAUDE_DESIGN_PROMPT.md` — paste into Claude Design for mockups.
+- `CLAUDE_CODE_PROMPT.md` — paste into Claude Code to build (after mockups land).
+
+---
+
+## 1. Live site facts (drive the design)
+
+| Fact | Value | Consequence |
+|---|---|---|
+| Company / currency | one company `Multimax`, `AED` | Company + currency default silently; show, don't ask |
+| Price Lists | `Standard Selling` (sell), `Credit Selling` (sell), `Standard Buying` (buy); all AED, all enabled | 3 options — picker can be a short sheet |
+| Item Price rows | **1,661** — Standard Selling 1,654, Standard Buying 7, **Credit Selling 0** | 39 customers default to Credit Selling but it has no prices |
+| Price scope | 0 with customer, 0 with supplier, 0 with batch, 0 with valid_upto, all UOM `Nos` | Advanced fields are real but empty today → collapse them |
+| Rates | 0 – 220 AED, avg ≈ 15; 6 rows at 0 | Zero rate is legal; show it, flag softly |
+| Items | 13,600 enabled sales items; 5,390 templates; 8,182 active variants | Prices live on **variants** (1,638 of 1,661); 0 on templates |
+| Coverage | ≈ 20 % of active variants have a price | "no price" is the norm, not an error |
+| Who created prices | 8 users incl. Sales-User-only operators (asrar 518, maqbool 212…) | Created via Stock Settings **auto_insert_price_list_rate_if_missing = 1** from Delivery Notes |
+| Pricing Rules | **0**. Promotional Schemes **0** | Empty state is the first thing every manager sees |
+| Brands | 0 | "Apply on Brand" is allowed but its picker will be empty |
+| Customer groups / suppliers / item groups | 6 / 119 / 23 | Small pickers |
+| Selling transactions since Jun | 419 Delivery Notes (418 Standard Selling), 0 SO, 0 SI | Rules will bite on **Delivery Notes** |
+| Selling Settings | `selling_price_list = Standard Selling`, `editable_price_list_rate = 0` | Operators can't override list rate on a DN |
+| Stock Settings | auto-insert = 1, update_existing = 0 | A DN only creates a missing price; it never overwrites |
+| Custom fields / property setters on these DocTypes | none | Stock v15 schema is the contract |
+
+### Permissions (live DocPerm = stock v15)
+
+| DocType | Roles with read+write+create+delete | Live users holding them |
+|---|---|---|
+| Item Price | Sales Master Manager, Purchase Master Manager | SMM 4 (arif, sajid, abdulaziz, asif); PMM 6 (+adnan, asim) |
+| Pricing Rule | Accounts Manager, Sales Manager, Purchase Manager, Website Manager, System Manager | Sales Mgr 5, Purchase Mgr 6, Accounts Mgr 1, SM 2 |
+| Price List | read: Sales User, Purchase User, Manufacturing User; full: SMM, PMM | 21 Sales Users can read lists but **not Item Price** |
+
+→ Both screens are **manager tools** (~8 people). Operators (Sales User / Stock User) get a
+REST 403 on Item Price and must not see the entries. `PermissionService` has no real
+`delete` check → gate Delete on `write` (delete roles == write roles for both DocTypes).
+
+---
+
+## 2. Item Price (v15, `stock/doctype/item_price/`)
+
+- `autoname: hash` (names are random, e.g. `5dfs7bls6g` — never show the name as a title),
+  `title_field: item_name`, not submittable, `track_changes: 1`, sort `modified`.
+- Fields (editable ones in **bold**): **item_code** (reqd, Link Item), **uom** (reqd, fetch
+  stock_uom), **packing_unit** (Int), item_name (ro), brand (ro), item_description (ro),
+  **price_list** (reqd), **customer** (depends `selling==1`), **supplier** (depends
+  `buying==1`), **batch_no**, buying (ro), selling (ro), currency (ro),
+  **price_list_rate** (reqd, "Rate"), **valid_from** (default Today), **lead_time_days**,
+  **valid_upto**, **note**, reference (set by server = customer/supplier).
+- Server `validate()` order and verbatim errors:
+  1. item exists (`Item {0} not found.`); **uom must be in the Item's UOMs table**
+     (`UOM {0} not found in Item {1}`).
+  2. `Valid Upto must be after Valid From` (equal dates allowed).
+  3. overwrites buying/selling/currency from the **enabled** Price List
+     (`The price list {link} does not exist or is disabled` — HTML in message, strip tags).
+  4. overwrites item_name / item_description.
+  5. duplicate = same item_code + price_list + uom + valid_from + valid_upto + customer +
+     supplier + batch_no + packing_unit (**exact equality, not date overlap**):
+     `Item Price appears multiple times based on Price List, Supplier/Customer, Currency, Item, Batch, UOM, Qty, and Dates.`
+  6. template items rejected: `Item Price cannot be created for the template item {0}`.
+- `before_save`: selling list clears supplier, buying list clears customer.
+- Desk picker filters: item `has_variants = 0`; batch `item = item_code`.
+- Lookup at transaction time (`stock/get_item_details.py`): party-specific price first,
+  then general; uom match or stock uom × conversion; date window; newest `valid_from`
+  wins; variant falls back to template price (moot here — templates can't hold prices).
+
+## 3. Pricing Rule (v15, `accounts/doctype/pricing_rule/`)
+
+- `naming_series: PRLE-.####`, `title` reqd, not submittable, sort `modified desc`.
+- Key fields & visibility (`depends_on` verbatim in agent report, summarised):
+  - **Rule**: title, disable, apply_on (`Item Code|Item Group|Brand|Transaction`, default
+    Item Code), price_or_product_discount (`Price|Product`, reqd, no default), warehouse
+    (not Transaction), coupon_code_based.
+  - **Targets** (child tables, one shown per apply_on): items (item_code, uom),
+    item_groups (item_group, uom), brands (brand, uom). UOM optional.
+  - mixed_conditions, is_cumulative (not Transaction).
+  - **Party**: selling, buying, applicable_for (`Customer|Customer Group|Territory|Sales
+    Partner|Campaign` need selling; `Supplier|Supplier Group` need buying) + its one link.
+  - **Quantity/amount**: min_qty, max_qty (stock UOM), min_amt, max_amt (0 = no limit).
+  - **Price discount**: rate_or_discount (`Rate|Discount Percentage|Discount Amount`,
+    default Discount Percentage) → rate | discount_percentage | discount_amount;
+    for_price_list (hidden when Rate); apply_discount_on (Transaction only).
+  - **Product discount**: same_item, free_item, free_qty, free_item_rate, free_item_uom,
+    round_free_qty, is_recursive / recurse_for / apply_recursion_over.
+  - **Period**: valid_from (default Today), valid_upto, company, currency (reqd).
+  - margin_type / margin_rate_or_amount; condition (Python); apply_multiple_pricing_rules,
+    apply_discount_on_rate, threshold_percentage, validate_applied_rule, has_priority,
+    priority (Select string `"1".."20"`); promotional_scheme (ro).
+- Server `validate()` errors worth mirroring client-side:
+  `Priority is mandatory` · `{Item Code} is not added in the table` · `{Customer} is required` ·
+  `Rate or Discount is required for the price discount.` · `Duplicate {0} found in the table` ·
+  `Variant {0} and its template {1} cannot both be added to the same Pricing Rule` ·
+  `Atleast one of the Selling or Buying must be selected` ·
+  `Selling must be checked, if Applicable For is selected as {0}` ·
+  `Min Qty can not be greater than Max Qty` · `Min Amt can not be greater than Max Amt` ·
+  `Rate can not be negative` · `Max discount allowed for item: {0} is {1}%` ·
+  `Currency should be same as Price List Currency: {0}` ·
+  `Valid from and valid upto fields are mandatory for the cumulative` ·
+  `Valid Upto must be after Valid From` · `Free item code is not selected`.
+- Server **clears fields of unselected options on save** (other tables, other party links,
+  other discount values) → the app can send them; no client clean-up needed.
+- Rules from a Promotional Scheme are editable over REST but **overwritten** next time the
+  scheme is saved → show read-only with a notice.
+- Matching at transaction time: item code (or its template), item group tree, brand;
+  selling rules only on Quotation/SO/**DN**/SI/POS; party + group trees; date window;
+  for_price_list blank or equal; qty/amount window; highest priority wins; **two rules left
+  at the same priority → the Delivery Note save fails** with
+  `Multiple Price Rules exists with same criteria, please resolve conflict by assigning priority.`
+  (Item Code › Group › Brand precedence is only described in help text — v15 never calls it.)
+
+## 4. Codebase integration map (release/play-store @273447f1)
+
+| Concern | Reuse |
+|---|---|
+| CRUD reference | `lib/app/modules/todo/**` + `todo_provider.dart` + `todo_model.dart` (mode `new/edit/view`, dirty guard, delete via `performDelete`, `OptimisticLockingMixin`) |
+| API | `ApiProvider.getDocumentList / getDocument / createDocument / updateDocument / deleteDocument / getDocumentCount` (`filterTuples` supports child-table 4-tuples) |
+| Link pickers | `showDocTypePickerBottomSheet` + `DocTypePickerConfig` (`lib/app/shared/doctype_picker/`), example `work_order_form_controller.dart` warehouse picker |
+| Fields | `DocPickerField`, `DocSectionCard`, `DocDetailRow`, `SettingsSwitchRow`, `SettingsSegmented`, `InlineBanner`, `FormEmptyState`, `AsyncFilledButton` |
+| Select sheet | private `_showOptionPicker` in `todo_form_screen.dart` (extract if reused) |
+| Money | `FormattingHelper.getCurrencySymbol` + `formatAmount` |
+| List | `DocTypeListHeader`, `ResultCountPill`, `ListEmptyState`, `ListEndFooter`, `FilterChipWidget`, `GenericDocumentCard` |
+| Status | `StatusPill` has `Active` (green), `Expired` (red), `Disabled` (gray), `Enabled` (blue); **`Upcoming` missing**; `GenericDocumentCard._statusAccentColor` keeps its own map |
+| Perms | `permission_entries.dart` `kSellingPermissions` (+ drawer `guardEntries`), `DocTypeGuard` |
+| Nav | drawer Selling group (`app_nav_drawer.dart` ~411); `kGlobalSearchTargets`; routes in `app_routes.dart` / `app_pages.dart` |
+| Item form | 5 tabs (`ItemTabController length: 5`), lazy `onTabChanged`; Re-order tab is the editable-tab precedent; **no price shown anywhere today** |
+| Not applicable | dashboard actionable chip-slider (Draft-count based — these DocTypes have no drafts); realtime auto-save (money edits need an explicit Save) |
+
+## 5. Scope decisions (defaults taken — challenge before building)
+
+1. **v1 edits Price-discount rules fully; Product-discount (free item) rules are read-only**
+   with "Edit on desktop". Zero rules exist; add free-item editing when someone asks.
+2. **Promotional-scheme rules read-only** (server regenerates them).
+3. Dynamic `condition`, recursion, `apply_discount_on_rate`, `validate_applied_rule`,
+   `threshold_percentage`, `coupon_code_based`: shown read-only when set, not editable.
+4. Item form gets a lazy **Prices** tab (item prices + rules that name this item or its template).
+5. No "effective price preview" (would call `get_item_details`/`apply_price_list`; shape
+   unverified live). No "items without a price" report (needs a server anti-join).
+6. Not in Quick Create / chip slider. Pricing Rule in global search (it has a title);
+   Item Price not (hash names — search it from its own list by item).
+
+## 6. Build deviations (mockup / build prompt vs. what shipped)
+
+- Summary sentence follows the Claude Design notes grammar (supersedes the build prompt's), money as currency CODE (`AED 25.00`), not a symbol.
+- `validatePricingRule` / `validateItemPrice` return `field → message` maps (not `List<String>`) so errors sit under fields and tabs get an error dot; messages mirror the server text, not the mockup copy ("Max must be at least min (50)").
+- Models are mutable and edited through `Rx.update`; no `copyWith`.
+- Item Price search: digits-only → `item_code like`, else `item_name like` (keeps `or_filters` free for the Active validity filter).
+- Filter sheet: validity is single-choice (Any/Active/Upcoming/Expired); price list lives only in the header chips; "Has customer or supplier" = `reference is set`.
+- Status counts: Active is derived (all − disabled − upcoming − expired).
+- Rows use `GenericDocumentCard` (new `trailing` / `body` slots): item NAME is the title and CODE the mono subtitle (mockup had code above name); no status accent stripe.
+- Delete is a header icon (like ToDo), not a ⋯ overflow menu.
+- Pricing Rule form: Side and For are stacked (not a 120/1fr row); Brand segment stays enabled (0 brands → empty picker); the unit chip toggles: tap a set unit to clear it ("Any unit"), tap "Any unit" to pick.
+- Discount amount suffix is "per unit" (ERPNext applies `discount_amount` to the item rate), not "per line".
+- Priority picker has no "In use: P3 …" note.
+- Item form Prices tab reuses the full list rows (`ItemPriceRow`, `PricingRuleRow`) instead of compact rows.
+- Pricing Rule list refetches the page after the form closes (rules are few) instead of patching one row.
+- New Item Price defaults to the list named `Standard Selling` (ERPNext setup-wizard name), else the first enabled list.
+- VERIFIED live 2026-09-18: child-table fields (`` `tabPricing Rule Item Code`.`item_code` ``) do come back through `/api/resource` — a rule's list row named its target item and the Item form's Prices tab found the rule. The "on items" fallback stays for safety.
+- `ListEmptyState` gained an optional `emptyAction` (shown instead of Reload when unfiltered); the Pricing Rule list uses it for "New pricing rule" instead of `FormEmptyState`.
+- `PricingRuleProvider.attachTargets` logs join failures with `debugPrint` (still best-effort).
+- Item form Prices tab loaders also catch non-network errors (snackbar), and the header count reads "<n> prices" (a list can hold several prices), not the mockup's "<n> lists".
+- The header chip row under `DocTypeListHeader.bottom` needs an explicit `SizedBox(height: 52)`.
+- Pricing Rule opens from global search in edit mode (view mode had Delete but no Edit).
+
+## 7. On-device smoke (2026-09-17/18, live ERPNext, side-by-side `.smoke` build)
+
+Both DocTypes exercised end to end — create / read / update / delete / duplicate-reject,
+Item Prices tab, drawer entries, global search — against the live site. All test data
+removed afterwards (1,661 item prices and 0 pricing rules, matching the pre-smoke counts).
+
+Bugs found on device and fixed:
+
+1. **Price-list chip was not an "active filter".** Tapping a list with no prices showed the
+   unfiltered empty state ("No item prices" + Reload) instead of the filtered one.
+   `hasActiveFilters` now counts `selectedPriceList`; a separate `_hasCountNarrowingFilters`
+   keeps the count pill on the server total, and `clearFilters()` resets the chip to All.
+2. **MoneyField appended instead of replacing.** The field is seeded with `0.00`, so typing
+   `25` produced `0.0025`. The text is selected on focus *and* on every tap — tapping a field
+   that already holds focus fires no focus event.
+3. **A failed save was silent.** The 417 duplicate error only ever reached `serverError`.
+   Both form controllers now also raise `GlobalSnackbar.error`, and the Item Price form mounts
+   its `InlineBanner` conditionally (a permanently-mounted banner stayed collapsed at zero
+   height inside the form's `NestedScrollView`).
+4. **PriorityBadge stretched across the row.** A `Container` with an `alignment` and no width
+   expands to its constraints; replaced with a `Center(widthFactor: 1)` child.
+
+Regression tests: `test/unit/item_price_controller_filters_test.dart` (1),
+`test/widget/item_price_duplicate_banner_test.dart` (3),
+`test/widget/pricing_widgets_test.dart` (2 + a badge-width assertion).
+
+Known, not fixed: a rule's target rows show only the item code after a reload (the child-table
+join returns codes, names are attached best-effort).
+
+### Second smoke pass (2026-09-18)
+
+5. **The in-form error banner rendered at zero height on device** — a failed save left only a
+   snackbar, and once that expired the form looked untouched. Isolated with a probe widget
+   placed next to the banner: the probe painted, so the Obx rebuild and the conditional mount
+   were fine and only `InlineBanner` collapsed. Its `AnimatedSwitcher` entrance is what fails
+   (it cannot be reproduced in a widget test, where `pumpAndSettle` always completes the
+   animation). `InlineBanner` gained `animate: false`, which skips the switcher and returns the
+   content directly; all four pricing call sites mount conditionally and now pass it. Verified
+   on device: the banner paints with the server's message.
+6. **A reloaded Item Code rule lost its item names** — the child table carries only the code, so
+   `label` (and `variantOf`) were null after a fetch. Beyond the cosmetics this disabled the
+   variant-vs-template check, which only ran for targets added in the same session.
+   `PricingRuleProvider.attachItemLabels` now fills both from one `Item` query after the form
+   paints. NOT yet verified against the live site (no Pricing Rules exist there).
+
+### Pricing Rule live pass (2026-09-18)
+
+Created one disabled rule (50% off item 1000001, Selling, everyone) on the live site,
+reloaded it, viewed it from the list and from the item, then deleted it. Site restored:
+1,661 item prices, 0 pricing rules.
+
+- The reloaded rule keeps its item name, so `attachItemLabels` works against the real
+  `Item` endpoint (one request, after the form paints).
+- The list row reads "…on item 1000001", not the "on items" fallback, so the child-table
+  join is real (see §6).
+- The Item form's Prices tab listed both the price and the rule for that item.
+- The rule was saved **disabled** on purpose: an enabled 50%-off rule would have applied
+  to live Delivery Notes for as long as it existed.

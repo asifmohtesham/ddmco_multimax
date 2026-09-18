@@ -34,6 +34,17 @@ void main() {
       }
     });
 
+    test('Pricing Rule opens its form in edit mode; Item Price is not searchable', () {
+      expect(_byDoctype('Pricing Rule').route, AppRoutes.PRICING_RULE_FORM);
+      expect(_byDoctype('Pricing Rule').argsFor('PRLE-1'),
+          {'name': 'PRLE-1', 'mode': 'edit'});
+      expect(
+        kGlobalSearchTargets.any((t) => t.doctype == 'Item Price'),
+        isFalse,
+        reason: 'Item Price names are random hashes',
+      );
+    });
+
     test('Batch opens in edit mode', () {
       expect(_byDoctype('Batch').argsFor('B-1'), {'name': 'B-1', 'mode': 'edit'});
       expect(_byDoctype('Batch').route, AppRoutes.BATCH_FORM);

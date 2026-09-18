@@ -46,6 +46,7 @@ class StatusPill extends StatelessWidget {
       case 'Stock Partially Reserved':
       case 'Material Returned from WIP':
       case 'Late':
+      case 'Upcoming':
         return (AppColors.orange500, AppColors.orange700, AppColors.orange300);
       case 'Partially Billed':
       case 'Partly Billed':

@@ -60,6 +60,14 @@ import 'package:multimax/app/modules/todo/todo_binding.dart';
 import 'package:multimax/app/modules/todo/todo_screen.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/item_price_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/item_price_screen.dart';
+import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_screen.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_binding.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_screen.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/form/pricing_rule_form_binding.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/form/pricing_rule_form_screen.dart';
 import 'package:multimax/app/modules/item/item_binding.dart';
 import 'package:multimax/app/modules/item/item_screen.dart';
 import 'package:multimax/app/modules/item/form/item_form_binding.dart';
@@ -191,6 +199,28 @@ class AppPages {
       name: AppRoutes.TODO_FORM,
       page: () => const ToDoFormScreen(),
       binding: ToDoFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.ITEM_PRICE,
+      page: () => const ItemPriceScreen(),
+      binding: ItemPriceBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.ITEM_PRICE_FORM,
+      page: () => const ItemPriceFormScreen(),
+      binding: ItemPriceFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.PRICING_RULE,
+      page: () => const PricingRuleScreen(),
+      binding: PricingRuleBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.PRICING_RULE_FORM,
+      page: () => const PricingRuleFormScreen(),
+      binding: PricingRuleFormBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
