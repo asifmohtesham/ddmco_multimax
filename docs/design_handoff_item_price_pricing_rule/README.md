@@ -226,3 +226,13 @@ reloaded it, viewed it from the list and from the item, then deleted it. Site re
 - The Item form's Prices tab listed both the price and the rule for that item.
 - The rule was saved **disabled** on purpose: an enabled 50%-off rule would have applied
   to live Delivery Notes for as long as it existed.
+
+### Sales User pass (2026-09-18, `asrar` — Sales-User-only operator, read-only)
+
+- Drawer: the whole Selling › Pricing group is hidden, heading included. ✅
+- Global search: no Pricing Rule chip, no Pricing Rule requests, no 403s. ✅
+- **Item form Prices tab was still offered**, showing only "You don't have access to item
+  prices or pricing rules." — on every item an operator opens, while the drawer hides the
+  same features. The build brief asked for it to be hidden. Fixed: `ItemTabController.showPrices`
+  drops the tab (it is last, so no index remapping) when the user can read neither DocType;
+  unknown permissions keep it and its lock message. Verified on device: 5 tabs for `asrar`.
