@@ -224,11 +224,18 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                 ),
                 const SizedBox(height: 12),
 
-                DocDetailRow(
+                DocPickerField(
                   label: 'Price List',
-                  value: (s.sellingPriceList ?? '').isEmpty
-                      ? 'From customer'
-                      : s.sellingPriceList!,
+                  icon: Icons.sell_outlined,
+                  value: s.sellingPriceList,
+                  placeholder: 'Select',
+                  onTap: isEditable
+                      ? () => showLinkSearchSheet(
+                          doctype: 'Price List',
+                          title: 'Select Price List',
+                          filters: const {'selling': 1, 'enabled': 1},
+                          onSelected: controller.setPriceList)
+                      : null,
                 ),
                 const Divider(height: 20),
 

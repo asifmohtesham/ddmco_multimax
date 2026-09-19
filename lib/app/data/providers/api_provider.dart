@@ -1638,17 +1638,24 @@ class ApiProvider {
 
   /// Searches a doctype's `name` field (`like %query%`) and returns the
   /// matching names, sorted ascending. Used to drive the Customer / POS Upload
-  /// pickers without prefetching the whole table.
+  /// pickers without prefetching the whole table. [filters] adds extra
+  /// exact-match constraints (e.g. `{'selling': 1, 'enabled': 1}` for a
+  /// Price List picker), merged with the name-like filter; omit it to keep
+  /// existing callers' behaviour unchanged.
   Future<List<String>> searchLinkOptions(
     String doctype, {
     String query = '',
     int limit = 20,
+    Map<String, dynamic>? filters,
   }) async {
     final rows = await getList(
       null,
       doctype: doctype,
       fields: ['name'],
-      filters: query.trim().isEmpty ? null : {'name': ['like', '%${query.trim()}%']},
+      filters: {
+        ...?filters,
+        if (query.trim().isNotEmpty) 'name': ['like', '%${query.trim()}%'],
+      },
       limit: limit,
       orderBy: 'name asc',
     );

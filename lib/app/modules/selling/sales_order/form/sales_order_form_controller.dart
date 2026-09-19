@@ -192,7 +192,11 @@ class SalesOrderFormController extends GetxController
     if (mode == 'new') {
       final today = FormattingHelper.formatDate(DateTime.now());
       so.value = SalesOrder.blank(
-          transactionDate: today, company: _storage.getCompany());
+          transactionDate: today, company: _storage.getCompany())
+          .copyWith(
+              sellingPriceList: resolveDefaultPriceList(
+                  partyPriceList: null,
+                  lastUsed: _storage.getSoLastSellingPriceList(_email)));
       _original = null;
       isDirty.value = true;
       isLoading.value = false;
@@ -369,12 +373,22 @@ class SalesOrderFormController extends GetxController
       final cur = so.value!;
       _apply(cur.copyWith(
         customerName: (p['customer_name'] ?? customer).toString(),
-        sellingPriceList: p['selling_price_list']?.toString(),
+        sellingPriceList: resolveDefaultPriceList(
+            partyPriceList: p['selling_price_list']?.toString(),
+            lastUsed: cur.sellingPriceList),
         currency: p['currency']?.toString(),
       ));
     } catch (_) {
       // Fail-open: the server fills the price list on save.
     }
+  }
+
+  /// User-picked Price List (smoke-fix-1, Ruling 9). Never re-prices existing
+  /// rows — desk doesn't either; the user can edit each row's rate.
+  void setPriceList(String pl) {
+    final s = so.value;
+    if (s == null || !isEditable) return;
+    _apply(s.copyWith(sellingPriceList: pl));
   }
 
   void setHeader({
@@ -503,6 +517,12 @@ class SalesOrderFormController extends GetxController
       GlobalSnackbar.error(message: msg);
       return;
     }
+    if ((so.value!.sellingPriceList ?? '').isEmpty) {
+      const msg = 'Select a price list first — item rates come from it.';
+      banner.value = msg;
+      GlobalSnackbar.error(message: msg);
+      return;
+    }
     Get.lazyPut<SalesOrderItemFormController>(
         () => SalesOrderItemFormController(),
         tag: kSoItemSheetTag, fenix: true);
@@ -566,6 +586,10 @@ class SalesOrderFormController extends GetxController
         _applyPostSave(saved, sent);
         if (isNew) await startRealtimeSyncAfterCreate();
         await _refreshDocPerms();
+        if ((saved.sellingPriceList ?? '').isNotEmpty) {
+          unawaited(
+              _storage.saveSoLastSellingPriceList(_email, saved.sellingPriceList!));
+        }
         GlobalSnackbar.success(message: 'Sales Order saved');
         _setSaveResult(SaveResult.success);
       } else {

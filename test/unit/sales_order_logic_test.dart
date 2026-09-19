@@ -270,6 +270,27 @@ void main() {
     });
   });
 
+  group('resolveDefaultPriceList', () {
+    test('party price list wins when non-empty', () {
+      expect(
+          resolveDefaultPriceList(
+              partyPriceList: 'Credit Selling', lastUsed: 'Standard Selling'),
+          'Credit Selling');
+    });
+    test('falls back to last-used when party price list is null or empty', () {
+      expect(
+          resolveDefaultPriceList(partyPriceList: null, lastUsed: 'Standard Selling'),
+          'Standard Selling');
+      expect(
+          resolveDefaultPriceList(partyPriceList: '', lastUsed: 'Standard Selling'),
+          'Standard Selling');
+    });
+    test('null when neither is set', () {
+      expect(resolveDefaultPriceList(partyPriceList: null, lastUsed: null), isNull);
+      expect(resolveDefaultPriceList(partyPriceList: '', lastUsed: ''), isNull);
+    });
+  });
+
   group('resolveIncomingListFilters', () {
     test('owner equals current email -> mine true, owner stripped, other keys kept', () {
       final r = resolveIncomingListFilters(

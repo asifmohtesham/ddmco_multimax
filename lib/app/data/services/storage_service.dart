@@ -50,6 +50,10 @@ class StorageService {
   static const String _attTerminalKey = 'notif_att_terminal';
   static const String _attPromptedKey = 'notif_att_prompted';
 
+  // Sales Order: last selling price list this user saved an order with
+  // (smoke-fix-1, Ruling 9 fallback (b)), per user.
+  static const String _soLastPriceListKey = 'so_last_selling_price_list';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -247,4 +251,11 @@ class StorageService {
 
   bool getAttendancePermissionPrompted(String user) =>
       _box.read<bool>('$_attPromptedKey::$user') ?? false;
+
+  // --- Sales Order last-used price list (per user) ---
+  Future<void> saveSoLastSellingPriceList(String user, String value) async =>
+      _box.write('$_soLastPriceListKey::$user', value);
+
+  String? getSoLastSellingPriceList(String user) =>
+      _box.read<String>('$_soLastPriceListKey::$user');
 }

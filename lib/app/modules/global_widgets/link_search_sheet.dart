@@ -10,12 +10,13 @@ Future<void> showLinkSearchSheet({
   required String doctype,
   required String title,
   required ValueChanged<String> onSelected,
+  Map<String, dynamic>? filters,
 }) =>
     Get.bottomSheet(
       LinkSearchSheet(
         title: title,
-        onSearch: (q) =>
-            Get.find<ApiProvider>().searchLinkOptions(doctype, query: q),
+        onSearch: (q) => Get.find<ApiProvider>()
+            .searchLinkOptions(doctype, query: q, filters: filters),
         onSelected: onSelected,
       ),
       isScrollControlled: true,

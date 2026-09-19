@@ -126,6 +126,15 @@ Map<String, String> validateOrder(SalesOrder so) {
   return e;
 }
 
+/// Default Price List for a new order (smoke-fix-1, Ruling 9): the party's
+/// price list wins when set; otherwise fall back to the last one this user
+/// saved a Sales Order with; otherwise none — the user must pick one.
+String? resolveDefaultPriceList({String? partyPriceList, String? lastUsed}) {
+  if ((partyPriceList ?? '').isNotEmpty) return partyPriceList;
+  if ((lastUsed ?? '').isNotEmpty) return lastUsed;
+  return null;
+}
+
 /// Typed view of `get_item_details` → message.
 class ItemDetails {
   final String itemName;
