@@ -14,6 +14,9 @@ class PermissionService extends GetxService {
   // yields both the `create` and `write` results.
   final Map<String, Future<void>> _roleFetches = {};
 
+  // Frappe module per doctype, captured from the same getdoctype response.
+  final Map<String, String> _modules = {};
+
   /// Returns `null` while loading, `true` if permitted, `false` if denied.
   ///
   /// Triggers a lazy fetch if the result is not yet cached.
@@ -45,6 +48,19 @@ class PermissionService extends GetxService {
     _accessCache.clear();
     _pendingFetches.clear();
     _roleFetches.clear();
+    _modules.clear();
+  }
+
+  /// [doctype]'s Frappe module (e.g. Item → Stock), or `null` if it can't be
+  /// resolved. Reuses the getdoctype fetch behind create/write checks, so
+  /// doctypes prefetched at login cost no extra request.
+  Future<String?> moduleOf(String doctype) async {
+    if (!_modules.containsKey(doctype)) {
+      try {
+        await _resolveDocTypeRoles(doctype);
+      } catch (_) {}
+    }
+    return _modules[doctype];
   }
 
   Future<void> _fetchPermission(String doctype, String permType) async {
@@ -87,6 +103,7 @@ class PermissionService extends GetxService {
         final userRoles = _currentUserRoles();
         _accessCache['$doctype:create'] = roleGrants(userRoles, roles.create);
         _accessCache['$doctype:write'] = roleGrants(userRoles, roles.write);
+        if (roles.module != null) _modules[doctype] = roles.module!;
       } catch (_) {
         // Fail-closed for operators (deny) but keep admins visible, and cache
         // the verdict so we don't refetch getdoctype on every rebuild.

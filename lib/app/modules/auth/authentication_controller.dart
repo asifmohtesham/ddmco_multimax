@@ -17,6 +17,7 @@ import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class AuthenticationController extends GetxController {
@@ -118,6 +119,9 @@ class AuthenticationController extends GetxController {
             Get.find<PermissionService>().clearCache();
             await Get.find<PermissionService>().prefetchAll(kAppPermissions);
           }
+
+          // Lay the drawer out from this user's Frappe workspaces.
+          unawaited(AppNavDrawerController.instance.loadFor(user.email));
         } else {
           await _clearSessionAndLocalData();
         }

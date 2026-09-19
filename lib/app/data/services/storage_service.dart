@@ -37,6 +37,9 @@ class StorageService {
   static const String _dashboardTasksFirstKey = 'dashboard_tasks_first';
   static const _dashboardActionableScopeKey = 'dashboard_actionable_scope';
 
+  // Last drawer layout built from the user's Frappe workspaces, per user.
+  static const String _navMenuKey = 'nav_menu';
+
   // Scheduled digest notification preferences (per user, keyed key::user —
   // same convention as dashboard_tasks_first).
   static const String _digestEnabledKey = 'notif_digest_enabled';
@@ -213,6 +216,13 @@ class StorageService {
   /// 'standard' — least-surprising for existing enabled managers.
   String getDigestAlarmStyle(String user) =>
       _box.read<String>('$_digestAlarmStyleKey::$user') ?? 'standard';
+
+  // --- Drawer layout (per user) ---
+  Future<void> saveNavMenu(String user, List<Map<String, dynamic>> menu) async =>
+      _box.write('$_navMenuKey::$user', menu);
+
+  List<dynamic>? getNavMenu(String user) =>
+      _box.read<List<dynamic>>('$_navMenuKey::$user');
 
   // Persisted Mine/Everyone choice for the "Upcoming & actionable" strip.
   // Stored as 'mine' | 'everyone'; any other value reads back as 'mine'.
