@@ -299,6 +299,37 @@ void main() {
     expect(saved, isNotNull, reason: 'the visible Done must receive the tap');
   });
 
+  testWidgets('a tall sheet stops below the status bar', (tester) async {
+    // Regression: with the keyboard open the sheet grows to the full available
+    // height and its title ended up behind the status bar. Get.bottomSheet
+    // zeroes padding.top/viewPadding.top (removeTop: true), so the sheet reads
+    // the status bar height from the view instead.
+    const keyboard = 260.0;
+    const statusBar = 60.0;
+    tester.view.physicalSize = const Size(400, 700);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: statusBar);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(GetMaterialApp(
+      theme: darkTheme,
+      darkTheme: darkTheme,
+      themeMode: ThemeMode.dark,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+            viewInsets: const EdgeInsets.only(bottom: keyboard)),
+        child: child!,
+      ),
+      home: const Scaffold(body: SizedBox.shrink()),
+    ));
+    Get.bottomSheet(sheet(), isScrollControlled: true);
+    await tester.pumpAndSettle();
+
+    expect(tester.getRect(find.text('Re-order rule')).top,
+        greaterThanOrEqualTo(statusBar),
+        reason: 'the title must not sit behind the status bar');
+  });
+
   testWidgets('Material Request Type picker renders its options without the '
       'ListTile ink-splash assertion', (tester) async {
     // _pickType shows its own Get.bottomSheet; Get.testMode + Get.reset keep
