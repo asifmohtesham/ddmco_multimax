@@ -295,6 +295,9 @@ class SalesOrderFormController extends GetxController
           ? current.setWarehouse
           : null,
       poNo: current.poNo != sent.poNo ? current.poNo : null,
+      reserveStock: current.reserveStock != sent.reserveStock
+          ? current.reserveStock
+          : null,
     );
     so.value = reapplied;
     _original = saved;

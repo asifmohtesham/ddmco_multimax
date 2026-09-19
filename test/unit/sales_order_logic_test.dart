@@ -155,6 +155,20 @@ void main() {
           isFalse);
     });
 
+    test('a reserve-stock flip survives an in-flight save (copyWith carries it)',
+        () {
+      // Mirrors _applyPostSave: the server copy is rebased with the header
+      // fields the user changed while the request was in flight.
+      final sent = so(docstatus: 0);
+      final current = sent.copyWith(reserveStock: true);
+      final saved = sent.copyWith(status: 'Draft'); // server echo of `sent`
+      final reapplied = saved.copyWith(
+        reserveStock:
+            current.reserveStock != sent.reserveStock ? current.reserveStock : null,
+      );
+      expect(reapplied.reserveStock, isTrue);
+    });
+
     test('dirty tracking sees a reserve-stock change when enabled', () {
       final a = so(docstatus: 0);
       final b = a.copyWith(reserveStock: true);
