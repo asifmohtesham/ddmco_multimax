@@ -123,6 +123,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
               title: screenTitle,
               automaticallyImplyLeading: false,
               searchDoctype:      'Work Order',
+              searchRoute:        AppRoutes.WORK_ORDER_FORM,
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
               onSearchClear: () {

@@ -236,6 +236,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
             DocTypeListHeader(
               title: 'Packing Slip',
               automaticallyImplyLeading: false,
+              searchDoctype: 'Packing Slip',
+              searchRoute: AppRoutes.PACKING_SLIP_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

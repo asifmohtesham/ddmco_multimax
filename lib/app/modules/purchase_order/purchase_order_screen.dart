@@ -139,6 +139,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               title: 'Purchase Order',
               automaticallyImplyLeading: false,
               searchDoctype: 'Purchase Order',
+              searchRoute: AppRoutes.PURCHASE_ORDER_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {
