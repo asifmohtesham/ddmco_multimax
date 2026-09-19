@@ -1,2 +1,1 @@
-• Sales Order: new Reserve Stock switch. Turn it on before submitting and the order holds its stock, which then shows against the item in Stock Balance.
-• The switch appears only when stock reservation is enabled for your site.
+• Internal quality release: added an automated check that keeps the Quick Work Order sheet sitting correctly above the keyboard. No changes to how the app works.
