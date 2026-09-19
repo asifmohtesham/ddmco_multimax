@@ -1,1 +1,1 @@
-• The menu now follows your ERPNext workspaces: modules appear in the same order and sections as on the desktop, each screen sits in its own module's workspace, and anything your admin hides for you is hidden here too. The menu opens instantly with your last layout and refreshes in the background.
+• Fixed the Re-order rule sheet on the Item form: when the keyboard opens for Re-order Level or Qty, the sheet now sits right above the keyboard and the Done button responds to taps.
