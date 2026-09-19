@@ -33,7 +33,7 @@ Out: Make → Pick List (Pick List module not on `release/play-store`), Payment 
 **Settings**:
 - Stock Settings `enable_stock_reservation = 0` → `reserve_stock` hidden; Submit creates no Stock Reservation Entries. Live SRE count = 0.
 - Stock Settings `auto_indent = 1` → submitted SOs raise Bin `reserved_qty`, which can trigger real Material Requests on items with reorder levels.
-- Selling Settings `editable_price_list_rate = 0` → a rate supplied by the price list is **locked**; the rate is editable only when `price_list_rate == 0`. `selling_price_list = Standard Selling`. `so_required = No`, `dn_required = No`, `allow_multiple_items = 1`, `allow_negative_rates_for_items = 0`.
+- Selling Settings `editable_price_list_rate = 0`. **Correction (v15 source, `sales_common.js` `toggle_editable_price_list_rate`)**: this setting only makes the row's **Price List Rate** column editable (it flips `price_list_rate.read_only` to 0). The row **`rate` is always editable** in desk regardless. The app never edits `price_list_rate` (it shows it read-only), so the setting needs no client handling. It is stored as a global default (`frappe.db.set_default`); Selling Settings itself is readable only by System Manager / Sales Manager. `selling_price_list = Standard Selling`. `so_required = No`, `dn_required = No`, `allow_multiple_items = 1`, `allow_negative_rates_for_items = 0`.
 
 **DocPerms** (permlevel 0, `r c w s x a d`):
 | Role | r | c | w | s | x | a | d |
@@ -79,14 +79,14 @@ Mirrors `lib/app/modules/purchase_order/**` file for file.
 - Hand-built layout (not the unreleased metadata-driven renderer).
 
 ### Wiring
-`app_routes.dart` (`SALES_ORDER`, `SALES_ORDER_FORM`), `app_pages.dart`, `app_nav_drawer.dart` (Selling group, above Pricing), `permission_entries.dart` → `kSellingPermissions` (read/create/write/submit/cancel for `Sales Order`), `global_search_targets.dart`, `home/widgets/dashboard_actionable_strip.dart` + `dashboard_actionable_preview.dart` + `home_controller.dart` (Draft / To Deliver), `digest_service.dart` (draft SOs, like PO), `stock_balance_sheets.dart` reservation row → `Get.toNamed(SALES_ORDER_FORM, {name, mode: 'view'})`.
+`app_routes.dart` (`SALES_ORDER`, `SALES_ORDER_FORM`), `app_pages.dart`, `app_nav_drawer.dart` (Selling group, above Pricing), `permission_entries.dart` → `kSellingPermissions` (read/create/write for `Sales Order` only: `PermissionService` resolves create/write from getdoctype but probes every other permType with a read-level `get_list`, so submit/cancel there would wrongly pass for Stock/Accounts Users. Submit, cancel and status changes are checked per document with `frappe.client.has_permission` (`ApiProvider.hasDocPermission`), fail-closed, as Stock Entry Submit does), `global_search_targets.dart`, `home/widgets/dashboard_actionable_strip.dart` + `dashboard_actionable_preview.dart` + `home_controller.dart`: ONE `Sales Order` chip (the strip, count cache and preview cache are keyed one-chip-per-doctype) whose filter is `status in [Draft, To Deliver and Bill, To Deliver]`; its preview row shows `customer · owner · delivery date` plus the status, `digest_service.dart` (draft SOs, like PO), `stock_balance_sheets.dart` reservation row → `Get.toNamed(SALES_ORDER_FORM, {name, mode: 'view'})`.
 
 ## Data flow
 
 - **List**: `getDocumentList('Sales Order')` with RxMap filters → `status`, `customer`, `delivery_date` between, `owner` (Mine/Everyone). Fields: name, customer, customer_name, status, transaction_date, delivery_date, grand_total, currency, per_delivered, per_billed, owner, modified.
 - **Form load**: `getdoc` → `SalesOrder`. `docstatus != 0` is read-only.
 - **New**: defaults `transaction_date = today`, `order_type = Sales`, `company` / `selling_price_list` from session defaults / Selling Settings; the header `delivery_date` pre-fills each new row.
-- **Item pick**: `getItemDetails({item_code, customer, company, selling_price_list, price_list_currency, plc_conversion_rate, conversion_rate, currency, transaction_date, qty, uom, doctype: 'Sales Order', warehouse})` → fills `item_name`, `uom`, `conversion_factor`, `price_list_rate`, `rate`, `warehouse`. The rate field is locked when `editable_price_list_rate == 0 && price_list_rate > 0`. The sheet shows the provisional `qty × rate` labelled as an estimate; the server recomputes on save.
+- **Item pick**: `getItemDetails({item_code, customer, company, selling_price_list, price_list_currency, plc_conversion_rate, conversion_rate, currency, transaction_date, qty, uom, doctype: 'Sales Order', warehouse})` → fills `item_name`, `uom`, `conversion_factor`, `price_list_rate`, `rate`, `warehouse`. `rate` stays editable (v15); `price_list_rate` is shown read-only under it when > 0. The sheet shows the provisional `qty × rate` labelled as an estimate; the server recomputes on save.
 - **Save**: POST (new) or PUT (draft) with editable fields only (`sales_order_logic.buildPayload`). The response's totals, VAT columns and status are re-rendered.
 - **Submit / Cancel**: `frappe.client.submit` / `cancel`, then reload.
 - **Lifecycle**: Hold → reason sheet (required text) → `add_comment` → `update_status('On Hold')`; Resume / Re-open → `update_status('Draft')`; Close → `update_status('Closed')` behind a confirm dialog; then reload.
@@ -94,7 +94,7 @@ Mirrors `lib/app/modules/purchase_order/**` file for file.
 
 ## Pure logic (`sales_order_logic.dart`, TDD)
 
-- `statusTone(status)` → pill colour role; `progressOf(so)` → (delivered %, billed %), clamped 0–100.
+- `progressFraction(percent)` → 0.0–1.0 for the delivered / billed bars.
 - `allowedActions(so, perms, canCreateDn)` → set of `{save, submit, cancel, hold, resume, close, reopen, makeDn}`, mirroring desk `refresh`:
   - docstatus 0: save if write; submit if submit.
   - docstatus 1 + submit perm: On Hold → resume, and close if not fully delivered+billed; Closed → reopen; other → hold + close if `per_delivered < 100 || per_billed < 100`.
@@ -106,7 +106,9 @@ Mirrors `lib/app/modules/purchase_order/**` file for file.
 - `buildPayload(so)`: editable fields only; drops ro / computed / custom-VAT fields and empty optionals.
 - `validateRow(row, transactionDate)` → field→message map: item_code non-empty; qty > 0; delivery_date (if set) ≥ transaction_date.
 - `validateOrder(so)` → header-level: customer set; ≥ 1 item; when `order_type == Sales` and not skip_delivery_note, header or some row has a delivery date; header date ≥ transaction_date.
-- `rateEditable(editablePriceListRate, priceListRate)`.
+- `parseItemDetails(message)` → typed defaults from the `get_item_details` response.
+- `statusFilterLabel(value)` → chip text for a `status` filter that is a String or `['in', [...]]`.
+- Pill colour is NOT in this file: `StatusPill` gains `To Deliver and Bill` / `To Deliver` in its orange group (next to the PO analogues `To Receive and Bill` / `To Receive`).
 
 ## Error handling
 
@@ -125,7 +127,7 @@ Mirrors `lib/app/modules/purchase_order/**` file for file.
 
 Temporary `applicationIdSuffix` + label, reverted before commit. As a **Sales User (asrar)** and as an **SM account that also holds Sales User** (a pure SM can't read SOs; record that as expected). Light and dark mode.
 
-Checklist: list filters + Mine/Everyone; create a Draft with 3+ items (rate prefilled + locked); Save; Submit; Hold → Resume; Close → Re-open; Make DN opens our DN form; reservation → SO.
+Checklist: list filters + Mine/Everyone; create a Draft with 3+ items (rate prefilled from price list, still editable); Save; Submit; Hold → Resume; Close → Re-open; Make DN opens our DN form; reservation → SO.
 
 Live-site safety:
 - Use items with **no reorder levels** (`auto_indent = 1`).
