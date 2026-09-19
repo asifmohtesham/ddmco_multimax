@@ -250,6 +250,55 @@ void main() {
         reason: 'Done must sit above the ${inset}px system nav bar');
   });
 
+  testWidgets('keyboard lift is applied once: Done sits on the keyboard and '
+      'is tappable', (tester) async {
+    // Regression: Get.bottomSheet already wraps the sheet in
+    // Padding(bottom: viewInsets.bottom). A second one in the sheet lifted it
+    // by twice the keyboard height, leaving a gap and pushing the title under
+    // the status bar. Opened via Get.bottomSheet exactly like the item form.
+    const keyboard = 300.0;
+    tester.view.physicalSize = const Size(400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    ItemReorder? saved;
+    await tester.pumpWidget(GetMaterialApp(
+      theme: darkTheme,
+      darkTheme: darkTheme,
+      themeMode: ThemeMode.dark,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+            viewInsets: const EdgeInsets.only(bottom: keyboard)),
+        child: child!,
+      ),
+      home: const Scaffold(body: SizedBox.shrink()),
+    ));
+    Get.bottomSheet(
+      sheet(
+        initial: const ItemReorder(
+          warehouse: 'WH-A',
+          warehouseReorderLevel: 10,
+          warehouseReorderQty: 5,
+          materialRequestType: 'Purchase',
+        ),
+        onSaved: (r) => saved = r,
+      ),
+      isScrollControlled: true,
+    );
+    await tester.pumpAndSettle();
+
+    const keyboardTop = 1000 - keyboard;
+    final done = tester.getRect(find.widgetWithText(FilledButton, 'Done'));
+    expect(done.bottom, lessThanOrEqualTo(keyboardTop),
+        reason: 'Done must not be hidden by the keyboard');
+    expect(done.bottom, greaterThan(keyboardTop - 40),
+        reason: 'sheet must sit on the keyboard, not a keyboard-height above');
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull, reason: 'the visible Done must receive the tap');
+  });
+
   testWidgets('Material Request Type picker renders its options without the '
       'ListTile ink-splash assertion', (tester) async {
     // _pickType shows its own Get.bottomSheet; Get.testMode + Get.reset keep
