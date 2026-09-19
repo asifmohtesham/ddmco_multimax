@@ -176,6 +176,32 @@ class SalesOrderItem {
   /// Rows added in the app carry a `local_<ms>` id until the first save.
   bool get isLocal => name?.startsWith('local_') ?? true;
 
+  /// Returns a copy with [name] set. `name` has no setter and isn't a
+  /// `copyWith` param (it identifies the row); this exists only so
+  /// `SalesOrderFormController.addItem` can assign a temporary unique id to
+  /// a locally-added row before it has a server name — two rows with a null
+  /// `name` would otherwise be indistinguishable to `updateItem`/`deleteItem`
+  /// (which match by `name`) and to the Items tab's `Dismissible`/highlight
+  /// keys.
+  SalesOrderItem withName(String name) => SalesOrderItem(
+        name: name,
+        itemCode: itemCode,
+        itemName: itemName,
+        qty: qty,
+        uom: uom,
+        stockUom: stockUom,
+        conversionFactor: conversionFactor,
+        rate: rate,
+        priceListRate: priceListRate,
+        amount: amount,
+        deliveryDate: deliveryDate,
+        warehouse: warehouse,
+        deliveredQty: deliveredQty,
+        deliveredBySupplier: deliveredBySupplier,
+        taxAmount: taxAmount,
+        totalAmount: totalAmount,
+      );
+
   factory SalesOrderItem.fromJson(Map<String, dynamic> j) => SalesOrderItem(
         name: _s(j['name']),
         itemCode: (j['item_code'] ?? '').toString(),

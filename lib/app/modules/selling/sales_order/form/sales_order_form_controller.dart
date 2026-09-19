@@ -77,7 +77,19 @@ class SalesOrderFormController extends GetxController
   final saveResult = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
-  bool get isEditable => (so.value?.docstatus ?? 1) == 0;
+  /// Fail-closed: a document is only editable when it's a draft AND the
+  /// write (or, for a not-yet-created doc, create) permission has resolved
+  /// to exactly `true`. `null` (still loading) or `false` reads as not
+  /// editable. This reads `PermissionService`'s permission cache (an
+  /// `RxMap`), so every call site that feeds a widget build must be a
+  /// hoisted read inside an `Obx` — see the single hoisted read in the
+  /// screen's outer `Obx` (never re-read `isEditable` deeper in the tree).
+  bool get isEditable =>
+      (so.value?.docstatus ?? 1) == 0 &&
+      (mode == 'new'
+              ? _perm.hasAccess('Sales Order', permType: 'create')
+              : _perm.hasAccess('Sales Order', permType: 'write')) ==
+          true;
 
   SoPerms get perms => SoPerms(
         write: mode == 'new'
@@ -226,6 +238,58 @@ class SalesOrderFormController extends GetxController
     poNoController.text = s.poNo ?? '';
   }
 
+  /// Applies a successful save's response, reconciling any header edit made
+  /// locally while the request was in flight instead of letting it clobber
+  /// [so.value] outright (the bug: `addItem(A)` … `addItem(B)` during A's
+  /// POST used to silently lose B; the header analogue is typing PO No
+  /// during an autosave).
+  ///
+  /// [saved] is the server's response; [sent] is the exact snapshot that was
+  /// POSTed/PUT. Item edits can't have happened meanwhile (addItem/
+  /// updateItem/deleteItem all block while isSaving), so only header fields
+  /// need reconciling.
+  void _applyPostSave(SalesOrder saved, SalesOrder sent) {
+    final current = so.value;
+    if (current == null || !isSoDirty(sent, current)) {
+      // Nothing changed locally while this request was in flight (or the
+      // document was cleared out from under us) — the server copy stands.
+      _setLoaded(saved);
+      return;
+    }
+    // Re-apply the header fields the user changed after `sent` was captured
+    // onto the freshly-saved copy (which carries server-computed totals,
+    // real item names, etc.), then keep the doc dirty so the next autosave
+    // (already scheduled by `_apply` under setHeader/setCustomer) persists
+    // them. poNoController is deliberately left untouched here — it already
+    // shows what the user typed, which is `current.poNo`, never `saved.poNo`.
+    final reapplied = saved.copyWith(
+      customer: current.customer != sent.customer ? current.customer : null,
+      customerName: current.customerName != sent.customerName
+          ? current.customerName
+          : null,
+      transactionDate: current.transactionDate != sent.transactionDate
+          ? current.transactionDate
+          : null,
+      deliveryDate: current.deliveryDate != sent.deliveryDate
+          ? current.deliveryDate
+          : null,
+      orderType: current.orderType != sent.orderType ? current.orderType : null,
+      company: current.company != sent.company ? current.company : null,
+      currency: current.currency != sent.currency ? current.currency : null,
+      sellingPriceList: current.sellingPriceList != sent.sellingPriceList
+          ? current.sellingPriceList
+          : null,
+      setWarehouse: current.setWarehouse != sent.setWarehouse
+          ? current.setWarehouse
+          : null,
+      poNo: current.poNo != sent.poNo ? current.poNo : null,
+    );
+    so.value = reapplied;
+    _original = saved;
+    isDirty.value = true;
+    scheduleAutoSave();
+  }
+
   void _setSaveResult(SaveResult result) {
     _saveResultTimer?.cancel();
     saveResult.value = result;
@@ -271,6 +335,11 @@ class SalesOrderFormController extends GetxController
     try {
       final p = await _provider.getPartyDetails(
           customer: customer, company: s.company ?? _storage.getCompany());
+      // Stale-response guard: if the user picked a different customer while
+      // this lookup was in flight, so.value.customer has moved on — applying
+      // this response now would overwrite the newer pick with the old one's
+      // price list / currency.
+      if (so.value?.customer != customer) return;
       final cur = so.value!;
       _apply(cur.copyWith(
         customerName: (p['customer_name'] ?? customer).toString(),
@@ -300,15 +369,35 @@ class SalesOrderFormController extends GetxController
     ));
   }
 
+  /// Shown when an item mutation is attempted while a save is already in
+  /// flight — see saveDocument's in-flight-edit note. Mutating `so.value.items`
+  /// then would race the request currently building its payload from the
+  /// pre-mutation snapshot, either losing the new row or duplicating it once
+  /// the response reloads.
+  bool _blockIfSaving() {
+    if (!isSaving.value) return false;
+    GlobalSnackbar.warning(message: 'Saving… try again in a moment.');
+    return true;
+  }
+
   void addItem(SalesOrderItem row) {
+    if (_blockIfSaving()) return;
+    // Every row needs a non-null unique id: updateItem/deleteItem and the
+    // Items tab's Dismissible/highlight keys all match by `name`, and two
+    // null-named rows would be indistinguishable to them. Server rows always
+    // carry a name; only a freshly-added local row can arrive with none.
+    final named = row.name == null
+        ? row.withName('local_${DateTime.now().microsecondsSinceEpoch}')
+        : row;
     final s = so.value!;
-    _apply(s.copyWith(items: [...s.items, row]));
-    ensureItemKey(row);
-    if (row.name != null) triggerHighlight(row.name!);
+    _apply(s.copyWith(items: [...s.items, named]));
+    ensureItemKey(named);
+    triggerHighlight(named.name!);
     saveDocument();
   }
 
   void updateItem(SalesOrderItem row) {
+    if (_blockIfSaving()) return;
     final s = so.value!;
     _apply(s.copyWith(
         items: s.items.map((i) => i.name == row.name ? row : i).toList()));
@@ -316,10 +405,12 @@ class SalesOrderFormController extends GetxController
   }
 
   void deleteItem(SalesOrderItem row) {
+    if (_blockIfSaving()) return;
     GlobalDialog.showConfirmation(
       title: 'Remove Item?',
       message: 'Remove ${row.itemCode} from this order?',
       onConfirm: () {
+        if (_blockIfSaving()) return; // a save may have started while confirming
         final s = so.value!;
         _apply(s.copyWith(
             items: s.items.where((i) => i.name != row.name).toList()));
@@ -393,11 +484,17 @@ class SalesOrderFormController extends GetxController
     }
     banner.value = null;
     isSaving.value = true;
+    // The exact document this request is sending. Header edits made via
+    // setCustomer/setHeader while the request is in flight land in
+    // `so.value` but must not be discarded when the response lands — see
+    // `_applyPostSave`. Item mutations can't happen meanwhile: addItem/
+    // updateItem/deleteItem all block while isSaving is true.
+    final sent = s;
     try {
       final isNew = mode == 'new';
       final res = isNew
-          ? await _provider.create(buildPayload(s))
-          : await _provider.update(s.name, buildPayload(s));
+          ? await _provider.create(buildPayload(sent))
+          : await _provider.update(sent.name, buildPayload(sent));
       final data = (res.data is Map) ? res.data['data'] : null;
       if (res.statusCode == 200 && data is Map) {
         final saved = SalesOrder.fromJson(Map<String, dynamic>.from(data));
@@ -405,7 +502,7 @@ class SalesOrderFormController extends GetxController
           name = saved.name;
           mode = 'edit';
         }
-        _setLoaded(saved);
+        _applyPostSave(saved, sent);
         if (isNew) await startRealtimeSyncAfterCreate();
         await _refreshDocPerms();
         GlobalSnackbar.success(message: 'Sales Order saved');

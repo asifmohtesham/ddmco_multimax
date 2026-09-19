@@ -59,4 +59,22 @@ void main() {
     const row = SalesOrderItem(name: 'local_1', itemCode: 'I', itemName: 'I', qty: 1);
     expect(row.isLocal, isTrue);
   });
+
+  test('withName sets the id and preserves every other field', () {
+    const row = SalesOrderItem(
+      itemCode: 'I1',
+      itemName: 'Item 1',
+      qty: 2,
+      uom: 'Nos',
+      rate: 10,
+      warehouse: 'Stores - M',
+    );
+    final named = row.withName('local_12345');
+    expect(named.name, 'local_12345');
+    expect(named.itemCode, row.itemCode);
+    expect(named.qty, row.qty);
+    expect(named.rate, row.rate);
+    expect(named.warehouse, row.warehouse);
+    expect(named.isLocal, isTrue);
+  });
 }
