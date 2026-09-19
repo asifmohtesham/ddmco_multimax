@@ -6,6 +6,8 @@ abstract class AppRoutes {
   static const PURCHASE_RECEIPT_FORM = _Paths.PURCHASE_RECEIPT_FORM;
   static const PURCHASE_ORDER        = _Paths.PURCHASE_ORDER;
   static const PURCHASE_ORDER_FORM   = _Paths.PURCHASE_ORDER_FORM;
+  static const SALES_ORDER           = _Paths.SALES_ORDER;
+  static const SALES_ORDER_FORM      = _Paths.SALES_ORDER_FORM;
   static const STOCK_ENTRY           = _Paths.STOCK_ENTRY;
   static const STOCK_ENTRY_FORM      = _Paths.STOCK_ENTRY_FORM;
   static const DELIVERY_NOTE         = _Paths.DELIVERY_NOTE;
@@ -59,6 +61,8 @@ abstract class _Paths {
   static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
   static const PURCHASE_ORDER        = '/purchase-order';
   static const PURCHASE_ORDER_FORM   = '/purchase-order/form';
+  static const SALES_ORDER           = '/sales-order';
+  static const SALES_ORDER_FORM      = '/sales-order/form';
   static const STOCK_ENTRY           = '/stock-entry';
   static const STOCK_ENTRY_FORM      = '/stock-entry/form';
   static const DELIVERY_NOTE         = '/delivery-note';
