@@ -611,11 +611,30 @@ class SalesOrderFormController extends GetxController
       await fetchDocument();
       GlobalSnackbar.success(message: done);
     } on DioException catch (e) {
-      banner.value = ItemFormController.parseServerMessage(e.response?.data);
+      final msg = ItemFormController.parseServerMessage(e.response?.data);
+      // Best-effort: a partial failure (e.g. hold's reason posted but the
+      // status update threw) must still surface the true server state, not
+      // whatever `so.value` held before this action ran. fetchDocument
+      // never rethrows (it shows its own error dialog on failure), but the
+      // wrap is defensive — either way the banner is set AFTER, so a
+      // refetch can't clobber it.
+      await _refetchBestEffort();
+      banner.value = msg;
     } catch (e) {
-      banner.value = e.toString();
+      final msg = e.toString();
+      await _refetchBestEffort();
+      banner.value = msg;
     } finally {
       isActing.value = null;
+    }
+  }
+
+  Future<void> _refetchBestEffort() async {
+    try {
+      await fetchDocument();
+    } catch (_) {
+      // Keep showing the previous document state; the banner set by the
+      // caller right after this still reports the original failure.
     }
   }
 
@@ -623,14 +642,25 @@ class SalesOrderFormController extends GetxController
   String get _email =>
       Get.find<AuthenticationController>().currentUser.value?.email ?? '';
 
+  /// Doc name whose "Reason for hold" comment has already been posted this
+  /// session — set right after `addHoldReason` succeeds, cleared once the
+  /// follow-up `updateStatus` also succeeds. Desk posts the comment before
+  /// the status change, so if `updateStatus` throws the comment is already
+  /// on the server; without this guard a retry would post it a second time.
+  String? _holdReasonPostedFor;
+
   Future<void> hold() async {
     if (!actions.contains(SoAction.hold)) return;
     final reason = await showHoldReasonSheet();
     if (reason == null || reason.isEmpty) return;
     await _runAction(SoAction.hold,
         call: () async {
-          await _provider.addHoldReason(name, reason, _email);
+          if (_holdReasonPostedFor != name) {
+            await _provider.addHoldReason(name, reason, _email);
+            _holdReasonPostedFor = name;
+          }
           await _provider.updateStatus(name, 'On Hold');
+          _holdReasonPostedFor = null;
         },
         done: 'Sales Order $name put on hold');
   }
