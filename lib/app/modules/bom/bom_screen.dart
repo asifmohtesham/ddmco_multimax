@@ -50,7 +50,7 @@ class _BomScreenState extends State<BomScreen> {
 
   void _showQuickWoSheet(BuildContext context, BOM bom) {
     Get.bottomSheet(
-      _QuickWoSheet(bom: bom),
+      QuickWoSheet(bom: bom),
       isScrollControlled: true,
     );
   }
@@ -579,15 +579,15 @@ class _BomCard extends StatelessWidget {
 
 // ── Quick Work Order creation sheet ───────────────────────────────────────────
 
-class _QuickWoSheet extends StatefulWidget {
+class QuickWoSheet extends StatefulWidget {
   final BOM bom;
-  const _QuickWoSheet({required this.bom});
+  const QuickWoSheet({super.key, required this.bom});
 
   @override
-  State<_QuickWoSheet> createState() => _QuickWoSheetState();
+  State<QuickWoSheet> createState() => _QuickWoSheetState();
 }
 
-class _QuickWoSheetState extends State<_QuickWoSheet> {
+class _QuickWoSheetState extends State<QuickWoSheet> {
   late final TextEditingController _qtyController;
   DateTime _startDate = DateTime.now();
 
