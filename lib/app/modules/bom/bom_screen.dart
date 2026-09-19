@@ -640,14 +640,13 @@ class _QuickWoSheetState extends State<_QuickWoSheet> {
   Widget build(BuildContext context) {
     final cs   = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final mq   = MediaQuery.of(context);
 
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, mq.viewInsets.bottom + 24),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

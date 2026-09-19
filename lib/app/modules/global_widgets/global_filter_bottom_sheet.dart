@@ -195,7 +195,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
               ),
               child: Text(
                 activeFilterCount > 0
-                    ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
+                    ? 'Apply $activeFilterCount filter${activeFilterCount > 1 ? 's' : ''}'
                     : 'Show Results',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),

@@ -1,1 +1,1 @@
-• Attendance by shift: Morning and Afternoon each show their own status, a missed shift reads Absent as soon as its late cut-off passes, and newly added or enrolled employees appear when you refresh, without reopening the screen.
+• Fixed the Quick Work Order (BOM) and Change Password sheets: with the keyboard open they now sit right above it instead of floating too high, so the buttons respond to taps.

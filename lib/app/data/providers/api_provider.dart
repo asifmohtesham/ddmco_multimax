@@ -421,7 +421,8 @@ class ApiProvider {
   /// returns 403 for ordinary operators (e.g. Stock User), which would leave
   /// the role sets empty and wrongly hide their create/edit buttons; getdoctype
   /// is gated on the target doctype instead, so those users get the rows.
-  Future<({Set<String> create, Set<String> write})> fetchDocTypeRoles(
+  Future<({Set<String> create, Set<String> write, String? module})>
+      fetchDocTypeRoles(
       String doctype) async {
     final response = await callMethod(
       'frappe.desk.form.load.getdoctype',
@@ -430,6 +431,7 @@ class ApiProvider {
     return (
       create: rolesWithPermission(response.data, doctype, 'create'),
       write: rolesWithPermission(response.data, doctype, 'write'),
+      module: docTypeModule(response.data, doctype),
     );
   }
 
@@ -500,6 +502,12 @@ class ApiProvider {
     final writers =
         rolesWithPermission(data, doctype, 'write', permlevel: permlevel);
     return writers.any(userRoles.contains);
+  }
+
+  /// The Frappe module of [doctype] from a `getdoctype` response, or `null`.
+  static String? docTypeModule(dynamic data, String doctype) {
+    final module = _docTypeMeta(data, doctype)?['module'];
+    return module is String && module.isNotEmpty ? module : null;
   }
 
   /// The DocType meta map for [doctype] inside a `getdoctype` response,

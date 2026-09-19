@@ -177,96 +177,92 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
     // Clears the Android system nav bar: the sheet is shown edge-to-edge
     // (Get.bottomSheet, no safe area), so the footer must add this inset or the
     // Done button sits under the nav bar. Goes to 0 when the keyboard is open
-    // (MediaQuery.padding already nets out viewInsets), so it never
-    // double-counts the keyboard lift applied by the outer Padding below.
+    // (MediaQuery.padding already nets out viewInsets). No keyboard Padding
+    // here: Get.bottomSheet already lifts the sheet by viewInsets.bottom, and a
+    // second lift pushes the sheet a keyboard-height above the keyboard.
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
-    return Padding(
-      // Lifts the sheet above the keyboard when the numeric fields focus.
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Text(
-                  'Re-order rule',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: scheme.text,
-                  ),
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Text(
+                'Re-order rule',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: scheme.text,
                 ),
               ),
-              const SizedBox(height: 16),
-              DocPickerField(
-                label: 'Check in (group)',
-                icon: Icons.account_tree_outlined,
-                value: _warehouseGroup,
-                placeholder: 'Same as Request for',
-                helperText: 'Where stock is measured',
-                trailingIcon: Icons.chevron_right,
-                onTap: _loadingWarehouses
-                    ? null
-                    : () => _pickWarehouse(isGroup: true),
-              ),
-              const SizedBox(height: 12),
-              DocPickerField(
-                label: 'Request for',
-                icon: Icons.warehouse_outlined,
-                value: _warehouse.isEmpty ? null : _warehouse,
-                placeholder: 'Select warehouse',
-                helperText: 'Where the Material Request is raised',
-                trailingIcon: Icons.chevron_right,
-                onTap: _loadingWarehouses
-                    ? null
-                    : () => _pickWarehouse(isGroup: false),
-              ),
-              const SizedBox(height: 12),
-              _numberField(context, 'Re-order Level', _levelCtrl),
-              const SizedBox(height: 12),
-              _numberField(context, 'Re-order Qty', _qtyCtrl),
-              const SizedBox(height: 12),
-              DocPickerField(
-                label: 'Material Request Type',
-                icon: Icons.playlist_add_check,
-                value: _type.isEmpty ? null : _type,
-                placeholder: 'Select type',
-                trailingIcon: Icons.chevron_right,
-                onTap: _pickType,
-              ),
-              const SizedBox(height: 20),
-              if (_error != null) ...[
-                Text(
-                  _error!,
-                  key: const ValueKey('reorder-rule-error'),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? AppColors.red300
-                        : AppColors.red700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _save,
-                  child: const Text('Done'),
+            ),
+            const SizedBox(height: 16),
+            DocPickerField(
+              label: 'Check in (group)',
+              icon: Icons.account_tree_outlined,
+              value: _warehouseGroup,
+              placeholder: 'Same as Request for',
+              helperText: 'Where stock is measured',
+              trailingIcon: Icons.chevron_right,
+              onTap: _loadingWarehouses
+                  ? null
+                  : () => _pickWarehouse(isGroup: true),
+            ),
+            const SizedBox(height: 12),
+            DocPickerField(
+              label: 'Request for',
+              icon: Icons.warehouse_outlined,
+              value: _warehouse.isEmpty ? null : _warehouse,
+              placeholder: 'Select warehouse',
+              helperText: 'Where the Material Request is raised',
+              trailingIcon: Icons.chevron_right,
+              onTap: _loadingWarehouses
+                  ? null
+                  : () => _pickWarehouse(isGroup: false),
+            ),
+            const SizedBox(height: 12),
+            _numberField(context, 'Re-order Level', _levelCtrl),
+            const SizedBox(height: 12),
+            _numberField(context, 'Re-order Qty', _qtyCtrl),
+            const SizedBox(height: 12),
+            DocPickerField(
+              label: 'Material Request Type',
+              icon: Icons.playlist_add_check,
+              value: _type.isEmpty ? null : _type,
+              placeholder: 'Select type',
+              trailingIcon: Icons.chevron_right,
+              onTap: _pickType,
+            ),
+            const SizedBox(height: 20),
+            if (_error != null) ...[
+              Text(
+                _error!,
+                key: const ValueKey('reorder-rule-error'),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? AppColors.red300
+                      : AppColors.red700,
                 ),
               ),
               const SizedBox(height: 8),
             ],
-          ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _save,
+                child: const Text('Done'),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );
