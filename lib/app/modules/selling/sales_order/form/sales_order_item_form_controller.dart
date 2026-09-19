@@ -129,6 +129,9 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
     _addListeners();
     captureSnapshot();
     if (row == null) await _loadDetails();
+    // The sheet may have been dismissed (Get.delete → onClose) while the
+    // get_item_details request above was in flight — see _loadDetails.
+    if (isClosed) return;
     validateSheet();
   }
 
@@ -136,6 +139,14 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
   /// ponytail: conversion_rate/plc_conversion_rate sent as 1 (all live docs
   /// are AED in AED); pass real exchange rates if a foreign-currency price
   /// list is ever used.
+  ///
+  /// `openItemSheet` fires this via `unawaited(ctrl.initialise(...))`, so the
+  /// user can dismiss the sheet before the network call returns. `Get.delete`
+  /// disposes `rateController`/`deliveryDateController` on the next frame via
+  /// `onClose`, so every write below is guarded by `isClosed` — matching the
+  /// same guard already used around awaited fetches in
+  /// StockEntryItemFormController.resolveRackWarehouse and
+  /// DeliveryNoteItemFormController.
   Future<void> _loadDetails() async {
     final so = _parent.so.value!;
     isFetchingDetails.value = true;
@@ -157,6 +168,7 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
         'warehouse': warehouse.value,
         'order_type': so.orderType,
       });
+      if (isClosed) return;
       if (itemName.value.isEmpty) itemName.value = d.itemName;
       uom.value = d.uom ?? d.stockUom;
       conversionFactor.value = d.conversionFactor;
@@ -164,11 +176,12 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
       warehouse.value ??= d.warehouse;
       rateController.text = d.rate.toStringAsFixed(2); // listener updates sheetRate
     } catch (e) {
+      if (isClosed) return;
       // Fail open to manual entry; the server re-prices/validates on save.
       detailsError.value =
           'Could not load the price list rate. Enter the rate manually.';
     } finally {
-      isFetchingDetails.value = false;
+      if (!isClosed) isFetchingDetails.value = false;
     }
   }
 
