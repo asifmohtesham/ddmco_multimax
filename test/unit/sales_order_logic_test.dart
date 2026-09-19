@@ -235,4 +235,43 @@ void main() {
       expect(progressFraction(130), 1.0);
     });
   });
+
+  group('resolveIncomingListFilters', () {
+    test('owner equals current email -> mine true, owner stripped, other keys kept', () {
+      final r = resolveIncomingListFilters(
+          {'owner': 'a@b.com', 'status': 'Draft'}, 'a@b.com');
+      expect(r.mine, isTrue);
+      expect(r.filters, {'status': 'Draft'});
+    });
+
+    test('owner is a different user -> mine false, owner kept', () {
+      final r = resolveIncomingListFilters(
+          {'owner': 'other@b.com', 'status': 'Draft'}, 'a@b.com');
+      expect(r.mine, isFalse);
+      expect(r.filters, {'owner': 'other@b.com', 'status': 'Draft'});
+    });
+
+    test('no owner -> mine false, filters unchanged', () {
+      final r = resolveIncomingListFilters({'status': 'Draft'}, 'a@b.com');
+      expect(r.mine, isFalse);
+      expect(r.filters, {'status': 'Draft'});
+    });
+
+    test('null or empty currentEmail with an owner present -> mine false, owner kept', () {
+      final rNull =
+          resolveIncomingListFilters({'owner': 'a@b.com'}, null);
+      expect(rNull.mine, isFalse);
+      expect(rNull.filters, {'owner': 'a@b.com'});
+
+      final rEmpty = resolveIncomingListFilters({'owner': 'a@b.com'}, '');
+      expect(rEmpty.mine, isFalse);
+      expect(rEmpty.filters, {'owner': 'a@b.com'});
+    });
+
+    test('does not mutate the input map', () {
+      final incoming = {'owner': 'a@b.com', 'status': 'Draft'};
+      resolveIncomingListFilters(incoming, 'a@b.com');
+      expect(incoming, {'owner': 'a@b.com', 'status': 'Draft'});
+    });
+  });
 }

@@ -173,3 +173,27 @@ String statusFilterLabel(dynamic value) {
 }
 
 double progressFraction(double percent) => (percent / 100).clamp(0.0, 1.0);
+
+/// Decides how the list controller's `onInit` should treat an incoming
+/// `filters` map (from the dashboard's `openActionableList`, which can be
+/// viewing another user's board). Returns a copy — [incoming] is never
+/// mutated.
+///
+/// If `incoming['owner']` is set and equals [currentEmail] (non-empty), the
+/// owner IS the signed-in user: fold it into the personal `mine` scope and
+/// strip it from the filters (the scope toggle already implies it). Otherwise
+/// — a different owner, no owner, or an unknown/empty [currentEmail] — leave
+/// the filters untouched (including any `owner`), so it renders as an
+/// explicit Owner chip and stays in the query under `everyone` scope.
+({bool mine, Map<String, dynamic> filters}) resolveIncomingListFilters(
+    Map<String, dynamic> incoming, String? currentEmail) {
+  final owner = incoming['owner'];
+  if (owner != null &&
+      currentEmail != null &&
+      currentEmail.isNotEmpty &&
+      owner == currentEmail) {
+    final filters = Map<String, dynamic>.from(incoming)..remove('owner');
+    return (mine: true, filters: filters);
+  }
+  return (mine: false, filters: Map<String, dynamic>.from(incoming));
+}

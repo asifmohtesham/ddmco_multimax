@@ -7,6 +7,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
 
 class SalesOrderController extends GetxController {
   final SalesOrderProvider _provider = Get.find<SalesOrderProvider>();
@@ -38,16 +39,15 @@ class SalesOrderController extends GetxController {
     super.onInit();
     final args = Get.arguments;
     if (args is Map && args['filters'] is Map) {
-      activeFilters.assignAll(Map<String, dynamic>.from(args['filters'] as Map));
       // The dashboard can be viewed as another user (selectedFilterUser), so an
-      // incoming `owner` isn't necessarily the signed-in user: only fold it
-      // into the personal `mine` scope when it IS this user — otherwise keep
-      // it as an explicit Owner filter (chip + query) under `everyone`.
-      final owner = activeFilters['owner'];
-      if (owner != null && owner == _email) {
-        scope.value = ActionableScope.mine;
-        activeFilters.remove('owner');
-      }
+      // incoming `owner` isn't necessarily the signed-in user: resolveIncoming-
+      // ListFilters only folds it into the personal `mine` scope when it IS
+      // this user — otherwise it's kept as an explicit Owner filter (chip +
+      // query) under `everyone`.
+      final r = resolveIncomingListFilters(
+          Map<String, dynamic>.from(args['filters'] as Map), _email);
+      activeFilters.assignAll(r.filters);
+      if (r.mine) scope.value = ActionableScope.mine;
     }
     fetch(clear: true);
     debounce(searchQuery, (_) => fetch(clear: true),
