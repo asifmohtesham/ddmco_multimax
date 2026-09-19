@@ -144,6 +144,15 @@ class ItemDetails {
   final double priceListRate;
   final double rate;
   final String? warehouse;
+  // Pricing-rule inputs (smoke-fix-2, Ruling 10): SO's get_item_details
+  // returns rate: 0 (only Material Request gets rate = price_list_rate
+  // server-side, get_item_details.py:173) — desk derives the row rate
+  // client-side in taxes_and_totals.js apply_pricing_rule_on_item(); these
+  // feed deriveRowRate, which mirrors that.
+  final String? marginType;
+  final double marginRateOrAmount;
+  final double discountPercentage;
+  final double discountAmount;
   const ItemDetails({
     this.itemName = '',
     this.uom,
@@ -152,6 +161,10 @@ class ItemDetails {
     this.priceListRate = 0,
     this.rate = 0,
     this.warehouse,
+    this.marginType,
+    this.marginRateOrAmount = 0,
+    this.discountPercentage = 0,
+    this.discountAmount = 0,
   });
 }
 
@@ -171,8 +184,34 @@ ItemDetails parseItemDetails(dynamic message) {
     priceListRate: d('price_list_rate', 0),
     rate: d('rate', 0),
     warehouse: s('warehouse'),
+    marginType: s('margin_type'),
+    marginRateOrAmount: d('margin_rate_or_amount', 0),
+    discountPercentage: d('discount_percentage', 0),
+    discountAmount: d('discount_amount', 0),
   );
 }
+
+/// Mirrors desk's `taxes_and_totals.js apply_pricing_rule_on_item(item)`:
+/// SO's `get_item_details` always returns `rate: 0` (only Material Request
+/// gets `rate = price_list_rate` server-side), so the row rate is derived
+/// from the price list rate plus any margin/discount here — desk parity,
+/// not client-side pricing. A non-zero `d.rate` (a pricing-rule or
+/// rate-lock source row already resolved one) wins outright.
+double deriveRowRate(ItemDetails d) {
+  if (d.rate > 0) return _round2(d.rate);
+  final effective = d.priceListRate; // blanket_order_rate is out of scope
+  final withMargin = d.marginType == 'Percentage'
+      ? effective + effective * d.marginRateOrAmount / 100
+      : effective + d.marginRateOrAmount;
+  var discountAmount = d.discountAmount;
+  if (d.discountPercentage > 0 && discountAmount == 0) {
+    discountAmount = withMargin * d.discountPercentage / 100;
+  }
+  final rate = discountAmount > 0 ? withMargin - discountAmount : withMargin;
+  return _round2(rate);
+}
+
+double _round2(double v) => (v * 100).round() / 100;
 
 /// Chip text for a `status` filter: `'Draft'` or `['in', [...]]`.
 String statusFilterLabel(dynamic value) {

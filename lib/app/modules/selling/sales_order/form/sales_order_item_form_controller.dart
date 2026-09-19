@@ -149,9 +149,16 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
   }
 
   /// get_item_details: server price-list rate, UOM, conversion, default wh.
+  /// Sales Order's `get_item_details` always returns `rate: 0` (only
+  /// Material Request gets `rate = price_list_rate` server-side); desk
+  /// derives the row rate client-side in `taxes_and_totals.js
+  /// apply_pricing_rule_on_item()`, so `deriveRowRate` mirrors that here —
+  /// desk parity, not client-side pricing.
   /// ponytail: conversion_rate/plc_conversion_rate sent as 1 (all live docs
   /// are AED in AED); pass real exchange rates if a foreign-currency price
-  /// list is ever used.
+  /// list is ever used. We also don't send margin/discount fields back to
+  /// the server (the site has 0 Pricing Rules, so they're always zero); wire
+  /// them into the row payload if Pricing Rules ever come into use.
   ///
   /// `openItemSheet` fires this via `unawaited(ctrl.initialise(...))`, so the
   /// user can dismiss the sheet before the network call returns. `Get.delete`
@@ -187,7 +194,8 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
       conversionFactor.value = d.conversionFactor;
       priceListRate.value = d.priceListRate;
       warehouse.value ??= d.warehouse;
-      rateController.text = d.rate.toStringAsFixed(2); // listener updates sheetRate
+      rateController.text =
+          deriveRowRate(d).toStringAsFixed(2); // listener updates sheetRate
     } catch (e) {
       if (isClosed) return;
       // Fail open to manual entry; the server re-prices/validates on save.

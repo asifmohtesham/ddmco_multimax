@@ -270,6 +270,48 @@ void main() {
     });
   });
 
+  group('deriveRowRate', () {
+    test('plain price list rate, no margin/discount', () {
+      expect(deriveRowRate(const ItemDetails(priceListRate: 15)), 15.0);
+    });
+    test('percentage margin adds a percentage of the price list rate', () {
+      expect(
+          deriveRowRate(const ItemDetails(
+              priceListRate: 100,
+              marginType: 'Percentage',
+              marginRateOrAmount: 10)),
+          110.0);
+    });
+    test('amount margin adds a flat amount', () {
+      expect(
+          deriveRowRate(const ItemDetails(
+              priceListRate: 100,
+              marginType: 'Amount',
+              marginRateOrAmount: 20)),
+          120.0);
+    });
+    test('discount percentage is applied against the margin-adjusted rate', () {
+      expect(
+          deriveRowRate(
+              const ItemDetails(priceListRate: 100, discountPercentage: 10)),
+          90.0);
+    });
+    test('an explicit discount amount takes precedence over the percentage', () {
+      expect(
+          deriveRowRate(const ItemDetails(
+              priceListRate: 100, discountPercentage: 10, discountAmount: 5)),
+          95.0);
+    });
+    test('a non-zero server rate (pricing rule / rate lock) wins outright', () {
+      expect(
+          deriveRowRate(const ItemDetails(priceListRate: 999, rate: 45)),
+          45.0);
+    });
+    test('everything zero yields zero', () {
+      expect(deriveRowRate(const ItemDetails()), 0.0);
+    });
+  });
+
   group('resolveDefaultPriceList', () {
     test('party price list wins when non-empty', () {
       expect(
