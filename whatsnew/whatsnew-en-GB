@@ -1,1 +1,1 @@
-• Attendance by shift: Morning and Afternoon each show their own status, a missed shift reads Absent as soon as its late cut-off passes, and newly added or enrolled employees appear when you refresh, without reopening the screen.
+• The menu now follows your ERPNext workspaces: modules appear in the same order and sections as on the desktop, each screen sits in its own module's workspace, and anything your admin hides for you is hidden here too. The menu opens instantly with your last layout and refreshes in the background.
