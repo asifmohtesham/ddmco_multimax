@@ -184,8 +184,12 @@ class ItemCardData {
 
   /// Maps a [SalesOrderItem] to [ItemCardData].
   ///
-  /// Unlike PO, SO shows rate, amount and warehouse — they are the fields
-  /// reps check when confirming an order.
+  /// `targetQty` is left null: `DocItemProgressBar` computes qty ÷ targetQty
+  /// as a "how much is left to receive" bar, but SO qty is what the customer
+  /// ordered and deliveredQty only shrinks that gap — the same math would
+  /// read a partially-delivered row as if it still needed receiving. Rate,
+  /// amount and warehouse are still populated on the model (unlike PO); only
+  /// warehouse is actually rendered by `DocItemCard` today.
   factory ItemCardData.fromSalesOrderItem(
     SalesOrderItem item, {
     int? index,
@@ -199,7 +203,7 @@ class ItemCardData {
       itemName:      item.itemName.isNotEmpty ? item.itemName : null,
       qty:           item.qty,
       uom:           item.uom,
-      targetQty:     item.deliveredQty,
+      targetQty:     null,
       rate:          item.rate,
       amount:        item.amount,
       warehouse:     item.warehouse,
