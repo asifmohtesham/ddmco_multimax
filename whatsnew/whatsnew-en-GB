@@ -1,1 +1,1 @@
-• Fixed the Re-order rule sheet on the Item form: with the keyboard open the sheet no longer slides up behind the status bar, so its title stays readable and the Done button stays where you tap it.
+• Sort & filter sheets, the item scan sheet, Change Password and several other pop-up sheets no longer slide up behind the status bar when they are tall or the keyboard is open, so their titles stay readable and buttons stay where you tap them.
