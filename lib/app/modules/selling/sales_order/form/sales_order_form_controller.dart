@@ -16,11 +16,13 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/app_constants.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/selling/sales_order/form/sales_order_item_form_controller.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/widgets/hold_reason_sheet.dart';
 import 'package:multimax/app/modules/selling/sales_order/form/widgets/sales_order_item_form_sheet.dart';
 import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
 
@@ -614,6 +616,56 @@ class SalesOrderFormController extends GetxController
       banner.value = e.toString();
     } finally {
       isActing.value = null;
+    }
+  }
+
+  // ── Hold / Resume / Close / Re-open / Make Delivery Note ─────────────────
+  String get _email =>
+      Get.find<AuthenticationController>().currentUser.value?.email ?? '';
+
+  Future<void> hold() async {
+    if (!actions.contains(SoAction.hold)) return;
+    final reason = await showHoldReasonSheet();
+    if (reason == null || reason.isEmpty) return;
+    await _runAction(SoAction.hold,
+        call: () async {
+          await _provider.addHoldReason(name, reason, _email);
+          await _provider.updateStatus(name, 'On Hold');
+        },
+        done: 'Sales Order $name put on hold');
+  }
+
+  Future<void> resume() => _runAction(SoAction.resume,
+      call: () => _provider.updateStatus(name, 'Draft'),
+      done: 'Sales Order $name resumed');
+
+  Future<void> close() => _runAction(SoAction.close,
+      confirm: 'Close $name? It will stop counting as pending delivery.',
+      call: () => _provider.updateStatus(name, 'Closed'),
+      done: 'Sales Order $name closed');
+
+  Future<void> reopen() => _runAction(SoAction.reopen,
+      call: () => _provider.updateStatus(name, 'Draft'),
+      done: 'Sales Order $name re-opened');
+
+  final isMakingDn = false.obs;
+
+  Future<void> makeDeliveryNote() async {
+    if (!actions.contains(SoAction.makeDn) || isActing.value != null) return;
+    isActing.value = SoAction.makeDn.name;
+    isMakingDn.value = true;
+    banner.value = null;
+    try {
+      final dn = await _provider.makeDeliveryNote(name);
+      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+          arguments: {'name': dn, 'mode': 'edit'});
+    } on DioException catch (e) {
+      banner.value = ItemFormController.parseServerMessage(e.response?.data);
+    } catch (e) {
+      banner.value = e.toString();
+    } finally {
+      isActing.value = null;
+      isMakingDn.value = false;
     }
   }
 

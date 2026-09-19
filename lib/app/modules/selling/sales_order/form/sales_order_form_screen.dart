@@ -16,6 +16,7 @@ import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/selling/sales_order/form/sales_order_form_controller.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
 import 'package:multimax/app/modules/selling/sales_order/widgets/so_progress_row.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
@@ -47,6 +48,10 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
       // the header Save icon repaint when a permission probe resolves.
       final canSubmit = controller.canSubmit;
       final canSaveNow = controller.canSaveNow;
+      // actions reads so.value + the permission RxMap/RxnBools; hoisted here
+      // (not inside the Details tab's own Obx) for the same reason canSubmit
+      // is — see the class doc comment.
+      final canMakeDn = controller.actions.contains(SoAction.makeDn);
 
       return PopScope(
         canPop: !isDirty,
@@ -79,6 +84,10 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                     extraActions: [
                       // Carries its own Obx — repaints independently of this
                       // delegate's shouldRebuild (which keys on action count).
+                      // Always present (renders SizedBox.shrink() when empty)
+                      // so that count stays stable and shouldRebuild doesn't
+                      // mis-fire as actions come and go.
+                      const _SoActionsMenu(),
                       RealtimeSyncStatusIcon(
                         isConnected: controller.isRealtimeConnected,
                         isSyncing: controller.isRemoteSyncing,
@@ -96,7 +105,8 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                       ? const Center(child: Text('Not found'))
                       : TabBarView(
                           children: [
-                            _detailsTab(s, isEditable, canSubmit, bannerText),
+                            _detailsTab(
+                                s, isEditable, canSubmit, canMakeDn, bannerText),
                             _itemsTab(s, isEditable),
                           ],
                         ),
@@ -113,6 +123,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
     SalesOrder s,
     bool isEditable,
     bool canSubmit,
+    bool canMakeDn,
     String? bannerText,
   ) {
     return Builder(builder: (context) {
@@ -278,6 +289,18 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                         minimumSize: const Size.fromHeight(48)),
                   ),
                 ],
+                if (canMakeDn) ...[
+                  const SizedBox(height: 20),
+                  AsyncFilledButton(
+                    busy: controller.isMakingDn,
+                    onPressed: controller.makeDeliveryNote,
+                    icon: const Icon(Icons.local_shipping_outlined),
+                    label: 'Create Delivery Note',
+                    loadingLabel: 'Creating…',
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48)),
+                  ),
+                ],
               ]),
             ),
           ),
@@ -425,6 +448,89 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
           onTap: isEditable ? () => controller.openItemSheet(row: item) : null,
           onDelete: isEditable ? () => controller.deleteItem(item) : null,
         ),
+      );
+    });
+  }
+}
+
+// ── Header action menu ──────────────────────────────────────────────────────
+
+/// Lifecycle-action overflow menu for `DocTypeFormHeader.extraActions`.
+/// Carries its own `Obx` (per gotcha-nestedscrollview-form-header.md — the
+/// header delegate's `shouldRebuild` only keys on `extraActions.length`, not
+/// its contents) so Hold/Resume/Close/Re-open/Cancel/Create Delivery Note
+/// enable/disable and the spinner swap repaint independently. It is always
+/// present in the `extraActions` list — rendering `SizedBox.shrink()` when
+/// there is nothing to show — so that length never changes.
+class _SoActionsMenu extends GetView<SalesOrderFormController> {
+  const _SoActionsMenu();
+
+  static const _labels = {
+    SoAction.hold: 'Hold',
+    SoAction.resume: 'Resume',
+    SoAction.close: 'Close',
+    SoAction.reopen: 'Re-open',
+    SoAction.cancel: 'Cancel',
+    SoAction.makeDn: 'Create Delivery Note',
+  };
+
+  static const _destructive = {SoAction.close, SoAction.cancel};
+
+  void _onSelected(SoAction a) {
+    switch (a) {
+      case SoAction.hold:
+        controller.hold();
+      case SoAction.resume:
+        controller.resume();
+      case SoAction.close:
+        controller.close();
+      case SoAction.reopen:
+        controller.reopen();
+      case SoAction.cancel:
+        controller.cancelDocument();
+      case SoAction.makeDn:
+        controller.makeDeliveryNote();
+      case SoAction.save:
+      case SoAction.submit:
+        break; // handled by the header's own Save / Details tab's Submit.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final menuActions = controller.actions
+          .where((a) => a != SoAction.save && a != SoAction.submit)
+          .toList();
+      if (controller.isActing.value != null) {
+        return const Padding(
+          padding: EdgeInsets.all(12),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+      if (menuActions.isEmpty) return const SizedBox.shrink();
+      final destructiveColor = Theme.of(context).brightness == Brightness.dark
+          ? AppColors.red300
+          : AppColors.red700;
+      return PopupMenuButton<SoAction>(
+        icon: const Icon(Icons.more_vert),
+        onSelected: _onSelected,
+        itemBuilder: (context) => [
+          for (final a in menuActions)
+            PopupMenuItem(
+              value: a,
+              child: Text(
+                _labels[a] ?? a.name,
+                style: _destructive.contains(a)
+                    ? TextStyle(color: destructiveColor)
+                    : null,
+              ),
+            ),
+        ],
       );
     });
   }
