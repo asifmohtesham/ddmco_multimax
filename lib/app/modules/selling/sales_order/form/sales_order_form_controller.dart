@@ -14,11 +14,14 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/app_constants.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/sales_order_item_form_controller.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/widgets/sales_order_item_form_sheet.dart';
 import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
 
 /// Sales Order form controller. Mirrors PurchaseOrderFormController's
@@ -380,8 +383,11 @@ class SalesOrderFormController extends GetxController
     return true;
   }
 
-  void addItem(SalesOrderItem row) {
-    if (_blockIfSaving()) return;
+  /// Returns true when the row was applied, false when refused (a save was
+  /// in flight) — the item sheet's submit() only closes on true so a refused
+  /// add/update doesn't silently drop the user's input.
+  bool addItem(SalesOrderItem row) {
+    if (_blockIfSaving()) return false;
     // Every row needs a non-null unique id: updateItem/deleteItem and the
     // Items tab's Dismissible/highlight keys all match by `name`, and two
     // null-named rows would be indistinguishable to them. Server rows always
@@ -394,14 +400,16 @@ class SalesOrderFormController extends GetxController
     ensureItemKey(named);
     triggerHighlight(named.name!);
     saveDocument();
+    return true;
   }
 
-  void updateItem(SalesOrderItem row) {
-    if (_blockIfSaving()) return;
+  bool updateItem(SalesOrderItem row) {
+    if (_blockIfSaving()) return false;
     final s = so.value!;
     _apply(s.copyWith(
         items: s.items.map((i) => i.name == row.name ? row : i).toList()));
     saveDocument();
+    return true;
   }
 
   void deleteItem(SalesOrderItem row) {
@@ -459,11 +467,36 @@ class SalesOrderFormController extends GetxController
   }
 
   // ── Item sheet ─────────────────────────────────────────────────────────
-  /// Stub for Task 4 so the Items tab compiles and wires onTap/onDelete/
-  /// scan/"Add item" flows. Task 5 replaces this with the real sheet
-  /// (Get.lazyPut<...>(tag: kSoItemSheetTag) + Get.bottomSheet), calling
-  /// back into addItem/updateItem above.
-  void openItemSheet({SalesOrderItem? row, String? itemCode}) {}
+  /// Opens the add/edit item sheet. Item prices depend on the customer
+  /// (get_item_details needs `customer` + `selling_price_list`), so this
+  /// refuses to open until one is set.
+  Future<void> openItemSheet({SalesOrderItem? row, String? itemCode}) async {
+    if (!isEditable || isItemSheetOpen.value || Get.isBottomSheetOpen == true) {
+      return;
+    }
+    if (so.value!.customer.isEmpty) {
+      banner.value = 'Select a customer first — item prices depend on it.';
+      return;
+    }
+    Get.lazyPut<SalesOrderItemFormController>(
+        () => SalesOrderItemFormController(),
+        tag: kSoItemSheetTag, fenix: true);
+    final ctrl = Get.find<SalesOrderItemFormController>(tag: kSoItemSheetTag);
+    isItemSheetOpen.value = true;
+    unawaited(ctrl.initialise(parent: this, row: row, itemCode: itemCode));
+    await Get.bottomSheet(
+      DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, sc) => SalesOrderItemFormSheet(scrollController: sc),
+      ),
+      isScrollControlled: true,
+    );
+    isItemSheetOpen.value = false;
+    Get.delete<SalesOrderItemFormController>(tag: kSoItemSheetTag);
+  }
 
   // ── Save ───────────────────────────────────────────────────────────────
   @override
