@@ -28,12 +28,15 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
   final priceListRate = 0.0.obs;
   final conversionFactor = 1.0.obs;
   final sheetRate = 0.0.obs;
+  // Mirrors qtyController.text as an Rx so the Estimated Amount tile's Obx
+  // (which only reads Rx values) repaints on every qty keystroke, not just
+  // rate changes — see F6.
+  final sheetQty = 0.0.obs;
   final isFetchingDetails = false.obs;
   final detailsError = RxnString();
   final rowErrors = <String, String>{}.obs; // from validateRow; field errors
 
-  double get sheetAmount =>
-      (double.tryParse(qtyController.text) ?? 0) * sheetRate.value; // estimate only
+  double get sheetAmount => sheetQty.value * sheetRate.value; // estimate only
 
   // ── ItemSheetControllerBase abstract overrides ──────────────────────────
 
@@ -74,16 +77,25 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
   void _addListeners() {
     rateController.addListener(_onRateChanged);
     deliveryDateController.addListener(validateSheet);
+    qtyController.addListener(_onQtyChanged);
   }
 
   void _removeListeners() {
     rateController.removeListener(_onRateChanged);
     deliveryDateController.removeListener(validateSheet);
+    qtyController.removeListener(_onQtyChanged);
   }
 
   void _onRateChanged() {
     sheetRate.value = double.tryParse(rateController.text) ?? 0.0;
     validateSheet();
+  }
+
+  // qtyController's other listener (validateSheet, wired by the base class's
+  // addSheetListeners) already re-validates on every keystroke; this only
+  // needs to keep sheetQty in sync for the Estimated Amount tile.
+  void _onQtyChanged() {
+    sheetQty.value = double.tryParse(qtyController.text) ?? 0.0;
   }
 
   String _fmtQty(double q) =>
@@ -116,6 +128,7 @@ class SalesOrderItemFormController extends ItemSheetControllerBase {
     this.itemCode.value = row?.itemCode ?? itemCode ?? '';
     itemName.value = row?.itemName ?? '';
     qtyController.text = _fmtQty(row?.qty ?? 1);
+    sheetQty.value = row?.qty ?? 1;
     rateController.text = (row?.rate ?? 0).toStringAsFixed(2);
     sheetRate.value = row?.rate ?? 0;
     priceListRate.value = row?.priceListRate ?? 0;
