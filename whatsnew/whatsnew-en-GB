@@ -1,1 +1,1 @@
-• Internal quality release: added an automated check that keeps the Quick Work Order sheet sitting correctly above the keyboard. No changes to how the app works.
+• Fixed the Re-order rule sheet on the Item form: with the keyboard open the sheet no longer slides up behind the status bar, so its title stays readable and the Done button stays where you tap it.
