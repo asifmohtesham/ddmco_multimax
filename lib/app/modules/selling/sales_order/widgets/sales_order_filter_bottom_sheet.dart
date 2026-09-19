@@ -7,6 +7,7 @@ import 'package:multimax/app/modules/global_widgets/link_search_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/user_picker_sheet.dart';
 import 'package:multimax/app/modules/selling/sales_order/sales_order_controller.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
 
 class SalesOrderFilterBottomSheet extends StatefulWidget {
   const SalesOrderFilterBottomSheet({super.key});
@@ -27,6 +28,13 @@ class _SalesOrderFilterBottomSheetState
   final owner = RxnString();
   final ownerName = RxnString();
 
+  /// The incoming `status` filter when it wasn't a plain String — e.g. the
+  /// dashboard's `['in', [...]]`. Kept so Apply can write it back unchanged
+  /// when the user doesn't pick a new status from the picker (otherwise it
+  /// would silently vanish the moment any other field changes and the user
+  /// taps Apply — see F4).
+  dynamic _originalNonStringStatus;
+
   @override
   void initState() {
     super.initState();
@@ -36,13 +44,17 @@ class _SalesOrderFilterBottomSheetState
     final c = f['customer'];
     if (c is String && c.isNotEmpty) customer.value = c;
     final s = f['status'];
-    if (s is String && s.isNotEmpty) status.value = s;
-    final range = f['delivery_date'];
-    if (range is List && range.length == 2 && range[1] is List) {
-      final bounds = range[1] as List;
-      if (bounds.isNotEmpty) from.value = bounds[0]?.toString();
-      if (bounds.length > 1) to.value = bounds[1]?.toString();
+    if (s is String && s.isNotEmpty) {
+      status.value = s;
+    } else if (s != null) {
+      _originalNonStringStatus = s;
     }
+    // Restores all three shapes the list/dashboard can send: a two-sided
+    // ['between', [from, to]], or a one-sided ['>=', d] / ['<=', d] — the
+    // one-sided forms used to be dropped entirely (F4).
+    final parsed = parseDeliveryDateFilter(f['delivery_date']);
+    from.value = parsed.from;
+    to.value = parsed.to;
     final o = f['owner'];
     if (o is String && o.isNotEmpty) {
       owner.value = o;
@@ -51,13 +63,15 @@ class _SalesOrderFilterBottomSheetState
     }
   }
 
-  int get _activeCount => [
+  int get _activeCount =>
+      [
         customer.value,
         status.value,
         from.value,
         to.value,
         owner.value,
-      ].where((v) => v != null && v.isNotEmpty).length;
+      ].where((v) => v != null && v.isNotEmpty).length +
+      (status.value == null && _originalNonStringStatus != null ? 1 : 0);
 
   Future<void> _pickDate(RxnString target) async {
     final picked = await showDatePicker(
@@ -74,7 +88,13 @@ class _SalesOrderFilterBottomSheetState
   void _applyFilters() {
     final f = <String, dynamic>{};
     if ((customer.value ?? '').isNotEmpty) f['customer'] = customer.value;
-    if ((status.value ?? '').isNotEmpty) f['status'] = status.value;
+    if ((status.value ?? '').isNotEmpty) {
+      f['status'] = status.value;
+    } else if (_originalNonStringStatus != null) {
+      // The user didn't pick a new status via the picker — keep whatever
+      // non-String filter (e.g. the dashboard's ['in', [...]]) came in.
+      f['status'] = _originalNonStringStatus;
+    }
     if ((owner.value ?? '').isNotEmpty) f['owner'] = owner.value;
 
     final f0 = from.value;
@@ -94,6 +114,7 @@ class _SalesOrderFilterBottomSheetState
   void _clear() {
     customer.value = null;
     status.value = null;
+    _originalNonStringStatus = null;
     from.value = null;
     to.value = null;
     owner.value = null;
@@ -127,7 +148,10 @@ class _SalesOrderFilterBottomSheetState
             Obx(() => DocPickerField(
                   label: 'Status',
                   icon: Icons.flag_outlined,
-                  value: status.value,
+                  value: status.value ??
+                      (_originalNonStringStatus != null
+                          ? statusFilterLabel(_originalNonStringStatus)
+                          : null),
                   onTap: () => showOptionPickerSheet(
                     context,
                     title: 'Status',
