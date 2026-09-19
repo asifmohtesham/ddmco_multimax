@@ -1,1 +1,1 @@
-• Fixed the Re-order rule sheet on the Item form: when the keyboard opens for Re-order Level or Qty, the sheet now sits right above the keyboard and the Done button responds to taps.
+• Fixed the Quick Work Order (BOM) and Change Password sheets: with the keyboard open they now sit right above it instead of floating too high, so the buttons respond to taps.
