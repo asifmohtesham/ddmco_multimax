@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/modules/purchase_order/form/po_receipt_helpers.dart';
 
 /// Bottom sheet shown when a Purchase Order already has open draft Purchase
@@ -23,6 +24,9 @@ class PurchaseReceiptResumeSheet extends StatelessWidget {
 
     return SafeArea(
       child: Container(
+        // The draft list is data-driven, so a long one would otherwise push the
+        // sheet's header up behind the status bar.
+        margin: EdgeInsets.only(top: sheetStatusBarInset(context)),
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28.0)),

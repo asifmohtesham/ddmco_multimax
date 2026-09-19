@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 
 /// Single-choice bottom sheet: title + close, one row per option, a check on
 /// [selected]. Extracted from the ToDo form so the pricing forms reuse it.
@@ -11,23 +12,28 @@ void showOptionPickerSheet(
   required ValueChanged<String> onSelected,
 }) {
   Get.bottomSheet(
-    SafeArea(
-      child: OptionPickerSheetShell(
-        title: title,
-        mainAxisSize: MainAxisSize.min,
-        child: Column(
+    // Uncapped: one row per option, so a long list would run under the status
+    // bar. Callers that nest the shell in a DraggableScrollableSheet are
+    // already capped and must not add this.
+    SheetStatusBarGap(
+      child: SafeArea(
+        child: OptionPickerSheetShell(
+          title: title,
           mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final option in options)
-              ListTile(
-                title: Text(option),
-                trailing: option == selected ? const Icon(Icons.check) : null,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  onSelected(option);
-                },
-              ),
-          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final option in options)
+                ListTile(
+                  title: Text(option),
+                  trailing: option == selected ? const Icon(Icons.check) : null,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onSelected(option);
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     ),

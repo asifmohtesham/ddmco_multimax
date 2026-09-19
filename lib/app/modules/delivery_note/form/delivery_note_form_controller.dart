@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
@@ -735,6 +736,7 @@ class _MultipleMatchSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     return Container(
+      margin: EdgeInsets.only(top: sheetStatusBarInset(context)),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: scheme.fg,

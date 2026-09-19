@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
@@ -201,6 +202,9 @@ class UserProfileScreen extends GetView<UserProfileController> {
 
     Get.bottomSheet(
       Obx(() => Container(
+            // Three password fields with the keyboard up fill the sheet; without
+            // this the header would sit behind the status bar.
+            margin: EdgeInsets.only(top: sheetStatusBarInset(context)),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: s.fg,

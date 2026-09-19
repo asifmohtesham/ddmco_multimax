@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 
 /// KeyboardSafeBottomSheet
 ///
@@ -32,6 +33,7 @@ class KeyboardSafeBottomSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: EdgeInsets.only(top: sheetStatusBarInset(context)),
       padding: padding,
       decoration: BoxDecoration(
         color: backgroundColor ?? Theme.of(context).colorScheme.surface,

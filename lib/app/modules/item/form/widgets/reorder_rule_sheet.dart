@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -181,14 +182,8 @@ class _ReorderRuleSheetState extends State<ReorderRuleSheet> {
     // here: Get.bottomSheet already lifts the sheet by viewInsets.bottom, and a
     // second lift pushes the sheet a keyboard-height above the keyboard.
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    // Keeps a tall sheet (keyboard open, content scrolling) clear of the status
-    // bar. Read from the view, not MediaQuery: Get.bottomSheet pushes its route
-    // with removeTop: true, which zeroes both padding.top and viewPadding.top,
-    // so a SafeArea here would collapse to nothing.
-    final topInset = MediaQueryData.fromView(View.of(context)).padding.top;
 
-    return Padding(
-      padding: EdgeInsets.only(top: topInset),
+    return SheetStatusBarGap(
       child: Container(
         padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
         decoration: BoxDecoration(

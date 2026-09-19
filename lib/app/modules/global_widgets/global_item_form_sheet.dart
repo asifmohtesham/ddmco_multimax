@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -514,7 +515,9 @@ class GlobalItemFormSheet extends StatelessWidget {
     final theme       = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final mediaQuery  = MediaQuery.of(context);
-    final topPadding  = mediaQuery.viewPadding.top;
+    // From the view: Get.bottomSheet's removeTop: true zeroes viewPadding.top
+    // here, which left sheetMargin below at a bare 12px.
+    final topPadding  = sheetStatusBarInset(context);
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
     // Drag handle — sits on the same surface as the sheet body.

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
 import 'package:multimax/app/data/models/job_card_employee_model.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
@@ -1432,6 +1433,7 @@ class _EditTimeLogSheetState extends State<_EditTimeLogSheet> {
       bottom: false,
       child: Padding(
         padding: EdgeInsets.only(
+          top: sheetStatusBarInset(context),
           bottom: isKeyboardOpen ? 0 : navBarHeight,
         ),
         child: SingleChildScrollView(
@@ -1635,6 +1637,7 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
         // Only add nav bar clearance when keyboard is CLOSED.
         // Flutter already lifts the sheet above the keyboard automatically.
         padding: EdgeInsets.only(
+          top: sheetStatusBarInset(context),
           bottom: isKeyboardOpen ? 0 : navBarHeight,
         ),
         child: SingleChildScrollView(
