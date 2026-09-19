@@ -1,1 +1,3 @@
-• Fixed the Quick Work Order (BOM) and Change Password sheets: with the keyboard open they now sit right above it instead of floating too high, so the buttons respond to taps.
+• New: Sales Order. Browse and filter orders, see delivery and billing progress, and create a draft with items priced from your price list.
+• Submit an order, put it on hold with a reason, resume, close or re-open it, and create its Delivery Note in one tap.
+• Sales Orders now appear in search, on the dashboard and in the daily digest, and reserved stock in Stock Balance opens the order that reserved it.
