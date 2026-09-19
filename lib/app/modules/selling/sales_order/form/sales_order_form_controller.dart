@@ -1,0 +1,496 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:dio/dio.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/enums/save_result.dart';
+import 'package:multimax/app/data/models/sales_order_model.dart';
+import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
+import 'package:multimax/app/data/providers/sales_order_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/data_wedge_service.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/modules/item/form/item_form_controller.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
+
+/// Sales Order form controller. Mirrors PurchaseOrderFormController's
+/// structure (args parsing, optimistic locking + realtime sync, save-result
+/// timer, highlight/scroll keys, dirty-guard) with SO-specific perms/actions.
+///
+/// Rx reads that feed `headerSliverBuilder` (so, isDirty, isSaving,
+/// saveResult, isLoading, actions, canSubmit, canSaveNow, banner) MUST be
+/// hoisted into the outer `Obx` builder body in the screen — see
+/// gotcha-nestedscrollview-form-header.md.
+class SalesOrderFormController extends GetxController
+    with OptimisticLockingMixin, RealtimeSyncMixin {
+  final SalesOrderProvider _provider = Get.find<SalesOrderProvider>();
+  final StorageService _storage = Get.find<StorageService>();
+  final PermissionService _perm = Get.find<PermissionService>();
+  final ScanService _scanService = Get.find<ScanService>();
+  final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+
+  // ---------------------------------------------------------------------------
+  // Arguments
+  // ---------------------------------------------------------------------------
+
+  // Mutable: after the first POST the controller adopts the saved name and
+  // flips to 'edit' in place (Get.offNamed to the SAME route is dropped by
+  // GetX's preventDuplicates, so we don't navigate).
+  late String name;
+  late String mode;
+  SalesOrderFormController() {
+    final a = Get.arguments;
+    name = a is Map ? (a['name'] ?? '') : (a is String ? a : '');
+    mode = a is Map ? (a['mode'] ?? 'view') : (a is String ? 'view' : 'new');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Document state
+  // ---------------------------------------------------------------------------
+
+  final isLoading = true.obs;
+  @override final isSaving = false.obs;
+  @override final isDirty = false.obs;
+  final isSubmitting = false.obs;
+  final isActing = RxnString(); // SoAction.name in flight
+  final isItemSheetOpen = false.obs;
+  final isScanning = false.obs;
+  final banner = RxnString(); // server error text, cleared on next action
+  final so = Rx<SalesOrder?>(null);
+  SalesOrder? _original;
+
+  // Per-doc perms for submitted actions; null = unresolved (fail closed).
+  final canSubmitPerm = RxnBool();
+  final canCancelPerm = RxnBool();
+
+  @override String get realtimeDoctype => 'Sales Order';
+  @override String get realtimeDocname => name;
+
+  final saveResult = SaveResult.idle.obs;
+  Timer? _saveResultTimer;
+
+  bool get isEditable => (so.value?.docstatus ?? 1) == 0;
+
+  SoPerms get perms => SoPerms(
+        write: mode == 'new'
+            ? _perm.hasAccess('Sales Order', permType: 'create')
+            : _perm.hasAccess('Sales Order', permType: 'write'),
+        submit: canSubmitPerm.value,
+        cancel: canCancelPerm.value,
+        createDn: _perm.hasAccess('Delivery Note', permType: 'create'),
+      );
+
+  Set<SoAction> get actions {
+    final s = so.value;
+    return s == null ? const {} : allowedActions(s, perms);
+  }
+
+  /// Header Save is enabled only when a save could succeed server-side.
+  bool get canSaveNow {
+    final s = so.value;
+    return s != null && s.customer.isNotEmpty && s.items.isNotEmpty;
+  }
+
+  /// Draft may be submitted only when saved and clean (SE computeCanSubmit).
+  bool get canSubmit =>
+      actions.contains(SoAction.submit) &&
+      mode != 'new' && !isDirty.value && !isSaving.value && !isSubmitting.value;
+
+  // ---------------------------------------------------------------------------
+  // Item feedback / scroll (mirrors PO — driven once the item sheet, Task 5,
+  // calls addItem/updateItem/deleteItem below)
+  // ---------------------------------------------------------------------------
+
+  // No stored ScrollController: the Items tab's CustomScrollView must inherit
+  // NestedScrollView's PrimaryScrollController (an explicit one here would
+  // desync it from the pinned-header collapse/injector coordination).
+  // Scrollable.ensureVisible below walks up from the item's own context and
+  // needs no controller reference.
+  final recentlyAddedItemName = ''.obs;
+  final Map<String, GlobalKey> itemKeys = {};
+  final barcodeController = TextEditingController();
+
+  /// Customer's PO No text field — seeded once per document load (here, not
+  /// re-set on every keystroke's rebuild) so the cursor/focus survive the
+  /// `_apply`-driven Obx rebuild that follows each `onChanged`.
+  final poNoController = TextEditingController();
+
+  void ensureItemKey(SalesOrderItem item) {
+    final key = item.name;
+    if (key != null && !itemKeys.containsKey(key)) {
+      itemKeys[key] = GlobalKey();
+    }
+  }
+
+  void triggerHighlight(String uniqueId) {
+    recentlyAddedItemName.value = uniqueId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        final key = itemKeys[uniqueId];
+        if (key?.currentContext != null) {
+          Scrollable.ensureVisible(
+            key!.currentContext!,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOut,
+            alignment: 0.5,
+          );
+        }
+      });
+    });
+    Future.delayed(const Duration(seconds: 2), () {
+      recentlyAddedItemName.value = '';
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // DataWedge scan worker
+  // ---------------------------------------------------------------------------
+
+  Worker? _scanWorker;
+
+  void _onRawScan(String code) {
+    if (code.isEmpty) return;
+    if (Get.currentRoute != AppRoutes.SALES_ORDER_FORM) return;
+    final clean = code.trim();
+    barcodeController.text = clean;
+    scanBarcode(clean);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  @override
+  void onInit() {
+    super.onInit();
+    _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+    if (mode == 'new') {
+      final today = FormattingHelper.formatDate(DateTime.now());
+      so.value = SalesOrder.blank(
+          transactionDate: today, company: _storage.getCompany());
+      _original = null;
+      isDirty.value = true;
+      isLoading.value = false;
+      poNoController.text = '';
+    } else {
+      fetchDocument().then((_) => initRealtimeSync());
+    }
+  }
+
+  @override
+  void onClose() {
+    disposeRealtimeSync();
+    _scanWorker?.dispose();
+    _saveResultTimer?.cancel();
+    poNoController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
+    super.onClose();
+  }
+
+  Future<void> fetchDocument() async {
+    isLoading.value = true;
+    try {
+      final res = await _provider.getSalesOrder(name);
+      final data = (res.data is Map) ? res.data['data'] : null;
+      if (res.statusCode == 200 && data is Map) {
+        _setLoaded(SalesOrder.fromJson(Map<String, dynamic>.from(data)));
+        await _refreshDocPerms();
+      } else {
+        GlobalDialog.showError(
+            title: 'Could not load Sales Order',
+            message: 'The server returned an unexpected response.',
+            onRetry: fetchDocument);
+      }
+    } catch (e) {
+      GlobalDialog.showError(
+          title: 'Could not load Sales Order',
+          message: e.toString(),
+          onRetry: fetchDocument);
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  void _setLoaded(SalesOrder s) {
+    so.value = s;
+    _original = s;
+    isDirty.value = false;
+    poNoController.text = s.poNo ?? '';
+  }
+
+  void _setSaveResult(SaveResult result) {
+    _saveResultTimer?.cancel();
+    saveResult.value = result;
+    _saveResultTimer = Timer(const Duration(seconds: 2), () {
+      saveResult.value = SaveResult.idle;
+    });
+  }
+
+  /// Submit (draft) or submit+cancel (submitted) per document; fail-closed.
+  Future<void> _refreshDocPerms() async {
+    final s = so.value;
+    if (s == null || s.name.isEmpty || s.docstatus == 2) {
+      canSubmitPerm.value = false;
+      canCancelPerm.value = false;
+      return;
+    }
+    final r = await Future.wait([
+      _provider.hasDocPerm(s.name, 'submit'),
+      s.docstatus == 1 ? _provider.hasDocPerm(s.name, 'cancel') : Future.value(false),
+    ]);
+    canSubmitPerm.value = r[0];
+    canCancelPerm.value = r[1];
+  }
+
+  @override
+  Future<void> reloadDocument() async {
+    isStale.value = false;
+    await fetchDocument();
+  }
+
+  // ── Mutations ──────────────────────────────────────────────────────────
+  void _apply(SalesOrder next) {
+    so.value = next;
+    isDirty.value = mode == 'new' || _original == null || isSoDirty(_original!, next);
+    if (isDirty.value) scheduleAutoSave();
+  }
+
+  Future<void> setCustomer(String customer) async {
+    final s = so.value;
+    if (s == null || !isEditable) return;
+    _apply(s.copyWith(customer: customer, customerName: customer));
+    // Desk's customer trigger: pull price list + currency from the party.
+    try {
+      final p = await _provider.getPartyDetails(
+          customer: customer, company: s.company ?? _storage.getCompany());
+      final cur = so.value!;
+      _apply(cur.copyWith(
+        customerName: (p['customer_name'] ?? customer).toString(),
+        sellingPriceList: p['selling_price_list']?.toString(),
+        currency: p['currency']?.toString(),
+      ));
+    } catch (_) {
+      // Fail-open: the server fills the price list on save.
+    }
+  }
+
+  void setHeader({
+    String? transactionDate,
+    String? deliveryDate,
+    String? orderType,
+    String? setWarehouse,
+    String? poNo,
+  }) {
+    final s = so.value;
+    if (s == null || !isEditable) return;
+    _apply(s.copyWith(
+      transactionDate: transactionDate,
+      deliveryDate: deliveryDate,
+      orderType: orderType,
+      setWarehouse: setWarehouse,
+      poNo: poNo,
+    ));
+  }
+
+  void addItem(SalesOrderItem row) {
+    final s = so.value!;
+    _apply(s.copyWith(items: [...s.items, row]));
+    ensureItemKey(row);
+    if (row.name != null) triggerHighlight(row.name!);
+    saveDocument();
+  }
+
+  void updateItem(SalesOrderItem row) {
+    final s = so.value!;
+    _apply(s.copyWith(
+        items: s.items.map((i) => i.name == row.name ? row : i).toList()));
+    saveDocument();
+  }
+
+  void deleteItem(SalesOrderItem row) {
+    GlobalDialog.showConfirmation(
+      title: 'Remove Item?',
+      message: 'Remove ${row.itemCode} from this order?',
+      onConfirm: () {
+        final s = so.value!;
+        _apply(s.copyWith(
+            items: s.items.where((i) => i.name != row.name).toList()));
+        saveDocument();
+      },
+    );
+  }
+
+  // ── Scan ───────────────────────────────────────────────────────────────
+  /// Resolves a scanned/typed barcode to an item and opens the item sheet.
+  /// The sheet itself (add/edit qty, rate, warehouse) is built in Task 5;
+  /// today this only resolves the item code and hands off to the stub.
+  Future<void> scanBarcode(String barcode) async {
+    if (!isEditable) {
+      GlobalSnackbar.warning(
+          message: 'Document is submitted and cannot be edited.');
+      return;
+    }
+    if (barcode.isEmpty) return;
+    if (isItemSheetOpen.value) return;
+
+    isScanning.value = true;
+    try {
+      final result = await _scanService.processScan(barcode);
+      if (result.isSuccess && result.itemData != null) {
+        openItemSheet(itemCode: result.itemData!.itemCode);
+      } else if (result.type == ScanType.multiple && result.candidates != null) {
+        barcodeController.clear();
+        Get.bottomSheet(
+          MultiItemSelectionSheet(
+            items: result.candidates!,
+            onItemSelected: (item) => openItemSheet(itemCode: item.itemCode),
+          ),
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+        );
+      } else {
+        GlobalSnackbar.error(message: result.message ?? 'Item not found');
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Scan failed: $e');
+    } finally {
+      isScanning.value = false;
+      barcodeController.clear();
+    }
+  }
+
+  // ── Item sheet ─────────────────────────────────────────────────────────
+  /// Stub for Task 4 so the Items tab compiles and wires onTap/onDelete/
+  /// scan/"Add item" flows. Task 5 replaces this with the real sheet
+  /// (Get.lazyPut<...>(tag: kSoItemSheetTag) + Get.bottomSheet), calling
+  /// back into addItem/updateItem above.
+  void openItemSheet({SalesOrderItem? row, String? itemCode}) {}
+
+  // ── Save ───────────────────────────────────────────────────────────────
+  @override
+  Future<void> saveDocument() async {
+    final s = so.value;
+    if (s == null || !isEditable) return;
+    if (checkStaleAndBlock()) return;
+    if (!isDirty.value && mode != 'new') return;
+    if (isSaving.value) return;
+    // `items` is reqd in the live meta, so a header-only draft can never save;
+    // skip silently (autosave fires while the header is still being filled).
+    if (!canSaveNow) return;
+
+    final errors = validateOrder(s);
+    if (errors.isNotEmpty) {
+      banner.value = errors.values.join('\n');
+      return;
+    }
+    banner.value = null;
+    isSaving.value = true;
+    try {
+      final isNew = mode == 'new';
+      final res = isNew
+          ? await _provider.create(buildPayload(s))
+          : await _provider.update(s.name, buildPayload(s));
+      final data = (res.data is Map) ? res.data['data'] : null;
+      if (res.statusCode == 200 && data is Map) {
+        final saved = SalesOrder.fromJson(Map<String, dynamic>.from(data));
+        if (isNew) {
+          name = saved.name;
+          mode = 'edit';
+        }
+        _setLoaded(saved);
+        if (isNew) await startRealtimeSyncAfterCreate();
+        await _refreshDocPerms();
+        GlobalSnackbar.success(message: 'Sales Order saved');
+        _setSaveResult(SaveResult.success);
+      } else {
+        _setSaveResult(SaveResult.error);
+      }
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) return;
+      banner.value = ItemFormController.parseServerMessage(e.response?.data);
+      _setSaveResult(SaveResult.error);
+    } catch (e) {
+      banner.value = e.toString();
+      _setSaveResult(SaveResult.error);
+    } finally {
+      isSaving.value = false;
+    }
+  }
+
+  // ── Submit / Cancel ─────────────────────────────────────────────────────
+  Future<void> submitDocument() async {
+    if (!canSubmit) return;
+    final errors = validateOrder(so.value!);
+    if (errors.isNotEmpty) {
+      banner.value = errors.values.join('\n');
+      return;
+    }
+    final ok = await GlobalDialog.confirm(
+        title: 'Confirm',
+        message: 'Permanently Submit $name?',
+        confirmText: 'Yes',
+        confirmColor: AppColors.blue600);
+    if (ok != true) return;
+    isSubmitting.value = true;
+    banner.value = null;
+    try {
+      await _provider.submit(name);
+      await fetchDocument();
+      GlobalSnackbar.success(message: 'Sales Order $name submitted');
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) return;
+      banner.value = ItemFormController.parseServerMessage(e.response?.data);
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
+  Future<void> cancelDocument() => _runAction(SoAction.cancel,
+      confirm: 'Permanently Cancel $name?',
+      call: () => _provider.cancel(name),
+      done: 'Sales Order $name cancelled');
+
+  /// Shared runner for cancel + lifecycle actions (Task 6 adds the others).
+  Future<void> _runAction(
+    SoAction a, {
+    String? confirm,
+    required Future<dynamic> Function() call,
+    required String done,
+  }) async {
+    if (!actions.contains(a) || isActing.value != null) return;
+    if (confirm != null) {
+      final ok = await GlobalDialog.confirm(
+          title: 'Confirm', message: confirm, confirmText: 'Yes',
+          confirmColor: AppColors.red500);
+      if (ok != true) return;
+    }
+    isActing.value = a.name;
+    banner.value = null;
+    try {
+      await call();
+      await fetchDocument();
+      GlobalSnackbar.success(message: done);
+    } on DioException catch (e) {
+      banner.value = ItemFormController.parseServerMessage(e.response?.data);
+    } catch (e) {
+      banner.value = e.toString();
+    } finally {
+      isActing.value = null;
+    }
+  }
+
+  Future<void> confirmDiscard() async => GlobalDialog.showUnsavedChanges(
+        onDiscard: () {
+          isDirty.value = false;
+          Get.back();
+        },
+      );
+}

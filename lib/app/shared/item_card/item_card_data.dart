@@ -2,6 +2,7 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
+import 'package:multimax/app/data/models/sales_order_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 
 /// Canonical, immutable data contract for a single line-item card
@@ -178,6 +179,36 @@ class ItemCardData {
       warehouseLabel: null,
       isEditable:     isEditable,
       isHighlighted:  isHighlighted,
+    );
+  }
+
+  /// Maps a [SalesOrderItem] to [ItemCardData].
+  ///
+  /// Unlike PO, SO shows rate, amount and warehouse — they are the fields
+  /// reps check when confirming an order.
+  factory ItemCardData.fromSalesOrderItem(
+    SalesOrderItem item, {
+    int? index,
+    required bool isEditable,
+    bool isHighlighted = false,
+  }) {
+    return ItemCardData(
+      rowName:       item.name,
+      index:         index,
+      itemCode:      item.itemCode,
+      itemName:      item.itemName.isNotEmpty ? item.itemName : null,
+      qty:           item.qty,
+      uom:           item.uom,
+      targetQty:     item.deliveredQty,
+      rate:          item.rate,
+      amount:        item.amount,
+      warehouse:     item.warehouse,
+      toWarehouse:   null,
+      qtyLabel:      'Qty',
+      rateLabel:     'Rate',
+      warehouseLabel: 'Warehouse',
+      isEditable:    isEditable,
+      isHighlighted: isHighlighted,
     );
   }
 

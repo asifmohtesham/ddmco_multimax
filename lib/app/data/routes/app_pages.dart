@@ -40,6 +40,8 @@ import 'package:multimax/app/modules/purchase_order/purchase_order_binding.dart'
 import 'package:multimax/app/modules/purchase_order/purchase_order_screen.dart';
 import 'package:multimax/app/modules/selling/sales_order/sales_order_binding.dart';
 import 'package:multimax/app/modules/selling/sales_order/sales_order_screen.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/sales_order_form_binding.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/sales_order_form_screen.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_binding.dart';
@@ -141,6 +143,12 @@ class AppPages {
       name: AppRoutes.SALES_ORDER,
       page: () => const SalesOrderScreen(),
       binding: SalesOrderBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.SALES_ORDER_FORM,
+      page: () => const SalesOrderFormScreen(),
+      binding: SalesOrderFormBinding(),
+      transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
       name: AppRoutes.PURCHASE_RECEIPT,

@@ -13,3 +13,7 @@ library app_constants;
 /// Must match in every [Get.lazyPut], [Get.find], and [Get.delete] call that
 /// targets this controller.
 const String kPoItemSheetTag = 'po_item_sheet';
+
+/// Tag used to register and locate the Sales Order item-sheet controller
+/// (Task 5) inside the Sales Order item-sheet lifecycle.
+const String kSoItemSheetTag = 'so_item_sheet';
