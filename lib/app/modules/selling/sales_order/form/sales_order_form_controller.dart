@@ -189,6 +189,7 @@ class SalesOrderFormController extends GetxController
   void onInit() {
     super.onInit();
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
+    _loadReservationSetting();
     if (mode == 'new') {
       final today = FormattingHelper.formatDate(DateTime.now());
       so.value = SalesOrder.blank(
@@ -259,7 +260,9 @@ class SalesOrderFormController extends GetxController
   /// need reconciling.
   void _applyPostSave(SalesOrder saved, SalesOrder sent) {
     final current = so.value;
-    if (current == null || !isSoDirty(sent, current)) {
+    if (current == null ||
+        !isSoDirty(sent, current,
+            reservationEnabled: reservationEnabled.value)) {
       // Nothing changed locally while this request was in flight (or the
       // document was cleared out from under us) — the server copy stands.
       _setLoaded(saved);
@@ -353,7 +356,10 @@ class SalesOrderFormController extends GetxController
   // ── Mutations ──────────────────────────────────────────────────────────
   void _apply(SalesOrder next) {
     so.value = next;
-    isDirty.value = mode == 'new' || _original == null || isSoDirty(_original!, next);
+    isDirty.value = mode == 'new' ||
+        _original == null ||
+        isSoDirty(_original!, next,
+            reservationEnabled: reservationEnabled.value);
     if (isDirty.value) scheduleAutoSave();
   }
 
@@ -389,6 +395,20 @@ class SalesOrderFormController extends GetxController
     final s = so.value;
     if (s == null || !isEditable) return;
     _apply(s.copyWith(sellingPriceList: pl));
+  }
+
+  Future<void> _loadReservationSetting() async {
+    final on = await _provider.stockReservationEnabled();
+    if (isClosed) return;
+    reservationEnabled.value = on;
+  }
+
+  /// Header "Reserve Stock": the server creates the Stock Reservation Entries
+  /// itself on submit (SalesOrder.on_submit), so this only sets the flag.
+  void setReserveStock(bool value) {
+    final s = so.value;
+    if (s == null || !isEditable || !reservationEnabled.value) return;
+    _apply(s.copyWith(reserveStock: value));
   }
 
   void setHeader({
@@ -574,8 +594,12 @@ class SalesOrderFormController extends GetxController
     try {
       final isNew = mode == 'new';
       final res = isNew
-          ? await _provider.create(buildPayload(sent))
-          : await _provider.update(sent.name, buildPayload(sent));
+          ? await _provider.create(buildPayload(sent,
+              reservationEnabled: reservationEnabled.value))
+          : await _provider.update(
+              sent.name,
+              buildPayload(sent,
+                  reservationEnabled: reservationEnabled.value));
       final data = (res.data is Map) ? res.data['data'] : null;
       if (res.statusCode == 200 && data is Map) {
         final saved = SalesOrder.fromJson(Map<String, dynamic>.from(data));
@@ -727,6 +751,11 @@ class SalesOrderFormController extends GetxController
   Future<void> reopen() => _runAction(SoAction.reopen,
       call: () => _provider.updateStatus(name, 'Draft'),
       done: 'Sales Order $name re-opened');
+
+  /// Stock Settings' enable_stock_reservation, resolved once per form.
+  /// False until the probe answers, so the control stays hidden (desk hides
+  /// it too when the setting is off).
+  final reservationEnabled = false.obs;
 
   final isMakingDn = false.obs;
 

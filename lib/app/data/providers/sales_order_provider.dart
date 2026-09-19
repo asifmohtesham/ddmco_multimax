@@ -93,6 +93,21 @@ class SalesOrderProvider {
     return m is Map ? Map<String, dynamic>.from(m) : {};
   }
 
+  /// Stock Settings' `enable_stock_reservation`, via the whitelisted
+  /// `get_stock_reservation_status` (Selling Settings/Stock Settings
+  /// themselves are readable only by System/Sales Manager, this method is
+  /// not). Fail-closed: `false` on any error, so the Reserve Stock control
+  /// stays hidden exactly as desk hides it when the setting is off.
+  Future<bool> stockReservationEnabled() async {
+    try {
+      final res = await _api.callMethod('$_so.get_stock_reservation_status');
+      final m = (res.data as Map?)?['message'];
+      return m == 1 || m == true || m == '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Per-document permission (submit / cancel). Fail-closed on any error.
   Future<bool> hasDocPerm(String name, String ptype) async {
     try {

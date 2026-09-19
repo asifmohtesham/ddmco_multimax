@@ -138,6 +138,31 @@ void main() {
     });
   });
 
+  group('reserve stock', () {
+    test('flag is sent only when stock reservation is enabled', () {
+      final base = so(docstatus: 0);
+      expect(buildPayload(base).containsKey('reserve_stock'), isFalse);
+      expect(
+          buildPayload(base, reservationEnabled: true)['reserve_stock'], 0);
+      expect(
+          buildPayload(base.copyWith(reserveStock: true),
+              reservationEnabled: true)['reserve_stock'],
+          1);
+      // Setting off on the site: never send it, even if the doc carries true.
+      expect(
+          buildPayload(base.copyWith(reserveStock: true))
+              .containsKey('reserve_stock'),
+          isFalse);
+    });
+
+    test('dirty tracking sees a reserve-stock change when enabled', () {
+      final a = so(docstatus: 0);
+      final b = a.copyWith(reserveStock: true);
+      expect(isSoDirty(a, b, reservationEnabled: true), isTrue);
+      expect(isSoDirty(a, b), isFalse); // hidden control cannot dirty the form
+    });
+  });
+
   group('isSoDirty', () {
     test('equal payloads are clean; an edited qty or header is dirty', () {
       final a = so(docstatus: 0);

@@ -19,6 +19,9 @@ class SalesOrder {
   final String? setWarehouse;
   final String? poNo;
   final bool skipDeliveryNote;
+  /// v15 header flag: the server creates Stock Reservation Entries on submit
+  /// when this is set (SalesOrder.on_submit). Field default is 0.
+  final bool reserveStock;
   final String status;
   final int docstatus;
   final double perDelivered;
@@ -44,6 +47,7 @@ class SalesOrder {
     this.setWarehouse,
     this.poNo,
     this.skipDeliveryNote = false,
+    this.reserveStock = false,
     this.status = 'Draft',
     this.docstatus = 0,
     this.perDelivered = 0,
@@ -79,6 +83,7 @@ class SalesOrder {
         setWarehouse: _s(j['set_warehouse']),
         poNo: _s(j['po_no']),
         skipDeliveryNote: _b(j['skip_delivery_note']),
+        reserveStock: _b(j['reserve_stock']),
         status: _s(j['status']) ?? 'Draft',
         docstatus: (j['docstatus'] as num?)?.toInt() ?? 0,
         perDelivered: _d(j['per_delivered']),
@@ -107,6 +112,7 @@ class SalesOrder {
     String? setWarehouse,
     String? poNo,
     String? status,
+    bool? reserveStock,
     List<SalesOrderItem>? items,
   }) =>
       SalesOrder(
@@ -122,6 +128,7 @@ class SalesOrder {
         setWarehouse: setWarehouse ?? this.setWarehouse,
         poNo: poNo ?? this.poNo,
         skipDeliveryNote: skipDeliveryNote,
+        reserveStock: reserveStock ?? this.reserveStock,
         status: status ?? this.status,
         docstatus: docstatus,
         perDelivered: perDelivered,

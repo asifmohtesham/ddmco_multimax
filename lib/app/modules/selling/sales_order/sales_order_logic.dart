@@ -61,7 +61,12 @@ bool canMakeDeliveryNote(SalesOrder so) =>
 /// The only body the app ever POSTs/PUTs. Optional user-editable fields are
 /// always sent ('' when cleared) so a PUT can clear them; company / price list
 /// are omitted when unknown so the server's set_missing_values fills them.
-Map<String, dynamic> buildPayload(SalesOrder so) {
+/// [reservationEnabled] mirrors Stock Settings' `enable_stock_reservation`
+/// (read via the whitelisted `get_stock_reservation_status`). Desk hides the
+/// Reserve Stock control when the setting is off, so we never send the flag
+/// then — the server would clear it anyway (validate_reserved_stock).
+Map<String, dynamic> buildPayload(SalesOrder so,
+    {bool reservationEnabled = false}) {
   final m = <String, dynamic>{
     'customer': so.customer,
     'transaction_date': so.transactionDate,
@@ -71,6 +76,7 @@ Map<String, dynamic> buildPayload(SalesOrder so) {
     'po_no': so.poNo ?? '',
     'items': so.items.map(_rowPayload).toList(),
   };
+  if (reservationEnabled) m['reserve_stock'] = so.reserveStock ? 1 : 0;
   if ((so.company ?? '').isNotEmpty) m['company'] = so.company;
   if ((so.sellingPriceList ?? '').isNotEmpty) {
     m['selling_price_list'] = so.sellingPriceList;
@@ -90,8 +96,10 @@ Map<String, dynamic> _rowPayload(SalesOrderItem i) => {
     };
 
 /// Dirty = the posted payloads differ (same JSON-compare approach as PO).
-bool isSoDirty(SalesOrder original, SalesOrder current) =>
-    jsonEncode(buildPayload(original)) != jsonEncode(buildPayload(current));
+bool isSoDirty(SalesOrder original, SalesOrder current,
+        {bool reservationEnabled = false}) =>
+    jsonEncode(buildPayload(original, reservationEnabled: reservationEnabled)) !=
+    jsonEncode(buildPayload(current, reservationEnabled: reservationEnabled));
 
 bool _before(String a, String b) {
   final da = DateTime.tryParse(a), db = DateTime.tryParse(b);

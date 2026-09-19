@@ -48,6 +48,9 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
       // the header Save icon repaint when a permission probe resolves.
       final canSubmit = controller.canSubmit;
       final canSaveNow = controller.canSaveNow;
+      // Stock Settings' enable_stock_reservation, resolved once per form;
+      // hoisted here so the Reserve Stock row appears when the probe answers.
+      final reservationEnabled = controller.reservationEnabled.value;
       // actions reads so.value + the permission RxMap/RxnBools; hoisted here
       // (not inside the Details tab's own Obx) for the same reason canSubmit
       // is — see the class doc comment.
@@ -105,8 +108,8 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                       ? const Center(child: Text('Not found'))
                       : TabBarView(
                           children: [
-                            _detailsTab(
-                                s, isEditable, canSubmit, canMakeDn, bannerText),
+                            _detailsTab(s, isEditable, canSubmit, canMakeDn,
+                                bannerText, reservationEnabled),
                             _itemsTab(s, isEditable, bannerText),
                           ],
                         ),
@@ -125,6 +128,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
     bool canSubmit,
     bool canMakeDn,
     String? bannerText,
+    bool reservationEnabled,
   ) {
     return Builder(builder: (context) {
       return CustomScrollView(
@@ -242,6 +246,38 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                           onSelected: controller.setPriceList)
                       : null,
                 ),
+                // v15 hides Reserve Stock entirely when Stock Settings'
+                // enable_stock_reservation is off (sales_order.js refresh), so
+                // we do too. Plain Row + Switch rather than SwitchListTile:
+                // a ListTile inside a colour-painted container asserts.
+                if (reservationEnabled) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.bookmark_added_outlined,
+                          size: 20, color: context.scheme.textMuted),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Reserve Stock'),
+                            Text(
+                              'Holds stock for this order when you submit it',
+                              style: TextStyle(
+                                  fontSize: 12, color: context.scheme.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: s.reserveStock,
+                        onChanged:
+                            isEditable ? controller.setReserveStock : null,
+                      ),
+                    ],
+                  ),
+                ],
                 const Divider(height: 20),
 
                 DocPickerField(
