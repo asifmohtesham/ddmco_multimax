@@ -107,7 +107,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                           children: [
                             _detailsTab(
                                 s, isEditable, canSubmit, canMakeDn, bannerText),
-                            _itemsTab(s, isEditable),
+                            _itemsTab(s, isEditable, bannerText),
                           ],
                         ),
             ),
@@ -133,18 +133,12 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
           SliverOverlapInjector(
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
+          _bannerSliver(bannerText),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(
                 16, 12, 16, 24 + MediaQuery.of(context).padding.bottom),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                InlineBanner(
-                  visible: bannerText != null,
-                  message: bannerText ?? '',
-                  type: BannerType.error,
-                ),
-                if (bannerText != null) const SizedBox(height: 12),
-
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -309,6 +303,28 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
     });
   }
 
+  /// Renders the header/save error banner right after each tab's own
+  /// `SliverOverlapInjector`, so it is visible from both Details and Items
+  /// (`openItemSheet`'s no-customer guard and `saveDocument`'s validation
+  /// errors are both reached from the Items tab). Wrapping the whole
+  /// `TabBarView` in a `Column` instead would break the injector's overlap
+  /// geometry — see gotcha-nestedscrollview-form-header.md — so this is
+  /// duplicated per tab instead. `InlineBanner` itself collapses to zero
+  /// height (`SizedBox.shrink`) when `visible` is false, so this is safe to
+  /// always include.
+  static Widget _bannerSliver(String? bannerText) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      sliver: SliverToBoxAdapter(
+        child: InlineBanner(
+          visible: bannerText != null,
+          message: bannerText ?? '',
+          type: BannerType.error,
+        ),
+      ),
+    );
+  }
+
   static String _qty(double q) =>
       q == q.roundToDouble() ? q.toInt().toString() : q.toStringAsFixed(2);
 
@@ -337,7 +353,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
 
   // ── Items tab ────────────────────────────────────────────────────────────
 
-  Widget _itemsTab(SalesOrder s, bool isEditable) {
+  Widget _itemsTab(SalesOrder s, bool isEditable, String? bannerText) {
     final items = s.items;
     return Builder(builder: (context) {
       return Column(
@@ -350,6 +366,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                   handle:
                       NestedScrollView.sliverOverlapAbsorberHandleFor(context),
                 ),
+                _bannerSliver(bannerText),
                 if (items.isEmpty)
                   const SliverFillRemaining(
                     hasScrollBody: false,

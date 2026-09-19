@@ -321,6 +321,27 @@ class SalesOrderFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
+    // RealtimeSyncMixin._onRemoteUpdate can call this before our own save's
+    // HTTP response lands (the doc_update event races the response).
+    // Reloading then would call fetchDocument -> _setLoaded, which wipes
+    // so.value, poNoController and isDirty out from under the in-flight
+    // save — e.g. a PO No typed while the request is in flight. Wait for
+    // the save to finish first (bounded, so a wedged save can't hang this
+    // reload forever).
+    var waited = 0;
+    const step = Duration(milliseconds: 200);
+    const cap = Duration(seconds: 15);
+    while (isSaving.value && waited < cap.inMilliseconds) {
+      await Future.delayed(step);
+      if (isClosed) return;
+      waited += step.inMilliseconds;
+    }
+    if (isClosed) return;
+    // _applyPostSave already reconciled any header edit made during the
+    // save and left the doc dirty with another autosave scheduled — that
+    // state is newer than whatever the server just told us about, so skip
+    // this reload rather than clobber it.
+    if (isDirty.value) return;
     isStale.value = false;
     await fetchDocument();
   }
@@ -477,7 +498,9 @@ class SalesOrderFormController extends GetxController
       return;
     }
     if (so.value!.customer.isEmpty) {
-      banner.value = 'Select a customer first — item prices depend on it.';
+      const msg = 'Select a customer first — item prices depend on it.';
+      banner.value = msg;
+      GlobalSnackbar.error(message: msg);
       return;
     }
     Get.lazyPut<SalesOrderItemFormController>(
@@ -514,7 +537,10 @@ class SalesOrderFormController extends GetxController
 
     final errors = validateOrder(s);
     if (errors.isNotEmpty) {
-      banner.value = errors.values.join('\n');
+      final msg = errors.values.join('\n');
+      banner.value = msg;
+      _setSaveResult(SaveResult.error);
+      GlobalSnackbar.error(message: msg);
       return;
     }
     banner.value = null;
