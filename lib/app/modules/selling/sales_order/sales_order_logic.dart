@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/sales_order_model.dart';
 
 /// Pure Sales Order rules — no Flutter/GetX, every branch unit-tested.
@@ -170,6 +171,37 @@ String statusFilterLabel(dynamic value) {
     return (value[1] as List).join(', ');
   }
   return value.toString();
+}
+
+/// Short local-format delivery date for the list card stat (`d MMM`, e.g.
+/// "24 Sep"). Unlike `FormattingHelper.getRelativeTime` (which only handles
+/// past dates and would read a future delivery date as "Just now"), this
+/// is a plain calendar date. Returns null for empty/unparseable input so
+/// the caller omits the stat entirely.
+String? shortDeliveryDate(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final d = DateTime.tryParse(raw);
+  return d == null ? null : DateFormat('d MMM').format(d);
+}
+
+/// Parses the `delivery_date` filter value the list/dashboard can send —
+/// `['between', [from, to]]`, `['>=', from]` or `['<=', to]` — into its
+/// from/to bounds for the filter sheet's restore-on-reopen. Any other shape
+/// (including null) yields both null so the sheet starts blank rather than
+/// silently dropping an unrecognised filter.
+({String? from, String? to}) parseDeliveryDateFilter(dynamic value) {
+  if (value is! List || value.length != 2) return (from: null, to: null);
+  final op = value[0];
+  final arg = value[1];
+  if (op == 'between' && arg is List) {
+    return (
+      from: arg.isNotEmpty ? arg[0]?.toString() : null,
+      to: arg.length > 1 ? arg[1]?.toString() : null,
+    );
+  }
+  if (op == '>=') return (from: arg?.toString(), to: null);
+  if (op == '<=') return (from: null, to: arg?.toString());
+  return (from: null, to: null);
 }
 
 double progressFraction(double percent) => (percent / 100).clamp(0.0, 1.0);

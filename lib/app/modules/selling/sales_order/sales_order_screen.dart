@@ -254,11 +254,11 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           Icons.calendar_today,
           FormattingHelper.getRelativeTime(so.transactionDate),
         ),
-        if ((so.deliveryDate ?? '').isNotEmpty)
+        if (shortDeliveryDate(so.deliveryDate) != null)
           GenericDocumentCard.buildIconStat(
             context,
             Icons.local_shipping_outlined,
-            FormattingHelper.getRelativeTime(so.deliveryDate),
+            shortDeliveryDate(so.deliveryDate)!,
           ),
         GenericDocumentCard.buildIconStat(
           context,

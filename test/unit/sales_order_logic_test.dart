@@ -236,6 +236,40 @@ void main() {
     });
   });
 
+  group('shortDeliveryDate', () {
+    test('formats a future date as a plain calendar date, not relative', () {
+      expect(shortDeliveryDate('2026-09-24'), '24 Sep');
+    });
+    test('empty or unparseable input omits the stat', () {
+      expect(shortDeliveryDate(null), isNull);
+      expect(shortDeliveryDate(''), isNull);
+      expect(shortDeliveryDate('not-a-date'), isNull);
+    });
+  });
+
+  group('parseDeliveryDateFilter', () {
+    test('two-sided between yields both bounds', () {
+      final r = parseDeliveryDateFilter(
+          ['between', ['2026-09-01', '2026-09-30']]);
+      expect(r.from, '2026-09-01');
+      expect(r.to, '2026-09-30');
+    });
+    test('one-sided >= yields only from (previously dropped)', () {
+      final r = parseDeliveryDateFilter(['>=', '2026-09-01']);
+      expect(r.from, '2026-09-01');
+      expect(r.to, isNull);
+    });
+    test('one-sided <= yields only to (previously dropped)', () {
+      final r = parseDeliveryDateFilter(['<=', '2026-09-30']);
+      expect(r.from, isNull);
+      expect(r.to, '2026-09-30');
+    });
+    test('null or unrecognised shape yields both null', () {
+      expect(parseDeliveryDateFilter(null), (from: null, to: null));
+      expect(parseDeliveryDateFilter('Draft'), (from: null, to: null));
+    });
+  });
+
   group('resolveIncomingListFilters', () {
     test('owner equals current email -> mine true, owner stripped, other keys kept', () {
       final r = resolveIncomingListFilters(
