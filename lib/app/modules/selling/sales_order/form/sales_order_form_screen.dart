@@ -135,8 +135,13 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
           ),
           _bannerSliver(bannerText),
           SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-                16, 12, 16, 24 + MediaQuery.of(context).padding.bottom),
+            // Bottom inset is 24 plain spacing: the trailing Submit / Create
+            // Delivery Note button (or, absent both, the trailing SizedBox
+            // below) supplies the gesture-nav-bar clearance itself via
+            // SafeArea(top: false), so adding padding.bottom here too would
+            // double-count it (the hold-sheet gotcha, same double-inset
+            // shape) and still leave a non-button-terminated list short of it.
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 Row(
@@ -278,30 +283,47 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                     label: 'Rounded Total',
                     value: _money(s.roundedTotal, s.currency)),
 
+                // Both action buttons sit at the end of a scrollable list, not
+                // behind a bottomNavigationBar, so nothing else clears the
+                // Android gesture/nav bar for them. Each is wrapped in its own
+                // SafeArea(top: false) — matching Purchase Order's "Create
+                // Purchase Receipt" button (purchase_order_form_screen.dart)
+                // — so its lower half is never drawn under the nav bar.
                 if (isEditable && canSubmit) ...[
                   const SizedBox(height: 20),
-                  AsyncFilledButton(
-                    busy: controller.isSubmitting,
-                    onPressed: controller.submitDocument,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: 'Submit',
-                    loadingLabel: 'Submitting…',
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48)),
+                  SafeArea(
+                    top: false,
+                    child: AsyncFilledButton(
+                      busy: controller.isSubmitting,
+                      onPressed: controller.submitDocument,
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: 'Submit',
+                      loadingLabel: 'Submitting…',
+                      style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48)),
+                    ),
                   ),
                 ],
                 if (canMakeDn) ...[
                   const SizedBox(height: 20),
-                  AsyncFilledButton(
-                    busy: controller.isMakingDn,
-                    onPressed: controller.makeDeliveryNote,
-                    icon: const Icon(Icons.local_shipping_outlined),
-                    label: 'Create Delivery Note',
-                    loadingLabel: 'Creating…',
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48)),
+                  SafeArea(
+                    top: false,
+                    child: AsyncFilledButton(
+                      busy: controller.isMakingDn,
+                      onPressed: controller.makeDeliveryNote,
+                      icon: const Icon(Icons.local_shipping_outlined),
+                      label: 'Create Delivery Note',
+                      loadingLabel: 'Creating…',
+                      style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48)),
+                    ),
                   ),
                 ],
+                // Neither button renders (read-only doc, e.g. cancelled/on
+                // hold with no makeDn) — the Rounded Total row above is then
+                // the last item, so it needs the nav-bar clearance itself.
+                if (!(isEditable && canSubmit) && !canMakeDn)
+                  SizedBox(height: MediaQuery.paddingOf(context).bottom),
               ]),
             ),
           ),

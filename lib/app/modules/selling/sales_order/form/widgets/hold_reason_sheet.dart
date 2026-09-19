@@ -29,39 +29,41 @@ class _HoldReasonSheetState extends State<_HoldReasonSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SafeArea(
-        child: OptionPickerSheetShell(
-          title: 'Reason for Hold',
+    // Get.bottomSheet already wraps its content in
+    // Padding(bottom: viewInsets.bottom) (see GetModalBottomSheetRoute); an
+    // extra one here double-counts the keyboard height and pushes the sheet
+    // (and its hit-test area) off the top of the screen. SafeArea alone
+    // handles the gesture-nav-bar inset when the keyboard is closed.
+    return SafeArea(
+      child: OptionPickerSheetShell(
+        title: 'Reason for Hold',
+        mainAxisSize: MainAxisSize.min,
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _controller,
-                autofocus: true,
-                minLines: 3,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  hintText: 'Why is this order being put on hold?',
-                  border: OutlineInputBorder(),
-                ),
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                hintText: 'Why is this order being put on hold?',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 16),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _controller,
-                builder: (context, value, _) => FilledButton(
-                  onPressed: value.text.trim().isEmpty
-                      ? null
-                      : () => Get.back(result: _controller.text.trim()),
-                  style:
-                      FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                  child: const Text('Confirm'),
-                ),
+            ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _controller,
+              builder: (context, value, _) => FilledButton(
+                onPressed: value.text.trim().isEmpty
+                    ? null
+                    : () => Get.back(result: _controller.text.trim()),
+                style:
+                    FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                child: const Text('Confirm'),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
