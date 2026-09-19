@@ -94,9 +94,10 @@ void main() {
       expect(find.text('Mon'), findsOneWidget);
       expect(find.text('DOCUMENTS'), findsOneWidget);
       expect(find.text('Purchase Order'), findsOneWidget);
+      expect(find.text('Sales Order'), findsOneWidget);
       expect(find.text('POS Upload'), findsOneWidget);
-      // master + five doctype switches
-      expect(find.byType(Switch), findsNWidgets(6));
+      // master + six doctype switches
+      expect(find.byType(Switch), findsNWidgets(7));
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

@@ -3,9 +3,10 @@ import 'package:multimax/app/data/services/digest_service.dart';
 
 void main() {
   group('kDigestDoctypes registry', () {
-    test('has the five doctypes with the spec filters', () {
+    test('has the six doctypes with the spec filters', () {
       expect(kDigestDoctypes.map((d) => d.key), [
         'purchase_order',
+        'sales_order',
         'purchase_receipt',
         'delivery_note',
         'stock_entry',
@@ -13,12 +14,13 @@ void main() {
       ]);
       expect(kDigestDoctypes.map((d) => d.doctype), [
         'Purchase Order',
+        'Sales Order',
         'Purchase Receipt',
         'Delivery Note',
         'Stock Entry',
         'POS Upload',
       ]);
-      for (final d in kDigestDoctypes.take(4)) {
+      for (final d in kDigestDoctypes.take(5)) {
         expect(d.filters, {'docstatus': 0});
       }
       expect(kDigestDoctypes.last.filters, {
