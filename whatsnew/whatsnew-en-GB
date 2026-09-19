@@ -1,3 +1,2 @@
-• New: Sales Order. Browse and filter orders, see delivery and billing progress, and create a draft with items priced from your price list.
-• Submit an order, put it on hold with a reason, resume, close or re-open it, and create its Delivery Note in one tap.
-• Sales Orders now appear in search, on the dashboard and in the daily digest, and reserved stock in Stock Balance opens the order that reserved it.
+• Sales Order: new Reserve Stock switch. Turn it on before submitting and the order holds its stock, which then shows against the item in Stock Balance.
+• The switch appears only when stock reservation is enabled for your site.
