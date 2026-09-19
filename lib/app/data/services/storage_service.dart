@@ -198,6 +198,7 @@ class StorageService {
     return raw == null
         ? const [
             'purchase_order',
+            'sales_order',
             'purchase_receipt',
             'delivery_note',
             'stock_entry',

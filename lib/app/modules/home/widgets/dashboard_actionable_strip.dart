@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
 
 /// Which population the actionable count strip reflects. [mine] scopes the
 /// five document chips to the selected dashboard user (owner); [everyone] is
@@ -21,13 +22,17 @@ ActionableScope actionableScopeFromString(String? raw) =>
 /// submittables, and it renders a removable "Status: Draft" chip on the list).
 /// Stock Entry has no `status` field, and Packing Slip's `status` is a VIRTUAL
 /// field that raises a Frappe FieldError when queried — both filter on
-/// `docstatus == 0`. Under [ActionableScope.mine] a non-empty [email] adds an
-/// `owner` equality.
+/// `docstatus == 0`. Sales Order stays actionable past Draft (submitted orders
+/// awaiting delivery), so it filters on [kSoOpenToDeliverStatuses] instead.
+/// Under [ActionableScope.mine] a non-empty [email] adds an `owner` equality.
 Map<String, dynamic> actionableFiltersFor(
     String doctype, ActionableScope scope, String? email) {
   final filters = <String, dynamic>{};
   if (doctype == 'Stock Entry' || doctype == 'Packing Slip') {
     filters['docstatus'] = 0;
+  } else if (doctype == 'Sales Order') {
+    // Actionable SOs: still Draft, or submitted and awaiting delivery.
+    filters['status'] = ['in', kSoOpenToDeliverStatuses];
   } else {
     filters['status'] = 'Draft';
   }
@@ -95,6 +100,14 @@ const List<ActionableDocConfig> kActionableDocConfigs = [
     listRoute: AppRoutes.DELIVERY_NOTE,
     formRoute: AppRoutes.DELIVERY_NOTE_FORM,
     previewFields: ['name', 'customer', 'posting_date', 'owner'],
+  ),
+  ActionableDocConfig(
+    doctype: 'Sales Order',
+    label: 'Sales Order',
+    icon: Icons.request_quote_outlined,
+    listRoute: AppRoutes.SALES_ORDER,
+    formRoute: AppRoutes.SALES_ORDER_FORM,
+    previewFields: ['name', 'customer_name', 'delivery_date', 'status', 'owner'],
   ),
   // Packing Slip: `status` is virtual (FieldError if queried) and there is no
   // posting_date on its list — the row falls back to `creation`.

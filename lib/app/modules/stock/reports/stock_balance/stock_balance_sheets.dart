@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 // ── Stock Balance drill-down bottom sheets (Phase 2, feature 4) ──────────────────
@@ -381,43 +383,68 @@ class ReservationsSheetBody extends StatelessWidget {
                       final r = reservations[i];
                       final voucher = (r['voucher_no'] ?? '').toString();
                       final status = (r['status'] ?? '').toString();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    voucher.isEmpty ? '—' : voucher,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600),
+                      final isSalesOrder =
+                          (r['voucher_type'] ?? 'Sales Order').toString() ==
+                              'Sales Order';
+                      final tappable = isSalesOrder && voucher.isNotEmpty;
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: tappable
+                              ? () {
+                                  Get.back(); // close the sheet first
+                                  Get.toNamed(AppRoutes.SALES_ORDER_FORM,
+                                      arguments: {
+                                        'name': voucher,
+                                        'mode': 'view',
+                                      });
+                                }
+                              : null,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        voucher.isEmpty ? '—' : voucher,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600),
+                                      ),
+                                      if (status.isNotEmpty) ...[
+                                        const SizedBox(height: 1),
+                                        Text(status,
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                color: cs.onSurfaceVariant)),
+                                      ],
+                                    ],
                                   ),
-                                  if (status.isNotEmpty) ...[
-                                    const SizedBox(height: 1),
-                                    Text(status,
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: cs.onSurfaceVariant)),
-                                  ],
+                                ),
+                                Text(
+                                  FormattingHelper.formatQtyGrouped(
+                                      _toNum(r['reserved'])),
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: cs.brightness == Brightness.dark
+                                          ? AppColors.orange300
+                                          : AppColors.orange700),
+                                ),
+                                if (tappable) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.chevron_right,
+                                      size: 18, color: cs.onSurfaceVariant),
                                 ],
-                              ),
+                              ],
                             ),
-                            Text(
-                              FormattingHelper.formatQtyGrouped(
-                                  _toNum(r['reserved'])),
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.brightness == Brightness.dark
-                                      ? AppColors.orange300
-                                      : AppColors.orange700),
-                            ),
-                          ],
+                          ),
                         ),
                       );
                     },

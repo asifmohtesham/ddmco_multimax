@@ -101,6 +101,7 @@ void main() {
     expect(c.days, {1, 2, 3, 4, 5, 6, 7});
     expect(c.doctypeKeys, {
       'purchase_order',
+      'sales_order',
       'purchase_receipt',
       'delivery_note',
       'stock_entry',
@@ -175,6 +176,7 @@ void main() {
     await c.toggleDoctype('purchase_order');
     expect(c.doctypeKeys.contains('purchase_order'), isFalse);
     expect(storage.getDigestDoctypes(user), [
+      'sales_order',
       'purchase_receipt',
       'delivery_note',
       'stock_entry',

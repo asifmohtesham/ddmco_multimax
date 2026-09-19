@@ -97,6 +97,14 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     argsFor: _nameView,
   ),
   GlobalSearchTarget(
+    doctype: 'Sales Order',
+    label: 'Sales Orders',
+    icon: Icons.request_quote_outlined,
+    color: Colors.teal,
+    route: AppRoutes.SALES_ORDER_FORM,
+    argsFor: _nameView,
+  ),
+  GlobalSearchTarget(
     doctype: 'Material Request',
     label: 'Material Requests',
     icon: Icons.request_page_outlined,

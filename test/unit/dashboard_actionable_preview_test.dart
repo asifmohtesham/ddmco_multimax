@@ -93,6 +93,14 @@ void main() {
       }, _owner);
       expect(r.subtitle, 'Acme');
     });
+
+    test('Sales Order row: customer · owner · delivery date · status', () {
+      final row = docRowFor('Sales Order', {
+        'name': 'SAL-ORD-2026-00012', 'customer_name': 'Cust One',
+        'owner': 'a@b.com', 'delivery_date': '2026-09-25', 'status': 'To Deliver',
+      }, (o) => 'A');
+      expect(row.subtitle, 'Cust One · A · 25 Sep · To Deliver');
+    });
   });
 
   group('ActionableDocPreview', () {

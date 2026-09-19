@@ -28,6 +28,16 @@ void main() {
       expect(actionableFiltersFor('Delivery Note', ActionableScope.mine, ''),
           {'status': 'Draft'});
     });
+
+    test('Sales Order filters on draft + to-deliver statuses', () {
+      expect(actionableFiltersFor('Sales Order', ActionableScope.everyone, 'x@y.com'), {
+        'status': ['in', ['Draft', 'To Deliver and Bill', 'To Deliver']],
+      });
+      expect(actionableFiltersFor('Sales Order', ActionableScope.mine, 'a@b.com'), {
+        'status': ['in', ['Draft', 'To Deliver and Bill', 'To Deliver']],
+        'owner': 'a@b.com',
+      });
+    });
   });
 
   group('actionableCacheKey', () {
@@ -63,12 +73,13 @@ void main() {
   });
 
   group('kActionableDocConfigs', () {
-    test('covers the five document DocTypes in strip order', () {
+    test('covers the six document DocTypes in strip order', () {
       expect(kActionableDocConfigs.map((c) => c.doctype).toList(), [
         'Purchase Order',
         'Purchase Receipt',
         'Stock Entry',
         'Delivery Note',
+        'Sales Order',
         'Packing Slip',
       ]);
     });

@@ -425,6 +425,16 @@ class AppNavDrawer extends StatelessWidget {
                           currentRoute: currentRoute,
                         ),
                       ),
+                      DocTypeGuard(
+                        doctype: 'Sales Order',
+                        loading: skeleton,
+                        child: _DrawerItem(
+                          title: 'Sales Order',
+                          icon: Icons.request_quote_rounded,
+                          route: AppRoutes.SALES_ORDER,
+                          currentRoute: currentRoute,
+                        ),
+                      ),
                       // ── Selling > Pricing ────────────────────────────────────
                       _GuardedSection(
                         doctypes: ['Item Price', 'Pricing Rule'],

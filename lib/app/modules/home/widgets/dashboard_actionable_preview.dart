@@ -35,10 +35,12 @@ String _shortDate(String raw) {
 
 /// Maps a raw Frappe list row to a preview row for [doctype].
 ///
-/// Every previewed document is a Draft (that IS the actionable definition), so
-/// no status is rendered — the subtitle is `<party> · <owner> · <date>` with
-/// empty segments omitted. Packing Slip has no posting_date on its list, so it
-/// falls back to `creation`.
+/// Every previewed document except Sales Order is a Draft (that IS the
+/// actionable definition), so no status is rendered — the subtitle is
+/// `<party> · <owner> · <date>` with empty segments omitted. Packing Slip has
+/// no posting_date on its list, so it falls back to `creation`. Sales Order
+/// mixes Draft and submitted-but-undelivered statuses, so its subtitle
+/// appends `<status>`.
 ActionableDocRowData docRowFor(
   String doctype,
   Map<String, dynamic> json,
@@ -70,14 +72,21 @@ ActionableDocRowData docRowFor(
       party = s('delivery_note');
       date = _shortDate(s('creation'));
       break;
+    case 'Sales Order':
+      party = s('customer_name');
+      date = _shortDate(s('delivery_date'));
+      break;
     default:
       party = '';
       date = _shortDate(s('creation'));
   }
 
-  final segments = [party, ownerLabel(s('owner')), date]
-      .where((p) => p.isNotEmpty)
-      .toList();
+  final segments = [
+    party,
+    ownerLabel(s('owner')),
+    date,
+    if (doctype == 'Sales Order') s('status'),
+  ].where((p) => p.isNotEmpty).toList();
 
   return ActionableDocRowData(
     name: s('name'),

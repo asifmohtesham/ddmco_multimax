@@ -54,6 +54,11 @@ const List<PermEntry> kSellingPermissions = [
   (doctype: 'Pricing Rule', permType: 'read'),   // Selling › Pricing (Sales/Purchase/Accounts Manager)
   (doctype: 'Pricing Rule', permType: 'create'), // New rule FAB
   (doctype: 'Pricing Rule', permType: 'write'),  // Edit / Delete
+  (doctype: 'Sales Order',  permType: 'read'),   // Selling › Sales Order
+  (doctype: 'Sales Order',  permType: 'create'), // New Sales Order FAB
+  (doctype: 'Sales Order',  permType: 'write'),  // Draft edit
+  // submit/cancel are checked per document (has_permission) — PermissionService
+  // would probe them with a read-level get_list and wrongly pass Stock Users.
 ];
 
 const List<PermEntry> kHrPermissions = [

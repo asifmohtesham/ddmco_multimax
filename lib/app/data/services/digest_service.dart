@@ -38,6 +38,13 @@ const List<DigestDoctype> kDigestDoctypes = [
     filters: {'docstatus': 0},
   ),
   DigestDoctype(
+    key: 'sales_order',
+    doctype: 'Sales Order',
+    singular: 'draft Sales Order',
+    plural: 'draft Sales Orders',
+    filters: {'docstatus': 0},
+  ),
+  DigestDoctype(
     key: 'purchase_receipt',
     doctype: 'Purchase Receipt',
     singular: 'draft Purchase Receipt',

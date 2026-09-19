@@ -39,7 +39,12 @@ class SalesOrderController extends GetxController {
     final args = Get.arguments;
     if (args is Map && args['filters'] is Map) {
       activeFilters.assignAll(Map<String, dynamic>.from(args['filters'] as Map));
-      if (activeFilters.containsKey('owner')) {
+      // The dashboard can be viewed as another user (selectedFilterUser), so an
+      // incoming `owner` isn't necessarily the signed-in user: only fold it
+      // into the personal `mine` scope when it IS this user — otherwise keep
+      // it as an explicit Owner filter (chip + query) under `everyone`.
+      final owner = activeFilters['owner'];
+      if (owner != null && owner == _email) {
         scope.value = ActionableScope.mine;
         activeFilters.remove('owner');
       }

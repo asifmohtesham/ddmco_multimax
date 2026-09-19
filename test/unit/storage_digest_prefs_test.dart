@@ -66,6 +66,7 @@ void main() {
     test('defaults to all five', () {
       expect(service.getDigestDoctypes(user), [
         'purchase_order',
+        'sales_order',
         'purchase_receipt',
         'delivery_note',
         'stock_entry',
