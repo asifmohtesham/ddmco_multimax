@@ -43,6 +43,8 @@ class StatusPill extends StatelessWidget {
       case 'Pending':
       case 'To Receive and Bill':
       case 'To Receive':
+      case 'To Deliver and Bill':
+      case 'To Deliver':
       case 'Stock Partially Reserved':
       case 'Material Returned from WIP':
       case 'Late':
