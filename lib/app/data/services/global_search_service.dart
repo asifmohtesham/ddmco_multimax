@@ -173,12 +173,12 @@ class GlobalSearchService extends GetxService {
     return buildGroups(entries);
   }
 
-  /// Searches [query] across every permitted [kGlobalSearchTargets] doctype and
+  /// Searches [query] across every permitted [kDiscoverableSearchTargets] doctype and
   /// returns the hits grouped by doctype (registry order, empty groups dropped).
   Future<List<GlobalSearchGroup>> searchAll(String query) {
     final permission = Get.find<PermissionService>();
     return runSearchAll(
-      targets: kGlobalSearchTargets,
+      targets: kDiscoverableSearchTargets,
       canRead: (doctype) => permission.hasAccess(doctype),
       searcher: (doctype) => search(doctype, query, pageSize: kGroupCap),
     );

@@ -25,6 +25,16 @@ class GlobalSearchTarget {
   /// Builds the navigation arguments for document [id].
   final Map<String, dynamic> Function(String id) argsFor;
 
+  /// Whether to offer this doctype to the user as a browsable target — the
+  /// Dashboard fan-out, its scope chips, and the ToDo reference-type picker.
+  ///
+  /// `false` registers the doctype for routing ONLY: its list screen can run
+  /// an in-list search and open a hit, but it never appears in a cross-doctype
+  /// result list. For doctypes whose `name` is a random hash that is the whole
+  /// point — the hash is meaningless next to other doctypes' hits, but
+  /// irrelevant inside its own list, where the row is matched on real fields.
+  final bool discoverable;
+
   const GlobalSearchTarget({
     required this.doctype,
     required this.label,
@@ -32,13 +42,22 @@ class GlobalSearchTarget {
     required this.color,
     required this.route,
     required this.argsFor,
+    this.discoverable = true,
   });
 }
 
 Map<String, dynamic> _nameView(String id) => {'name': id, 'mode': 'view'};
 Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
 
-/// Every routed doctype the Dashboard search can reach, in display order.
+/// Every doctype a search hit can be OPENED as, in display order.
+///
+/// This is the routing registry: [searchNavArgsFor] and [searchTargetForDoctype]
+/// read it, so a doctype missing from here cannot be navigated to from a search
+/// result (the lookup degrades to a bare id, which forms reading
+/// `Get.arguments['name']` throw on).
+///
+/// It is NOT the list of doctypes offered to users for browsing — that is
+/// [kDiscoverableSearchTargets], the `discoverable` subset.
 const List<GlobalSearchTarget> kGlobalSearchTargets = [
   GlobalSearchTarget(
     doctype: 'Item',
@@ -160,7 +179,27 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     route: AppRoutes.PRICING_RULE_FORM,
     argsFor: _nameEdit,
   ),
+  GlobalSearchTarget(
+    doctype: 'Item Price',
+    label: 'Item Prices',
+    icon: Icons.sell_outlined,
+    color: Colors.indigo,
+    route: AppRoutes.ITEM_PRICE_FORM,
+    // ItemPriceController.openPrice opens an existing row in `edit`.
+    argsFor: _nameEdit,
+    // Item Price names are random hashes — useless in a cross-doctype result
+    // list, but the Item Price list screen searches its own rows on item_code
+    // / price list, so it still needs a route to open a hit with.
+    discoverable: false,
+  ),
 ];
+
+/// The targets offered to the user for browsing: the Dashboard's all-doctype
+/// fan-out, its scope chips, and the ToDo reference-type picker.
+///
+/// Derived from [kGlobalSearchTargets]; see [GlobalSearchTarget.discoverable].
+final List<GlobalSearchTarget> kDiscoverableSearchTargets =
+    kGlobalSearchTargets.where((t) => t.discoverable).toList();
 
 // Top-level functions (const list requires const-tear-off-able references).
 Map<String, dynamic> _itemArgs(String id) => {'itemCode': id};

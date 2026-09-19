@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
@@ -51,6 +52,8 @@ class ItemPriceListAppBar extends StatelessWidget {
     return DocTypeListHeader(
       title: 'Item Price',
       automaticallyImplyLeading: false,
+      searchDoctype: 'Item Price',
+      searchRoute: AppRoutes.ITEM_PRICE_FORM,
       searchQuery: c.searchQuery,
       onSearchChanged: c.onSearchChanged,
       onSearchClear: () => c.onSearchChanged(''),
