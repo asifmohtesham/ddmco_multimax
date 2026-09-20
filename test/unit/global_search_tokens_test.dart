@@ -13,6 +13,50 @@ void main() {
     });
   });
 
+  group('resolveSearchTargets', () {
+    // Item Price defines title_field "item_name" but NO search_fields, and is
+    // autoname:hash. Before title_field was added to the search targets, its
+    // only searchable field was the hash — every single-word query matched
+    // nothing, while a two-word query worked (that path already used
+    // title_field via resolvePrimarySearchField).
+    test('a doctype with no search_fields still searches its title', () {
+      expect(
+        GlobalSearchService.resolveSearchTargets(
+            {'title_field': 'item_name'}, {'item_name': 'Data'}),
+        ['name', 'item_name'],
+      );
+    });
+
+    test('title and search_fields combine without duplicating', () {
+      expect(
+        GlobalSearchService.resolveSearchTargets(
+          {
+            'title_field': 'customer_name',
+            'search_fields': 'status,customer,customer_name',
+          },
+          {'customer_name': 'Data', 'status': 'Select', 'customer': 'Link'},
+        ),
+        ['name', 'customer_name', 'status', 'customer'],
+      );
+    });
+
+    test('drops non-text fields, keeping name searchable', () {
+      expect(
+        GlobalSearchService.resolveSearchTargets(
+            {'title_field': 'grand_total', 'search_fields': 'transaction_date'},
+            {'grand_total': 'Currency', 'transaction_date': 'Date'}),
+        ['name'],
+      );
+    });
+
+    test('null meta and a blank title degrade to name only', () {
+      expect(GlobalSearchService.resolveSearchTargets(null, {}), ['name']);
+      expect(
+          GlobalSearchService.resolveSearchTargets({'title_field': ''}, {}),
+          ['name']);
+    });
+  });
+
   group('resolvePrimarySearchField', () {
     test('uses title_field when present', () {
       expect(
