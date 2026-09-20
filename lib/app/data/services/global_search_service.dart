@@ -34,28 +34,14 @@ class GlobalSearchService extends GetxService {
       final fieldTypes = _fieldTypesCache[doctype] ?? {};
 
       // 2. Identify Search & Select Fields
-      final List<String> searchTargets = ['name'];
+      final List<String> searchTargets = resolveSearchTargets(meta, fieldTypes);
       final List<String> selectFields = ['name'];
 
       if (meta != null) {
-        // A. Contextual Display Fields
+        // Display context — selected but not necessarily searched.
         if (meta['title_field'] != null) selectFields.add(meta['title_field']);
         if (meta['image_field'] != null) selectFields.add(meta['image_field']);
-
-        // B. Contextual Search Fields
-        if (meta['search_fields'] != null) {
-          final String sf = meta['search_fields'];
-          final splitFields = sf.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
-
-          for (final rawField in splitFields) {
-            // Validate: Only search if safe
-            if (_isTextSearchable(rawField, fieldTypes)) {
-              searchTargets.add(rawField);
-            }
-            // Always Select: For display context
-            selectFields.add(rawField);
-          }
-        }
+        selectFields.addAll(splitSearchFields(meta['search_fields']));
       }
 
       // Fallback description
@@ -105,6 +91,38 @@ class GlobalSearchService extends GetxService {
       print('GlobalSearchService Error ($doctype): $e');
     }
     return [];
+  }
+
+  /// A doctype's `search_fields` split into trimmed, non-empty names. Pure.
+  static List<String> splitSearchFields(dynamic raw) => raw is String
+      ? raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()
+      : const <String>[];
+
+  /// The fields a LIKE search runs against: always `name`, plus the doctype's
+  /// `title_field` and `search_fields` wherever those are text-searchable.
+  ///
+  /// The title is included because it is what the result row DISPLAYS. A
+  /// doctype that defines no `search_fields` — Item Price is one — would
+  /// otherwise be searchable by `name` alone, and Item Price is `autoname:
+  /// hash`, so that is a random string nobody can type: every single-word query
+  /// returned nothing. [resolvePrimarySearchField] already treats `title_field`
+  /// as the primary field for multi-token queries; this makes the single-token
+  /// path agree with it rather than silently matching nothing. Pure.
+  static List<String> resolveSearchTargets(
+    Map<String, dynamic>? meta,
+    Map<String, String> fieldTypes,
+  ) {
+    final targets = <String>['name'];
+    if (meta == null) return targets;
+    void add(dynamic field) {
+      if (field is! String || field.isEmpty) return;
+      if (!_isTextSearchable(field, fieldTypes)) return;
+      if (!targets.contains(field)) targets.add(field);
+    }
+
+    add(meta['title_field']);
+    splitSearchFields(meta['search_fields']).forEach(add);
+    return targets;
   }
 
   /// Whitespace-separated, non-empty search tokens from [query]. Pure.
@@ -367,7 +385,7 @@ class GlobalSearchService extends GetxService {
   }
 
   /// Validates if a field is safe for text-based searching (LIKE operator).
-  bool _isTextSearchable(String fieldname, Map<String, String> types) {
+  static bool _isTextSearchable(String fieldname, Map<String, String> types) {
     fieldname = fieldname.toLowerCase();
 
     // 1. Explicit Blacklist (Dates, Numbers, System fields)
