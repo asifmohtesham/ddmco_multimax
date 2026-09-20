@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
@@ -16,6 +17,8 @@ class PricingRuleListAppBar extends StatelessWidget {
     return DocTypeListHeader(
       title: 'Pricing Rule',
       automaticallyImplyLeading: false,
+      searchDoctype: 'Pricing Rule',
+      searchRoute: AppRoutes.PRICING_RULE_FORM,
       searchQuery: c.searchQuery,
       onSearchChanged: c.onSearchChanged,
       onSearchClear: () => c.onSearchChanged(''),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
@@ -65,8 +67,14 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
   final ValueChanged<ImageScanResult>? onImageScanResult;
 
   // ── Internals ──────────────────────────────────────────────────────────
-  final GlobalSearchService _service = Get.put(GlobalSearchService());
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  // `late` so a local-mode delegate (and the widget tests) never touch GetX:
+  // resolving ApiProvider eagerly would throw wherever it isn't registered.
+  late final GlobalSearchService _service = Get.put(GlobalSearchService());
+  late final ApiProvider _apiProvider = Get.find<ApiProvider>();
+
+  /// Test seam for [_search] — defaults to the live [GlobalSearchService].
+  final Future<List<GlobalSearchItem>> Function(String doctype, String query)?
+      searcher;
 
   bool get _isApiMode => doctype.isNotEmpty && targetRoute.isNotEmpty;
 
@@ -79,11 +87,42 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     this.activeFilters,
     this.onFilterTap,
     this.onImageScanResult,
+    this.searcher,
   });
 
   @override
   String? get searchFieldLabel =>
       _isApiMode ? 'Search $doctype…' : 'Search…';
+
+  // ── Debounced API search ──────────────────────────────────────────────
+  //
+  // One delegate instance lives for the whole search session (showSearch is
+  // called once, per keystroke Flutter re-invokes buildSuggestions on the SAME
+  // object), so these fields survive across keystrokes.
+  //
+  // Without them a fresh Future — and therefore a fresh network round-trip —
+  // was created on every build: one request per character typed, plus more for
+  // incidental rebuilds (keyboard, theme, filter badge).  Mirrors the debounce
+  // already used by GlobalDocumentSearchDelegate.
+  Timer? _debounce;
+  String? _pendingKey;
+  Future<List<GlobalSearchItem>>? _pendingFuture;
+
+  Future<List<GlobalSearchItem>> _search(String q) {
+    if (q == _pendingKey && _pendingFuture != null) return _pendingFuture!;
+    _pendingKey = q;
+    _debounce?.cancel();
+    final completer = Completer<List<GlobalSearchItem>>();
+    _pendingFuture = completer.future;
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        completer.complete(await (searcher ?? _service.search)(doctype, q));
+      } catch (e) {
+        if (!completer.isCompleted) completer.completeError(e);
+      }
+    });
+    return completer.future;
+  }
 
   // ── Helper: post-frame safe notify ────────────────────────────────────
   //
@@ -249,7 +288,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     }
 
     return FutureBuilder<List<GlobalSearchItem>>(
-      future: _service.search(doctype, query),
+      future: _search(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: LinearProgressIndicator());

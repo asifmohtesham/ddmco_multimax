@@ -133,6 +133,7 @@ class _JobCardScreenState extends State<JobCardScreen>
               title: 'Job Card',
               automaticallyImplyLeading: false,
               searchDoctype:      'Job Card',
+              searchRoute:        AppRoutes.JOB_CARD_FORM,
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
               onSearchClear: () {

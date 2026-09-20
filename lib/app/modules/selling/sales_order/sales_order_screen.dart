@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/sales_order_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
@@ -156,6 +157,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                 title: 'Sales Order',
                 automaticallyImplyLeading: false,
                 searchDoctype: 'Sales Order',
+                searchRoute: AppRoutes.SALES_ORDER_FORM,
                 searchQuery: controller.searchQuery,
                 onSearchChanged: controller.onSearchChanged,
                 onSearchClear: () {

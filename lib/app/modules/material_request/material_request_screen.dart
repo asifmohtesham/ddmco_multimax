@@ -215,6 +215,8 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
             DocTypeListHeader(
               title: 'Material Request',
               automaticallyImplyLeading: false,
+              searchDoctype: 'Material Request',
+              searchRoute: AppRoutes.MATERIAL_REQUEST_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

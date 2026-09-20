@@ -217,6 +217,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             DocTypeListHeader(
               title: 'Stock Entry',
               automaticallyImplyLeading: false,
+              searchDoctype: 'Stock Entry',
+              searchRoute: AppRoutes.STOCK_ENTRY_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {

@@ -273,10 +273,10 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
   /// The scope targets the user is allowed to read. Falls back to the full
   /// registry when [PermissionService] isn't registered (e.g. widget tests).
   List<GlobalSearchTarget> _permittedTargets() {
-    if (!Get.isRegistered<PermissionService>()) return kGlobalSearchTargets;
+    if (!Get.isRegistered<PermissionService>()) return kDiscoverableSearchTargets;
     final perm = Get.find<PermissionService>();
     return GlobalSearchService.filterPermittedTargets(
-      kGlobalSearchTargets,
+      kDiscoverableSearchTargets,
       (doctype) => perm.hasAccess(doctype),
     );
   }

@@ -114,7 +114,7 @@ class ToDoFormController extends GetxController with OptimisticLockingMixin {
   List<GlobalSearchTarget> get referenceTypeOptions {
     final permissionService = Get.find<PermissionService>();
     return GlobalSearchService.filterPermittedTargets(
-      kGlobalSearchTargets,
+      kDiscoverableSearchTargets,
       (doctype) => permissionService.hasAccess(doctype),
     );
   }

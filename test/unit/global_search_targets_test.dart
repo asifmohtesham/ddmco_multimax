@@ -34,14 +34,18 @@ void main() {
       }
     });
 
-    test('Pricing Rule opens its form in edit mode; Item Price is not searchable', () {
+    test('Pricing Rule opens its form in edit mode', () {
       expect(_byDoctype('Pricing Rule').route, AppRoutes.PRICING_RULE_FORM);
       expect(_byDoctype('Pricing Rule').argsFor('PRLE-1'),
           {'name': 'PRLE-1', 'mode': 'edit'});
+    });
+
+    test('every target is discoverable except the opt-outs', () {
       expect(
-        kGlobalSearchTargets.any((t) => t.doctype == 'Item Price'),
-        isFalse,
-        reason: 'Item Price names are random hashes',
+        kGlobalSearchTargets
+            .where((t) => !t.discoverable)
+            .map((t) => t.doctype),
+        ['Item Price'],
       );
     });
 
@@ -101,6 +105,34 @@ void main() {
 
     test('unregistered route falls back to the bare id', () {
       expect(searchNavArgsFor(AppRoutes.LOGIN, 'TD-1'), 'TD-1');
+    });
+  });
+
+  group('kDiscoverableSearchTargets', () {
+    // The registry does two jobs: routing (open a hit) and browsing (offer the
+    // doctype in a cross-doctype list). Item Price needs the first without the
+    // second — its names are random hashes, so it is noise beside other
+    // doctypes' hits, but its own list screen still has to open one.
+    test('drops the non-discoverable targets but keeps the rest', () {
+      expect(
+        kDiscoverableSearchTargets.any((t) => t.doctype == 'Item Price'),
+        isFalse,
+      );
+      expect(
+        kDiscoverableSearchTargets.map((t) => t.doctype),
+        containsAll(const ['Item', 'Delivery Note', 'Pricing Rule']),
+      );
+      expect(kDiscoverableSearchTargets.length,
+          kGlobalSearchTargets.length - 1);
+    });
+
+    test('Item Price stays routable — a hit must open, not crash', () {
+      // searchNavArgsFor falls back to the bare id for an unregistered route,
+      // and ItemPriceFormController reads Get.arguments['name'].
+      expect(
+        searchNavArgsFor(AppRoutes.ITEM_PRICE_FORM, 'a1b2c3d4'),
+        {'name': 'a1b2c3d4', 'mode': 'edit'},
+      );
     });
   });
 

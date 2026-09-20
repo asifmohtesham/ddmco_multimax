@@ -121,6 +121,7 @@ class _BomScreenState extends State<BomScreen> {
               title: screenTitle,
               automaticallyImplyLeading: false,
               searchDoctype:      'BOM',
+              searchRoute:        AppRoutes.BOM_FORM,
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
               onSearchClear:      controller.clearFilters,
