@@ -8,6 +8,7 @@ import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class PurchaseOrderController extends GetxController {
   final PurchaseOrderProvider _provider = Get.find<PurchaseOrderProvider>();
@@ -141,6 +142,14 @@ class PurchaseOrderController extends GetxController {
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
 
   /// Debounced handler wired to the SearchBar's [onChanged].
   void onSearchChanged(String val) => searchQuery.value = val;

@@ -10,6 +10,7 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
@@ -79,6 +80,9 @@ class PackingSlipController extends GetxController {
   @override
   void onReady() {
     super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
     if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
       openCreateDialog();
     }

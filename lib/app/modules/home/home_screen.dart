@@ -6,7 +6,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/camera_scan_overlay.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
-import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
+import 'package:multimax/app/modules/global_widgets/awesome_bar_delegate.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -61,10 +61,10 @@ class HomeScreen extends GetView<HomeController> {
               extraActions: [
                 IconButton(
                   icon: const Icon(Icons.search),
-                  tooltip: 'Search documents',
+                  tooltip: 'Search',
                   onPressed: () => showSearch(
                     context: context,
-                    delegate: GlobalDocumentSearchDelegate(),
+                    delegate: AwesomeBarDelegate(),
                   ),
                 ),
               ],

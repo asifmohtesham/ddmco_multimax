@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class WorkOrderController extends GetxController {
   final WorkOrderProvider _provider = Get.find<WorkOrderProvider>();
@@ -60,6 +61,14 @@ class WorkOrderController extends GetxController {
   }
 
   // ── Search ───────────────────────────────────────────────────────────────────
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
 
   void onSearchChanged(String value) {
     _debounce?.cancel();

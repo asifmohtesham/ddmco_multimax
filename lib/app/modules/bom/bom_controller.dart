@@ -8,6 +8,7 @@ import 'package:multimax/app/data/providers/bom_provider.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class BomController extends GetxController with BarcodeListenerMixin {
   final BomProvider _provider = Get.find<BomProvider>();
@@ -172,6 +173,14 @@ class BomController extends GetxController with BarcodeListenerMixin {
   }
 
   // ── Search ───────────────────────────────────────────────────────────────────
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
 
   void onSearchChanged(String value) {
     _debounce?.cancel();

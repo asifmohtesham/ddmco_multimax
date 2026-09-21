@@ -7,6 +7,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
+import 'package:multimax/app/data/services/awesome_bar_service.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -274,6 +275,17 @@ class MultimaxApp extends StatelessWidget {
           if (routing?.current != null &&
               Get.isRegistered<HomeController>()) {
             Get.find<HomeController>().updateActiveScreen(routing!.current);
+          }
+          // Awesome Bar recents / frequent links: every forward navigation
+          // to a document, list, report or page (pops, dialogs and sheets
+          // are not visits).
+          if (routing != null &&
+              routing.isBack != true &&
+              routing.isDialog != true &&
+              routing.isBottomSheet != true) {
+            unawaited(AwesomeBarRecentsStore()
+                .recordRoute(routing.current, routing.args)
+                .catchError((_) {}));
           }
         },
       );

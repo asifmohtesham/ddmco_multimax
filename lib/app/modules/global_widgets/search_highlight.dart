@@ -127,3 +127,88 @@ class SearchHighlight extends StatelessWidget {
     return spans;
   }
 }
+
+/// Index-based variant of [SearchHighlight] for fuzzy matches: emphasises
+/// the characters of [text] at [indices] (the positions a fuzzy matcher
+/// hit), the way Frappe wraps each matched character in `<mark>`.
+///
+/// [prefix] / [suffix] are rendered un-highlighted around [text], so a label
+/// such as "New **D**elivery **N**ote" is one [RichText].
+///
+/// The emphasis is bold + the theme's primary colour over a 13 % primary
+/// tint — the StatusPill tint convention — so it reads in both theme modes.
+class MatchIndexHighlight extends StatelessWidget {
+  final String text;
+  final List<int> indices;
+  final String prefix;
+  final String suffix;
+  final TextStyle? style;
+  final TextStyle? highlightTextStyle;
+  final int? maxLines;
+  final TextOverflow overflow;
+
+  const MatchIndexHighlight({
+    super.key,
+    required this.text,
+    required this.indices,
+    this.prefix = '',
+    this.suffix = '',
+    this.style,
+    this.highlightTextStyle,
+    this.maxLines,
+    this.overflow = TextOverflow.ellipsis,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final base = style ?? DefaultTextStyle.of(context).style;
+    if (indices.isEmpty) {
+      return Text(
+        '$prefix$text$suffix',
+        style: base,
+        maxLines: maxLines,
+        overflow: overflow,
+        softWrap: true,
+      );
+    }
+    final primary = Theme.of(context).colorScheme.primary;
+    final hl = highlightTextStyle ??
+        base.copyWith(
+          fontWeight: FontWeight.w700,
+          color: primary,
+          background: Paint()..color = primary.withValues(alpha: 0.13),
+        );
+    final marked = List<bool>.filled(text.length, false);
+    for (final i in indices) {
+      if (i >= 0 && i < text.length) marked[i] = true;
+    }
+    final spans = <TextSpan>[];
+    if (prefix.isNotEmpty) spans.add(TextSpan(text: prefix));
+    var buffer = StringBuffer();
+    bool? bufferMarked;
+    void flush() {
+      if (buffer.isEmpty) return;
+      spans.add(TextSpan(
+        text: buffer.toString(),
+        style: bufferMarked == true ? hl : null,
+      ));
+      buffer = StringBuffer();
+    }
+
+    for (var i = 0; i < text.length; i++) {
+      if (bufferMarked != marked[i]) {
+        flush();
+        bufferMarked = marked[i];
+      }
+      buffer.write(text[i]);
+    }
+    flush();
+    if (suffix.isNotEmpty) spans.add(TextSpan(text: suffix));
+    return RichText(
+      text: TextSpan(style: base, children: spans),
+      maxLines: maxLines,
+      overflow: overflow,
+      softWrap: true,
+    );
+  }
+}

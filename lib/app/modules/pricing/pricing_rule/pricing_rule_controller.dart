@@ -7,6 +7,7 @@ import 'package:multimax/app/data/providers/pricing_rule_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/pricing/pricing_logic.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class PricingRuleController extends GetxController {
   final PricingRuleProvider _provider = Get.find<PricingRuleProvider>();
@@ -47,6 +48,9 @@ class PricingRuleController extends GetxController {
   @override
   void onReady() {
     super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
     loadCounts();
     fetchRules();
   }

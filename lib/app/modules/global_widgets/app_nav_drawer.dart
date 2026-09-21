@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/awesome_bar_delegate.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -280,6 +281,23 @@ class AppNavDrawer extends StatelessWidget {
                     title: 'Dashboard',
                     route: AppRoutes.HOME,
                     currentRoute: currentRoute,
+                  ),
+
+                  // Awesome Bar — reachable from every screen. Opened on the
+                  // Navigator's context: the drawer's own is gone once popped.
+                  _DrawerItem(
+                    icon: Icons.search_rounded,
+                    title: 'Search',
+                    route: '',
+                    currentRoute: currentRoute,
+                    onTap: (ctx) {
+                      final navigator = Navigator.of(ctx);
+                      navigator.pop();
+                      showSearch<void>(
+                        context: navigator.context,
+                        delegate: AwesomeBarDelegate(),
+                      );
+                    },
                   ),
 
                   DocTypeGuard(
@@ -584,15 +602,24 @@ class _DrawerItem extends StatelessWidget {
   final String   route;
   final String   currentRoute;
 
+  /// Replaces the default pop-and-navigate for items that open something
+  /// other than a route (the Awesome Bar).
+  final void Function(BuildContext ctx)? onTap;
+
   const _DrawerItem({
     required this.title,
     required this.icon,
     required this.route,
     required this.currentRoute,
+    this.onTap,
   });
 
   void _defaultTap(BuildContext ctx) {
     HapticFeedback.lightImpact();
+    if (onTap != null) {
+      onTap!(ctx);
+      return;
+    }
     Navigator.of(ctx).pop();
     if (route.isNotEmpty && Get.currentRoute != route) {
       Get.toNamed(route);

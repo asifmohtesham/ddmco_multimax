@@ -14,6 +14,7 @@ import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
 import 'package:multimax/app/data/services/attendance_notify_worker.dart';
 import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
+import 'package:multimax/app/data/services/awesome_bar_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -242,6 +243,12 @@ class AuthenticationController extends GetxController {
     }
     if (Get.isRegistered<PermissionService>()) {
       Get.find<PermissionService>().clearCache();
+    }
+    // Awesome Bar recents / frequent links are per user; forget this
+    // user's on the way out.
+    final signedOutUser = currentUser.value?.email;
+    if (signedOutUser != null && Get.isRegistered<StorageService>()) {
+      await AwesomeBarRecentsStore().clear(signedOutUser);
     }
     currentUser.value = null;
     isAuthenticated.value = false;

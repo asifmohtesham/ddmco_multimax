@@ -7,6 +7,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class JobCardController extends GetxController {
   final JobCardProvider _provider = Get.find<JobCardProvider>();
@@ -170,6 +171,14 @@ class JobCardController extends GetxController {
   }
 
   // ── Search ────────────────────────────────────────────────────────────
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
 
   void onSearchChanged(String value) {
     _debounce?.cancel();

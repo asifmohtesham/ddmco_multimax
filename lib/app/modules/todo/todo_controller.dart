@@ -5,6 +5,7 @@ import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class ToDoController extends GetxController {
   final ToDoProvider _provider = Get.find<ToDoProvider>();
@@ -68,6 +69,14 @@ class ToDoController extends GetxController {
   }
 
   // ── Local search ────────────────────────────────────────────────────────
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
 
   void onSearchChanged(String query) {
     searchQuery.value = query;

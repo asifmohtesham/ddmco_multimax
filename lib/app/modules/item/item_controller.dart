@@ -7,6 +7,7 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/utils/search_helper.dart';
 import 'package:multimax/app/modules/item/item_scroll_mixin.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 /// Model to represent a single row in the unified filter list.
 class FilterRow {
@@ -188,6 +189,14 @@ class ItemController extends GetxController with ItemScrollMixin {
     showImagesOnly.value = value;
     fetchItems(clear: true);
   }
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
+
   void onSearchChanged(String query) => searchQuery.value = query;
 
   void _applySearch() {

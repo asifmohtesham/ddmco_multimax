@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
 import 'package:multimax/app/modules/selling/sales_order/sales_order_logic.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class SalesOrderController extends GetxController {
   final SalesOrderProvider _provider = Get.find<SalesOrderProvider>();
@@ -76,6 +77,14 @@ class SalesOrderController extends GetxController {
     } finally {
       isFetchingUsers.value = false;
     }
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
   }
 
   void onSearchChanged(String v) => searchQuery.value = v;

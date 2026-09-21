@@ -4,6 +4,7 @@ import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/models/batch_model.dart';
 import 'package:multimax/app/data/providers/batch_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 /// GetX controller for the **Batch list** screen.
 ///
@@ -106,6 +107,9 @@ class BatchController extends GetxController {
   @override
   void onReady() {
     super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
     // onReady fires after the first frame, so the screen is fully mounted.
     // Fetching here (rather than onInit) ensures the list always refreshes
     // when the screen is navigated to, even if the controller is kept alive

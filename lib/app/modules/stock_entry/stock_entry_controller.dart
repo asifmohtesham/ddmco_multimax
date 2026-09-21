@@ -14,6 +14,7 @@ import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class StockEntryController extends GetxController {
   final StockEntryProvider _provider = Get.find<StockEntryProvider>();
@@ -82,6 +83,9 @@ class StockEntryController extends GetxController {
   @override
   void onReady() {
     super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
     final args = Get.arguments;
     if (args is Map && args['openCreate'] == true) {
       openCreateDialog();

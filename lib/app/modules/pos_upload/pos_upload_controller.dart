@@ -4,6 +4,7 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/data/utils/awesome_bar_query.dart';
 
 class PosUploadController extends GetxController {
   final PosUploadProvider _provider = Get.find<PosUploadProvider>();
@@ -62,6 +63,14 @@ class PosUploadController extends GetxController {
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
+
+  @override
+  void onReady() {
+    super.onReady();
+    // "Find x in <DocType>" from the Awesome Bar seeds the list search.
+    final awesomeBarQuery = awesomeBarQueryArg();
+    if (awesomeBarQuery != null) onSearchChanged(awesomeBarQuery);
+  }
 
   void onSearchChanged(String val) => searchQuery.value = val;
 
