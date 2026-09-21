@@ -57,6 +57,12 @@ class StorageService {
   // (smoke-fix-1, Ruling 9 fallback (b)), per user.
   static const String _soLastPriceListKey = 'so_last_selling_price_list';
 
+  // Awesome Bar: recently opened documents / screens and per-screen visit
+  // counts (frequent links), per user — Frappe's `boot.user.recent` and
+  // `frequently_visited_links`.
+  static const String _awesomeBarRecentKey = 'awesome_bar_recent';
+  static const String _awesomeBarVisitsKey = 'awesome_bar_visits';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -268,4 +274,23 @@ class StorageService {
 
   String? getSoLastSellingPriceList(String user) =>
       _box.read<String>('$_soLastPriceListKey::$user');
+
+  // --- Awesome Bar recents + visit counts (per user) ---
+  Future<void> saveAwesomeBarRecents(
+          String user, List<Map<String, dynamic>> recents) async =>
+      _box.write('$_awesomeBarRecentKey::$user', recents);
+
+  List<dynamic>? getAwesomeBarRecents(String user) =>
+      _box.read<List<dynamic>>('$_awesomeBarRecentKey::$user');
+
+  Future<void> saveAwesomeBarVisits(String user, Map<String, int> visits) async =>
+      _box.write('$_awesomeBarVisitsKey::$user', visits);
+
+  Map<dynamic, dynamic>? getAwesomeBarVisits(String user) =>
+      _box.read<Map<dynamic, dynamic>>('$_awesomeBarVisitsKey::$user');
+
+  Future<void> clearAwesomeBar(String user) async {
+    await _box.remove('$_awesomeBarRecentKey::$user');
+    await _box.remove('$_awesomeBarVisitsKey::$user');
+  }
 }

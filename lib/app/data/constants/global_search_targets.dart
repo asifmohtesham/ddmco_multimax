@@ -35,6 +35,21 @@ class GlobalSearchTarget {
   /// irrelevant inside its own list, where the row is matched on real fields.
   final bool discoverable;
 
+  /// Navigation arguments that open a BLANK document of this doctype — the
+  /// Awesome Bar's "New *DocType*" contract. `null` = the app has no bare
+  /// create path for the doctype (Item, Job Card), so no "New" option is
+  /// ever offered for it.
+  ///
+  /// Traced per doctype from the list screen's own create affordance (FAB /
+  /// `openCreate…`), exactly as [argsFor] is traced from the row tap. Some
+  /// doctypes create through a picker dialog on their LIST screen rather
+  /// than the form (Packing Slip); those set [newRoute] to the list route
+  /// and pass the list's `openCreate` flag.
+  final Map<String, dynamic>? newArgs;
+
+  /// Route [newArgs] are sent to. Defaults to [route] (the form).
+  final String? newRoute;
+
   const GlobalSearchTarget({
     required this.doctype,
     required this.label,
@@ -43,8 +58,20 @@ class GlobalSearchTarget {
     required this.route,
     required this.argsFor,
     this.discoverable = true,
+    this.newArgs,
+    this.newRoute,
   });
+
+  /// Whether a "New *DocType*" option can be offered.
+  bool get canCreate => newArgs != null;
+
+  /// The route a "New *DocType*" option opens.
+  String get createRoute => newRoute ?? route;
 }
+
+/// `{'name': '', 'mode': 'new'}` — the create contract shared by most form
+/// controllers (`name = Get.arguments['name']; mode = Get.arguments['mode']`).
+const Map<String, dynamic> _kNewNameMode = {'name': '', 'mode': 'new'};
 
 Map<String, dynamic> _nameView(String id) => {'name': id, 'mode': 'view'};
 Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
@@ -74,6 +101,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.blue,
     route: AppRoutes.DELIVERY_NOTE_FORM,
     argsFor: _nameView,
+    // DeliveryNoteController.openCreate… → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Purchase Receipt',
@@ -82,6 +111,9 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.green,
     route: AppRoutes.PURCHASE_RECEIPT_FORM,
     argsFor: _nameView,
+    // PurchaseReceiptFormController._initNewPurchaseReceipt tolerates a
+    // missing `purchaseOrder` / `supplier` (blank receipt).
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Stock Entry',
@@ -90,6 +122,13 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.orange,
     route: AppRoutes.STOCK_ENTRY_FORM,
     argsFor: _nameView,
+    // StockEntryController create dialog → blank type + reference.
+    newArgs: {
+      'name': '',
+      'mode': 'new',
+      'stockEntryType': '',
+      'customReferenceNo': '',
+    },
   ),
   GlobalSearchTarget(
     doctype: 'Packing Slip',
@@ -98,6 +137,10 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.purple,
     route: AppRoutes.PACKING_SLIP_FORM,
     argsFor: _nameView,
+    // A Packing Slip is created from a Delivery Note picked on the LIST
+    // screen (PackingSlipController.openCreateDialog via `openCreate`).
+    newRoute: AppRoutes.PACKING_SLIP,
+    newArgs: {'openCreate': true},
   ),
   GlobalSearchTarget(
     doctype: 'POS Upload',
@@ -106,6 +149,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.deepPurple,
     route: AppRoutes.POS_UPLOAD_FORM,
     argsFor: _nameView,
+    // PosUploadScreen FAB → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Purchase Order',
@@ -114,6 +159,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.brown,
     route: AppRoutes.PURCHASE_ORDER_FORM,
     argsFor: _nameView,
+    // PurchaseOrderController.openCreateForm → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Sales Order',
@@ -122,6 +169,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.teal,
     route: AppRoutes.SALES_ORDER_FORM,
     argsFor: _nameView,
+    // SalesOrderController.openCreate → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Material Request',
@@ -130,6 +179,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.pink,
     route: AppRoutes.MATERIAL_REQUEST_FORM,
     argsFor: _nameView,
+    // MaterialRequestController.openCreateForm → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Work Order',
@@ -138,6 +189,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.indigo,
     route: AppRoutes.WORK_ORDER_FORM,
     argsFor: _nameView,
+    // WorkOrderScreen FAB → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Job Card',
@@ -154,6 +207,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.teal,
     route: AppRoutes.BOM_FORM,
     argsFor: _nameOnly,
+    // BomScreen FAB → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Batch',
@@ -162,6 +217,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.amber,
     route: AppRoutes.BATCH_FORM,
     argsFor: _batchArgs,
+    // BatchController.openBatchForm() → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'ToDo',
@@ -170,6 +227,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.cyan,
     route: AppRoutes.TODO_FORM,
     argsFor: _nameView,
+    // TodoScreen FAB → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Pricing Rule',
@@ -178,6 +237,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     color: Colors.deepOrange,
     route: AppRoutes.PRICING_RULE_FORM,
     argsFor: _nameEdit,
+    // PricingRuleController.openRule(null) → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
   ),
   GlobalSearchTarget(
     doctype: 'Item Price',
@@ -187,6 +248,8 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
     route: AppRoutes.ITEM_PRICE_FORM,
     // ItemPriceController.openPrice opens an existing row in `edit`.
     argsFor: _nameEdit,
+    // ItemPriceController.openPrice(null) → {'name': '', 'mode': 'new'}.
+    newArgs: _kNewNameMode,
     // Item Price names are random hashes — useless in a cross-doctype result
     // list, but the Item Price list screen searches its own rows on item_code
     // / price list, so it still needs a route to open a hit with.

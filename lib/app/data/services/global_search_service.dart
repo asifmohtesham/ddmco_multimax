@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
+import 'package:multimax/app/data/models/awesome_bar_option.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/models/warehouse_stock_line.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -200,6 +201,54 @@ class GlobalSearchService extends GetxService {
       canRead: (doctype) => permission.hasAccess(doctype),
       searcher: (doctype) => search(doctype, query, pageSize: kGroupCap),
     );
+  }
+
+  /// Frappe's full-text search, `frappe.utils.global_search.search(text,
+  /// start, limit, doctype)`: hits from the `__global_search` table for the
+  /// doctypes enabled in Global Search Settings that the user can read. The
+  /// Awesome Bar lists these inline under its nav options.
+  ///
+  /// Errors propagate (403 / 417 / not enabled) — the caller decides how to
+  /// degrade; an empty list means "nothing matched".
+  Future<List<GlobalSearchHit>> globalSearch(
+    String text, {
+    int start = 0,
+    int limit = 20,
+    String doctype = '',
+  }) async {
+    final response = await _apiProvider.callMethod(
+      'frappe.utils.global_search.search',
+      params: {
+        'text': text,
+        'start': start,
+        'limit': limit,
+        'doctype': doctype,
+      },
+    );
+    return parseGlobalSearchResponse(response.data);
+  }
+
+  /// `[{doctype, name, content, rank, image?}]` from `{message: […]}` (or a
+  /// bare list). Rows missing a doctype or name are dropped. Pure.
+  static List<GlobalSearchHit> parseGlobalSearchResponse(dynamic data) {
+    final rows = data is Map ? data['message'] : data;
+    if (rows is! List) return const [];
+    final out = <GlobalSearchHit>[];
+    for (final r in rows) {
+      if (r is! Map) continue;
+      final doctype = (r['doctype'] ?? '').toString();
+      final name = (r['name'] ?? '').toString();
+      if (doctype.isEmpty || name.isEmpty) continue;
+      final rank = r['rank'];
+      out.add(GlobalSearchHit(
+        doctype: doctype,
+        name: name,
+        content: (r['content'] ?? '').toString(),
+        rank: rank is num ? rank.toDouble() : 0,
+        image: r['image']?.toString(),
+      ));
+    }
+    return out;
   }
 
   /// Default-warehouse balances for [itemCodes], aggregated per item code.
