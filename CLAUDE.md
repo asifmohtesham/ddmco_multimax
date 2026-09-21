@@ -68,6 +68,7 @@ Shared form components (used across modules) live in `lib/app/modules/global_wid
 - `RackField` / `SharedRackField` — warehouse rack picker (universal delegate pattern)
 - `DocTypeGuard` — wraps a widget and hides it when the user lacks access to a DocType
 - `AsyncIconButton` / `AsyncFilledButton` — action controls that bake in spinner + disabled state + repaint-safe loading feedback (see Async feedback below)
+- `AwesomeBarDelegate` — the Frappe Awesome Bar mirror (Dashboard search icon, drawer "Search"); see `docs/awesome_bar_search.md`
 
 ### Async feedback
 
@@ -133,3 +134,4 @@ The `docs/` folder contains important design and architecture notes:
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
 - `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact
+- `docs/awesome_bar_search.md` — Awesome Bar (Frappe search-box mirror): option types, fuzzy scoring, registries, recents store keys, what was not ported
