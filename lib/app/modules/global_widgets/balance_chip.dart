@@ -37,6 +37,9 @@ class BalanceChip extends StatelessWidget {
   /// balance has not yet been populated.
   final bool forceShow;
 
+  /// Margin around the chip.
+  final EdgeInsetsGeometry margin;
+
   const BalanceChip({
     super.key,
     required this.balance,
@@ -44,13 +47,14 @@ class BalanceChip extends StatelessWidget {
     required this.color,
     this.prefix = 'Avail:',
     this.forceShow = false,
+    this.margin = const EdgeInsets.only(top: 4.0, left: 4.0),
   });
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
       return Padding(
-        padding: const EdgeInsets.only(top: 4.0, left: 4.0),
+        padding: margin,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -76,7 +80,7 @@ class BalanceChip extends StatelessWidget {
         : balance.toString();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 4.0, left: 4.0),
+      padding: margin,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(

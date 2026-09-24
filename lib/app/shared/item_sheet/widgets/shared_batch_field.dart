@@ -346,7 +346,7 @@ class _SimpleField extends StatelessWidget {
             balance:   chipBalance,
             isLoading: validating,
             color:     chipColor,
-            prefix:    'Batch Balance:',
+            prefix:    'Bal:',
             forceShow: validating || isValid,
           ),
         ],
@@ -407,15 +407,13 @@ class _EditModeField extends StatelessWidget {
             onPickerTap:    w.onPickerTap,
             tooltipMessage: c.batchInfoTooltip.value,
             fieldKey:       w.fieldKey ?? 'shared_batch_edit',
-            innerSuffix:    Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: BalanceChip(
-                balance:   chipBalance,
-                isLoading: validating,
-                color:     chipColor,
-                prefix:    'Batch Balance:',
-                forceShow: validating || isValid,
-              ),
+            innerSuffix:    BalanceChip(
+              balance:   chipBalance,
+              isLoading: validating,
+              color:     chipColor,
+              prefix:    'Bal:',
+              forceShow: validating || isValid,
+              margin:    const EdgeInsets.only(right: 8.0),
             ),
           ),
           BrowseBatchButton(

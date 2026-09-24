@@ -200,7 +200,7 @@ class ValidatedBatchField extends StatelessWidget {
               message: tooltipMessage!,
               triggerMode: TooltipTriggerMode.tap,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Icon(
                   isWarning
                       ? Icons.warning_amber_rounded
@@ -263,7 +263,7 @@ class ValidatedBatchField extends StatelessWidget {
       controller: textController,
       readOnly:   isValid && !isWarning,
       autofocus:  false,
-      style: const TextStyle(fontFamily: 'ShureTechMono'),
+      style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'ShureTechMono'),
       decoration: InputDecoration(
         labelText:      label,
         hintText:       'Enter or scan batch number',
