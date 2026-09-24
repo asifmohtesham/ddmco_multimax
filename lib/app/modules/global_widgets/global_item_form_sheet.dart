@@ -488,40 +488,42 @@ class GlobalItemFormSheet extends StatelessWidget {
         ],
       ),
       padding: EdgeInsets.fromLTRB(24, 16, 24, bottomPadding > 0 ? bottomPadding : 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          _AnimatedSaveButton(
-            saveButtonState: saveButtonState,
-            isSaveEnabled:   isSaveEnabled,
-            isSaveEnabledRx: isSaveEnabledRx,
-            isLoading:       isLoading,
-            title:           title,
-            onSubmit: () async {
-              final result = onSubmit();
-              if (result is Future) await result;
-            },
-            formKey:  formKey,
-            sheetTag: _sheetTag,
-          ),
           if (onDelete != null) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton.icon(
-                onPressed: () async {
+            Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: 'Remove Item',
+                onPressed: () {
                   _popSheet(context);
                   onDelete!();
                 },
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Remove Item'),
               ),
             ),
+            const SizedBox(width: 12),
           ],
+          Expanded(
+            child: _AnimatedSaveButton(
+              saveButtonState: saveButtonState,
+              isSaveEnabled:   isSaveEnabled,
+              isSaveEnabledRx: isSaveEnabledRx,
+              isLoading:       isLoading,
+              title:           title,
+              onSubmit: () async {
+                final result = onSubmit();
+                if (result is Future) await result;
+              },
+              formKey:  formKey,
+              sheetTag: _sheetTag,
+            ),
+          ),
         ],
       ),
     );
