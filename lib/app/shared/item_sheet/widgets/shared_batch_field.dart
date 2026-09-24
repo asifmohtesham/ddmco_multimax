@@ -405,7 +405,6 @@ class _EditModeField extends StatelessWidget {
             onSubmitted:    c.validateBatch,
             onChanged:      c.validateSheet,
             onPickerTap:    w.onPickerTap,
-            tooltipMessage: c.batchInfoTooltip.value,
             fieldKey:       w.fieldKey ?? 'shared_batch_edit',
             innerSuffix:    BalanceChip(
               balance:   chipBalance,
@@ -414,6 +413,7 @@ class _EditModeField extends StatelessWidget {
               prefix:    'Bal:',
               forceShow: validating || isValid,
               margin:    const EdgeInsets.only(right: 8.0),
+              tooltipMessage: c.batchInfoTooltip.value,
             ),
           ),
           BrowseBatchButton(

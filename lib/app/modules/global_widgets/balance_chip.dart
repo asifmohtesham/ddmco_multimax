@@ -43,6 +43,9 @@ class BalanceChip extends StatelessWidget {
   /// Optional callback for tapping the chip. If provided, an info icon is shown.
   final VoidCallback? onTap;
 
+  /// Optional tooltip message. If provided, an info icon is shown and the chip is wrapped in a Tooltip.
+  final String? tooltipMessage;
+
   /// If provided, this text is rendered directly, ignoring [balance] and [prefix].
   final String? textOverride;
 
@@ -55,6 +58,7 @@ class BalanceChip extends StatelessWidget {
     this.forceShow = false,
     this.margin = const EdgeInsets.only(top: 4.0, left: 4.0),
     this.onTap,
+    this.tooltipMessage,
     this.textOverride,
   });
 
@@ -106,7 +110,7 @@ class BalanceChip extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          if (onTap != null) ...[
+          if (onTap != null || tooltipMessage != null) ...[
             const SizedBox(width: 4),
             Icon(
               Icons.info_outline,
@@ -117,6 +121,14 @@ class BalanceChip extends StatelessWidget {
         ],
       ),
     );
+
+    if (tooltipMessage != null) {
+      chip = Tooltip(
+        message: tooltipMessage!,
+        triggerMode: TooltipTriggerMode.tap,
+        child: chip,
+      );
+    }
 
     if (onTap != null) {
       chip = GestureDetector(

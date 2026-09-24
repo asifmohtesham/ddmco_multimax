@@ -119,10 +119,6 @@ class ValidatedBatchField extends StatelessWidget {
   /// When non-null, the shelves icon is shown in idle and valid states.
   final VoidCallback? onPickerTap;
 
-  /// Optional tooltip message shown as an info/warning icon in the valid
-  /// suffix row.  Typically sourced from [batchInfoTooltip].
-  final String? tooltipMessage;
-
   /// Optional [ValueKey] string applied to the [TextFormField].
   final String? fieldKey;
 
@@ -146,7 +142,6 @@ class ValidatedBatchField extends StatelessWidget {
     this.errorMsg,
     this.onChanged,
     this.onPickerTap,
-    this.tooltipMessage,
     this.fieldKey,
     this.innerSuffix,
   });
@@ -188,28 +183,12 @@ class ValidatedBatchField extends StatelessWidget {
     // ── Valid ───────────────────────────────────────────────────────────
     if (isValid) {
       final hasPicker  = onPickerTap != null;
-      final hasTooltip = tooltipMessage != null;
       // 48px per slot: tooltip icon | picker btn | edit btn (always present)
       return Row(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (innerSuffix != null) innerSuffix!,
-          if (hasTooltip)
-            Tooltip(
-              message: tooltipMessage!,
-              triggerMode: TooltipTriggerMode.tap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Icon(
-                  isWarning
-                      ? Icons.warning_amber_rounded
-                      : Icons.info_outline,
-                  color: isWarning ? Colors.orange : accentColor,
-                  size: 20,
-                ),
-              ),
-            ),
           if (hasPicker)
             IconButton(
               icon: Icon(
