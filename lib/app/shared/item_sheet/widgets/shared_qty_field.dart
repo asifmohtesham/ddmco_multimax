@@ -222,11 +222,9 @@ class SharedQtyField extends StatelessWidget {
               textAlign: TextAlign.center,
               decoration: InputDecoration(
                 labelText:  label,
-                labelStyle: TextStyle(
-                  color: hasError
-                      ? theme.colorScheme.error
-                      : effectiveColor,
-                ),
+                labelStyle: hasError
+                    ? TextStyle(color: theme.colorScheme.error)
+                    : null,
                 errorText:     hasError ? c.qtyError.value : null,
                 errorMaxLines: 2,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -242,7 +240,7 @@ class SharedQtyField extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Center(
                       widthFactor: 1.0,
-                      child: QtyCapBadge(controller: c),
+                      child: QtyCapBadge(controller: c, color: effectiveColor),
                     ),
                   );
                 }),

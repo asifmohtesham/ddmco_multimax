@@ -40,18 +40,28 @@ class BalanceChip extends StatelessWidget {
   /// Margin around the chip.
   final EdgeInsetsGeometry margin;
 
+  /// Optional callback for tapping the chip. If provided, an info icon is shown.
+  final VoidCallback? onTap;
+
+  /// If provided, this text is rendered directly, ignoring [balance] and [prefix].
+  final String? textOverride;
+
   const BalanceChip({
     super.key,
-    required this.balance,
+    this.balance = 0,
     required this.isLoading,
     required this.color,
     this.prefix = 'Avail:',
     this.forceShow = false,
     this.margin = const EdgeInsets.only(top: 4.0, left: 4.0),
+    this.onTap,
+    this.textOverride,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     if (isLoading) {
       return Padding(
         padding: margin,
@@ -73,30 +83,51 @@ class BalanceChip extends StatelessWidget {
       );
     }
 
-    if (!forceShow && balance <= 0) return const SizedBox.shrink();
+    if (textOverride == null && !forceShow && balance <= 0) return const SizedBox.shrink();
 
-    final label = balance % 1 == 0
-        ? balance.toInt().toString()
-        : balance.toString();
+    final label = textOverride ?? (balance % 1 == 0
+        ? '${prefix} ${balance.toInt()}'
+        : '${prefix} $balance');
+
+    Widget chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.info_outline,
+              size: 12,
+              color: color,
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap != null) {
+      chip = GestureDetector(
+        onTap: onTap,
+        child: chip,
+      );
+    }
 
     return Padding(
       padding: margin,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.4)),
-        ),
-        child: Text(
-          '$prefix $label',
-          style: TextStyle(
-            fontSize: 11,
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+      child: chip,
     );
   }
 }

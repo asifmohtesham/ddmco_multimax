@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../qty_cap_delegate.dart';
+import '../../../modules/global_widgets/balance_chip.dart';
 
 /// Tappable pill badge that shows the active qty cap from [QtyCapDelegate.qtyInfoText].
 /// Tapping it shows a breakdown dialog built from [QtyCapDelegate.qtyInfoTooltip].
 /// Renders nothing when [qtyInfoText] returns null.
 class QtyCapBadge extends StatelessWidget {
   final QtyCapDelegate controller;
+  final Color color;
 
-  const QtyCapBadge({super.key, required this.controller});
+  const QtyCapBadge({
+    super.key,
+    required this.controller,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -20,35 +26,25 @@ class QtyCapBadge extends StatelessWidget {
       // inspect .value to decide whether the badge is tappable.
       final canTap = controller.qtyInfoTooltip.value != null;
 
-      return GestureDetector(
+      // Extract the balance number from the label (e.g. "PO Qty: 600")
+      // Since BalanceChip expects a double, we'll parse it. If parsing fails,
+      // we'll just fall back to 0 and not use BalanceChip directly, OR
+      // wait, BalanceChip expects a double and formats it.
+      // QtyCapBadge receives a fully formatted string like "PO Qty: 600".
+      // It might be easier to just change QtyCapBadge to use BalanceChip but wait,
+      // BalanceChip expects `double balance` and `String prefix`.
+      // The `qtyInfoText` is already formatted. 
+      // Let's modify BalanceChip to accept an optional `String? textOverride`.
+      
+      // But actually, it's easier to just style QtyCapBadge identical to BalanceChip!
+      // I'll just change QtyCapBadge to use the exact same styling as the new BalanceChip.
+      
+      return BalanceChip(
+        isLoading: false,
+        color: color,
+        textOverride: label,
+        margin: EdgeInsets.zero,
         onTap: canTap ? () => _showBreakdown(context) : null,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              if (canTap) ...[
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.info_outline,
-                  size: 12,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-              ],
-            ],
-          ),
-        ),
       );
     });
   }
