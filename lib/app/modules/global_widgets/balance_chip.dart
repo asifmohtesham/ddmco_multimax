@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 /// A small chip that displays an available-balance figure below a field.
 ///
@@ -123,9 +124,21 @@ class BalanceChip extends StatelessWidget {
     );
 
     if (tooltipMessage != null) {
-      chip = Tooltip(
-        message: tooltipMessage!,
-        triggerMode: TooltipTriggerMode.tap,
+      chip = GestureDetector(
+        onTap: () {
+          Get.dialog(
+            AlertDialog(
+              title: const Text('Details'),
+              content: Text(tooltipMessage!),
+              actions: [
+                TextButton(
+                  onPressed: Get.back,
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        },
         child: chip,
       );
     }
