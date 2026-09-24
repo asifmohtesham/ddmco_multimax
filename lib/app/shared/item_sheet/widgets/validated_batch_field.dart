@@ -248,9 +248,8 @@ class ValidatedBatchField extends StatelessWidget {
           onPressed: onValidate,
           tooltip: 'Validate',
           color: Colors.grey,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
