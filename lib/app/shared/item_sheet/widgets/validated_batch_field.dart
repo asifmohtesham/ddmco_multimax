@@ -126,6 +126,9 @@ class ValidatedBatchField extends StatelessWidget {
   /// Optional [ValueKey] string applied to the [TextFormField].
   final String? fieldKey;
 
+  /// Optional widget injected into the suffix area before the trailing actions.
+  final Widget? innerSuffix;
+
   const ValidatedBatchField({
     super.key,
     required this.textController,
@@ -145,18 +148,19 @@ class ValidatedBatchField extends StatelessWidget {
     this.onPickerTap,
     this.tooltipMessage,
     this.fieldKey,
+    this.innerSuffix,
   });
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  Color get _enabledBorderColor =>
-      isHardError ? Colors.red : isWarning ? Colors.orange : validBorder;
+  Color _enabledBorderColor(ThemeData theme) =>
+      isHardError ? theme.colorScheme.error : isWarning ? Colors.orange : theme.colorScheme.outlineVariant;
 
-  Color get _focusedBorderColor =>
-      isHardError ? Colors.red : isWarning ? Colors.orange : accentColor;
+  Color _focusedBorderColor(ThemeData theme) =>
+      isHardError ? theme.colorScheme.error : isWarning ? Colors.orange : accentColor;
 
-  Color get _helperColor =>
-      isHardError ? Colors.red : isWarning ? Colors.orange : Colors.grey;
+  Color _helperColor(ThemeData theme) =>
+      isHardError ? theme.colorScheme.error : isWarning ? Colors.orange : Colors.grey;
 
   Widget _pickerBtn() => IconButton(
         icon: Icon(Icons.shelves, color: accentColor, size: 20),
@@ -186,68 +190,64 @@ class ValidatedBatchField extends StatelessWidget {
       final hasPicker  = onPickerTap != null;
       final hasTooltip = tooltipMessage != null;
       // 48px per slot: tooltip icon | picker btn | edit btn (always present)
-      final width = 48.0 + (hasPicker ? 48.0 : 0.0) + (hasTooltip ? 48.0 : 0.0);
-      return SizedBox(
-        width: width,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (hasTooltip)
-              Tooltip(
-                message: tooltipMessage!,
-                triggerMode: TooltipTriggerMode.tap,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(
-                    isWarning
-                        ? Icons.warning_amber_rounded
-                        : Icons.info_outline,
-                    color: isWarning ? Colors.orange : accentColor,
-                    size: 20,
-                  ),
-                ),
-              ),
-            if (hasPicker)
-              IconButton(
-                icon: Icon(
-                  Icons.shelves,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (innerSuffix != null) innerSuffix!,
+          if (hasTooltip)
+            Tooltip(
+              message: tooltipMessage!,
+              triggerMode: TooltipTriggerMode.tap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  isWarning
+                      ? Icons.warning_amber_rounded
+                      : Icons.info_outline,
                   color: isWarning ? Colors.orange : accentColor,
                   size: 20,
                 ),
-                onPressed: onPickerTap,
-                tooltip: 'Browse batches',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
               ),
+            ),
+          if (hasPicker)
             IconButton(
               icon: Icon(
-                Icons.edit,
+                Icons.shelves,
                 color: isWarning ? Colors.orange : accentColor,
                 size: 20,
               ),
-              onPressed: onReset,
-              tooltip: 'Edit Batch',
+              onPressed: onPickerTap,
+              tooltip: 'Browse batches',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
             ),
-          ],
-        ),
+          IconButton(
+            icon: Icon(
+              Icons.edit,
+              color: isWarning ? Colors.orange : accentColor,
+              size: 20,
+            ),
+            onPressed: onReset,
+            tooltip: 'Edit Batch',
+          ),
+        ],
       );
     }
 
     // ── Idle ────────────────────────────────────────────────────────────
     final hasPicker = onPickerTap != null;
-    return SizedBox(
-      width: hasPicker ? 96.0 : 48.0,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (hasPicker) _pickerBtn(),
-          IconButton(
-            icon: const Icon(Icons.check),
-            onPressed: onValidate,
-            tooltip: 'Validate',
-            color: Colors.grey,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        if (innerSuffix != null) innerSuffix!,
+        if (hasPicker) _pickerBtn(),
+        IconButton(
+          icon: const Icon(Icons.check),
+          onPressed: onValidate,
+          tooltip: 'Validate',
+          color: Colors.grey,
           ),
         ],
       ),
@@ -258,6 +258,7 @@ class ValidatedBatchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return TextFormField(
       key:        fieldKey != null ? ValueKey(fieldKey) : null,
       controller: textController,
@@ -265,12 +266,14 @@ class ValidatedBatchField extends StatelessWidget {
       autofocus:  false,
       style: const TextStyle(fontFamily: 'ShureTechMono'),
       decoration: InputDecoration(
-        hintText:       label,
+        labelText:      label,
+        hintText:       'Enter or scan batch number',
         helperText:     errorMsg,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         helperMaxLines: 2,
         helperStyle: errorMsg != null
             ? TextStyle(
-                color:      _helperColor,
+                color:      _helperColor(theme),
                 fontWeight: (isHardError || isWarning)
                     ? FontWeight.bold
                     : FontWeight.normal,
@@ -279,11 +282,11 @@ class ValidatedBatchField extends StatelessWidget {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide:   BorderSide(color: _enabledBorderColor),
+          borderSide:   BorderSide(color: _enabledBorderColor(theme)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide:   BorderSide(color: _focusedBorderColor, width: 2),
+          borderSide:   BorderSide(color: _focusedBorderColor(theme), width: 2),
         ),
         filled:    true,
         // Themed, not Colors.white: a white fill makes the (light)

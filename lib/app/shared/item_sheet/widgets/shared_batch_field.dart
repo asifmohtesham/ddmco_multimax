@@ -129,7 +129,7 @@ import 'package:multimax/app/shared/item_sheet/widgets/validated_batch_field.dar
 /// |                             | validateSheet cross-ref, balance source example, changelog table.|
 class SharedBatchField extends StatelessWidget {
   final BatchNoFieldWithBrowseDelegate c;
-  final Color  accentColor;
+  final Color? accentColor;
   final bool   editMode;
   final bool   readOnly;
   final String? fieldKey;
@@ -158,7 +158,7 @@ class SharedBatchField extends StatelessWidget {
   const SharedBatchField({
     super.key,
     required this.c,
-    required this.accentColor,
+    this.accentColor,
     this.editMode          = false,
     this.readOnly          = false,
     this.fieldKey,
@@ -168,23 +168,10 @@ class SharedBatchField extends StatelessWidget {
     this.onPickerTap,
   });
 
-  Color get _validFill {
-    if (accentColor is MaterialColor) {
-      return (accentColor as MaterialColor).shade50;
-    }
-    return accentColor.withOpacity(0.08);
-  }
-
-  Color get _validBorder {
-    if (accentColor is MaterialColor) {
-      return (accentColor as MaterialColor).shade200;
-    }
-    return accentColor.withOpacity(0.5);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return editMode ? _EditModeField(this) : _SimpleField(this);
+    final effectiveColor = accentColor ?? Theme.of(context).colorScheme.primary;
+    return editMode ? _EditModeField(this, effectiveColor) : _SimpleField(this, effectiveColor);
   }
 }
 
@@ -199,7 +186,8 @@ Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
 // ── Simple (borderless) mode ───────────────────────────────────────────────────
 class _SimpleField extends StatelessWidget {
   final SharedBatchField w;
-  const _SimpleField(this.w);
+  final Color effectiveColor;
+  const _SimpleField(this.w, this.effectiveColor);
 
   @override
   Widget build(BuildContext context) {
@@ -219,9 +207,9 @@ class _SimpleField extends StatelessWidget {
           ? theme.colorScheme.error
           : isValid
               ? Colors.green
-              : w.accentColor;
+              : effectiveColor;
 
-      final chipColor   = isWarning ? Colors.orange : w.accentColor;
+      final chipColor   = isWarning ? Colors.orange : effectiveColor;
       final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
 
       Widget buildSuffixRow() => IntrinsicWidth(
@@ -253,14 +241,14 @@ class _SimpleField extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: Icon(Icons.info_outline,
-                      color: w.accentColor, size: 20),
+                      color: effectiveColor, size: 20),
                 ),
               ),
             if (!validating && !isValid && w.onPickerTap != null)
-              _pickerSuffixBtn(w.accentColor, w.onPickerTap!),
+              _pickerSuffixBtn(effectiveColor, w.onPickerTap!),
             if (!validating && isValid && w.onPickerTap != null)
               _pickerSuffixBtn(
-                isWarning ? Colors.orange : w.accentColor,
+                isWarning ? Colors.orange : effectiveColor,
                 w.onPickerTap!,
               ),
             if (c.batchController.text.isNotEmpty && !isReadOnly)
@@ -278,35 +266,66 @@ class _SimpleField extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GlobalItemFormSheet.buildInputGroup(
-            label: 'Batch No',
-            color: borderColor,
-            child: TextField(
-              controller: c.batchController,
-              readOnly:   isReadOnly,
-              style:      theme.textTheme.bodyMedium,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (v) {
-                if (v.isNotEmpty) c.validateBatch(v);
-              },
-              decoration: InputDecoration(
-                hintText:    'Enter or scan batch number',
-                border:      InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                isDense:       true,
-                errorText:     isHardError ? errorMsg : null,
-                errorMaxLines: 2,
-                helperText:    isWarning ? errorMsg : null,
-                helperMaxLines: 2,
-                helperStyle: isWarning
-                    ? const TextStyle(
-                        color:      Colors.orange,
-                        fontWeight: FontWeight.w600,
-                        fontSize:   11,
-                      )
-                    : null,
-                suffixIcon: buildSuffixRow(),
+          TextField(
+            controller: c.batchController,
+            readOnly:   isReadOnly,
+            style:      theme.textTheme.bodyMedium,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (v) {
+              if (v.isNotEmpty) c.validateBatch(v);
+            },
+            decoration: InputDecoration(
+              labelText:   'Batch No',
+              hintText:    'Enter or scan batch number',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              isDense:       true,
+              errorText:     isHardError ? errorMsg : null,
+              errorMaxLines: 2,
+              helperText:    isWarning ? errorMsg : null,
+              helperMaxLines: 2,
+              helperStyle: isWarning
+                  ? const TextStyle(
+                      color:      Colors.orange,
+                      fontWeight: FontWeight.w600,
+                      fontSize:   11,
+                    )
+                  : null,
+              suffixIcon: buildSuffixRow(),
+              border: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(8)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.outlineVariant,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: effectiveColor,
+                  width: 2,
+                ),
+              ),
+              disabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.disabledColor,
+                ),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.error,
+                  width: 2,
+                ),
               ),
             ),
           ),
@@ -319,7 +338,7 @@ class _SimpleField extends StatelessWidget {
             isValidating:      c.isValidatingBatch.value,
             itemCode:          c.itemCode.value,
             warehouse:         w.browseWarehouse ?? c.resolvedWarehouseForBatch,
-            accentColor:       w.accentColor,
+            accentColor:       effectiveColor,
             batchController:   c.batchController,
             onBatchSelected:   c.validateBatch,
           )),
@@ -346,7 +365,8 @@ class _SimpleField extends StatelessWidget {
 //   Controllers that do not gate a Save button supply an empty-body override.
 class _EditModeField extends StatelessWidget {
   final SharedBatchField w;
-  const _EditModeField(this.w);
+  final Color effectiveColor;
+  const _EditModeField(this.w, this.effectiveColor);
 
   @override
   Widget build(BuildContext context) {
@@ -359,35 +379,43 @@ class _EditModeField extends StatelessWidget {
 
       final isHardError = !isValid && errorMsg.isNotEmpty;
       final isWarning   =  isValid && errorMsg.isNotEmpty;
-      final chipColor   = isWarning ? Colors.orange : w.accentColor;
+      final chipColor   = isWarning ? Colors.orange : effectiveColor;
       final chipBalance = w.balanceOverride?.call() ?? c.batchBalanceFor('');
       final warehouse   = w.browseWarehouse ?? c.resolvedWarehouseForBatch;
+
+      final validFill = effectiveColor.withOpacity(0.05);
+      final validBorder = effectiveColor.withOpacity(0.5);
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GlobalItemFormSheet.buildInputGroup(
-            label:   'Batch No',
-            color:   w.accentColor,
-            bgColor: isValid ? w._validFill : null,
-            child: ValidatedBatchField(
-              textController: c.batchController,
-              isValid:        isValid,
-              isValidating:   validating,
-              isHardError:    isHardError,
-              isWarning:      isWarning,
-              errorMsg:       errorMsg.isNotEmpty ? errorMsg : null,
-              label:          'Enter or scan batch',
-              accentColor:    w.accentColor,
-              validFill:      w._validFill,
-              validBorder:    w._validBorder,
-              onReset:        c.resetBatch,
-              onValidate:     () => c.validateBatch(c.batchController.text),
-              onSubmitted:    c.validateBatch,
-              onChanged:      c.validateSheet,
-              onPickerTap:    w.onPickerTap,
-              tooltipMessage: c.batchInfoTooltip.value,
-              fieldKey:       w.fieldKey ?? 'shared_batch_edit',
+          ValidatedBatchField(
+            textController: c.batchController,
+            isValid:        isValid,
+            isValidating:   validating,
+            isHardError:    isHardError,
+            isWarning:      isWarning,
+            errorMsg:       errorMsg.isNotEmpty ? errorMsg : null,
+            label:          'Batch No',
+            accentColor:    effectiveColor,
+            validFill:      validFill,
+            validBorder:    validBorder,
+            onReset:        c.resetBatch,
+            onValidate:     () => c.validateBatch(c.batchController.text),
+            onSubmitted:    c.validateBatch,
+            onChanged:      c.validateSheet,
+            onPickerTap:    w.onPickerTap,
+            tooltipMessage: c.batchInfoTooltip.value,
+            fieldKey:       w.fieldKey ?? 'shared_batch_edit',
+            innerSuffix:    Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: BalanceChip(
+                balance:   chipBalance,
+                isLoading: validating,
+                color:     chipColor,
+                prefix:    'Batch Balance:',
+                forceShow: validating || isValid,
+              ),
             ),
           ),
           BrowseBatchButton(
@@ -397,16 +425,9 @@ class _EditModeField extends StatelessWidget {
             isValidating:      validating,
             itemCode:          c.itemCode.value,
             warehouse:         warehouse,
-            accentColor:       w.accentColor,
+            accentColor:       effectiveColor,
             batchController:   c.batchController,
             onBatchSelected:   c.validateBatch,
-          ),
-          BalanceChip(
-            balance:   chipBalance,
-            isLoading: validating,
-            color:     chipColor,
-            prefix:    'Batch Balance:',
-            forceShow: validating || isValid,
           ),
         ],
       );

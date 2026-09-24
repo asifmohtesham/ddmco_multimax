@@ -202,13 +202,18 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                 ),
         ),
         if (controller.isEditable)
-          Obx(() => BarcodeInputWidget(
-            onScan:      (code) => controller.scanBarcode(code),
-            isLoading:   controller.isScanning.value,
-            controller:  controller.barcodeController,
-            hintText:    'Scan Item Code',
-            activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
-          )),
+          Obx(() {
+            if (controller.isItemSheetOpen.value) {
+              return const SizedBox.shrink();
+            }
+            return BarcodeInputWidget(
+              onScan:      (code) => controller.scanBarcode(code),
+              isLoading:   controller.isScanning.value,
+              controller:  controller.barcodeController,
+              hintText:    'Scan Item Code',
+              activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
+            );
+          }),
         if (controller.canCreateReceipt)
           SafeArea(
             top: false,

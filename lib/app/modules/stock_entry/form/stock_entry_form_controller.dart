@@ -1335,7 +1335,6 @@ class StockEntryFormController extends GetxController
               ),
               SharedBatchField(
                 c:               child,
-                accentColor:     Colors.blueGrey,
                 editMode:        true,
                 fieldKey:        'se_batch_edit',
                 balanceOverride: () => child.batchBalance.value,

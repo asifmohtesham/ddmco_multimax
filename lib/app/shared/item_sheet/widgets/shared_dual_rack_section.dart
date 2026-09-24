@@ -93,7 +93,6 @@ class SharedDualRackSection extends StatelessWidget {
               if (result != null) await srcAdapter.handleRackPicked(result);
             }
                 : null,
-            accentColor: Colors.purple,
           ),
 
         // ── Target Rack ───────────────────────────────────────────────────
@@ -115,7 +114,6 @@ class SharedDualRackSection extends StatelessWidget {
               if (result != null) await tgtAdapter.handleRackPicked(result);
             }
                 : null,
-            accentColor: Colors.blueGrey,
           ),
       ],
     ));

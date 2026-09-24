@@ -354,12 +354,17 @@ class PurchaseReceiptFormScreen
                 }),
         ),
         if (controller.isEditable)
-          Obx(() => BarcodeInputWidget(
-                onScan:      (code) => controller.scanBarcode(code),
-                isLoading:   controller.isScanning.value,
-                controller:  controller.barcodeController,
-                activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
-              )),
+          Obx(() {
+            if (controller.isItemSheetOpen.value) {
+              return const SizedBox.shrink();
+            }
+            return BarcodeInputWidget(
+              onScan:      (code) => controller.scanBarcode(code),
+              isLoading:   controller.isScanning.value,
+              controller:  controller.barcodeController,
+              activeRoute: AppRoutes.PURCHASE_RECEIPT_FORM,
+            );
+          }),
         SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );

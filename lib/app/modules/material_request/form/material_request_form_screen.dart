@@ -272,13 +272,18 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                       offset: Offset(0, -4))
                 ],
               ),
-              child: Obx(() => BarcodeInputWidget(
-                    onScan: controller.scanBarcode,
-                    isLoading: controller.isScanning.value,
-                    controller: controller.barcodeController,
-                    activeRoute: AppRoutes.MATERIAL_REQUEST_FORM,
-                    hintText: 'Scan Item to Add...',
-                  )),
+              child: Obx(() {
+                if (controller.isItemSheetOpen.value) {
+                  return const SizedBox.shrink();
+                }
+                return BarcodeInputWidget(
+                  onScan: controller.scanBarcode,
+                  isLoading: controller.isScanning.value,
+                  controller: controller.barcodeController,
+                  activeRoute: AppRoutes.MATERIAL_REQUEST_FORM,
+                  hintText: 'Scan Item to Add...',
+                );
+              }),
             ),
           ),
       ],

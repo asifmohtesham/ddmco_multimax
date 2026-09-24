@@ -285,16 +285,21 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           }),
         ),
         if (slip.docstatus == 0)
-          Obx(() => ShakeOnTrigger(
-                trigger: controller.shakeTrigger.value,
-                child: BarcodeInputWidget(
-                  onScan:      (code) => controller.scanBarcode(code),
-                  isLoading:   controller.isScanning.value,
-                  hintText:    'Scan Item / Batch',
-                  controller:  controller.barcodeController,
-                  activeRoute: AppRoutes.PACKING_SLIP_FORM,
-                ),
-              )),
+          Obx(() {
+                if (controller.isItemSheetOpen.value) {
+                  return const SizedBox.shrink();
+                }
+                return ShakeOnTrigger(
+                  trigger: controller.shakeTrigger.value,
+                  child: BarcodeInputWidget(
+                    onScan:      (code) => controller.scanBarcode(code),
+                    isLoading:   controller.isScanning.value,
+                    hintText:    'Scan Item / Batch',
+                    controller:  controller.barcodeController,
+                    activeRoute: AppRoutes.PACKING_SLIP_FORM,
+                  ),
+                );
+              }),
         Builder(builder: (ctx) =>
             SizedBox(height: MediaQuery.viewInsetsOf(ctx).bottom)),
       ],

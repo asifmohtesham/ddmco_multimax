@@ -31,6 +31,9 @@ class ValidatedFieldWidget extends StatelessWidget {
   /// Accent colour used for borders, spinner, icons, and fill.
   final Color color;
 
+  /// Optional floating label text shown on the field border.
+  final String? labelText;
+
   /// Placeholder text shown when the field is empty.
   final String hintText;
 
@@ -101,6 +104,7 @@ class ValidatedFieldWidget extends StatelessWidget {
     required this.controller,
     this.focusNode,
     required this.color,
+    this.labelText,
     required this.hintText,
     required this.isReadOnly,
     required this.isValid,
@@ -169,8 +173,11 @@ class ValidatedFieldWidget extends StatelessWidget {
           autofocus: false,
           style: TextStyle(fontFamily: fontFamily),
           decoration: InputDecoration(
+            labelText: labelText,
             hintText: hintText,
             helperText: helperText,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            isDense: true,
             helperStyle: TextStyle(
               color: hasError ? Colors.red : Colors.grey,
               fontWeight: hasError ? FontWeight.bold : FontWeight.normal,
@@ -180,7 +187,7 @@ class ValidatedFieldWidget extends StatelessWidget {
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
-                color: hasError ? Colors.red : color.withOpacity(0.4),
+                color: hasError ? Colors.red : Theme.of(context).colorScheme.outlineVariant,
               ),
             ),
             focusedBorder: OutlineInputBorder(
