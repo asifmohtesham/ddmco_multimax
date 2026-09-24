@@ -351,14 +351,12 @@ class DeliveryNoteFormController extends GetxController
           SharedInvoiceSerialNumberField(c: child),
           SharedBatchField(
             c:               child,
-            accentColor:     Colors.blueGrey,
             editMode:        true,
             onPickerTap:     child.openBatchPicker,
             balanceOverride: () => child.batchBalance.value,
           ),
           SharedRackField(
             c:               child,
-            accentColor:     Colors.blueGrey,
             editMode:        true,
             balanceOverride: () => child.rackBalance.value,
             onPickerTap: () async {

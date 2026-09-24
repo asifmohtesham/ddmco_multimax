@@ -128,10 +128,10 @@ class MaterialRequestItemFormSheet extends StatelessWidget {
                   OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.teal.shade200),
+                borderSide: BorderSide(color: Colors.teal.withOpacity(0.5)),
               ),
               filled: true,
-              fillColor: Colors.teal.shade50,
+              fillColor: Colors.teal.withOpacity(0.08),
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             ),

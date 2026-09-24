@@ -128,7 +128,7 @@ class SharedQtyField extends StatelessWidget {
   final QtyFieldDelegate c;
 
   /// Accent colour applied to label text, enabled border, and stepper icons.
-  final Color accentColor;
+  final Color? accentColor;
 
   /// Field label text.  Defaults to `'Qty'` when null.
   final String? labelText;
@@ -140,7 +140,7 @@ class SharedQtyField extends StatelessWidget {
   const SharedQtyField({
     super.key,
     required this.c,
-    required this.accentColor,
+    this.accentColor,
     this.labelText,
     this.unitOfMeasure,
   });
@@ -189,24 +189,15 @@ class SharedQtyField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Cast evaluated once per build() call as a local final.
-    //
-    // In a GetX app [c] is a [GetxController] resolved via Get.find and
-    // passed as a constructor param.  Flutter's rebuild cycle never
-    // replaces the controller instance, so this cast result is identical
-    // across every Obx rebuild — computing it here is functionally
-    // equivalent to the former State.initState cache with zero overhead.
     final stepper = c is QtyPlusMinusDelegate
         ? c as QtyPlusMinusDelegate
         : null;
 
+    final theme = Theme.of(context);
+    final effectiveColor = accentColor ?? theme.colorScheme.primary;
+
     // Outer Obx governs isQtyReadOnly and qtyError — both are RxBool /
     // RxString and change at interaction time.
-    //
-    // The suffixIcon has its own inner Obx (see InputDecoration below)
-    // because qtyInfoText is a plain String? getter (non-Rx): it cannot
-    // trigger this outer Obx.  The inner Obx uses qtyInfoTooltip (RxnString)
-    // as its reactive anchor — that field is updated whenever the underlying
-    // balance changes, which is exactly when qtyInfoText also changes.
     return Obx(() {
       final isReadOnly = stepper?.isQtyReadOnly.value ?? false;
       final hasError   = c.qtyError.value.isNotEmpty;
@@ -224,9 +215,6 @@ class SharedQtyField extends StatelessWidget {
                 decimal: true,
               ),
               inputFormatters: [
-                // Permit only non-negative decimals while typing.
-                // Empty string is allowed so backspace-to-empty works;
-                // qtyError surfaces the validation state instead.
                 FilteringTextInputFormatter.allow(
                   RegExp(r'^\d*\.?\d*$'),
                 ),
@@ -236,26 +224,17 @@ class SharedQtyField extends StatelessWidget {
                 labelText:  label,
                 labelStyle: TextStyle(
                   color: hasError
-                      ? Theme.of(context).colorScheme.error
-                      : accentColor,
+                      ? theme.colorScheme.error
+                      : effectiveColor,
                 ),
                 errorText:     hasError ? c.qtyError.value : null,
                 errorMaxLines: 2,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 suffixText: unitOfMeasure,
                 isDense:    true,
 
                 // ── Max-Qty chip as suffixIcon ─────────────────────────
-                //
-                // Inner Obx keyed off qtyInfoTooltip (RxnString) so the
-                // chip reacts to balance changes even though qtyInfoText
-                // is non-Rx.  Center(widthFactor:1.0) vertically centres
-                // the pill inside the 48×48 icon slot without horizontal
-                // stretching.
                 suffixIcon: Obx(() {
-                  // Touch qtyInfoTooltip.value to subscribe this Obx to
-                  // balance updates.  QtyCapBadge reads qtyInfoText via
-                  // its own internal Obx — we only need this outer gate
-                  // to conditionally wrap the Padding+Center.
                   c.qtyInfoTooltip.value; // reactive anchor
                   final capLabel = c.qtyInfoText;
                   if (capLabel == null) return const SizedBox.shrink();
@@ -268,35 +247,39 @@ class SharedQtyField extends StatelessWidget {
                   );
                 }),
 
-                // ── Five explicit border states ────────────────────────
-                // Declared individually so every state carries a visually
-                // intentional colour — same convention as SharedRackField
-                // which avoids relying on the default theme border cascade.
-                border: const OutlineInputBorder(),
+                // ── Explicit border states ────────────────────────
+                border: const OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                ),
                 enabledBorder: OutlineInputBorder(
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
                   borderSide: BorderSide(
-                    color: accentColor.withOpacity(0.5),
+                    color: theme.colorScheme.outlineVariant,
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
                   borderSide: BorderSide(
-                    color: accentColor,
+                    color: effectiveColor,
                     width: 2,
                   ),
                 ),
                 disabledBorder: OutlineInputBorder(
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
                   borderSide: BorderSide(
-                    color: Theme.of(context).disabledColor,
+                    color: theme.disabledColor,
                   ),
                 ),
                 errorBorder: OutlineInputBorder(
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
                   borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.error,
+                    color: theme.colorScheme.error,
                   ),
                 ),
                 focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: const BorderRadius.all(Radius.circular(8)),
                   borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.error,
+                    color: theme.colorScheme.error,
                     width: 2,
                   ),
                 ),
@@ -320,13 +303,13 @@ class SharedQtyField extends StatelessWidget {
             const SizedBox(width: 8),
             _StepperButton(
               icon:        Icons.remove,
-              accentColor: accentColor,
+              accentColor: effectiveColor,
               onTap:       () => stepper.adjustQty(-1),
             ),
             const SizedBox(width: 4),
             _StepperButton(
               icon:        Icons.add,
-              accentColor: accentColor,
+              accentColor: effectiveColor,
               onTap:       () => stepper.adjustQty(1),
             ),
           ],
@@ -369,21 +352,17 @@ class _StepperButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // 20 px top offset absorbs Material's default label-above-border gap
-      // (~18–20 px) so the icon sits centre-aligned with the input text,
-      // not with the full field height including the floating label.
       padding: const EdgeInsets.only(top: 0),
       child: SizedBox(
-        width:  44,
-        height: 44,
+        width:  48,
+        height: 56,
         child: OutlinedButton(
           style: OutlinedButton.styleFrom(
-            minimumSize:     const Size(44, 44),
+            minimumSize:     const Size(48, 56),
             padding:         EdgeInsets.zero,
             side: BorderSide(
-              // Match the field's enabledBorder opacity so all three
-              // elements (−, field, +) share a single visual border weight.
-              color: accentColor.withOpacity(0.5),
+              // Match the field's enabledBorder neutral outline
+              color: Theme.of(context).colorScheme.outlineVariant,
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),

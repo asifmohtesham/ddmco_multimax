@@ -645,14 +645,12 @@ class PurchaseReceiptFormController extends GetxController
           customFields: [
             SharedBatchField(
               c:           child,
-              accentColor: Colors.purple,
               editMode:    true,
               fieldKey:    'pr_batch_field',
               showBrowseBatches: true,
             ),
             SharedRackField(
               c:           child,
-              accentColor: AppColors.green700,
               label:       'Target Rack',
               hint:        'Rack',
               editMode:    true,
