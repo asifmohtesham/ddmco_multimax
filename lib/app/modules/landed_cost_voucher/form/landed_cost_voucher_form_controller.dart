@@ -4,8 +4,13 @@ import 'package:multimax/app/data/models/landed_cost_voucher_model.dart';
 import 'package:multimax/app/data/providers/landed_cost_voucher_provider.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
+import 'package:multimax/app/modules/global_widgets/link_search_sheet.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_controller.dart';
 
-class LandedCostVoucherFormController extends GetxController {
+class LandedCostVoucherFormController extends GetxController with RealtimeSyncMixin {
   final LandedCostVoucherProvider _provider =
       Get.find<LandedCostVoucherProvider>();
 
@@ -13,8 +18,13 @@ class LandedCostVoucherFormController extends GetxController {
   String mode = Get.arguments?['mode'] ?? 'new';
 
   var isLoading = true.obs;
-  var isSaving = false.obs;
-  var isDirty = false.obs;
+  @override var isSaving = false.obs;
+  @override var isDirty = false.obs;
+
+  var saveResult = SaveResult.idle.obs;
+
+  @override String get realtimeDoctype => 'Landed Cost Voucher';
+  @override String get realtimeDocname => name;
 
   var voucher = Rx<LandedCostVoucher?>(null);
   var docMeta = <String, dynamic>{}.obs;
@@ -47,6 +57,54 @@ class LandedCostVoucherFormController extends GetxController {
     if (!isDirty.value && !isLoading.value) {
       isDirty.value = true;
     }
+  }
+
+  void confirmDiscard() {
+    if (!isDirty.value) {
+      Get.back();
+      return;
+    }
+    GlobalDialog.showUnsavedChanges(onDiscard: () {
+      Get.back(); // close dialog
+      Get.back(); // close screen
+    });
+  }
+  
+  @override
+  Future<void> reloadDocument() async {
+    await fetchDocument();
+  }
+
+  void showDistributeChargesSheet() {
+    Get.bottomSheet(
+      Container(
+        color: Theme.of(Get.context!).colorScheme.surface,
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ['Qty', 'Amount', 'Dist. Manual']
+                .map((e) => ListTile(
+                      title: Text(e),
+                      onTap: () {
+                        distributeChargesController.text = e;
+                        Get.back();
+                      },
+                    ))
+                .toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void showCompanySearchSheet() {
+    showLinkSearchSheet(
+      doctype: 'Company',
+      title: 'Select Company',
+      onSelected: (val) {
+        companyController.text = val;
+      },
+    );
   }
 
   Future<void> _fetchMeta() async {
@@ -108,6 +166,7 @@ class LandedCostVoucherFormController extends GetxController {
     distributeChargesController.text = v.distributeChargesBasedOn;
   }
 
+  @override
   Future<void> saveDocument() async {
     if (isSaving.value) return;
 
@@ -129,16 +188,27 @@ class LandedCostVoucherFormController extends GetxController {
     };
 
     try {
+      saveResult.value = SaveResult.idle;
       if (mode == 'new') {
-        // Implement create
-        // final res = await _provider.createLandedCostVoucher(data);
-        // handle response
+        final res = await _provider.createLandedCostVoucher(data);
+        if (res.statusCode == 200 && res.data['data'] != null) {
+          name = res.data['data']['name'];
+          mode = 'edit';
+          Get.find<LandedCostVoucherController>().fetchLandedCostVouchers(clear: true);
+        } else {
+          throw Exception('Failed to create document');
+        }
       } else {
-        // Implement update
-        // final res = await _provider.updateLandedCostVoucher(name, data);
-        // handle response
+        final res = await _provider.updateLandedCostVoucher(name, data);
+        if (res.statusCode != 200) {
+          throw Exception('Failed to update document');
+        }
       }
+      saveResult.value = SaveResult.success;
+      isDirty.value = false;
+      await fetchDocument();
     } catch (e) {
+      saveResult.value = SaveResult.error;
       AppNotification.error('Error saving document: $e');
     } finally {
       isSaving.value = false;

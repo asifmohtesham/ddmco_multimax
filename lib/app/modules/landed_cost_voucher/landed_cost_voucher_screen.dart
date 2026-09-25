@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
@@ -10,18 +9,74 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 
 class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
   const LandedCostVoucherScreen({super.key});
 
+  List<Widget> _buildActiveFilterChips(BuildContext context) {
+    final chips = <Widget>[];
+    if (controller.searchQuery.value.isNotEmpty) {
+      chips.add(FilterChipWidget(
+        icon: Icons.search,
+        label: 'Search: ${controller.searchQuery.value}',
+        onDeleted: () {
+          controller.searchQuery.value = '';
+          controller.fetchLandedCostVouchers(clear: true);
+        },
+      ));
+    }
+    return chips;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
     return AppShellScaffold(
-      body: CustomScrollView(
-        controller: controller.scrollController,
-        slivers: [
-          DocTypeListHeader(title: 'Landed Cost Vouchers'),
-          Obx(() {
+      body: RefreshIndicator(
+        onRefresh: () => controller.fetchLandedCostVouchers(clear: true),
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        child: CustomScrollView(
+          controller: controller.scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            DocTypeListHeader(
+              title: 'Landed Cost Vouchers',
+              automaticallyImplyLeading: false,
+              searchDoctype: 'Landed Cost Voucher',
+              searchRoute: AppRoutes.LANDED_COST_VOUCHER_FORM,
+              searchQuery: controller.searchQuery,
+              onSearchChanged: controller.onSearchChanged,
+              onSearchClear: () {
+                controller.searchQuery.value = '';
+                controller.fetchLandedCostVouchers(clear: true);
+              },
+              activeFilters: controller.activeFilters,
+              filterChipsBuilder: _buildActiveFilterChips,
+              onClearAllFilters: controller.clearFilters,
+            ),
+            SliverToBoxAdapter(
+              child: Obx(() {
+                if (controller.isLoading.value &&
+                    controller.vouchers.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return ResultCountPill(
+                  count: controller.vouchers.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'voucher',
+                  icon: Icons.receipt_long,
+                );
+              }),
+            ),
+            Obx(() {
             if (controller.isLoading.value && controller.vouchers.isEmpty) {
               return SliverPadding(
                 padding: const EdgeInsets.all(16),
@@ -38,7 +93,7 @@ class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
               return SliverFillRemaining(
                 hasScrollBody: false,
                 child: ListEmptyState(
-                  hasActiveFilters: controller.activeFilters.isNotEmpty,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty || controller.searchQuery.value.isNotEmpty,
                   emptyIcon: Icons.receipt_long,
                   emptyTitle: 'No Landed Cost Vouchers',
                   emptyMessage: 'No vouchers found matching your criteria.',
@@ -89,7 +144,7 @@ class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                voucher.postingDate ?? '',
+                                voucher.postingDate,
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey,
@@ -108,7 +163,7 @@ class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
                               const SizedBox(width: 4),
                               Text(
                                 FormattingHelper.formatAmount(
-                                  voucher.totalTaxesAndCharges ?? 0.0,
+                                  voucher.totalTaxesAndCharges,
                                 ),
                                 style: const TextStyle(
                                   fontSize: 12,
@@ -128,18 +183,23 @@ class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
           }),
         ],
       ),
+      ),
       floatingActionButton: Obx(() {
-        return AnimatedScale(
-          scale: controller.isFarFromTop.value ? 0.0 : 1.0,
-          duration: const Duration(milliseconds: 200),
-          child: FloatingActionButton(
-            onPressed: () {
-              Get.toNamed(
-                AppRoutes.LANDED_COST_VOUCHER_FORM,
-                arguments: {'mode': 'new'},
-              );
-            },
-            child: const Icon(Icons.add),
+        return DocTypeGuard(
+          doctype: 'Landed Cost Voucher',
+          permType: 'create',
+          child: AnimatedScale(
+            scale: controller.isFarFromTop.value ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 200),
+            child: FloatingActionButton(
+              onPressed: () {
+                Get.toNamed(
+                  AppRoutes.LANDED_COST_VOUCHER_FORM,
+                  arguments: {'mode': 'new'},
+                );
+              },
+              child: const Icon(Icons.add),
+            ),
           ),
         );
       }),

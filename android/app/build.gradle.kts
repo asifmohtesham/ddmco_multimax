@@ -45,6 +45,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+        }
         release {
             // Uses release keystore when key.properties exists; falls back to debug locally
             signingConfig = if (keyPropertiesFile.exists())
