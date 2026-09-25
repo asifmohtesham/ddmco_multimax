@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/modules/common/widgets/awesome_bar.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
@@ -59,14 +60,7 @@ class HomeScreen extends GetView<HomeController> {
               title: 'Dashboard',
               automaticallyImplyLeading: false,
               extraActions: [
-                IconButton(
-                  icon: const Icon(Icons.search),
-                  tooltip: 'Search documents',
-                  onPressed: () => showSearch(
-                    context: context,
-                    delegate: GlobalDocumentSearchDelegate(),
-                  ),
-                ),
+                AwesomeBar(),
               ],
             ),
             SliverPadding(
