@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/modules/common/widgets/awesome_bar.dart';
 
 class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -169,7 +170,9 @@ class MainAppBar extends StatelessWidget implements PreferredSizeWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-      actions: const [], // top row intentionally kept free
+      actions: [
+        AwesomeBar(),
+      ], // top row actions
       centerTitle: centerTitle,
       elevation: 0,
       scrolledUnderElevation: 0,
