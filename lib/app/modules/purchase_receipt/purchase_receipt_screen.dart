@@ -265,6 +265,12 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
               FormattingHelper.getTimeTaken(
                   receipt.creation, receipt.modified),
             ),
+          if (receipt.perBilled != null && receipt.perBilled! > 0)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.receipt_long_outlined,
+              '${receipt.perBilled!.toStringAsFixed(0)}% Billed',
+            ),
         ],
         expandedContent: _buildExpandedContent(context, receipt),
       );
@@ -323,6 +329,21 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
               ),
             ],
           ),
+          if (detailed.perBilled != null && detailed.perBilled! > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: InfoBlock(
+                    label: 'Billed',
+                    value: '${detailed.perBilled!.toStringAsFixed(2)}%',
+                    icon: Icons.receipt_long_outlined,
+                  ),
+                ),
+                const Expanded(child: SizedBox.shrink()),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,

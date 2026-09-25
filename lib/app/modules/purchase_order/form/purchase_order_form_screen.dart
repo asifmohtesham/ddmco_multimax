@@ -176,6 +176,22 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             icon: Icons.account_balance_wallet,
             isBold: true,
           ),
+          if (po.perReceived != null && po.perReceived! > 0) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              'Received',
+              '${po.perReceived!.toStringAsFixed(2)}%',
+              icon: Icons.local_shipping_outlined,
+            ),
+          ],
+          if (po.perBilled != null && po.perBilled! > 0) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              'Billed',
+              '${po.perBilled!.toStringAsFixed(2)}%',
+              icon: Icons.receipt_long_outlined,
+            ),
+          ],
         ],
       ),
     );

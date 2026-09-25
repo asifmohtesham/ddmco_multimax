@@ -12,6 +12,7 @@ class PurchaseReceipt {
   final String currency;
   final double totalQty;
   final double grandTotal;
+  final double? perBilled;
   final List<PurchaseReceiptItem> items;
 
   PurchaseReceipt({
@@ -28,6 +29,7 @@ class PurchaseReceipt {
     required this.currency,
     required this.totalQty,
     required this.grandTotal,
+    this.perBilled,
     required this.items,
   });
 
@@ -50,6 +52,7 @@ class PurchaseReceipt {
       setWarehouse: json['set_warehouse'],
       totalQty: (json['total_qty'] as num?)?.toDouble() ?? 0.0,
       grandTotal: (json['grand_total'] as num?)?.toDouble() ?? 0.0,
+      perBilled: (json['per_billed'] as num?)?.toDouble(),
       items: items,
     );
   }

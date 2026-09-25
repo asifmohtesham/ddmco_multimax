@@ -243,6 +243,18 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             Icons.attach_money,
             '$currencySymbol $grandTotal',
           ),
+          if (po.perReceived != null && po.perReceived! > 0)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.local_shipping_outlined,
+              '${po.perReceived!.toStringAsFixed(0)}% Rcvd',
+            ),
+          if (po.perBilled != null && po.perBilled! > 0)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.receipt_long_outlined,
+              '${po.perBilled!.toStringAsFixed(0)}% Billed',
+            ),
         ],
         expandedContent: _buildExpandedContent(context, po),
       );
@@ -286,6 +298,36 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               ),
             ],
           ),
+          if ((detailed.perReceived != null && detailed.perReceived! > 0) ||
+              (detailed.perBilled != null && detailed.perBilled! > 0)) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (detailed.perReceived != null && detailed.perReceived! > 0)
+                  Expanded(
+                    child: InfoBlock(
+                      label: 'Received',
+                      value: '${detailed.perReceived!.toStringAsFixed(2)}%',
+                      icon: Icons.local_shipping_outlined,
+                    ),
+                  )
+                else
+                  const Expanded(child: SizedBox.shrink()),
+                const SizedBox(width: 12),
+                if (detailed.perBilled != null && detailed.perBilled! > 0)
+                  Expanded(
+                    child: InfoBlock(
+                      label: 'Billed',
+                      value: '${detailed.perBilled!.toStringAsFixed(2)}%',
+                      icon: Icons.receipt_long_outlined,
+                    ),
+                  )
+                else
+                  const Expanded(child: SizedBox.shrink()),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,

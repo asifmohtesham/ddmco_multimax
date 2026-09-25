@@ -257,6 +257,13 @@ class PurchaseReceiptFormScreen
                       '${receipt.grandTotal.toStringAsFixed(2)}',
                   isBold: true,
                 ),
+                if (receipt.perBilled != null && receipt.perBilled! > 0) ...[
+                  const Divider(),
+                  _buildSummaryRow(
+                    'Billed',
+                    '${receipt.perBilled!.toStringAsFixed(2)}%',
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 80),
