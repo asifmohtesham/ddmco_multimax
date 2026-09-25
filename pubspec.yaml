@@ -2,7 +2,7 @@ name: multimax
 description: "Manage stock, order, packing and delivery."
 publish_to: 'none'
 
-version: 2.25.2+80
+version: 2.25.3+81
 
 environment:
   sdk: ^3.8.1
