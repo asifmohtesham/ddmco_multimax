@@ -17,7 +17,6 @@ class LandedCostVoucherController extends GetxController {
 
   var sortField = 'creation'.obs;
   var sortOrder = 'desc'.obs;
-  var searchQuery = ''.obs;
   final activeFilters = <String, dynamic>{}.obs;
 
   final scrollController = ScrollController();
@@ -32,8 +31,6 @@ class LandedCostVoucherController extends GetxController {
     }
     scrollController.addListener(_onScroll);
     fetchLandedCostVouchers();
-    debounce(searchQuery, (_) => fetchLandedCostVouchers(clear: true),
-        time: const Duration(milliseconds: 500));
   }
 
   @override
@@ -58,8 +55,6 @@ class LandedCostVoucherController extends GetxController {
         scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void onSearchChanged(String val) => searchQuery.value = val;
-
   void setSort(String field, String order) {
     sortField.value = field;
     sortOrder.value = order;
@@ -78,11 +73,7 @@ class LandedCostVoucherController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    if (searchQuery.value.isEmpty) {
-      fetchLandedCostVouchers(isLoadMore: false, clear: true);
-    } else {
-      searchQuery.value = '';
-    }
+    fetchLandedCostVouchers(isLoadMore: false, clear: true);
   }
 
   Future<void> fetchLandedCostVouchers({
@@ -102,16 +93,10 @@ class LandedCostVoucherController extends GetxController {
 
     try {
       final orderBy = '${sortField.value} ${sortOrder.value}';
-      
-      final Map<String, dynamic> combinedFilters = Map.from(activeFilters);
-      if (searchQuery.value.isNotEmpty) {
-        combinedFilters['name'] = ['like', '%${searchQuery.value}%'];
-      }
-      
       final response = await _provider.getLandedCostVouchers(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: combinedFilters,
+        filters: activeFilters,
         orderBy: orderBy,
       );
 

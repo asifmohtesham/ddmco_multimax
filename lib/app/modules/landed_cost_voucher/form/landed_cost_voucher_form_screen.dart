@@ -6,8 +6,7 @@ import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
 import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
-import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
-import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
+import 'package:multimax/app/modules/global_widgets/link_search_sheet.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 
@@ -22,11 +21,6 @@ class LandedCostVoucherFormScreen
       final isLoading = controller.isLoading.value;
       final isSaving = controller.isSaving.value;
       final isDirty = controller.isDirty.value;
-      final saveResult = controller.saveResult.value;
-
-      final isEditable = voucher?.docstatus == 0;
-      final VoidCallback? onSave = isEditable ? controller.saveDocument : null;
-      final VoidCallback? onReload = controller.mode != 'new' ? controller.reloadDocument : null;
 
       final title = controller.mode == 'new'
           ? 'New Landed Cost Voucher'
@@ -34,14 +28,13 @@ class LandedCostVoucherFormScreen
 
       return PopScope(
         canPop: !isDirty,
-        onPopInvokedWithResult: (didPop, result) {
+        onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
-          controller.confirmDiscard();
+          // Add discard confirmation dialog logic if needed
         },
         child: DefaultTabController(
           length: 4, // Details, Purchase Receipts, Items, Taxes
           child: Scaffold(
-            resizeToAvoidBottomInset: false,
             body: NestedScrollView(
               headerSliverBuilder: (ctx, _) => [
                 DocTypeFormHeader(
@@ -51,15 +44,12 @@ class LandedCostVoucherFormScreen
                   docStatus: voucher?.docstatus ?? 0,
                   canSave: isDirty,
                   isSaving: isSaving,
-                  saveResult: saveResult,
-                  onSave: onSave,
-                  onReload: onReload,
-                  extraActions: [
-                    RealtimeSyncStatusIcon(
-                      isConnected: controller.isRealtimeConnected,
-                      isSyncing: controller.isRemoteSyncing,
-                    ),
-                  ],
+                  onSave: (voucher?.docstatus == 0 && isDirty)
+                      ? controller.saveDocument
+                      : null,
+                  onReload: (controller.mode != 'new' && !isDirty)
+                      ? controller.fetchDocument
+                      : null,
                   bottom: const TabBar(
                     isScrollable: true,
                     tabs: [
@@ -106,24 +96,35 @@ class LandedCostVoucherFormScreen
   }
 
   Widget _buildDetailsView(BuildContext context) {
+    final v = controller.voucher.value;
+    if (v == null) return const SizedBox();
+    final isEditable = v.docstatus == 0;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Obx(() {
-            final isEditable = controller.voucher.value?.docstatus == 0;
-            return DocSectionCard(
-              title: 'General Information',
-              children: [
-                LinkFieldWidget(
-                  controller: controller.companyController,
-                  labelText: _getLabel('company', 'Company'),
-                  hintText: 'Select Company',
-                  prefixIcon: Icons.business,
-                  isReadOnly: !isEditable,
-                  onTap: isEditable ? controller.showCompanySearchSheet : null,
-                ),
+          DocSectionCard(
+            title: 'General Information',
+            children: [
+              LinkFieldWidget(
+                controller: controller.companyController,
+                labelText: _getLabel('company', 'Company'),
+                hintText: 'Select Company',
+                prefixIcon: Icons.business,
+                isReadOnly: !isEditable,
+                onTap: () {
+                  if (!isEditable) return;
+                  showLinkSearchSheet(
+                    doctype: 'Company',
+                    title: 'Select Company',
+                    onSelected: (val) {
+                      controller.companyController.text = val;
+                    },
+                  );
+                },
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -149,51 +150,74 @@ class LandedCostVoucherFormScreen
                   ),
                 ],
               ),
-              ],
-            );
-          }),
+            ],
+          ),
           const SizedBox(height: 12),
-          Obx(() {
-            final isEditable = controller.voucher.value?.docstatus == 0;
-            return DocSectionCard(
-              title: 'Settings',
-              children: [
-                DocPickerField(
-                  label: _getLabel('distribute_charges_based_on', 'Distribute Charges Based On'),
-                  value: controller.distributeChargesController.text,
-                  icon: Icons.calculate_outlined,
-                  onTap: isEditable ? controller.showDistributeChargesSheet : null,
-                ),
-              ],
-            );
-          }),
-          const SizedBox(height: 12),
-          Obx(() {
-            final v = controller.voucher.value;
-            if (v == null) return const SizedBox.shrink();
-            return DocSectionCard(
-              title: 'Totals',
-              children: [
-                Column(
-                  children: [
-                    DocSummaryRow(
-                      label: 'Total Taxes and Charges',
-                      value: FormattingHelper.formatAmount(v.totalTaxesAndCharges),
-                      isBold: true,
-                    ),
-                    if (v.totalVendorInvoicesCost != null) ...[
-                      const Divider(),
-                      DocSummaryRow(
-                        label: 'Total Vendor Invoices Cost',
-                        value: FormattingHelper.formatAmount(v.totalVendorInvoicesCost ?? 0.0),
-                        isBold: true,
+          DocSectionCard(
+            title: 'Settings',
+            children: [
+              DocPickerField(
+                label: _getLabel('distribute_charges_based_on', 'Distribute Charges Based On'),
+                value: controller.distributeChargesController.text,
+                icon: Icons.calculate_outlined,
+                onTap: isEditable ? () {
+                  // Usually a Select field picker
+                  Get.bottomSheet(
+                    Container(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: ['Qty', 'Amount', 'Dist. Manual']
+                              .map((e) => ListTile(
+                                    title: Text(e),
+                                    onTap: () {
+                                      controller.distributeChargesController.text = e;
+                                      Get.back();
+                                    },
+                                  ))
+                              .toList(),
+                        ),
                       ),
-                    ],
+                    ),
+                  );
+                } : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DocSectionCard(
+            title: 'Totals',
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total Taxes and Charges',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(FormattingHelper.formatAmount(v.totalTaxesAndCharges)),
+                ],
+              ),
+              if (v.totalVendorInvoicesCost != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Vendor Invoices Cost',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      FormattingHelper.formatAmount(
+                        v.totalVendorInvoicesCost ?? 0.0,
+                      ),
+                    ),
                   ],
                 ),
               ],
-            );
-          }),
+            ],
+          ),
         ],
       ),
     );
