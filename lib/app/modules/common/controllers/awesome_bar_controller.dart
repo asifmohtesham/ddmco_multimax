@@ -151,28 +151,7 @@ class AwesomeBarController extends GetxController {
     // 2. Client-side Navigation Options
     results.addAll(_getLocalSearchOptions(query));
     
-    // 3. Backend Hooks (awesomebar_search)
-    try {
-      final hookResponse = await _searchProvider.awesomeBarSearch(query);
-      if (hookResponse.data != null && hookResponse.data['message'] != null) {
-        final List hookItems = hookResponse.data['message'];
-        for (var item in hookItems) {
-          final opt = AwesomeBarOption(
-            type: item['type'] ?? 'Hook',
-            label: item['label'] ?? item['value'],
-            value: item['value'] ?? '',
-            index: item['index'] ?? 0,
-            route: item['route'] is List ? item['route'].join('/') : (item['route'] ?? ''),
-            description: item['description'],
-          );
-          results.add(_enrichWithIcon(opt));
-        }
-      }
-    } catch (e) {
-      print('Hook search failed: $e');
-    }
-    
-    // 4. Global Search Results
+    // 3. Global Search Results
     try {
       final globalResponse = await _searchProvider.globalSearch(query);
       if (globalResponse.data != null && globalResponse.data['message'] != null) {
