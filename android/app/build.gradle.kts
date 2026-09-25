@@ -28,7 +28,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ddmco.multimax.awesomebar"
+        applicationId = "com.ddmco.multimax"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
