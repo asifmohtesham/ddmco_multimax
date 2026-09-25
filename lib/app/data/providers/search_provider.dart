@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 
 class SearchProvider {
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  ApiProvider get _apiProvider => Get.find<ApiProvider>();
 
   Future<Response> globalSearch(String query, {int limit = 20, int start = 0}) async {
     return await _apiProvider.callMethod(
