@@ -1,3 +1,7 @@
+import 'package:multimax/app/modules/landed_cost_voucher/form/landed_cost_voucher_form_binding.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/form/landed_cost_voucher_form_screen.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_binding.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_screen.dart';
 import 'package:multimax/app/modules/bom/bom_binding.dart';
 import 'package:multimax/app/modules/bom/bom_screen.dart';
 import 'package:multimax/app/modules/bom/form/bom_form_binding.dart';
@@ -375,15 +379,27 @@ class AppPages {
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
-      name:       AppRoutes.ITEM_VARIANT_DETAILS,
-      page:       () => const ItemVariantDetailsScreen(),
-      binding:    ItemVariantDetailsBinding(),
+      name: AppRoutes.ITEM_VARIANT_DETAILS,
+      page: () => const ItemVariantDetailsScreen(),
+      binding: ItemVariantDetailsBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
-      name:       AppRoutes.STOCK_BALANCE,
-      page:       () => const StockBalanceScreen(),
-      binding:    StockBalanceBinding(),
+      name: AppRoutes.STOCK_BALANCE,
+      page: () => const StockBalanceScreen(),
+      binding: StockBalanceBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.LANDED_COST_VOUCHER,
+      page: () => const LandedCostVoucherScreen(),
+      binding: LandedCostVoucherBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.LANDED_COST_VOUCHER_FORM,
+      page: () => const LandedCostVoucherFormScreen(),
+      binding: LandedCostVoucherFormBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
   ];

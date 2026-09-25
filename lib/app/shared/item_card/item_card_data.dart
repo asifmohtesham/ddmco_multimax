@@ -4,6 +4,7 @@ import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
 import 'package:multimax/app/data/models/sales_order_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
+import 'package:multimax/app/data/models/landed_cost_voucher_model.dart';
 
 /// Canonical, immutable data contract for a single line-item card
 /// across all five DocTypes (PO, PR, SE, DN, PS).
@@ -382,6 +383,34 @@ class ItemCardData {
       variantOf:      item.customVariantOf,
       qty:            item.qty,
       uom:            item.uom,
+      qtyLabel:       'Qty',
+      rateLabel:      null,
+      warehouseLabel: null,
+      isEditable:     isEditable,
+      isHighlighted:  isHighlighted,
+    );
+  }
+
+  /// Maps a [LandedCostItem] to [ItemCardData].
+  ///
+  /// C11: rate, amount, warehouse suppressed (null).
+  factory ItemCardData.fromLandedCostItem(
+    LandedCostItem item, {
+    int? index,
+    required bool isEditable,
+    bool isHighlighted = false,
+  }) {
+    return ItemCardData(
+      rowName:        item.name,
+      index:          index,
+      itemCode:       item.itemCode,
+      itemName:       item.description,
+      qty:            item.qty,
+      // rate / amount suppressed — C11
+      rate:           null,
+      amount:         null,
+      warehouse:      null,
+      toWarehouse:    null,
       qtyLabel:       'Qty',
       rateLabel:      null,
       warehouseLabel: null,
