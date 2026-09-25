@@ -118,11 +118,11 @@ class AwesomeBarController extends GetxController {
         final List globalItems = globalResponse.data['message'];
         for (var item in globalItems) {
           results.add(AwesomeBarOption(
-            type: 'Search Result',
+            type: item['doctype'] ?? 'Search Result',
             label: item['title'] ?? item['name'],
             value: item['name'],
-            description: item['content'],
-            route: '/app/\${item['doctype']}/\${item['name']}',
+            description: (item['content'] ?? '').replaceAll(' ||| ', ' • '),
+            route: '/app/${item['doctype']}/${item['name']}',
             isGlobalSearch: true,
           ));
         }
@@ -132,7 +132,13 @@ class AwesomeBarController extends GetxController {
     }
     
     // Sort and Update
-    results.sort((a, b) => b.index.compareTo(a.index)); // Descending score
+    results.sort((a, b) {
+      int cmp = b.index.compareTo(a.index);
+      if (cmp == 0) {
+        return a.type.compareTo(b.type);
+      }
+      return cmp;
+    });
     options.value = results;
     isLoading.value = false;
   }

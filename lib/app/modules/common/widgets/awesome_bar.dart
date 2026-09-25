@@ -47,8 +47,9 @@ class AwesomeBar extends StatelessWidget {
               itemCount: controller.options.length,
               itemBuilder: (context, index) {
                 final option = controller.options[index];
+                final showHeader = index == 0 || controller.options[index - 1].type != option.type;
                 
-                return ListTile(
+                final listTile = ListTile(
                   title: Html(
                     data: option.label,
                     style: {
@@ -66,15 +67,33 @@ class AwesomeBar extends StatelessWidget {
                           style: const TextStyle(fontSize: 12),
                         )
                       : null,
-                  trailing: Text(
-                    option.type,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
                   onTap: () {
                     searchController.closeView(option.value);
                     controller.onOptionSelected(option);
                   },
                 );
+
+                if (showHeader) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                        child: Text(
+                          option.type.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      listTile,
+                    ],
+                  );
+                }
+
+                return listTile;
               },
             );
           }),
