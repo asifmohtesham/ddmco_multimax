@@ -38,6 +38,7 @@ class AwesomeBarOption {
     'label': label,
     'value': value,
     'route': route,
+    'routeOptions': routeOptions,
     'description': description,
     'isGlobalSearch': isGlobalSearch,
   };
@@ -48,6 +49,7 @@ class AwesomeBarOption {
       label: json['label'] ?? '',
       value: json['value'] ?? '',
       route: json['route'] ?? '',
+      routeOptions: json['routeOptions'] != null ? Map<String, dynamic>.from(json['routeOptions']) : null,
       description: json['description'],
       isGlobalSearch: json['isGlobalSearch'] ?? false,
     );
@@ -246,7 +248,8 @@ class AwesomeBarController extends GetxController {
             label: 'New ${match.markedString}',
             value: 'New ${target.doctype}',
             index: match.score + 100,
-            route: '${target.route}/new',
+            route: target.route,
+            routeOptions: {'mode': 'new'},
             icon: Icons.add_circle_outline,
             color: target.color,
           ));
@@ -263,7 +266,7 @@ class AwesomeBarController extends GetxController {
           label: '${match.markedString} List',
           value: '${target.doctype} List',
           index: match.score,
-          route: target.route,
+          route: target.route.replaceAll('/form', ''),
           icon: target.icon,
           color: target.color,
         ));
@@ -281,7 +284,7 @@ class AwesomeBarController extends GetxController {
       return;
     }
     if (option.route.isNotEmpty) {
-      Get.toNamed(option.route);
+      Get.toNamed(option.route, arguments: option.routeOptions);
     }
   }
 }
