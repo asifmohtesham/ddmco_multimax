@@ -14,7 +14,7 @@ val keyProperties = Properties().apply {
 android {
     namespace = "com.ddmco.multimax"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "30.0.16248370"
 
     compileOptions {
         // flutter_local_notifications requires core library desugaring.
