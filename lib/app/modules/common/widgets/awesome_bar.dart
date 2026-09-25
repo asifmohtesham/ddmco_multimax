@@ -8,6 +8,39 @@ class AwesomeBar extends StatelessWidget {
 
   final AwesomeBarController controller = Get.put(AwesomeBarController());
 
+  Widget _buildOptionTile(BuildContext context, SearchController searchController, AwesomeBarOption option, bool isRecent) {
+    return ListTile(
+      leading: option.icon != null 
+          ? Icon(option.icon, color: option.color ?? Theme.of(context).colorScheme.primary, size: 20)
+          : (isRecent ? const Icon(Icons.history, size: 20) : null),
+      title: Html(
+        data: option.label,
+        style: {
+          "body": Style(
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+          ),
+          "b": Style(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        },
+      ),
+      subtitle: option.description != null 
+          ? Text(
+              option.description!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            )
+          : null,
+      onTap: () {
+        searchController.closeView(option.value);
+        controller.onOptionSelected(option);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SearchAnchor(
@@ -34,11 +67,33 @@ class AwesomeBar extends StatelessWidget {
               );
             }
 
+            // Empty State Handling
             if (controller.options.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('No results found.'),
-              );
+              if (searchController.text.trim().isEmpty) {
+                // Show Recent Searches
+                if (controller.recentOptions.isEmpty) {
+                   return _buildEmptyHints(context);
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                      child: Text(
+                        'RECENT',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    ...controller.recentOptions.map((opt) => _buildOptionTile(context, searchController, opt, true)),
+                  ],
+                );
+              } else {
+                return _buildEmptyHints(context);
+              }
             }
 
             return ListView.builder(
@@ -49,29 +104,7 @@ class AwesomeBar extends StatelessWidget {
                 final option = controller.options[index];
                 final showHeader = index == 0 || controller.options[index - 1].type != option.type;
                 
-                final listTile = ListTile(
-                  title: Html(
-                    data: option.label,
-                    style: {
-                      "body": Style(
-                        margin: Margins.zero,
-                        padding: HtmlPaddings.zero,
-                      ),
-                    },
-                  ),
-                  subtitle: option.description != null 
-                      ? Text(
-                          option.description!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
-                        )
-                      : null,
-                  onTap: () {
-                    searchController.closeView(option.value);
-                    controller.onOptionSelected(option);
-                  },
-                );
+                final listTile = _buildOptionTile(context, searchController, option, false);
 
                 if (showHeader) {
                   return Column(
@@ -99,6 +132,29 @@ class AwesomeBar extends StatelessWidget {
           }),
         ];
       },
+    );
+  }
+  
+  Widget _buildEmptyHints(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.search_off, size: 48, color: Colors.grey.withOpacity(0.5)),
+          const SizedBox(height: 16),
+          const Text(
+            'No results found',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Try searching for an ID, a Doctype (e.g. "Delivery Note"), "New Task", or evaluate expressions like "2 + 2".',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey),
+          ),
+        ],
+      ),
     );
   }
 }
