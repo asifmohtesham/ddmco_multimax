@@ -195,6 +195,12 @@ List<NavGroup> buildWorkspaceMenu(
   // One home per screen.
   final home = <String, (String, String?)>{};
   for (final l in byKey.values) {
+    // FORCE Landed Cost Voucher into Buying so it doesn't get dynamically moved to Accounting/Stock
+    if (l.linkTo == 'Landed Cost Voucher') {
+      home[l.key] = ('Buying', null);
+      continue;
+    }
+    
     final native = nativeGroup[modules[l.key]];
     final spots = listed.where((e) => e.$1 == l.key);
     final inNative = spots.where((e) => e.$2 == native);
