@@ -28,12 +28,12 @@ void main() {
     state.openDrawer();
     await tester.pumpAndSettle();
 
-    // Find the Buying section in the drawer
-    final buyingFinder = find.text('Buying');
-    expect(buyingFinder, findsOneWidget, reason: 'Buying section not found in drawer');
+    // Find the Stock section in the drawer
+    final stockFinder = find.text('Stock');
+    expect(stockFinder, findsOneWidget, reason: 'Stock section not found in drawer');
     
-    // Tap to expand the Buying section
-    await tester.tap(buyingFinder);
+    // Tap to expand the Stock section
+    await tester.tap(stockFinder);
     await tester.pumpAndSettle();
 
     // Find Landed Cost Voucher and tap it

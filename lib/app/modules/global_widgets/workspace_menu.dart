@@ -55,7 +55,7 @@ final List<NavLink> kNavCatalog = [
   NavLink('Report', 'Stock Balance', 'Stock Balance', Icons.account_balance_wallet_outlined, AppRoutes.STOCK_BALANCE, _rep('Stock Entry'), 'Stock', 'Reports'),
   NavLink('DocType', 'Purchase Order', 'Purchase Order', Icons.description_rounded, AppRoutes.PURCHASE_ORDER, _r('Purchase Order'), 'Buying'),
   NavLink('DocType', 'Purchase Receipt', 'Purchase Receipt', Icons.receipt_long_rounded, AppRoutes.PURCHASE_RECEIPT, _r('Purchase Receipt'), 'Buying'),
-  NavLink('DocType', 'Landed Cost Voucher', 'Landed Cost Voucher', Icons.flight_land_rounded, AppRoutes.LANDED_COST_VOUCHER, _r('Landed Cost Voucher'), 'Buying'),
+  NavLink('DocType', 'Landed Cost Voucher', 'Landed Cost Voucher', Icons.flight_land_rounded, AppRoutes.LANDED_COST_VOUCHER, _r('Landed Cost Voucher'), 'Stock', 'Tools'),
   NavLink('DocType', 'BOM', 'Bill of Materials', Icons.account_tree_rounded, AppRoutes.BOM, _r('BOM'), 'Manufacturing'),
   NavLink('DocType', 'Work Order', 'Work Order', Icons.assignment_rounded, AppRoutes.WORK_ORDER, _r('Work Order'), 'Manufacturing'),
   NavLink('DocType', 'Job Card', 'Job Card', Icons.assignment_ind_rounded, AppRoutes.JOB_CARD, _r('Job Card'), 'Manufacturing'),
@@ -195,12 +195,6 @@ List<NavGroup> buildWorkspaceMenu(
   // One home per screen.
   final home = <String, (String, String?)>{};
   for (final l in byKey.values) {
-    // FORCE Landed Cost Voucher into Buying so it doesn't get dynamically moved to Accounting/Stock
-    if (l.linkTo == 'Landed Cost Voucher') {
-      home[l.key] = ('Buying', null);
-      continue;
-    }
-    
     final native = nativeGroup[modules[l.key]];
     final spots = listed.where((e) => e.$1 == l.key);
     final inNative = spots.where((e) => e.$2 == native);
