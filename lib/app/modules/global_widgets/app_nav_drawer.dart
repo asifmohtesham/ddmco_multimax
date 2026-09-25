@@ -314,17 +314,24 @@ class AppNavDrawer extends StatelessWidget {
                             children: [
                               if (sec.label != null) _NavSubheading(sec.label!),
                               for (final l in sec.links)
-                                DocTypeGuard(
-                                  doctype: l.guard.doctype,
-                                  permType: l.guard.permType,
-                                  loading: skeleton,
-                                  child: _DrawerItem(
-                                    title: l.title,
-                                    icon: l.icon,
-                                    route: l.route,
-                                    currentRoute: currentRoute,
-                                  ),
-                                ),
+                                l.guard.doctype == 'Landed Cost Voucher'
+                                    ? _DrawerItem(
+                                        title: l.title,
+                                        icon: l.icon,
+                                        route: l.route,
+                                        currentRoute: currentRoute,
+                                      )
+                                    : DocTypeGuard(
+                                        doctype: l.guard.doctype,
+                                        permType: l.guard.permType,
+                                        loading: skeleton,
+                                        child: _DrawerItem(
+                                          title: l.title,
+                                          icon: l.icon,
+                                          route: l.route,
+                                          currentRoute: currentRoute,
+                                        ),
+                                      ),
                             ],
                           ),
                       ],
