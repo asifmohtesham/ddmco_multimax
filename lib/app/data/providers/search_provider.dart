@@ -16,15 +16,6 @@ class SearchProvider {
     );
   }
 
-  Future<Response> awesomeBarSearch(String query) async {
-    return await _apiProvider.callMethod(
-      'frappe.desk.search.awesomebar_search',
-      params: {
-        'txt': query,
-      },
-    );
-  }
-
   Future<Response> getBootData() async {
     return await _apiProvider.callMethod('frappe.boot');
   }

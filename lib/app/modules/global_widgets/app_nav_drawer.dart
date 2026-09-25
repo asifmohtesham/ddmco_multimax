@@ -118,14 +118,14 @@ class AppNavDrawerController extends GetxController {
         // are System-Manager-only, so DocTypes go through getdoctype (shared
         // with the permission checks); Report is readable by every Desk User,
         // so one list call. Unknown module → first workspace that lists it.
-        ...kNavCatalog.where((l) => l.linkType == 'DocType').map((l) async {
+        ...kNavCatalog.where((l) => l.showInDrawer && l.linkType == 'DocType').map((l) async {
           final m = await Get.find<PermissionService>().moduleOf(l.linkTo);
           if (m != null) modules[l.key] = m;
         }),
         () async {
           try {
             final byName = {
-              for (final l in kNavCatalog.where((l) => l.linkType == 'Report'))
+              for (final l in kNavCatalog.where((l) => l.showInDrawer && l.linkType == 'Report'))
                 l.linkTo: l.key
             };
             final r = await api.callMethod('frappe.client.get_list', params: {

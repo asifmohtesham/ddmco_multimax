@@ -4,10 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
+/// Default navigation argument builder: `{'name': id, 'mode': 'view'}`.
+Map<String, dynamic> _defaultArgsFor(String id) => {'name': id, 'mode': 'view'};
+
 /// A screen the app can open, keyed by what a Frappe Workspace links to
 /// (`DocType` / `Report` + name). The workspace decides WHERE it shows;
 /// [group] / [section] are only used when no workspace places it (or the
 /// workspace fetch failed), so every screen stays reachable.
+///
+/// This is the **single source of truth** for both drawer navigation and
+/// search routing. Adding a DocType here (with a [formRoute]) automatically
+/// registers it for Awesome Bar / Dashboard global search — no second list
+/// to maintain.
 class NavLink {
   final String linkType; // 'DocType' | 'Report'
   final String linkTo;
@@ -18,11 +26,54 @@ class NavLink {
   final String group;
   final String? section;
 
-  const NavLink(this.linkType, this.linkTo, this.title, this.icon, this.route,
-      this.guard, this.group, [this.section]);
+  // ── Search / routing fields (defaults cover ~65 % of entries) ──
+
+  /// Form route to navigate to on tap from search results.
+  /// `null` for Reports or DocTypes without a dedicated form screen
+  /// (e.g. Attendance). Entries without a [formRoute] are excluded from
+  /// the global search target registry.
+  final String? formRoute;
+
+  /// Decorative tint for the search-result icon.
+  final Color color;
+
+  /// Plural label shown as the search-result group header, e.g.
+  /// 'Delivery Notes'. Auto-derived as `'${title}s'` when `null`.
+  final String? searchLabel;
+
+  /// Builds the `Get.arguments` map for opening document [id] on the form.
+  /// Defaults to `{'name': id, 'mode': 'view'}`.
+  final Map<String, dynamic> Function(String id) argsFor;
+
+  /// Whether to offer this doctype in cross-doctype search results (Dashboard
+  /// fan-out, Awesome Bar "List" matches, ToDo reference-type picker).
+  /// Set to `false` for doctypes whose `name` is a meaningless hash.
+  final bool discoverable;
+
+  /// Whether this entry appears in the navigation drawer. Set to `false`
+  /// for screens reachable only via search or deep links (e.g. ToDo).
+  final bool showInDrawer;
+
+  const NavLink(
+    this.linkType,
+    this.linkTo,
+    this.title,
+    this.icon,
+    this.route,
+    this.guard,
+    this.group, [
+    this.section,
+    this.formRoute,
+    this.color = Colors.blueGrey,
+    this.searchLabel,
+    this.argsFor = _defaultArgsFor,
+    this.discoverable = true,
+    this.showInDrawer = true,
+  ]);
 
   String get key => '${linkType.toLowerCase()}:$linkTo';
 }
+
 
 class NavSection {
   final String? label; // null = top of group, no subheading
@@ -42,33 +93,73 @@ class NavGroup {
 PermEntry _r(String d) => (doctype: d, permType: 'read');
 PermEntry _rep(String d) => (doctype: d, permType: 'report');
 
-/// Every drawer destination. Order = fallback order.
+// Non-default argsFor builders used by specific doctypes.
+Map<String, dynamic> _itemArgs(String id) => {'itemCode': id};
+Map<String, dynamic> _nameOnly(String id) => {'name': id};
+Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
+Map<String, dynamic> _batchArgs(String id) => {'name': id, 'mode': 'edit'};
+
+/// Every app screen — drawer destinations AND search-only screens.
+/// Order = fallback drawer order; search targets are derived automatically.
+///
+/// To add a new DocType to both the drawer AND search, provide a [formRoute].
+/// To add a search-only screen (not shown in the drawer), set
+/// `showInDrawer: false`.
 final List<NavLink> kNavCatalog = [
-  NavLink('DocType', 'Item', 'Item', Icons.category_rounded, AppRoutes.ITEM, _r('Item'), 'Stock'),
-  NavLink('DocType', 'Batch', 'Batch', Icons.qr_code_scanner_rounded, AppRoutes.BATCH, _r('Batch'), 'Stock'),
-  NavLink('DocType', 'Material Request', 'Material Request', Icons.playlist_add_check_rounded, AppRoutes.MATERIAL_REQUEST, _r('Material Request'), 'Stock'),
-  NavLink('DocType', 'Stock Entry', 'Stock Entry', Icons.compare_arrows_rounded, AppRoutes.STOCK_ENTRY, _r('Stock Entry'), 'Stock'),
-  NavLink('DocType', 'Delivery Note', 'Delivery Note', Icons.local_shipping_rounded, AppRoutes.DELIVERY_NOTE, _r('Delivery Note'), 'Stock'),
-  NavLink('DocType', 'Packing Slip', 'Packing Slip', Icons.assignment_return_rounded, AppRoutes.PACKING_SLIP, _r('Packing Slip'), 'Stock'),
+  // ── Stock ──
+  NavLink('DocType', 'Item', 'Item', Icons.category_rounded, AppRoutes.ITEM, _r('Item'), 'Stock',
+      null, AppRoutes.ITEM_FORM, Colors.blueGrey, 'Items', _itemArgs),
+  NavLink('DocType', 'Batch', 'Batch', Icons.qr_code_scanner_rounded, AppRoutes.BATCH, _r('Batch'), 'Stock',
+      null, AppRoutes.BATCH_FORM, Colors.amber, 'Batches', _batchArgs),
+  NavLink('DocType', 'Material Request', 'Material Request', Icons.playlist_add_check_rounded, AppRoutes.MATERIAL_REQUEST, _r('Material Request'), 'Stock',
+      null, AppRoutes.MATERIAL_REQUEST_FORM, Colors.pink),
+  NavLink('DocType', 'Stock Entry', 'Stock Entry', Icons.compare_arrows_rounded, AppRoutes.STOCK_ENTRY, _r('Stock Entry'), 'Stock',
+      null, AppRoutes.STOCK_ENTRY_FORM, Colors.orange, 'Stock Entries'),
+  NavLink('DocType', 'Delivery Note', 'Delivery Note', Icons.local_shipping_rounded, AppRoutes.DELIVERY_NOTE, _r('Delivery Note'), 'Stock',
+      null, AppRoutes.DELIVERY_NOTE_FORM, Colors.blue),
+  NavLink('DocType', 'Packing Slip', 'Packing Slip', Icons.assignment_return_rounded, AppRoutes.PACKING_SLIP, _r('Packing Slip'), 'Stock',
+      null, AppRoutes.PACKING_SLIP_FORM, Colors.purple),
   NavLink('Report', 'Batch-Wise Balance History', 'Batch-Wise Balance History', Icons.history_toggle_off_rounded, AppRoutes.BATCH_WISE_BALANCE, _rep('Batch'), 'Stock', 'Reports'),
   NavLink('Report', 'Item Variant Details', 'Item Variant Details', Icons.style_outlined, AppRoutes.ITEM_VARIANT_DETAILS, _rep('Item'), 'Stock', 'Reports'),
   NavLink('Report', 'Stock Balance', 'Stock Balance', Icons.account_balance_wallet_outlined, AppRoutes.STOCK_BALANCE, _rep('Stock Entry'), 'Stock', 'Reports'),
-  NavLink('DocType', 'Purchase Order', 'Purchase Order', Icons.description_rounded, AppRoutes.PURCHASE_ORDER, _r('Purchase Order'), 'Buying'),
-  NavLink('DocType', 'Purchase Receipt', 'Purchase Receipt', Icons.receipt_long_rounded, AppRoutes.PURCHASE_RECEIPT, _r('Purchase Receipt'), 'Buying'),
-  NavLink('DocType', 'Landed Cost Voucher', 'Landed Cost Voucher', Icons.flight_land_rounded, AppRoutes.LANDED_COST_VOUCHER, _r('Landed Cost Voucher'), 'Stock', 'Tools'),
-  NavLink('DocType', 'BOM', 'Bill of Materials', Icons.account_tree_rounded, AppRoutes.BOM, _r('BOM'), 'Manufacturing'),
-  NavLink('DocType', 'Work Order', 'Work Order', Icons.assignment_rounded, AppRoutes.WORK_ORDER, _r('Work Order'), 'Manufacturing'),
-  NavLink('DocType', 'Job Card', 'Job Card', Icons.assignment_ind_rounded, AppRoutes.JOB_CARD, _r('Job Card'), 'Manufacturing'),
+  NavLink('DocType', 'Landed Cost Voucher', 'Landed Cost Voucher', Icons.flight_land_rounded, AppRoutes.LANDED_COST_VOUCHER, _r('Landed Cost Voucher'), 'Stock',
+      'Tools', AppRoutes.LANDED_COST_VOUCHER_FORM, Colors.brown),
+
+  // ── Buying ──
+  NavLink('DocType', 'Purchase Order', 'Purchase Order', Icons.description_rounded, AppRoutes.PURCHASE_ORDER, _r('Purchase Order'), 'Buying',
+      null, AppRoutes.PURCHASE_ORDER_FORM, Colors.brown),
+  NavLink('DocType', 'Purchase Receipt', 'Purchase Receipt', Icons.receipt_long_rounded, AppRoutes.PURCHASE_RECEIPT, _r('Purchase Receipt'), 'Buying',
+      null, AppRoutes.PURCHASE_RECEIPT_FORM, Colors.green),
+
+  // ── Manufacturing ──
+  NavLink('DocType', 'BOM', 'Bill of Materials', Icons.account_tree_rounded, AppRoutes.BOM, _r('BOM'), 'Manufacturing',
+      null, AppRoutes.BOM_FORM, Colors.teal, 'BOMs', _nameOnly),
+  NavLink('DocType', 'Work Order', 'Work Order', Icons.assignment_rounded, AppRoutes.WORK_ORDER, _r('Work Order'), 'Manufacturing',
+      null, AppRoutes.WORK_ORDER_FORM, Colors.indigo),
+  NavLink('DocType', 'Job Card', 'Job Card', Icons.assignment_ind_rounded, AppRoutes.JOB_CARD, _r('Job Card'), 'Manufacturing',
+      null, AppRoutes.JOB_CARD_FORM, Colors.deepOrange, null, _nameOnly),
   NavLink('Report', 'BOM Search', 'BOM Search', Icons.manage_search_rounded, AppRoutes.BOM_SEARCH, _rep('BOM'), 'Manufacturing', 'Reports'),
   NavLink('Report', 'Job Card Summary', 'Job Card Summary', Icons.summarize_outlined, AppRoutes.JOB_CARD_SUMMARY, _rep('Job Card'), 'Manufacturing', 'Reports'),
   NavLink('Report', 'BOM Stock with Customer Code', 'BOM Stock with Customer Code', Icons.inventory_2_outlined, AppRoutes.BOM_STOCK_CUSTOMER_CODE, _rep('BOM'), 'Manufacturing', 'Reports'),
-  NavLink('DocType', 'POS Upload', 'POS Upload', Icons.cloud_upload_rounded, AppRoutes.POS_UPLOAD, _r('POS Upload'), 'Selling'),
-  NavLink('DocType', 'Sales Order', 'Sales Order', Icons.request_quote_rounded, AppRoutes.SALES_ORDER, _r('Sales Order'), 'Selling'),
-  NavLink('DocType', 'Item Price', 'Item Price', Icons.sell_outlined, AppRoutes.ITEM_PRICE, _r('Item Price'), 'Selling', 'Pricing'),
-  NavLink('DocType', 'Pricing Rule', 'Pricing Rule', Icons.discount_outlined, AppRoutes.PRICING_RULE, _r('Pricing Rule'), 'Selling', 'Pricing'),
+
+  // ── Selling ──
+  NavLink('DocType', 'POS Upload', 'POS Upload', Icons.cloud_upload_rounded, AppRoutes.POS_UPLOAD, _r('POS Upload'), 'Selling',
+      null, AppRoutes.POS_UPLOAD_FORM, Colors.deepPurple),
+  NavLink('DocType', 'Sales Order', 'Sales Order', Icons.request_quote_rounded, AppRoutes.SALES_ORDER, _r('Sales Order'), 'Selling',
+      null, AppRoutes.SALES_ORDER_FORM, Colors.teal),
+  NavLink('DocType', 'Item Price', 'Item Price', Icons.sell_outlined, AppRoutes.ITEM_PRICE, _r('Item Price'), 'Selling',
+      'Pricing', AppRoutes.ITEM_PRICE_FORM, Colors.indigo, null, _nameEdit, false),
+  NavLink('DocType', 'Pricing Rule', 'Pricing Rule', Icons.discount_outlined, AppRoutes.PRICING_RULE, _r('Pricing Rule'), 'Selling',
+      'Pricing', AppRoutes.PRICING_RULE_FORM, Colors.deepOrange, null, _nameEdit),
   NavLink('Report', 'POS and Delivery Note Item Rate', 'POS & DN Item Rate', Icons.price_change_outlined, AppRoutes.POS_DN_ITEM_RATE, _rep('POS Upload'), 'Selling', 'Reports'),
+
+  // ── HR ──
   NavLink('DocType', 'Attendance', 'Attendance', Icons.how_to_reg_rounded, AppRoutes.ATTENDANCE, _r('Attendance'), 'HR'),
   NavLink('Report', 'Monthly Attendance Sheet', 'Monthly Attendance Sheet', Icons.calendar_month_rounded, AppRoutes.MONTHLY_ATTENDANCE_SHEET, _rep('Attendance'), 'HR', 'Reports'),
+
+  // ── Search-only (not shown in drawer) ──
+  NavLink('DocType', 'ToDo', 'ToDo', Icons.check_circle_outline, AppRoutes.TODO, _r('ToDo'), 'Tools',
+      null, AppRoutes.TODO_FORM, Colors.cyan, 'ToDos', _defaultArgsFor, true, false),
 ];
 
 const Map<String, IconData> _groupIcons = {
@@ -125,7 +216,8 @@ List<NavGroup> buildWorkspaceMenu(
   Map<String, Map<String, dynamic>> desktop, [
   Map<String, String> modules = const {},
 ]) {
-  final byKey = {for (final l in kNavCatalog) l.key: l};
+  final drawerLinks = kNavCatalog.where((l) => l.showInDrawer);
+  final byKey = {for (final l in drawerLinks) l.key: l};
   final visible = pages.where((p) => p['is_hidden'] != 1).toList();
   final byName = {for (final p in visible) p['name'] as String: p};
 
@@ -252,7 +344,8 @@ List<Map<String, dynamic>> menuToJson(List<NavGroup> menu) => [
 List<NavGroup>? menuFromJson(List<dynamic>? json) {
   if (json == null) return null;
   try {
-    final byKey = {for (final l in kNavCatalog) l.key: l};
+    final drawerLinks = kNavCatalog.where((l) => l.showInDrawer);
+    final byKey = {for (final l in drawerLinks) l.key: l};
     final groups = <String, Map<String?, List<NavLink>>>{};
     final seen = <String>{};
     for (final g in json) {
