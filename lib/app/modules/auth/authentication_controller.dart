@@ -274,6 +274,7 @@ class AuthenticationController extends GetxController {
     );
   }
 
+  /// Asks the user to confirm, then signs out behind a loading overlay.
   Future<void> logoutUser() async {
     // Builder provides a valid local BuildContext so button callbacks
     // use Navigator.of(context).pop() instead of Get.back().
@@ -289,38 +290,44 @@ class AuthenticationController extends GetxController {
             ),
             TextButton(
               child: const Text('Logout'),
-              onPressed: () async {
+              onPressed: () {
                 Navigator.of(context).pop();
-                isLoading.value = true;
-                Get.dialog(
-                  const PopScope(
-                    canPop: false,
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(color: Colors.white),
-                          SizedBox(height: 16),
-                          Text(
-                            'Logging out…',
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  barrierDismissible: false,
-                  barrierColor: Colors.black54,
-                );
-                // Navigating to login replaces every route, overlay included.
-                await performLogout();
-                isLoading.value = false;
+                logoutConfirmed();
               },
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// Signs out behind a loading overlay without asking again. For callers
+  /// that have already shown their own confirmation.
+  Future<void> logoutConfirmed() async {
+    isLoading.value = true;
+    Get.dialog(
+      const PopScope(
+        canPop: false,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                'Logging out…',
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+    );
+    // Navigating to login replaces every route, overlay included.
+    await performLogout();
+    isLoading.value = false;
   }
 
   Future<void> _clearSessionAndLocalData() async {

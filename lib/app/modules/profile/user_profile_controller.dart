@@ -32,8 +32,10 @@ class UserProfileController extends GetxController {
     }
   }
 
+  /// The profile screen confirms before calling this, so it does not ask
+  /// a second time.
   void logout() {
-    _authController.logoutUser();
+    _authController.logoutConfirmed();
   }
 
   // --- Mobile Number Update ---

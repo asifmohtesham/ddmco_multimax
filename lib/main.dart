@@ -45,12 +45,9 @@ Future<void> main() async {
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
 
-  final authController = Get.find<AuthenticationController>();
-  await authController.checkAuthenticationStatus();
-
-  runApp(MultimaxApp(initialRoute: authController.isAuthenticated.value
-      ? AppRoutes.HOME
-      : AppRoutes.LOGIN));
+  // The session check talks to the server, so it runs from the splash route
+  // rather than holding up the first frame here.
+  runApp(const MultimaxApp(initialRoute: AppRoutes.SPLASH));
 }
 
 class MultimaxApp extends StatelessWidget {
