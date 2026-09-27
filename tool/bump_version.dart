@@ -1,8 +1,11 @@
 // Semantic version bump helper.
 //
 // Reads the current `version: X.Y.Z+B` from pubspec.yaml, finds the last released
-// `v*` tag, classifies every commit since that tag (Conventional-Commit prefix +
-// corroborating diff), and proposes the next version per docs/versioning_conventions.md.
+// `v*` tag reachable from HEAD, classifies every commit since that tag
+// (Conventional-Commit prefix + corroborating diff), and proposes the next version
+// per docs/versioning_conventions.md. A proposal that collides with an existing
+// release — or a branch that is behind the latest one — is warned about, and
+// --write is refused.
 //
 //   dart run tool/bump_version.dart            # dry-run: classify range, propose version
 //   dart run tool/bump_version.dart --write    # apply the auto-classified bump to pubspec.yaml
@@ -42,6 +45,31 @@ class Version {
     );
   }
 
+  static final _tagRe = RegExp(r'^v(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?$');
+
+  /// The version a release tag name encodes, or null if [tag] is not one.
+  /// Older tags are `vX.Y.Z+B`; newer ones drop the build (`vX.Y.Z`), read
+  /// here as build 0 so a missing build never outranks a real one.
+  static Version? tryParseTag(String tag) {
+    final m = _tagRe.firstMatch(tag.trim());
+    if (m == null) return null;
+    return Version(
+      int.parse(m[1]!),
+      int.parse(m[2]!),
+      int.parse(m[3]!),
+      int.parse(m[4] ?? '0'),
+    );
+  }
+
+  String get semver => '$major.$minor.$patch';
+
+  /// Orders by `X.Y.Z` only; the build number is compared on its own.
+  int compareSemver(Version other) {
+    if (major != other.major) return major.compareTo(other.major);
+    if (minor != other.minor) return minor.compareTo(other.minor);
+    return patch.compareTo(other.patch);
+  }
+
   /// The build number always increments; the semver fields follow [bump].
   Version next(Bump bump) {
     final b = build + 1;
@@ -62,6 +90,20 @@ class Version {
 }
 
 void main(List<String> args) {
+  exitCode = run(args);
+}
+
+/// Runs the tool against the repo in [workingDirectory] (default: the current
+/// directory) and returns the process exit code.
+int run(
+  List<String> args, {
+  String? workingDirectory,
+  StringSink? out,
+  StringSink? err,
+}) {
+  out ??= stdout;
+  err ??= stderr;
+
   var write = false;
   Bump? override;
   String? since;
@@ -78,45 +120,47 @@ void main(List<String> args) {
         override = Bump.patch;
       case '--since':
         if (i + 1 >= args.length) {
-          stderr.writeln('--since requires a tag argument');
-          exit(2);
+          err.writeln('--since requires a tag argument');
+          return 2;
         }
         since = args[++i];
       default:
-        stderr.writeln('Unknown argument: ${args[i]}');
-        stderr.writeln('Usage: dart run tool/bump_version.dart '
+        err.writeln('Unknown argument: ${args[i]}');
+        err.writeln('Usage: dart run tool/bump_version.dart '
             '[--major|--minor|--patch] [--since <tag>] [--write]');
-        exit(2);
+        return 2;
     }
   }
 
   // --since is an analysis window; it never mutates pubspec.yaml.
   if (since != null && write) {
-    stderr.writeln('--since is analysis-only and cannot be combined with --write.');
-    exit(2);
+    err.writeln('--since is analysis-only and cannot be combined with --write.');
+    return 2;
   }
 
   // 1. Current version.
-  final pubspec = File(_pubspecPath);
+  final pubspec = File(workingDirectory == null
+      ? _pubspecPath
+      : '$workingDirectory/$_pubspecPath');
   if (!pubspec.existsSync()) {
-    stderr.writeln('$_pubspecPath not found; run from the project root.');
-    exit(1);
+    err.writeln('$_pubspecPath not found; run from the project root.');
+    return 1;
   }
   final pubspecText = pubspec.readAsStringSync();
-  final versionLine =
-      RegExp(r'^version:\s*(.+)$', multiLine: true).firstMatch(pubspecText);
+  final versionLine = _versionLineRe.firstMatch(pubspecText);
   if (versionLine == null) {
-    stderr.writeln('No `version:` line in $_pubspecPath.');
-    exit(1);
+    err.writeln('No `version:` line in $_pubspecPath.');
+    return 1;
   }
   final current = Version.parse(versionLine.group(1)!);
 
   // 2. Last released tag and the commit range (--since overrides the base tag).
-  final lastTag = since ?? _lastTag();
+  final reachableTag = lastReachableTag(workingDirectory: workingDirectory);
+  final lastTag = since ?? reachableTag;
   final range = lastTag == null ? null : '$lastTag..HEAD';
-  final messages = commitMessages(range);
-  final changedFiles = _changedFiles(range);
-  final newModules = newModuleDirs(lastTag);
+  final messages = commitMessages(range, workingDirectory: workingDirectory);
+  final changedFiles = _changedFiles(range, workingDirectory: workingDirectory);
+  final newModules = newModuleDirs(lastTag, workingDirectory: workingDirectory);
 
   // 3. Classify.
   final classified = classify(messages, changedFiles, newModules, override);
@@ -124,43 +168,62 @@ void main(List<String> args) {
   final next = current.next(bump);
 
   // Report.
-  stdout.writeln('Current version : $current');
-  stdout.writeln('Last tag        : ${lastTag ?? '(none — using full history)'}');
-  stdout.writeln('Commits in range: ${messages.length}');
+  out.writeln('Current version : $current');
+  out.writeln('Last tag        : ${lastTag ?? '(none — using full history)'}');
+  out.writeln('Commits in range: ${messages.length}');
   for (final line in classified.reasons) {
-    stdout.writeln('  $line');
+    out.writeln('  $line');
   }
   final label = override != null ? '${bump.name} (overridden)' : bump.name;
-  stdout.writeln('Bump            : $label');
-  stdout.writeln('Next version    : $next');
+  out.writeln('Bump            : $label');
+  out.writeln('Next version    : $next');
 
   if (bump == Bump.none && override == null) {
-    stdout.writeln(
+    out.writeln(
         'Note            : no functional change detected — only the build number moves.');
   }
 
-  // 4. Apply.
+  // 4. Guard: the proposal must not collide with an existing release.
+  final problems = releaseCollisions(
+    proposed: next,
+    bump: bump,
+    baseTag: reachableTag,
+    releases: releaseTags(workingDirectory: workingDirectory),
+  );
+  for (final problem in problems) {
+    out.writeln('WARNING         : $problem');
+  }
+
+  // 5. Apply.
   if (!write) {
-    stdout.writeln('\n(dry-run — pass --write to apply)');
-    return;
+    out.writeln(problems.isEmpty
+        ? '\n(dry-run — pass --write to apply)'
+        : '\n(dry-run — --write would be refused; see warnings above)');
+    return 0;
+  }
+  if (problems.isNotEmpty) {
+    err.writeln('Refusing to write $next to $_pubspecPath:');
+    for (final problem in problems) {
+      err.writeln('  - $problem');
+    }
+    return 1;
   }
   final updated =
       pubspecText.replaceFirst(versionLine.group(0)!, 'version: $next');
   pubspec.writeAsStringSync(updated);
-  stdout.writeln('\nWrote version: $next to $_pubspecPath');
+  out.writeln('\nWrote version: $next to $_pubspecPath');
+  return 0;
 }
 
-/// Newest `v*` tag by commit date, or null if the repo has none.
-String? _lastTag() {
+/// Nearest `v*` tag that is an ancestor of HEAD, or null if HEAD reaches none.
+/// A newer tag on another branch is not a base for this branch's range.
+String? lastReachableTag({String? workingDirectory}) {
   final r = Process.runSync(
-      'git', ['tag', '--list', 'v*', '--sort=-creatordate']);
+      'git', ['describe', '--tags', '--abbrev=0', '--match', 'v*'],
+      workingDirectory: workingDirectory);
   if (r.exitCode != 0) return null;
-  final tags = (r.stdout as String)
-      .split('\n')
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
-  return tags.isEmpty ? null : tags.first;
+  final tag = (r.stdout as String).trim();
+  return tag.isEmpty ? null : tag;
 }
 
 /// Full commit messages (subject + body) in [range], newest first. The body is
@@ -183,13 +246,14 @@ List<String> commitMessages(String? range, {String? workingDirectory}) {
       .toList();
 }
 
-List<String> _changedFiles(String? range) {
+List<String> _changedFiles(String? range, {String? workingDirectory}) {
   final gitArgs = [
     'diff',
     '--name-only',
     if (range != null) range else 'HEAD',
   ];
-  final r = Process.runSync('git', gitArgs);
+  final r =
+      Process.runSync('git', gitArgs, workingDirectory: workingDirectory);
   if (r.exitCode != 0) return const [];
   return (r.stdout as String)
       .split('\n')
@@ -217,6 +281,127 @@ List<String> newModuleDirs(String? base, {String? workingDirectory}) {
 
   final before = base == null ? const <String>{} : dirsAt(base);
   return dirsAt('HEAD').difference(before).toList()..sort();
+}
+
+final _versionLineRe = RegExp(r'^version:\s*(.+)$', multiLine: true);
+
+/// A released `v*` tag, as the collision guard sees it.
+class Release {
+  final String tag;
+
+  /// `version:` of pubspec.yaml at the tag; null when absent or unparseable.
+  final Version? pubspec;
+
+  /// Whether the tag is an ancestor of HEAD.
+  final bool reachable;
+
+  Release(this.tag, {this.pubspec, required this.reachable});
+
+  /// Highest `X.Y.Z` and highest build this release lays claim to, or null if
+  /// it names no version. The tag name and the pubspec at the tag can disagree
+  /// (v2.25.5 carries 2.25.3+81), so each field takes the higher of the two.
+  Version? get version {
+    final claims = [Version.tryParseTag(tag), pubspec].whereType<Version>();
+    if (claims.isEmpty) return null;
+    final top = claims.reduce((a, b) => a.compareSemver(b) >= 0 ? a : b);
+    final build =
+        claims.map((c) => c.build).reduce((a, b) => a >= b ? a : b);
+    return Version(top.major, top.minor, top.patch, build);
+  }
+
+  String get label => pubspec == null ? tag : '$tag (pubspec.yaml $pubspec)';
+}
+
+/// Every `v*` tag, with the pubspec.yaml version at that tag and whether HEAD
+/// contains it.
+List<Release> releaseTags({String? workingDirectory}) {
+  List<String> tags(List<String> filter) {
+    final r = Process.runSync('git', ['tag', '--list', 'v*', ...filter],
+        workingDirectory: workingDirectory);
+    if (r.exitCode != 0) return const [];
+    return (r.stdout as String)
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  Version? pubspecAt(String tag) {
+    final r = Process.runSync('git', ['show', '$tag:$_pubspecPath'],
+        workingDirectory: workingDirectory);
+    if (r.exitCode != 0) return null;
+    final line = _versionLineRe.firstMatch(r.stdout as String);
+    if (line == null) return null;
+    try {
+      return Version.parse(line.group(1)!);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  final reachable = tags(const ['--merged', 'HEAD']).toSet();
+  return [
+    for (final tag in tags(const []))
+      Release(tag,
+          pubspec: pubspecAt(tag), reachable: reachable.contains(tag)),
+  ];
+}
+
+/// Reasons [proposed] must not be released, given every existing release;
+/// empty when it is safe. [baseTag] is the tag the commit range started from.
+///
+/// Only the proposal is judged. Past releases that collide with each other
+/// (three tags share build 81) are history, not a reason to refuse.
+List<String> releaseCollisions({
+  required Version proposed,
+  required Bump bump,
+  required String? baseTag,
+  required List<Release> releases,
+}) {
+  final known = [
+    for (final r in releases)
+      if (r.version case final v?) (release: r, version: v),
+  ];
+  if (known.isEmpty) return const [];
+
+  final problems = <String>[];
+
+  // Released work that HEAD does not contain: the branch is behind.
+  final base =
+      known.where((k) => k.release.tag == baseTag).firstOrNull?.version;
+  final missing = [
+    for (final k in known)
+      if (!k.release.reachable &&
+          (base == null ||
+              k.version.compareSemver(base) > 0 ||
+              k.version.build > base.build))
+        k.release.tag,
+  ];
+  if (missing.isNotEmpty) {
+    problems.add('${missing.join(', ')} '
+        '${missing.length == 1 ? 'is' : 'are'} newer than '
+        '${baseTag ?? 'any tag HEAD contains'} but not an ancestor of HEAD — '
+        'this branch is behind the latest release; merge it in first');
+  }
+
+  final topSemver = known
+      .reduce((a, b) => a.version.compareSemver(b.version) >= 0 ? a : b);
+  final order = proposed.compareSemver(topSemver.version);
+  // A build-only release (Bump.none) deliberately keeps X.Y.Z.
+  if (order < 0 || (order == 0 && bump != Bump.none)) {
+    problems.add('version ${proposed.semver} is not greater than released '
+        '${topSemver.release.label}');
+  }
+
+  final topBuild =
+      known.reduce((a, b) => a.version.build >= b.version.build ? a : b);
+  if (proposed.build <= topBuild.version.build) {
+    problems.add('build number ${proposed.build} is not greater than '
+        '${topBuild.version.build}, used by ${topBuild.release.label} — '
+        'Play Store rejects a reused versionCode');
+  }
+
+  return problems;
 }
 
 class Classification {
