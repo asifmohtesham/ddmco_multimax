@@ -70,6 +70,10 @@ class LoginController extends GetxController {
       isPasswordHidden.value = !isPasswordHidden.value;
 
   Future<void> loginUser() async {
+    // The button disables itself while loading, but the keyboard's done
+    // key also lands here and must not start a second login.
+    if (isLoading.value) return;
+
     final storedUrl =
         await _dbService.getConfig(DatabaseService.serverUrlKey);
 

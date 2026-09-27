@@ -1,4 +1,6 @@
 // test/widget/login_screen_test.dart
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,11 +36,7 @@ void main() {
 
   tearDown(Get.reset);
 
-  Future<void> submitLogin(
-    WidgetTester tester, {
-    String username = kTestEmail,
-    String password = 'correct horse',
-  }) async {
+  Future<void> openLogin(WidgetTester tester) async {
     await tester.pumpWidget(GetMaterialApp(
       initialRoute: AppRoutes.LOGIN,
       getPages: [
@@ -54,6 +52,15 @@ void main() {
         ),
       ],
     ));
+    await tester.pump();
+  }
+
+  Future<void> submitLogin(
+    WidgetTester tester, {
+    String username = kTestEmail,
+    String password = 'correct horse',
+  }) async {
+    await openLogin(tester);
     await tester.enterText(find.byType(TextFormField).at(0), username);
     await tester.enterText(find.byType(TextFormField).at(1), password);
     await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
@@ -165,6 +172,38 @@ void main() {
 
       expect(submitted, isEmpty);
       expect(find.text('Please enter your password'), findsOneWidget);
+    });
+  });
+
+  group('a login already in progress', () {
+    testWidgets('is not sent again by the keyboard\'s done key',
+        (tester) async {
+      final answer = Completer<Response>();
+      var logins = 0;
+      api.onLogin = (_, __) {
+        logins++;
+        return answer.future;
+      };
+
+      await openLogin(tester);
+      await tester.enterText(find.byType(TextFormField).at(0), kTestEmail);
+      await tester.enterText(
+          find.byType(TextFormField).at(1), 'correct horse');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
+      await tester.pump();
+
+      // The password field still has the keyboard; the user closes it with
+      // the done key while the first request is in flight.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      answer.complete(
+          jsonResponse({'message': 'Logged In', 'full_name': 'Pat Picker'}));
+      await tester.pumpAndSettle();
+
+      expect(logins, 1);
+      expect(api.identityChecks, 1);
+      expect(find.text('home screen'), findsOneWidget);
     });
   });
 
