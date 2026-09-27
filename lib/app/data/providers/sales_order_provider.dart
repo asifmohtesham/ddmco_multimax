@@ -72,10 +72,20 @@ class SalesOrderProvider {
     return ((res.data as Map)['message'] as Map)['name'].toString();
   }
 
+  /// Request parameters for `get_item_details`.
+  ///
+  /// ERPNext v15 declares the payload parameter as `args`; v16 renamed it to
+  /// `ctx`. Frappe drops request keys the target function does not declare,
+  /// so sending both lets one request work against either version.
+  static Map<String, dynamic> itemDetailsParams(Map<String, dynamic> args) {
+    final encoded = jsonEncode(args);
+    return {'args': encoded, 'ctx': encoded};
+  }
+
   Future<ItemDetails> getItemDetails(Map<String, dynamic> args) async {
     final res = await _api.callMethodPost(
         'erpnext.stock.get_item_details.get_item_details',
-        params: {'args': jsonEncode(args)});
+        params: itemDetailsParams(args));
     return parseItemDetails((res.data as Map?)?['message']);
   }
 
