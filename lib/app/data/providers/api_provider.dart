@@ -2043,9 +2043,9 @@ class ApiProvider {
     return cookies.map((c) => '${c.name}=${c.value}').join('; ');
   }
 
-  Future<Response> logoutApiCall() async {
+  Future<Response> logoutApiCall({CancelToken? cancelToken}) async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.post('/api/method/logout');
+    return await _dio.post('/api/method/logout', cancelToken: cancelToken);
   }
   Future<Response> getLoggedUser() async {
     if (!_dioInitialised) await _initDio();
