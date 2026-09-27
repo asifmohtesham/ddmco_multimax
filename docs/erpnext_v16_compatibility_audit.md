@@ -1,7 +1,7 @@
 # ERPNext / Frappe `version-16` Compatibility Audit
 
 **Date:** 2026-09-27
-**App base:** `release/play-store` at `a79c60a0` (2.25.6+84)
+**App base:** `release/play-store` at `1458c2a3` (2.25.7+85)
 **Method:** static audit. Every Frappe / ERPNext / HRMS touchpoint in `lib/` was
 inventoried and checked against the upstream source of both branches.
 
@@ -138,6 +138,11 @@ Item, Item Price, Pricing Rule and ToDo.
 every Frappe user holds at least the automatic roles. In that case the server
 evaluates the permission. Users whose roles are known — all users on v15, System
 Managers on v16 — take exactly the path they took before.
+
+A user who is signing out also has no roles. The fallback therefore checks that
+a session exists, and that it is still the session the lookup started under,
+before it asks the server. This keeps the rule that nothing is probed after
+logout.
 
 Checks that look for `System Manager` directly (attendance alerts, notification
 settings, the home dashboard) stay correct on v16: System Managers can read their

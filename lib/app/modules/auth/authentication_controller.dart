@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
-import 'package:multimax/app/core/utils/app_navigator.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -17,6 +15,8 @@ import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/reminder_scheduler.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/auth/logout_flow.dart';
+import 'package:multimax/app/modules/auth/widgets/logout_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
@@ -33,6 +33,12 @@ class AuthenticationController extends GetxController {
   var currentUser = Rx<User?>(null);
   var isAuthenticated = false.obs;
   var isLoading = false.obs;
+
+  /// True while a logout is in flight; drives [LogoutDialog]'s busy state.
+  final isLoggingOut = false.obs;
+
+  /// Why the last logout attempt failed, shown inline in [LogoutDialog].
+  final logoutError = RxnString();
 
   @override
   void onInit() {
@@ -172,62 +178,48 @@ class AuthenticationController extends GetxController {
     });
   }
 
+  /// Confirms, then logs out. The confirmation and the loading feedback are
+  /// one [LogoutDialog] driven by [isLoggingOut] — never a second route.
   Future<void> logoutUser() async {
-    // Builder provides a valid local BuildContext so button callbacks
-    // use Navigator.of(context).pop() instead of Get.back().
+    if (isLoggingOut.value) return;
+    logoutError.value = null;
     Get.dialog(
-      Builder(
-        builder: (context) => AlertDialog(
-          title: const Text('Confirm Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              child: const Text('Logout'),
-              onPressed: () async {
-                Navigator.of(context).pop();
-                isLoading.value = true;
-                Get.dialog(
-                  const PopScope(
-                    canPop: false,
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(color: Colors.white),
-                          SizedBox(height: 16),
-                          Text(
-                            'Logging out…',
-                            style: TextStyle(color: Colors.white, fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  barrierDismissible: false,
-                  barrierColor: Colors.black54,
-                );
-                try {
-                  await _apiProvider.logoutApiCall();
-                  await _clearSessionAndLocalData();
-                  Get.offAllNamed(AppRoutes.LOGIN);
-                } catch (e) {
-                  Get.back();
-                  isLoading.value = false;
-                  GlobalSnackbar.error(
-                    title: 'Logout Error',
-                    message: 'Could not log out.',
-                  );
-                }
-              },
-            ),
-          ],
-        ),
+      LogoutDialog(
+        busy: isLoggingOut,
+        error: logoutError,
+        email: currentUser.value?.email,
+        onConfirm: _performLogout,
       ),
     );
+  }
+
+  Future<void> _performLogout() async {
+    if (isLoggingOut.value) return;
+    isLoggingOut.value = true;
+    logoutError.value = null;
+    final cancelToken = CancelToken();
+    try {
+      final outcome = await localFirstLogout(
+        serverLogout: () =>
+            _apiProvider.logoutApiCall(cancelToken: cancelToken),
+        clearLocal: _clearSessionAndLocalData,
+        onServerTimeout: () => cancelToken.cancel('logout timed out'),
+      );
+      Get.offAllNamed(AppRoutes.LOGIN);
+      if (outcome == LogoutOutcome.serverConfirmed) {
+        GlobalSnackbar.success(message: 'You have been logged out.');
+      } else {
+        GlobalSnackbar.info(
+          message: 'Logged out on this device. '
+              "The server couldn't be reached.",
+        );
+      }
+    } catch (e) {
+      printError(info: 'Logout failed: $e');
+      logoutError.value = "Couldn't clear the saved session. Try again.";
+    } finally {
+      isLoggingOut.value = false;
+    }
   }
 
   Future<void> _clearSessionAndLocalData() async {
@@ -244,11 +236,13 @@ class AuthenticationController extends GetxController {
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
     }
+    // Sign out before clearing the cache: clearing notifies every mounted
+    // DocTypeGuard, and they must find no session to probe.
+    currentUser.value = null;
+    isAuthenticated.value = false;
     if (Get.isRegistered<PermissionService>()) {
       Get.find<PermissionService>().clearCache();
     }
-    currentUser.value = null;
-    isAuthenticated.value = false;
   }
 
   // --- PERMISSION HELPERS ---

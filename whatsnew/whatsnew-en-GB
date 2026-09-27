@@ -1,1 +1,3 @@
-• Fixed searching the Item Price list: typing a single word such as an item name now finds matching prices instead of returning nothing. Any list whose records have no dedicated search fields is searched by the name shown on the row, so what you see is what you can search for.
+• Logging out now shows one clear confirmation that turns into a progress indicator, instead of two overlapping dialogs.
+• Logging out always signs you out on the device, even when the network cannot be reached.
+• Fixed needless background requests after logging out, and made sure one person's permissions can never carry over to the next person signing in on a shared handheld.
