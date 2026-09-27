@@ -55,6 +55,10 @@ class JobCard {
   static const String statusCancelled           = 'Cancelled';
   static const String statusCompleted           = 'Completed';
 
+  /// ERPNext v16 `is_paused` flag, which drives the `On Hold` status there.
+  /// `null` when the server does not have the field (ERPNext v15).
+  final bool? isPaused;
+
   // ── Warehouse & dates ─────────────────────────────────────────────────────
   final String? wipWarehouse;
   /// Employees associated with this Job Card, parsed from the `employee` field
@@ -101,6 +105,7 @@ class JobCard {
     required this.processLossQty,
     required this.transferredQty,
     required this.status,
+    this.isPaused,
     this.wipWarehouse,
     this.employees = const [],
     this.postingDate,
@@ -183,6 +188,9 @@ class JobCard {
       processLossQty:     (json['process_loss_qty']    as num?)?.toDouble() ?? 0.0,
       transferredQty:     (json['transferred_qty']     as num?)?.toDouble() ?? 0.0,
       status:             json['status']               as String? ?? statusOpen,
+      isPaused: json.containsKey('is_paused')
+          ? (json['is_paused'] as num? ?? 0) == 1
+          : null,
       wipWarehouse:       json['wip_warehouse']        as String?,
       employees: (json['employee'] as List? ?? [])
           .map((e) => JobCardEmployee.fromJson(e as Map<String, dynamic>))

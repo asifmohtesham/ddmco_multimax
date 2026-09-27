@@ -95,15 +95,28 @@ class PermissionService extends GetxService {
 
   /// Resolves and caches both `create` and `write` for [doctype] from a single
   /// getdoctype fetch, intersecting the DocPerm rows with the current user's
-  /// roles. De-duped so concurrent create/write lookups share one network call.
+  /// roles. When the roles are not known (see [rolesKnown]) the server is
+  /// asked instead. De-duped so concurrent create/write lookups share one
+  /// resolution.
   Future<void> _resolveDocTypeRoles(String doctype) {
     return _roleFetches.putIfAbsent(doctype, () async {
       try {
         final roles = await _apiProvider.fetchDocTypeRoles(doctype);
-        final userRoles = _currentUserRoles();
-        _accessCache['$doctype:create'] = roleGrants(userRoles, roles.create);
-        _accessCache['$doctype:write'] = roleGrants(userRoles, roles.write);
         if (roles.module != null) _modules[doctype] = roles.module!;
+        final userRoles = _currentUserRoles();
+        if (rolesKnown(userRoles)) {
+          _accessCache['$doctype:create'] = roleGrants(userRoles, roles.create);
+          _accessCache['$doctype:write'] = roleGrants(userRoles, roles.write);
+        } else {
+          // Nothing to intersect the DocPerm rows with, so the server
+          // evaluates the permission itself.
+          final granted = await Future.wait([
+            _serverGrants(doctype, 'create'),
+            _serverGrants(doctype, 'write'),
+          ]);
+          _accessCache['$doctype:create'] = granted[0];
+          _accessCache['$doctype:write'] = granted[1];
+        }
       } catch (_) {
         // Fail-closed for operators (deny) but keep admins visible, and cache
         // the verdict so we don't refetch getdoctype on every rebuild.
@@ -116,6 +129,20 @@ class PermissionService extends GetxService {
       }
     });
   }
+
+  Future<bool> _serverGrants(String doctype, String permType) async {
+    final response = await _apiProvider.hasDocTypePermission(doctype, permType);
+    return ApiProvider.parseHasDocPermissionResponse(response.data);
+  }
+
+  /// Whether the session user's roles could be read.
+  ///
+  /// Every Frappe user holds at least the automatic roles (`All`, …), so an
+  /// empty set means the lookup failed rather than "no roles". That is the
+  /// normal case on Frappe v16 for users who are not System Managers: the
+  /// `roles` table on User is permlevel 1 and the v15 `get_roles` endpoint
+  /// was removed. Exposed as a public static method for unit testing.
+  static bool rolesKnown(Set<String> userRoles) => userRoles.isNotEmpty;
 
   Set<String> _currentUserRoles() {
     try {

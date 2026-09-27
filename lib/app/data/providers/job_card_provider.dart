@@ -6,6 +6,28 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 class JobCardProvider {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
+  static const String _makeTimeLogMethod =
+      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log';
+
+  /// Request parameters for `make_time_log`.
+  ///
+  /// ERPNext v15 declares the payload parameter as `args`; v16 renamed it to
+  /// `kwargs`. Frappe drops request keys the target function does not
+  /// declare, so sending both lets one request work against either version.
+  static Map<String, dynamic> timeLogParams(Map<String, dynamic> payload) {
+    final encoded = json.encode(payload);
+    return {'args': encoded, 'kwargs': encoded};
+  }
+
+  /// Document fields that put a draft Job Card on hold or take it off hold.
+  ///
+  /// v15 stores the hold in `status`. v16 recomputes `status` on every save
+  /// from the `is_paused` flag, so the flag is what has to be written there.
+  /// Each server ignores the key it does not use.
+  static Map<String, dynamic> pausePayload({required bool paused}) => paused
+      ? {'status': 'On Hold', 'is_paused': 1}
+      : {'is_paused': 0};
+
   // ── List ───────────────────────────────────────────────────────────────────
 
   Future<Response> getJobCards({
@@ -64,8 +86,8 @@ class JobCardProvider {
       'status':        status,
     };
     return _apiProvider.callMethodPost(
-      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
-      params: {'args': json.encode(argsMap)},
+      _makeTimeLogMethod,
+      params: timeLogParams(argsMap),
     );
   }
 
@@ -116,8 +138,8 @@ class JobCardProvider {
       'status':        status,
     };
     return _apiProvider.callMethodPost(
-      'erpnext.manufacturing.doctype.job_card.job_card.make_time_log',
-      params: {'args': json.encode(argsMap)},
+      _makeTimeLogMethod,
+      params: timeLogParams(argsMap),
     );
   }
 
@@ -133,20 +155,21 @@ class JobCardProvider {
   }) async =>
       _apiProvider.updateDocument('Job Card', jobCardName, data);
 
-  // ── Submission ─────────────────────────────────────────────────────────
+  // ── Hold / release ─────────────────────────────────────────────────────
 
-  // ── Direct status field update ─────────────────────────────────────────
-
-  /// Sets the `status` field directly on the Job Card document via PATCH.
+  /// Puts the Job Card on hold ([paused] true) or releases it.
   ///
-  /// Used after Pause to force `status = 'On Hold'` since `make_time_log`
-  /// with `status: 'Resume Job'` only closes the time log row but does
-  /// not update the parent document's status field to 'On Hold'.
-  ///
-  /// Valid values: `'Open'`, `'Work In Progress'`, `'On Hold'`,
-  ///              `'Completed'`, `'Cancelled'`.
-  Future<Response> setJobCardStatus(String jobCardName, String status) async =>
-      _apiProvider.updateDocument('Job Card', jobCardName, {'status': status});
+  /// `make_time_log` only closes or opens time log rows; the hold itself
+  /// lives on the parent document. See [pausePayload] for the fields sent.
+  Future<Response> setJobCardPaused(
+    String jobCardName, {
+    required bool paused,
+  }) async =>
+      _apiProvider.updateDocument(
+        'Job Card',
+        jobCardName,
+        pausePayload(paused: paused),
+      );
 
   // ── Submission ─────────────────────────────────────────────────────────
 

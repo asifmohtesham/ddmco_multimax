@@ -804,13 +804,13 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         return;
       }
 
-      // Step 2: set the Job Card document status to 'On Hold'.
+      // Step 2: put the Job Card document on hold.
       //
-      // make_time_log does NOT update the parent document's status field
-      // when called with 'Resume Job' — it only closes the time log row.
-      // We must PATCH the status field directly so the UI transitions to
-      // "On Hold" and shows Resume instead of Pause.
-      final holdRes = await _provider.setJobCardStatus(name, 'On Hold');
+      // make_time_log does NOT put the parent document on hold when called
+      // with 'Resume Job' — it only closes the time log row. The hold must
+      // be written to the document so the UI transitions to "On Hold" and
+      // shows Resume instead of Pause.
+      final holdRes = await _provider.setJobCardPaused(name, paused: true);
       if (holdRes.statusCode != 200) {
         // Non-fatal: time log is already closed. Warn but don't block.
         GlobalSnackbar.warning(
@@ -1153,6 +1153,18 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     try {
+      // ERPNext v16 keeps the card "On Hold" for as long as `is_paused` is
+      // set, whatever time logs exist, so the flag is cleared before the new
+      // time log is opened. v15 has no such flag (isPaused == null).
+      if (jobCard.value?.isPaused == true) {
+        final releaseRes =
+            await _provider.setJobCardPaused(name, paused: false);
+        if (releaseRes.statusCode != 200) {
+          GlobalSnackbar.error(message: 'Failed to resume Job Card');
+          return;
+        }
+      }
+
       final res = await _provider.updateJobCardStatus(
         jobCardId:    name,
         status:       erpNextStatus,

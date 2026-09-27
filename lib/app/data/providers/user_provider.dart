@@ -38,7 +38,10 @@ class UserProvider {
     );
   }
 
-  /// Fetches roles using standard RPC method which is accessible to the user
+  /// Fetches the roles of [userId].
+  ///
+  /// Frappe v15 only: the endpoint was removed in v16 and the call fails
+  /// there.
   Future<Response> getUserRoles(String userId) async {
     return await _apiProvider.callMethod(
       'frappe.core.doctype.user.user.get_roles',
