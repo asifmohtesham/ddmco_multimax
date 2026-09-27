@@ -1,3 +1,4 @@
-• Logging out now shows one clear confirmation that turns into a progress indicator, instead of two overlapping dialogs.
-• Logging out always signs you out on the device, even when the network cannot be reached.
-• Fixed needless background requests after logging out, and made sure one person's permissions can never carry over to the next person signing in on a shared handheld.
+• Purchase Orders and Purchase Receipts now show how much has been received and billed.
+• Works with ERPNext v16 as well as v15.
+• You stay signed in when the network drops; if your session does expire, you are taken back to login with a clear message.
+• Pressing Done on the keyboard no longer sends a second login, passwords are kept out of logs, and session data is no longer included in device backups.
