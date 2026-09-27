@@ -232,11 +232,13 @@ class AuthenticationController extends GetxController {
     if (Get.isRegistered<StorageService>()) {
       await Get.find<StorageService>().clearUserData();
     }
+    // Sign out before clearing the cache: clearing notifies every mounted
+    // DocTypeGuard, and they must find no session to probe.
+    currentUser.value = null;
+    isAuthenticated.value = false;
     if (Get.isRegistered<PermissionService>()) {
       Get.find<PermissionService>().clearCache();
     }
-    currentUser.value = null;
-    isAuthenticated.value = false;
   }
 
   // --- PERMISSION HELPERS ---
