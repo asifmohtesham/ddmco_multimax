@@ -61,8 +61,8 @@ class LoginController extends GetxController {
   }
 
   String? validatePassword(String? value) {
+    // Length and strength rules belong to the server's password policy.
     if (value == null || value.isEmpty) return 'Please enter your password';
-    if (value.length < 6) return 'Password must be at least 6 characters';
     return null;
   }
 
@@ -89,7 +89,8 @@ class LoginController extends GetxController {
       try {
         final response = await _apiProvider.loginWithFrappe(
           emailController.text.trim(),
-          passwordController.text.trim(),
+          // Sent exactly as typed: spaces can be part of a password.
+          passwordController.text,
         );
 
         final data = response.data;

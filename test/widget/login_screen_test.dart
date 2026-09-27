@@ -34,7 +34,11 @@ void main() {
 
   tearDown(Get.reset);
 
-  Future<void> submitLogin(WidgetTester tester) async {
+  Future<void> submitLogin(
+    WidgetTester tester, {
+    String username = kTestEmail,
+    String password = 'correct horse',
+  }) async {
     await tester.pumpWidget(GetMaterialApp(
       initialRoute: AppRoutes.LOGIN,
       getPages: [
@@ -50,8 +54,8 @@ void main() {
         ),
       ],
     ));
-    await tester.enterText(find.byType(TextFormField).at(0), kTestEmail);
-    await tester.enterText(find.byType(TextFormField).at(1), 'correct horse');
+    await tester.enterText(find.byType(TextFormField).at(0), username);
+    await tester.enterText(find.byType(TextFormField).at(1), password);
     await tester.tap(find.widgetWithText(ElevatedButton, 'Login'));
     await tester.pumpAndSettle();
   }
@@ -122,6 +126,45 @@ void main() {
       final button = tester.widget<ElevatedButton>(
           find.widgetWithText(ElevatedButton, 'Login'));
       expect(button.onPressed, isNotNull);
+    });
+  });
+
+  group('credentials are sent as typed', () {
+    late List<(String, String)> submitted;
+
+    setUp(() {
+      submitted = [];
+      api.onLogin = (usr, pwd) async {
+        submitted.add((usr, pwd));
+        return jsonResponse({'message': 'Logged In', 'full_name': 'Pat'});
+      };
+    });
+
+    testWidgets('spaces in a password are part of the password',
+        (tester) async {
+      await submitLogin(tester, password: ' correct horse ');
+
+      expect(submitted, [(kTestEmail, ' correct horse ')]);
+    });
+
+    testWidgets('a short password is left for the server to judge',
+        (tester) async {
+      await submitLogin(tester, password: 'abc');
+
+      expect(submitted, [(kTestEmail, 'abc')]);
+    });
+
+    testWidgets('spaces around the username are dropped', (tester) async {
+      await submitLogin(tester, username: '  $kTestEmail ');
+
+      expect(submitted, [(kTestEmail, 'correct horse')]);
+    });
+
+    testWidgets('an empty password is not submitted', (tester) async {
+      await submitLogin(tester, password: '');
+
+      expect(submitted, isEmpty);
+      expect(find.text('Please enter your password'), findsOneWidget);
     });
   });
 
