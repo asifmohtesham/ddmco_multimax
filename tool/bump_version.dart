@@ -114,18 +114,19 @@ void main(List<String> args) {
   // 2. Last released tag and the commit range (--since overrides the base tag).
   final lastTag = since ?? _lastTag();
   final range = lastTag == null ? null : '$lastTag..HEAD';
-  final subjects = _commitSubjects(range);
+  final messages = commitMessages(range);
   final changedFiles = _changedFiles(range);
+  final newModules = newModuleDirs(lastTag);
 
   // 3. Classify.
-  final classified = _classify(subjects, changedFiles, override);
+  final classified = classify(messages, changedFiles, newModules, override);
   final bump = classified.bump;
   final next = current.next(bump);
 
   // Report.
   stdout.writeln('Current version : $current');
   stdout.writeln('Last tag        : ${lastTag ?? '(none — using full history)'}');
-  stdout.writeln('Commits in range: ${subjects.length}');
+  stdout.writeln('Commits in range: ${messages.length}');
   for (final line in classified.reasons) {
     stdout.writeln('  $line');
   }
@@ -162,12 +163,21 @@ String? _lastTag() {
   return tags.isEmpty ? null : tags.first;
 }
 
-List<String> _commitSubjects(String? range) {
-  final gitArgs = ['log', '--pretty=%s', if (range != null) range];
-  final r = Process.runSync('git', gitArgs);
+/// Full commit messages (subject + body) in [range], newest first. The body is
+/// needed because a `BREAKING CHANGE:` footer never appears in the subject.
+List<String> commitMessages(String? range, {String? workingDirectory}) {
+  // -z separates commits with NUL, so multi-line bodies stay in one record.
+  final gitArgs = [
+    'log',
+    '-z',
+    '--pretty=format:%B',
+    if (range != null) range,
+  ];
+  final r =
+      Process.runSync('git', gitArgs, workingDirectory: workingDirectory);
   if (r.exitCode != 0) return const [];
   return (r.stdout as String)
-      .split('\n')
+      .split('\x00')
       .map((s) => s.trim())
       .where((s) => s.isNotEmpty)
       .toList();
@@ -188,26 +198,55 @@ List<String> _changedFiles(String? range) {
       .toList();
 }
 
-class _Classification {
+const _modulesDir = 'lib/app/modules/';
+
+/// Top-level module directories that exist at HEAD but not at [base], e.g.
+/// `lib/app/modules/foo`. With no [base] every module counts as new.
+List<String> newModuleDirs(String? base, {String? workingDirectory}) {
+  Set<String> dirsAt(String rev) {
+    final r = Process.runSync(
+        'git', ['ls-tree', '-d', '--name-only', rev, _modulesDir],
+        workingDirectory: workingDirectory);
+    if (r.exitCode != 0) return const {};
+    return (r.stdout as String)
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+  }
+
+  final before = base == null ? const <String>{} : dirsAt(base);
+  return dirsAt('HEAD').difference(before).toList()..sort();
+}
+
+class Classification {
   final Bump bump;
   final List<String> reasons;
-  _Classification(this.bump, this.reasons);
+  Classification(this.bump, this.reasons);
 }
 
 /// Leading Conventional-Commit type, e.g. `feat`, `fix`, `feat!`, `chore`.
+/// Not multiLine: `^` anchors to the subject, so body lines are never a type.
 final _typeRe = RegExp(r'^(\w+)(\([^)]*\))?(!)?:');
-final _breakingFooterRe = RegExp(r'BREAKING[ -]CHANGE', caseSensitive: false);
 
-_Classification _classify(
-  List<String> subjects,
+/// The `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer token: uppercase, at the
+/// start of a line, followed by a colon. A prose mention ("avoids a breaking
+/// change in …") is not a declaration.
+final _breakingFooterRe = RegExp(r'^BREAKING[ -]CHANGE:', multiLine: true);
+
+/// Classifies full commit [messages] (subject + body), the [changedFiles] and
+/// the [newModules] in the range into a single bump; [override] wins when given.
+Classification classify(
+  List<String> messages,
   List<String> changedFiles,
+  List<String> newModules,
   Bump? override,
 ) {
   final reasons = <String>[];
 
   // Signal 1: commit prefixes.
   var fromCommits = Bump.none;
-  for (final s in subjects) {
+  for (final s in messages) {
     final m = _typeRe.firstMatch(s);
     final breaking = (m?.group(3) == '!') || _breakingFooterRe.hasMatch(s);
     final type = m?.group(1)?.toLowerCase();
@@ -226,8 +265,9 @@ _Classification _classify(
 
   // Signal 2: the diff. A new module directory means a feature even if the
   // commit was labelled `fix`; a range that only touches docs/tests is chore.
-  final addsModule = changedFiles.any(
-      (f) => f.startsWith('lib/app/modules/') && !f.contains('/test'));
+  // Files added inside an existing module are not a signal on their own — a
+  // new screen there is a feature only if its commit says `feat:`.
+  final addsModule = newModules.isNotEmpty;
   final onlyDocsOrTests = changedFiles.isNotEmpty &&
       changedFiles.every((f) =>
           f.endsWith('.md') ||
@@ -237,7 +277,7 @@ _Classification _classify(
   var fromDiff = Bump.none;
   if (addsModule) {
     fromDiff = Bump.minor;
-    reasons.add('diff touches lib/app/modules/** → at least MINOR');
+    reasons.add('diff adds new module ${newModules.join(', ')} → at least MINOR');
   } else if (onlyDocsOrTests) {
     fromDiff = Bump.patch;
     reasons.add('diff only touches docs/tests → PATCH');
@@ -251,7 +291,7 @@ _Classification _classify(
 
   if (override != null) {
     reasons.add('manual override: ${override.name}');
-    return _Classification(override, reasons);
+    return Classification(override, reasons);
   }
-  return _Classification(auto, reasons);
+  return Classification(auto, reasons);
 }
