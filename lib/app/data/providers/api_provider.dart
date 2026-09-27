@@ -3,9 +3,11 @@ import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/providers/safe_log_interceptor.dart';
 import 'package:multimax/app/data/providers/session_expiry_interceptor.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
@@ -75,7 +77,10 @@ class ApiProvider {
       hasActiveSession: () => hasActiveSession(),
       onSessionExpired: () => onSessionExpired(),
     ));
-    _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
+    // Debug builds only: release builds skip the formatting work as well.
+    if (kDebugMode) {
+      _dio.interceptors.add(SafeLogInterceptor());
+    }
     _dioInitialised = true;
   }
 

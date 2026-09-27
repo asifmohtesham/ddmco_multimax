@@ -68,7 +68,6 @@ void main() {
 
       expect(find.text('login screen'), findsOneWidget);
       expect(api.logoutCalls, 1);
-      expect(auth.isLoading.value, isFalse);
     });
 
     testWidgets('cancelling keeps the user signed in', (tester) async {

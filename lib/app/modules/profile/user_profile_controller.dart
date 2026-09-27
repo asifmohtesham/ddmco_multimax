@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
