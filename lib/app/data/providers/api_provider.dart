@@ -7,6 +7,7 @@ import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
+import 'package:multimax/app/data/providers/session_expiry_interceptor.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -21,6 +22,11 @@ class ApiProvider {
   String _baseUrl = defaultBaseUrl;
 
   String get baseUrl => _baseUrl;
+
+  /// Session hooks, set by AuthenticationController. ApiProvider is created
+  /// first, so it cannot look the controller up itself.
+  bool Function() hasActiveSession = () => false;
+  void Function() onSessionExpired = () {};
 
   // Expose for providers that need raw Dio access (e.g. makeJobCard form-post)
   bool get isDioInitialised => _dioInitialised;
@@ -190,6 +196,11 @@ class ApiProvider {
       receiveTimeout: const Duration(seconds: 20),
     ));
     _dio.interceptors.add(CookieManager(_cookieJar));
+    _dio.interceptors.add(SessionExpiryInterceptor(
+      dio: _dio,
+      hasActiveSession: () => hasActiveSession(),
+      onSessionExpired: () => onSessionExpired(),
+    ));
     _dio.interceptors.add(LogInterceptor(responseBody: true, requestBody: true));
     _dioInitialised = true;
   }
@@ -2008,7 +2019,7 @@ class ApiProvider {
   Future<Response> login(String email, String password) async {
     if (!_dioInitialised) await _initDio();
     try {
-      final response = await _dio.post('/api/method/login', data: {'usr': email, 'pwd': password});
+      final response = await _dio.post('/api/method/login', data: {'usr': email, 'pwd': password}, options: SessionExpiryInterceptor.unchecked());
       return response;
     } on DioException catch (e) {
       GlobalSnackbar.error(title: 'Login Error', message: e.message ?? 'An unknown error occurred');
@@ -2022,7 +2033,7 @@ class ApiProvider {
     if (!_dioInitialised) await _initDio();
     try {
       final formData = FormData.fromMap({'usr': username, 'pwd': password});
-      return await _dio.post('/api/method/login', data: formData, options: Options(contentType: Headers.formUrlEncodedContentType));
+      return await _dio.post('/api/method/login', data: formData, options: SessionExpiryInterceptor.unchecked(Options(contentType: Headers.formUrlEncodedContentType)));
     } on DioException catch (e) {
       rethrow;
     }
@@ -2045,11 +2056,11 @@ class ApiProvider {
 
   Future<Response> logoutApiCall() async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.post('/api/method/logout');
+    return await _dio.post('/api/method/logout', options: SessionExpiryInterceptor.unchecked());
   }
   Future<Response> getLoggedUser() async {
     if (!_dioInitialised) await _initDio();
-    return await _dio.get('/api/method/frappe.auth.get_logged_user');
+    return await _dio.get(SessionExpiryInterceptor.identityPath, options: SessionExpiryInterceptor.unchecked());
   }
   Future<Response> getUserDetails(String email) async {
     if (!_dioInitialised) await _initDio();

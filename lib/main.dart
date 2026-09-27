@@ -99,6 +99,11 @@ Future<void> main() async {
   }
   Get.put<ScanService>(ScanService(), permanent: true);
 
+  // Registered before the auth check: the cached user is what lets the app
+  // open when the server cannot be reached at startup. (GetStorage itself is
+  // initialised at the top of main.)
+  Get.put<StorageService>(StorageService(), permanent: true);
+
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
 
   Get.put<ThemeController>(ThemeController(), permanent: true);

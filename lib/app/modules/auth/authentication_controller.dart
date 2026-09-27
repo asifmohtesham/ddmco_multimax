@@ -20,6 +20,19 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
+/// Outcome of asking the server whether the stored session is still good.
+enum SessionCheck {
+  /// The server confirmed the session and the user profile was loaded.
+  valid,
+
+  /// The server said there is no session. Local session data was cleared.
+  invalid,
+
+  /// The server could not be asked, or did not give a usable answer.
+  /// Nothing was cleared.
+  unverified,
+}
+
 class AuthenticationController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
@@ -34,103 +47,140 @@ class AuthenticationController extends GetxController {
   var isAuthenticated = false.obs;
   var isLoading = false.obs;
 
+  static const _recheckInterval = Duration(seconds: 30);
+  static const _serverLogoutTimeout = Duration(seconds: 5);
+
+  Timer? _recheckTimer;
+  bool _recheckRunning = false;
+  Future<void>? _expiryInProgress;
+
   @override
   void onInit() {
     super.onInit();
-    checkAuthenticationStatus();
+    // The startup check is awaited by main() before runApp, so it is not
+    // started again here.
+    _apiProvider.hasActiveSession = () => isAuthenticated.value;
+    _apiProvider.onSessionExpired = handleSessionExpired;
   }
 
-  Future<void> fetchUserDetails() async {
+  @override
+  void onClose() {
+    _recheckTimer?.cancel();
+    super.onClose();
+  }
+
+  /// Asks the server who is logged in and loads that user's profile.
+  ///
+  /// Only a definitive answer from the server ends the session: Frappe
+  /// reporting "Guest", or a 401/403 on the identity check. Timeouts,
+  /// connection errors and 5xx responses leave cookies and cached data
+  /// untouched and return [SessionCheck.unverified].
+  Future<SessionCheck> fetchUserDetails() async {
+    final String loggedInUserEmail;
     try {
       final response = await _apiProvider.getLoggedUser();
-      if (response.statusCode == 200 && response.data?['message'] != null) {
-        final loggedInUserEmail = response.data['message'];
-
-        // Frappe returns "Guest" when the session has expired. Treat this as
-        // unauthenticated — do not proceed with a Guest user or prefetch.
-        if (loggedInUserEmail == 'Guest') {
-          await _clearSessionAndLocalData();
-          return;
-        }
-
-        final userDetailsResponse =
-            await _apiProvider.getUserDetails(loggedInUserEmail);
-        if (userDetailsResponse.statusCode == 200 &&
-            userDetailsResponse.data?['data'] != null) {
-          var user = User.fromJson(userDetailsResponse.data['data']);
-
-          // --- ROLE FETCHING FIX ---
-          if (user.roles.isEmpty) {
-            try {
-              final rolesResponse =
-                  await _userProvider.getUserRoles(user.id);
-              if (rolesResponse.statusCode == 200 &&
-                  rolesResponse.data['message'] != null) {
-                final roleList =
-                    List<String>.from(rolesResponse.data['message']);
-                if (roleList.isNotEmpty) {
-                  user = user.copyWith(roles: roleList);
-                }
-              }
-            } catch (e) {
-              print('Failed to fetch roles manually: $e');
-            }
-          }
-          // -------------------------
-
-          // --- LINK EMPLOYEE DOCUMENT ---
-          try {
-            final empResponse =
-                await _userProvider.getEmployeeIdForUser(user.email);
-            if (empResponse.statusCode == 200 &&
-                empResponse.data['data'] != null) {
-              final list = empResponse.data['data'] as List;
-              if (list.isNotEmpty) {
-                final empId = list[0]['name'];
-                user = user.copyWith(employeeId: empId);
-              }
-            }
-          } catch (e) {
-            print('Could not link Employee record: $e');
-          }
-          // -----------------------------
-
-          currentUser.value = user;
-          isAuthenticated.value = true;
-
-          if (Get.isRegistered<StorageService>()) {
-            await Get.find<StorageService>().saveUser(user);
-          }
-
-          // Arm the scheduled digest for the user who just signed in.
-          if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-            unawaited(DigestScheduler().rearm().catchError((_) {}));
-          }
-
-          // Arm attendance notifications for the user who just signed in
-          // (Android only — iOS cannot check punches at fire time).
-          if (!kIsWeb && Platform.isAndroid) {
-            unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
-          }
-
-          if (Get.isRegistered<PermissionService>()) {
-            // Clear before prefetch so stale cache entries from an expired
-            // session (e.g. a prior Guest prefetch) cannot block fresh fetches.
-            Get.find<PermissionService>().clearCache();
-            await Get.find<PermissionService>().prefetchAll(kAppPermissions);
-          }
-
-          // Lay the drawer out from this user's Frappe workspaces.
-          unawaited(AppNavDrawerController.instance.loadFor(user.email));
-        } else {
-          await _clearSessionAndLocalData();
-        }
-      } else {
-        await _clearSessionAndLocalData();
+      final message = response.data?['message'];
+      if (message is! String || message.isEmpty) {
+        return SessionCheck.unverified;
       }
+      // Frappe returns "Guest" when the session has expired. Treat this as
+      // unauthenticated — do not proceed with a Guest user or prefetch.
+      if (message == 'Guest') {
+        await _clearSessionAndLocalData();
+        return SessionCheck.invalid;
+      }
+      loggedInUserEmail = message;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 401 || status == 403) {
+        await _clearSessionAndLocalData();
+        return SessionCheck.invalid;
+      }
+      printError(info: 'Could not verify session: ${e.type.name}');
+      return SessionCheck.unverified;
+    } catch (e) {
+      printError(info: 'Could not verify session: $e');
+      return SessionCheck.unverified;
+    }
+
+    // From here on the server has confirmed the session, so a failure to
+    // load the profile must never end it.
+    try {
+      final userDetailsResponse =
+          await _apiProvider.getUserDetails(loggedInUserEmail);
+      if (userDetailsResponse.statusCode != 200 ||
+          userDetailsResponse.data?['data'] == null) {
+        return SessionCheck.unverified;
+      }
+      var user = User.fromJson(userDetailsResponse.data['data']);
+
+      // --- ROLE FETCHING FIX ---
+      if (user.roles.isEmpty) {
+        try {
+          final rolesResponse =
+              await _userProvider.getUserRoles(user.id);
+          if (rolesResponse.statusCode == 200 &&
+              rolesResponse.data['message'] != null) {
+            final roleList =
+                List<String>.from(rolesResponse.data['message']);
+            if (roleList.isNotEmpty) {
+              user = user.copyWith(roles: roleList);
+            }
+          }
+        } catch (e) {
+          print('Failed to fetch roles manually: $e');
+        }
+      }
+      // -------------------------
+
+      // --- LINK EMPLOYEE DOCUMENT ---
+      try {
+        final empResponse =
+            await _userProvider.getEmployeeIdForUser(user.email);
+        if (empResponse.statusCode == 200 &&
+            empResponse.data['data'] != null) {
+          final list = empResponse.data['data'] as List;
+          if (list.isNotEmpty) {
+            final empId = list[0]['name'];
+            user = user.copyWith(employeeId: empId);
+          }
+        }
+      } catch (e) {
+        print('Could not link Employee record: $e');
+      }
+      // -----------------------------
+
+      currentUser.value = user;
+      isAuthenticated.value = true;
+
+      if (Get.isRegistered<StorageService>()) {
+        await Get.find<StorageService>().saveUser(user);
+      }
+
+      // Arm the scheduled digest for the user who just signed in.
+      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+        unawaited(DigestScheduler().rearm().catchError((_) {}));
+      }
+
+      // Arm attendance notifications for the user who just signed in
+      // (Android only — iOS cannot check punches at fire time).
+      if (!kIsWeb && Platform.isAndroid) {
+        unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
+      }
+
+      if (Get.isRegistered<PermissionService>()) {
+        // Clear before prefetch so stale cache entries from an expired
+        // session (e.g. a prior Guest prefetch) cannot block fresh fetches.
+        Get.find<PermissionService>().clearCache();
+        await Get.find<PermissionService>().prefetchAll(kAppPermissions);
+      }
+
+      // Lay the drawer out from this user's Frappe workspaces.
+      unawaited(AppNavDrawerController.instance.loadFor(user.email));
+      return SessionCheck.valid;
     } catch (e) {
       printError(info: 'Failed to fetch user details: $e');
-      await _clearSessionAndLocalData();
+      return SessionCheck.unverified;
     }
   }
 
@@ -146,7 +196,13 @@ class AuthenticationController extends GetxController {
             isAuthenticated.value = true;
           }
         }
-        await fetchUserDetails();
+        // Offline policy: a session the server could not confirm stays
+        // signed in only when a cached user exists. Either way the cookie
+        // is kept, and the check repeats until the server answers.
+        final result = await fetchUserDetails();
+        if (result == SessionCheck.unverified && isAuthenticated.value) {
+          _startRecheck();
+        }
       } else {
         await _clearSessionAndLocalData();
       }
@@ -158,14 +214,86 @@ class AuthenticationController extends GetxController {
     }
   }
 
+  /// Re-checks the session while the app is in use. Unlike
+  /// [fetchUserDetails], a rejected session also sends the user to login.
+  Future<SessionCheck> revalidateSession() async {
+    final wasSignedIn = isAuthenticated.value;
+    final result = await fetchUserDetails();
+    if (result == SessionCheck.invalid && wasSignedIn) {
+      _showLoginAfterExpiry();
+    }
+    return result;
+  }
+
+  /// Ends a session the server no longer accepts and returns to login.
+  /// Safe to call from many failing requests at once: it runs once.
+  Future<void> handleSessionExpired() {
+    if (!isAuthenticated.value) return Future.value();
+    return _expiryInProgress ??= _endExpiredSession()
+        .whenComplete(() => _expiryInProgress = null);
+  }
+
+  Future<void> _endExpiredSession() async {
+    await _clearSessionAndLocalData();
+    _showLoginAfterExpiry();
+  }
+
+  void _showLoginAfterExpiry() {
+    if (Get.currentRoute != AppRoutes.LOGIN) {
+      Get.offAllNamed(AppRoutes.LOGIN);
+    }
+    GlobalSnackbar.warning(
+      title: 'Session expired',
+      message: 'Please log in again.',
+    );
+  }
+
+  void _startRecheck() {
+    _recheckTimer?.cancel();
+    _recheckTimer = Timer.periodic(_recheckInterval, (_) => _recheck());
+  }
+
+  void _stopRecheck() {
+    _recheckTimer?.cancel();
+    _recheckTimer = null;
+  }
+
+  Future<void> _recheck() async {
+    if (_recheckRunning) return;
+    _recheckRunning = true;
+    try {
+      final result = await revalidateSession();
+      if (result != SessionCheck.unverified) _stopRecheck();
+    } finally {
+      _recheckRunning = false;
+    }
+  }
+
+  /// Signs out on this device whether or not the server can be told.
+  ///
+  /// The server call is best effort: on a shared handheld the account must
+  /// never stay open just because WiFi dropped.
+  Future<void> performLogout() async {
+    _stopRecheck();
+    try {
+      await _apiProvider.logoutApiCall().timeout(_serverLogoutTimeout);
+    } catch (e) {
+      printError(info: 'Server logout failed, signing out locally: $e');
+    }
+    await _clearSessionAndLocalData();
+    Get.offAllNamed(AppRoutes.LOGIN);
+  }
+
+  /// Opens the app for [user] after the server accepted their credentials.
+  /// The caller has already run [fetchUserDetails]; it is not repeated here.
   void processSuccessfulLogin(User user) {
-    fetchUserDetails().then((_) {
-      Get.offAllNamed(AppRoutes.HOME);
-      GlobalSnackbar.success(
-        title: 'Login Successful',
-        message: 'Welcome back, ${currentUser.value?.name ?? user.name}!',
-      );
-    });
+    currentUser.value ??= user;
+    isAuthenticated.value = true;
+    Get.offAllNamed(AppRoutes.HOME);
+    GlobalSnackbar.success(
+      title: 'Login Successful',
+      message: 'Welcome back, ${currentUser.value?.name ?? user.name}!',
+    );
   }
 
   Future<void> logoutUser() async {
@@ -206,18 +334,9 @@ class AuthenticationController extends GetxController {
                   barrierDismissible: false,
                   barrierColor: Colors.black54,
                 );
-                try {
-                  await _apiProvider.logoutApiCall();
-                  await _clearSessionAndLocalData();
-                  Get.offAllNamed(AppRoutes.LOGIN);
-                } catch (e) {
-                  Get.back();
-                  isLoading.value = false;
-                  GlobalSnackbar.error(
-                    title: 'Logout Error',
-                    message: 'Could not log out.',
-                  );
-                }
+                // Navigating to login replaces every route, overlay included.
+                await performLogout();
+                isLoading.value = false;
               },
             ),
           ],
@@ -227,6 +346,7 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> _clearSessionAndLocalData() async {
+    _stopRecheck();
     // Cancel pending digest work and clear any posted digest notification
     // before the user identity disappears from storage.
     if (!kIsWeb && Platform.isAndroid) {
