@@ -35,7 +35,9 @@ class DocTypePickerProvider {
     required List<String> fields,
     List<List<dynamic>>? filters,
     String? searchText,
-    String orderBy = '`modified` desc',
+    // Unquoted on purpose: Frappe v16 only accepts backticks in the fully
+    // qualified `tabDocType`.`field` form; the bare name works on v15 and v16.
+    String orderBy = 'modified desc',
     int limit = 50,
     int start = 0,
     String? cacheKey,

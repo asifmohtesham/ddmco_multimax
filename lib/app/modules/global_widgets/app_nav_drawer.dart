@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart' as dio;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,6 +78,19 @@ class AppNavDrawerController extends GetxController {
           ? Get.find<AppNavDrawerController>()
           : Get.put(AppNavDrawerController(), permanent: true);
 
+  /// The user's workspaces, as `{pages: [...]}`.
+  ///
+  /// Frappe v16 renamed `get_workspace_sidebar_items` to `get_workspaces`;
+  /// the `pages` rows keep the fields read here. The v15 name is tried first.
+  Future<dio.Response> _fetchWorkspaces(ApiProvider api) async {
+    try {
+      return await api
+          .callMethod('frappe.desk.desktop.get_workspace_sidebar_items');
+    } on dio.DioException {
+      return await api.callMethod('frappe.desk.desktop.get_workspaces');
+    }
+  }
+
   /// Loads [user]'s workspaces once (sidebar + each page's links, both
   /// permission-filtered by Frappe). Failure keeps the current menu and
   /// retries on the next call.
@@ -91,8 +105,7 @@ class AppNavDrawerController extends GetxController {
         buildWorkspaceMenu(const [], const {});
     try {
       final api = Get.find<ApiProvider>();
-      final res = await api
-          .callMethod('frappe.desk.desktop.get_workspace_sidebar_items');
+      final res = await _fetchWorkspaces(api);
       final pages = [
         for (final p in (res.data['message']?['pages'] as List? ?? const []))
           Map<String, dynamic>.from(p as Map)

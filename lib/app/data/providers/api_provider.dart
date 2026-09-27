@@ -398,6 +398,15 @@ class ApiProvider {
     );
   }
 
+  /// Checks whether the current session user holds [ptype] on [doctype] as a
+  /// whole, via `frappe.client.has_permission`.
+  ///
+  /// The method's `docname` argument is mandatory, but an empty value makes
+  /// Frappe (v15 and v16) skip the per-document check and evaluate the
+  /// DocType-level permission. Parse with [parseHasDocPermissionResponse].
+  Future<Response> hasDocTypePermission(String doctype, String ptype) =>
+      hasDocPermission(doctype, '', ptype);
+
   /// Parses a `frappe.client.has_permission` response into a [bool].
   ///
   /// Expected shape: `{"message": {"has_permission": 1|true}}`.

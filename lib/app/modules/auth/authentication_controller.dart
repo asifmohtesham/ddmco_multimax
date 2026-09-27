@@ -66,6 +66,10 @@ class AuthenticationController extends GetxController {
           var user = User.fromJson(userDetailsResponse.data['data']);
 
           // --- ROLE FETCHING FIX ---
+          // The `roles` table is permlevel 1, so it is empty here unless the
+          // user is a System Manager. The endpoint below fills it in on
+          // Frappe v15; it was removed in v16, where the roles of other
+          // users stay empty and PermissionService asks the server instead.
           if (user.roles.isEmpty) {
             try {
               final rolesResponse =
