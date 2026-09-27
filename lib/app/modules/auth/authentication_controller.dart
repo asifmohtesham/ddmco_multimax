@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
-import 'package:multimax/app/core/utils/app_navigator.dart';
 import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -45,7 +44,6 @@ class AuthenticationController extends GetxController {
 
   var currentUser = Rx<User?>(null);
   var isAuthenticated = false.obs;
-  var isLoading = false.obs;
 
   static const _recheckInterval = Duration(seconds: 30);
   static const _serverLogoutTimeout = Duration(seconds: 5);
@@ -185,7 +183,6 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> checkAuthenticationStatus() async {
-    isLoading.value = true;
     try {
       bool hasSession = await _apiProvider.hasSessionCookies();
       if (hasSession) {
@@ -209,8 +206,6 @@ class AuthenticationController extends GetxController {
     } catch (e) {
       printError(info: 'Error checking auth status: $e');
       await _clearSessionAndLocalData();
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -324,7 +319,6 @@ class AuthenticationController extends GetxController {
   }
 
   Future<void> _logoutBehindOverlay() async {
-    isLoading.value = true;
     Get.dialog(
       const PopScope(
         canPop: false,
@@ -347,7 +341,6 @@ class AuthenticationController extends GetxController {
     );
     // Navigating to login replaces every route, overlay included.
     await performLogout();
-    isLoading.value = false;
   }
 
   Future<void> _clearSessionAndLocalData() async {
