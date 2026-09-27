@@ -1,4 +1,3 @@
-import 'dart:async' show unawaited;
 import 'dart:io';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:flutter/material.dart';
@@ -6,8 +5,6 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/data/services/attendance_notify_scheduler.dart';
-import 'package:multimax/app/data/services/digest_scheduler.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
@@ -99,28 +96,20 @@ Future<void> main() async {
   }
   Get.put<ScanService>(ScanService(), permanent: true);
 
+  // Registered before the auth check: the cached user is what lets the app
+  // open when the server cannot be reached at startup. (GetStorage itself is
+  // initialised at the top of main.)
+  Get.put<StorageService>(StorageService(), permanent: true);
+
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
 
   Get.put<ThemeController>(ThemeController(), permanent: true);
   await Get.find<ThemeController>().loadPersisted();
 
-  final authController = Get.find<AuthenticationController>();
-  await authController.checkAuthenticationStatus();
-
-  // Self-heal the digest schedule on every launch (Android: WorkManager chain;
-  // iOS: the weekly reminder set). Fire-and-forget — startup never blocks.
-  if (!kIsWeb &&
-      (Platform.isAndroid || Platform.isIOS) &&
-      authController.isAuthenticated.value) {
-    unawaited(DigestScheduler().rearm().catchError((_) {}));
-    if (Platform.isAndroid) {
-      unawaited(AttendanceNotifyScheduler().rearm().catchError((_) {}));
-    }
-  }
-
-  runApp(MultimaxApp(initialRoute: authController.isAuthenticated.value
-      ? AppRoutes.HOME
-      : AppRoutes.LOGIN));
+  // The session check talks to the server, so it runs from the splash route
+  // rather than holding up the first frame here. The splash controller also
+  // self-heals the notification schedules once the check has finished.
+  runApp(const MultimaxApp(initialRoute: AppRoutes.SPLASH));
 }
 
 /// Builds a [ThemeData] from a semantic [AppScheme]. Used for both the light

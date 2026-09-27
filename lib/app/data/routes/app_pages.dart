@@ -28,6 +28,8 @@ import 'package:multimax/app/modules/work_order/form/work_order_form_screen.dart
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
 import 'package:multimax/app/modules/auth/login_screen.dart';
+import 'package:multimax/app/modules/auth/splash/splash_controller.dart';
+import 'package:multimax/app/modules/auth/splash/splash_screen.dart';
 import 'package:multimax/app/modules/home/home_binding.dart';
 import 'package:multimax/app/modules/home/home_screen.dart';
 import 'package:multimax/app/modules/profile/user_profile_binding.dart';
@@ -104,6 +106,13 @@ class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
 
   static final routes = [
+    GetPage(
+      name: AppRoutes.SPLASH,
+      page: () => const SplashScreen(),
+      binding: BindingsBuilder(() {
+        Get.put<SplashController>(SplashController());
+      }),
+    ),
     GetPage(
       name: AppRoutes.LOGIN,
       page: () => const LoginScreen(),
