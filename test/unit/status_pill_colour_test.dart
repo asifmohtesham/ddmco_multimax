@@ -3,23 +3,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 void main() {
-  group('StatusPill.colourForStatus — ERPNext v16 verbatim', () {
-    // Red: surface-red-2 / ink-red-4
-    const redBg   = Color(0xFFFFE7E7);
-    const redText = Color(0xFFCC2929);
-    // Blue: surface-blue-2 / ink-blue-2
-    const blueBg   = Color(0xFFE6F4FF);
-    const blueText = Color(0xFF0289F7);
-    // Orange (amber): surface-amber-1 / ink-amber-3
-    const amberBg   = Color(0xFFFDFAED);
-    const amberText = Color(0xFFDB7706);
-    // Yellow: yellow/100 / yellow/700
+  group('StatusPill.colourForStatus — Frappe v15 indicator-pill tokens', () {
+    // Red: --bg-red (red-100) / --text-on-red (red-700)
+    const redBg   = Color(0xFFFFF0F0);
+    const redText = Color(0xFFB52A2A);
+    // Blue: --bg-blue (blue-100) / --text-on-blue (blue-700)
+    const blueBg   = Color(0xFFEDF6FD);
+    const blueText = Color(0xFF0070CC);
+    // Orange: --bg-orange (orange-100) / --text-on-orange (orange-700)
+    const orangeBg   = Color(0xFFFFF1E7);
+    const orangeText = Color(0xFFBD3E0C);
+    // Yellow: --bg-yellow (yellow-100) / --text-on-yellow (yellow-700)
     const yellowBg   = Color(0xFFFFF7D3);
     const yellowText = Color(0xFFAB6E05);
-    // Green: surface-green-2 / ink-green-3
-    const greenBg   = Color(0xFFE4FAEB);
-    const greenText = Color(0xFF278F5E);
-    // Gray (default): surface-gray-2 / ink-gray-6
+    // Green: --bg-green (green-100) / --text-on-green (green-800)
+    const greenBg   = Color(0xFFE4F5E9);
+    const greenText = Color(0xFF16794C);
+    // Gray (default): --bg-gray (gray-100) / --text-on-gray (gray-700)
     const grayBg   = Color(0xFFF3F3F3);
     const grayText = Color(0xFF525252);
 
@@ -30,23 +30,25 @@ void main() {
     }
 
     test('Red statuses', () {
-      for (final s in ['Draft', 'Cancelled', 'Open', 'Not Started',
+      for (final s in ['Draft', 'Cancelled', 'Canceled', 'Open',
                        'Stopped', 'Rejected', 'Expired', 'Overdue']) {
         expectColour(s, redBg, redText);
       }
     });
 
     test('Blue statuses', () {
-      for (final s in ['Submitted', 'Stock Reserved']) {
+      for (final s in ['Submitted', 'Enabled', 'Stock Reserved',
+                       'Material Transferred']) {
         expectColour(s, blueBg, blueText);
       }
     });
 
-    test('Amber statuses', () {
-      for (final s in ['To Bill', 'On Hold', 'Hold', 'In Process', 'Pending',
-                       'Not Saved', 'To Receive and Bill', 'To Receive',
+    test('Orange statuses', () {
+      for (final s in ['Not Saved', 'Not Started', 'To Bill', 'On Hold', 'Hold',
+                       'In Process', 'Work In Progress', 'Pending',
+                       'To Receive and Bill', 'To Receive',
                        'Stock Partially Reserved', 'Material Returned from WIP']) {
-        expectColour(s, amberBg, amberText);
+        expectColour(s, orangeBg, orangeText);
       }
     });
 
@@ -58,7 +60,7 @@ void main() {
     });
 
     test('Green statuses', () {
-      for (final s in ['Completed', 'Active', 'Paid', 'Settled', 'Enabled',
+      for (final s in ['Completed', 'Active', 'Paid', 'Settled',
                        'Closed', 'Ordered', 'Transferred', 'Issued',
                        'Received', 'Goods Transferred']) {
         expectColour(s, greenBg, greenText);

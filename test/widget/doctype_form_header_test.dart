@@ -54,7 +54,7 @@ void main() {
           docStatus: 0,
         ),
       ));
-      expect(find.text('Unsaved changes'), findsOneWidget);
+      expect(find.widgetWithText(StatusPill, 'Not Saved'), findsOneWidget);
     });
 
     testWidgets('unsaved indicator hidden when canSave but docStatus==1', (tester) async {
@@ -65,7 +65,7 @@ void main() {
           docStatus: 1,
         ),
       ));
-      expect(find.text('Unsaved changes'), findsNothing);
+      expect(find.text('Not Saved'), findsNothing);
     });
 
     testWidgets('emits a single SliverPersistentHeader', (tester) async {
