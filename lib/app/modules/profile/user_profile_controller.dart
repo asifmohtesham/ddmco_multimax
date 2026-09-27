@@ -23,8 +23,13 @@ class UserProfileController extends GetxController {
 
   Future<void> refreshProfile() async {
     isLoading.value = true;
-    await _authController.fetchUserDetails();
-    isLoading.value = false;
+    try {
+      // An expired session sends the user to login; a network failure
+      // leaves the profile as it was.
+      await _authController.revalidateSession();
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   void logout() {

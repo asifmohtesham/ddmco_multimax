@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -10,6 +11,7 @@ import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -35,6 +37,11 @@ Future<void> main() async {
   // arrive from the native BroadcastReceiver in MainActivity.
   Get.put<DataWedgeService>(DataWedgeService(), permanent: true);
   Get.put<ScanService>(ScanService(), permanent: true);
+
+  // Storage must be readable before the auth check: the cached user is what
+  // lets the app open when the server cannot be reached at startup.
+  await GetStorage.init();
+  Get.put<StorageService>(StorageService(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
 

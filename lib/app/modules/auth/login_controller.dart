@@ -1,5 +1,6 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/core/utils/app_navigator.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -91,42 +92,51 @@ class LoginController extends GetxController {
           passwordController.text.trim(),
         );
 
-        if (response.statusCode == 200 &&
-            response.data?['message'] == 'Logged In') {
-          await _authController.fetchUserDetails();
-          if (_authController.currentUser.value != null) {
-            _authController.processSuccessfulLogin(
-                _authController.currentUser.value!);
-          } else {
-            final String fullName =
-                response.data?['full_name'] ?? 'User';
-            final user = User(
-              id: emailController.text.trim(),
-              name: fullName,
-              email: emailController.text.trim(),
-              roles: [],
-            );
-            _authController.processSuccessfulLogin(user);
-          }
-          loggedIn = true;
-        } else if (response.statusCode == 401 ||
-            response.statusCode == 403) {
+        final data = response.data;
+        if (data is! Map || data['message'] != 'Logged In') {
           GlobalSnackbar.error(
             title: 'Login Failed',
-            message:
-                response.data?['message'] ?? 'Invalid credentials.',
+            message: 'The server gave an answer this app does not '
+                'understand. Check the server address.',
           );
-        } else {
-          GlobalSnackbar.error(
-            title: 'Login Error',
-            message: response.data?['message'] ??
-                'An unknown error occurred.',
-          );
+          return;
         }
+
+        final check = await _authController.fetchUserDetails();
+        if (check == SessionCheck.invalid) {
+          GlobalSnackbar.error(
+            title: 'Login Failed',
+            message: 'The server accepted the login but not the session. '
+                'Please try again.',
+          );
+          return;
+        }
+
+        // The login itself succeeded. If the profile could not be loaded,
+        // carry on with what the login response told us about the user.
+        final email = emailController.text.trim();
+        final fullName = data['full_name'];
+        _authController.processSuccessfulLogin(
+          _authController.currentUser.value ??
+              User(
+                id: email,
+                name: fullName is String ? fullName : 'User',
+                email: email,
+                roles: [],
+              ),
+        );
+        loggedIn = true;
+      } on DioException catch (e) {
+        // Dio throws for every non-2xx status, so rejected credentials
+        // arrive here rather than as a response.
+        GlobalSnackbar.error(
+          title: 'Login Failed',
+          message: _describeLoginFailure(e),
+        );
       } catch (e) {
         GlobalSnackbar.error(
-          title: 'Login Error',
-          message: 'An unexpected error occurred.',
+          title: 'Login Failed',
+          message: 'Something went wrong in the app. Please try again.',
         );
       } finally {
         if (!loggedIn) {
@@ -135,6 +145,45 @@ class LoginController extends GetxController {
         }
       }
     }
+  }
+
+  String _describeLoginFailure(DioException e) {
+    final server = _apiProvider.baseUrl;
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.connectionError:
+        return "Can't reach $server. Check your connection or the "
+            'server address.';
+      case DioExceptionType.badCertificate:
+        return "The security certificate of $server could not be verified.";
+      default:
+        break;
+    }
+
+    final status = e.response?.statusCode;
+    if (status == null) return "Can't reach $server. Please try again.";
+
+    if (status == 401 || status == 403) {
+      // Frappe explains the refusal (wrong password, disabled user, ...).
+      final body = e.response?.data;
+      final reason = body is Map ? body['message'] : null;
+      return reason is String && reason.isNotEmpty
+          ? reason
+          : 'Incorrect email or password.';
+    }
+    if (status == 404) {
+      return 'No ERPNext login was found at $server. Check the server '
+          'address.';
+    }
+    if (status == 429) {
+      return 'Too many attempts. Wait a moment and try again.';
+    }
+    if (status >= 500) {
+      return 'The server had a problem ($status). Try again shortly.';
+    }
+    return 'The server refused the login ($status).';
   }
 
   Future<void> resetPassword() async {
