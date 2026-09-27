@@ -55,9 +55,13 @@ The project uses Conventional-Commit prefixes, which map directly onto semver:
   A MAJOR bump resets both MINOR and PATCH to `0` (`2.0.22 → 3.0.0`). PATCH increments
   in place (`2.0.22 → 2.0.23`).
 - **The diff overrides a mislabeled commit.** A commit's prefix can be wrong. If a
-  commit tagged `fix:` adds new files under `lib/app/modules/**`, it is really a feature —
-  treat it as MINOR. If the whole range only touches `*.md` and `test/`, it is docs/chore.
-  When the commit type and the diff disagree, take the **higher** level and note why.
+  commit tagged `fix:` adds a **whole new module** — a top-level directory under
+  `lib/app/modules/` that did not exist at the last tag — it is really a feature; treat
+  it as MINOR. Files added *inside an existing module* (a helper, a dialog, a widget) do
+  not trigger this on their own: a new screen or report there is MINOR only when its
+  commit is labelled `feat:`, so label it correctly. If the whole range only touches
+  `*.md` and `test/`, it is docs/chore. When the commit type and the diff disagree, take
+  the **higher** level and note why.
 - **Chore/docs-only release.** If nothing in the range warrants even a PATCH (e.g. a
   release cut purely to rebuild), keep `X.Y.Z` unchanged and increment only `B`. The
   build still ships; the semantic version honestly reflects "no functional change."
