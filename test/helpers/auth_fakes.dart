@@ -64,6 +64,9 @@ class FakeApiProvider extends Fake implements ApiProvider {
   int logoutCalls = 0;
   int identityChecks = 0;
 
+  /// Doctypes whose read permission was asked of the server, in order.
+  final List<String> permissionChecks = [];
+
   Future<Response> Function() onGetLoggedUser =
       () async => jsonResponse({'message': kTestEmail});
   Future<Response> Function(String email) onGetUserDetails =
@@ -108,6 +111,13 @@ class FakeApiProvider extends Fake implements ApiProvider {
   @override
   Future<Response> loginWithFrappe(String username, String password) =>
       onLogin(username, password);
+
+  /// Grants read access, in the shape `frappe.client.get_list` answers with.
+  @override
+  Future<Response> hasPermission(String doctype, String permType) async {
+    permissionChecks.add(doctype);
+    return jsonResponse({'message': <dynamic>[]});
+  }
 
   /// The navigation drawer loads its workspaces through this after login.
   /// Unreachable here, so the drawer keeps its default menu.

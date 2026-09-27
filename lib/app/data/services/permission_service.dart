@@ -19,12 +19,23 @@ class PermissionService extends GetxService {
 
   /// Returns `null` while loading, `true` if permitted, `false` if denied.
   ///
-  /// Triggers a lazy fetch if the result is not yet cached.
+  /// Triggers a lazy fetch if the result is not yet cached, but only while
+  /// someone is signed in. Logout clears the cache with guarded screens
+  /// still on display; asking the server then would send one request per
+  /// doctype as a guest and cache the refusals.
   bool? hasAccess(String doctype, {String permType = 'read'}) {
     final key = '$doctype:$permType';
     if (_accessCache.containsKey(key)) return _accessCache[key];
+    if (_isSignedOut()) return null;
     if (!_pendingFetches.contains(key)) _fetchPermission(doctype, permType);
     return null;
+  }
+
+  /// False when no AuthenticationController is registered, so the service
+  /// keeps working on its own.
+  bool _isSignedOut() {
+    if (!Get.isRegistered<AuthenticationController>()) return false;
+    return !Get.find<AuthenticationController>().isAuthenticated.value;
   }
 
   /// Fires all [entries] in parallel and awaits completion.
