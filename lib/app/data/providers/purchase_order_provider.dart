@@ -17,7 +17,7 @@ class PurchaseOrderProvider {
       limit: limit,
       limitStart: limitStart,
       filters: filters,
-      fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status', 'docstatus', 'modified', 'creation'],
+      fields: ['name', 'supplier', 'transaction_date', 'grand_total', 'currency', 'status', 'docstatus', 'modified', 'creation', 'per_received', 'per_billed'],
       orderBy: orderBy,
     );
   }
