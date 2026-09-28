@@ -187,8 +187,8 @@ class PermissionService extends GetxService {
     }
   }
 
-  /// True when [userRoles] includes `System Manager` (admin bypass, mirroring
-  /// [AuthenticationController.hasAnyRole]) or any role in [permittedRoles].
+  /// True when [userRoles] includes `System Manager` (admin bypass) or any
+  /// role in [permittedRoles].
   /// Exposed as a public static method for unit testing.
   static bool roleGrants(Set<String> userRoles, Set<String> permittedRoles) {
     if (userRoles.contains('System Manager')) return true;

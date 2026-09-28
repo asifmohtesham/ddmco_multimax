@@ -104,7 +104,7 @@ Scaffold
         └── Obx → SliverList
             └── GenericDocumentCard  (per StockEntry)
                 └── _buildDetailedContent  (expanded section)
-FloatingActionButton                 (RoleGuard-wrapped → openCreateDialog)
+FloatingActionButton                 (DocTypeGuard create-wrapped → openCreateDialog)
 ```
 
 ### Key Actions
