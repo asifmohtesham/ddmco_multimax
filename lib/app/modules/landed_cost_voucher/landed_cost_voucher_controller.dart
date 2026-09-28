@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/landed_cost_voucher_model.dart';
 import 'package:multimax/app/data/providers/landed_cost_voucher_provider.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 
 class LandedCostVoucherController extends GetxController {
   final LandedCostVoucherProvider _provider =
@@ -71,6 +72,16 @@ class LandedCostVoucherController extends GetxController {
   void clearFilters() {
     activeFilters.clear();
     fetchLandedCostVouchers(isLoadMore: false, clear: true);
+  }
+
+  void openCreateForm() => _openForm({'name': '', 'mode': 'new'});
+
+  void openVoucher(String name) => _openForm({'name': name, 'mode': 'edit'});
+
+  /// Refresh on return: the form may have created, saved or submitted.
+  Future<void> _openForm(Map<String, String> args) async {
+    await Get.toNamed(AppRoutes.LANDED_COST_VOUCHER_FORM, arguments: args);
+    fetchLandedCostVouchers(clear: true);
   }
 
   Future<void> fetchLandedCostVouchers({

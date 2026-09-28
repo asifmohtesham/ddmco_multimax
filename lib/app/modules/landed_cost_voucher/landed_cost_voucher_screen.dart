@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
@@ -9,9 +8,9 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
-/// Read-only list of Landed Cost Vouchers. Vouchers are created and
-/// submitted in ERPNext Desk; the app only views them, so there is no FAB.
+/// List of Landed Cost Vouchers. Users with create permission get a FAB; tapping a card opens it (drafts are editable).
 class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
   const LandedCostVoucherScreen({super.key});
 
@@ -20,6 +19,16 @@ class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return AppShellScaffold(
+      floatingActionButton: DocTypeGuard(
+        doctype: 'Landed Cost Voucher',
+        permType: 'create',
+        child: FloatingActionButton.extended(
+          onPressed: controller.openCreateForm,
+          tooltip: 'New Landed Cost Voucher',
+          icon: const Icon(Icons.add),
+          label: const Text('New Voucher'),
+        ),
+      ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchLandedCostVouchers(clear: true),
         child: Scrollbar(
@@ -83,12 +92,7 @@ class LandedCostVoucherScreen extends GetView<LandedCostVoucherController> {
                                     ? 'Cancelled'
                                     : 'Draft',
                             isExpanded: false,
-                            onTap: () {
-                              Get.toNamed(
-                                AppRoutes.LANDED_COST_VOUCHER_FORM,
-                                arguments: {'name': voucher.name},
-                              );
-                            },
+                            onTap: () => controller.openVoucher(voucher.name),
                             stats: [
                               GenericDocumentCard.buildIconStat(
                                 context,
