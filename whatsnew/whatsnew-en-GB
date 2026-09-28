@@ -1,4 +1,6 @@
-• Purchase Orders and Purchase Receipts now show how much has been received and billed.
+• New search bar on Home: jump to any list, create documents and reopen recent items.
+• Purchase Orders and Receipts show how much has been received and billed.
 • Works with ERPNext v16 as well as v15.
-• You stay signed in when the network drops; if your session does expire, you are taken back to login with a clear message.
-• Pressing Done on the keyboard no longer sends a second login, passwords are kept out of logs, and session data is no longer included in device backups.
+• You stay signed in when the network drops; an expired session returns you to login with a clear message.
+• Sign-out is faster and never leaves you stuck on a bad connection.
+• Passwords stay out of logs and session data is excluded from device backups.
