@@ -70,7 +70,7 @@ void main() {
     expect(find.byType(ListEndFooter), findsOneWidget);
   });
 
-  testWidgets('voucher view has no save and shows allocated charges',
+  testWidgets('a submitted voucher has no save and shows allocated charges',
       (tester) async {
     Get.put(LandedCostVoucherFormController());
     await tester.pumpWidget(
@@ -87,5 +87,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('WATCH-001'), findsOneWidget);
     expect(find.textContaining('150'), findsWidgets);
+  });
+
+  testWidgets('a draft shows editing controls; save appears once dirty',
+      (tester) async {
+    (Get.find<LandedCostVoucherProvider>() as FakeLcvProvider).voucher =
+        sampleLcv(docstatus: 0);
+    final c = Get.put(LandedCostVoucherFormController(
+        name: 'MAT-LCV-2026-00001', mode: 'edit', defaultCompany: 'KA'));
+    await tester.pumpWidget(
+        const GetMaterialApp(home: LandedCostVoucherFormScreen()));
+    await tester.pumpAndSettle();
+
+    DocTypeFormHeader header() =>
+        tester.widget<DocTypeFormHeader>(find.byType(DocTypeFormHeader));
+    expect(header().canSave, isFalse);
+    expect(header().canSubmit, isTrue);
+
+    await tester.tap(find.text('Purchase Receipts'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add Purchase Receipt'), findsOneWidget);
+
+    await tester.tap(find.text('Taxes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add Charge'), findsOneWidget);
+
+    c.removeCharge(0);
+    await tester.pump();
+    expect(header().canSave, isTrue);
+    expect(header().canSubmit, isFalse);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('a manually distributed draft explains why it is read-only',
+      (tester) async {
+    (Get.find<LandedCostVoucherProvider>() as FakeLcvProvider).voucher =
+        sampleLcv(docstatus: 0, distribute: 'Distribute Manually');
+    Get.put(LandedCostVoucherFormController(
+        name: 'MAT-LCV-2026-00001', mode: 'edit', defaultCompany: 'KA'));
+    await tester.pumpWidget(
+        const GetMaterialApp(home: LandedCostVoucherFormScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('distributed manually'), findsOneWidget);
+    expect(tester.widget<DocTypeFormHeader>(find.byType(DocTypeFormHeader)).onSave,
+        isNull);
+    await tester.tap(find.text('Taxes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add Charge'), findsNothing);
+    await tester.pump(const Duration(seconds: 5));
   });
 }
