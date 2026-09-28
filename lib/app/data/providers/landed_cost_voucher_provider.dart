@@ -80,14 +80,37 @@ class LandedCostVoucherProvider {
   }
 
   /// The company's "Expenses Included In Valuation" account — the usual
-  /// home for landed costs — used to prefill a new charge. Null when the
-  /// user cannot read Company or the field is unset.
+  /// home for landed costs — used to prefill a new charge.
+  ///
+  /// Works on ERPNext v15 and v16: v15 keeps it as the Company field
+  /// `expenses_included_in_valuation`; v16 removed that field, so fall back
+  /// to the company's only non-group account of that account type. Null
+  /// (the user picks) when neither lookup yields exactly one account.
   Future<String?> getDefaultChargeAccount(String company) async {
     try {
       final res = await _apiProvider.getDocument('Company', company);
       final account =
           res.data?['data']?['expenses_included_in_valuation'] as String?;
-      return (account == null || account.isEmpty) ? null : account;
+      if (account != null && account.isNotEmpty) return account;
+    } catch (_) {
+      // Unreadable Company: the account lookup below may still answer.
+    }
+    try {
+      final res = await _apiProvider.getDocumentList(
+        'Account',
+        filters: {
+          'company': company,
+          'account_type': 'Expenses Included In Valuation',
+          'is_group': 0,
+          'disabled': 0,
+        },
+        fields: const ['name'],
+        limit: 2,
+      );
+      final rows = res.data?['data'] as List?;
+      // Two or more candidates: don't guess which one the user wants.
+      if (rows == null || rows.length != 1) return null;
+      return rows.first['name'] as String?;
     } catch (_) {
       return null;
     }
