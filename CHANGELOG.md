@@ -1,3 +1,51 @@
+## [2.26.1] — 2026-09-28 · covers 2.25.6, 2.26.0 and 2.26.1
+
+> First build to reach Play since 2.25.5. 2.25.6 failed to compile in CI
+> (`flutter_html` 3.0.0 vs. a newer `html`) and 2.26.0 was rejected at
+> upload (missing Foreground Service declaration); neither shipped, so
+> their changes land here.
+
+### ✨ Features
+
+- **Awesome Bar on Home** (2.25.6) — one search bar to jump to any list,
+  start a new document, and reopen recent items. Results are grouped under
+  headers, with icons, match highlighting and an empty state.
+- **Received / billed percentages** (2.26.0) — Purchase Order and Purchase
+  Receipt screens show how much has been received and billed.
+
+### 🐛 Fixes
+
+- **ERPNext v16 support alongside v15** (2.26.0) — Job Card time logs and
+  pause/resume, picker sorting, and permission checks now work on both
+  versions without detecting the server version.
+- **Sessions survive network failures** (2.26.0) — only a definitive server
+  answer (Guest, or 401/403 on the identity check) ends a session;
+  timeouts and 5xx keep the user signed in. An expired session sends the
+  user to login once, and login errors say what went wrong.
+- **Splash screen** (2.26.0) — the session check runs after the first frame,
+  so a slow server shows progress instead of holding the launch image.
+- **Logout** (2.26.0) — one dialog with confirm, busy and error states; the
+  server call is capped at 5 s and the device session is always cleared.
+  Logging out no longer fires a burst of permission requests as a guest.
+- **Login** (2.26.0) — the keyboard's Done key no longer submits twice;
+  passwords are sent exactly as typed (no client-side 6-character minimum).
+- **Privacy** (2.26.0) — credentials are kept out of request logs, and
+  Android cloud backup / device transfer is disabled so session data stays
+  on the device.
+- **Play upload** (2.26.1) — removed the foreground-service permissions and
+  `SystemForegroundService` that WorkManager merges into the manifest. The
+  app only runs ordinary background jobs, so no Foreground Service
+  declaration is needed in Play Console.
+
+### 🔧 Build & tooling
+
+- Pinned `html` to 0.15.6 so `flutter_html` 3.0.0 compiles (2.26.0).
+- Android NDK bumped to 30.0.16248370 (2.26.0).
+- `bump_version` no longer misreads prose/helper files as bumps or proposes
+  an already-released version (2.26.0).
+
+---
+
 ## [Unreleased] — Digest Alerts: Alarm Style, iOS Reminders, Manager Gate
 
 - Scheduled digest notifications are now available only to **Manager** roles
