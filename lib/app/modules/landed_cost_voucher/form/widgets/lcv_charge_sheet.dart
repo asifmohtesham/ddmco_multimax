@@ -41,10 +41,41 @@ class LcvChargeSheet extends StatefulWidget {
   State<LcvChargeSheet> createState() => _LcvChargeSheetState();
 }
 
+/// Builds the charge to save from the sheet's current field values.
+///
+/// [base] is the row being edited (null when adding). When the expense
+/// account is unchanged from [base]'s, the old exchange rate/currency carry
+/// over (as before); when the account changed, the old rate belonged to the
+/// old account, so it resets to 1 with no currency override.
+LandedCostTaxesAndCharges buildLcvCharge({
+  required LandedCostTaxesAndCharges? base,
+  required String description,
+  required double amount,
+  required String expenseAccount,
+}) {
+  final accountChanged =
+      base != null && base.expenseAccount != expenseAccount;
+  final exchangeRate = accountChanged ? 1.0 : (base?.exchangeRate ?? 1);
+  final accountCurrency = accountChanged ? null : base?.accountCurrency;
+  return LandedCostTaxesAndCharges(
+    name: base?.name ?? 'local_${DateTime.now().microsecondsSinceEpoch}',
+    description: description.trim(),
+    amount: amount,
+    expenseAccount: expenseAccount,
+    accountCurrency: accountCurrency,
+    exchangeRate: exchangeRate,
+    baseAmount: amount * exchangeRate,
+  );
+}
+
 class _LcvChargeSheetState extends State<LcvChargeSheet> {
   late final TextEditingController _description;
   late final TextEditingController _amount;
   late final TextEditingController _account;
+
+  /// Guards [_save] against a second tap between the first tap and the
+  /// sheet popping.
+  bool _saved = false;
 
   @override
   void initState() {
@@ -82,15 +113,13 @@ class _LcvChargeSheetState extends State<LcvChargeSheet> {
       _account.text.isNotEmpty;
 
   void _save() {
-    final base = widget.initial;
-    widget.onSaved(LandedCostTaxesAndCharges(
-      name: base?.name ?? 'local_${DateTime.now().microsecondsSinceEpoch}',
-      description: _description.text.trim(),
+    if (_saved) return;
+    _saved = true;
+    widget.onSaved(buildLcvCharge(
+      base: widget.initial,
+      description: _description.text,
       amount: _amountValue,
       expenseAccount: _account.text,
-      accountCurrency: base?.accountCurrency,
-      exchangeRate: base?.exchangeRate ?? 1,
-      baseAmount: _amountValue * (base?.exchangeRate ?? 1),
     ));
     // maybePop: never pops the root route when the sheet is hosted directly
     // (widget tests).
@@ -108,7 +137,8 @@ class _LcvChargeSheetState extends State<LcvChargeSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -142,7 +172,22 @@ class _LcvChargeSheetState extends State<LcvChargeSheet> {
               onTap: () => showLinkSearchSheet(
                 doctype: 'Account',
                 title: 'Expense Account',
-                filters: {'company': widget.company, 'is_group': 0},
+                filters: {
+                  'company': widget.company,
+                  'is_group': 0,
+                  // Only ledgers a landed-cost charge can post to — mirrors
+                  // the account_type options Desk offers on this field.
+                  'account_type': [
+                    'in',
+                    [
+                      'Tax',
+                      'Chargeable',
+                      'Income Account',
+                      'Expenses Included In Valuation',
+                      'Expenses Included In Asset Valuation',
+                    ],
+                  ],
+                },
                 onSelected: (acc) => _account.text = acc,
               ),
             ),
@@ -152,6 +197,7 @@ class _LcvChargeSheetState extends State<LcvChargeSheet> {
               child: const Text('Save Charge'),
             ),
           ],
+        ),
         ),
       ),
     );

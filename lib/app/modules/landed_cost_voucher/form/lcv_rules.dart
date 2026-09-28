@@ -107,6 +107,8 @@ Map<String, dynamic> buildLcvPayload({
           'description': c.description,
           'amount': c.amount,
           if (c.expenseAccount != null) 'expense_account': c.expenseAccount,
+          'exchange_rate': c.exchangeRate,
+          if (c.accountCurrency != null) 'account_currency': c.accountCurrency,
         },
     ],
     'items': receiptsChanged

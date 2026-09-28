@@ -17,14 +17,17 @@ LandedCostTaxesAndCharges _charge({
   String description = 'Freight',
   double amount = 150,
   String? account = 'Freight - KA',
+  String? accountCurrency,
+  double exchangeRate = 1,
 }) =>
     LandedCostTaxesAndCharges(
       name: name,
       description: description,
       amount: amount,
       expenseAccount: account,
-      exchangeRate: 1,
-      baseAmount: amount,
+      accountCurrency: accountCurrency,
+      exchangeRate: exchangeRate,
+      baseAmount: amount * exchangeRate,
     );
 
 final _item = LandedCostItem(
@@ -178,6 +181,28 @@ void main() {
       expect(taxes[0]['name'], 'row-tax-1');
       expect(taxes[1].containsKey('name'), isFalse);
       expect(taxes[1]['expense_account'], 'Freight - KA');
+    });
+
+    test('a foreign-currency exchange rate and account currency are carried '
+        'on the taxes rows (Final review, Finding 3)', () {
+      final p = buildLcvPayload(
+        company: 'KA',
+        postingDate: '2026-09-28',
+        distributeChargesBasedOn: 'Amount',
+        receipts: [_receipt('MAT-PRE-0001', name: 'row-pr-1')],
+        charges: [
+          _charge(
+            name: 'row-tax-1',
+            accountCurrency: 'USD',
+            exchangeRate: 83.5,
+          ),
+        ],
+        items: const [],
+        receiptsChanged: true,
+      );
+      final tax = (p['taxes'] as List).single;
+      expect(tax['exchange_rate'], 83.5);
+      expect(tax['account_currency'], 'USD');
     });
 
     test('header fields and the optimistic-lock timestamp are sent', () {

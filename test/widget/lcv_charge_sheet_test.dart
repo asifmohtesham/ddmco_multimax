@@ -37,6 +37,85 @@ void main() {
     expect(result!.expenseAccount, 'Expenses Included In Valuation - KA');
   });
 
+  group('buildLcvCharge', () {
+    test('an unchanged expense account keeps the old rate and currency', () {
+      final base = LandedCostTaxesAndCharges(
+        name: 'row-tax-1',
+        description: 'Freight',
+        amount: 150,
+        expenseAccount: 'Freight - KA',
+        accountCurrency: 'USD',
+        exchangeRate: 83.5,
+        baseAmount: 150 * 83.5,
+      );
+      final result = buildLcvCharge(
+        base: base,
+        description: 'Freight',
+        amount: 200,
+        expenseAccount: 'Freight - KA',
+      );
+      expect(result.exchangeRate, 83.5);
+      expect(result.accountCurrency, 'USD');
+    });
+
+    test('a changed expense account resets the rate to 1 and drops the '
+        'old currency — the old rate belonged to the old account', () {
+      final base = LandedCostTaxesAndCharges(
+        name: 'row-tax-1',
+        description: 'Freight',
+        amount: 150,
+        expenseAccount: 'Freight - KA',
+        accountCurrency: 'USD',
+        exchangeRate: 83.5,
+        baseAmount: 150 * 83.5,
+      );
+      final result = buildLcvCharge(
+        base: base,
+        description: 'Freight',
+        amount: 200,
+        expenseAccount: 'Customs - KA',
+      );
+      expect(result.exchangeRate, 1);
+      expect(result.accountCurrency, isNull);
+      expect(result.baseAmount, 200);
+    });
+
+    test('a new charge (no base) always gets rate 1 and no currency', () {
+      final result = buildLcvCharge(
+        base: null,
+        description: 'Insurance',
+        amount: 30,
+        expenseAccount: 'Insurance - KA',
+      );
+      expect(result.exchangeRate, 1);
+      expect(result.accountCurrency, isNull);
+    });
+  });
+
+  testWidgets('a double-tapped Save Charge calls onSaved once', (tester) async {
+    var calls = 0;
+    await pump(
+      tester,
+      LcvChargeSheet(
+        company: 'KA',
+        defaultAccount: () async => 'Expenses Included In Valuation - KA',
+        onSaved: (c) => calls++,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Description *'), 'Freight');
+    await tester.enterText(find.widgetWithText(TextField, 'Amount *'), '120.5');
+    await tester.pump();
+
+    // Two rapid taps before the sheet has a chance to pop.
+    await tester.tap(find.text('Save Charge'));
+    await tester.tap(find.text('Save Charge'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+  });
+
   testWidgets('editing keeps the server row name', (tester) async {
     LandedCostTaxesAndCharges? result;
     await pump(
