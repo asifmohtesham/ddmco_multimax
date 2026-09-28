@@ -142,9 +142,10 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
-  // ── Fix round 1, Finding 1 ────────────────────────────────────────────────
+  // ── Fix round 1, Finding 1 (round 1b: stay visible, disable) ────────────
 
-  testWidgets('edit controls disable while a save is in flight',
+  testWidgets(
+      'edit controls stay visible but disable while a save is in flight',
       (tester) async {
     final fake = Get.find<LandedCostVoucherProvider>() as FakeLcvProvider;
     fake.voucher = sampleLcv(docstatus: 0);
@@ -156,7 +157,10 @@ void main() {
 
     await tester.tap(find.text('Taxes'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsOneWidget);
+
+    OutlinedButton addChargeButton() => tester
+        .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Add Charge'));
+    expect(addChargeButton().onPressed, isNotNull);
 
     // Make the draft dirty (still valid — receipts/charges non-empty) and
     // hold the save mid-flight.
@@ -174,15 +178,18 @@ void main() {
 
     expect(c.isSaving.value, isTrue);
     // The controller silently rejects mutations while saving (Task 3), so
-    // the "Add Charge" affordance must not be offered at all while busy —
-    // not merely a `canSave`-style advisory state.
-    expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsNothing);
+    // the "Add Charge" button must stay visible (no layout jump) but its
+    // onPressed must be disabled — not merely a `canSave`-style advisory
+    // state that leaves it tappable.
+    expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsOneWidget);
+    expect(addChargeButton().onPressed, isNull);
 
     fake.saveGate!.complete();
     await saveFuture;
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsOneWidget);
+    expect(addChargeButton().onPressed, isNotNull);
     await tester.pump(const Duration(seconds: 5));
   });
 }

@@ -86,10 +86,11 @@ class LandedCostVoucherFormScreen
                       ? const Center(child: Text('Document not found.'))
                       : TabBarView(
                           children: [
-                            _buildDetailsView(context, canEdit),
-                            _buildPurchaseReceiptsView(context, canEdit),
+                            _buildDetailsView(context, editable, canEdit),
+                            _buildPurchaseReceiptsView(
+                                context, editable, canEdit),
                             _buildItemsView(context),
-                            _buildTaxesView(context, canEdit),
+                            _buildTaxesView(context, editable, canEdit),
                           ],
                         ),
             ),
@@ -137,7 +138,7 @@ class LandedCostVoucherFormScreen
     }
   }
 
-  Widget _buildDetailsView(BuildContext context, bool editable) {
+  Widget _buildDetailsView(BuildContext context, bool editable, bool canEdit) {
     final v = controller.voucher.value;
     if (v == null) return const SizedBox();
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -169,7 +170,7 @@ class LandedCostVoucherFormScreen
                 label: _getLabel('posting_date', 'Posting Date'),
                 value: controller.postingDate.value,
                 icon: Icons.calendar_today_outlined,
-                onTap: editable ? () => _pickPostingDate(context) : null,
+                onTap: canEdit ? () => _pickPostingDate(context) : null,
               ),
             ],
           ),
@@ -182,7 +183,7 @@ class LandedCostVoucherFormScreen
                     'Distribute Charges Based On'),
                 value: controller.distributeChargesBasedOn.value,
                 icon: Icons.calculate_outlined,
-                onTap: editable
+                onTap: canEdit
                     ? () => showOptionPickerSheet(
                           context,
                           title: 'Distribute Charges Based On',
@@ -244,7 +245,8 @@ class LandedCostVoucherFormScreen
         ),
       );
 
-  Widget _buildPurchaseReceiptsView(BuildContext context, bool editable) {
+  Widget _buildPurchaseReceiptsView(
+      BuildContext context, bool editable, bool canEdit) {
     final receipts = controller.receipts;
     return ListView(
       padding: _listPadding(context, 12),
@@ -252,12 +254,14 @@ class LandedCostVoucherFormScreen
         if (editable)
           _addButton(
             'Add Purchase Receipt',
-            () => showLinkSearchSheet(
-              doctype: kLcvReceiptType,
-              title: 'Purchase Receipt',
-              filters: {'docstatus': 1, 'company': controller.company},
-              onSelected: controller.addReceipt,
-            ),
+            canEdit
+                ? () => showLinkSearchSheet(
+                      doctype: kLcvReceiptType,
+                      title: 'Purchase Receipt',
+                      filters: {'docstatus': 1, 'company': controller.company},
+                      onSelected: controller.addReceipt,
+                    )
+                : null,
             busy: controller.isAddingReceipt.value,
           ),
         if (receipts.isEmpty)
@@ -278,7 +282,8 @@ class LandedCostVoucherFormScreen
                     IconButton(
                       tooltip: 'Remove',
                       icon: const Icon(Icons.close),
-                      onPressed: () => controller.removeReceipt(pr),
+                      onPressed:
+                          canEdit ? () => controller.removeReceipt(pr) : null,
                     ),
                 ],
               ),
@@ -321,7 +326,7 @@ class LandedCostVoucherFormScreen
     );
   }
 
-  Widget _buildTaxesView(BuildContext context, bool editable) {
+  Widget _buildTaxesView(BuildContext context, bool editable, bool canEdit) {
     final charges = controller.charges;
 
     void openSheet({LandedCostTaxesAndCharges? initial}) => showLcvChargeSheet(
@@ -334,7 +339,8 @@ class LandedCostVoucherFormScreen
     return ListView(
       padding: _listPadding(context, 12),
       children: [
-        if (editable) _addButton('Add Charge', () => openSheet()),
+        if (editable)
+          _addButton('Add Charge', canEdit ? () => openSheet() : null),
         if (charges.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 48),
@@ -346,7 +352,7 @@ class LandedCostVoucherFormScreen
               title: Text(charges[i].description),
               subtitle:
                   Text('Expense Account: ${charges[i].expenseAccount ?? 'N/A'}'),
-              onTap: editable ? () => openSheet(initial: charges[i]) : null,
+              onTap: canEdit ? () => openSheet(initial: charges[i]) : null,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -355,7 +361,8 @@ class LandedCostVoucherFormScreen
                     IconButton(
                       tooltip: 'Remove',
                       icon: const Icon(Icons.close),
-                      onPressed: () => controller.removeCharge(i),
+                      onPressed:
+                          canEdit ? () => controller.removeCharge(i) : null,
                     ),
                 ],
               ),
