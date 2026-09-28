@@ -50,6 +50,8 @@ abstract class AppRoutes {
   static const ATTENDANCE             = _Paths.ATTENDANCE;
   static const ATTENDANCE_MONTH       = _Paths.ATTENDANCE_MONTH;
   static const MONTHLY_ATTENDANCE_SHEET = _Paths.MONTHLY_ATTENDANCE_SHEET;
+  static const LANDED_COST_VOUCHER      = _Paths.LANDED_COST_VOUCHER;
+  static const LANDED_COST_VOUCHER_FORM = _Paths.LANDED_COST_VOUCHER_FORM;
 }
 
 abstract class _Paths {
@@ -100,4 +102,6 @@ abstract class _Paths {
   static const ATTENDANCE             = '/hr/attendance';
   static const ATTENDANCE_MONTH       = '/hr/attendance/month';
   static const MONTHLY_ATTENDANCE_SHEET = '/hr/reports/monthly-attendance-sheet';
+  static const LANDED_COST_VOUCHER      = '/landed-cost-voucher';
+  static const LANDED_COST_VOUCHER_FORM = '/landed-cost-voucher/form';
 }

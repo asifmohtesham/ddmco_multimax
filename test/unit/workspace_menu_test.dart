@@ -11,7 +11,7 @@ void main() {
   test('no workspaces → built-in fallback layout', () {
     final m = buildWorkspaceMenu(const [], const {});
     expect(_titles(m), ['Stock', 'Buying', 'Manufacturing', 'Selling', 'HR']);
-    expect(m.first.sections.map((s) => s.label), [null, 'Reports']);
+    expect(m.first.sections.map((s) => s.label), [null, 'Reports', 'Tools']);
     expect(m.expand((g) => g.links).length, kNavCatalog.length);
   });
 
