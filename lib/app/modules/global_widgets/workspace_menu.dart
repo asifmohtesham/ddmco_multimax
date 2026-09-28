@@ -122,6 +122,8 @@ final List<NavLink> kNavCatalog = [
   NavLink('Report', 'Batch-Wise Balance History', 'Batch-Wise Balance History', Icons.history_toggle_off_rounded, AppRoutes.BATCH_WISE_BALANCE, _rep('Batch'), 'Stock', 'Reports'),
   NavLink('Report', 'Item Variant Details', 'Item Variant Details', Icons.style_outlined, AppRoutes.ITEM_VARIANT_DETAILS, _rep('Item'), 'Stock', 'Reports'),
   NavLink('Report', 'Stock Balance', 'Stock Balance', Icons.account_balance_wallet_outlined, AppRoutes.STOCK_BALANCE, _rep('Stock Entry'), 'Stock', 'Reports'),
+  NavLink('DocType', 'Landed Cost Voucher', 'Landed Cost Voucher', Icons.flight_land_rounded, AppRoutes.LANDED_COST_VOUCHER, _r('Landed Cost Voucher'), 'Stock',
+      'Tools', AppRoutes.LANDED_COST_VOUCHER_FORM, Colors.brown),
   // ── Buying ──
   NavLink('DocType', 'Purchase Order', 'Purchase Order', Icons.description_rounded, AppRoutes.PURCHASE_ORDER, _r('Purchase Order'), 'Buying',
       null, AppRoutes.PURCHASE_ORDER_FORM, Colors.brown),

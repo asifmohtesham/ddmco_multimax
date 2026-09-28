@@ -18,6 +18,7 @@ const List<PermEntry> kStockPermissions = [
   (doctype: 'Item',             permType: 'report'), // Item Variant Details report
   (doctype: 'Item',             permType: 'write'),  // Item Re-order rules editing
   (doctype: 'Stock Entry',      permType: 'report'), // Stock Balance report
+  (doctype: 'Landed Cost Voucher', permType: 'read'), // viewer, Stock → Tools
   // Gate the create/edit affordances so they resolve at login (no on-screen
   // delay). create+write for one doctype share a single getdoctype fetch.
   (doctype: 'Material Request', permType: 'create'), // New MR FAB
