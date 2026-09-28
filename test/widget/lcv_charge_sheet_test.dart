@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/landed_cost_voucher_model.dart';
+import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
 import 'package:multimax/app/modules/landed_cost_voucher/form/widgets/lcv_charge_sheet.dart';
 
 void main() {
@@ -35,6 +36,60 @@ void main() {
     expect(result!.description, 'Freight');
     expect(result!.amount, 120.5);
     expect(result!.expenseAccount, 'Expenses Included In Valuation - KA');
+  });
+
+  testWidgets('with the keyboard open every field and Save Charge stay '
+      'visible above it', (tester) async {
+    // Pixel 7 (1080x2400 @ 2.625) with the IME covering ~1100px, as seen on
+    // device: the sheet used to add the inset on top of the route's own
+    // keyboard padding and squeezed everything but Description off-screen.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(const GetMaterialApp(home: Scaffold()));
+    showLcvChargeSheet(company: 'KA', onSaved: (_) {});
+    await tester.pumpAndSettle();
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 1100);
+    await tester.pumpAndSettle();
+
+    final keyboardTop = (2400 - 1100) / 2.625;
+    for (final finder in [
+      find.widgetWithText(TextField, 'Description *'),
+      find.widgetWithText(TextField, 'Amount *'),
+      find.byType(LinkFieldWidget),
+      find.widgetWithText(FilledButton, 'Save Charge'),
+    ]) {
+      // Laid out but clipped by a squeezed scroll viewport is still
+      // unusable, so require the control to actually receive taps.
+      expect(finder.hitTestable(), findsOneWidget,
+          reason: '$finder cannot be tapped with the keyboard open');
+      expect(tester.getRect(finder).bottom, lessThanOrEqualTo(keyboardTop),
+          reason: '$finder is hidden behind the keyboard');
+    }
+  });
+
+  testWidgets('editing shows a whole amount without a trailing .0',
+      (tester) async {
+    await pump(
+      tester,
+      LcvChargeSheet(
+        company: 'KA',
+        initial: LandedCostTaxesAndCharges(
+          name: 'row-tax-1',
+          description: 'Freight',
+          amount: 300,
+          expenseAccount: 'Freight - KA',
+          exchangeRate: 1,
+          baseAmount: 300,
+        ),
+        onSaved: (_) {},
+      ),
+    );
+    final amount = tester.widget<TextField>(
+        find.widgetWithText(TextField, 'Amount *'));
+    expect(amount.controller!.text, '300');
   });
 
   group('buildLcvCharge', () {

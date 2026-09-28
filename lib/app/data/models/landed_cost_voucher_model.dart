@@ -62,7 +62,9 @@ class LandedCostVoucher {
       owner: json['owner'] ?? '',
       creation: json['creation'] ?? DateTime.now().toString(),
       modified: json['modified'] ?? '',
-      status: json['status'] ?? 'Draft',
+      // ERPNext's LCV has no `status` field — derive it from docstatus.
+      status: json['status'] ??
+          _statusForDocstatus(json['docstatus'] as int? ?? 0),
       docstatus: json['docstatus'] as int? ?? 0,
       company: json['company'] ?? '',
       postingDate: json['posting_date'] ?? '',
@@ -77,6 +79,12 @@ class LandedCostVoucher {
       vendorInvoices: vendorInvoices,
     );
   }
+
+  static String _statusForDocstatus(int docstatus) => switch (docstatus) {
+        1 => 'Submitted',
+        2 => 'Cancelled',
+        _ => 'Draft',
+      };
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {

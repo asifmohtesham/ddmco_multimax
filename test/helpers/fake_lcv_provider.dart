@@ -12,7 +12,6 @@ Map<String, dynamic> sampleLcv({int docstatus = 1, String distribute = 'Qty'}) =
       'name': 'MAT-LCV-2026-00001',
       'company': 'KA',
       'docstatus': docstatus,
-      'status': docstatus == 1 ? 'Submitted' : 'Draft',
       'modified': '2026-09-26 10:00:00.000',
       'posting_date': '2026-09-26',
       'distribute_charges_based_on': distribute,
@@ -93,7 +92,6 @@ class FakeLcvProvider implements LandedCostVoucherProvider {
       ...data,
       if (newName != null) 'name': newName,
       'docstatus': 0,
-      'status': 'Draft',
       'modified': '2026-09-28 12:00:0${saved.length}.000',
     };
     return _ok(voucher);
@@ -126,7 +124,7 @@ class FakeLcvProvider implements LandedCostVoucherProvider {
     lastSubmitModified = modified;
     if (submitError != null) throw submitError!;
     submitCalls++;
-    voucher = {...voucher, 'docstatus': 1, 'status': 'Submitted'};
+    voucher = {...voucher, 'docstatus': 1};
     return _ok(voucher);
   }
 

@@ -89,6 +89,8 @@ void main() {
         tester.widget<DocTypeFormHeader>(find.byType(DocTypeFormHeader));
     expect(header.onSave, isNull);
     expect(header.canSave, isFalse);
+    // ERPNext's LCV has no `status` field; the pill must follow docstatus.
+    expect(header.statusLabel, 'Submitted');
 
     await tester.tap(find.text('Items'));
     await tester.pumpAndSettle();
