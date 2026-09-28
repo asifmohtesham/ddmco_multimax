@@ -25,13 +25,20 @@ Run this every time you bump. Never default to PATCH out of habit.
 
 ### 1. Establish the range
 
-The changes under evaluation are everything since the **last released tag**:
+The changes under evaluation are everything since the **last released tag that HEAD
+contains**:
 
 ```bash
-LAST=$(git describe --tags --abbrev=0)   # e.g. v2.0.22+31
+LAST=$(git describe --tags --abbrev=0 --match 'v*')   # e.g. v2.25.7
 git log --pretty='%s' "$LAST..HEAD"      # commit subjects in range
 git diff --stat "$LAST..HEAD"            # files touched in range
 ```
+
+`git describe` only sees tags that are ancestors of HEAD. That is deliberate: the newest
+tag in the repository may sit on a branch this one has not caught up with, and is then
+not a valid base. If a newer release exists that HEAD does not contain, **merge it in
+before bumping** — otherwise the next version is computed from a stale `pubspec.yaml`
+and duplicates a release that already shipped.
 
 Read **both** the commit subjects and the actual diff. Commit prefixes are the primary
 signal; the diff is the corroborating signal (see step 3).
@@ -81,6 +88,22 @@ dart run tool/bump_version.dart            # dry-run: classify range, propose ne
 dart run tool/bump_version.dart --write    # apply the auto-classified bump to pubspec.yaml
 dart run tool/bump_version.dart --minor --write   # override the classification, then apply
 ```
+
+Before proposing a version the script checks it against every existing `v*` tag, reading
+both the tag name and the `pubspec.yaml` version at that tag (they have disagreed in the
+past, so the higher of the two counts). It prints a `WARNING` and **refuses `--write`**
+when:
+
+- a release newer than the base tag is not an ancestor of HEAD (the branch is behind);
+- the proposed `X.Y.Z` is not greater than every released version — a build-only release
+  may *equal* the latest one, never fall below it;
+- the proposed build number `B` is not greater than every released build.
+
+`--major` / `--minor` / `--patch` do not bypass these checks. The fix is to bring the
+branch up to date with the latest release, not to pick a different number.
+
+The check only knows the tags in your local repository. Run `git fetch --tags` first, or
+a release tagged elsewhere and never fetched stays invisible to it.
 
 The script is an aid, not an authority. When the diff carries nuance the classifier
 can't see (a breaking backend requirement, a milestone), override it with

@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.ddmco.multimax">
 
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -13,6 +14,15 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <!-- WorkManager (via workmanager_android) merges in its foreground-worker
+         service + FGS permissions. The digest/attendance jobs are plain
+         one-off workers (no expedited work, no setForeground), so strip them:
+         keeping them forces a Play Console "Foreground service permissions"
+         declaration for dataSync/shortService we can't justify. Restore these
+         if long-running or expedited workers are ever added. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" tools:node="remove"/>
     <application
         android:label="Multimax"
         android:allowBackup="false"
@@ -38,6 +48,9 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            tools:node="remove"/>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
