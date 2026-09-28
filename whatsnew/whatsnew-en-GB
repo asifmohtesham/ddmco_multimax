@@ -1,2 +1,3 @@
-• New: view Landed Cost Vouchers under Stock → Tools, including the charges allocated to each item.
-• Landed Cost Vouchers can now be found from the Home search bar.
+• Landed Cost Vouchers can now be created, edited and submitted in the app (Stock → Tools → New Voucher): add Purchase Receipts and charges, and ERPNext spreads the cost across items by quantity or amount.
+• Submitted vouchers now show the correct status.
+• Saving or submitting a voucher someone else changed shows a warning instead of overwriting their edit.
