@@ -86,14 +86,17 @@ class LandedCostVoucherFormController extends GetxController
   bool get _isBusy =>
       isSaving.value || isSubmitting.value || isLoading.value;
 
-  bool get canSubmit => lcvCanSubmit(
+  bool get canSubmit =>
+      lcvCanSubmit(
         isNew: isNew,
         docStatus: voucher.value?.docstatus,
         isDirty: isDirty.value,
         isSaving: isSaving.value,
         isSubmitting: isSubmitting.value,
         canSubmitPerm: canSubmitPerm.value,
-      );
+      ) &&
+      !isManualDistribution &&
+      !isAddingReceipt.value;
 
   @override
   void onInit() {
@@ -218,6 +221,8 @@ class LandedCostVoucherFormController extends GetxController
     isAddingReceipt.value = true;
     try {
       final summary = await _provider.getReceiptSummary(receiptName);
+      // Re-check: a submit/save/reload may have started while this awaited.
+      if (!isEditable || _isBusy) return;
       if (summary == null) {
         GlobalSnackbar.error(message: 'Could not load $receiptName');
         return;
@@ -257,12 +262,17 @@ class LandedCostVoucherFormController extends GetxController
 
   // ── Charges ─────────────────────────────────────────────────────────────
 
-  void upsertCharge(LandedCostTaxesAndCharges charge, {int? index}) {
+  /// Replaces the charge whose `name` matches [charge]'s (an edit — the sheet
+  /// keeps the server-assigned name), or appends it (a new charge, always
+  /// carrying a fresh `local_` name from the sheet). Matching by name rather
+  /// than list index keeps this correct across an intervening reload.
+  void upsertCharge(LandedCostTaxesAndCharges charge) {
     if (!isEditable || _isBusy) return;
-    if (index == null) {
+    final existing = charges.indexWhere((c) => c.name == charge.name);
+    if (existing == -1) {
       charges.add(charge);
     } else {
-      charges[index] = charge;
+      charges[existing] = charge;
     }
     _markDirty();
   }

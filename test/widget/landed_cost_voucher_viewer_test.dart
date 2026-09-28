@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -130,11 +132,57 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('distributed manually'), findsOneWidget);
-    expect(tester.widget<DocTypeFormHeader>(find.byType(DocTypeFormHeader)).onSave,
-        isNull);
+    final header =
+        tester.widget<DocTypeFormHeader>(find.byType(DocTypeFormHeader));
+    expect(header.onSave, isNull);
+    expect(header.canSubmit, isFalse);
     await tester.tap(find.text('Taxes'));
     await tester.pumpAndSettle();
     expect(find.text('Add Charge'), findsNothing);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  // ── Fix round 1, Finding 1 ────────────────────────────────────────────────
+
+  testWidgets('edit controls disable while a save is in flight',
+      (tester) async {
+    final fake = Get.find<LandedCostVoucherProvider>() as FakeLcvProvider;
+    fake.voucher = sampleLcv(docstatus: 0);
+    final c = Get.put(LandedCostVoucherFormController(
+        name: 'MAT-LCV-2026-00001', mode: 'edit', defaultCompany: 'KA'));
+    await tester.pumpWidget(
+        const GetMaterialApp(home: LandedCostVoucherFormScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Taxes'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsOneWidget);
+
+    // Make the draft dirty (still valid — receipts/charges non-empty) and
+    // hold the save mid-flight.
+    c.upsertCharge(LandedCostTaxesAndCharges(
+      description: 'Insurance',
+      amount: 30,
+      expenseAccount: 'Insurance - KA',
+      exchangeRate: 1,
+      baseAmount: 30,
+    ));
+    await tester.pump();
+    fake.saveGate = Completer<void>();
+    final saveFuture = c.saveDocument();
+    await tester.pump();
+
+    expect(c.isSaving.value, isTrue);
+    // The controller silently rejects mutations while saving (Task 3), so
+    // the "Add Charge" affordance must not be offered at all while busy —
+    // not merely a `canSave`-style advisory state.
+    expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsNothing);
+
+    fake.saveGate!.complete();
+    await saveFuture;
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, 'Add Charge'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
   });
 }

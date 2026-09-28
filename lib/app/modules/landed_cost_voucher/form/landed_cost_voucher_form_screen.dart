@@ -33,6 +33,11 @@ class LandedCostVoucherFormScreen
       final saveResult = controller.saveResult.value;
       final isSubmitting = controller.isSubmitting.value;
       final canSubmit = controller.canSubmit;
+      // Edit controls must additionally disable while a save/submit is in
+      // flight: the controller's mutators silently reject edits then (so a
+      // save's payload can't change under it), and a control that stayed
+      // enabled would look like it worked while the edit was actually lost.
+      final canEdit = editable && !isSaving && !isSubmitting;
       // The tab builders below run eagerly inside this Obx, so their reads of
       // receipts/charges/postingDate are tracked too.
 
@@ -81,10 +86,10 @@ class LandedCostVoucherFormScreen
                       ? const Center(child: Text('Document not found.'))
                       : TabBarView(
                           children: [
-                            _buildDetailsView(context, editable),
-                            _buildPurchaseReceiptsView(context, editable),
+                            _buildDetailsView(context, canEdit),
+                            _buildPurchaseReceiptsView(context, canEdit),
                             _buildItemsView(context),
-                            _buildTaxesView(context, editable),
+                            _buildTaxesView(context, canEdit),
                           ],
                         ),
             ),
@@ -319,12 +324,11 @@ class LandedCostVoucherFormScreen
   Widget _buildTaxesView(BuildContext context, bool editable) {
     final charges = controller.charges;
 
-    void openSheet({LandedCostTaxesAndCharges? initial, int? index}) =>
-        showLcvChargeSheet(
+    void openSheet({LandedCostTaxesAndCharges? initial}) => showLcvChargeSheet(
           company: controller.company,
           initial: initial,
           defaultAccount: controller.defaultChargeAccount,
-          onSaved: (c) => controller.upsertCharge(c, index: index),
+          onSaved: controller.upsertCharge,
         );
 
     return ListView(
@@ -342,9 +346,7 @@ class LandedCostVoucherFormScreen
               title: Text(charges[i].description),
               subtitle:
                   Text('Expense Account: ${charges[i].expenseAccount ?? 'N/A'}'),
-              onTap: editable
-                  ? () => openSheet(initial: charges[i], index: i)
-                  : null,
+              onTap: editable ? () => openSheet(initial: charges[i]) : null,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
