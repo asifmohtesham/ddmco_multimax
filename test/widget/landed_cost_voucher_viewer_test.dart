@@ -19,9 +19,14 @@ import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_con
 import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_screen.dart';
 import '../helpers/fake_lcv_provider.dart';
 
+/// Reads a dummy `.obs` so DocTypeGuard's `Obx` still has a reactive
+/// dependency to track — an override that returns a bare `true` with no
+/// Rx read at all trips GetX's "improper use of Obx" assertion.
 class _StubPermissionService extends PermissionService {
+  final _granted = true.obs;
   @override
-  bool? hasAccess(String doctype, {String permType = 'read'}) => true;
+  bool? hasAccess(String doctype, {String permType = 'read'}) =>
+      _granted.value;
 }
 
 void main() {
@@ -58,7 +63,7 @@ void main() {
     expect(target.route, AppRoutes.LANDED_COST_VOUCHER_FORM);
   });
 
-  testWidgets('list is view-only and follows the list conventions',
+  testWidgets('list follows the list conventions and offers create',
       (tester) async {
     Get.put(LandedCostVoucherController());
     await tester.pumpWidget(const GetMaterialApp(home: LandedCostVoucherScreen()));
@@ -66,7 +71,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('MAT-LCV-2026-00001'), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byType(FloatingActionButton), findsOneWidget);
     expect(find.byType(Scrollbar), findsOneWidget);
     expect(find.byType(RefreshIndicator), findsOneWidget);
     expect(find.byType(ListEndFooter), findsOneWidget);
