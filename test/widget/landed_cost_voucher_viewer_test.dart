@@ -197,4 +197,81 @@ void main() {
     expect(addChargeButton().onPressed, isNotNull);
     await tester.pump(const Duration(seconds: 5));
   });
+
+  // ── Final review, Finding 2: submit spinner ─────────────────────────────
+
+  testWidgets(
+      'the header shows a submit spinner while a submit is in flight',
+      (tester) async {
+    final fake = Get.find<LandedCostVoucherProvider>() as FakeLcvProvider;
+    fake.voucher = sampleLcv(docstatus: 0);
+    final c = Get.put(LandedCostVoucherFormController(
+        name: 'MAT-LCV-2026-00001', mode: 'edit', defaultCompany: 'KA'));
+    await tester.pumpWidget(
+        const GetMaterialApp(home: LandedCostVoucherFormScreen()));
+    await tester.pumpAndSettle();
+
+    // canSubmit is true on a clean draft, so the Submit control is already
+    // showing; setting isSubmitting must swap its icon for a spinner and
+    // keep the control itself visible (canSubmit alone would flip false
+    // and hide the whole button, hiding the spinner with it).
+    c.isSubmitting.value = true;
+    await tester.pump();
+
+    expect(find.widgetWithText(FilledButton, 'Submit'), findsNothing);
+    final submitButton =
+        tester.widget<FilledButton>(find.ancestor(
+      of: find.byType(CircularProgressIndicator),
+      matching: find.byType(FilledButton),
+    ));
+    expect(submitButton.onPressed, isNull);
+
+    c.isSubmitting.value = false;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  // ── Final review, Finding 5: reload is blocked while dirty ──────────────
+
+  testWidgets('reload is disabled while there are unsaved edits',
+      (tester) async {
+    final fake = Get.find<LandedCostVoucherProvider>() as FakeLcvProvider;
+    fake.voucher = sampleLcv(docstatus: 0);
+    final c = Get.put(LandedCostVoucherFormController(
+        name: 'MAT-LCV-2026-00001', mode: 'edit', defaultCompany: 'KA'));
+    await tester.pumpWidget(
+        const GetMaterialApp(home: LandedCostVoucherFormScreen()));
+    await tester.pumpAndSettle();
+
+    DocTypeFormHeader header() =>
+        tester.widget<DocTypeFormHeader>(find.byType(DocTypeFormHeader));
+    expect(header().onReload, isNotNull);
+
+    c.removeCharge(0);
+    await tester.pump();
+    expect(header().onReload, isNull);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  // ── Final review, Finding 6: stale-items note ────────────────────────────
+
+  testWidgets('the Items tab notes that items update on save while dirty',
+      (tester) async {
+    final fake = Get.find<LandedCostVoucherProvider>() as FakeLcvProvider;
+    fake.voucher = sampleLcv(docstatus: 0);
+    final c = Get.put(LandedCostVoucherFormController(
+        name: 'MAT-LCV-2026-00001', mode: 'edit', defaultCompany: 'KA'));
+    await tester.pumpWidget(
+        const GetMaterialApp(home: LandedCostVoucherFormScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Items'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('update when you save'), findsNothing);
+
+    c.removeCharge(0);
+    await tester.pump();
+    expect(find.textContaining('update when you save'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+  });
 }

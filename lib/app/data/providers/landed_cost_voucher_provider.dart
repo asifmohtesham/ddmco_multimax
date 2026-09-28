@@ -38,8 +38,14 @@ class LandedCostVoucherProvider {
           String name, Map<String, dynamic> data) =>
       _apiProvider.updateDocument('Landed Cost Voucher', name, data);
 
-  Future<Response> submitLandedCostVoucher(String name) =>
-      _apiProvider.submitDocument('Landed Cost Voucher', name);
+  /// Submits with the loaded `modified` timestamp so ERPNext rejects the
+  /// submit (TimestampMismatchError) if the document was edited in Desk
+  /// after the app loaded it. [ApiProvider.submitDocument] sends no
+  /// timestamp, so it can't be used here.
+  Future<Response> submitLandedCostVoucher(String name,
+          {required String modified}) =>
+      _apiProvider.updateDocument('Landed Cost Voucher', name,
+          {'docstatus': 1, 'modified': modified});
 
   Future<bool> canSubmit(String name) async {
     try {

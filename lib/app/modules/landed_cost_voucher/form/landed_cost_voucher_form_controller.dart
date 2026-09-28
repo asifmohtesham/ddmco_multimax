@@ -356,7 +356,8 @@ class LandedCostVoucherFormController extends GetxController
     if (!canSubmit) return;
     isSubmitting.value = true;
     try {
-      final res = await _provider.submitLandedCostVoucher(name);
+      final res = await _provider.submitLandedCostVoucher(name,
+          modified: voucher.value!.modified);
       if (res.statusCode == 200) {
         await fetchDocument(); // docstatus 1 → read-only, perm refreshed
         GlobalSnackbar.success(message: 'Landed Cost Voucher $name submitted');

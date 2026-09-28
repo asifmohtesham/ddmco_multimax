@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/landed_cost_voucher_model.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
@@ -58,7 +59,11 @@ class LandedCostVoucherFormScreen
                   docType: 'Landed Cost Voucher',
                   statusLabel: voucher?.status,
                   docStatus: voucher?.docstatus ?? 0,
-                  onReload: isLoading || controller.isNew
+                  onReload: isLoading ||
+                          controller.isNew ||
+                          isDirty ||
+                          isSaving ||
+                          isSubmitting
                       ? null
                       : controller.reloadDocument,
                   // Save while dirty; Submit once clean (SE convention).
@@ -67,7 +72,10 @@ class LandedCostVoucherFormScreen
                   isSaving: isSaving,
                   saveResult: saveResult,
                   onSubmit: controller.submitDocument,
-                  canSubmit: canSubmit,
+                  // canSubmit alone would hide the Submit button (and its
+                  // spinner) the instant isSubmitting flips it false — the
+                  // header only renders that control when canSubmit is true.
+                  canSubmit: canSubmit || isSubmitting,
                   isSubmitting: isSubmitting,
                   bottom: const TabBar(
                     isScrollable: true,
@@ -89,7 +97,7 @@ class LandedCostVoucherFormScreen
                             _buildDetailsView(context, editable, canEdit),
                             _buildPurchaseReceiptsView(
                                 context, editable, canEdit),
-                            _buildItemsView(context),
+                            _buildItemsView(context, isDirty),
                             _buildTaxesView(context, editable, canEdit),
                           ],
                         ),
@@ -141,7 +149,7 @@ class LandedCostVoucherFormScreen
   Widget _buildDetailsView(BuildContext context, bool editable, bool canEdit) {
     final v = controller.voucher.value;
     if (v == null) return const SizedBox();
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final muted = context.scheme.textMuted;
 
     return SingleChildScrollView(
       padding: _listPadding(context, 12),
@@ -296,33 +304,47 @@ class LandedCostVoucherFormScreen
   /// Each row shows the charge ERPNext allocated to that item — the figure
   /// a Landed Cost Voucher exists to produce. Items are server-derived, so
   /// after a receipt change they appear on the next save.
-  Widget _buildItemsView(BuildContext context) {
+  Widget _buildItemsView(BuildContext context, bool isDirty) {
     final v = controller.voucher.value;
     if (v == null || v.items.isEmpty) {
       return const Center(
           child: Text('No Items yet — they are filled in when you save'));
     }
 
-    return ListView.builder(
-      padding: _listPadding(context, 12),
-      itemCount: v.items.length,
-      itemBuilder: (context, index) {
-        final item = v.items[index];
-        return Card(
-          child: ListTile(
-            title: Text(item.itemCode),
-            subtitle: Text(
-              '${item.description ?? ''}\n'
-              '${item.receiptDocument} · Qty ${FormattingHelper.formatQty(item.qty)}',
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
+    return Column(
+      children: [
+        if (isDirty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Text(
+              'Items and allocated charges update when you save.',
+              style: TextStyle(color: context.scheme.textMuted),
             ),
-            isThreeLine: true,
-            trailing:
-                Text(FormattingHelper.formatAmount(item.applicableCharges)),
           ),
-        );
-      },
+        Expanded(
+          child: ListView.builder(
+            padding: _listPadding(context, 12),
+            itemCount: v.items.length,
+            itemBuilder: (context, index) {
+              final item = v.items[index];
+              return Card(
+                child: ListTile(
+                  title: Text(item.itemCode),
+                  subtitle: Text(
+                    '${item.description ?? ''}\n'
+                    '${item.receiptDocument} · Qty ${FormattingHelper.formatQty(item.qty)}',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  isThreeLine: true,
+                  trailing: Text(
+                      FormattingHelper.formatAmount(item.applicableCharges)),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

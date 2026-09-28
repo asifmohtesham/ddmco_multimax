@@ -347,6 +347,40 @@ void main() {
 
   // ── upsertCharge by identity (Fix round 1, review round 2 — Finding 3) ──
 
+  // ── Submit sends the optimistic-lock timestamp (Final review, Finding 1) ─
+
+  testWidgets('a normal submit sends the loaded modified timestamp',
+      (tester) async {
+    final c = await start(tester);
+    await c.performSubmit();
+    expect(fake.lastSubmitModified, '2026-09-26 10:00:00.000');
+    expect(c.voucher.value!.docstatus, 1);
+    await settle(tester);
+  });
+
+  testWidgets(
+      'a submit rejected as a version conflict marks the document stale '
+      'and leaves it unsubmitted', (tester) async {
+    final c = await start(tester);
+    fake.submitError = DioException(
+      requestOptions: RequestOptions(path: ''),
+      response: Response<dynamic>(
+        requestOptions: RequestOptions(path: ''),
+        statusCode: 409,
+      ),
+    );
+
+    await c.performSubmit();
+    expect(c.isStale.value, isTrue);
+    expect(c.voucher.value!.docstatus, 0);
+    expect(fake.submitCalls, 0);
+
+    // Close the stale-conflict dialog raised along the way.
+    Get.back();
+    await tester.pump();
+    await settle(tester);
+  });
+
   testWidgets('upsertCharge replaces the row with a matching name instead '
       'of an index', (tester) async {
     final c = await start(tester);

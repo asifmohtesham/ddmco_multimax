@@ -69,6 +69,14 @@ class FakeLcvProvider implements LandedCostVoucherProvider {
   int submitCalls = 0;
   bool submitAllowed = true;
 
+  /// The `modified` timestamp passed to the most recent
+  /// [submitLandedCostVoucher] call.
+  String? lastSubmitModified;
+
+  /// When set, the next submit throws this instead of submitting — the
+  /// test clears it to retry cleanly.
+  Object? submitError;
+
   /// When set, create/update wait on it — lets a test hold a save in flight.
   Completer<void>? saveGate;
 
@@ -113,7 +121,10 @@ class FakeLcvProvider implements LandedCostVoucherProvider {
       _save(data);
 
   @override
-  Future<Response> submitLandedCostVoucher(String name) async {
+  Future<Response> submitLandedCostVoucher(String name,
+      {required String modified}) async {
+    lastSubmitModified = modified;
+    if (submitError != null) throw submitError!;
     submitCalls++;
     voucher = {...voucher, 'docstatus': 1, 'status': 'Submitted'};
     return _ok(voucher);
