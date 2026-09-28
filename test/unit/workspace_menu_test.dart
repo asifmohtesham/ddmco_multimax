@@ -7,12 +7,15 @@ import 'package:multimax/app/modules/global_widgets/workspace_menu.dart';
 List<String> _titles(List<NavGroup> g) => [for (final x in g) x.title];
 List<String> _links(NavGroup g) => [for (final l in g.links) l.linkTo];
 
+// Search-only catalog entries (showInDrawer: false) never reach the drawer.
+final _drawerLinkCount = kNavCatalog.where((l) => l.showInDrawer).length;
+
 void main() {
   test('no workspaces → built-in fallback layout', () {
     final m = buildWorkspaceMenu(const [], const {});
     expect(_titles(m), ['Stock', 'Buying', 'Manufacturing', 'Selling', 'HR']);
     expect(m.first.sections.map((s) => s.label), [null, 'Reports']);
-    expect(m.expand((g) => g.links).length, kNavCatalog.length);
+    expect(m.expand((g) => g.links).length, _drawerLinkCount);
   });
 
   test('workspace order, cards and child pages drive layout', () {
@@ -118,7 +121,7 @@ void main() {
     final healed = menuFromJson(stale)!;
     final keys = healed.expand((g) => g.links).map((l) => l.key).toList();
     expect(keys, isNot(contains('doctype:Gone')));
-    expect(keys.toSet().length, kNavCatalog.length);
+    expect(keys.toSet().length, _drawerLinkCount);
     expect(healed.first.links.first.linkTo, 'Item');
 
     expect(menuFromJson(null), isNull);

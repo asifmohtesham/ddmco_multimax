@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/workspace_menu.dart';
 
 /// One searchable doctype for the Dashboard global search.
 ///
@@ -46,10 +46,12 @@ class GlobalSearchTarget {
   });
 }
 
-Map<String, dynamic> _nameView(String id) => {'name': id, 'mode': 'view'};
-Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
-
 /// Every doctype a search hit can be OPENED as, in display order.
+///
+/// **Derived automatically from [kNavCatalog]** — only entries with a non-null
+/// [NavLink.formRoute] produce a search target. Adding a new DocType to
+/// [kNavCatalog] with a `formRoute` is all that's needed to register it for
+/// search; there is no second list to maintain.
 ///
 /// This is the routing registry: [searchNavArgsFor] and [searchTargetForDoctype]
 /// read it, so a doctype missing from here cannot be navigated to from a search
@@ -58,140 +60,18 @@ Map<String, dynamic> _nameEdit(String id) => {'name': id, 'mode': 'edit'};
 ///
 /// It is NOT the list of doctypes offered to users for browsing — that is
 /// [kDiscoverableSearchTargets], the `discoverable` subset.
-const List<GlobalSearchTarget> kGlobalSearchTargets = [
-  GlobalSearchTarget(
-    doctype: 'Item',
-    label: 'Items',
-    icon: Icons.inventory_2_outlined,
-    color: Colors.blueGrey,
-    route: AppRoutes.ITEM_FORM,
-    argsFor: _itemArgs,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Delivery Note',
-    label: 'Delivery Notes',
-    icon: Icons.local_shipping_outlined,
-    color: Colors.blue,
-    route: AppRoutes.DELIVERY_NOTE_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Purchase Receipt',
-    label: 'Purchase Receipts',
-    icon: Icons.receipt_long_outlined,
-    color: Colors.green,
-    route: AppRoutes.PURCHASE_RECEIPT_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Stock Entry',
-    label: 'Stock Entries',
-    icon: Icons.compare_arrows_outlined,
-    color: Colors.orange,
-    route: AppRoutes.STOCK_ENTRY_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Packing Slip',
-    label: 'Packing Slips',
-    icon: Icons.assignment_return_outlined,
-    color: Colors.purple,
-    route: AppRoutes.PACKING_SLIP_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'POS Upload',
-    label: 'POS Uploads',
-    icon: Icons.shopping_bag_outlined,
-    color: Colors.deepPurple,
-    route: AppRoutes.POS_UPLOAD_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Purchase Order',
-    label: 'Purchase Orders',
-    icon: Icons.shopping_cart_outlined,
-    color: Colors.brown,
-    route: AppRoutes.PURCHASE_ORDER_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Sales Order',
-    label: 'Sales Orders',
-    icon: Icons.request_quote_outlined,
-    color: Colors.teal,
-    route: AppRoutes.SALES_ORDER_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Material Request',
-    label: 'Material Requests',
-    icon: Icons.request_page_outlined,
-    color: Colors.pink,
-    route: AppRoutes.MATERIAL_REQUEST_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Work Order',
-    label: 'Work Orders',
-    icon: Icons.precision_manufacturing_outlined,
-    color: Colors.indigo,
-    route: AppRoutes.WORK_ORDER_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Job Card',
-    label: 'Job Cards',
-    icon: Icons.assignment_ind_outlined,
-    color: Colors.deepOrange,
-    route: AppRoutes.JOB_CARD_FORM,
-    argsFor: _nameOnly,
-  ),
-  GlobalSearchTarget(
-    doctype: 'BOM',
-    label: 'BOMs',
-    icon: Icons.account_tree_outlined,
-    color: Colors.teal,
-    route: AppRoutes.BOM_FORM,
-    argsFor: _nameOnly,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Batch',
-    label: 'Batches',
-    icon: Icons.layers_outlined,
-    color: Colors.amber,
-    route: AppRoutes.BATCH_FORM,
-    argsFor: _batchArgs,
-  ),
-  GlobalSearchTarget(
-    doctype: 'ToDo',
-    label: 'ToDos',
-    icon: Icons.check_circle_outline,
-    color: Colors.cyan,
-    route: AppRoutes.TODO_FORM,
-    argsFor: _nameView,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Pricing Rule',
-    label: 'Pricing Rules',
-    icon: Icons.discount_outlined,
-    color: Colors.deepOrange,
-    route: AppRoutes.PRICING_RULE_FORM,
-    argsFor: _nameEdit,
-  ),
-  GlobalSearchTarget(
-    doctype: 'Item Price',
-    label: 'Item Prices',
-    icon: Icons.sell_outlined,
-    color: Colors.indigo,
-    route: AppRoutes.ITEM_PRICE_FORM,
-    // ItemPriceController.openPrice opens an existing row in `edit`.
-    argsFor: _nameEdit,
-    // Item Price names are random hashes — useless in a cross-doctype result
-    // list, but the Item Price list screen searches its own rows on item_code
-    // / price list, so it still needs a route to open a hit with.
-    discoverable: false,
-  ),
+final List<GlobalSearchTarget> kGlobalSearchTargets = [
+  for (final link in kNavCatalog)
+    if (link.linkType == 'DocType' && link.formRoute != null)
+      GlobalSearchTarget(
+        doctype: link.linkTo,
+        label: link.searchLabel ?? '${link.title}s',
+        icon: link.icon,
+        color: link.color,
+        route: link.formRoute!,
+        argsFor: link.argsFor,
+        discoverable: link.discoverable,
+      ),
 ];
 
 /// The targets offered to the user for browsing: the Dashboard's all-doctype
@@ -200,11 +80,6 @@ const List<GlobalSearchTarget> kGlobalSearchTargets = [
 /// Derived from [kGlobalSearchTargets]; see [GlobalSearchTarget.discoverable].
 final List<GlobalSearchTarget> kDiscoverableSearchTargets =
     kGlobalSearchTargets.where((t) => t.discoverable).toList();
-
-// Top-level functions (const list requires const-tear-off-able references).
-Map<String, dynamic> _itemArgs(String id) => {'itemCode': id};
-Map<String, dynamic> _nameOnly(String id) => {'name': id};
-Map<String, dynamic> _batchArgs(String id) => {'name': id, 'mode': 'edit'};
 
 /// Canonical navigation arguments for opening document [id] on form [route].
 ///
