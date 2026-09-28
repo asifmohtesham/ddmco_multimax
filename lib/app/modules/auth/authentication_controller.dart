@@ -357,19 +357,4 @@ class AuthenticationController extends GetxController {
       Get.find<PermissionService>().clearCache();
     }
   }
-
-  // --- PERMISSION HELPERS ---
-
-  bool hasRole(String role) {
-    if (currentUser.value == null) return false;
-    if (currentUser.value!.roles.contains('System Manager')) return true;
-    return currentUser.value!.roles.contains(role);
-  }
-
-  bool hasAnyRole(List<String> roles) {
-    if (currentUser.value == null) return false;
-    if (currentUser.value!.roles.contains('System Manager')) return true;
-    return currentUser.value!.roles.any(
-        (userRole) => roles.contains(userRole));
-  }
 }
