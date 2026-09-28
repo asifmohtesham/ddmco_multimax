@@ -72,7 +72,12 @@ class FakeLcvProvider implements LandedCostVoucherProvider {
   /// When set, create/update wait on it — lets a test hold a save in flight.
   Completer<void>? saveGate;
 
+  /// When set, the next create/update throws this instead of saving —
+  /// nothing is recorded to [saved]. The test clears it to retry cleanly.
+  Object? saveError;
+
   Future<Response> _save(Map<String, dynamic> data, {String? newName}) async {
+    if (saveError != null) throw saveError!;
     saved.add(data);
     await saveGate?.future;
     voucher = {

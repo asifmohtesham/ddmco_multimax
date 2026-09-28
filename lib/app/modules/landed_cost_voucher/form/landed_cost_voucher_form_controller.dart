@@ -79,6 +79,13 @@ class LandedCostVoucherFormController extends GetxController
   bool get isManualDistribution =>
       distributeChargesBasedOn.value == kLcvManualDistribution;
 
+  /// True while a save, submit or (re)load is in flight. Draft mutations
+  /// are rejected while busy so a save's payload can't be edited out from
+  /// under it — an edit that lands mid-save would otherwise be silently
+  /// wiped by the post-save reload.
+  bool get _isBusy =>
+      isSaving.value || isSubmitting.value || isLoading.value;
+
   bool get canSubmit => lcvCanSubmit(
         isNew: isNew,
         docStatus: voucher.value?.docstatus,
@@ -187,13 +194,15 @@ class LandedCostVoucherFormController extends GetxController
   // ── Header fields ───────────────────────────────────────────────────────
 
   void setPostingDate(String date) {
-    if (!isEditable || date == postingDate.value) return;
+    if (!isEditable || _isBusy || date == postingDate.value) return;
     postingDate.value = date;
     _markDirty();
   }
 
   void setDistribution(String basis) {
-    if (!isEditable || !kLcvDistributionOptions.contains(basis)) return;
+    if (!isEditable || _isBusy || !kLcvDistributionOptions.contains(basis)) {
+      return;
+    }
     if (basis == distributeChargesBasedOn.value) return;
     distributeChargesBasedOn.value = basis;
     _markDirty();
@@ -204,7 +213,7 @@ class LandedCostVoucherFormController extends GetxController
   /// Looks up [receiptName], checks it the way ERPNext will on save, and adds
   /// it with the supplier/date/total Desk would have filled in.
   Future<void> addReceipt(String receiptName) async {
-    if (!isEditable || isAddingReceipt.value) return;
+    if (!isEditable || _isBusy || isAddingReceipt.value) return;
     if (checkStaleAndBlock()) return;
     isAddingReceipt.value = true;
     try {
@@ -240,7 +249,7 @@ class LandedCostVoucherFormController extends GetxController
   }
 
   void removeReceipt(LandedCostPurchaseReceipt receipt) {
-    if (!isEditable) return;
+    if (!isEditable || _isBusy) return;
     receipts.remove(receipt);
     _receiptsChanged = true;
     _markDirty();
@@ -249,7 +258,7 @@ class LandedCostVoucherFormController extends GetxController
   // ── Charges ─────────────────────────────────────────────────────────────
 
   void upsertCharge(LandedCostTaxesAndCharges charge, {int? index}) {
-    if (!isEditable) return;
+    if (!isEditable || _isBusy) return;
     if (index == null) {
       charges.add(charge);
     } else {
@@ -259,7 +268,7 @@ class LandedCostVoucherFormController extends GetxController
   }
 
   void removeCharge(int index) {
-    if (!isEditable) return;
+    if (!isEditable || _isBusy) return;
     charges.removeAt(index);
     _markDirty();
   }
@@ -270,7 +279,7 @@ class LandedCostVoucherFormController extends GetxController
   // ── Save / Submit ───────────────────────────────────────────────────────
 
   Future<void> saveDocument() async {
-    if (isSaving.value || !isEditable) return;
+    if (isSaving.value || !isEditable || isAddingReceipt.value) return;
     if (checkStaleAndBlock()) return;
     final blocker = lcvSaveBlocker(receipts: receipts, charges: charges);
     if (blocker != null) {
