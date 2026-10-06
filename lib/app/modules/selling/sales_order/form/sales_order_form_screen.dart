@@ -465,6 +465,9 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                   controller: controller.barcodeController,
                   hintText: 'Scan Item Code',
                   activeRoute: AppRoutes.SALES_ORDER_FORM,
+                  // The Add item button below owns the nav-bar inset; letting
+                  // the scan bar apply it too opened a gap between the two.
+                  isEmbedded: true,
                 )),
             SafeArea(
               top: false,
@@ -485,6 +488,10 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
             ),
           ] else
             SizedBox(height: MediaQuery.paddingOf(context).bottom),
+          // The Scaffold opts out of resizeToAvoidBottomInset (the pinned
+          // header needs that), so lift the scan bar above the keyboard
+          // ourselves — same as the Purchase Receipt Items tab.
+          SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
         ],
       );
     });
