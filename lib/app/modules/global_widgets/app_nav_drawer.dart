@@ -91,6 +91,38 @@ class AppNavDrawerController extends GetxController {
     }
   }
 
+  /// What Desk's breadcrumbs are built from, read from the boot data Desk
+  /// embeds in its page (every Desk user can load it; v16 sidebars exist only
+  /// there). If that fails, v15's module → workspace map from the Workspace
+  /// list (readable by Workspace Managers on v15, every Desk User on v16).
+  /// Empty on failure: the drawer then falls back to sidebar order.
+  Future<DeskBoot> _fetchDeskBoot(ApiProvider api) async {
+    // v16 serves Desk at /desk (its /app only redirects there); v15 at /app.
+    for (final path in const ['/desk', '/app']) {
+      try {
+        final r = await api.dio.get<String>(path,
+            options: dio.Options(
+                responseType: dio.ResponseType.plain, followRedirects: false));
+        final boot = deskBootFromHtml(r.data ?? '');
+        if (boot != null) return boot;
+      } catch (_) {}
+    }
+    try {
+      final r = await api.callMethod('frappe.client.get_list', params: {
+        'doctype': 'Workspace',
+        'fields': jsonEncode(['name', 'module']),
+        'filters': jsonEncode({'for_user': '', 'public': 1}),
+        'order_by': 'creation asc',
+        'limit_page_length': 0,
+      });
+      return DeskBoot(
+          moduleWorkspaces:
+              moduleWorkspacesFromRows(r.data['message'] as List? ?? const []));
+    } catch (_) {
+      return const DeskBoot();
+    }
+  }
+
   /// Loads [user]'s workspaces once (sidebar + each page's links, both
   /// permission-filtered by Frappe). Failure keeps the current menu and
   /// retries on the next call.
@@ -112,7 +144,11 @@ class AppNavDrawerController extends GetxController {
       ].where((p) => p['is_hidden'] != 1).toList();
       final desktop = <String, Map<String, dynamic>>{};
       final modules = <String, String>{};
+      var desk = const DeskBoot();
       await Future.wait([
+        () async {
+          desk = await _fetchDeskBoot(api);
+        }(),
         ...pages.map((p) async {
           try {
             final r = await api.callMethod('frappe.desk.desktop.get_desktop_page',
@@ -159,7 +195,7 @@ class AppNavDrawerController extends GetxController {
         }(),
       ]);
       if (_loadedFor == user) {
-        groups.value = buildWorkspaceMenu(pages, desktop, modules);
+        groups.value = buildWorkspaceMenu(pages, desktop, modules, desk);
         _loadedAt = DateTime.now();
         await storage?.saveNavMenu(user, menuToJson(groups));
       }
