@@ -60,7 +60,7 @@ class ItemCardData {
   /// rendered immediately below the item headline in DocItemCard.
   final double? packedQty;
 
-  // ── Pricing (retained in model; suppressed in all factories — C11) ─────────
+  // ── Pricing (suppressed in all factories — C11 — except Sales Order) ───────
 
   final double? rate;
   final double? amount;
@@ -79,7 +79,7 @@ class ItemCardData {
   // ── Label hints ────────────────────────────────────────────────────────────
 
   final String? qtyLabel;
-  final String? rateLabel;       // null in all factories (C11)
+  final String? rateLabel;       // null in all factories except SO (C11)
   final String? warehouseLabel;  // null in all factories (C11)
 
   // ── Behaviour flags ────────────────────────────────────────────────────────
@@ -187,9 +187,10 @@ class ItemCardData {
   /// `targetQty` is left null: `DocItemProgressBar` computes qty ÷ targetQty
   /// as a "how much is left to receive" bar, but SO qty is what the customer
   /// ordered and deliveredQty only shrinks that gap — the same math would
-  /// read a partially-delivered row as if it still needed receiving. Rate,
-  /// amount and warehouse are still populated on the model (unlike PO); only
-  /// warehouse is actually rendered by `DocItemCard` today.
+  /// read a partially-delivered row as if it still needed receiving.
+  /// Rate is shown beside Qty (selling needs the price at a glance); the
+  /// row warehouse is suppressed — it almost always mirrors the header's
+  /// Set Warehouse and is still editable from the item sheet.
   factory ItemCardData.fromSalesOrderItem(
     SalesOrderItem item, {
     int? index,
@@ -206,11 +207,11 @@ class ItemCardData {
       targetQty:     null,
       rate:          item.rate,
       amount:        item.amount,
-      warehouse:     item.warehouse,
+      warehouse:     null,
       toWarehouse:   null,
       qtyLabel:      'Qty',
       rateLabel:     'Rate',
-      warehouseLabel: 'Warehouse',
+      warehouseLabel: null,
       isEditable:    isEditable,
       isHighlighted: isHighlighted,
     );
