@@ -196,24 +196,190 @@ IconData _groupIcon(String title) =>
   }
 }
 
-/// Maps Frappe v15 workspaces onto the app's screens.
+/// Desk's module → workspaces map (`frappe.boot.module_wise_workspaces`)
+/// from Workspace rows `{name, module}` that are already public, not
+/// per-user, and oldest first.
+Map<String, List<String>> moduleWorkspacesFromRows(List<dynamic> rows) {
+  final out = <String, List<String>>{};
+  for (final r in rows) {
+    if (r is! Map) continue;
+    final module = r['module'], name = r['name'];
+    if (module is String && module.isNotEmpty && name is String) {
+      out.putIfAbsent(module, () => []).add(name);
+    }
+  }
+  return out;
+}
+
+/// The parts of Desk's boot data (`frappe.boot`) that decide which group
+/// Desk's breadcrumb names for a screen.
+class DeskBoot {
+  /// `module_wise_workspaces`: module → public workspaces, oldest first.
+  /// The v15 breadcrumb takes the first one.
+  final Map<String, List<String>> moduleWorkspaces;
+
+  /// v16 `workspace_sidebar_item`: lower-cased sidebar title →
+  /// `{label, app, items: [{link_to, …}]}`, in Desk's order. Empty on v15.
+  final Map<String, Map<String, dynamic>> sidebars;
+
+  /// v16 `module_app`: module scrubbed (`lower_snake`) → app name.
+  final Map<String, String> moduleApp;
+
+  const DeskBoot({
+    this.moduleWorkspaces = const {},
+    this.sidebars = const {},
+    this.moduleApp = const {},
+  });
+}
+
+final _deskBootStart = RegExp(r'frappe\.boot\s*=\s*');
+
+/// The JSON text of the `{…}` object starting at [start], or `null`.
+String? _objectAt(String src, int start) {
+  if (start >= src.length || src[start] != '{') return null;
+  var depth = 0;
+  var inString = false;
+  for (var i = start; i < src.length; i++) {
+    final c = src[i];
+    if (inString) {
+      if (c == '\\') {
+        i++;
+      } else if (c == '"') {
+        inString = false;
+      }
+    } else if (c == '"') {
+      inString = true;
+    } else if (c == '{') {
+      depth++;
+    } else if (c == '}' && --depth == 0) {
+      return src.substring(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/// The boot object Desk embeds in its page: v15 writes
+/// `frappe.boot = JSON.parse("…")`, v16 `frappe.boot = {…}`.
+dynamic _bootFromHtml(String html) {
+  final m = _deskBootStart.firstMatch(html);
+  if (m == null) return null;
+  const parse = 'JSON.parse(';
+  if (html.startsWith(parse, m.end)) {
+    final lit = RegExp(r'"(?:[^"\\]|\\.)*"').matchAsPrefix(html, m.end + parse.length);
+    return lit == null ? null : jsonDecode(jsonDecode(lit.group(0)!) as String);
+  }
+  final obj = _objectAt(html, m.end);
+  return obj == null ? null : jsonDecode(obj);
+}
+
+/// [DeskBoot] from the page Desk serves (`/app` on v15, `/desk` on v16).
+/// `null` when the page carries no boot data (e.g. a login page).
+DeskBoot? deskBootFromHtml(String html) {
+  try {
+    final boot = _bootFromHtml(html);
+    if (boot is! Map) return null;
+    final mw = boot['module_wise_workspaces'];
+    final ws = boot['workspace_sidebar_item'];
+    final ma = boot['module_app'];
+    return DeskBoot(
+      moduleWorkspaces: {
+        if (mw is Map)
+          for (final e in mw.entries)
+            if (e.key is String && e.value is List)
+              e.key as String: [for (final n in e.value as List) if (n is String) n],
+      },
+      sidebars: {
+        if (ws is Map)
+          for (final e in ws.entries)
+            if (e.key is String && e.value is Map)
+              e.key as String: Map<String, dynamic>.from(e.value as Map),
+      },
+      moduleApp: {
+        if (ma is Map)
+          for (final e in ma.entries)
+            if (e.key is String && e.value is String) e.key as String: e.value as String,
+      },
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The v16 sidebar Desk opens for [entity] (a DocType or Report name) of
+/// [module] — `resolve_sidebar()` in Desk's `sidebar.js`, minus its
+/// history (current sidebar, last sidebar used for it): sidebars linking
+/// [entity], narrowed to the module's app; one left → it; several → the
+/// one named like the module; none → the module's own sidebar; still
+/// nothing → the first linking sidebar. `null` when no sidebar fits.
+String? resolveDeskSidebar(String entity, String? module, DeskBoot desk) {
+  var linking = <String>[
+    for (final e in desk.sidebars.entries)
+      if ((e.value['items'] as List? ?? const [])
+          .any((i) => i is Map && i['link_to'] == entity))
+        (e.value['label'] as String?) ?? e.key,
+  ];
+  String? pick;
+  if (module != null) {
+    final app = desk.moduleApp[module.toLowerCase().replaceAll(RegExp('[ -]'), '_')];
+    linking = <String>{
+      for (final s in linking)
+        if (desk.sidebars[s.toLowerCase()]?['app'] == app) s,
+    }.toList();
+  }
+  if (linking.length == 1) {
+    pick = linking.first;
+  } else if (linking.length > 1) {
+    pick = linking.where((s) => s.toLowerCase() == module?.toLowerCase()).firstOrNull;
+  } else if (module != null) {
+    final own = desk.sidebars[module.toLowerCase()];
+    if (own != null) pick = (own['label'] as String?) ?? module;
+  }
+  return pick ?? linking.firstOrNull;
+}
+
+/// Where [entity] sits in v16 [sidebar]: the label of the section break it
+/// is nested under (`null` above the first one, or for a top-level link
+/// after it) and its position. `null` when the sidebar doesn't link it.
+/// Mirrors Desk's nesting: a `child` link belongs to the last section break.
+({String? section, int index})? sidebarSpot(
+    String sidebar, String entity, DeskBoot desk) {
+  final items = desk.sidebars[sidebar.toLowerCase()]?['items'] as List? ?? const [];
+  String? section;
+  for (var i = 0; i < items.length; i++) {
+    final item = items[i];
+    if (item is! Map) continue;
+    if (item['type'] == 'Section Break') {
+      section = item['label'] as String?;
+    } else if (item['link_to'] == entity) {
+      return (section: item['child'] == 1 ? section : null, index: i);
+    }
+  }
+  return null;
+}
+
+/// Maps Frappe v15/v16 workspaces onto the app's screens.
 ///
 /// [pages] is `get_workspace_sidebar_items().pages` (already filtered by the
 /// server for module blocks, roles and domains, in sidebar order).
 /// [desktop] maps page name → `get_desktop_page(page)` (links already
 /// permission-filtered). [modules] maps [NavLink.key] → the DocType's /
-/// Report's Frappe module. Child workspaces fold into their top-level parent.
+/// Report's Frappe module. [desk] is what Desk's breadcrumb is built from.
+/// Child workspaces fold into their top-level parent.
 ///
-/// Each screen appears ONCE, in its native workspace (the first workspace
-/// whose module is the screen's module) — at the card/shortcut that
-/// workspace gives it, else at the top of that group. With no native
-/// workspace visible it goes where the first workspace lists it, else to
-/// its default group. Links to screens the app doesn't have are dropped.
-/// With no pages this yields the plain fallback menu.
+/// Each screen appears ONCE, in its native group — the one Desk's
+/// breadcrumb names: on v16 the sidebar [resolveDeskSidebar] picks, on v15
+/// (or with no fitting sidebar) the module's oldest public workspace, else
+/// the first sidebar workspace of that module — at the card/shortcut that
+/// group's workspace gives it (on v16: the sidebar's section break, in
+/// sidebar order), else at the top of that group.
+/// With no native workspace it goes where the first workspace lists it,
+/// else to its default group. Links to screens the app doesn't have are
+/// dropped. With no pages this yields the plain fallback menu.
 List<NavGroup> buildWorkspaceMenu(
   List<Map<String, dynamic>> pages,
   Map<String, Map<String, dynamic>> desktop, [
   Map<String, String> modules = const {},
+  DeskBoot desk = const DeskBoot(),
 ]) {
   final drawerLinks = kNavCatalog.where((l) => l.showInDrawer);
   final byKey = {for (final l in drawerLinks) l.key: l};
@@ -277,16 +443,42 @@ List<NavGroup> buildWorkspaceMenu(
       for (final s in (card['links'] as List? ?? const [])) {
         final key = '${(s['link_type'] ?? '').toString().toLowerCase()}:${s['link_to']}';
         if (!byKey.containsKey(key)) continue;
-        sections.putIfAbsent(label, () => []);
+        // v16 sections come from sidebars; seeding card labels would
+        // order them by the workspace page instead.
+        if (desk.sidebars.isEmpty) sections.putIfAbsent(label, () => []);
         listed.add((key, group, label));
       }
     }
   }
 
+  // Desk's breadcrumb rule wins over sidebar order: a module's home is its
+  // oldest public workspace, even one this user's sidebar doesn't show.
+  if (visible.isNotEmpty) {
+    for (final e in desk.moduleWorkspaces.entries) {
+      if (e.value.isEmpty) continue;
+      final ws = e.value.first;
+      final p = byName[ws];
+      nativeGroup[e.key] = p != null ? rootTitle(p) : ws;
+    }
+  }
+
   // One home per screen.
   final home = <String, (String, String?)>{};
+  final sidebarIndex = <String, int>{};
   for (final l in byKey.values) {
-    final native = nativeGroup[modules[l.key]];
+    final module = modules[l.key];
+    // Desk's route meta carries a module only for DocTypes.
+    final sidebar = visible.isEmpty
+        ? null
+        : resolveDeskSidebar(
+            l.linkTo, l.linkType == 'DocType' ? module : null, desk);
+    if (sidebar != null) {
+      final spot = sidebarSpot(sidebar, l.linkTo, desk);
+      home[l.key] = (sidebar, spot?.section);
+      if (spot != null) sidebarIndex[l.key] = spot.index;
+      continue;
+    }
+    final native = nativeGroup[module];
     final spots = listed.where((e) => e.$1 == l.key);
     final inNative = spots.where((e) => e.$2 == native);
     home[l.key] = native != null
@@ -296,9 +488,11 @@ List<NavGroup> buildWorkspaceMenu(
             : (l.group, l.section);
   }
 
-  // Screens at their workspace spot in workspace order, then the rest in
-  // catalog order.
+  // Screens in sidebar order, then at their workspace spot in workspace
+  // order, then the rest in catalog order.
   final order = [
+    ...(sidebarIndex.keys.toList()
+      ..sort((a, b) => sidebarIndex[a]!.compareTo(sidebarIndex[b]!))),
     for (final e in listed)
       if (home[e.$1] == (e.$2, e.$3)) e.$1,
     for (final l in byKey.values) l.key,
