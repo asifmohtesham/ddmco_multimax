@@ -1,1 +1,2 @@
-• The menu now files each screen under the same section as the ERP website, e.g. Pricing Rule under Accounting (or under Selling on newer ERP versions).
+• Sales Order items now show the Rate next to Qty; the per-row Warehouse is gone.
+• The barcode field on Sales Order items stays above the keyboard and sits flush with Add item.
