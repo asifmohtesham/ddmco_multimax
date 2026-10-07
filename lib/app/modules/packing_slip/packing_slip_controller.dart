@@ -4,7 +4,6 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/providers/packing_slip_provider.dart';
-import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
@@ -15,7 +14,6 @@ class PackingSlipController extends GetxController {
   final PackingSlipProvider _provider = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _dnProvider = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider _posProvider = Get.find<PosUploadProvider>();
-  final HomeController _homeController = Get.find<HomeController>();
 
   /// Exposed so filter widgets can call provider search helpers directly.
   PackingSlipProvider get packingSlipProvider => _provider;
@@ -66,7 +64,6 @@ class PackingSlipController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _homeController.activeScreen.value = ActiveScreen.packingSlip;
     // Seed a deep-linked filter BEFORE the initial fetch so only one, already
     // filtered, request runs (an onReady applyFilters would race this fetch).
     final args = Get.arguments;
