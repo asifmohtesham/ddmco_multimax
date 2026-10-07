@@ -445,13 +445,6 @@ class HomeController extends GetxController {
   List<PosUpload> _allFulfillmentUploads = [];
   List<String> _fulfillmentPrefixFilters = [];
 
-  List<BottomNavigationBarItem> get homeBottomBarItems => [
-    const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-    const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
-  ];
-
-  List<BottomNavigationBarItem> get currentBottomBarItems => homeBottomBarItems;
-
   @override
   void onInit() {
     super.onInit();
@@ -1377,7 +1370,6 @@ class HomeController extends GetxController {
     return 0;
   }
 
-  void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
   void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }
 
   void _updateActiveScreenForRoute(String route) {
