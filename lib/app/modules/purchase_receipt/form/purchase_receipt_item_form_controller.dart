@@ -439,13 +439,11 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
   /// Batch picker is available as soon as an item is loaded.
   /// For PR, batches are inbound so itemCode alone is sufficient to browse.
   @override
-  bool get canBrowseBatch => itemCode.value.isNotEmpty;
-
-  static const _kBatchPickerTag = 'pr_batch_picker';
+  bool get canBrowseBatches => itemCode.value.isNotEmpty;
 
   @override
   Future<String?> browseBatches() async {
-    if (!canBrowseBatch) return null;
+    if (!canBrowseBatches) return null;
     if (isValidatingBatch.value) return null;
 
     final ctx = Get.context;
@@ -611,7 +609,7 @@ class PurchaseReceiptItemFormController extends ItemSheetControllerBase
     // Apply picker-resolved warehouse immediately (before the API round-trip
     // in validateRack overwrites it) so resolvedWarehouse is correct as soon
     // as the rack is accepted — mirrors SE/DN behaviour.
-    if (result.warehouse != null && result.warehouse!.isNotEmpty) {
+    if (result.warehouse.isNotEmpty) {
       itemWarehouse.value = result.warehouse;
     }
     rackController.text = result.rackId;

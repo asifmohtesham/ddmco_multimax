@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
@@ -23,8 +22,6 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 // docs only — tree-shaken at compile time; surfaces TEC rules in IDE hover
-import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
-    show TecLifecycleRules; // ignore: unused_import
 
 /// Item-level sheet controller for Stock Entry.
 ///
@@ -478,7 +475,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   RxnString get selectedToWarehouse => _parent.toWarehouse;
 
-  @override
   RxString get selectedStockEntryType => _parent.stockEntryType;
 
   // ── Dual-rack actions ──────────────────────────────────────────────────────
@@ -531,7 +527,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
-  @override
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
       if (isSource) { resetSourceRackValidation(); } else { resetTargetRackValidation(); }
@@ -754,14 +749,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   double? _mrQty;
   String? _mrUom;
   String? _mrBatch;
-
-  // ── Whether this SE type requires a source rack ──────────────────────────
-  bool get _requiresSourceRack {
-    final t = _parent.stockEntryType.value;
-    return t == 'Material Issue' ||
-        t == 'Material Transfer' ||
-        t == 'Material Transfer for Manufacture';
-  }
 
   @override
   bool get showSourceRack {
