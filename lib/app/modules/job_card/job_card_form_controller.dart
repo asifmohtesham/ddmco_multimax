@@ -42,8 +42,6 @@ class JobCardFormController extends GetxController with DioErrorMixin {
   /// True while a toggle-employee PATCH is in-flight.
   final isSavingEmployees = false.obs;
 
-  bool _disposed = false;
-
   /// Fetches Active employees from ERP and stores in [availableEmployees].
   /// Safe to call multiple times — skips if the list is already populated.
   Future<void> loadAvailableEmployees() async {
@@ -225,19 +223,12 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   @override
   void onClose() {
-    _disposed = true;
     _ticker?.cancel();
     startTimeController.dispose();
     completeTimeController.dispose();
     completedQtyController.dispose();
     pauseQtyController.dispose();
     super.onClose();
-  }
-
-  // Wrapper to safely set isUpdatingStatus:
-  void _setUpdating(bool value) {
-    if (_disposed) return;
-    isUpdatingStatus.value = value;
   }
 
   // ── Computed guards ───────────────────────────────────────────────────────
@@ -1439,7 +1430,6 @@ class _EditTimeLogSheetState extends State<_EditTimeLogSheet> {
     final textTheme = Theme.of(context).textTheme;
     final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final navBarHeight = MediaQuery.of(context).viewPadding.bottom;
-    final padding   = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
       bottom: false,

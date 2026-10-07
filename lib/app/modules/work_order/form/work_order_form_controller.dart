@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
@@ -16,14 +15,11 @@ import 'package:multimax/app/data/models/work_order_operation_model.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/data/services/data_wedge_service.dart';
-import 'package:multimax/app/data/services/work_order_execution_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_bottom_sheet.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_column.dart';
 import 'package:multimax/app/shared/doctype_picker/doctype_picker_config.dart';
-import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
@@ -69,7 +65,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   final isFetchingWarehouses = false.obs;
   final isFetchingItems = false.obs;
   final isCheckingTransfer = false.obs;
-  final hasMaterialTransferSubmitted = false.obs;
 
   // ── Operations state ──────────────────────────────────────────────────────
   final isSubmitting = false.obs;
@@ -188,17 +183,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
 
   // ── Reset helpers ─────────────────────────────────────────────────────────
 
-  /// Clears every field that depends on the selected item.
-  /// Call this whenever the item is changed or the X button is tapped.
-  void _clearItemSelection() {
-    itemController.clear();
-    selectedItem.value = null;
-    selectedItemName.value = null;
-    _clearBomSelection();
-    bomOptions.clear();
-    isItemValid.value = false;
-  }
-
   /// Clears every field that depends on the selected BOM.
   /// Call this whenever the BOM changes so stale ops are removed
   /// immediately — before the async _applyBom() round-trip completes.
@@ -252,7 +236,7 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
       final List list = res.data['data'];
       final results = list.map((e) => Item.fromJson(e)).toList();
       return results.where((item) {
-        final itemCode = (item.itemCode ?? '').trim();
+        final itemCode = item.itemCode.trim();
         return itemCode == barcode.substring(0, 7);
       }).toList();
     }
@@ -261,9 +245,9 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
 
   Future<void> _applyScannedItemSelection(Item item) async {
     selectedItem.value = item.itemCode;
-    itemController.text = item.itemCode ?? '';
+    itemController.text = item.itemCode;
     _clearBomSelection();
-    await _autoLoadBom(item.itemCode ?? '');
+    await _autoLoadBom(item.itemCode);
     update();
   }
 
@@ -345,23 +329,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
     }
   }
 
-  // Checks whether at least one submitted "Material Transfer for Manufacture"
-  // Stock Entry exists for this Work Order.
-  // Uses material_transferred_for_manufacturing from the WO itself —
-  // ERP sets this > 0 only after a linked SE is submitted — so no
-  // extra API call is needed.
-  void _checkMaterialTransferSubmitted() {
-    final wo = workOrder.value;
-    if (wo == null) {
-      hasMaterialTransferSubmitted.value = false;
-      return;
-    }
-    // material_transferred_for_manufacturing is updated by ERP's
-    // update_work_order_qty() on SE submit. If it is > 0, at least one
-    // Material Transfer SE has been submitted for this WO.
-    hasMaterialTransferSubmitted.value =
-        (wo.materialTransferredForManufacturing ?? 0) > 0;
-  }
 
   // ── Reload ────────────────────────────────────────────────────────────────
   /// Re-fetches the current Work Order document from the server and refreshes
@@ -634,10 +601,6 @@ class WorkOrderFormController extends GetxController with BarcodeScanMixin, DioE
   // Without step 1+2, update_work_order_qty() skips
   // material_transferred_for_manufacturing (transfer_material_against="Job Card"
   // guard) and the WO status never transitions to "In Process".
-
-  // ── Dependency ────────────────────────────────────────────────────────
-  final WorkOrderExecutionService _executionService =
-  Get.find<WorkOrderExecutionService>();
 
   /// Tap handler for "Execute Work Order" button.
   /// Validates the WO state, resolves the items payload, then navigates

@@ -3,7 +3,6 @@ import 'dart:developer';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:intl/intl.dart';
 
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
@@ -14,7 +13,6 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
@@ -36,7 +34,6 @@ class PurchaseReceiptFormController extends GetxController
   final PurchaseOrderProvider   _poProvider     = Get.find<PurchaseOrderProvider>();
   final ApiProvider             _apiProvider    = Get.find<ApiProvider>();
   final ScanService             _scanService    = Get.find<ScanService>();
-  final StorageService          _storageService = Get.find<StorageService>();
   final DataWedgeService        _dataWedgeService = Get.find<DataWedgeService>();
 
   String name = Get.arguments['name'];
@@ -619,11 +616,6 @@ class PurchaseReceiptFormController extends GetxController
     }
 
     if (editingItem != null) ensureItemKey(editingItem);
-
-    Future<void> onSubmit() async {
-      await child.submit();
-      await saveDocument();
-    }
 
     isItemSheetOpen.value = true;
     log('[PR:_openItemSheet] isItemSheetOpen → true', name: 'PR');

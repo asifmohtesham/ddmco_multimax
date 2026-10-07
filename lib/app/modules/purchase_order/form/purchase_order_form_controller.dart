@@ -6,7 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/providers/purchase_order_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:intl/intl.dart';
@@ -30,7 +29,6 @@ class PurchaseOrderFormController extends GetxController
   final PurchaseOrderProvider _provider         = Get.find<PurchaseOrderProvider>();
   final ApiProvider           _apiProvider      = Get.find<ApiProvider>();
   final ScanService           _scanService      = Get.find<ScanService>();
-  final StorageService        _storageService   = Get.find<StorageService>();
   final DataWedgeService      _dataWedgeService = Get.find<DataWedgeService>();
   final PermissionService _permissionService = Get.find<PermissionService>();
 
