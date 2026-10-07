@@ -1,1 +1,2 @@
-• POS Upload: opening a POS Upload from search or the POS & DN Item Rate report no longer depends on the POS Upload list having been opened first.
+• Purchase Order: opening a Purchase Order from the Home screen or search no longer fails when the Purchase Order list has not been opened first.
+• Delivery Note, Item and Work Order forms now load their own data services when opened directly.
