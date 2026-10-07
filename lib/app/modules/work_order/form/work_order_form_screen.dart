@@ -650,7 +650,6 @@ class _WorkOrderForm extends StatelessWidget {
             // [5] Finish — shown when WO is "In Process" and producedQty < qty.
             // Navigates to Stock Entry: Manufacture prefilled form.
             Obx(() {
-              final wo = controller.workOrder.value;
               final executing = controller.isExecuting.value;
               final canFinish = controller.canFinish;
               if (!canFinish) return const SizedBox.shrink();
@@ -726,8 +725,8 @@ class _BomOperationsPreview extends StatelessWidget {
           final idx = entry.key;
           final op = entry.value;
           final hasWorkstation = (op.workstation ?? '').isNotEmpty;
-          final timeLabel = op.timeInMins != null && op.timeInMins! > 0
-              ? _fmtTime(op.timeInMins!)
+          final timeLabel = op.timeInMins > 0
+              ? _fmtTime(op.timeInMins)
               : null;
 
           return Container(
@@ -1557,8 +1556,8 @@ class _JobCardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final name = jc.name ?? '';
-    final status = jc.status ?? 'Open';
+    final name = jc.name;
+    final status = jc.status;
     final clr = _statusColor(status, cs);
 
     // Safe accessors for additional display fields
