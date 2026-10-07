@@ -1,2 +1,1 @@
-• Stock Entry: fixed a memory leak where each visit to a Stock Entry kept running in the background.
-• Internal clean-up across form screens. No other visible changes.
+• Internal clean-up across form screens. No visible changes.
