@@ -11,6 +11,7 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/home/widgets/pos_upload_scan_sheets.dart';
+import 'package:multimax/app/modules/home/widgets/sales_order_pick_sheet.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -1121,6 +1122,97 @@ class HomeController extends GetxController {
       GlobalSnackbar.error(message: 'Invalid Rack QR or Network Error');
     } finally {
       isRackScanning.value = false;
+    }
+  }
+
+  // --- Sales Order → Delivery Note ---
+  // Dashboard → Sales Order lists submitted orders with something left to
+  // deliver; picking one resumes its draft Delivery Note or starts a new
+  // scan-to-pick DN bound to the order.
+  final openSalesOrders = <OpenSalesOrder>[].obs;
+  List<OpenSalesOrder> _allOpenSalesOrders = [];
+  final isFetchingOpenSalesOrders = false.obs;
+  final openSalesOrderQuery = ''.obs;
+  final openingSalesOrder = RxnString();
+
+  Future<void> fetchOpenSalesOrders() async {
+    if (isFetchingOpenSalesOrders.value) return;
+    isFetchingOpenSalesOrders.value = true;
+    try {
+      final res = await _apiProvider.getDocumentList('Sales Order',
+          limit: 200,
+          filters: {
+            'docstatus': 1,
+            'status': ['in', ['To Deliver and Bill', 'To Deliver']],
+            'per_delivered': ['<', 100],
+          },
+          fields: const [
+            'name', 'customer', 'customer_name', 'delivery_date',
+            'per_delivered', 'total_qty',
+          ],
+          orderBy: 'delivery_date asc, modified desc');
+      final data = res.data is Map ? res.data['data'] : null;
+      if (res.statusCode == 200 && data is List) {
+        _allOpenSalesOrders = data
+            .map((e) => OpenSalesOrder.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        filterOpenSalesOrders(openSalesOrderQuery.value);
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load Sales Orders');
+    } finally {
+      isFetchingOpenSalesOrders.value = false;
+    }
+  }
+
+  void filterOpenSalesOrders(String query) {
+    openSalesOrderQuery.value = query;
+    openSalesOrders
+        .assignAll(_allOpenSalesOrders.where((o) => o.matches(query)));
+  }
+
+  Future<void> showSalesOrderPickSheet() async {
+    openSalesOrderQuery.value = '';
+    openSalesOrders.clear();
+    fetchOpenSalesOrders();
+    await Get.bottomSheet(
+      const SafeArea(child: SalesOrderPickSheet()),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  /// Resume this order's draft DN if one exists (so two people don't start
+  /// parallel DNs for the same order), otherwise start a new one.
+  Future<void> openSalesOrderDelivery(OpenSalesOrder so) async {
+    if (openingSalesOrder.value != null) return;
+    openingSalesOrder.value = so.name;
+    try {
+      final res = await _deliveryNoteProvider.getDeliveryNotes(
+        limit: 1,
+        filters: {
+          'docstatus': 0,
+          'Delivery Note Item': ['against_sales_order', '=', so.name],
+        },
+      );
+      final list = (res.data is Map ? res.data['data'] : null) as List?;
+      Get.back();
+      if (list != null && list.isNotEmpty) {
+        final dn = list.first['name'].toString();
+        GlobalSnackbar.info(message: 'Resuming draft $dn');
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+            arguments: {'name': dn, 'mode': 'edit'});
+      } else {
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+          'name': '',
+          'mode': 'new',
+          'salesOrderName': so.name,
+        });
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not open ${so.name}: $e');
+    } finally {
+      openingSalesOrder.value = null;
     }
   }
 
