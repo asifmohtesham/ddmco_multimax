@@ -1,2 +1,1 @@
-• Sales Order items now show the Rate next to Qty; the per-row Warehouse is gone.
-• The barcode field on Sales Order items stays above the keyboard and sits flush with Add item.
+• POS Upload: filtering Items by a case no longer repeats the case name in a strip below the case chips.
