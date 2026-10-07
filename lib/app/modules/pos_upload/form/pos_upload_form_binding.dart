@@ -11,6 +11,7 @@ class PosUploadFormBinding extends Bindings {
     Get.lazyPut<DeliveryNoteProvider>(() => DeliveryNoteProvider());
     Get.lazyPut<StockEntryProvider>(() => StockEntryProvider());
     Get.lazyPut<PackingSlipProvider>(() => PackingSlipProvider());
+    Get.lazyPut<PosUploadProvider>(() => PosUploadProvider(), fenix: true);
     Get.lazyPut<PosUploadFormController>(() => PosUploadFormController());
   }
 }
