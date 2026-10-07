@@ -1084,102 +1084,6 @@ class _DateTimeField extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-  final String   value;
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    return Row(
-      children: [
-        Icon(icon, size: 15, color: cs.onSurfaceVariant),
-        const SizedBox(width: 6),
-        Text(
-          '$label: ',
-          style: textTheme.bodySmall
-              ?.copyWith(color: cs.onSurfaceVariant),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: textTheme.bodySmall?.copyWith(
-              color: cs.onSurface,
-              fontWeight: FontWeight.w600,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _JobCardAppBarTitle extends StatelessWidget {
-  final String title;
-  final String? assignedTo;
-
-  const _JobCardAppBarTitle({
-    required this.title,
-    this.assignedTo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-    final assigned  = (assignedTo ?? '').trim();
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        if (assigned.isNotEmpty) ...[
-          const SizedBox(height: 2),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.person_outline,
-                size: 14,
-                color: cs.onPrimary.withValues(alpha: 0.85),
-              ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  'Assigned to: $assigned',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: cs.onPrimary.withValues(alpha: 0.95),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
   const _ErrorState({required this.onRetry});
@@ -1301,14 +1205,12 @@ class _LinkedDocTile extends StatelessWidget {
   /// Provide [onTap] only when [value] is non-empty.
   /// When null the tile renders identically to _ReadOnlyFieldTile.
   final VoidCallback? onTap;
-  final String?       subtitle;
 
   const _LinkedDocTile({
     required this.icon,
     required this.label,
     required this.value,
     this.onTap,
-    this.subtitle,
   });
 
   @override
@@ -1349,15 +1251,6 @@ class _LinkedDocTile extends StatelessWidget {
                       fontWeight: isEmpty ? FontWeight.normal : FontWeight.w600,
                     ),
                   ),
-                  if ((subtitle ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle!,
-                      style: textTheme.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -1775,7 +1668,6 @@ class _EditableHeaderSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs        = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
 
     return Container(
       decoration: BoxDecoration(
