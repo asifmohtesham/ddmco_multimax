@@ -700,7 +700,7 @@ class _ItemsTabState extends State<_ItemsTab> {
           );
         }),
 
-        // ── Progress summary strip ─────────────────────────────────────────────
+        // ── Linked-doc loading indicator ───────────────────────────────────────
         Obx(() {
           final isLoadingLinked = ctrl.isLoadingLinked.value;
           final isLoadingPS = ctrl.isLoadingPackingSlips.value;
@@ -726,26 +726,7 @@ class _ItemsTabState extends State<_ItemsTab> {
             );
           }
 
-          final activeCase = ctrl.activeCaseFilter.value;
-          if (activeCase == null) return const SizedBox.shrink();
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainer,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cs.outlineVariant),
-              ),
-              child: _SummaryChip(
-                icon: Icons.inventory_outlined,
-                label: activeCase.label,
-                color: cs.tertiary,
-              ),
-            ),
-          );
+          return const SizedBox.shrink();
         }),
 
         // ── List ──────────────────────────────────────────────────────────
@@ -1348,32 +1329,6 @@ class _InfoChip extends StatelessWidget {
     return tooltip != null
         ? Tooltip(message: tooltip!, child: chip)
         : chip;
-  }
-}
-
-class _SummaryChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _SummaryChip(
-      {required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: Theme.of(context)
-              .textTheme
-              .labelMedium
-              ?.copyWith(color: color, fontWeight: FontWeight.w600),
-        ),
-      ],
-    );
   }
 }
 
