@@ -1,2 +1,1 @@
-• Purchase Order: opening a Purchase Order from the Home screen or search no longer fails when the Purchase Order list has not been opened first.
-• Delivery Note, Item and Work Order forms now load their own data services when opened directly.
+• Reliability: Job Card, Material Request, Job Card Summary and Packing Slip screens now load their own data services instead of relying on the Home screen.
