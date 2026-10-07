@@ -1,1 +1,1 @@
-• POS Upload: filtering Items by a case no longer repeats the case name in a strip below the case chips.
+• POS Upload: opening a POS Upload from search or the POS & DN Item Rate report no longer depends on the POS Upload list having been opened first.
