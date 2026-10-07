@@ -1,1 +1,1 @@
-• Reliability: Job Card, Material Request, Job Card Summary and Packing Slip screens now load their own data services instead of relying on the Home screen.
+• Internal clean-up: removed unused code. No visible changes.
