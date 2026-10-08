@@ -1,1 +1,2 @@
-• Internal clean-up across form screens. No visible changes.
+New: Sales Order → Delivery Note. Tap Sales Order on the Dashboard, pick an open order and scan its items. Only items on the order can be scanned, quantities are capped at what is still to deliver, and progress shows per line. Reopening an order resumes its draft Delivery Note.
+Fixes: rates and price lists not loading on newer ERPNext servers; Delivery Notes made from a Sales Order losing their link to it after editing in the app.
