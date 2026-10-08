@@ -1,2 +1,1 @@
-• Purchase Order: opening a Purchase Order from the Home screen or search no longer fails when the Purchase Order list has not been opened first.
-• Delivery Note, Item and Work Order forms now load their own data services when opened directly.
+• Internal clean-up across form screens. No visible changes.

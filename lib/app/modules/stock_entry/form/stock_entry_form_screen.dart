@@ -37,8 +37,8 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
 
       final String title = entry == null
           ? 'Loading...'
-          : (entry.name?.isNotEmpty == true
-              ? entry.name!
+          : (entry.name.isNotEmpty
+              ? entry.name
               : 'New ${controller.stockEntryType.value}');
 
       final isDirty    = controller.isDirty.value;

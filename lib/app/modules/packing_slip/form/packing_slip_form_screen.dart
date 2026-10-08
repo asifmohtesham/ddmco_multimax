@@ -343,7 +343,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
         onTap: () {
           if (isInCurrentSlip) {
             controller.isLoadingItemEdit.value  = true;
-            controller.loadingForItemName.value = currentItem!.name;
+            controller.loadingForItemName.value = currentItem.name;
             controller.editItem(currentItem);
             controller.isLoadingItemEdit.value  = false;
             controller.loadingForItemName.value = null;
@@ -450,7 +450,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
 
       final Widget rowWidget = (isInCurrentSlip && canEdit)
           ? Dismissible(
-              key:       ValueKey(currentItem!.name),
+              key:       ValueKey(currentItem.name),
               direction: DismissDirection.endToStart,
               confirmDismiss: (_) async {
                 controller.deleteItem(currentItem);

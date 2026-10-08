@@ -6,7 +6,6 @@ import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
-import 'package:collection/collection.dart';
 import 'purchase_order_form_controller.dart';
 
 /// Item-level sheet controller for Purchase Order.

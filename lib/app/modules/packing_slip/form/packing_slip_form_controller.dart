@@ -16,7 +16,6 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
@@ -37,7 +36,6 @@ class PackingSlipFormController extends GetxController
   final DeliveryNoteProvider _deliveryNoteProvider  = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider    _posUploadProvider     = Get.find<PosUploadProvider>();
   final ApiProvider          _apiProvider           = Get.find<ApiProvider>();
-  final StorageService       _storageService        = Get.find<StorageService>();
   final DataWedgeService     _dataWedgeService      = Get.find<DataWedgeService>();
   final ScanService          _scanService           = Get.find<ScanService>();
 
@@ -164,12 +162,6 @@ class PackingSlipFormController extends GetxController
   // ── Sheet validation predicates ────────────────────────────────────────────
   // Each function answers exactly one question about validity.
   // Returns true when the sheet should be considered INVALID for that reason.
-
-  /// Returns true when the qty text is unparseable or zero / negative.
-  bool _isQtyInvalid(String text) {
-    final qty = double.tryParse(text);
-    return qty == null || qty <= 0;
-  }
 
   // ---------------------------------------------------------------------------
   // Pop / discard
@@ -555,7 +547,7 @@ class PackingSlipFormController extends GetxController
   /// "no upload loaded" ([double.infinity]).
   double _posItemQtyForIdx(int idx) {
     final item = posUpload.value!.items.firstWhereOrNull((i) => i.idx == idx);
-    return item?.quantity?.toDouble() ?? 0.0;
+    return item?.quantity.toDouble() ?? 0.0;
   }
 
   // ── Public cap resolver ────────────────────────────────────────────────────
@@ -790,7 +782,7 @@ class PackingSlipFormController extends GetxController
   /// context field, then delegates to the sheet opener.
   /// Single responsibility: success-path routing after a resolved scan.
   Future<void> _handleScanResult(ScanResult result) async {
-    currentScannedEan = result.rawCode ?? '';
+    currentScannedEan = result.rawCode;
     final match = _findItemInDN(
       result.itemData!.itemCode,
       result.batchNo,

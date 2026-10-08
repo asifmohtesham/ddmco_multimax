@@ -7,15 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:collection/collection.dart';
-import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
@@ -44,7 +41,6 @@ class DeliveryNoteFormController extends GetxController
   final ApiProvider           _apiProvider       = Get.find<ApiProvider>();
   final WorkOrderProvider     _woProvider        = Get.find<WorkOrderProvider>();
   final ScanService           _scanService       = Get.find<ScanService>();
-  final StorageService        _storageService    = Get.find<StorageService>();
   final DataWedgeService      _dataWedgeService  = Get.find<DataWedgeService>();
 
   final String  name = Get.arguments['name'];
@@ -669,7 +665,7 @@ class DeliveryNoteFormController extends GetxController
 
       switch (result.type) {
         case ScanType.item:
-          currentScannedEan = result.rawCode ?? '';
+          currentScannedEan = result.rawCode;
           await _handleScanResult(result);
           break;
         case ScanType.batch:
@@ -910,7 +906,7 @@ class _MultipleMatchSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             ...candidates.map((item) => ListTile(
-                  title: Text(item.itemName ?? item.itemCode),
+                  title: Text(item.itemName),
                   subtitle: Text(item.itemCode),
                   onTap: () async {
                     Get.back();
@@ -922,7 +918,7 @@ class _MultipleMatchSheet extends StatelessWidget {
                     }
                     await parent._openItemSheet(
                       itemCode:  item.itemCode,
-                      itemName:  item.itemName ?? item.itemCode,
+                      itemName:  item.itemName,
                       variantOf: item.variantOf,
                     );
                   },

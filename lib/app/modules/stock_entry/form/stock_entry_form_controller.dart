@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -24,7 +23,6 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
-import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
@@ -45,7 +43,6 @@ class StockEntryFormController extends GetxController
   final PosUploadProvider   _posProvider    = Get.find<PosUploadProvider>();
   final StorageService      _storageService = Get.find<StorageService>();
   final ScanService         _scanService    = Get.find<ScanService>();
-  final DataWedgeService    _dataWedgeService = Get.find<DataWedgeService>();
 
   // ── Arguments ───────────────────────────────────────────────────────────────────────────────────
   // NOTE: these MUST be assigned inside onInit(), not as field initializers.
@@ -117,7 +114,6 @@ class StockEntryFormController extends GetxController
   final ScrollController scrollController = ScrollController();
 
   Timer?  _autoSubmitTimer;
-  Worker? _scanWorker;
   Worker? _fromWarehouseWorker;
   Worker? _toWarehouseWorker;
   Worker? _stockEntryTypeWorker;
@@ -337,7 +333,6 @@ class StockEntryFormController extends GetxController
     argStockEntryType                  = Get.arguments?['stockEntryType']    as String?;
     argCustomReferenceNo               = Get.arguments?['customReferenceNo'] as String?;
     argWorkOrderName                   = Get.arguments?['workOrderName']     as String?;
-    final String? argWorkOrder         = Get.arguments?['workOrder'];
 
     initScanWiring();
     _initDependencies();
@@ -351,12 +346,6 @@ class StockEntryFormController extends GetxController
   void _initDependencies() {
     fetchWarehouses();
     fetchDocumentTypes();
-
-    // Doc-level scan worker: fires only when no item sheet is open.
-    // Sheet-level scans are owned by BarcodeAwareMixin on the child controller.
-    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
-      if (code.isNotEmpty && !isItemSheetOpen.value) scanBarcode(code);
-    });
 
     _fromWarehouseWorker  = ever(fromWarehouse,  (_) => _markDirty());
     _toWarehouseWorker    = ever(toWarehouse,     (_) => _markDirty());
@@ -1238,12 +1227,8 @@ class StockEntryFormController extends GetxController
     // Auto-submit wiring goes AFTER initialise() so the timer is not
     // started on an uninitialised controller.
     //
-    // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
-    // The enabled-flag, delay, and sheet-open guard are inlined here so
-    // the base Worker fires only when the sheet is still open and the
-    // document is editable.
-    final autoEnabled    = _storageService.getAutoSubmitEnabled();
-    final autoDelaySecs  = _storageService.getAutoSubmitDelay();
+    // Auto-submit guards (enabled flag, delay, sheet open, editable) live in
+    // _wireAutoSubmit.
     _wireAutoSubmit(child);
     await _openItemSheet(child);
   }
@@ -1280,9 +1265,6 @@ class StockEntryFormController extends GetxController
         scannedEan8:      currentScannedEan,
       );
 
-      // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
-      final autoEnabled   = _storageService.getAutoSubmitEnabled();
-      final autoDelaySecs = _storageService.getAutoSubmitDelay();
       _wireAutoSubmit(child);
 
       ensureItemKey(item);
@@ -1707,8 +1689,8 @@ class StockEntryFormController extends GetxController
     if (current == null) return;
     DateTime initial;
     try {
-      initial = current.postingDate != null && current.postingDate!.isNotEmpty
-          ? DateFormat('yyyy-MM-dd').parse(current.postingDate!)
+      initial = current.postingDate.isNotEmpty
+          ? DateFormat('yyyy-MM-dd').parse(current.postingDate)
           : DateTime.now();
     } catch (_) {
       initial = DateTime.now();
