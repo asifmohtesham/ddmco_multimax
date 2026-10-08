@@ -25,6 +25,7 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 
 // Parent controller
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/delivery_note/form/so_pick.dart';
 import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 
 /// Item-level sheet controller for Delivery Note.
@@ -108,8 +109,20 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── Base abstract overrides ────────────────────────────────────────────────
   @override
-  String? get resolvedWarehouse =>
-      itemWarehouse.value ?? _parent.setWarehouse.value;
+  String? get resolvedWarehouse {
+    final header = _parent.setWarehouse.value;
+    return itemWarehouse.value ??
+        ((header != null && header.isNotEmpty) ? header : soLine?.warehouse);
+  }
+
+  /// Sales Order line this row is picked against (SO mode only): the edited
+  /// row's own `so_detail`, else the line the parent resolved at scan time.
+  SoPickLine? soLine;
+
+  /// Open qty on [soLine] excluding the row being edited.
+  double get soRemaining => soLine == null
+      ? double.infinity
+      : _parent.soRemainingFor(soLine!, excludeRowName: editingItemName.value);
 
   @override bool  get requiresBatch => true;
   @override bool  get requiresRack  => false;
@@ -157,6 +170,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         final allowedByPos = (posQty - used).clamp(0.0, posQty);
         ceil = _applyConstraint(ceil, allowedByPos);
       }
+    }
+    if (soLine != null) {
+      // Hard cap even at 0 (_applyConstraint ignores non-positive values).
+      final rem = soRemaining;
+      ceil = ceil == null ? rem : (rem < ceil ? rem : ceil);
     }
     return ceil ?? double.infinity;
   }
@@ -421,6 +439,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     DeliveryNoteItem? editingItem,
   }) {
     _seedContext(parent: parent, scannedEan8: scannedEan8);
+    soLine = editingItem != null
+        ? parent.salesOrder.value?.lineByDetail(editingItem.soDetail)
+        : parent.pendingSoLine;
 
     if (editingItem != null) {
       _initEdit(item: editingItem, variantOf: variantOf);
@@ -816,11 +837,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       rate:                      0.0,
       batchNo:                   batchController.text.trim(),
       rack:                      rack.isEmpty            ? null : rack,
-      warehouse:                 itemWarehouse.value,
+      warehouse:                 itemWarehouse.value ?? soLine?.warehouse,
       itemGroup:                 itemGroup.value,
       customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
-    );
+    ).withSoLine(soLine, _parent.salesOrder.value?.name);
   }
 
   /// Responsibility: write [item] into the parent document's items list —
@@ -857,7 +878,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         (existing.batchNo ?? '') == (incoming.batchNo ?? '') &&
         (existing.rack ?? '') == (incoming.rack ?? '') &&
         (existing.customInvoiceSerialNumber ?? '') ==
-            (incoming.customInvoiceSerialNumber ?? '');
+            (incoming.customInvoiceSerialNumber ?? '') &&
+        (existing.soDetail ?? '') == (incoming.soDetail ?? '');
   }
 
   /// Responsibility: defer the Rx rebuild to the next frame so the sheet's

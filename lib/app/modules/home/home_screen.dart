@@ -564,6 +564,13 @@ class HomeScreen extends GetView<HomeController> {
             onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
           ),
           _QuickActionConfig(
+            label: 'Sales Order',
+            icon: Icons.point_of_sale_outlined,
+            color: Colors.teal,
+            doctype: 'Sales Order',
+            onTap: controller.showSalesOrderPickSheet,
+          ),
+          _QuickActionConfig(
             label: 'Delivery Note',
             icon: Icons.local_shipping_outlined,
             color: Colors.blue,

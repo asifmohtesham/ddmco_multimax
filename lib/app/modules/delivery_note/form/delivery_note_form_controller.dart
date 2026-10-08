@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:collection/collection.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
@@ -32,6 +33,7 @@ import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
 
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
+import 'so_pick.dart';
 
 class DeliveryNoteFormController extends GetxController
     with OptimisticLockingMixin, ControllerFeedbackMixin, RealtimeSyncMixin {
@@ -50,6 +52,9 @@ class DeliveryNoteFormController extends GetxController
 
   final String? posUploadCustomer = Get.arguments['posUploadCustomer'];
   final String? posUploadNameArg  = Get.arguments['posUploadName'];
+
+  /// Set when the DN is started from a Sales Order (Dashboard → Sales Order).
+  final String? salesOrderNameArg = Get.arguments['salesOrderName'];
 
   // ── Document-level state ──────────────────────────────────────────────────
   var isLoading    = true.obs;
@@ -73,6 +78,14 @@ class DeliveryNoteFormController extends GetxController
 
   var deliveryNote = Rx<DeliveryNote?>(null);
   var posUpload    = Rx<PosUpload?>(null);
+
+  /// The Sales Order this DN is picked against. While set, only items on the
+  /// order can be scanned and each row is capped at its line's open qty.
+  var salesOrder   = Rx<SoPickContext?>(null);
+  bool get isSoMode => salesOrder.value != null;
+
+  /// Header from `make_delivery_note`, sent once when the new DN is created.
+  Map<String, dynamic> _soHeader = const {};
 
   final TextEditingController barcodeController = TextEditingController();
   var expandedItemCode = ''.obs;
@@ -159,7 +172,10 @@ class DeliveryNoteFormController extends GetxController
   // ── Dirty tracking ────────────────────────────────────────────────────────
   void checkForChanges() {
     if (deliveryNote.value == null) return;
-    if (mode == 'new') { isDirty.value = true; scheduleAutoSave(); return; }
+    if (mode == 'new') {
+      if (isSoMode && items.isEmpty) { isDirty.value = false; return; }
+      isDirty.value = true; scheduleAutoSave(); return;
+    }
     if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
     final tempNote = DeliveryNote(
       name:         deliveryNote.value!.name,
@@ -224,8 +240,13 @@ class DeliveryNoteFormController extends GetxController
     if (posUploadNameArg != null && posUploadNameArg!.isNotEmpty) {
       await fetchPosUpload(posUploadNameArg!);
     }
+    if (salesOrderNameArg != null && salesOrderNameArg!.isNotEmpty) {
+      await _startFromSalesOrder(salesOrderNameArg!);
+    }
     await _validateCustomerOnOpen();
-    isDirty.value   = true;
+    // An untouched SO-bound DN has nothing to lose; leaving it is not
+    // "discarding changes".
+    isDirty.value   = !(isSoMode && items.isEmpty);
     _originalJson   = '';
     isLoading.value = false;
   }
@@ -239,7 +260,12 @@ class DeliveryNoteFormController extends GetxController
         deliveryNote.value  = note;
         setWarehouse.value  = note.setWarehouse;
         _updateOriginalState(note);
-        if (note.poNo != null && note.poNo!.isNotEmpty) {
+        final soName = note.items
+            .map((i) => i.againstSalesOrder)
+            .firstWhereOrNull((s) => s != null && s.isNotEmpty);
+        if (soName != null) {
+          await fetchSalesOrder(soName);
+        } else if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
         await _validateCustomerOnOpen();
@@ -270,6 +296,84 @@ class DeliveryNoteFormController extends GetxController
       log('[DN:fetchPosUpload] error: $e', name: 'DN');
     }
   }
+
+  // ── Sales Order context ───────────────────────────────────────────────────
+  Future<void> fetchSalesOrder(String soName) async {
+    try {
+      final res = await _apiProvider.getDocument('Sales Order', soName);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        // Rows without a header warehouse ship from their SO line's.
+        salesOrder.value = SoPickContext.fromSalesOrder(
+            Map<String, dynamic>.from(res.data['data']));
+      }
+    } catch (e) {
+      log('[DN:fetchSalesOrder] error: $e', name: 'DN');
+      showBanner('Could not load Sales Order $soName', type: BannerType.error);
+    }
+  }
+
+  /// New DN from a Sales Order: header from ERPNext's own mapper (company,
+  /// price list, taxes, addresses), items left empty so only what is
+  /// actually scanned gets delivered.
+  Future<void> _startFromSalesOrder(String soName) async {
+    await fetchSalesOrder(soName);
+    final so = salesOrder.value;
+    if (so == null) return;
+    try {
+      final mapped = await _apiProvider.callMethodPost(
+          'erpnext.selling.doctype.sales_order.sales_order.make_delivery_note',
+          params: {'source_name': soName});
+      final doc = (mapped.data as Map?)?['message'];
+      if (doc is Map) {
+        _soHeader = SoPick.headerFromMappedDn(Map<String, dynamic>.from(doc));
+      }
+    } catch (e) {
+      log('[DN:_startFromSalesOrder] mapper error: $e', name: 'DN');
+    }
+    final wh = (_soHeader['set_warehouse'] as String?)?.isNotEmpty == true
+        ? _soHeader['set_warehouse'] as String
+        : so.commonWarehouse;
+    setWarehouse.value = wh;
+    deliveryNote.value = deliveryNote.value?.copyWith(
+      customer: so.customer,
+      currency: (_soHeader['currency'] as String?) ?? deliveryNote.value?.currency,
+      setWarehouse: wh,
+    );
+  }
+
+  /// Open qty left on [line] given the rows already in this DN.
+  double soRemainingFor(SoPickLine line, {String? excludeRowName}) =>
+      SoPick.remainingFor(line, items, excludeRowName: excludeRowName);
+
+  SoPickProgress get soProgress =>
+      SoPick.progress(salesOrder.value?.lines ?? const [], items);
+
+  /// SO line the scanned item goes to, or null after telling the operator
+  /// why it can't be picked.
+  SoPickLine? _resolveSoLineOrWarn(String itemCode, String itemName) {
+    final so = salesOrder.value;
+    if (so == null) return null;
+    final r = SoPick.resolveLine(so.lines, itemCode, items);
+    switch (r.outcome) {
+      case SoPickOutcome.ok:
+        return r.line;
+      case SoPickOutcome.notOnOrder:
+        HapticFeedback.heavyImpact();
+        GlobalSnackbar.error(
+            title: 'Not on this order',
+            message: '$itemName ($itemCode) is not on ${so.name}.');
+        return null;
+      case SoPickOutcome.fullyPicked:
+        HapticFeedback.mediumImpact();
+        GlobalSnackbar.warning(
+            title: 'Already picked',
+            message: 'All of $itemCode on ${so.name} is already picked.');
+        return null;
+    }
+  }
+
+  /// The SO line that a new item sheet for [itemCode] binds to.
+  SoPickLine? pendingSoLine;
 
   // ── POS qty-cap helpers ───────────────────────────────────────────────────
   double posQtyCapForSerial(String serial) {
@@ -407,6 +511,7 @@ class DeliveryNoteFormController extends GetxController
     );
     child.disposeBarcodeListener();
     isItemSheetOpen.value = false;
+    pendingSoLine = null;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       child.disposeControllers();
@@ -465,7 +570,15 @@ class DeliveryNoteFormController extends GetxController
       final note = deliveryNote.value;
       if (note == null) return;
 
+      // An item-less draft fails ERPNext's mandatory check; nothing to save
+      // until the first item is picked.
+      if (mode == 'new' && isSoMode && note.items.isEmpty) return;
+
       final payload = note.toJson();
+      if (mode == 'new' && _soHeader.isNotEmpty) {
+        payload.addAll(_soHeader);
+        payload['customer'] = note.customer;
+      }
       payload['set_warehouse'] = setWarehouse.value ?? '';
 
       Response response;
@@ -583,6 +696,12 @@ class DeliveryNoteFormController extends GetxController
 
   Future<void> _handleScanResult(ScanResult result) async {
     isScanning.value = false;
+    if (isSoMode) {
+      final line = _resolveSoLineOrWarn(result.itemCode!,
+          result.itemData?.itemName ?? result.itemCode!);
+      if (line == null) return;
+      pendingSoLine = line;
+    }
     await _openItemSheet(
       itemCode:  result.itemCode!,
       itemName:  result.itemData?.itemName ?? result.itemCode!,
@@ -592,6 +711,33 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Future<void> _showMultipleMatchSheet(List<Item> candidates) async {
+    if (isSoMode) {
+      final codes = salesOrder.value!.lines
+          .map((l) => l.itemCode.trim().toLowerCase())
+          .toSet();
+      final onOrder = candidates
+          .where((c) => codes.contains(c.itemCode.trim().toLowerCase()))
+          .toList();
+      if (onOrder.isEmpty) {
+        GlobalSnackbar.error(
+            title: 'Not on this order',
+            message: 'None of the matching items are on ${salesOrder.value!.name}.');
+        return;
+      }
+      if (onOrder.length == 1) {
+        final item = onOrder.single;
+        final line = _resolveSoLineOrWarn(item.itemCode, item.itemName);
+        if (line == null) return;
+        pendingSoLine = line;
+        await _openItemSheet(
+          itemCode:  item.itemCode,
+          itemName:  item.itemName,
+          variantOf: item.variantOf,
+        );
+        return;
+      }
+      candidates = onOrder;
+    }
     await Get.bottomSheet(
       _MultipleMatchSheet(candidates: candidates, parent: this),
       isScrollControlled: true,
@@ -673,10 +819,17 @@ class DeliveryNoteFormController extends GetxController
 
   void setFilter(String filter) => itemFilter.value = filter;
 
-  int get allCount => posUpload.value?.items.length ??
-      (deliveryNote.value?.items.length ?? 0);
+  int get allCount {
+    if (isSoMode) return soProgress.totalLines;
+    return posUpload.value?.items.length ??
+        (deliveryNote.value?.items.length ?? 0);
+  }
 
   int get pendingCount {
+    if (isSoMode) {
+      final p = soProgress;
+      return p.totalLines - p.completeLines;
+    }
     if (posUpload.value == null) return 0;
     return posUpload.value!.items.where((posItem) {
       final serial = posItem.idx.toString();
@@ -687,6 +840,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   int get completedCount {
+    if (isSoMode) return soProgress.completeLines;
     if (posUpload.value == null) return 0;
     return posUpload.value!.items.where((posItem) {
       final serial = posItem.idx.toString();
@@ -757,6 +911,12 @@ class _MultipleMatchSheet extends StatelessWidget {
                   subtitle: Text(item.itemCode),
                   onTap: () async {
                     Get.back();
+                    if (parent.isSoMode) {
+                      final line = parent._resolveSoLineOrWarn(
+                          item.itemCode, item.itemName);
+                      if (line == null) return;
+                      parent.pendingSoLine = line;
+                    }
                     await parent._openItemSheet(
                       itemCode:  item.itemCode,
                       itemName:  item.itemName,
