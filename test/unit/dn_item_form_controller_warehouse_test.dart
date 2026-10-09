@@ -79,6 +79,14 @@ void _rackGroup() {
       );
     });
 
+    test('T-7: the refusal reason reaches the sheet, not a hidden snackbar',
+        () async {
+      final ctrl = ready(rack: '');
+      final ok = await ctrl.submitWithFeedback();
+      expect(ok, isFalse);
+      expect(ctrl.submitError.value, 'Scan or choose a rack');
+    });
+
     test('T-6: a rack passes the rack check', () async {
       final ctrl = ready(rack: 'KA-WH-DXB1-121D');
       // Proceeds past the precondition (and then needs a parent form, which

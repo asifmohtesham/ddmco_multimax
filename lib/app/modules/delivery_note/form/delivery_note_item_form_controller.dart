@@ -89,7 +89,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   void onInit() {
     super.onInit();
-    _serialWorker = ever(selectedSerial, (_) => validateSheet());
+    _serialWorker = ever(selectedSerial, (_) {
+      submitError.value = '';
+      validateSheet();
+    });
   }
 
   @override

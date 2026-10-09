@@ -127,6 +127,10 @@ abstract class ItemSheetControllerBase extends GetxController
   final RxBool   isRackValid           = false.obs;
   final RxBool   isValidatingRack      = false.obs;
   final RxString rackError             = RxString('');
+
+  /// Why the last Add/Update was refused, shown above the save button.
+  /// (A snackbar would render under the modal sheet and never be seen.)
+  final RxString submitError           = RxString('');
   final RxDouble batchBalance          = 0.0.obs;
   final RxDouble rackBalance           = 0.0.obs;
   final RxBool   saveButtonVisible     = true.obs;
@@ -418,6 +422,7 @@ abstract class ItemSheetControllerBase extends GetxController
       return false;
     }
     saveButtonState.value = SaveButtonState.loading;
+    submitError.value = '';
     try {
       await submit();
       saveButtonState.value = SaveButtonState.success;
@@ -427,10 +432,9 @@ abstract class ItemSheetControllerBase extends GetxController
       log('[ItemSheet] submitWithFeedback error: $e', name: 'ItemSheet');
       // submit() throws user-facing reasons ("Choose the invoice serial…");
       // without this the sheet only flashed red and staff could not tell why.
-      GlobalSnackbar.warning(
-          message: e is Exception
-              ? e.toString().replaceFirst('Exception: ', '')
-              : 'Could not add this item.');
+      submitError.value = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : 'Could not save this item.';
       saveButtonState.value = SaveButtonState.error;
       await Future.delayed(const Duration(milliseconds: 1500));
       saveButtonState.value = SaveButtonState.idle;
@@ -541,6 +545,7 @@ abstract class ItemSheetControllerBase extends GetxController
   void captureSnapshot() => snapshotState();
 
   void _resetSaveStateOnEdit() {
+    if (submitError.value.isNotEmpty) submitError.value = '';
     if (saveButtonState.value != SaveButtonState.idle) {
       saveButtonState.value = SaveButtonState.idle;
     }
