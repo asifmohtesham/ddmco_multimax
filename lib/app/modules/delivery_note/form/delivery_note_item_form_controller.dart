@@ -966,6 +966,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   Future<void> validateBatch(String batch) async {
     await super.validateBatch(batch);
+    // Like validateRack: re-evaluate once the balance has arrived. The sheet
+    // last validated while the lookup was in flight, so without this it kept
+    // "Batch has no available stock (balance: 0)" beside a Bal: 534 badge.
+    if (!isClosed) validateSheet();
     if (!isBatchValid.value) return;
     unawaited(maybeAutoFillRack());
   }
