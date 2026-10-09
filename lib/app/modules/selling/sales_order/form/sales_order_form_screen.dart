@@ -349,7 +349,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                       onPressed: controller.makeDeliveryNote,
                       icon: const Icon(Icons.local_shipping_outlined),
                       label: 'Create Delivery Note',
-                      loadingLabel: 'Creating…',
+                      loadingLabel: 'Opening…',
                       style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(48)),
                     ),

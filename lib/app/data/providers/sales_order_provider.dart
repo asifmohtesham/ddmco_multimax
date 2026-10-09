@@ -62,16 +62,6 @@ class SalesOrderProvider {
         'comment_by': email,
       });
 
-  /// Server-maps the SO to a DN, inserts it as a Draft, returns its name.
-  Future<String> makeDeliveryNote(String name) async {
-    final mapped = await _api.callMethodPost('$_so.make_delivery_note',
-        params: {'source_name': name});
-    final doc = (mapped.data as Map)['message'];
-    final res = await _api.callMethodPost('frappe.client.insert',
-        params: {'doc': jsonEncode(doc)});
-    return ((res.data as Map)['message'] as Map)['name'].toString();
-  }
-
   /// Request parameters for `get_item_details`.
   ///
   /// ERPNext v15 declares the payload parameter as `args`; v16 renamed it to

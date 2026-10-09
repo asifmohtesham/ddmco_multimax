@@ -3,6 +3,20 @@
 Dashboard → **Sales Order** tile → sheet of open orders → tap one → Delivery Note
 bound to that order. Built for Sales Users picking at the warehouse.
 
+## Pick List policy (organisation rule)
+A Delivery Note is **never pre-filled from its Sales Order**. Floor staff must physically scan
+every batched item so stock stays accurate in real time. So every SO → DN entry point opens
+the scan-to-pick DN through `SoDeliveryLauncher` (`lib/app/modules/delivery_note/so_delivery_launcher.dart`):
+
+| Entry point | Behaviour |
+|---|---|
+| Dashboard → Sales Order tile → pick an order | `SoDeliveryLauncher.open` |
+| Sales Order form → **Create Delivery Note** (button and ⋮ menu) | `SoDeliveryLauncher.open` |
+
+There is deliberately no "add all remaining items" shortcut. `test/unit/so_delivery_launcher_test.dart`
+fails if `make_delivery_note` is used anywhere except the DN form's header mapping, or if its
+output is saved with `frappe.client.insert`.
+
 ## Open orders sheet
 - `docstatus = 1`, `status in (To Deliver and Bill, To Deliver)`, `per_delivered < 100`,
   ordered by `delivery_date asc` (most urgent first). Due chip: Overdue / Due today / Due <date>.

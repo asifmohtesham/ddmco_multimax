@@ -17,6 +17,7 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/app_constants.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/delivery_note/so_delivery_launcher.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
@@ -768,9 +769,10 @@ class SalesOrderFormController extends GetxController
     isMakingDn.value = true;
     banner.value = null;
     try {
-      final dn = await _provider.makeDeliveryNote(name);
-      Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
-          arguments: {'name': dn, 'mode': 'edit'});
+      // Pick List policy: never pre-fill the DN with this order's items —
+      // open the scan-to-pick DN (resuming its draft if one exists).
+      final draft = await SoDeliveryLauncher.open(name);
+      if (draft != null) GlobalSnackbar.info(message: 'Resuming draft $draft');
     } on DioException catch (e) {
       banner.value = ItemFormController.parseServerMessage(e.response?.data);
     } catch (e) {

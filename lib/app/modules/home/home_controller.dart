@@ -12,6 +12,7 @@ import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/home/widgets/pos_upload_scan_sheets.dart';
 import 'package:multimax/app/modules/home/widgets/sales_order_pick_sheet.dart';
+import 'package:multimax/app/modules/delivery_note/so_delivery_launcher.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -1175,33 +1176,14 @@ class HomeController extends GetxController {
     );
   }
 
-  /// Resume this order's draft DN if one exists (so two people don't start
-  /// parallel DNs for the same order), otherwise start a new one.
+  /// Opens the order's scan-to-pick DN (see [SoDeliveryLauncher]).
   Future<void> openSalesOrderDelivery(OpenSalesOrder so) async {
     if (openingSalesOrder.value != null) return;
     openingSalesOrder.value = so.name;
     try {
-      final res = await _deliveryNoteProvider.getDeliveryNotes(
-        limit: 1,
-        filters: {
-          'docstatus': 0,
-          'Delivery Note Item': ['against_sales_order', '=', so.name],
-        },
-      );
-      final list = (res.data is Map ? res.data['data'] : null) as List?;
-      Get.back();
-      if (list != null && list.isNotEmpty) {
-        final dn = list.first['name'].toString();
-        GlobalSnackbar.info(message: 'Resuming draft $dn');
-        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
-            arguments: {'name': dn, 'mode': 'edit'});
-      } else {
-        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
-          'name': '',
-          'mode': 'new',
-          'salesOrderName': so.name,
-        });
-      }
+      final draft =
+          await SoDeliveryLauncher.open(so.name, beforeNavigate: Get.back);
+      if (draft != null) GlobalSnackbar.info(message: 'Resuming draft $draft');
     } catch (e) {
       GlobalSnackbar.error(message: 'Could not open ${so.name}: $e');
     } finally {
