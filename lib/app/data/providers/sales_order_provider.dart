@@ -62,6 +62,15 @@ class SalesOrderProvider {
         'comment_by': email,
       });
 
+  /// Customer's PO (`po_no`, allow_on_submit) — holds the linked POS Upload.
+  Future<Response> setPoNo(String name, String value) =>
+      _api.callMethodPost('frappe.client.set_value', params: {
+        'doctype': 'Sales Order',
+        'name': name,
+        'fieldname': 'po_no',
+        'value': value,
+      });
+
   /// Request parameters for `get_item_details`.
   ///
   /// ERPNext v15 declares the payload parameter as `args`; v16 renamed it to

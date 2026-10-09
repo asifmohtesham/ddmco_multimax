@@ -1,4 +1,5 @@
 import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/data/services/scan_constants.dart';
 
 /// One Sales Order Item, seen as a pick target for a Delivery Note.
 ///
@@ -61,6 +62,9 @@ class SoPickContext {
   final String customer;
   final String? customerName;
   final String? deliveryDate;
+
+  /// "Customer's Purchase Order" — holds the linked POS Upload's name.
+  final String? poNo;
   final List<SoPickLine> lines;
 
   const SoPickContext({
@@ -68,6 +72,7 @@ class SoPickContext {
     required this.customer,
     this.customerName,
     this.deliveryDate,
+    this.poNo,
     required this.lines,
   });
 
@@ -77,6 +82,7 @@ class SoPickContext {
         customer: (so['customer'] ?? '').toString(),
         customerName: so['customer_name'] as String?,
         deliveryDate: so['delivery_date'] as String?,
+        poNo: so['po_no'] as String?,
         lines: ((so['items'] as List?) ?? const [])
             .map((e) => SoPickLine.fromSalesOrderItem(
                 Map<String, dynamic>.from(e as Map)))
@@ -103,6 +109,27 @@ class SoPickContext {
 }
 
 enum SoPickOutcome { ok, notOnOrder, fullyPicked }
+
+/// How an SO-bound DN relates to the POS Upload (the third-party Sales
+/// Voucher) that the order is eventually linked to through its `po_no`.
+///
+/// Invariant: a DN's `po_no` is set only once every row's invoice serial is
+/// a real voucher line number. Before that, rows carry the SO line idx as a
+/// provisional serial.
+enum SoUploadLink {
+  /// No upload on the order yet — provisional serials (SO line idx).
+  none,
+
+  /// Serials are voucher lines; new scans choose one from the POS dropdown.
+  linked,
+
+  /// The order gained an upload after picking began: existing rows must be
+  /// assigned to voucher lines before more can be scanned.
+  pendingAssignment,
+
+  /// The order names an MX/KX (Stock Entry family) upload — not allowed.
+  wrongFamily,
+}
 
 class SoPickResolution {
   final SoPickOutcome outcome;
@@ -169,6 +196,44 @@ class SoPick {
     return out;
   }
 
+  /// [name] when it is a Delivery-Note-family (ML/KA) POS Upload name.
+  static String? dnFamilyUpload(String? name) {
+    final n = name?.trim() ?? '';
+    if (!ScanConstants.isPosUploadDocName(n)) return null;
+    if (ScanConstants.isStockEntryFamilyUpload(n)) return null;
+    return n;
+  }
+
+  static SoUploadLink uploadLink({
+    required String? soPoNo,
+    required String? dnPoNo,
+    required bool hasRows,
+  }) {
+    if ((dnPoNo ?? '').trim().isNotEmpty) return SoUploadLink.linked;
+    final so = soPoNo?.trim() ?? '';
+    if (!ScanConstants.isPosUploadDocName(so)) return SoUploadLink.none;
+    if (ScanConstants.isStockEntryFamilyUpload(so)) {
+      return SoUploadLink.wrongFamily;
+    }
+    return hasRows ? SoUploadLink.pendingAssignment : SoUploadLink.linked;
+  }
+
+  /// Voucher lines whose assigned rows exceed the line qty → excess qty.
+  /// A serial that is not a voucher line counts its whole qty as excess.
+  static Map<int, double> overAllocatedLines(
+      Iterable<({int serial, double qty})> rows, Map<int, double> lineQty) {
+    final used = <int, double>{};
+    for (final r in rows) {
+      used[r.serial] = (used[r.serial] ?? 0) + r.qty;
+    }
+    final over = <int, double>{};
+    used.forEach((serial, qty) {
+      final excess = qty - (lineQty[serial] ?? 0);
+      if (excess > 1e-9) over[serial] = excess;
+    });
+    return over;
+  }
+
   static double pickedQty(String soDetail, List<DeliveryNoteItem> rows,
           {String? excludeRowName}) =>
       rows
@@ -228,11 +293,15 @@ extension SoPickRow on DeliveryNoteItem {
   /// Binds a freshly built row to its SO line: link fields, plus the SO's
   /// rate/UOM so the DN bills what was ordered. No-op without a line.
   ///
+  /// [serial] is the POS Upload voucher line chosen in the sheet; without
+  /// one (no upload linked yet) the SO line idx stands in provisionally.
+  ///
   /// `custom_invoice_serial_number` is a mandatory Int on DN (and Packing
   /// Slip) items. For POS Uploads it is the source line's 1-based idx; the
   /// SO line idx is the same notion, and keeps Packing Slip's per-serial
   /// grouping working for SO deliveries.
-  DeliveryNoteItem withSoLine(SoPickLine? line, String? salesOrder) {
+  DeliveryNoteItem withSoLine(SoPickLine? line, String? salesOrder,
+      {String? serial}) {
     if (line == null || salesOrder == null) return this;
     return copyWith(
       againstSalesOrder: salesOrder,
@@ -240,7 +309,8 @@ extension SoPickRow on DeliveryNoteItem {
       rate: line.rate,
       uom: line.uom ?? uom,
       conversionFactor: line.conversionFactor,
-      customInvoiceSerialNumber: line.idx.toString(),
+      customInvoiceSerialNumber:
+          (serial != null && serial.isNotEmpty) ? serial : line.idx.toString(),
     );
   }
 }

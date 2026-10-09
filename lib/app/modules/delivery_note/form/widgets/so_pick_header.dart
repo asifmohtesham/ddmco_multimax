@@ -9,11 +9,15 @@ class SoPickHeader extends StatelessWidget {
   final SoPickProgress progress;
   final bool isEditable;
 
+  /// Linked POS Upload (Sales Voucher), shown beside the order number.
+  final String? uploadName;
+
   const SoPickHeader({
     super.key,
     required this.order,
     required this.progress,
     required this.isEditable,
+    this.uploadName,
   });
 
   static String _qty(double v) =>
@@ -46,7 +50,8 @@ class SoPickHeader extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  order.name,
+                  uploadName == null ? order.name : '${order.name} · $uploadName',
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -117,6 +122,115 @@ class SoPickHeader extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Explains how the order's POS Upload stands for this DN, and — when an
+/// upload arrived after picking began — offers the voucher-line assignment.
+class SoUploadLinkBanner extends StatelessWidget {
+  final SoUploadLink link;
+  final String? soPoNo;
+  final VoidCallback onAssign;
+
+  const SoUploadLinkBanner({
+    super.key,
+    required this.link,
+    required this.soPoNo,
+    required this.onAssign,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    switch (link) {
+      case SoUploadLink.linked:
+        return const SizedBox.shrink();
+      case SoUploadLink.none:
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: scheme.textSubtle),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'No POS Upload linked yet. Invoice serials are provisional '
+                  'until it is.',
+                  style: TextStyle(fontSize: 12.5, color: scheme.textMuted),
+                ),
+              ),
+            ],
+          ),
+        );
+      case SoUploadLink.wrongFamily:
+        return _tint(
+          context,
+          base: AppColors.red500,
+          ink: isDark ? AppColors.red300 : AppColors.red700,
+          icon: Icons.error_outline,
+          text: '$soPoNo is a Stock Entry upload (MX/KX) and cannot be '
+              'delivered on a Delivery Note.',
+        );
+      case SoUploadLink.pendingAssignment:
+        return _tint(
+          context,
+          base: AppColors.orange500,
+          ink: isDark ? AppColors.orange300 : AppColors.orange700,
+          icon: Icons.link,
+          text: 'POS Upload $soPoNo is now linked to this order. Assign each '
+              'picked row to its voucher line before scanning more.',
+          action: FilledButton.icon(
+            key: const Key('assign_voucher_lines'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.orange700,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: onAssign,
+            icon: const Icon(Icons.playlist_add_check, size: 18),
+            label: const Text('Assign voucher lines'),
+          ),
+        );
+    }
+  }
+
+  Widget _tint(BuildContext context,
+      {required Color base,
+      required Color ink,
+      required IconData icon,
+      required String text,
+      Widget? action}) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: base.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: base.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 18, color: ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(text,
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600, color: ink)),
+              ),
+            ],
+          ),
+          if (action != null) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerRight, child: action),
+          ],
         ],
       ),
     );

@@ -1330,6 +1330,18 @@ class HomeController extends GetxController {
         Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
             arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
       } else {
+        // An upload that belongs to a Sales Order is delivered against that
+        // order (scan-to-pick DN, resuming its draft) — never a second,
+        // POS-only DN.
+        final so = await _salesOrderForUpload(posUpload.name);
+        if (so != null) {
+          final draft = await SoDeliveryLauncher.open(so);
+          GlobalSnackbar.info(
+              message: draft != null
+                  ? '${posUpload.name} belongs to $so — resuming draft $draft'
+                  : '${posUpload.name} belongs to $so');
+          return;
+        }
         Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
           'name': '',
           'mode': 'new',
@@ -1340,6 +1352,22 @@ class HomeController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(message: 'Error processing Delivery Note');
     }
+  }
+
+  /// Submitted, still-deliverable Sales Order whose po_no names [upload].
+  Future<String?> _salesOrderForUpload(String upload) async {
+    final res = await _apiProvider.getDocumentList('Sales Order',
+        limit: 1,
+        fields: const ['name'],
+        filters: {
+          'po_no': upload,
+          'docstatus': 1,
+          'status': ['in', ['To Deliver and Bill', 'To Deliver']],
+        });
+    final data = res.data is Map ? res.data['data'] : null;
+    return (data is List && data.isNotEmpty)
+        ? (data.first as Map)['name']?.toString()
+        : null;
   }
 
   /// Opens the Packing Slip for a scanned ML/KA upload. A Packing Slip hangs

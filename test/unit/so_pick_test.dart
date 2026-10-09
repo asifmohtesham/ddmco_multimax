@@ -152,6 +152,63 @@ void main() {
     });
   });
 
+  group('POS Upload link', () {
+    test('dnFamilyUpload accepts only ML/KA upload names', () {
+      expect(SoPick.dnFamilyUpload(' ML-2026-02011 '), 'ML-2026-02011');
+      expect(SoPick.dnFamilyUpload('KA-2026-02989'), 'KA-2026-02989');
+      expect(SoPick.dnFamilyUpload('MX-2026-00001'), isNull);
+      expect(SoPick.dnFamilyUpload('PO-4471'), isNull);
+      expect(SoPick.dnFamilyUpload(null), isNull);
+    });
+
+    test('a DN with po_no set is linked (its serials are voucher lines)', () {
+      expect(SoPick.uploadLink(soPoNo: null, dnPoNo: 'ML-2026-00001', hasRows: true),
+          SoUploadLink.linked);
+    });
+
+    test('no upload on the order: provisional serials', () {
+      expect(SoPick.uploadLink(soPoNo: '', dnPoNo: '', hasRows: true),
+          SoUploadLink.none);
+      expect(SoPick.uploadLink(soPoNo: 'PO-4471', dnPoNo: null, hasRows: false),
+          SoUploadLink.none);
+    });
+
+    test('upload linked on the order after picking began: assignment due', () {
+      expect(SoPick.uploadLink(soPoNo: 'ML-2026-00001', dnPoNo: '', hasRows: true),
+          SoUploadLink.pendingAssignment);
+    });
+
+    test('upload linked before any pick: adopt straight away', () {
+      expect(SoPick.uploadLink(soPoNo: 'KA-2026-00001', dnPoNo: null, hasRows: false),
+          SoUploadLink.linked);
+    });
+
+    test('Stock-Entry-family upload on the order is rejected', () {
+      expect(SoPick.uploadLink(soPoNo: 'KX-2026-00001', dnPoNo: null, hasRows: true),
+          SoUploadLink.wrongFamily);
+    });
+  });
+
+  group('overAllocatedLines', () {
+    test('sums rows per voucher line against its qty', () {
+      final over = SoPick.overAllocatedLines(
+        [(serial: 1, qty: 3.0), (serial: 1, qty: 2.0), (serial: 2, qty: 1.0)],
+        {1: 4.0, 2: 1.0},
+      );
+      expect(over, {1: 1.0});
+    });
+
+    test('a serial that is not a voucher line is over by its full qty', () {
+      expect(SoPick.overAllocatedLines([(serial: 9, qty: 2.0)], {1: 4.0}),
+          {9: 2.0});
+    });
+
+    test('nothing over', () {
+      expect(SoPick.overAllocatedLines([(serial: 1, qty: 4.0)], {1: 4.0}),
+          isEmpty);
+    });
+  });
+
   group('withSoLine', () {
     test('binds link, SO rate/uom and SO idx as invoice serial', () {
       final row = DeliveryNoteItem(itemCode: 'A', qty: 2, rate: 0, uom: 'Box')
@@ -163,6 +220,15 @@ void main() {
       expect(row.customInvoiceSerialNumber, '3');
       expect(row.qty, 2);
     });
+    test('a voucher serial wins over the provisional SO idx', () {
+      final row = DeliveryNoteItem(itemCode: 'A', qty: 2, rate: 0)
+          .withSoLine(_line('l9', 'A', 5, idx: 3), 'SAL-ORD-1', serial: '7');
+      expect(row.customInvoiceSerialNumber, '7');
+      final prov = DeliveryNoteItem(itemCode: 'A', qty: 2, rate: 0)
+          .withSoLine(_line('l9', 'A', 5, idx: 3), 'SAL-ORD-1', serial: '');
+      expect(prov.customInvoiceSerialNumber, '3');
+    });
+
     test('no-op without a line', () {
       final row = DeliveryNoteItem(itemCode: 'A', qty: 2, rate: 0);
       expect(identical(row.withSoLine(null, 'SAL-ORD-1'), row), isTrue);

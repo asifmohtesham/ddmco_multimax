@@ -18,6 +18,7 @@ import 'package:multimax/app/data/utils/app_constants.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/delivery_note/so_delivery_launcher.dart';
+import 'package:multimax/app/modules/delivery_note/form/so_pick.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
@@ -762,6 +763,49 @@ class SalesOrderFormController extends GetxController
   final reservationEnabled = false.obs;
 
   final isMakingDn = false.obs;
+  final isLinkingUpload = false.obs;
+
+  /// A submitted order may gain its POS Upload (Sales Voucher) once; after
+  /// that its Delivery Note relies on it, so re-linking is a Desk job.
+  bool get canLinkUpload {
+    final s = so.value;
+    return s != null &&
+        s.docstatus == 1 &&
+        (s.poNo ?? '').trim().isEmpty &&
+        actions.contains(SoAction.makeDn);
+  }
+
+  /// Links an ML/KA POS Upload: on a draft it is just the header field; on a
+  /// submitted order po_no is written in place (allow_on_submit).
+  Future<void> linkPosUpload(String upload) async {
+    final valid = SoPick.dnFamilyUpload(upload);
+    if (valid == null) {
+      GlobalSnackbar.error(
+          title: 'Not a Delivery Note upload',
+          message: '$upload cannot be linked: only ML/KA POS Uploads are '
+              'delivered on a Delivery Note.');
+      return;
+    }
+    if (isEditable) {
+      poNoController.text = valid;
+      setHeader(poNo: valid);
+      return;
+    }
+    if (!canLinkUpload || isLinkingUpload.value) return;
+    isLinkingUpload.value = true;
+    banner.value = null;
+    try {
+      await _provider.setPoNo(name, valid);
+      await fetchDocument();
+      GlobalSnackbar.success(message: '$valid linked to $name');
+    } on DioException catch (e) {
+      banner.value = ItemFormController.parseServerMessage(e.response?.data);
+    } catch (e) {
+      banner.value = e.toString();
+    } finally {
+      isLinkingUpload.value = false;
+    }
+  }
 
   Future<void> makeDeliveryNote() async {
     if (!actions.contains(SoAction.makeDn) || isActing.value != null) return;

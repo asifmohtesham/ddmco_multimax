@@ -119,6 +119,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// row's own `so_detail`, else the line the parent resolved at scan time.
   SoPickLine? soLine;
 
+  bool get _soVoucherLinked =>
+      soLine != null && _parent.uploadLink.value == SoUploadLink.linked;
+
   /// Open qty on [soLine] excluding the row being edited.
   double get soRemaining => soLine == null
       ? double.infinity
@@ -819,6 +822,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
+    // SO linked to its POS Upload: the row must name its voucher line, or a
+    // provisional SO idx would sit on a DN whose po_no claims otherwise.
+    if (_soVoucherLinked && (selectedSerial.value ?? '').isEmpty) {
+      throw Exception('Choose the invoice serial (voucher line)');
+    }
     return qty;
   }
 
@@ -841,7 +849,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       itemGroup:                 itemGroup.value,
       customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
-    ).withSoLine(soLine, _parent.salesOrder.value?.name);
+    ).withSoLine(soLine, _parent.salesOrder.value?.name,
+        serial: _soVoucherLinked ? selectedSerial.value : null);
   }
 
   /// Responsibility: write [item] into the parent document's items list —

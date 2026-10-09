@@ -312,6 +312,16 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               order:      controller.salesOrder.value!,
               progress:   controller.soProgress,
               isEditable: controller.deliveryNote.value?.docstatus == 0,
+              uploadName: controller.uploadLink.value == SoUploadLink.linked
+                  ? controller.posUpload.value?.name
+                  : null,
+            ),
+          if (controller.salesOrder.value != null &&
+              controller.deliveryNote.value?.docstatus == 0)
+            SoUploadLinkBanner(
+              link:     controller.uploadLink.value,
+              soPoNo:   controller.salesOrder.value!.poNo,
+              onAssign: controller.openVoucherAssignment,
             ),
 
           // ── Filters ──────────────────────────────────────────────────────
