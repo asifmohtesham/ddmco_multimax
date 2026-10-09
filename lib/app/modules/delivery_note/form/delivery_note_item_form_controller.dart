@@ -146,7 +146,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       : _parent.soRemainingFor(soLine!, excludeRowName: editingItemName.value);
 
   @override bool  get requiresBatch => true;
-  @override bool  get requiresRack  => false;
+  /// Mirrors Desk's Property Setter on Delivery Note Item.rack
+  /// (`mandatory_depends_on: eval:doc.item_code`), which the server does not
+  /// enforce for API saves. Read by [_assertSubmitPreconditions].
+  @override bool  get requiresRack  => true;
   @override Color get accentColor   => AppColors.gray700;
 
   @override
@@ -840,6 +843,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
+    if (requiresRack && rackController.text.trim().isEmpty) {
+      throw Exception('Scan or choose a rack');
+    }
     // Hard ceiling (batch/rack/voucher line/SO line) — never trust a stale
     // isSheetValid alone.
     final ceil = effectiveMaxQty;
