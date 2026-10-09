@@ -49,14 +49,25 @@ class ApiProvider {
     try {
       if (!_dioInitialised) await _initDio();
       _erpNextVersion = await _fetchErpNextVersion();
-      final parts = (_erpNextVersion ?? '').split('.');
-      final minor = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
-      // Unknown version → assume new behavior (safe default for ≥ v15.72)
-      _stockBalanceUsesListFilters = _erpNextVersion != null ? minor >= 72 : true;
+      _stockBalanceUsesListFilters =
+          stockBalanceUsesListFilters(_erpNextVersion);
     } catch (_) {
       _stockBalanceUsesListFilters = true;
     }
     return _stockBalanceUsesListFilters!;
+  }
+
+  /// Whether ERPNext [version]'s Stock Balance report needs `item_code` as a
+  /// list: true from v15.72.0 on — including every v16+, whatever its minor
+  /// (the old minor-only check sent v16.26 a string and the report 500'd).
+  /// Unknown/unparsable versions assume the current (list) behaviour.
+  static bool stockBalanceUsesListFilters(String? version) {
+    final m = RegExp(r'^(\d+)\.(\d+)').firstMatch(version?.trim() ?? '');
+    if (m == null) return true;
+    final major = int.parse(m.group(1)!);
+    final minor = int.parse(m.group(2)!);
+    if (major != 15) return major > 15;
+    return minor >= 72;
   }
 
   /// Tries two endpoints to obtain the ERPNext version string.
