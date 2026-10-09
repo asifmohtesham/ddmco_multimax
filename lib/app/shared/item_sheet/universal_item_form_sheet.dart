@@ -94,6 +94,7 @@ class UniversalItemFormSheet extends StatelessWidget {
         // so _AnimatedSaveButton transitions correctly through loading / success
         // / error states.  Without this the button observed a dead idle.obs.
         saveButtonState:  controller.saveButtonState,
+        submitError:      controller.submitError,
         onSubmit:         onSubmit,
         onDelete: isEditing
             ? () => controller.deleteCurrentItem()

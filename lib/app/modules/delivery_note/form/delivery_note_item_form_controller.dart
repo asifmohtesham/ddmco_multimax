@@ -80,6 +80,27 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin, BarcodeListenerMixin, BarcodeAwareMixin {
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  /// Choosing an invoice serial changes the qty ceiling (voucher line cap),
+  /// so the sheet must re-validate — otherwise a qty typed under a looser
+  /// ceiling stays "valid" and over-fills the newly chosen line.
+  Worker? _serialWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _serialWorker = ever(selectedSerial, (_) {
+      submitError.value = '';
+      validateSheet();
+    });
+  }
+
+  @override
+  void onClose() {
+    _serialWorker?.dispose();
+    super.onClose();
+  }
+
   // ── Parent back-reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
@@ -119,13 +140,19 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// row's own `so_detail`, else the line the parent resolved at scan time.
   SoPickLine? soLine;
 
+  bool get _soVoucherLinked =>
+      soLine != null && _parent.uploadLink.value == SoUploadLink.linked;
+
   /// Open qty on [soLine] excluding the row being edited.
   double get soRemaining => soLine == null
       ? double.infinity
       : _parent.soRemainingFor(soLine!, excludeRowName: editingItemName.value);
 
   @override bool  get requiresBatch => true;
-  @override bool  get requiresRack  => false;
+  /// Mirrors Desk's Property Setter on Delivery Note Item.rack
+  /// (`mandatory_depends_on: eval:doc.item_code`), which the server does not
+  /// enforce for API saves. Read by [_assertSubmitPreconditions].
+  @override bool  get requiresRack  => true;
   @override Color get accentColor   => AppColors.gray700;
 
   @override
@@ -819,6 +846,20 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
+    if (requiresRack && rackController.text.trim().isEmpty) {
+      throw Exception('Scan or choose a rack');
+    }
+    // Hard ceiling (batch/rack/voucher line/SO line) — never trust a stale
+    // isSheetValid alone.
+    final ceil = effectiveMaxQty;
+    if (ceil != double.infinity && qty > ceil + 1e-9) {
+      throw Exception('Qty cannot exceed ${_formatQty(ceil)}');
+    }
+    // SO linked to its POS Upload: the row must name its voucher line, or a
+    // provisional SO idx would sit on a DN whose po_no claims otherwise.
+    if (_soVoucherLinked && (selectedSerial.value ?? '').isEmpty) {
+      throw Exception('Choose the invoice serial (voucher line)');
+    }
     return qty;
   }
 
@@ -841,7 +882,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       itemGroup:                 itemGroup.value,
       customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
-    ).withSoLine(soLine, _parent.salesOrder.value?.name);
+    ).withSoLine(soLine, _parent.salesOrder.value?.name,
+        serial: _soVoucherLinked ? selectedSerial.value : null);
   }
 
   /// Responsibility: write [item] into the parent document's items list —
@@ -933,6 +975,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   Future<void> validateBatch(String batch) async {
     await super.validateBatch(batch);
+    // Like validateRack: re-evaluate once the balance has arrived. The sheet
+    // last validated while the lookup was in flight, so without this it kept
+    // "Batch has no available stock (balance: 0)" beside a Bal: 534 badge.
+    if (!isClosed) validateSheet();
     if (!isBatchValid.value) return;
     unawaited(maybeAutoFillRack());
   }

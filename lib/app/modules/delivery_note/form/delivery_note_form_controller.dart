@@ -34,6 +34,7 @@ import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
 import 'so_pick.dart';
+import 'widgets/voucher_assignment_sheet.dart';
 
 class DeliveryNoteFormController extends GetxController
     with OptimisticLockingMixin, ControllerFeedbackMixin, RealtimeSyncMixin {
@@ -86,6 +87,14 @@ class DeliveryNoteFormController extends GetxController
 
   /// Header from `make_delivery_note`, sent once when the new DN is created.
   Map<String, dynamic> _soHeader = const {};
+
+  /// How this SO-bound DN relates to the order's POS Upload (Sales Voucher).
+  /// See [SoUploadLink] for the po_no ⇔ voucher-serial invariant.
+  final uploadLink = SoUploadLink.none.obs;
+  final isAssigningVoucher = false.obs;
+
+  /// The POS Upload the order points at (SO po_no), ML/KA only.
+  String? get orderUploadName => SoPick.dnFamilyUpload(salesOrder.value?.poNo);
 
   final TextEditingController barcodeController = TextEditingController();
   var expandedItemCode = ''.obs;
@@ -265,6 +274,7 @@ class DeliveryNoteFormController extends GetxController
             .firstWhereOrNull((s) => s != null && s.isNotEmpty);
         if (soName != null) {
           await fetchSalesOrder(soName);
+          await _resolveUploadLink();
         } else if (note.poNo != null && note.poNo!.isNotEmpty) {
           await fetchPosUpload(note.poNo!);
         }
@@ -325,7 +335,10 @@ class DeliveryNoteFormController extends GetxController
           params: {'source_name': soName});
       final doc = (mapped.data as Map?)?['message'];
       if (doc is Map) {
-        _soHeader = SoPick.headerFromMappedDn(Map<String, dynamic>.from(doc));
+        _soHeader = SoPick.headerFromMappedDn(Map<String, dynamic>.from(doc))
+          // po_no is set by _resolveUploadLink only when it names a usable
+          // upload — never copied blindly from the order.
+          ..remove('po_no');
       }
     } catch (e) {
       log('[DN:_startFromSalesOrder] mapper error: $e', name: 'DN');
@@ -339,7 +352,129 @@ class DeliveryNoteFormController extends GetxController
       currency: (_soHeader['currency'] as String?) ?? deliveryNote.value?.currency,
       setWarehouse: wh,
     );
+    await _resolveUploadLink();
   }
+
+  // ── POS Upload (Sales Voucher) link ───────────────────────────────────────
+  /// Works out how the DN relates to the order's POS Upload and loads it.
+  /// An upload linked before any pick is adopted straight away; one linked
+  /// after picking began needs every row assigned to a voucher line first.
+  Future<void> _resolveUploadLink() async {
+    final so = salesOrder.value;
+    if (so == null) return;
+    final dnPo = deliveryNote.value?.poNo?.trim() ?? '';
+    final state = SoPick.uploadLink(
+        soPoNo: so.poNo, dnPoNo: dnPo, hasRows: items.isNotEmpty);
+    final upload = dnPo.isNotEmpty ? dnPo : orderUploadName;
+    uploadLink.value = state;
+
+    switch (state) {
+      case SoUploadLink.none:
+        posUpload.value = null;
+      case SoUploadLink.wrongFamily:
+        posUpload.value = null;
+        showBanner(
+            '${so.poNo} is a Stock Entry upload (MX/KX), so it cannot be '
+            "delivered on a Delivery Note. Correct the Sales Order's "
+            "Customer's PO.",
+            type: BannerType.error);
+      case SoUploadLink.linked:
+        await fetchPosUpload(upload!);
+        if (dnPo.isEmpty) {
+          // Nothing picked yet: adopt the upload now (saved with row one).
+          deliveryNote.value = deliveryNote.value?.copyWith(poNo: upload);
+        }
+      case SoUploadLink.pendingAssignment:
+        await fetchPosUpload(upload!);
+        final lines = posUpload.value?.items ?? const [];
+        if (lines.length == 1) {
+          // One voucher line: every row can only belong to it.
+          await applyVoucherAssignment(
+              {for (var i = 0; i < items.length; i++) i: lines.single.idx});
+        }
+    }
+  }
+
+  /// True (after telling the operator) while rows still need voucher lines.
+  bool _blockedByPendingAssignment() {
+    if (uploadLink.value != SoUploadLink.pendingAssignment) return false;
+    HapticFeedback.mediumImpact();
+    GlobalSnackbar.warning(
+        title: 'Assign voucher lines first',
+        message: 'POS Upload ${orderUploadName ?? ''} is now linked to this '
+            'order. Assign each picked row to its voucher line.');
+    return true;
+  }
+
+  /// Voucher line qty by line number (POS Upload Item idx).
+  Map<int, double> get voucherLineQty => {
+        for (final l in posUpload.value?.items ?? const <PosUploadItem>[])
+          l.idx: l.quantity.toDouble(),
+      };
+
+  /// Sets each row's invoice serial to its voucher line ([assignment]: row
+  /// index → line idx), then links the upload by writing the DN's po_no and
+  /// saves. Returns an error message instead when lines would be overfilled.
+  Future<String?> applyVoucherAssignment(Map<int, int> assignment) async {
+    if (isAssigningVoucher.value) return null;
+    final upload = orderUploadName;
+    final note = deliveryNote.value;
+    if (upload == null || note == null) return 'No POS Upload to link.';
+    if (assignment.length != note.items.length) {
+      return 'Assign every row to a voucher line.';
+    }
+    final over = SoPick.overAllocatedLines(
+      [
+        for (final e in assignment.entries)
+          (serial: e.value, qty: note.items[e.key].qty),
+      ],
+      voucherLineQty,
+    );
+    if (over.isNotEmpty) {
+      final lines = over.entries
+          .map((e) => '#${e.key} by ${_fmtQty(e.value)}')
+          .join(', ');
+      return 'Voucher line over-filled: $lines. Reduce or reassign rows.';
+    }
+    isAssigningVoucher.value = true;
+    try {
+      final rows = [
+        for (var i = 0; i < note.items.length; i++)
+          note.items[i].copyWith(
+              customInvoiceSerialNumber: assignment[i].toString()),
+      ];
+      deliveryNote.value = note.copyWith(poNo: upload, items: rows);
+      uploadLink.value = SoUploadLink.linked;
+      isDirty.value = true;
+      await saveDocument();
+      return null;
+    } finally {
+      isAssigningVoucher.value = false;
+    }
+  }
+
+  Future<void> openVoucherAssignment() async {
+    final upload = orderUploadName;
+    final lines = posUpload.value?.items ?? const <PosUploadItem>[];
+    if (upload == null || lines.isEmpty) {
+      GlobalSnackbar.error(message: 'POS Upload has no lines to assign to.');
+      return;
+    }
+    await Get.bottomSheet(
+      VoucherAssignmentSheet(
+        uploadName: upload,
+        rows: List.of(items),
+        lines: lines,
+        busy: isAssigningVoucher,
+        onConfirm: applyVoucherAssignment,
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  static String _fmtQty(double v) =>
+      v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
 
   /// Open qty left on [line] given the rows already in this DN.
   double soRemainingFor(SoPickLine line, {String? excludeRowName}) =>
@@ -655,6 +790,7 @@ class DeliveryNoteFormController extends GetxController
 
   Future<void> scanBarcode(String barcode) async {
     if (!_validateHeaderBeforeScan()) return;
+    if (_blockedByPendingAssignment()) return;
     if (isScanning.value || isAddingItem.value) return;
     if (barcode.isEmpty) return;
 
@@ -788,6 +924,7 @@ class DeliveryNoteFormController extends GetxController
 
   Future<void> editItem(DeliveryNoteItem item) async {
     if (isLoadingItemEdit.value) return;
+    if (_blockedByPendingAssignment()) return;
     isLoadingItemEdit.value  = true;
     loadingForItemName.value = item.name;
 

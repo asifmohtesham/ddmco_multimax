@@ -295,16 +295,29 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                 ),
                 const SizedBox(height: 12),
 
-                TextFormField(
-                  controller: controller.poNoController,
-                  enabled: isEditable,
-                  decoration: const InputDecoration(
-                    labelText: "Customer's PO No",
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.receipt_long_outlined),
-                  ),
-                  onChanged: (v) => controller.setHeader(poNo: v),
-                ),
+                // Customer's PO holds the order's POS Upload (Sales Voucher).
+                Obx(() => DocPickerField(
+                      key: const Key('so_pos_upload'),
+                      label: "Customer's PO No",
+                      icon: Icons.receipt_long_outlined,
+                      value: (s.poNo ?? '').isEmpty ? null : s.poNo,
+                      placeholder: controller.isLinkingUpload.value
+                          ? 'Linking…'
+                          : 'Not linked',
+                      helperText: (s.poNo ?? '').isEmpty
+                          ? 'Pick the POS Upload (Sales Voucher) this order is delivered against'
+                          : null,
+                      onTap: (isEditable || controller.canLinkUpload) &&
+                              !controller.isLinkingUpload.value
+                          ? () => showLinkSearchSheet(
+                              doctype: 'POS Upload',
+                              title: 'Select POS Upload',
+                              filters: {
+                                'status': ['in', ['Pending', 'In Progress']],
+                              },
+                              onSelected: controller.linkPosUpload)
+                          : null,
+                    )),
                 const Divider(height: 28),
 
                 DocDetailRow(
@@ -349,7 +362,7 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                       onPressed: controller.makeDeliveryNote,
                       icon: const Icon(Icons.local_shipping_outlined),
                       label: 'Create Delivery Note',
-                      loadingLabel: 'Creating…',
+                      loadingLabel: 'Opening…',
                       style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(48)),
                     ),

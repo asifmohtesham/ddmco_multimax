@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/item_form_sheet_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
@@ -182,6 +183,9 @@ class GlobalItemFormSheet extends StatelessWidget {
   final bool isLoading;
   final Rx<SaveButtonState> saveButtonState;
 
+  /// Reason the last save was refused; shown above the save button.
+  final RxString? submitError;
+
   // ── Metadata ───────────────────────────────────────────────────────────────
   final String? owner;
   final String? creation;
@@ -219,6 +223,7 @@ class GlobalItemFormSheet extends StatelessWidget {
     this.isSaveEnabledRx,
     this.isLoading = false,
     Rx<SaveButtonState>? saveButtonState,
+    this.submitError,
     this.owner,
     this.creation,
     this.modified,
@@ -488,7 +493,33 @@ class GlobalItemFormSheet extends StatelessWidget {
         ],
       ),
       padding: EdgeInsets.fromLTRB(24, 16, 24, bottomPadding > 0 ? bottomPadding : 24),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (submitError != null)
+            Obx(() {
+              final msg = submitError!.value;
+              if (msg.isEmpty) return const SizedBox.shrink();
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final ink = isDark ? AppColors.red300 : AppColors.red700;
+              return Padding(
+                key: const Key('item_sheet_submit_error'),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, size: 18, color: ink),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(msg,
+                          style: TextStyle(
+                              color: ink, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          Row(
         children: [
           if (onDelete != null) ...[
             Container(
@@ -524,6 +555,8 @@ class GlobalItemFormSheet extends StatelessWidget {
               sheetTag: _sheetTag,
             ),
           ),
+        ],
+      ),
         ],
       ),
     );

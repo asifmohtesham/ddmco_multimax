@@ -312,6 +312,16 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
               order:      controller.salesOrder.value!,
               progress:   controller.soProgress,
               isEditable: controller.deliveryNote.value?.docstatus == 0,
+              uploadName: controller.uploadLink.value == SoUploadLink.linked
+                  ? controller.posUpload.value?.name
+                  : null,
+            ),
+          if (controller.salesOrder.value != null &&
+              controller.deliveryNote.value?.docstatus == 0)
+            SoUploadLinkBanner(
+              link:     controller.uploadLink.value,
+              soPoNo:   controller.salesOrder.value!.poNo,
+              onAssign: controller.openVoucherAssignment,
             ),
 
           // ── Filters ──────────────────────────────────────────────────────
@@ -580,6 +590,9 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     String? currency,
   ) {
     final filter = controller.itemFilter.value;
+    // Read here, not in itemBuilder: the builder runs at layout time,
+    // outside the enclosing Obx, so a read there would not rebuild on toggle.
+    final expandedKey = controller.expandedInvoice.value;
     final lines = so.lines.where((l) {
       // Hide lines already delivered in full — unless this DN has rows on them.
       if (l.pendingQty <= 0 && !rows.any((r) => r.soDetail == l.soDetail)) {
@@ -635,7 +648,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
         return Container(
           key: controller.itemKeys[key],
           child: ItemGroupCard(
-            isExpanded:      controller.expandedInvoice.value == key,
+            isExpanded:      expandedKey == key,
             serialNo:        line.idx,
             itemName:        '${line.itemCode} · ${line.itemName}',
             rate:            line.rate,
