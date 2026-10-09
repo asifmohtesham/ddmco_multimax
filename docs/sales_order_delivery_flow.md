@@ -44,8 +44,8 @@ A POS Upload is the Sales Voucher of the third-party system of record; every Sal
 eventually linked to one, and a DN row's `custom_invoice_serial_number` is that voucher's
 **line number** (several ERPNext rows may share one line up to its qty).
 
-- **Link:** the SO's *Customer's PO* (`po_no`) holds the upload name. The SO form's **POS Upload**
-  picker sets it on a draft, and — once — on a submitted order (`po_no` is `allow_on_submit`,
+- **Link:** the SO's *Customer's PO* (`po_no`) holds the upload name. The SO form's **Customer's PO No** field (a POS Upload
+  picker) sets it on a draft, and — once — on a submitted order (`po_no` is `allow_on_submit`,
   written with `frappe.client.set_value`). Only ML/KA uploads; MX/KX are rejected.
 - **Invariant:** a DN's `po_no` is written only when every row's serial is a voucher line.
 - **States** (`SoUploadLink` in `so_pick.dart`):

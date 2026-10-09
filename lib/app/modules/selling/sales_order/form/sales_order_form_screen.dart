@@ -298,14 +298,14 @@ class SalesOrderFormScreen extends GetView<SalesOrderFormController> {
                 // Customer's PO holds the order's POS Upload (Sales Voucher).
                 Obx(() => DocPickerField(
                       key: const Key('so_pos_upload'),
-                      label: 'POS Upload',
+                      label: "Customer's PO No",
                       icon: Icons.receipt_long_outlined,
                       value: (s.poNo ?? '').isEmpty ? null : s.poNo,
                       placeholder: controller.isLinkingUpload.value
                           ? 'Linking…'
                           : 'Not linked',
                       helperText: (s.poNo ?? '').isEmpty
-                          ? 'The Sales Voucher this order is delivered against'
+                          ? 'Pick the POS Upload (Sales Voucher) this order is delivered against'
                           : null,
                       onTap: (isEditable || controller.canLinkUpload) &&
                               !controller.isLinkingUpload.value
