@@ -39,6 +39,27 @@ output is saved with `frappe.client.insert`.
 - An item-less new DN is never saved (ERPNext would reject it) and is not "dirty".
 - DNs stay **draft** in-app, like every other DN; submit in Desk.
 
+## POS Upload (Sales Voucher) link
+A POS Upload is the Sales Voucher of the third-party system of record; every Sales Order is
+eventually linked to one, and a DN row's `custom_invoice_serial_number` is that voucher's
+**line number** (several ERPNext rows may share one line up to its qty).
+
+- **Link:** the SO's *Customer's PO* (`po_no`) holds the upload name. The SO form's **POS Upload**
+  picker sets it on a draft, and — once — on a submitted order (`po_no` is `allow_on_submit`,
+  written with `frappe.client.set_value`). Only ML/KA uploads; MX/KX are rejected.
+- **Invariant:** a DN's `po_no` is written only when every row's serial is a voucher line.
+- **States** (`SoUploadLink` in `so_pick.dart`):
+
+| State | When | Behaviour |
+|---|---|---|
+| `none` | order has no upload | rows get the SO line idx as a *provisional* serial |
+| `linked` | DN already linked, or upload present before the first pick | item sheet shows the POS **Invoice Serial No** dropdown (required); qty cap = min(SO line, voucher line, batch, rack) |
+| `pendingAssignment` | upload linked after picking began | banner; scanning and editing pause until **Assign voucher lines** maps every row (one-line vouchers auto-assign) |
+| `wrongFamily` | order names an MX/KX upload | error banner |
+
+- Scanning an SO-owned upload label on the Dashboard opens the order's scan-to-pick DN
+  (resuming its draft) instead of creating a POS-only DN.
+
 ## Server prerequisites
 - ERPNext v15 and v16. On v16 the session carries a CSRF token, so cookie-session writes need
   `X-Frappe-CSRF-Token`; `CsrfInterceptor` fetches it from the desk boot page on the first
