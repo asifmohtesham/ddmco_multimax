@@ -80,6 +80,24 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin, BarcodeListenerMixin, BarcodeAwareMixin {
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  /// Choosing an invoice serial changes the qty ceiling (voucher line cap),
+  /// so the sheet must re-validate — otherwise a qty typed under a looser
+  /// ceiling stays "valid" and over-fills the newly chosen line.
+  Worker? _serialWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _serialWorker = ever(selectedSerial, (_) => validateSheet());
+  }
+
+  @override
+  void onClose() {
+    _serialWorker?.dispose();
+    super.onClose();
+  }
+
   // ── Parent back-reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
@@ -822,6 +840,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
+    // Hard ceiling (batch/rack/voucher line/SO line) — never trust a stale
+    // isSheetValid alone.
+    final ceil = effectiveMaxQty;
+    if (ceil != double.infinity && qty > ceil + 1e-9) {
+      throw Exception('Qty cannot exceed ${_formatQty(ceil)}');
+    }
     // SO linked to its POS Upload: the row must name its voucher line, or a
     // provisional SO idx would sit on a DN whose po_no claims otherwise.
     if (_soVoucherLinked && (selectedSerial.value ?? '').isEmpty) {

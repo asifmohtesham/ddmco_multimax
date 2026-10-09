@@ -129,7 +129,8 @@ class _VoucherAssignmentSheetState extends State<VoucherAssignmentSheet> {
               ),
             ),
             // Voucher line fill — live, so over-allocation shows up front.
-            Padding(
+            Container(
+              alignment: Alignment.centerLeft,
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: Wrap(
                 spacing: 8,

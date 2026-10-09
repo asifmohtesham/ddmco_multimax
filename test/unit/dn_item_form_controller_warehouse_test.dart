@@ -39,4 +39,25 @@ void main() {
       expect(ctrl.itemWarehouse.value, isNull);
     });
   });
+
+  // Regression (2026-10-10, found on device): choosing an invoice serial
+  // lowers the qty ceiling to that voucher line's qty, but nothing
+  // re-validated, so a stale "valid" sheet saved 4 onto a line of 1.
+  group('DeliveryNoteItemFormController serial change', () {
+    test('T-4: selecting a serial re-runs validateSheet', () async {
+      final ctrl = Get.put(_ValidateSpy());
+      ctrl.selectedSerial.value = '2';
+      await Future<void>.delayed(Duration.zero);
+      expect(ctrl.validations, 1);
+      ctrl.selectedSerial.value = '1';
+      await Future<void>.delayed(Duration.zero);
+      expect(ctrl.validations, 2);
+    });
+  });
+}
+
+class _ValidateSpy extends DeliveryNoteItemFormController {
+  int validations = 0;
+  @override
+  void validateSheet() => validations++;
 }

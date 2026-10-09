@@ -425,6 +425,12 @@ abstract class ItemSheetControllerBase extends GetxController
       return true;
     } catch (e) {
       log('[ItemSheet] submitWithFeedback error: $e', name: 'ItemSheet');
+      // submit() throws user-facing reasons ("Choose the invoice serial…");
+      // without this the sheet only flashed red and staff could not tell why.
+      GlobalSnackbar.warning(
+          message: e is Exception
+              ? e.toString().replaceFirst('Exception: ', '')
+              : 'Could not add this item.');
       saveButtonState.value = SaveButtonState.error;
       await Future.delayed(const Duration(milliseconds: 1500));
       saveButtonState.value = SaveButtonState.idle;
