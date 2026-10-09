@@ -1,2 +1,3 @@
-New: Sales Order → Delivery Note. Tap Sales Order on the Dashboard, pick an open order and scan its items. Only items on the order can be scanned, quantities are capped at what is still to deliver, and progress shows per line. Reopening an order resumes its draft Delivery Note.
-Fixes: rates and price lists not loading on newer ERPNext servers; Delivery Notes made from a Sales Order losing their link to it after editing in the app.
+New: link a Sales Order to its POS Upload in the Customer's PO No field. Delivery Notes then use the voucher's lines as invoice serials, and orders picked before linking can be matched to voucher lines.
+Create Delivery Note on a Sales Order now opens scan-to-pick; items are never pre-filled.
+Fixes: rack required on Delivery Note items; rack lists and stock balances work on newer ERPNext; reasons for a refused item now show in the sheet; quantity checks per invoice line.
