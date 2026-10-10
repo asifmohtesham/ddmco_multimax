@@ -1,3 +1,1 @@
-New: link a Sales Order to its POS Upload in the Customer's PO No field. Delivery Notes then use the voucher's lines as invoice serials, and orders picked before linking can be matched to voucher lines.
-Create Delivery Note on a Sales Order now opens scan-to-pick; items are never pre-filled.
-Fixes: rack required on Delivery Note items; rack lists and stock balances work on newer ERPNext; reasons for a refused item now show in the sheet; quantity checks per invoice line.
+Fix: the From and To dates on the Batch-Wise Balance History report now filter the report. Previously it always showed today's balance whatever dates were chosen. A From Date after the To Date is now flagged instead of returning an empty report.
