@@ -855,15 +855,20 @@ class ApiProvider {
   // getBatchWiseBalance
   //
   // All-named params, optional batchNo (omit = fetch all batches for item+wh).
-  // Used by ItemSheetControllerBase.fetchBatchBalance and
-  // StockEntryItemFormController.fetchBatchWiseHistory.
-  // Signature was already correct on this branch — no changes needed.
+  // Used by ItemSheetControllerBase.fetchBatchBalance,
+  // StockEntryItemFormController.fetchBatchWiseHistory and the Batch-Wise
+  // Balance History report screen (the only caller that passes dates).
   // ---------------------------------------------------------------------------
 
   /// Fetch Batch-Wise Balance History rows for [itemCode].
   ///
   /// [batchNo] is optional — omit to fetch all in-stock batches for the item
   /// (used by BatchPickerSheet pre-fetch / fetchBatchWiseHistory).
+  ///
+  /// [fromDate] / [toDate] are `yyyy-MM-dd`; each defaults to today when null
+  /// or blank. The report's opening balance is everything before [fromDate]
+  /// and its balance is as of [toDate], so a today–today window gives the
+  /// current balance. Same filter names on ERPNext v15 and v16.
   ///
   /// Both Map rows (key-based) and List rows (positional) are normalised to
   /// a consistent shape: {'batch_no': String, 'qty': double, ...} so that
@@ -873,17 +878,21 @@ class ApiProvider {
     required String itemCode,
     String? batchNo,
     String? warehouse,
+    String? fromDate,
+    String? toDate,
   }) async {
     if (!_dioInitialised) await _initDio();
 
     final storage = Get.find<StorageService>();
     final String company = storage.getCompany();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    String dateOrToday(String? d) =>
+        (d == null || d.trim().isEmpty) ? today : d.trim();
 
     final Map<String, dynamic> filters = {
       "company"   : company,
-      "from_date" : today,
-      "to_date"   : today,
+      "from_date" : dateOrToday(fromDate),
+      "to_date"   : dateOrToday(toDate),
       "item_code" : itemCode,
     };
 
