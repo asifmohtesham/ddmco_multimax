@@ -127,14 +127,29 @@ class BatchWiseBalanceController extends GetxController {
   /// Runs the Batch-Wise Balance History report with current filter values.
   ///
   /// Only [itemCode] is required. [batchNo] and [warehouse] are optional
-  /// and are omitted from the API call when empty.
+  /// and are omitted from the API call when empty. From/To dates are sent
+  /// as selected; a blank date falls back to today in the provider.
   Future<void> runReport() async {
     final itemCode = itemCodeController.text.trim();
+    final fromDate = fromDateController.text.trim();
+    final toDate   = toDateController.text.trim();
 
     if (itemCode.isEmpty) {
       GlobalSnackbar.warning(
         title:   'Filter Required',
         message: 'Please enter an Item Code to run the report.',
+      );
+      return;
+    }
+
+    // The report throws "From Date must be before To Date" server-side, which
+    // getBatchWiseBalance swallows into an empty list — catch it here instead.
+    // yyyy-MM-dd strings compare correctly as plain strings.
+    if (fromDate.isNotEmpty && toDate.isNotEmpty &&
+        fromDate.compareTo(toDate) > 0) {
+      GlobalSnackbar.warning(
+        title:   'Invalid Date Range',
+        message: 'From Date must be on or before To Date.',
       );
       return;
     }
@@ -151,6 +166,8 @@ class BatchWiseBalanceController extends GetxController {
         itemCode:  itemCode,
         batchNo:   batchNo.isEmpty   ? null : batchNo,
         warehouse: warehouse.isEmpty ? null : warehouse,
+        fromDate:  fromDate.isEmpty  ? null : fromDate,
+        toDate:    toDate.isEmpty    ? null : toDate,
       );
 
       reportData.assignAll(rows);
