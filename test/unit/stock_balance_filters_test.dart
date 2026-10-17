@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_controller.dart';
@@ -93,6 +94,42 @@ void main() {
     test('January rolls back into the previous year', () {
       expect(StockBalanceController.previousMonth(DateTime(2026, 1, 15)),
           DateTime(2025, 12, 15));
+    });
+  });
+
+  rackLinkTests();
+}
+
+// Picking a Rack implies dimension-wise stock (on desk the Rack filter is only
+// shown once that check is on), so the sheet flips the toggle automatically.
+void rackLinkTests() {
+  group('StockBalanceController.linkRackToDimensionWise', () {
+    late TextEditingController rack;
+    late TextEditingController dim;
+    setUp(() {
+      rack = TextEditingController();
+      dim = TextEditingController();
+      StockBalanceController.linkRackToDimensionWise(rack, dim);
+    });
+    tearDown(() {
+      rack.dispose();
+      dim.dispose();
+    });
+
+    test('setting a rack switches Dimension-wise on', () {
+      rack.text = 'KA-WH-DXB3-101A';
+      expect(dim.text, '1');
+    });
+
+    test('clearing the rack leaves Dimension-wise as it was', () {
+      rack.text = 'KA-WH-DXB3-101A';
+      rack.text = '';
+      expect(dim.text, '1');
+    });
+
+    test('whitespace-only rack does not toggle', () {
+      rack.text = '   ';
+      expect(dim.text, '');
     });
   });
 }

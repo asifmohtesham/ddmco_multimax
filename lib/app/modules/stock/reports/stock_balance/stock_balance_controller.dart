@@ -164,6 +164,7 @@ class StockBalanceController extends GetxController {
       'include_zero_stock' : includeZeroController,
     };
     _applyDefaults();
+    linkRackToDimensionWise(rackController, dimensionWiseController);
     // Restore persisted view preferences.
     hideEmpty.value  = _storage.getSbHideEmpty();
     showImages.value = _storage.getSbShowImages();
@@ -209,6 +210,23 @@ class StockBalanceController extends GetxController {
     fromDateController.text    = _formatDate(previousMonth(now));
     toDateController.text      = _formatDate(now);
     includeZeroController.text = '1';
+  }
+
+  /// On desk the Rack filter only appears once "Show Dimension Wise Stock" is
+  /// on (`add_inventory_dimensions` sets `depends_on`). The sheet shows Rack
+  /// always, so picking one switches Dimension-wise on; clearing Rack leaves
+  /// the toggle as the user had it. Returns the listener so tests can detach.
+  static VoidCallback linkRackToDimensionWise(
+    TextEditingController rack,
+    TextEditingController dimensionWise,
+  ) {
+    void onRack() {
+      if (rack.text.trim().isNotEmpty && dimensionWise.text != '1') {
+        dimensionWise.text = '1';
+      }
+    }
+    rack.addListener(onRack);
+    return onRack;
   }
 
   /// `frappe.datetime.add_months(d, -1)`: same day one month earlier, clamped
