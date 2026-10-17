@@ -95,6 +95,11 @@ class SharedDualRackSection extends StatelessWidget {
                 : null,
           ),
 
+        // Match GlobalItemFormSheet's 20px inter-field gap so the source
+        // BalanceChip never sits flush against the target field.
+        if (controller.showSourceRack && controller.showTargetRack)
+          const SizedBox(height: 20),
+
         // ── Target Rack ───────────────────────────────────────────────────
         // Shown only for SE types that require a destination rack.
         if (controller.showTargetRack)
