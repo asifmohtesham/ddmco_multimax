@@ -1,1 +1,1 @@
-Stock Entry: the Add Item sheet now leaves clear space between the Source Rack and Target Rack fields, so the rack balance badge no longer crowds the next field.
+Stock Balance: choosing a Rack in the report filters now switches on Dimension-wise automatically, matching the desk report, so rack-level results show without an extra tap.
