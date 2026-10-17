@@ -1,1 +1,1 @@
-Stock Balance filters now match the desk report: pick several items and warehouses, filter by warehouse type or rack, add a second unit of measure, show stock ageing, ignore closing balances, and include zero-stock items (on by default). The date range defaults to the last month. Pickers across the app no longer offer disabled items, warehouses or units.
+Dark mode fix: the Stock Entry type picker, warehouse picker and scan bar, and the Material Request filter sheet now use the dark surface, so their titles and options are readable again instead of white-on-white.
