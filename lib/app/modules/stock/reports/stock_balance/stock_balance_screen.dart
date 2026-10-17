@@ -71,9 +71,10 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
   void _openFilters(BuildContext context) => showReportFilterSheet(
         context: context,
         title: 'Stock Balance Filters',
-        fields: controller.filterFields,
+        fields: StockBalanceController.filterFields,
         controllers: controller.filterControllers,
-        chipGroups: controller.chipGroups,
+        toggles: StockBalanceController.toggles,
+        togglesLabel: 'Display Options',
         onRun: controller.runReport,
         onClear: controller.clearFilters,
       );

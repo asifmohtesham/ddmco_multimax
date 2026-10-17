@@ -219,7 +219,7 @@ class GlobalSearchService extends GetxService {
       fromDate: today,
       toDate: today,
       itemCodes: codes,
-      warehouse: warehouse,
+      warehouses: [warehouse],
     );
     final allowed = codes.toSet();
     final rows = result.rows

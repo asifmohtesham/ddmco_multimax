@@ -16,8 +16,14 @@ class StockBalanceController extends GetxController {
   final warehouseController     = TextEditingController();
   final itemGroupController     = TextEditingController();
   final customerCodeController  = TextEditingController();
+  final warehouseTypeController = TextEditingController();
+  final rackController          = TextEditingController();
+  final includeUomController    = TextEditingController();
   final dimensionWiseController = TextEditingController();
   final variantAttrsController  = TextEditingController();
+  final stockAgeingController   = TextEditingController();
+  final ignoreClosingController = TextEditingController();
+  final includeZeroController   = TextEditingController();
 
   late final Map<String, TextEditingController> filterControllers;
 
@@ -39,41 +45,68 @@ class StockBalanceController extends GetxController {
   final quickSort      = 'bal'.obs; // bal (asc) | val (desc) | move | code
 
   // ── Filter field descriptors (passed to ReportFilterSheet) ───────────────
-  List<ReportFilterField> get filterFields => [
-    const ReportFilterField(
+  //
+  // Mirrors the v15 desk report's filter bar (stock_balance.js), in its order.
+  // Company is omitted (single-company app; sent from Session Defaults) and
+  // Valuation Field Type (Currency/Float) only changes desk column formatting,
+  // so it is pinned to Currency. Customer Code is a mobile-only extra.
+  static const List<ReportFilterField> filterFields = [
+    ReportFilterField(
       key:        'from_date',
       label:      'From Date',
       type:       ReportFilterType.datePicker,
       prefixIcon: Icons.calendar_today_outlined,
     ),
-    const ReportFilterField(
+    ReportFilterField(
       key:        'to_date',
       label:      'To Date',
       type:       ReportFilterType.datePicker,
       prefixIcon: Icons.calendar_today_outlined,
     ),
-    const ReportFilterField(
-      key:         'item_code',
-      label:       'Item',
-      type:        ReportFilterType.doctypeLink,
-      linkDoctype: 'Item',
-      prefixIcon:  Icons.category_outlined,
-    ),
-    const ReportFilterField(
-      key:         'warehouse',
-      label:       'Warehouse',
-      type:        ReportFilterType.doctypeLink,
-      linkDoctype: 'Warehouse',
-      prefixIcon:  Icons.warehouse_outlined,
-    ),
-    const ReportFilterField(
+    ReportFilterField(
       key:         'item_group',
       label:       'Item Group',
       type:        ReportFilterType.doctypeLink,
       linkDoctype: 'Item Group',
       prefixIcon:  Icons.folder_outlined,
     ),
-    const ReportFilterField(
+    ReportFilterField(
+      key:         'item_code',
+      label:       'Items',
+      type:        ReportFilterType.doctypeMultiLink,
+      linkDoctype: 'Item',
+      prefixIcon:  Icons.category_outlined,
+    ),
+    ReportFilterField(
+      key:         'warehouse',
+      label:       'Warehouses',
+      type:        ReportFilterType.doctypeMultiLink,
+      linkDoctype: 'Warehouse',
+      prefixIcon:  Icons.warehouse_outlined,
+    ),
+    ReportFilterField(
+      key:         'warehouse_type',
+      label:       'Warehouse Type',
+      type:        ReportFilterType.doctypeLink,
+      linkDoctype: 'Warehouse Type',
+      prefixIcon:  Icons.domain_outlined,
+      hint:        'Applies when no warehouse is chosen',
+    ),
+    ReportFilterField(
+      key:         'rack',
+      label:       'Rack',
+      type:        ReportFilterType.doctypeLink,
+      linkDoctype: 'Rack',
+      prefixIcon:  Icons.shelves,
+    ),
+    ReportFilterField(
+      key:         'include_uom',
+      label:       'Include UOM',
+      type:        ReportFilterType.doctypeLink,
+      linkDoctype: 'UOM',
+      prefixIcon:  Icons.straighten_outlined,
+    ),
+    ReportFilterField(
       key:        'customer_code',
       label:      'Customer Code',
       type:       ReportFilterType.text,
@@ -81,29 +114,32 @@ class StockBalanceController extends GetxController {
     ),
   ];
 
-  // ── Chip group descriptors (passed to ReportFilterSheet) ─────────────────
-  List<ReportFilterChipGroup> get chipGroups => [
-    const ReportFilterChipGroup(
+  // ── Check-filter toggles (passed to ReportFilterSheet) ───────────────────
+  static const List<ReportFilterToggle> toggles = [
+    ReportFilterToggle(
       key:   'show_dimension_wise',
-      label: 'Display Options',
-      options: [
-        ReportFilterChipOption(
-          value: '1',
-          label: 'Dimension-wise',
-          icon:  Icons.shelves,
-        ),
-      ],
+      label: 'Dimension-wise',
+      icon:  Icons.shelves,
     ),
-    const ReportFilterChipGroup(
+    ReportFilterToggle(
       key:   'show_variant_attrs',
-      label: 'Variant Options',
-      options: [
-        ReportFilterChipOption(
-          value: '1',
-          label: 'Variant Attributes',
-          icon:  Icons.style_outlined,
-        ),
-      ],
+      label: 'Variant Attributes',
+      icon:  Icons.style_outlined,
+    ),
+    ReportFilterToggle(
+      key:   'show_stock_ageing',
+      label: 'Stock Ageing',
+      icon:  Icons.hourglass_bottom_outlined,
+    ),
+    ReportFilterToggle(
+      key:   'ignore_closing_balance',
+      label: 'Ignore Closing Balance',
+      icon:  Icons.lock_open_outlined,
+    ),
+    ReportFilterToggle(
+      key:   'include_zero_stock',
+      label: 'Include Zero Stock',
+      icon:  Icons.exposure_zero,
     ),
   ];
 
@@ -118,12 +154,16 @@ class StockBalanceController extends GetxController {
       'warehouse'          : warehouseController,
       'item_group'         : itemGroupController,
       'customer_code'      : customerCodeController,
+      'warehouse_type'     : warehouseTypeController,
+      'rack'               : rackController,
+      'include_uom'        : includeUomController,
       'show_dimension_wise': dimensionWiseController,
       'show_variant_attrs' : variantAttrsController,
+      'show_stock_ageing'  : stockAgeingController,
+      'ignore_closing_balance': ignoreClosingController,
+      'include_zero_stock' : includeZeroController,
     };
-    final today = _formatDate(DateTime.now());
-    fromDateController.text = today;
-    toDateController.text   = today;
+    _applyDefaults();
     // Restore persisted view preferences.
     hideEmpty.value  = _storage.getSbHideEmpty();
     showImages.value = _storage.getSbShowImages();
@@ -144,25 +184,38 @@ class StockBalanceController extends GetxController {
 
   void clearFilter(String key) {
     filterControllers[key]?.clear();
-    if (key == 'from_date' || key == 'to_date') {
-      filterControllers[key]!.text = _formatDate(DateTime.now());
-    }
+    // Dates always carry a value (the report requires them); removing the
+    // chip restores the desk default rather than leaving the field blank.
+    final now = DateTime.now();
+    if (key == 'from_date') fromDateController.text = _formatDate(previousMonth(now));
+    if (key == 'to_date')   toDateController.text   = _formatDate(now);
     _rebuildActiveFilters();
   }
 
   void clearFilters() {
-    itemCodeController.clear();
-    warehouseController.clear();
-    itemGroupController.clear();
-    customerCodeController.clear();
-    dimensionWiseController.clear();
-    variantAttrsController.clear();
-    final today = _formatDate(DateTime.now());
-    fromDateController.text = today;
-    toDateController.text   = today;
+    for (final c in filterControllers.values) {
+      c.clear();
+    }
+    _applyDefaults();
     _rebuildActiveFilters();
     reportData.clear();
     reportColumns.clear();
+  }
+
+  /// Desk defaults (stock_balance.js): From = one month back, To = today,
+  /// Include Zero Stock Items on. Everything else unset.
+  void _applyDefaults() {
+    final now = DateTime.now();
+    fromDateController.text    = _formatDate(previousMonth(now));
+    toDateController.text      = _formatDate(now);
+    includeZeroController.text = '1';
+  }
+
+  /// `frappe.datetime.add_months(d, -1)`: same day one month earlier, clamped
+  /// to that month's last day (31 Mar → 28/29 Feb).
+  static DateTime previousMonth(DateTime d) {
+    final lastDayPrev = DateTime(d.year, d.month, 0).day; // day 0 = prev month end
+    return DateTime(d.year, d.month - 1, d.day > lastDayPrev ? lastDayPrev : d.day);
   }
 
   Future<void> runReport() async {
@@ -175,18 +228,21 @@ class StockBalanceController extends GetxController {
     _resetQuickView();
 
     try {
-      final itemCode     = itemCodeController.text.trim();
-      final warehouse    = warehouseController.text.trim();
-      final itemGroup    = itemGroupController.text.trim();
-      final customerCode = customerCodeController.text.trim();
+      final itemCodes     = splitMultiValue(itemCodeController.text);
+      final warehouses    = splitMultiValue(warehouseController.text);
+      final itemGroup     = itemGroupController.text.trim();
+      final customerCode  = customerCodeController.text.trim();
+      final warehouseType = warehouseTypeController.text.trim();
+      final rack          = rackController.text.trim();
+      final includeUom    = includeUomController.text.trim();
 
       // Resolve Customer Code → parent item codes (the report has no customer
-      // filter). Intersect with any typed Item filter.
+      // filter). Intersect with any picked Items.
       List<String>? customerItemCodes;
       if (customerCode.isNotEmpty) {
         customerItemCodes = await _api.resolveItemsByCustomerCode(customerCode);
       }
-      final allowedItems = resolveItemCodeFilter(itemCode, customerItemCodes);
+      final allowedItems = resolveItemCodeFilter(itemCodes, customerItemCodes);
 
       // No matching items → empty report rather than the unfiltered set.
       if (allowedItems != null && allowedItems.isEmpty) {
@@ -206,10 +262,16 @@ class StockBalanceController extends GetxController {
         fromDate:              fromDateController.text.trim(),
         toDate:                toDateController.text.trim(),
         itemCodes:             allowedItems,
-        warehouse:             warehouse.isEmpty ? null : warehouse,
+        warehouses:            warehouses,
         itemGroup:             itemGroup.isEmpty ? null : itemGroup,
+        warehouseType:         warehouseType.isEmpty ? null : warehouseType,
+        rack:                  rack.isEmpty ? null : rack,
+        includeUom:            includeUom.isEmpty ? null : includeUom,
         showDimensionWise:     dimensionWiseController.text == '1',
         showVariantAttributes: variantAttrsController.text  == '1',
+        showStockAgeing:       stockAgeingController.text   == '1',
+        ignoreClosingBalance:  ignoreClosingController.text == '1',
+        includeZeroStockItems: includeZeroController.text   == '1',
       );
 
       reportColumns.assignAll(result.columns);
@@ -355,9 +417,17 @@ class StockBalanceController extends GetxController {
     'warehouse'          : 'Warehouse',
     'item_group'         : 'Group',
     'customer_code'      : 'Customer Code',
+    'warehouse_type'     : 'Wh Type',
+    'rack'               : 'Rack',
+    'include_uom'        : 'UOM',
     'show_dimension_wise': 'Dimension-wise',
     'show_variant_attrs' : 'Variant Attrs',
+    'show_stock_ageing'  : 'Ageing',
+    'ignore_closing_balance': 'Ignore Closing',
+    'include_zero_stock' : 'Zero Stock',
   };
+
+  static final _toggleKeys = toggles.map((t) => t.key).toSet();
 
   void _rebuildActiveFilters() {
     activeFilters.clear();
@@ -365,8 +435,9 @@ class StockBalanceController extends GetxController {
       final v = ctrl.text.trim();
       if (v.isNotEmpty) {
         final label = _filterLabels[key] ?? key;
-        activeFilters[key] =
-            key.startsWith('show_') ? label : '$label: $v';
+        activeFilters[key] = _toggleKeys.contains(key)
+            ? label
+            : '$label: ${splitMultiValue(v).join(', ')}';
       }
     });
   }
@@ -384,22 +455,26 @@ class StockBalanceController extends GetxController {
 
   /// Computes the final list of item codes to restrict the report to.
   ///
-  /// - [typedItemCode] — the value of the Item filter ('' when unset).
+  /// - [pickedItemCodes] — the Items filter selection (empty when unset).
   /// - [customerItemCodes] — item codes resolved from the Customer Code
   ///   lookup, or null when no Customer Code filter is active.
   ///
   /// Returns null when no item restriction applies, or an empty list when the
   /// combination matches no items (the report should then show nothing).
   static List<String>? resolveItemCodeFilter(
-    String typedItemCode,
+    List<String> pickedItemCodes,
     List<String>? customerItemCodes,
   ) {
-    final typed = typedItemCode.trim();
+    final picked = pickedItemCodes
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
     if (customerItemCodes == null) {
-      return typed.isEmpty ? null : [typed];
+      return picked.isEmpty ? null : picked;
     }
-    if (typed.isEmpty) return customerItemCodes;
-    return customerItemCodes.contains(typed) ? [typed] : <String>[];
+    if (picked.isEmpty) return customerItemCodes;
+    final customer = customerItemCodes.toSet();
+    return picked.where(customer.contains).toList();
   }
 
   /// Keeps only [rows] whose `item_code` is in [allowedItemCodes].

@@ -781,15 +781,75 @@ class ApiProvider {
     );
   }
 
+  /// Builds the `filters` payload for the Stock Balance report. Pure, so the
+  /// filter contract is unit-testable; [itemCodeFilter] is the already
+  /// version-resolved value (scalar or list) or null to omit.
+  ///
+  /// Mirrors the v15 desk report (`stock_balance.js`):
+  ///   • `warehouse` is a MultiSelectList server-side (list → `lft/rgt`
+  ///     range per entry); a single warehouse is still sent as a scalar, the
+  ///     path every instance version honours.
+  ///   • `warehouse_type` only applies when no warehouse is chosen.
+  ///   • `rack` is an Inventory Dimension filter — always a list (`.isin`).
+  ///   • `include_uom` adds `<col>_alt` converted columns.
+  ///   • Check filters are sent as `1` only when on (omitted = 0).
+  static Map<String, dynamic> buildStockBalanceFilters({
+    required String company,
+    required String fromDate,
+    required String toDate,
+    dynamic itemCodeFilter,
+    List<String>? warehouses,
+    String? itemGroup,
+    String? warehouseType,
+    String? rack,
+    String? includeUom,
+    bool showDimensionWise      = false,
+    bool showVariantAttributes  = false,
+    bool showStockAgeing        = false,
+    bool ignoreClosingBalance   = false,
+    bool includeZeroStockItems  = false,
+  }) {
+    final whs = warehouses?.where((w) => w.trim().isNotEmpty).toList() ?? const [];
+    return <String, dynamic>{
+      'company'             : company,
+      'from_date'           : fromDate,
+      'to_date'             : toDate,
+      'valuation_field_type': 'Currency',
+      if (itemCodeFilter != null)
+        'item_code'         : itemCodeFilter,
+      if (whs.length == 1)  'warehouse'      : whs.first,
+      if (whs.length > 1)   'warehouse'      : whs,
+      if (itemGroup != null && itemGroup.isNotEmpty)
+        'item_group'        : itemGroup,
+      if (warehouseType != null && warehouseType.isNotEmpty)
+        'warehouse_type'    : warehouseType,
+      if (rack != null && rack.isNotEmpty)
+        'rack'              : [rack],
+      if (includeUom != null && includeUom.isNotEmpty)
+        'include_uom'       : includeUom,
+      if (showDimensionWise)     'show_dimension_wise_stock': 1,
+      if (showVariantAttributes) 'show_variant_attributes'  : 1,
+      if (showStockAgeing)       'show_stock_ageing_data'   : 1,
+      if (ignoreClosingBalance)  'ignore_closing_balance'   : 1,
+      if (includeZeroStockItems) 'include_zero_stock_items' : 1,
+    };
+  }
+
   Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
       getStockBalanceReport({
     required String fromDate,
     required String toDate,
     List<String>? itemCodes,
-    String? warehouse,
+    List<String>? warehouses,
     String? itemGroup,
-    bool showDimensionWise     = false,
-    bool showVariantAttributes = false,
+    String? warehouseType,
+    String? rack,
+    String? includeUom,
+    bool showDimensionWise      = false,
+    bool showVariantAttributes  = false,
+    bool showStockAgeing        = false,
+    bool ignoreClosingBalance   = false,
+    bool includeZeroStockItems  = false,
   }) async {
     if (!_dioInitialised) await _initDio();
 
@@ -810,20 +870,22 @@ class ApiProvider {
       itemCodeFilter = items;
     }
 
-    final filters = <String, dynamic>{
-      'company'             : storage.getCompany(),
-      'from_date'           : fromDate,
-      'to_date'             : toDate,
-      'valuation_field_type': 'Currency',
-      if (itemCodeFilter != null)
-        'item_code'         : itemCodeFilter,
-      if (warehouse != null && warehouse.isNotEmpty)
-        'warehouse'         : warehouse,
-      if (itemGroup != null && itemGroup.isNotEmpty)
-        'item_group'        : itemGroup,
-      if (showDimensionWise)     'show_dimension_wise_stock': 1,
-      if (showVariantAttributes) 'show_variant_attributes'  : 1,
-    };
+    final filters = buildStockBalanceFilters(
+      company:               storage.getCompany(),
+      fromDate:              fromDate,
+      toDate:                toDate,
+      itemCodeFilter:        itemCodeFilter,
+      warehouses:            warehouses,
+      itemGroup:             itemGroup,
+      warehouseType:         warehouseType,
+      rack:                  rack,
+      includeUom:            includeUom,
+      showDimensionWise:     showDimensionWise,
+      showVariantAttributes: showVariantAttributes,
+      showStockAgeing:       showStockAgeing,
+      ignoreClosingBalance:  ignoreClosingBalance,
+      includeZeroStockItems: includeZeroStockItems,
+    );
 
     late final Response response;
     try {

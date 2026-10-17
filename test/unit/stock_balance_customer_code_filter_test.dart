@@ -10,47 +10,54 @@ import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_c
 void main() {
   group('StockBalanceController.resolveItemCodeFilter', () {
     test('no customer items and no typed item → null (unrestricted)', () {
-      expect(StockBalanceController.resolveItemCodeFilter('', null), isNull);
+      expect(StockBalanceController.resolveItemCodeFilter(const [], null), isNull);
     });
 
     test('no customer items, typed item → just the typed item', () {
       expect(
-        StockBalanceController.resolveItemCodeFilter('ITEM-1', null),
+        StockBalanceController.resolveItemCodeFilter(['ITEM-1'], null),
         ['ITEM-1'],
       );
     });
 
-    test('typed item is trimmed', () {
+    test('picked items are trimmed and blanks dropped', () {
       expect(
-        StockBalanceController.resolveItemCodeFilter('  ITEM-1  ', null),
+        StockBalanceController.resolveItemCodeFilter(['  ITEM-1  ', ''], null),
         ['ITEM-1'],
       );
     });
 
     test('customer items, no typed item → all customer items', () {
       expect(
-        StockBalanceController.resolveItemCodeFilter('', ['A', 'B']),
+        StockBalanceController.resolveItemCodeFilter(const [], ['A', 'B']),
         ['A', 'B'],
       );
     });
 
     test('customer items + matching typed item → intersection (the item)', () {
       expect(
-        StockBalanceController.resolveItemCodeFilter('A', ['A', 'B']),
+        StockBalanceController.resolveItemCodeFilter(['A'], ['A', 'B']),
         ['A'],
       );
     });
 
     test('customer items + non-matching typed item → empty (no results)', () {
       expect(
-        StockBalanceController.resolveItemCodeFilter('Z', ['A', 'B']),
+        StockBalanceController.resolveItemCodeFilter(['Z'], ['A', 'B']),
         isEmpty,
+      );
+    });
+
+    test('several picked items + customer items → the overlap only', () {
+      expect(
+        StockBalanceController.resolveItemCodeFilter(['A', 'Z', 'B'], ['A', 'B']),
+        ['A', 'B'],
       );
     });
 
     test('empty customer item list → empty (no results)', () {
       expect(
-        StockBalanceController.resolveItemCodeFilter('', <String>[]),
+        StockBalanceController.resolveItemCodeFilter(const [], <String>[]),
         isEmpty,
       );
     });

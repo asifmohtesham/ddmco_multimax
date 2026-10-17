@@ -23,6 +23,43 @@ enum ReportFilterType {
   /// Read-only field that opens a searchable DocType picker sheet on tap.
   /// Requires [ReportFilterField.linkDoctype] to be set.
   doctypeLink,
+
+  /// Multi-value DocType picker (ERPNext `MultiSelectList`): selected names
+  /// render as removable chips with an "Add" affordance that opens the same
+  /// picker sheet. The controller holds the values joined by
+  /// [kMultiValueSeparator] — read them back with [splitMultiValue].
+  /// Requires [ReportFilterField.linkDoctype] to be set.
+  doctypeMultiLink,
+}
+
+/// Separator between values in a [ReportFilterType.doctypeMultiLink]
+/// controller. Newline can't appear in a Frappe document name.
+const kMultiValueSeparator = '\n';
+
+/// Splits a multi-link controller's text into its non-empty values.
+List<String> splitMultiValue(String text) => text
+    .split(kMultiValueSeparator)
+    .map((s) => s.trim())
+    .where((s) => s.isNotEmpty)
+    .toList();
+
+/// Joins [values] for storage in a multi-link controller.
+String joinMultiValue(Iterable<String> values) =>
+    values.where((s) => s.trim().isNotEmpty).join(kMultiValueSeparator);
+
+/// Describes one on/off switch rendered inside [showReportFilterSheet]
+/// (ERPNext `Check` filter). Backed by its own [TextEditingController]:
+/// `'1'` when on, empty when off.
+class ReportFilterToggle {
+  final String key;
+  final String label;
+  final IconData? icon;
+
+  const ReportFilterToggle({
+    required this.key,
+    required this.label,
+    this.icon,
+  });
 }
 
 /// Describes a single filter row inside [showReportFilterSheet].
@@ -159,6 +196,11 @@ Future<void> showReportFilterSheet({
   /// Each group's controller must be present in [controllers].
   List<ReportFilterChipGroup> chipGroups = const [],
   // ─────────────────────────────────────────────────────────────────────────
+  /// Optional on/off toggles rendered as one FilterChip row under
+  /// [togglesLabel], after [chipGroups]. Each toggle's controller must be
+  /// present in [controllers].
+  List<ReportFilterToggle> toggles = const [],
+  String togglesLabel = 'Options',
 }) async {
   await showModalBottomSheet(
     context: context,
@@ -173,6 +215,8 @@ Future<void> showReportFilterSheet({
       onClear:       onClear,
       sectionLabels: sectionLabels,
       chipGroups:    chipGroups,    // ← NEW
+      toggles:       toggles,
+      togglesLabel:  togglesLabel,
     ),
   );
 }
@@ -189,6 +233,8 @@ class _ReportFilterSheet extends StatelessWidget {
   final VoidCallback?                      onClear;
   final Map<String, String>                sectionLabels;
   final List<ReportFilterChipGroup>        chipGroups;
+  final List<ReportFilterToggle>           toggles;
+  final String                             togglesLabel;
 
   const _ReportFilterSheet({
     required this.title,
@@ -198,6 +244,8 @@ class _ReportFilterSheet extends StatelessWidget {
     this.onClear,
     this.sectionLabels = const {},
     this.chipGroups    = const [],
+    this.toggles       = const [],
+    this.togglesLabel  = 'Options',
   });
 
   @override
@@ -299,6 +347,17 @@ class _ReportFilterSheet extends StatelessWidget {
                       _ChipGroupWidget(
                         group:      group,
                         controller: controllers[group.key]!,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ── On/off toggles (one FilterChip row) ───────────────────────
+                    if (toggles.isNotEmpty) ...[
+                      _SheetSubheading(togglesLabel),
+                      const SizedBox(height: 6),
+                      _ToggleChipsWidget(
+                        toggles:     toggles,
+                        controllers: controllers,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -432,7 +491,9 @@ class _FieldWidgetState extends State<_FieldWidget> {
 
   void _onTextChanged() {
     final nowHasText = widget.controller.text.isNotEmpty;
-    if (nowHasText != _hasText) {
+    // Multi-link chips are derived from the full text, so every change repaints.
+    if (nowHasText != _hasText ||
+        widget.field.type == ReportFilterType.doctypeMultiLink) {
       setState(() => _hasText = nowHasText);
     }
   }
@@ -490,6 +551,44 @@ class _FieldWidgetState extends State<_FieldWidget> {
                 ),
           contentPadding: const EdgeInsets.symmetric(
               horizontal: 12, vertical: 12),
+        ),
+      );
+    }
+
+    // ── doctypeMultiLink ───────────────────────────────────────────────────
+    // Removable value chips + "Add" button; values live newline-joined in
+    // the controller so the sheet's controller contract stays text-only.
+    if (field.type == ReportFilterType.doctypeMultiLink) {
+      final values = splitMultiValue(controller.text);
+      return InputDecorator(
+        decoration: InputDecoration(
+          labelText:  field.label,
+          border:     const OutlineInputBorder(),
+          prefixIcon: Icon(field.prefixIcon ?? Icons.list_alt_outlined),
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12, vertical: 8),
+        ),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            for (final v in values)
+              InputChip(
+                label: Text(v),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onDeleted: () => controller.text = joinMultiValue(
+                    values.where((x) => x != v)),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 16),
+              label: Text(values.isEmpty ? 'Tap to select' : 'Add'),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onPressed: () => _openDoctypeSheet(context, field, controller),
+            ),
+          ],
         ),
       );
     }
@@ -582,9 +681,91 @@ class _FieldWidgetState extends State<_FieldWidget> {
       ),
     );
 
-    if (selected != null) {
-      ctrl.text = selected;
+    if (selected == null) return;
+    if (field.type == ReportFilterType.doctypeMultiLink) {
+      final values = splitMultiValue(ctrl.text);
+      if (!values.contains(selected)) {
+        ctrl.text = joinMultiValue([...values, selected]);
+      }
+      return;
     }
+    ctrl.text = selected;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _ToggleChipsWidget — one FilterChip per ReportFilterToggle, each bound to
+// its own controller ('1' = on). Rebuilds when any bound controller changes
+// (e.g. "Clear" resetting them from outside the sheet).
+// ---------------------------------------------------------------------------
+
+class _ToggleChipsWidget extends StatefulWidget {
+  final List<ReportFilterToggle>           toggles;
+  final Map<String, TextEditingController> controllers;
+
+  const _ToggleChipsWidget({
+    required this.toggles,
+    required this.controllers,
+  });
+
+  @override
+  State<_ToggleChipsWidget> createState() => _ToggleChipsWidgetState();
+}
+
+class _ToggleChipsWidgetState extends State<_ToggleChipsWidget> {
+  Iterable<TextEditingController> get _bound =>
+      widget.toggles.map((t) => widget.controllers[t.key]!);
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in _bound) {
+      c.addListener(_rebuild);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _bound) {
+      c.removeListener(_rebuild);
+    }
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final t in widget.toggles)
+          Builder(builder: (_) {
+            final ctrl = widget.controllers[t.key]!;
+            final on   = ctrl.text == '1';
+            return FilterChip(
+              avatar: t.icon != null ? Icon(t.icon, size: 16) : null,
+              label: Text(t.label),
+              selected: on,
+              onSelected: (picked) => ctrl.text = picked ? '1' : '',
+              selectedColor: cs.secondaryContainer,
+              checkmarkColor: cs.onSecondaryContainer,
+              labelStyle: TextStyle(
+                color: on ? cs.onSecondaryContainer : cs.onSurface,
+                fontWeight: on ? FontWeight.w600 : FontWeight.normal,
+              ),
+              side: BorderSide(color: on ? cs.secondary : cs.outlineVariant),
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            );
+          }),
+      ],
+    );
   }
 }
 
