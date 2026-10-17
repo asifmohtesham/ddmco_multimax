@@ -829,19 +829,14 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
       _errorMsg = null;
     });
     try {
-      final filters = <String, dynamic>{
-        ...?widget.filters,
-        if (q.isNotEmpty) 'name': ['like', '%$q%'],
-      };
-      final rows = await _apiProvider.getList(
-        null,
-        doctype: widget.doctype,
-        fields:  ['name'],
-        filters: filters.isEmpty ? null : filters,
+      // Shared link-option fetch: adds the doctype's active-record filter
+      // (disabled = 0 / enabled = 1) so disabled records never show here.
+      final names = await _apiProvider.searchLinkOptions(
+        widget.doctype,
+        query:   q,
+        filters: widget.filters,
         limit:   50,
-        orderBy: 'name asc',
       );
-      final names = rows.map((r) => r['name'].toString()).toList();
       if (mounted) {
         setState(() {
           _items   = names;

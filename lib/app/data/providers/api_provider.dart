@@ -14,6 +14,7 @@ import 'package:multimax/app/data/providers/csrf_interceptor.dart';
 import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/global_search_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
@@ -1759,6 +1760,45 @@ class ApiProvider {
   /// exact-match constraints (e.g. `{'selling': 1, 'enabled': 1}` for a
   /// Price List picker), merged with the name-like filter; omit it to keep
   /// existing callers' behaviour unchanged.
+  /// Link pickers must only offer records that are still active. Frappe has no
+  /// uniform flag: Item/Warehouse/Batch carry `disabled`, UOM/Price List/User
+  /// carry `enabled`, others (Item Group, Warehouse Type) have neither. Read
+  /// the DocType meta once per doctype and derive the filter from whichever
+  /// field exists; `{}` when neither does or the meta cannot be fetched
+  /// (fail-open: a picker that lists disabled rows beats one that lists none).
+  final Map<String, Map<String, dynamic>> _activeFilterCache = {};
+
+  Future<Map<String, dynamic>> activeRecordFilter(String doctype) async {
+    final cached = _activeFilterCache[doctype];
+    if (cached != null) return cached;
+    Map<String, dynamic> filter = const {};
+    try {
+      final response = await getDocTypeMeta(doctype);
+      filter = activeFilterFromMeta(response.data, doctype);
+    } catch (e) {
+      print('activeRecordFilter: meta fetch failed for $doctype: $e');
+      return filter; // don't cache a transient failure
+    }
+    return _activeFilterCache[doctype] = filter;
+  }
+
+  /// Pure: `{'disabled': 0}` if the meta has a `disabled` field, else
+  /// `{'enabled': 1}` if it has `enabled`, else `{}`. Accepts the raw
+  /// `getdoctype` response (any shape `extractDocTypeMeta` tolerates).
+  static Map<String, dynamic> activeFilterFromMeta(
+      dynamic data, String doctype) {
+    final meta = GlobalSearchService.extractDocTypeMeta(data, doctype);
+    final fields = meta?['fields'];
+    if (fields is! List) return const {};
+    final names = fields
+        .whereType<Map>()
+        .map((f) => f['fieldname']?.toString())
+        .toSet();
+    if (names.contains('disabled')) return const {'disabled': 0};
+    if (names.contains('enabled')) return const {'enabled': 1};
+    return const {};
+  }
+
   Future<List<String>> searchLinkOptions(
     String doctype, {
     String query = '',
@@ -1770,7 +1810,8 @@ class ApiProvider {
       doctype: doctype,
       fields: ['name'],
       filters: {
-        ...?filters,
+        ...await activeRecordFilter(doctype),
+        ...?filters, // an explicit caller filter on the same key wins
         if (query.trim().isNotEmpty) 'name': ['like', '%${query.trim()}%'],
       },
       limit: limit,
