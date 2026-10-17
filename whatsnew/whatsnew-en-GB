@@ -1,1 +1,1 @@
-Dark mode fix: the Stock Entry type picker, warehouse picker and scan bar, and the Material Request filter sheet now use the dark surface, so their titles and options are readable again instead of white-on-white.
+Stock Entry: the Add Item sheet now leaves clear space between the Source Rack and Target Rack fields, so the rack balance badge no longer crowds the next field.
