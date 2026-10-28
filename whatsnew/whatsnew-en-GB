@@ -1,1 +1,1 @@
-Stock Balance: choosing a Rack in the report filters now switches on Dimension-wise automatically, matching the desk report, so rack-level results show without an extra tap.
+Stock Entry: Material Transfer rows can no longer be added without a Target Rack, so transferred stock always lands in a rack.
