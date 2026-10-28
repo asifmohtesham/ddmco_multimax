@@ -639,6 +639,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     super.removeSheetListeners();
   }
 
+  /// Target rack gates [isSheetValid] for Material Transfer, so edits to it
+  /// must re-run [validateSheet]. Removed in [removeSheetListeners].
+  @override
+  void addSheetListeners() {
+    super.addSheetListeners();
+    targetRackController.addListener(validateSheet);
+  }
+
   // ── Derived / computed ────────────────────────────────────────────────────────
   double? get _posSerialCeiling {
     final serial = selectedSerial.value;
@@ -835,7 +843,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       serial:         selectedSerial.value,
     );
 
-    final valid = batchOk && qtyOk && ceilOk && rackOk && serialOk;
+    final valid =
+        batchOk && qtyOk && ceilOk && rackOk && serialOk && _targetRackOk;
 
     isSheetValid.value = valid;
 
@@ -1214,6 +1223,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Target rack is mandatory only for Material Transfer (mirrors the ERP
+  /// "Stock Entry Target Rack Mandatory" Before Submit server script).
+  /// [submit] only sends a validated target rack, so validity is required.
+  bool get _targetRackOk =>
+      _parent.stockEntryType.value != 'Material Transfer' ||
+      (targetRackController.text.trim().isNotEmpty && isTargetRackValid.value);
+
   // ── submit ────────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
@@ -1230,6 +1246,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         serial: serial)) {
       throw Exception('Select an Invoice Serial Number');
     }
+    if (!_targetRackOk) throw Exception('Scan or choose a target rack');
 
     final sWh = itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
     final tWh = itemTargetWarehouse.value ?? _parent.toWarehouse.value;
