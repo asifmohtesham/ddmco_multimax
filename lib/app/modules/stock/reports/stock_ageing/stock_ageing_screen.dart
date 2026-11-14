@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -219,7 +220,9 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      showDragHandle: true,
+      // The sheet draws its own handle so the image can run edge to edge,
+      // clipped to the sheet's rounded corners.
+      clipBehavior: Clip.antiAlias,
       builder: (_) => _DetailSheet(
         row: row,
         columns: columns,
@@ -759,45 +762,103 @@ class _DetailSheet extends StatelessWidget {
       maxChildSize: 0.95,
       builder: (context, scroll) => ListView(
         controller: scroll,
-        padding: EdgeInsets.fromLTRB(
-            20, 0, 20, 24 + MediaQuery.viewPaddingOf(context).bottom),
+        padding: EdgeInsets.only(
+            bottom: 24 + MediaQuery.viewPaddingOf(context).bottom),
         children: [
-          if (imageUrl != null) ...[
-            Center(
-              child: ItemThumbnail(
-                imageUrl: imageUrl,
-                itemCode: code,
-                itemName: name,
-                size: 220,
-              ),
+          if (imageUrl != null)
+            // Edge to edge: no side padding, no gap above. The handle sits
+            // over the image.
+            Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                GestureDetector(
+                  onTap: () =>
+                      showItemImagePreview(context, imageUrl!, code, name),
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl!,
+                    width: double.infinity,
+                    fit: BoxFit.fitWidth,
+                    placeholder: (_, __) => AspectRatio(
+                      aspectRatio: 1,
+                      child: ColoredBox(color: cs.surfaceContainerHighest),
+                    ),
+                    errorWidget: (_, __, ___) => AspectRatio(
+                      aspectRatio: 2,
+                      child: ColoredBox(
+                        color: cs.surfaceContainerHighest,
+                        child: Icon(Icons.broken_image_outlined,
+                            color: cs.onSurfaceVariant),
+                      ),
+                    ),
+                  ),
+                ),
+                const _SheetHandle(onImage: true),
+              ],
+            )
+          else
+            const _SheetHandle(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(code,
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                if (name.isNotEmpty)
+                  Text(name,
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: cs.onSurfaceVariant)),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                for (final c in columns)
+                  // The image is shown above; without one its row reads "—".
+                  if (!(c.isImage && imageUrl != null))
+                    _DetailLine(
+                      label: c.label,
+                      value: c.isImage
+                          ? '—'
+                          : StockAgeingLogic.formatCell(c, row[c.fieldname]),
+                      dot: bucketIndex.containsKey(c.fieldname)
+                          ? _bucketColour(
+                              bucketIndex[c.fieldname]!, buckets.length)
+                          : null,
+                      numeric: const {'Float', 'Int', 'Currency', 'Percent'}
+                          .contains(c.fieldtype),
+                    ),
+              ],
             ),
-            const SizedBox(height: 16),
-          ],
-          Text(code,
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          if (name.isNotEmpty)
-            Text(name,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          const Divider(height: 1),
-          for (final c in columns)
-            // The image is shown above; without one its row reads "—".
-            if (!(c.isImage && imageUrl != null))
-              _DetailLine(
-                label: c.label,
-                value: c.isImage
-                    ? '—'
-                    : StockAgeingLogic.formatCell(c, row[c.fieldname]),
-                dot: bucketIndex.containsKey(c.fieldname)
-                    ? _bucketColour(
-                        bucketIndex[c.fieldname]!, buckets.length)
-                    : null,
-                numeric: const {'Float', 'Int', 'Currency', 'Percent'}
-                    .contains(c.fieldtype),
-              ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// The sheet's drag handle. Over an image it gets a dark backing so it stays
+/// visible on light and dark photos alike.
+class _SheetHandle extends StatelessWidget {
+  final bool onImage;
+  const _SheetHandle({this.onImage = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Container(
+        width: 36,
+        height: 5,
+        decoration: BoxDecoration(
+          color: onImage ? Colors.white : cs.onSurfaceVariant,
+          borderRadius: BorderRadius.circular(3),
+          border: onImage
+              ? Border.all(color: Colors.black54, width: 0.5)
+              : null,
+          boxShadow: onImage
+              ? const [BoxShadow(color: Colors.black45, blurRadius: 4)]
+              : null,
+        ),
       ),
     );
   }
