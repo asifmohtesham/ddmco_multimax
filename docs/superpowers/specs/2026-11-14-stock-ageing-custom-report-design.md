@@ -100,3 +100,86 @@ to the session default company.
 
 File layout follows `stock/reports/stock_balance`; pure static helpers on the
 controller / `ApiProvider` carry the logic so it is unit-testable.
+
+---
+
+## As built (v2.32.0+108, amended in v2.34.0+111)
+
+The sections above are the design as first approved. The screen that shipped
+differs in the ways below; where they conflict, this section is correct.
+
+### Report name
+
+The server report is `Stock Ageing - Custom` (`ApiProvider.kStockAgeingReport`).
+The nav link uses that server name with the label "Stock Ageing", because the
+drawer mirrors the Desk sidebar by report name.
+
+### Cache staleness
+
+`StockAgeingLogic.shouldAutoRefresh`: the cached default run is refetched in
+the background when it is from an earlier calendar day, is four hours old or
+more (`maxCacheAge`), or carries a fetch time ahead of the device clock.
+
+### Runs requested mid-refresh
+
+A run requested while one is in flight is queued and started when the current
+one finishes; it is never dropped. A default run that finishes while the user
+has edited the filter sheet does not overwrite those edits.
+
+### Default-filter check
+
+Only the filters the sheet can edit are compared with the saved defaults
+(`_sheetIsDefault`), so a saved company or any other saved key never makes an
+untouched sheet look edited. Saved filters the sheet cannot edit are carried
+along on user-filter runs.
+
+### Age buckets come from the range in effect
+
+A Frappe Custom Report freezes its column list, so the server returns the saved
+bucket titles ("Age (0 - 90)"…) whatever range the rows were calculated with,
+and omits columns for buckets the saved list never had.
+`StockAgeingLogic.applyRange` rebuilds the bucket columns (`rangeN`,
+`rangeNvalue`, titled "Age (a - b)" / "Value (a - b)", ending "(n - Above)")
+from the range the app sent, or the saved default range. This matches what core
+Stock Ageing returns and deliberately differs from the Desk view of the custom
+report, which mislabels buckets when the range is changed.
+
+### Cards and the row sheet follow the report's columns
+
+Rules agreed with the user for every Frappe report screen:
+
+- Labels are the report's own column titles, verbatim, read from
+  `message.columns` (`StockAgeingLogic.parseColumns`); cells are formatted by
+  the column's `fieldtype` (`formatCell`).
+- Tapping a card opens a sheet listing **every** report column in report order.
+  The item image is shown edge to edge at the top, with the drag handle drawn
+  over it; tapping it opens the full-screen preview.
+- `Variant Of` is prominent on the card (a tinted badge under the item code).
+- No app-invented figures or wording: `Average Age 523`, not "avg 523 days".
+
+Item Code and Available Qty (with UOM) are always on the card. Every other
+column is the user's choice, picked in the "Card fields" sheet (header action)
+and saved per device (`StorageService` key `sa_card_columns`). The stacked age
+bar is the one card element that is not a report column. Defaults: Variant Of,
+Item Name, Warehouse, Average Age, age bar.
+
+### Header chips
+
+- Sort choices (Oldest, Quantity, Oldest bucket, Item code) sit in the header's
+  chip row via `DocTypeListHeader.quickChips`, after the filter chips.
+- Active-filter chips show only filters that differ from the saved defaults.
+  Tapping a chip opens the filter sheet on that filter, ready to edit
+  (`FilterChipWidget.onTap` → `showReportFilterSheet(focusKey:)`: text fields
+  take focus, date and link fields open their picker). The × clears it.
+- The header repaints on a change in filter *count*; this screen folds the chip
+  texts into `quickChipsKey` so a changed value is redrawn too.
+
+### Search
+
+An inline search field in the body (item code, item name, variant-of,
+warehouse). The header's own search is wired to DocType search and is not used.
+
+### Other
+
+- The report call allows a 120 s receive timeout; a default run takes ~18 s.
+- Bucket colours are a fixed green-to-red ramp, not theme colours.
