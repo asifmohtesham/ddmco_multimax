@@ -1,1 +1,1 @@
-POS Upload items now show the UOM the rate is quoted in (Doz or Nos), next to Rate on each item card, so a per-dozen price is no longer mistaken for a per-piece one. Quantity is always in pieces. Items uploaded before this release show a dash until their invoice XML is uploaded again.
+iOS: the app now opens on the Multimax logo instead of a blank white screen, and is built for iOS 15 and later. No changes on Android.
