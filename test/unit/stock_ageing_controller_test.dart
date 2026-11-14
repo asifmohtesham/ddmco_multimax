@@ -173,10 +173,34 @@ void main() {
     c.onInit();
     expect(c.cardFields, {'brand'});
     await pumpEventQueue();
-    expect(c.columns.single.label, 'Age (0 - 90)');
+    // One frozen bucket column in the fixture; the saved range has five.
+    expect(c.columns.first.label, 'Age (0 - 90)');
+    expect(c.columns.length, 10);
     expect(c.imageUrlOf({'image': '/files/a b.jpg'}),
         'https://erp.domain.com/files/a%20b.jpg');
     expect(c.imageUrlOf({'image': null}), isNull);
+    c.onClose();
+  });
+
+  test('bucket titles follow the range in effect, not the frozen columns',
+      () async {
+    final c = build((_) async => _response(_message(customFilters: _saved)));
+    await c.runReport();
+    expect(c.buckets.map((b) => b.label),
+        ['0 - 90', '91 - 180', '181 - 360', '361 - 720', '721 - Above']);
+
+    c.filterControllers['range']!.text = '360, 720';
+    await c.runReport();
+    expect(calls.last?['range'], '360, 720');
+    expect(c.buckets.map((b) => b.label),
+        ['0 - 360', '361 - 720', '721 - Above']);
+    expect(
+        c.columns.map((x) => x.label).where((l) => l.startsWith('Value')),
+        ['Value (0 - 360)', 'Value (361 - 720)', 'Value (721 - Above)']);
+
+    c.clearFilters();
+    await pumpEventQueue();
+    expect(c.buckets.length, 5);
     c.onClose();
   });
 }

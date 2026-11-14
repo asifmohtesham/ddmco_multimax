@@ -363,11 +363,15 @@ class StockAgeingController extends GetxController {
           await _cache.write(snapshot);
         } catch (_) {}
       } else {
-        this.columns.assignAll(StockAgeingLogic.parseColumns(columns));
-        buckets.assignAll(StockAgeingLogic.parseBuckets(columns));
+        // The server's bucket titles are frozen; rebuild them for the range
+        // this run was calculated with.
+        final ranged = StockAgeingLogic.applyRange(
+            columns, filters!['range']?.toString());
+        this.columns.assignAll(StockAgeingLogic.parseColumns(ranged));
+        buckets.assignAll(StockAgeingLogic.parseBuckets(ranged));
         rows.assignAll(parsed);
         fetchedAt.value = now;
-        asOn.value = filters!['to_date'].toString();
+        asOn.value = filters['to_date'].toString();
         _rebuildActiveFilters();
       }
     } catch (e) {
@@ -392,8 +396,12 @@ class StockAgeingController extends GetxController {
     final untouched = _sheetIsDefault();
     _defaults = snapshot.defaults;
     if (untouched) _seedControllers(_defaults);
-    columns.assignAll(StockAgeingLogic.parseColumns(snapshot.columns));
-    buckets.assignAll(StockAgeingLogic.parseBuckets(snapshot.columns));
+    // Likewise for a default run: its range is the saved one, which the
+    // frozen titles need not match if the report was re-saved carelessly.
+    final ranged = StockAgeingLogic.applyRange(
+        snapshot.columns, _defaults['range']?.toString());
+    columns.assignAll(StockAgeingLogic.parseColumns(ranged));
+    buckets.assignAll(StockAgeingLogic.parseBuckets(ranged));
     rows.assignAll(snapshot.rows);
     fetchedAt.value = snapshot.fetchedAt;
     asOn.value = _defaults['to_date']?.toString() ?? '';
