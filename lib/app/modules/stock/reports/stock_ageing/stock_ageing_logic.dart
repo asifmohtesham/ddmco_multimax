@@ -141,6 +141,9 @@ abstract final class StockAgeingLogic {
         x.entries.every((e) => y[e.key] == e.value);
   }
 
+  /// How long a same-day cached run is shown without a background refetch.
+  static const maxCacheAge = Duration(hours: 4);
+
   /// Whether the cached default run, fetched at [fetchedAt], is stale enough
   /// that opening the screen at [now] should refetch it in the background
   /// (the cached rows stay on screen meanwhile; a refetch costs ~20 s of
@@ -149,7 +152,13 @@ abstract final class StockAgeingLogic {
     required DateTime fetchedAt,
     required DateTime now,
   }) {
-    // TODO(human): decide the staleness policy.
-    return false;
+    // A fetch time ahead of the clock means the device time changed.
+    if (fetchedAt.isAfter(now)) return true;
+    // Ages are whole days as on a date, so a new day shifts every row.
+    final newDay = fetchedAt.year != now.year ||
+        fetchedAt.month != now.month ||
+        fetchedAt.day != now.day;
+    // Within a day, pick up stock movements without refetching on every open.
+    return newDay || now.difference(fetchedAt) >= maxCacheAge;
   }
 }

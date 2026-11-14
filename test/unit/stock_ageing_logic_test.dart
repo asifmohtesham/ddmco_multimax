@@ -154,4 +154,31 @@ void main() {
       expect(StockAgeingLogic.sameFilters({'a': 1, 'b': 'x'}, {'a': 1}), isFalse);
     });
   });
+
+  group('shouldAutoRefresh', () {
+    final fetched = DateTime(2026, 11, 14, 9, 0);
+    bool stale(DateTime now) =>
+        StockAgeingLogic.shouldAutoRefresh(fetchedAt: fetched, now: now);
+
+    test('fresh within four hours on the same day', () {
+      expect(stale(DateTime(2026, 11, 14, 9, 5)), isFalse);
+      expect(stale(DateTime(2026, 11, 14, 12, 59)), isFalse);
+    });
+
+    test('stale once four hours old', () {
+      expect(stale(DateTime(2026, 11, 14, 13, 0)), isTrue);
+    });
+
+    test('stale on a new calendar day even if recent', () {
+      final lateFetch = DateTime(2026, 11, 14, 23, 50);
+      expect(
+          StockAgeingLogic.shouldAutoRefresh(
+              fetchedAt: lateFetch, now: DateTime(2026, 11, 15, 0, 10)),
+          isTrue);
+    });
+
+    test('a fetch time in the future (clock changed) is stale', () {
+      expect(stale(DateTime(2026, 11, 14, 8, 0)), isTrue);
+    });
+  });
 }
