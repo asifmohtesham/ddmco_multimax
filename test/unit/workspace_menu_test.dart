@@ -316,7 +316,9 @@ void main() {
         'null: Stock Entry, Purchase Receipt, Delivery Note, Material Request',
         'Tools: Landed Cost Voucher, Packing Slip',
         'Setup: Item, Batch',
-        'Reports: Stock Balance, Batch-Wise Balance History, Item Variant Details',
+        // Stock Ageing - Custom is not in this sidebar fixture, so it falls
+        // back to the end of its catalogue section.
+        'Reports: Stock Balance, Batch-Wise Balance History, Item Variant Details, Stock Ageing - Custom',
       ]);
       expect(stock.sections.map((s) => s.label),
           isNot(anyOf(contains('Items Catalogue'), contains('Stock Transactions'))));
