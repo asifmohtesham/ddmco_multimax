@@ -1057,6 +1057,10 @@ class _ItemCardState extends State<_ItemCard> {
                       label: 'Rate',
                       value: PosUploadFormController.fmtAmount(widget.item.rate)),
                   _Stat(
+                    label: 'UOM',
+                    value: widget.item.uom.isEmpty ? '—' : widget.item.uom,
+                  ),
+                  _Stat(
                     label: 'Amount',
                     value: PosUploadFormController.fmtAmount(widget.item.amount),
                     highlight: true,
