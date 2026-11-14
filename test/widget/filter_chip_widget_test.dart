@@ -36,6 +36,26 @@ void main() {
     expect(deleted, isTrue);
   });
 
+  testWidgets('tapping the chip body calls onTap, not onDeleted',
+      (tester) async {
+    var tapped = 0, deleted = 0;
+    await tester.pumpWidget(_host(
+      brightness: Brightness.light,
+      child: FilterChipWidget(
+        icon: Icons.label,
+        label: 'Ranges: 360, 720',
+        onDeleted: () => deleted++,
+        onTap: () => tapped++,
+      ),
+    ));
+    await tester.tap(find.text('Ranges: 360, 720'));
+    expect((tapped, deleted), (1, 0));
+
+    // The × still only clears.
+    await tester.tap(find.byIcon(Icons.close));
+    expect((tapped, deleted), (1, 1));
+  });
+
   testWidgets('active style: maroon-tinted fill + primary text in light', (tester) async {
     await tester.pumpWidget(_host(
       brightness: Brightness.light,

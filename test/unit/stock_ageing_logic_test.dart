@@ -248,4 +248,73 @@ void main() {
       expect(StockAgeingLogic.imageUrl(null, 'https://e'), isNull);
     });
   });
+
+  // A Frappe Custom Report freezes its column list, so the server returns
+  // the saved bucket titles whatever range the data was calculated with.
+  group('applyRange', () {
+    List<String> labels(List<dynamic> cols) => [
+          for (final c in cols)
+            if (c is Map) '${c['fieldname']}=${c['label']}',
+        ];
+
+    test('relabels and trims the frozen bucket columns to the range in effect',
+        () {
+      final out = StockAgeingLogic.applyRange(_columns, '360, 720');
+      expect(labels(out), [
+        'item_code=Item Code',
+        'qty=Available Qty',
+        'average_age=Average Age',
+        'range1=Age (0 - 360)',
+        'range1value=Value (0 - 360)',
+        'range2=Age (361 - 720)',
+        'range2value=Value (361 - 720)',
+        'range3=Age (721 - Above)',
+        'range3value=Value (721 - Above)',
+      ]);
+      final buckets = StockAgeingLogic.parseBuckets(out);
+      expect(buckets.map((b) => b.label),
+          ['0 - 360', '361 - 720', '721 - Above']);
+    });
+
+    test('adds bucket columns the frozen list does not have', () {
+      final out =
+          StockAgeingLogic.applyRange(_columns, '10,20,30,40,50,60');
+      final b = StockAgeingLogic.parseBuckets(out);
+      expect(b.length, 7);
+      expect(b.last.qtyKey, 'range7');
+      expect(b.last.label, '61 - Above');
+      expect(b[5].label, '51 - 60');
+    });
+
+    test('the saved range reproduces the saved titles', () {
+      final out = StockAgeingLogic.applyRange(_columns, '90, 180, 360, 720');
+      expect(
+          StockAgeingLogic.parseBuckets(out).map((b) => b.label),
+          StockAgeingLogic.parseBuckets(_columns).map((b) => b.label));
+    });
+
+    test('bucket columns keep their position; other columns are untouched',
+        () {
+      final cols = [
+        {'fieldname': 'qty', 'label': 'Available Qty'},
+        {'fieldname': 'range1', 'label': 'Age (0 - 90)', 'fieldtype': 'Float'},
+        {'fieldname': 'range1value', 'label': 'Value (0 - 90)'},
+        {'fieldname': 'uom', 'label': 'UOM'},
+      ];
+      expect(labels(StockAgeingLogic.applyRange(cols, '30')), [
+        'qty=Available Qty',
+        'range1=Age (0 - 30)',
+        'range1value=Value (0 - 30)',
+        'range2=Age (31 - Above)',
+        'range2value=Value (31 - Above)',
+        'uom=UOM',
+      ]);
+    });
+
+    test('a blank or unreadable range leaves the columns as sent', () {
+      expect(StockAgeingLogic.applyRange(_columns, null), same(_columns));
+      expect(StockAgeingLogic.applyRange(_columns, '  '), same(_columns));
+      expect(StockAgeingLogic.applyRange(_columns, 'abc'), same(_columns));
+    });
+  });
 }
