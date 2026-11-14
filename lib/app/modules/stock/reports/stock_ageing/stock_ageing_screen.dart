@@ -20,10 +20,23 @@ String _displayDate(String iso) {
   return d == null ? iso : DateFormat('dd/MM/yyyy').format(d);
 }
 
-/// Bucket colour: a ramp from the theme's primary (fresh) to error (oldest).
-Color _bucketColour(ColorScheme cs, int index, int count) => count <= 1
-    ? cs.primary
-    : Color.lerp(cs.primary, cs.error, index / (count - 1))!;
+/// Fresh → old ramp (green, lime, amber, orange, red). Fixed rather than
+/// derived from the theme, whose primary and error colours can both be red.
+const _ageRamp = [
+  Color(0xFF2E9E6A),
+  Color(0xFF8DB33A),
+  Color(0xFFE0B020),
+  Color(0xFFE8802A),
+  Color(0xFFD64545),
+];
+
+/// Colour of bucket [index] out of [count], interpolated along [_ageRamp].
+Color _bucketColour(int index, int count) {
+  if (count <= 1) return _ageRamp.first;
+  final t = index / (count - 1) * (_ageRamp.length - 1);
+  final lo = t.floor().clamp(0, _ageRamp.length - 2);
+  return Color.lerp(_ageRamp[lo], _ageRamp[lo + 1], t - lo)!;
+}
 
 class StockAgeingScreen extends GetView<StockAgeingController> {
   const StockAgeingScreen({super.key});
@@ -209,6 +222,9 @@ class _SearchField extends StatelessWidget {
         controller: controller,
         onChanged: onChanged,
         textInputAction: TextInputAction.search,
+        // Drop focus on a tap elsewhere so the keyboard does not reopen
+        // when the filter or detail sheet closes.
+        onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
         decoration: InputDecoration(
           isDense: true,
           hintText: 'Search item, variant or warehouse',
@@ -303,7 +319,7 @@ class _SummaryCard extends StatelessWidget {
                 children: [
                   for (var i = 0; i < buckets.length; i++)
                     _LegendItem(
-                      colour: _bucketColour(cs, i, buckets.length),
+                      colour: _bucketColour(i, buckets.length),
                       text:
                           '${buckets[i].label}: ${_qty(totals.bucketQty[i])}',
                     ),
@@ -389,6 +405,8 @@ class _BucketBar extends StatelessWidget {
         child: total <= 0
             ? ColoredBox(color: cs.outlineVariant)
             : Row(
+                // Stretch so the childless coloured boxes fill the bar height.
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (var i = 0; i < shares.length; i++)
                     if (shares[i] > 0)
@@ -396,7 +414,7 @@ class _BucketBar extends StatelessWidget {
                         // Flex is an int; scale so small shares stay visible.
                         flex: (shares[i] / total * 1000).round().clamp(1, 1000),
                         child: ColoredBox(
-                          color: _bucketColour(cs, i, shares.length),
+                          color: _bucketColour(i, shares.length),
                         ),
                       ),
                 ],
@@ -544,7 +562,9 @@ class _DetailSheet extends StatelessWidget {
     final uom = row['uom']?.toString() ?? '';
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      // Clear the system navigation bar.
+      padding: EdgeInsets.fromLTRB(
+          20, 0, 20, 24 + MediaQuery.viewPaddingOf(context).bottom),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -617,7 +637,7 @@ class _DetailSheet extends StatelessWidget {
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: _bucketColour(cs, i, buckets.length),
+                            color: _bucketColour(i, buckets.length),
                             shape: BoxShape.circle,
                           ),
                         ),

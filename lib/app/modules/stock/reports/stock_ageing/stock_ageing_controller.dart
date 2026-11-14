@@ -247,7 +247,7 @@ class StockAgeingController extends GetxController {
       final label = _filterLabels[k]!;
       next[k] = k == 'show_warehouse_wise_stock'
           ? '$label: ${now == '1' ? 'on' : 'off'}'
-          : '$label: ${now.isEmpty ? '—' : now}';
+          : '$label: ${now.isEmpty ? 'any' : now}';
     }
     activeFilters.assignAll(next);
   }
