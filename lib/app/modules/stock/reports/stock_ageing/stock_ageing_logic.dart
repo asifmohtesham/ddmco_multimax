@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 /// One age bucket of the Stock Ageing report, read from the returned columns
 /// (`range1` / `range1value`, labelled e.g. "Age (0 - 90)").
 class AgeBucket {
@@ -12,26 +14,22 @@ class AgeBucket {
   });
 }
 
-/// An optional field on a report row card. Item code and quantity are always
-/// shown; everything else is the user's choice.
-enum AgeingCardField {
-  image('Item image'),
-  itemName('Item name'),
-  warehouse('Warehouse'),
-  averageAge('Average age'),
-  bucketBar('Age bar'),
-  value('Stock value'),
-  earliestLatest('Earliest / latest age'),
-  variantOf('Variant of'),
-  itemGroup('Item group'),
-  brand('Brand'),
-  country('Country of origin');
+/// One column of the report, exactly as the server describes it. Cards and
+/// the row sheet take their labels from here so they read as the Desk does.
+class ReportColumn {
+  final String fieldname;
 
+  /// The column title, verbatim (e.g. "Variant Of", "Age (0 - 90)").
   final String label;
-  const AgeingCardField(this.label);
+  final String fieldtype;
 
-  /// The card as first shipped.
-  static const defaults = {itemName, warehouse, averageAge, bucketBar};
+  const ReportColumn({
+    required this.fieldname,
+    required this.label,
+    required this.fieldtype,
+  });
+
+  bool get isImage => fieldtype == 'Attach Image' || fieldtype == 'Attach';
 }
 
 /// Totals over a set of report rows.
@@ -163,15 +161,6 @@ abstract final class StockAgeingLogic {
         x.entries.every((e) => y[e.key] == e.value);
   }
 
-  /// Sum of every bucket's value for one row.
-  static double rowValue(Map<String, dynamic> row, List<AgeBucket> buckets) {
-    var v = 0.0;
-    for (final b in buckets) {
-      v += num_(row[b.valueKey]);
-    }
-    return v;
-  }
-
   /// Absolute URL for a row's `image` cell: relative Frappe paths
   /// ("/files/x.jpg") are prefixed with [baseUrl]; absolute URLs are kept;
   /// blank or null is null.
@@ -185,23 +174,68 @@ abstract final class StockAgeingLogic {
     return Uri.encodeFull('$base${path.startsWith('/') ? '' : '/'}$path');
   }
 
-  /// Reads a stored card-field selection. Null (never saved) or a value of
-  /// the wrong shape gives the defaults; unknown names (a field removed in a
-  /// later version) are dropped. An empty saved list is a valid choice.
-  static Set<AgeingCardField> decodeCardFields(dynamic stored) {
-    if (stored is! List) return {...AgeingCardField.defaults};
-    final byName = {for (final f in AgeingCardField.values) f.name: f};
-    return {
-      for (final name in stored)
-        if (byName[name.toString()] != null) byName[name.toString()]!,
-    };
+  /// Card-field key for the stacked age bar, the one card element that is
+  /// not a report column.
+  static const ageBarField = '_age_bar';
+
+  /// Columns that are always on the card and so are not offered as choices.
+  static const fixedCardFields = {'item_code', 'qty', 'uom'};
+
+  /// The card before the user changes anything.
+  static const defaultCardFields = {
+    'variant_of',
+    'item_name',
+    'warehouse',
+    'average_age',
+    ageBarField,
+  };
+
+  /// Reads `message.columns` in report order; entries without a fieldname
+  /// are skipped and a missing label falls back to the fieldname.
+  static List<ReportColumn> parseColumns(List<dynamic> columns) => [
+        for (final c in columns)
+          if (c is Map && (c['fieldname']?.toString() ?? '').isNotEmpty)
+            ReportColumn(
+              fieldname: c['fieldname'].toString(),
+              label: (c['label']?.toString().trim().isNotEmpty ?? false)
+                  ? c['label'].toString().trim()
+                  : c['fieldname'].toString(),
+              fieldtype: c['fieldtype']?.toString() ?? 'Data',
+            ),
+      ];
+
+  static final _floatFormat = NumberFormat('#,##0.##', 'en_GB');
+  static final _valueFormat = NumberFormat('#,##0.00', 'en_GB');
+  static final _intFormat = NumberFormat('#,##0', 'en_GB');
+
+  /// Formats one cell for display by its column type. Blank and null are
+  /// "—"; value columns (`…value`) keep two decimals.
+  static String formatCell(ReportColumn column, dynamic v) {
+    if (v == null || v.toString().trim().isEmpty) return '—';
+    switch (column.fieldtype) {
+      case 'Float':
+      case 'Currency':
+      case 'Percent':
+        final f = column.fieldtype == 'Currency' ||
+                column.fieldname.endsWith('value')
+            ? _valueFormat
+            : _floatFormat;
+        return f.format(num_(v));
+      case 'Int':
+        return _intFormat.format(num_(v));
+      default:
+        return v.toString().trim();
+    }
   }
 
-  /// Stored form of a selection, in declaration order.
-  static List<String> encodeCardFields(Set<AgeingCardField> fields) => [
-        for (final f in AgeingCardField.values)
-          if (fields.contains(f)) f.name,
-      ];
+  /// Reads a stored card-field selection (column fieldnames, plus
+  /// [ageBarField]). Null (never saved) or a value of the wrong shape gives
+  /// the defaults; an empty saved list is a valid choice. Names are kept even
+  /// if the report no longer has that column, so a choice survives a column
+  /// being removed and re-added on the Desk.
+  static Set<String> decodeCardFields(dynamic stored) => stored is List
+      ? {for (final name in stored) name.toString()}
+      : {...defaultCardFields};
 
   /// How long a same-day cached run is shown without a background refetch.
   static const maxCacheAge = Duration(hours: 4);

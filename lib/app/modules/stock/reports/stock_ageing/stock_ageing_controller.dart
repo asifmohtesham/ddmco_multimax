@@ -135,7 +135,10 @@ class StockAgeingController extends GetxController {
   final sort = 'age'.obs;
 
   /// Optional fields shown on each row card (persisted per device).
-  final cardFields = <AgeingCardField>{}.obs;
+  final cardFields = <String>{}.obs;
+
+  /// The report's columns in server order, with their verbatim labels.
+  final columns = <ReportColumn>[].obs;
 
   /// Filters that differ from the report's saved defaults, for the chip row.
   final activeFilters = <String, String>{}.obs;
@@ -207,14 +210,15 @@ class StockAgeingController extends GetxController {
   String? imageUrlOf(Map<String, dynamic> row) =>
       StockAgeingLogic.imageUrl(row['image'], _baseUrl());
 
-  void toggleCardField(AgeingCardField field) {
+  /// [field] is a column fieldname or [StockAgeingLogic.ageBarField].
+  void toggleCardField(String field) {
     if (!cardFields.remove(field)) cardFields.add(field);
-    _saveCardFields(StockAgeingLogic.encodeCardFields(cardFields));
+    _saveCardFields(cardFields.toList());
   }
 
   void resetCardFields() {
-    cardFields.assignAll(AgeingCardField.defaults);
-    _saveCardFields(StockAgeingLogic.encodeCardFields(cardFields));
+    cardFields.assignAll(StockAgeingLogic.defaultCardFields);
+    _saveCardFields(cardFields.toList());
   }
 
   void setSort(String v) => sort.value = v;
@@ -359,6 +363,7 @@ class StockAgeingController extends GetxController {
           await _cache.write(snapshot);
         } catch (_) {}
       } else {
+        this.columns.assignAll(StockAgeingLogic.parseColumns(columns));
         buckets.assignAll(StockAgeingLogic.parseBuckets(columns));
         rows.assignAll(parsed);
         fetchedAt.value = now;
@@ -387,6 +392,7 @@ class StockAgeingController extends GetxController {
     final untouched = _sheetIsDefault();
     _defaults = snapshot.defaults;
     if (untouched) _seedControllers(_defaults);
+    columns.assignAll(StockAgeingLogic.parseColumns(snapshot.columns));
     buckets.assignAll(StockAgeingLogic.parseBuckets(snapshot.columns));
     rows.assignAll(snapshot.rows);
     fetchedAt.value = snapshot.fetchedAt;

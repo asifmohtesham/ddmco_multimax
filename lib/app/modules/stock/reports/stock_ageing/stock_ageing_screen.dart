@@ -10,7 +10,6 @@ import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_con
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_logic.dart';
 
 final _qtyFormat = NumberFormat('#,##0.##', 'en_GB');
-final _valueFormat = NumberFormat('#,##0.00', 'en_GB');
 final _compactFormat = NumberFormat.compact(locale: 'en_GB');
 
 String _qty(num v) => _qtyFormat.format(v);
@@ -79,6 +78,7 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
         final shown = controller.visibleRows;
         final buckets = controller.buckets.toList();
         final fields = controller.cardFields.toSet();
+        final columns = controller.columns.toList();
         final sort = controller.sort.value;
 
         return RefreshIndicator(
@@ -182,10 +182,12 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _AgeingTile(
                         row: shown[i],
+                        columns: columns,
                         buckets: buckets,
                         fields: fields,
                         imageUrl: controller.imageUrlOf(shown[i]),
-                        onTap: () => _showDetail(context, shown[i], buckets),
+                        onTap: () =>
+                            _showDetail(context, shown[i], columns, buckets),
                       ),
                     ),
                   ),
@@ -210,6 +212,7 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
   void _showDetail(
     BuildContext context,
     Map<String, dynamic> row,
+    List<ReportColumn> columns,
     List<AgeBucket> buckets,
   ) {
     showModalBottomSheet(
@@ -217,7 +220,12 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => _DetailSheet(row: row, buckets: buckets),
+      builder: (_) => _DetailSheet(
+        row: row,
+        columns: columns,
+        buckets: buckets,
+        imageUrl: controller.imageUrlOf(row),
+      ),
     );
   }
 }
@@ -441,60 +449,69 @@ class _BucketBar extends StatelessWidget {
 
 // ── Row tile ────────────────────────────────────────────────────────────────
 
+/// One report row. Item Code and Available Qty are always shown; every other
+/// element is a report column the user has chosen, under the column's own
+/// title.
 class _AgeingTile extends StatelessWidget {
   final Map<String, dynamic> row;
+  final List<ReportColumn> columns;
   final List<AgeBucket> buckets;
 
-  /// The optional fields the user has chosen to show.
-  final Set<AgeingCardField> fields;
+  /// Chosen column fieldnames, plus [StockAgeingLogic.ageBarField].
+  final Set<String> fields;
   final String? imageUrl;
   final VoidCallback onTap;
 
   const _AgeingTile({
     required this.row,
+    required this.columns,
     required this.buckets,
     required this.fields,
     required this.imageUrl,
     required this.onTap,
   });
 
-  bool _on(AgeingCardField f) => fields.contains(f);
+  /// Columns with their own place on the card, so not repeated in the
+  /// label–value list.
+  static const _placed = {'item_code', 'qty', 'uom', 'item_name', 'variant_of'};
 
   String _text(String key) => row[key]?.toString().trim() ?? '';
+
+  ReportColumn? _column(String fieldname) {
+    for (final c in columns) {
+      if (c.fieldname == fieldname) return c;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final muted = theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant);
+    final muted =
+        theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant);
     final strong = theme.textTheme.titleSmall?.copyWith(
       fontWeight: FontWeight.w700,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
     final code = _text('item_code');
     final name = _text('item_name');
-    final warehouse = _text('warehouse');
-    final age = StockAgeingLogic.num_(row['average_age']).round();
+    final variantOf = _text('variant_of');
+    final variantCol = _column('variant_of');
+    final qtyCol = _column('qty');
 
-    // Label: value pairs shown as one wrapped line under the header.
-    final extras = <(String, String)>[
-      if (_on(AgeingCardField.value))
-        ('Value', _valueFormat.format(StockAgeingLogic.rowValue(row, buckets))),
-      if (_on(AgeingCardField.earliestLatest))
-        (
-          'Earliest / latest',
-          '${StockAgeingLogic.num_(row['earliest']).round()} / '
-              '${StockAgeingLogic.num_(row['latest']).round()} d'
-        ),
-      if (_on(AgeingCardField.variantOf) && _text('variant_of').isNotEmpty)
-        ('Variant of', _text('variant_of')),
-      if (_on(AgeingCardField.itemGroup) && _text('item_group').isNotEmpty)
-        ('Group', _text('item_group')),
-      if (_on(AgeingCardField.brand) && _text('brand').isNotEmpty)
-        ('Brand', _text('brand')),
-      if (_on(AgeingCardField.country) &&
-          _text('country_of_origin').isNotEmpty)
-        ('Origin', _text('country_of_origin')),
+    final showImage = columns.any((c) => c.isImage && fields.contains(c.fieldname));
+    final showVariant =
+        fields.contains('variant_of') && variantCol != null && variantOf.isNotEmpty;
+
+    // Remaining chosen columns, in report order, under their own titles.
+    final pairs = <(String, String)>[
+      for (final c in columns)
+        if (fields.contains(c.fieldname) &&
+            !_placed.contains(c.fieldname) &&
+            !c.isImage &&
+            _text(c.fieldname).isNotEmpty)
+          (c.label, StockAgeingLogic.formatCell(c, row[c.fieldname])),
     ];
 
     return Material(
@@ -512,7 +529,7 @@ class _AgeingTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_on(AgeingCardField.image)) ...[
+                  if (showImage) ...[
                     ItemThumbnail(
                       imageUrl: imageUrl,
                       itemCode: code,
@@ -525,7 +542,7 @@ class _AgeingTile extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(code, style: strong),
-                        if (_on(AgeingCardField.itemName) &&
+                        if (fields.contains('item_name') &&
                             name.isNotEmpty &&
                             name != code)
                           Text(name,
@@ -539,44 +556,30 @@ class _AgeingTile extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      Text(qtyCol?.label ?? 'Available Qty', style: muted),
                       Text(
                         '${_qty(StockAgeingLogic.num_(row['qty']))} ${_text('uom')}'
                             .trim(),
                         style: strong,
                       ),
-                      if (_on(AgeingCardField.averageAge))
-                        Text('avg $age ${age == 1 ? 'day' : 'days'}',
-                            style: muted),
                     ],
                   ),
                 ],
               ),
-              if (_on(AgeingCardField.warehouse) && warehouse.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.warehouse_outlined,
-                        size: 14, color: cs.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(warehouse,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: muted),
-                    ),
-                  ],
-                ),
+              if (showVariant) ...[
+                const SizedBox(height: 8),
+                _VariantBadge(label: variantCol.label, value: variantOf),
               ],
-              if (extras.isNotEmpty) ...[
-                const SizedBox(height: 6),
+              if (pairs.isNotEmpty) ...[
+                const SizedBox(height: 8),
                 Wrap(
                   spacing: 14,
                   runSpacing: 2,
                   children: [
-                    for (final (label, value) in extras)
+                    for (final (label, value) in pairs)
                       Text.rich(
                         TextSpan(
-                          text: '$label ',
+                          text: '$label  ',
                           style: muted,
                           children: [
                             TextSpan(
@@ -584,6 +587,9 @@ class _AgeingTile extends StatelessWidget {
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: cs.onSurface,
                                 fontWeight: FontWeight.w600,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                             ),
                           ],
@@ -592,7 +598,8 @@ class _AgeingTile extends StatelessWidget {
                   ],
                 ),
               ],
-              if (_on(AgeingCardField.bucketBar) && buckets.isNotEmpty) ...[
+              if (fields.contains(StockAgeingLogic.ageBarField) &&
+                  buckets.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 _BucketBar(values: [
                   for (final b in buckets) StockAgeingLogic.num_(row[b.qtyKey]),
@@ -601,6 +608,45 @@ class _AgeingTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The prominent "Variant Of" line on a card: the column title and its value
+/// in a tinted badge.
+class _VariantBadge extends StatelessWidget {
+  final String label;
+  final String value;
+  const _VariantBadge({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text.rich(
+        TextSpan(
+          text: '$label  ',
+          style: theme.textTheme.labelMedium
+              ?.copyWith(color: cs.onPrimaryContainer),
+          children: [
+            TextSpan(
+              text: value,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: cs.onPrimaryContainer,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -617,14 +663,23 @@ class _CardFieldsSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(
-          bottom: 16 + MediaQuery.viewPaddingOf(context).bottom),
-      child: Obx(() {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      builder: (context, scroll) => Obx(() {
         final chosen = controller.cardFields.toSet();
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // The report's own columns, under their own titles, in report order.
+        final choices = [
+          for (final c in controller.columns)
+            if (!StockAgeingLogic.fixedCardFields.contains(c.fieldname))
+              (c.fieldname, c.label),
+          (StockAgeingLogic.ageBarField, 'Age bar'),
+        ];
+        return ListView(
+          controller: scroll,
+          padding: EdgeInsets.only(
+              bottom: 16 + MediaQuery.viewPaddingOf(context).bottom),
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
@@ -645,19 +700,19 @@ class _CardFieldsSheet extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Item code and quantity are always shown. '
-                'Tap a row to see everything.',
+                'Item Code and Available Qty are always shown. '
+                'Tap a card to see every column.',
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: cs.onSurfaceVariant),
               ),
             ),
-            for (final f in AgeingCardField.values)
+            for (final (field, label) in choices)
               CheckboxListTile(
                 dense: true,
                 controlAffinity: ListTileControlAffinity.leading,
-                title: Text(f.label),
-                value: chosen.contains(f),
-                onChanged: (_) => controller.toggleCardField(f),
+                title: Text(label),
+                value: chosen.contains(field),
+                onChanged: (_) => controller.toggleCardField(field),
               ),
           ],
         );
@@ -668,139 +723,80 @@ class _CardFieldsSheet extends StatelessWidget {
 
 // ── Detail sheet ────────────────────────────────────────────────────────────
 
+/// Every column of one report row, in report order and under the report's
+/// own column titles, with the item image shown large at the top.
 class _DetailSheet extends StatelessWidget {
   final Map<String, dynamic> row;
+  final List<ReportColumn> columns;
   final List<AgeBucket> buckets;
-  const _DetailSheet({required this.row, required this.buckets});
+  final String? imageUrl;
 
-  String _text(String key) {
-    final v = row[key]?.toString().trim() ?? '';
-    return v.isEmpty ? '—' : v;
-  }
+  const _DetailSheet({
+    required this.row,
+    required this.columns,
+    required this.buckets,
+    required this.imageUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final figures = theme.textTheme.bodyMedium?.copyWith(
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-    final uom = row['uom']?.toString() ?? '';
+    final code = row['item_code']?.toString() ?? '';
+    final name = row['item_name']?.toString() ?? '';
 
-    return SingleChildScrollView(
-      // Clear the system navigation bar.
-      padding: EdgeInsets.fromLTRB(
-          20, 0, 20, 24 + MediaQuery.viewPaddingOf(context).bottom),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+    // Bucket columns carry their bucket's colour as a visual key.
+    final bucketIndex = <String, int>{
+      for (var i = 0; i < buckets.length; i++) ...{
+        buckets[i].qtyKey: i,
+        buckets[i].valueKey: i,
+      },
+    };
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      builder: (context, scroll) => ListView(
+        controller: scroll,
+        padding: EdgeInsets.fromLTRB(
+            20, 0, 20, 24 + MediaQuery.viewPaddingOf(context).bottom),
         children: [
-          Text(_text('item_code'),
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          Text(_text('item_name'),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _Figure(
-                  label: 'Available',
-                  value:
-                      '${_qty(StockAgeingLogic.num_(row['qty']))} $uom'.trim(),
-                ),
-              ),
-              Expanded(
-                child: _Figure(
-                  label: 'Average age',
-                  value:
-                      '${StockAgeingLogic.num_(row['average_age']).round()} d',
-                ),
-              ),
-              Expanded(
-                child: _Figure(
-                  label: 'Earliest / Latest',
-                  value:
-                      '${StockAgeingLogic.num_(row['earliest']).round()} / ${StockAgeingLogic.num_(row['latest']).round()} d',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                flex: 4,
-                child: Text('Age (days)', style: theme.textTheme.labelSmall),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text('Qty',
-                    textAlign: TextAlign.end,
-                    style: theme.textTheme.labelSmall),
-              ),
-              Expanded(
-                flex: 4,
-                child: Text('Value',
-                    textAlign: TextAlign.end,
-                    style: theme.textTheme.labelSmall),
-              ),
-            ],
-          ),
-          for (var i = 0; i < buckets.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _bucketColour(i, buckets.length),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(child: Text(buckets[i].label)),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      _qty(StockAgeingLogic.num_(row[buckets[i].qtyKey])),
-                      textAlign: TextAlign.end,
-                      style: figures,
-                    ),
-                  ),
-                  Expanded(
-                    flex: 4,
-                    child: Text(
-                      _valueFormat.format(
-                          StockAgeingLogic.num_(row[buckets[i].valueKey])),
-                      textAlign: TextAlign.end,
-                      style: figures,
-                    ),
-                  ),
-                ],
+          if (imageUrl != null) ...[
+            Center(
+              child: ItemThumbnail(
+                imageUrl: imageUrl,
+                itemCode: code,
+                itemName: name,
+                size: 220,
               ),
             ),
-          const SizedBox(height: 8),
-          const Divider(height: 1),
+            const SizedBox(height: 16),
+          ],
+          Text(code,
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          if (name.isNotEmpty)
+            Text(name,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 12),
-          _DetailLine(label: 'Warehouse', value: _text('warehouse')),
-          _DetailLine(label: 'Item Group', value: _text('item_group')),
-          _DetailLine(label: 'Brand', value: _text('brand')),
-          _DetailLine(label: 'Variant Of', value: _text('variant_of')),
-          _DetailLine(
-              label: 'Country of Origin', value: _text('country_of_origin')),
+          const Divider(height: 1),
+          for (final c in columns)
+            // The image is shown above; without one its row reads "—".
+            if (!(c.isImage && imageUrl != null))
+              _DetailLine(
+                label: c.label,
+                value: c.isImage
+                    ? '—'
+                    : StockAgeingLogic.formatCell(c, row[c.fieldname]),
+                dot: bucketIndex.containsKey(c.fieldname)
+                    ? _bucketColour(
+                        bucketIndex[c.fieldname]!, buckets.length)
+                    : null,
+                numeric: const {'Float', 'Int', 'Currency', 'Percent'}
+                    .contains(c.fieldtype),
+              ),
         ],
       ),
     );
@@ -810,23 +806,60 @@ class _DetailSheet extends StatelessWidget {
 class _DetailLine extends StatelessWidget {
   final String label;
   final String value;
-  const _DetailLine({required this.label, required this.value});
+  final Color? dot;
+  final bool numeric;
+
+  const _DetailLine({
+    required this.label,
+    required this.value,
+    this.dot,
+    this.numeric = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    final cs = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: cs.outlineVariant, width: 0.5)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 130,
-            child: Text(label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            width: 150,
+            child: Row(
+              children: [
+                if (dot != null) ...[
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration:
+                        BoxDecoration(color: dot, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(label,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: cs.onSurfaceVariant)),
+                ),
+              ],
+            ),
           ),
-          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: numeric ? TextAlign.end : TextAlign.start,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
         ],
       ),
     );

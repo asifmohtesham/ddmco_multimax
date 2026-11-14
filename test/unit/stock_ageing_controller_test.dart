@@ -147,29 +147,36 @@ void main() {
       () async {
     final c = build((_) async => _response(_message(customFilters: _saved)));
     c.onInit();
-    expect(c.cardFields, AgeingCardField.defaults);
+    expect(c.cardFields, StockAgeingLogic.defaultCardFields);
 
-    c.toggleCardField(AgeingCardField.image);
-    c.toggleCardField(AgeingCardField.warehouse);
-    expect(stored, ['image', 'itemName', 'averageAge', 'bucketBar']);
+    c.toggleCardField('image');
+    c.toggleCardField('warehouse');
+    expect(stored!.toSet(), {
+      'variant_of',
+      'item_name',
+      'average_age',
+      StockAgeingLogic.ageBarField,
+      'image',
+    });
 
     c.resetCardFields();
-    expect(c.cardFields, AgeingCardField.defaults);
-    expect(stored, ['itemName', 'warehouse', 'averageAge', 'bucketBar']);
+    expect(c.cardFields, StockAgeingLogic.defaultCardFields);
+    expect(stored!.toSet(), StockAgeingLogic.defaultCardFields);
     await pumpEventQueue();
     c.onClose();
   });
 
-  test('a saved selection is restored and image paths become absolute',
-      () async {
+  test('a saved selection is restored, columns are read from the run and '
+      'image paths become absolute', () async {
     stored = ['brand'];
     final c = build((_) async => _response(_message(customFilters: _saved)));
     c.onInit();
-    expect(c.cardFields, {AgeingCardField.brand});
+    expect(c.cardFields, {'brand'});
+    await pumpEventQueue();
+    expect(c.columns.single.label, 'Age (0 - 90)');
     expect(c.imageUrlOf({'image': '/files/a b.jpg'}),
         'https://erp.domain.com/files/a%20b.jpg');
     expect(c.imageUrlOf({'image': null}), isNull);
-    await pumpEventQueue();
     c.onClose();
   });
 }

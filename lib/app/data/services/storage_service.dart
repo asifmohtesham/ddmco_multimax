@@ -31,7 +31,7 @@ class StorageService {
   // Stock Balance view preferences
   static const String _sbHideEmptyKey  = 'sb_hide_empty';
   static const String _sbShowImagesKey = 'sb_show_images';
-  static const String _saCardFieldsKey = 'sa_card_fields';
+  static const String _saCardFieldsKey = 'sa_card_columns';
 
   // Dashboard view preferences
   static const String _dashboardColumnsKey = 'dashboard_columns';

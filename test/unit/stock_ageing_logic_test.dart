@@ -184,24 +184,53 @@ void main() {
 
   group('card fields', () {
     test('never saved gives the defaults', () {
-      expect(StockAgeingLogic.decodeCardFields(null), AgeingCardField.defaults);
-      expect(StockAgeingLogic.decodeCardFields('x'), AgeingCardField.defaults);
+      expect(StockAgeingLogic.decodeCardFields(null),
+          StockAgeingLogic.defaultCardFields);
+      expect(StockAgeingLogic.decodeCardFields('x'),
+          StockAgeingLogic.defaultCardFields);
     });
 
-    test('round trip keeps the selection; unknown names are dropped', () {
-      final chosen = {AgeingCardField.image, AgeingCardField.brand};
-      final stored = StockAgeingLogic.encodeCardFields(chosen);
-      expect(stored, ['image', 'brand']);
-      expect(StockAgeingLogic.decodeCardFields([...stored, 'gone']), chosen);
+    test('a saved selection is kept as is, unknown columns included', () {
+      expect(StockAgeingLogic.decodeCardFields(['brand', 'gone']),
+          {'brand', 'gone'});
     });
 
     test('an empty saved selection stays empty', () {
       expect(StockAgeingLogic.decodeCardFields(const []), isEmpty);
     });
+
+    test('Variant Of is on the card by default', () {
+      expect(StockAgeingLogic.defaultCardFields, contains('variant_of'));
+    });
   });
 
-  test('rowValue sums every bucket value', () {
-    expect(StockAgeingLogic.rowValue(rows.first, buckets), closeTo(110.5, 1e-9));
+  group('parseColumns', () {
+    final cols = StockAgeingLogic.parseColumns(const [
+      {'fieldname': 'variant_of', 'label': 'Variant Of', 'fieldtype': 'Link'},
+      {'fieldname': 'image', 'label': 'Item Image', 'fieldtype': 'Attach Image'},
+      {'fieldname': 'range1value', 'label': 'Value (0 - 90)', 'fieldtype': 'Float'},
+      {'fieldname': 'earliest', 'label': 'Earliest', 'fieldtype': 'Int'},
+      {'fieldname': 'qty', 'label': '', 'fieldtype': 'Float'},
+      {'label': 'no fieldname'},
+      'junk',
+    ]);
+
+    test('keeps report order and verbatim labels', () {
+      expect(cols.map((c) => c.label),
+          ['Variant Of', 'Item Image', 'Value (0 - 90)', 'Earliest', 'qty']);
+      expect(cols[1].isImage, isTrue);
+      expect(cols[0].isImage, isFalse);
+    });
+
+    test('formatCell follows the column type', () {
+      expect(StockAgeingLogic.formatCell(cols[0], '301--WAL'), '301--WAL');
+      expect(StockAgeingLogic.formatCell(cols[0], null), '—');
+      expect(StockAgeingLogic.formatCell(cols[0], ' '), '—');
+      expect(StockAgeingLogic.formatCell(cols[2], 110.006), '110.01');
+      expect(StockAgeingLogic.formatCell(cols[3], 523), '523');
+      expect(StockAgeingLogic.formatCell(cols[4], 24864.0), '24,864');
+      expect(StockAgeingLogic.formatCell(cols[4], 908.71), '908.71');
+    });
   });
 
   group('imageUrl', () {
