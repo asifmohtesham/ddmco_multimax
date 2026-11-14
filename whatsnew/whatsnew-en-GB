@@ -1,1 +1,1 @@
-Stock Entry: Material Transfer rows can no longer be added without a Target Rack, so transferred stock always lands in a rack.
+New report: Stock Ageing (Stock > Reports). Shows the Stock Ageing - Custom report with the same default filters as the web, opens instantly from the last result, and lets you search, sort and choose which columns appear on each card. Tap a card to see every column and the item image.
