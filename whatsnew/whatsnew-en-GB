@@ -1,1 +1,1 @@
-iOS: the app now opens on the Multimax logo instead of a blank white screen, and is built for iOS 15 and later. No changes on Android.
+Stock Ageing: age buckets now match the Ageing Range you set (for example 360, 720 shows 0 - 360, 361 - 720 and 721 - Above). Tap an active filter chip to edit that filter straight away, and the chip now updates when you change its value.
