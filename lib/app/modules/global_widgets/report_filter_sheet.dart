@@ -201,6 +201,12 @@ Future<void> showReportFilterSheet({
   /// present in [controllers].
   List<ReportFilterToggle> toggles = const [],
   String togglesLabel = 'Options',
+  /// Key of the field the user asked to edit (e.g. by tapping its active
+  /// filter chip). The sheet opens tall, brings that field into view and
+  /// starts editing it: a text field takes focus, a date or link field opens
+  /// its picker. A key that is not one of [fields] (a toggle, say) only
+  /// opens the sheet tall.
+  String? focusKey,
 }) async {
   await showModalBottomSheet(
     context: context,
@@ -217,6 +223,7 @@ Future<void> showReportFilterSheet({
       chipGroups:    chipGroups,    // ← NEW
       toggles:       toggles,
       togglesLabel:  togglesLabel,
+      focusKey:      focusKey,
     ),
   );
 }
@@ -235,6 +242,7 @@ class _ReportFilterSheet extends StatelessWidget {
   final List<ReportFilterChipGroup>        chipGroups;
   final List<ReportFilterToggle>           toggles;
   final String                             togglesLabel;
+  final String?                            focusKey;
 
   const _ReportFilterSheet({
     required this.title,
@@ -246,6 +254,7 @@ class _ReportFilterSheet extends StatelessWidget {
     this.chipGroups    = const [],
     this.toggles       = const [],
     this.togglesLabel  = 'Options',
+    this.focusKey,
   });
 
   @override
@@ -254,7 +263,8 @@ class _ReportFilterSheet extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
+      // Open tall when a specific field was asked for, so it is on screen.
+      initialChildSize: focusKey != null ? 0.95 : 0.6,
       minChildSize:     0.4,
       maxChildSize:     0.95,
       expand: false,
@@ -336,6 +346,7 @@ class _ReportFilterSheet extends StatelessWidget {
                       _FieldWidget(
                         field:      field,
                         controller: controllers[field.key]!,
+                        activate:   field.key == focusKey,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -463,9 +474,13 @@ class _FieldWidget extends StatefulWidget {
   final ReportFilterField     field;
   final TextEditingController controller;
 
+  /// Start editing this field as soon as the sheet opens.
+  final bool activate;
+
   const _FieldWidget({
     required this.field,
     required this.controller,
+    this.activate = false,
   });
 
   @override
@@ -476,17 +491,50 @@ class _FieldWidgetState extends State<_FieldWidget> {
   // Tracks whether the controller has text so suffix icons rebuild correctly.
   bool _hasText = false;
 
+  /// Used to focus a plain text field on [_FieldWidget.activate] when the
+  /// caller did not supply its own node.
+  FocusNode? _ownFocus;
+
+  FocusNode? get _focusNode => widget.field.focusNode ?? _ownFocus;
+
   @override
   void initState() {
     super.initState();
     _hasText = widget.controller.text.isNotEmpty;
     widget.controller.addListener(_onTextChanged);
+    if (widget.activate) {
+      if (widget.field.focusNode == null) _ownFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _activate());
+    }
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_onTextChanged);
+    _ownFocus?.dispose();
     super.dispose();
+  }
+
+  /// Brings the field into view and starts editing it the way a tap would.
+  Future<void> _activate() async {
+    if (!mounted) return;
+    await Scrollable.ensureVisible(context,
+        alignment: 0.3, duration: const Duration(milliseconds: 200));
+    if (!mounted) return;
+    final field = widget.field;
+    switch (field.type) {
+      case ReportFilterType.datePicker:
+        await _pickDate(context, widget.controller);
+      case ReportFilterType.doctypeLink:
+      case ReportFilterType.doctypeMultiLink:
+        await _openDoctypeSheet(context, field, widget.controller);
+      case ReportFilterType.text:
+      case ReportFilterType.batchBrowse:
+        _focusNode?.requestFocus();
+        // Caret at the end, ready to amend the current value.
+        widget.controller.selection = TextSelection.collapsed(
+            offset: widget.controller.text.length);
+    }
   }
 
   void _onTextChanged() {
@@ -528,7 +576,7 @@ class _FieldWidgetState extends State<_FieldWidget> {
     if (field.type == ReportFilterType.batchBrowse) {
       return TextField(
         controller: controller,
-        focusNode:  field.focusNode,
+        focusNode:  _focusNode,
         textCapitalization: TextCapitalization.characters,
         decoration: InputDecoration(
           labelText:  field.label,
@@ -622,7 +670,7 @@ class _FieldWidgetState extends State<_FieldWidget> {
     // ── text (default) ─────────────────────────────────────────────────────
     return TextField(
       controller: controller,
-      focusNode:  field.focusNode,
+      focusNode:  _focusNode,
       decoration: InputDecoration(
         labelText:  field.label,
         hintText:   field.hint,

@@ -49,8 +49,11 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
     'code': 'Item code',
   };
 
-  void _openFilters(BuildContext context) => showReportFilterSheet(
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _openFilters(BuildContext context, {String? focusKey}) =>
+      showReportFilterSheet(
         context: context,
+        focusKey: focusKey,
         title: 'Stock Ageing Filters',
         fields: controller.filterFields,
         controllers: controller.filterControllers,
@@ -65,6 +68,7 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
             icon: Icons.filter_alt_outlined,
             label: e.value,
             onDeleted: () => controller.clearFilter(e.key),
+            onTap: () => _openFilters(context, focusKey: e.key),
           ),
       ];
 

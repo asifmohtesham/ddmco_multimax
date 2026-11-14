@@ -9,11 +9,16 @@ class FilterChipWidget extends StatelessWidget {
   final String label;
   final VoidCallback onDeleted;
 
+  /// Called when the chip itself (not its ×) is tapped — typically to edit
+  /// that filter. Null leaves the chip body inert, as before.
+  final VoidCallback? onTap;
+
   const FilterChipWidget({
     super.key,
     required this.icon,
     required this.label,
     required this.onDeleted,
+    this.onTap,
   });
 
   @override
@@ -22,7 +27,7 @@ class FilterChipWidget extends StatelessWidget {
     final fill = Color.alphaBlend(s.primary.withValues(alpha: 0.12), s.fg);
     final border = Color.alphaBlend(s.primary.withValues(alpha: 0.40), s.border);
 
-    return Container(
+    final chip = Container(
       height: 34,
       padding: const EdgeInsets.fromLTRB(12, 0, 10, 0),
       decoration: BoxDecoration(
@@ -56,6 +61,17 @@ class FilterChipWidget extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return chip;
+    return Semantics(
+      button: true,
+      hint: 'Edit filter',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: chip,
       ),
     );
   }
