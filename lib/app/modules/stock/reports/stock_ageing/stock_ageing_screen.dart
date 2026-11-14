@@ -81,10 +81,13 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                 onClearAllFilters: controller.clearFilters,
               ),
 
-              if (loading && hasData)
-                const SliverToBoxAdapter(
-                  child: LinearProgressIndicator(minHeight: 2),
-                ),
+              // Always present so the slivers below keep their positions
+              // (and state) when a refresh starts or ends.
+              SliverToBoxAdapter(
+                child: loading && hasData
+                    ? const LinearProgressIndicator(minHeight: 2)
+                    : const SizedBox.shrink(),
+              ),
 
               if (hasData) ...[
                 SliverToBoxAdapter(
@@ -103,6 +106,7 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                     child: _SearchField(
+                      controller: controller.searchController,
                       onChanged: controller.onSearchChanged,
                     ),
                   ),
@@ -192,48 +196,35 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
 
 // ── Search ──────────────────────────────────────────────────────────────────
 
-class _SearchField extends StatefulWidget {
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
   final ValueChanged<String> onChanged;
-  const _SearchField({required this.onChanged});
-
-  @override
-  State<_SearchField> createState() => _SearchFieldState();
-}
-
-class _SearchFieldState extends State<_SearchField> {
-  final _text = TextEditingController();
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
-  }
+  const _SearchField({required this.controller, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: _text,
-      onChanged: (v) {
-        widget.onChanged(v);
-        setState(() {});
-      },
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'Search item, variant or warehouse',
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: _text.text.isEmpty
-            ? null
-            : IconButton(
-                tooltip: 'Clear search',
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  _text.clear();
-                  widget.onChanged('');
-                  setState(() {});
-                },
-              ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) => TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search item, variant or warehouse',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: value.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    controller.clear();
+                    onChanged('');
+                  },
+                ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
     );
   }
@@ -279,7 +270,9 @@ class _SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'As on ${_displayDate(asOn)}$fetchedText',
+              asOn.isEmpty
+                  ? fetchedText.replaceFirst(' · f', 'F')
+                  : 'As on ${_displayDate(asOn)}$fetchedText',
               style: theme.textTheme.labelMedium
                   ?.copyWith(color: cs.onSurfaceVariant),
             ),

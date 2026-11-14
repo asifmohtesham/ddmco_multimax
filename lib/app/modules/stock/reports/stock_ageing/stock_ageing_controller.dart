@@ -14,11 +14,20 @@ import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_log
 /// report's saved filters apply until the user changes one; from then on the
 /// user's filters are sent. Only the default run is cached on the device.
 class StockAgeingController extends GetxController {
-  StockAgeingController({StockAgeingCache? cache})
-      : _cache = cache ?? StockAgeingCache();
+  /// [run] and [company] default to the app's [ApiProvider] and session
+  /// company; tests pass fakes.
+  StockAgeingController({
+    StockAgeingCache? cache,
+    Future<Response> Function({Map<String, dynamic>? filters})? run,
+    String Function()? company,
+  })  : _cache = cache ?? StockAgeingCache(),
+        _run = run ?? Get.find<ApiProvider>().runStockAgeingCustom,
+        _sessionCompany =
+            company ?? (() => Get.find<StorageService>().getCompany());
 
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final StockAgeingCache _cache;
+  final Future<Response> Function({Map<String, dynamic>? filters}) _run;
+  final String Function() _sessionCompany;
 
   // ── Filter controllers (keys match the report's filter fieldnames) ───────
 
@@ -108,6 +117,10 @@ class StockAgeingController extends GetxController {
   final rows = <Map<String, dynamic>>[].obs;
   final buckets = <AgeBucket>[].obs;
   final searchQuery = ''.obs;
+
+  /// Owned here (not by the search widget) so the typed text survives the
+  /// field being rebuilt or removed while the list is empty.
+  final searchController = TextEditingController();
   final sort = 'age'.obs;
 
   /// Filters that differ from the report's saved defaults, for the chip row.
@@ -126,6 +139,10 @@ class StockAgeingController extends GetxController {
   /// until the first default run or cache read.
   Map<String, dynamic> _defaults = {};
 
+  /// Set when a run is requested while another is in flight; that run is
+  /// started as soon as the current one finishes.
+  bool _rerun = false;
+
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
   @override
@@ -139,6 +156,7 @@ class StockAgeingController extends GetxController {
     for (final c in filterControllers.values) {
       c.dispose();
     }
+    searchController.dispose();
     super.onClose();
   }
 
@@ -181,7 +199,7 @@ class StockAgeingController extends GetxController {
     return ApiProvider.buildStockAgeingFilters(
       company: (_defaults['company']?.toString().trim().isNotEmpty ?? false)
           ? _defaults['company'].toString()
-          : Get.find<StorageService>().getCompany(),
+          : _sessionCompany(),
       toDate: t('to_date'),
       range: t('range'),
       warehouseType: t('warehouse_type'),
@@ -201,6 +219,22 @@ class StockAgeingController extends GetxController {
           : (v?.toString() ?? '');
       filterControllers[k]!.text = text;
     }
+  }
+
+  /// Whether the sheet still holds the report's saved defaults. Only the
+  /// filters the sheet can edit are compared, so a saved company or any other
+  /// saved key never makes an untouched sheet look edited. With no known
+  /// defaults, an untouched sheet is one with the mandatory filters blank.
+  bool _sheetIsDefault() {
+    final current = _currentFilters();
+    if (_defaults.isEmpty) {
+      return current['to_date'] == '' && current['range'] == '';
+    }
+    Map<String, dynamic> editable(Map<String, dynamic> m) => {
+          for (final k in _filterKeys)
+            if (m.containsKey(k)) k: m[k],
+        };
+    return StockAgeingLogic.sameFilters(editable(current), editable(_defaults));
   }
 
   void _rebuildActiveFilters() {
@@ -239,19 +273,23 @@ class StockAgeingController extends GetxController {
   /// defaults are not known yet) the server's saved filters are used, as on
   /// the Desk; otherwise the user's filters are sent.
   Future<void> runReport() async {
-    if (isLoading.value) return;
+    if (isLoading.value) {
+      // Never drop a request: the sheet may have changed since the run in
+      // flight was started.
+      _rerun = true;
+      return;
+    }
 
-    // With no known defaults (first run, or a report saved without filters)
-    // an untouched sheet asks for the server's defaults; once the user has
-    // typed the mandatory filters themselves, those are sent instead.
-    final current = _currentFilters();
-    final useDefaults = _defaults.isEmpty
-        ? current['to_date'] == '' && current['range'] == ''
-        : StockAgeingLogic.sameFilters(current, _defaults);
+    final useDefaults = _sheetIsDefault();
 
     Map<String, dynamic>? filters;
     if (!useDefaults) {
-      filters = _currentFilters();
+      // Saved filters the sheet cannot edit (e.g. an item group) still apply.
+      filters = {
+        for (final e in _defaults.entries)
+          if (!_filterKeys.contains(e.key)) e.key: e.value,
+        ..._currentFilters(),
+      };
       if (filters['to_date'] == '' || filters['range'] == '') {
         GlobalSnackbar.warning(
           title: 'Filter Required',
@@ -264,7 +302,7 @@ class StockAgeingController extends GetxController {
     isLoading.value = true;
     errorMessage.value = null;
     try {
-      final response = await _apiProvider.runStockAgeingCustom(filters: filters);
+      final response = await _run(filters: filters);
       if (isClosed) return;
       final message = response.data is Map ? response.data['message'] : null;
       if (message is! Map) {
@@ -307,12 +345,19 @@ class StockAgeingController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+
+    if (_rerun && !isClosed) {
+      _rerun = false;
+      await runReport();
+    }
   }
 
   /// Puts a default-run snapshot on screen and adopts its saved filters.
   void _show(StockAgeingSnapshot snapshot) {
+    // Leave the sheet alone if the user has edited it since the last seed.
+    final untouched = _sheetIsDefault();
     _defaults = snapshot.defaults;
-    _seedControllers(_defaults);
+    if (untouched) _seedControllers(_defaults);
     buckets.assignAll(StockAgeingLogic.parseBuckets(snapshot.columns));
     rows.assignAll(snapshot.rows);
     fetchedAt.value = snapshot.fetchedAt;
