@@ -60,6 +60,71 @@ abstract final class StockAgeingLogic {
     return 0;
   }
 
+  static final _bucketField = RegExp(r'^range\d+(value)?$');
+
+  /// Rebuilds the bucket columns of [columns] for the ageing [range] the
+  /// data was calculated with (e.g. "360, 720").
+  ///
+  /// "Stock Ageing - Custom" is a Frappe Custom Report, whose column list is
+  /// frozen at the titles it was saved with: the server returns
+  /// "Age (0 - 90)"… even when the rows were calculated for another range,
+  /// and omits columns for buckets the saved list never had. Core Stock
+  /// Ageing names buckets `range1`, `range1value`, … titled
+  /// "Age (0 - 360)" / "Value (0 - 360)", ending "(N+1 - Above)"; this
+  /// reproduces that, in place of the frozen bucket columns.
+  ///
+  /// A blank or unreadable [range] returns [columns] unchanged.
+  static List<dynamic> applyRange(List<dynamic> columns, String? range) {
+    final limits = <int>[];
+    for (final part in (range ?? '').split(',')) {
+      final n = int.tryParse(part.trim());
+      if (n == null) {
+        if (part.trim().isNotEmpty) return columns;
+        continue;
+      }
+      limits.add(n);
+    }
+    if (limits.isEmpty) return columns;
+
+    final titles = [
+      '0 - ${limits.first}',
+      for (var i = 1; i < limits.length; i++)
+        '${limits[i - 1] + 1} - ${limits[i]}',
+      '${limits.last + 1} - Above',
+    ];
+    final generated = <Map<String, dynamic>>[
+      for (var i = 0; i < titles.length; i++) ...[
+        {
+          'fieldname': 'range${i + 1}',
+          'label': 'Age (${titles[i]})',
+          'fieldtype': 'Float',
+        },
+        {
+          'fieldname': 'range${i + 1}value',
+          'label': 'Value (${titles[i]})',
+          'fieldtype': 'Float',
+        },
+      ],
+    ];
+
+    bool isBucket(dynamic c) =>
+        c is Map && _bucketField.hasMatch(c['fieldname']?.toString() ?? '');
+
+    // Keep the buckets where the report has them; append if it has none.
+    final out = <dynamic>[];
+    var placed = false;
+    for (final c in columns) {
+      if (!isBucket(c)) {
+        out.add(c);
+      } else if (!placed) {
+        out.addAll(generated);
+        placed = true;
+      }
+    }
+    if (!placed) out.addAll(generated);
+    return out;
+  }
+
   /// Reads the age buckets from `message.columns`, so the ranges are defined
   /// only on the Desk and never hard-coded here.
   static List<AgeBucket> parseBuckets(List<dynamic> columns) {
