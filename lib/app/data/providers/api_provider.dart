@@ -1587,6 +1587,77 @@ class ApiProvider {
   }
 
   // ---------------------------------------------------------------------------
+  // STOCK AGEING - CUSTOM
+  // ---------------------------------------------------------------------------
+
+  /// Name of the Frappe Custom Report (a saved view over core Stock Ageing).
+  static const kStockAgeingReport = 'Stock Ageing - Custom';
+
+  /// Builds the `filters` payload for a user-filtered Stock Ageing run.
+  /// Mirrors the desk report (`stock_ageing.js`): `company`, `to_date` and
+  /// `range` are mandatory server-side; blank optionals are omitted and the
+  /// Check filter is sent as `1` only when on.
+  static Map<String, dynamic> buildStockAgeingFilters({
+    required String company,
+    required String toDate,
+    required String range,
+    String? warehouseType,
+    String? warehouse,
+    String? itemCode,
+    String? brand,
+    bool showWarehouseWiseStock = false,
+  }) {
+    final f = <String, dynamic>{
+      'company': company,
+      'to_date': toDate,
+      'range': range,
+    };
+    void put(String key, String? v) {
+      if (v != null && v.trim().isNotEmpty) f[key] = v.trim();
+    }
+
+    put('warehouse_type', warehouseType);
+    put('warehouse', warehouse);
+    put('item_code', itemCode);
+    put('brand', brand);
+    if (showWarehouseWiseStock) f['show_warehouse_wise_stock'] = 1;
+    return f;
+  }
+
+  /// Query parameters for `query_report.run` (without the cache-buster).
+  ///
+  /// [filters] null → a default run: empty filters and **no**
+  /// `are_default_filters`, so the server applies the report's saved filters
+  /// (and echoes them back as `message.custom_filters`), exactly as the Desk
+  /// does on first load. Non-null → the caller's filters with
+  /// `are_default_filters=false`, as the Desk does once a filter is changed.
+  static Map<String, dynamic> stockAgeingQuery({Map<String, dynamic>? filters}) {
+    return {
+      'report_name': kStockAgeingReport,
+      'filters': json.encode(filters ?? const <String, dynamic>{}),
+      'ignore_prepared_report': 'true',
+      if (filters != null) 'are_default_filters': 'false',
+    };
+  }
+
+  /// Runs "Stock Ageing - Custom". Returns the raw [Response]; the caller
+  /// parses `message.columns`, `message.result` and `message.custom_filters`.
+  /// The default run takes ~20 s on a full warehouse group, hence the longer
+  /// receive timeout.
+  Future<Response> runStockAgeingCustom({Map<String, dynamic>? filters}) async {
+    if (!_dioInitialised) await _initDio();
+
+    return await _dio.get(
+      '/api/method/frappe.desk.query_report.run',
+      queryParameters: {
+        ...stockAgeingQuery(filters: filters),
+        '_': DateTime.now().millisecondsSinceEpoch,
+      },
+      options: Options(receiveTimeout: const Duration(seconds: 120)),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // BOM STOCK WITH CUSTOMER CODE
   // ---------------------------------------------------------------------------
 
