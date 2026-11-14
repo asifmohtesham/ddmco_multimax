@@ -15,6 +15,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
 /// GetX controller for the **Batch form** screen.
 ///
@@ -28,7 +29,7 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 /// - [checkStaleAndBlock] is called at the start of [saveDocument].
 /// - [handleVersionConflict] is called in the catch block.
 /// - [reloadDocument] is implemented to delegate to [fetchDocument].
-class BatchFormController extends GetxController with OptimisticLockingMixin {
+class BatchFormController extends GetxController with OptimisticLockingMixin, RealtimeSyncMixin {
   final BatchProvider _provider = Get.find<BatchProvider>();
 
   /// Batch document name (ERPNext `name` field).  Empty string in new mode.
@@ -42,6 +43,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   var isLoading = true.obs;
 
   /// `true` while [saveDocument] is in flight.
+  @override
   var isSaving = false.obs;
 
   /// `true` while [exportQrAsPng] or [exportQrAsPdf] is in flight.
@@ -49,6 +51,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
 
   /// `true` when the form has unsaved changes relative to [_originalJson].
   /// Always `true` in new mode.
+  @override
   var isDirty = false.obs;
 
   /// JSON snapshot of the form state immediately after a successful fetch.
@@ -122,6 +125,9 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   /// `true` when [mode] is `'edit'`.
   bool get isEditMode => mode == 'edit';
 
+  @override String get realtimeDoctype => 'Batch';
+  @override String get realtimeDocname => name;
+
   /// Persists the random 6-char suffix across item code changes in new mode.
   /// Ensures the suffix stays stable if the user re-selects an item or
   /// the EAN barcode is refreshed, preserving the batch ID they see.
@@ -165,7 +171,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
     isDisabled.listen((_) => _checkForChanges());
 
     if (isEditMode) {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     } else {
       _initNewBatch();
     }
@@ -187,6 +193,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     itemController.dispose();
     descriptionController.dispose();
     mfgDateController.dispose();
@@ -293,7 +300,9 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
       return;
     }
     final currentJson = jsonEncode(_getCurrentFormData());
-    isDirty.value = currentJson != _originalJson;
+    final nowDirty = currentJson != _originalJson;
+    isDirty.value = nowDirty;
+    if (nowDirty) scheduleAutoSave();
   }
 
   Map<String, dynamic> _getCurrentFormData() {
@@ -434,6 +443,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
   /// On conflict the catch block delegates to [handleVersionConflict]
   /// ([OptimisticLockingMixin]) which shows the conflict dialog and returns
   /// `true`, causing [saveDocument] to return without showing a generic error.
+  @override
   Future<void> saveDocument() async {
     if (!isDirty.value && isEditMode) return;
 
@@ -477,6 +487,7 @@ class BatchFormController extends GetxController with OptimisticLockingMixin {
           AppNotification.success('Batch created: ${data['name']}');
           name = data['name'];
           mode = 'edit';
+          await startRealtimeSyncAfterCreate();
           await fetchDocument();
         } else {
           throw Exception(response.data['exception'] ?? 'Unknown Error');

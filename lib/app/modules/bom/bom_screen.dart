@@ -6,6 +6,9 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/bom/bom_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
@@ -47,34 +50,22 @@ class _BomScreenState extends State<BomScreen> {
 
   void _showQuickWoSheet(BuildContext context, BOM bom) {
     Get.bottomSheet(
-      _QuickWoSheet(bom: bom),
+      QuickWoSheet(bom: bom),
       isScrollControlled: true,
     );
   }
 
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
-    final cs = Theme.of(context).colorScheme;
 
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
     Widget chip({
       required IconData icon,
       required String label,
       required VoidCallback onDeleted,
     }) =>
-        Chip(
-          avatar: Icon(icon, size: 16, color: cs.onSecondaryContainer),
-          label: Text(label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: cs.onSecondaryContainer,
-                  fontWeight: FontWeight.w600)),
-          backgroundColor: cs.secondaryContainer,
-          deleteIconColor: cs.onSecondaryContainer,
-          onDeleted: onDeleted,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          side: BorderSide.none,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
+        FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
@@ -130,6 +121,7 @@ class _BomScreenState extends State<BomScreen> {
               title: screenTitle,
               automaticallyImplyLeading: false,
               searchDoctype:      'BOM',
+              searchRoute:        AppRoutes.BOM_FORM,
               searchQuery:        controller.searchQuery,
               onSearchChanged:    controller.onSearchChanged,
               onSearchClear:      controller.clearFilters,
@@ -146,50 +138,21 @@ class _BomScreenState extends State<BomScreen> {
               }
 
               if (controller.boms.isEmpty) {
+                final hasFilters = controller.activeFilters.isNotEmpty ||
+                    controller.searchQuery.value.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.account_tree_outlined,
-                              size: 64, color: cs.outlineVariant),
-                          const SizedBox(height: 16),
-                          Text('No BOMs Found',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                      color: cs.onSurface,
-                                      fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          Text(
-                            controller.activeFilters.isNotEmpty
-                                ? 'Try clearing the active filter to see all BOMs.'
-                                : 'Tap "+ New BOM" to create your first Bill of Materials.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: cs.onSurfaceVariant, fontSize: 13),
-                          ),
-                          const SizedBox(height: 24),
-                          if (controller.activeFilters.isNotEmpty)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.filter_alt_off),
-                              label: const Text('Clear Filter'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchBOMs(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.account_tree_outlined,
+                    emptyTitle: 'No BOMs Found',
+                    emptyMessage:
+                        'Tap "+ New BOM" to create your first Bill of Materials.',
+                    filteredTitle: 'No Matching BOMs',
+                    filteredMessage:
+                        'Try clearing the active filter to see all BOMs.',
+                    onClearFilters: controller.clearFilters,
+                    onReload: () => controller.fetchBOMs(clear: true),
                   ),
                 );
               }
@@ -209,13 +172,8 @@ class _BomScreenState extends State<BomScreen> {
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           if (index >= boms.length) {
-                            return controller.hasMore.value
-                                ? const Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child:
-                                          CircularProgressIndicator()))
-                                : const SizedBox(height: 80);
+                            return ListEndFooter(
+                                hasMore: controller.hasMore.value);
                           }
                           final bom = boms[index];
                           return Padding(
@@ -622,15 +580,15 @@ class _BomCard extends StatelessWidget {
 
 // ── Quick Work Order creation sheet ───────────────────────────────────────────
 
-class _QuickWoSheet extends StatefulWidget {
+class QuickWoSheet extends StatefulWidget {
   final BOM bom;
-  const _QuickWoSheet({required this.bom});
+  const QuickWoSheet({super.key, required this.bom});
 
   @override
-  State<_QuickWoSheet> createState() => _QuickWoSheetState();
+  State<QuickWoSheet> createState() => _QuickWoSheetState();
 }
 
-class _QuickWoSheetState extends State<_QuickWoSheet> {
+class _QuickWoSheetState extends State<QuickWoSheet> {
   late final TextEditingController _qtyController;
   DateTime _startDate = DateTime.now();
 
@@ -683,14 +641,13 @@ class _QuickWoSheetState extends State<_QuickWoSheet> {
   Widget build(BuildContext context) {
     final cs   = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final mq   = MediaQuery.of(context);
 
     return Container(
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, mq.viewInsets.bottom + 24),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

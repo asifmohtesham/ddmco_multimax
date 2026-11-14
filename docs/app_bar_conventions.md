@@ -1,5 +1,9 @@
 # App Bar Conventions
 
+> **See also:** [`doctype_list_view_conventions.md`](doctype_list_view_conventions.md)
+> for the full List View structure (result-count pill, empty state, end-of-list
+> footer, filter chips, singular titles). This document covers the header only.
+
 This document defines the standard app bar layout for every screen in the app.
 All screens use `DocTypeListHeader` (a `SliverAppBar.large` wrapper) as the
 unified header. The two screen archetypes — **List View** and **Form View** —

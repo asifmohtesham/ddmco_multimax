@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -23,12 +22,13 @@ class UserProfileController extends GetxController {
 
   Future<void> refreshProfile() async {
     isLoading.value = true;
-    await _authController.fetchUserDetails();
-    isLoading.value = false;
-  }
-
-  void logout() {
-    _authController.logoutUser();
+    try {
+      // An expired session sends the user to login; a network failure
+      // leaves the profile as it was.
+      await _authController.revalidateSession();
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   // --- Mobile Number Update ---

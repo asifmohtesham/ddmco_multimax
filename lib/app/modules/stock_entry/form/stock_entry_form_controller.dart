@@ -1,12 +1,13 @@
 import 'dart:async';
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:dio/dio.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/mixins/barcode_scan_mixin.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
+import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
@@ -22,8 +23,8 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
-import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
 // ── Shared sheet layer ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,14 +36,13 @@ import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'widgets/item_form_sheet/rack_section.dart';
 
 class StockEntryFormController extends GetxController
-    with OptimisticLockingMixin, BarcodeScanMixin {
+    with OptimisticLockingMixin, BarcodeScanMixin, RealtimeSyncMixin {
   // ── Dependencies ───────────────────────────────────────────────────────────────────────────────────
   final StockEntryProvider  _provider       = Get.find<StockEntryProvider>();
   final ApiProvider         _apiProvider    = Get.find<ApiProvider>();
   final PosUploadProvider   _posProvider    = Get.find<PosUploadProvider>();
   final StorageService      _storageService = Get.find<StorageService>();
   final ScanService         _scanService    = Get.find<ScanService>();
-  final DataWedgeService    _dataWedgeService = Get.find<DataWedgeService>();
 
   // ── Arguments ───────────────────────────────────────────────────────────────────────────────────
   // NOTE: these MUST be assigned inside onInit(), not as field initializers.
@@ -63,6 +63,8 @@ class StockEntryFormController extends GetxController
   var isScanning       = false.obs;
   var isSaving         = false.obs;
   var isDirty          = false.obs;
+  var isSubmitting     = false.obs;
+  var canSubmitPerm    = false.obs; // fail-closed default until pre-check confirms
   var isAddingItem     = false.obs;
   var isLoadingItemEdit = false.obs;
   var loadingForItemName = RxnString();
@@ -112,14 +114,81 @@ class StockEntryFormController extends GetxController
   final ScrollController scrollController = ScrollController();
 
   Timer?  _autoSubmitTimer;
-  Worker? _scanWorker;
+  Worker? _fromWarehouseWorker;
+  Worker? _toWarehouseWorker;
+  Worker? _stockEntryTypeWorker;
 
   bool get isEditable => (stockEntry.value?.docstatus ?? 1) == 0;
+
+  /// Pure submit-eligibility predicate (no GetX state) so it is unit-testable.
+  /// A Stock Entry may be submitted only when it is a saved, clean draft the
+  /// current user is permitted to submit, with no save/submit already running.
+  static bool computeCanSubmit({
+    required String mode,
+    required int? docStatus,
+    required bool isDirty,
+    required bool isSaving,
+    required bool isSubmitting,
+    required bool canSubmitPerm,
+  }) {
+    return mode != 'new' &&
+        docStatus == 0 &&
+        !isDirty &&
+        !isSaving &&
+        !isSubmitting &&
+        canSubmitPerm;
+  }
+
+  bool get canSubmit => computeCanSubmit(
+        mode:          mode,
+        docStatus:     stockEntry.value?.docstatus,
+        isDirty:       isDirty.value,
+        isSaving:      isSaving.value,
+        isSubmitting:  isSubmitting.value,
+        canSubmitPerm: canSubmitPerm.value,
+      );
+
+  /// Pure auto-save-eligibility predicate (no GetX state) so it is unit-testable.
+  /// Background auto-save must never fire while a mandatory field is still empty:
+  /// it requires at least one item, a chosen entry type, and any source/target
+  /// warehouse the type mandates. Manual Save (header button) and the post-scan
+  /// save still run on an incomplete document and surface their own validation;
+  /// this guard only governs the silent background auto-save.
+  static bool computeCanAutoSave({
+    required bool hasItems,
+    required String stockEntryType,
+    required bool requiresSourceWarehouse,
+    required bool requiresTargetWarehouse,
+    required String? fromWarehouse,
+    required String? toWarehouse,
+  }) {
+    if (!hasItems) return false;
+    if (stockEntryType.isEmpty) return false;
+    if (requiresSourceWarehouse &&
+        (fromWarehouse == null || fromWarehouse.isEmpty)) return false;
+    if (requiresTargetWarehouse &&
+        (toWarehouse == null || toWarehouse.isEmpty)) return false;
+    return true;
+  }
+
+  @override
+  bool get canAutoSave => computeCanAutoSave(
+        hasItems:                stockEntry.value?.items.isNotEmpty ?? false,
+        stockEntryType:          stockEntryType.value,
+        requiresSourceWarehouse: requiresSourceWarehouse,
+        requiresTargetWarehouse: requiresTargetWarehouse,
+        fromWarehouse:           fromWarehouse.value,
+        toWarehouse:             toWarehouse.value,
+      );
+
+  @override String get realtimeDoctype => 'Stock Entry';
+  @override String get realtimeDocname => name;
 
   // ── Domain helpers ───────────────────────────────────────────────────────────────────────────────────
 
   String getTypeHelperText(String type) {
     switch (type) {
+      case '':                 return 'Tap to choose a stock entry type to begin.';
       case 'Material Issue':   return 'Remove stock from a warehouse (outbound movement).';
       case 'Material Receipt': return 'Receive stock into a warehouse (inbound movement).';
       case 'Material Transfer':
@@ -264,14 +333,13 @@ class StockEntryFormController extends GetxController
     argStockEntryType                  = Get.arguments?['stockEntryType']    as String?;
     argCustomReferenceNo               = Get.arguments?['customReferenceNo'] as String?;
     argWorkOrderName                   = Get.arguments?['workOrderName']     as String?;
-    final String? argWorkOrder         = Get.arguments?['workOrder'];
 
     initScanWiring();
     _initDependencies();
     if (mode == 'new') {
       _initDocument();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
@@ -279,15 +347,9 @@ class StockEntryFormController extends GetxController
     fetchWarehouses();
     fetchDocumentTypes();
 
-    // Doc-level scan worker: fires only when no item sheet is open.
-    // Sheet-level scans are owned by BarcodeAwareMixin on the child controller.
-    _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
-      if (code.isNotEmpty && !isItemSheetOpen.value) scanBarcode(code);
-    });
-
-    ever(fromWarehouse,    (_) => _markDirty());
-    ever(toWarehouse,      (_) => _markDirty());
-    ever(stockEntryType,   (_) => _markDirty());
+    _fromWarehouseWorker  = ever(fromWarehouse,  (_) => _markDirty());
+    _toWarehouseWorker    = ever(toWarehouse,     (_) => _markDirty());
+    _stockEntryTypeWorker = ever(stockEntryType,  (_) => _markDirty());
 
     // customReferenceNoController listener removed.
     // The reference number is read-only in the UI (set once from route arguments).
@@ -297,15 +359,15 @@ class StockEntryFormController extends GetxController
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     disposeScanWiring();
     _autoSubmitTimer?.cancel();
     _saveResultTimer?.cancel();
-    final bcc = barcodeController;
-    final crc = customReferenceNoController;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      bcc.dispose();
-      crc.dispose();
-    });
+    _fromWarehouseWorker?.dispose();
+    _toWarehouseWorker?.dispose();
+    _stockEntryTypeWorker?.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
+    customReferenceNoController.dispose();
     super.onClose();
   }
 
@@ -676,6 +738,7 @@ class StockEntryFormController extends GetxController
         }
 
         isDirty.value = false;
+        await _refreshSubmitPermission();
       } else {
         GlobalDialog.showError(
           title:   'Could not load Stock Entry',
@@ -710,6 +773,17 @@ class StockEntryFormController extends GetxController
     });
   }
 
+  /// Refreshes [canSubmitPerm] for the currently-loaded document.
+  /// Only drafts with a real name can be submitted; everything else is
+  /// fail-closed to `false`.
+  Future<void> _refreshSubmitPermission() async {
+    if (name.isEmpty || (stockEntry.value?.docstatus ?? 1) != 0) {
+      canSubmitPerm.value = false;
+      return;
+    }
+    canSubmitPerm.value = await _provider.canSubmit(name);
+  }
+
   // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────────────────
 
   bool get requiresSourceWarehouse {
@@ -741,6 +815,11 @@ class StockEntryFormController extends GetxController
   }
 
   bool _validateHeaderBeforeScan() {
+    if (stockEntryType.value.isEmpty) {
+      GlobalSnackbar.warning(
+          message: 'Please select a Stock Entry Type (Details tab) before scanning.');
+      return false;
+    }
     if (requiresSourceWarehouse &&
         (fromWarehouse.value == null ||
             fromWarehouse.value!.isEmpty)) {
@@ -921,20 +1000,23 @@ class StockEntryFormController extends GetxController
     bool bypassPosCap = false,
   }) {
     final resolvedSerial = serial ?? '0';
+    final items = stockEntry.value?.items.toList() ?? [];
+
+    // A rescanned duplicate — same item, batch, source rack AND target rack,
+    // within the same POS invoice-serial context (so distinct POS invoice
+    // lines never get merged into one another).
+    final existingIdx = items.indexWhere((i) => isDuplicateLine(
+        i,
+        itemCode: currentItemCode,
+        batch: batch,
+        sourceRack: sourceRack,
+        targetRack: targetRack,
+        serial: serial));
 
     if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
-      final items       = stockEntry.value?.items.toList() ?? [];
       final cap         = posQtyCapForSerial(resolvedSerial);
       final alreadyUsed = scannedQtyForSerial(resolvedSerial);
-
-      final existingIdx = items.indexWhere((i) =>
-          i.itemCode.trim().toLowerCase() ==
-              currentItemCode.trim().toLowerCase() &&
-          (i.batchNo  ?? '') == (batch       ?? '') &&
-          (i.rack     ?? '') == (sourceRack  ?? '') &&
-          (i.customInvoiceSerialNumber ?? '0') == resolvedSerial);
-      final mergeQty  = existingIdx != -1 ? items[existingIdx].qty : 0.0;
-      final projected = alreadyUsed - mergeQty + qty;
+      final projected   = alreadyUsed + qty;
 
       if (projected > cap) {
         final posItem = posUpload.value!.items
@@ -947,6 +1029,36 @@ class StockEntryFormController extends GetxController
         );
         return;
       }
+    }
+
+    if (existingIdx != -1) {
+      final existing = items[existingIdx];
+      var merged = StockEntryItem(
+        name:       existing.name,
+        itemCode:   currentItemCode,
+        qty:        existing.qty + qty,
+        basicRate:  existing.basicRate,
+        itemGroup:  existing.itemGroup,
+        customVariantOf: currentVariantOf,
+        batchNo:    batch,
+        itemName:   currentItemName,
+        rack:       sourceRack,
+        toRack:     targetRack,
+        sWarehouse: sWarehouse,
+        tWarehouse: tWarehouse,
+        customInvoiceSerialNumber: serial,
+        materialRequest:     existing.materialRequest,
+        materialRequestItem: existing.materialRequestItem,
+        isFinishedItem: existing.isFinishedItem,
+        owner:      existing.owner,
+        creation:   existing.creation,
+        modified:   existing.modified,
+        modifiedBy: existing.modifiedBy,
+      );
+      merged = _enrichItemWithSourceData(merged);
+      items[existingIdx] = merged;
+      stockEntry.update((val) => val?.items.assignAll(items));
+      return;
     }
 
     final uniqueId = 'local_${DateTime.now().millisecondsSinceEpoch}';
@@ -967,9 +1079,29 @@ class StockEntryFormController extends GetxController
     );
     newItem = _enrichItemWithSourceData(newItem);
     ensureItemKey(newItem);
-    final items = stockEntry.value?.items.toList() ?? [];
     items.add(newItem);
     stockEntry.update((val) => val?.items.assignAll(items));
+  }
+
+  /// Responsibility: identify a rescanned duplicate of [existing] — same
+  /// item, batch, source rack AND target rack, within the same POS
+  /// invoice-serial context (so distinct POS invoice lines are never merged
+  /// into one another). Pure/static so it is unit-testable without
+  /// constructing the full form controller.
+  static bool isDuplicateLine(
+    StockEntryItem existing, {
+    required String itemCode,
+    required String? batch,
+    required String? sourceRack,
+    required String? targetRack,
+    required String? serial,
+  }) {
+    return existing.itemCode.trim().toLowerCase() ==
+            itemCode.trim().toLowerCase() &&
+        (existing.batchNo ?? '') == (batch ?? '') &&
+        (existing.rack ?? '') == (sourceRack ?? '') &&
+        (existing.toRack ?? '') == (targetRack ?? '') &&
+        (existing.customInvoiceSerialNumber ?? '0') == (serial ?? '0');
   }
 
   // ── addItem coordinator ──────────────────────────────────────────────────────────────────────────────────
@@ -1095,12 +1227,8 @@ class StockEntryFormController extends GetxController
     // Auto-submit wiring goes AFTER initialise() so the timer is not
     // started on an uninitialised controller.
     //
-    // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
-    // The enabled-flag, delay, and sheet-open guard are inlined here so
-    // the base Worker fires only when the sheet is still open and the
-    // document is editable.
-    final autoEnabled    = _storageService.getAutoSubmitEnabled();
-    final autoDelaySecs  = _storageService.getAutoSubmitDelay();
+    // Auto-submit guards (enabled flag, delay, sheet open, editable) live in
+    // _wireAutoSubmit.
     _wireAutoSubmit(child);
     await _openItemSheet(child);
   }
@@ -1137,9 +1265,6 @@ class StockEntryFormController extends GetxController
         scannedEan8:      currentScannedEan,
       );
 
-      // Commit 6: use the base-class signature setupAutoSubmit(onValid: ...).
-      final autoEnabled   = _storageService.getAutoSubmitEnabled();
-      final autoDelaySecs = _storageService.getAutoSubmitDelay();
       _wireAutoSubmit(child);
 
       ensureItemKey(item);
@@ -1192,7 +1317,6 @@ class StockEntryFormController extends GetxController
               ),
               SharedBatchField(
                 c:               child,
-                accentColor:     Colors.blueGrey,
                 editMode:        true,
                 fieldKey:        'se_batch_edit',
                 balanceOverride: () => child.batchBalance.value,
@@ -1338,6 +1462,10 @@ class StockEntryFormController extends GetxController
   /// Returns true when the header is valid to proceed with save.
   /// Shows an error snackbar and returns false otherwise.
   bool _validateHeaderForSave() {
+    if (stockEntryType.value.isEmpty) {
+      GlobalSnackbar.error(message: 'Please select a Stock Entry Type');
+      return false;
+    }
     // Resolve warehouses from first item if header fields are still null.
     final firstItem = stockEntry.value?.items.firstOrNull;
     if (fromWarehouse.value == null && firstItem?.sWarehouse != null) {
@@ -1434,6 +1562,7 @@ class StockEntryFormController extends GetxController
     if (res.statusCode == 200) {
       name = res.data['data']['name'];
       mode = 'edit';
+      await startRealtimeSyncAfterCreate();
       await fetchDocument();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
@@ -1462,19 +1591,24 @@ class StockEntryFormController extends GetxController
 
   // ── Error handler ─────────────────────────────────────────────────────────
 
-  void _handleSaveDioError(DioException e) {
-    if (handleVersionConflict(e)) return;
-    _setSaveResult(SaveResult.error);
-    String msg = 'Save failed';
+  /// Extracts a user-facing message from an ERPNext error response.
+  /// Pure: no state mutation, no snackbar.
+  String _extractDioErrorMessage(DioException e, String fallback) {
     final data = e.response?.data;
     if (data is Map) {
       if (data['exception'] != null) {
-        msg = data['exception'].toString().split(':').last.trim();
+        return data['exception'].toString().split(':').last.trim();
       } else if (data['_server_messages'] != null) {
-        msg = 'Validation Error: Check form details';
+        return 'Validation Error: Check form details';
       }
     }
-    GlobalSnackbar.error(message: msg);
+    return fallback;
+  }
+
+  void _handleSaveDioError(DioException e) {
+    if (handleVersionConflict(e)) return;
+    _setSaveResult(SaveResult.error);
+    GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Save failed'));
   }
 
   // ── saveDocument (orchestrator only, ~15 lines) ─────────────────────────
@@ -1503,10 +1637,42 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  // ── Submit ──────────────────────────────────────────────────────────────
+  Future<void> submitDocument() async {
+    if (!canSubmit) return;
+    // Mirror ERPNext desk's submit prompt.
+    final confirmed = await GlobalDialog.confirm(
+      title:        'Confirm',
+      message:      'Permanently Submit $name?',
+      confirmText:  'Yes',
+      confirmColor: AppColors.blue600,
+    );
+    if (confirmed != true) return;
+
+    isSubmitting.value = true;
+    try {
+      final res = await _provider.submitStockEntry(name);
+      if (res.statusCode == 200) {
+        await fetchDocument(); // now docstatus 1, read-only; perm refreshed to false
+        GlobalSnackbar.success(message: 'Stock Entry $name submitted');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to submit Stock Entry');
+      }
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) return;
+      GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Submit failed'));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Submit failed: $e');
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
   // ── Misc ───────────────────────────────────────────────────────────────────────────────────
 
   void _markDirty() {
     if (!isLoading.value && !isDirty.value && isEditable) isDirty.value = true;
+    scheduleAutoSave();
   }
 
   Future<void> confirmDiscard() async {
@@ -1523,8 +1689,8 @@ class StockEntryFormController extends GetxController
     if (current == null) return;
     DateTime initial;
     try {
-      initial = current.postingDate != null && current.postingDate!.isNotEmpty
-          ? DateFormat('yyyy-MM-dd').parse(current.postingDate!)
+      initial = current.postingDate.isNotEmpty
+          ? DateFormat('yyyy-MM-dd').parse(current.postingDate)
           : DateTime.now();
     } catch (_) {
       initial = DateTime.now();
@@ -1546,7 +1712,11 @@ class StockEntryFormController extends GetxController
     TimeOfDay initial;
     try {
       if (current.postingTime != null && current.postingTime!.isNotEmpty) {
-        final parsed = DateFormat('HH:mm:ss').parse(current.postingTime!);
+        // Normalise first — server-loaded times carry microseconds
+        // ('9:46:34.234513'), which the strict HH:mm:ss parse rejects and
+        // would silently reset the picker to "now".
+        final parsed = DateFormat('HH:mm:ss')
+            .parse(FormattingHelper.formatTime(current.postingTime)!);
         initial = TimeOfDay.fromDateTime(parsed);
       } else {
         initial = TimeOfDay.now();

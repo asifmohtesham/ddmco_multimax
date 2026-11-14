@@ -57,6 +57,23 @@ class StockEntryProvider {
     return _apiProvider.updateDocument('Stock Entry', name, data);
   }
 
+  /// Submit a saved Stock Entry (docstatus 0 → 1).
+  Future<Response> submitStockEntry(String name) async {
+    return _apiProvider.submitDocument('Stock Entry', name);
+  }
+
+  /// Whether the current session user may submit the specific Stock Entry
+  /// [name]. Fail-closed: returns `false` on any network/permission error.
+  Future<bool> canSubmit(String name) async {
+    try {
+      final res =
+          await _apiProvider.hasDocPermission('Stock Entry', name, 'submit');
+      return ApiProvider.parseHasDocPermissionResponse(res.data);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Calls ERP's whitelisted helper to fetch the pre-populated items
   /// list for a Manufacture Stock Entry linked to [workOrderName].
   ///

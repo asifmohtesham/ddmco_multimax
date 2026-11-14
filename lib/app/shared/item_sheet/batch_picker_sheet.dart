@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
@@ -149,7 +150,7 @@ class _Handle extends StatelessWidget {
         margin: const EdgeInsets.only(top: 10, bottom: 4),
         width:  40, height: 4,
         decoration: BoxDecoration(
-          color:        Colors.grey.shade300,
+          color:        context.scheme.borderStrong,
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -203,7 +204,7 @@ class _Header extends StatelessWidget {
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: c.showAllWarehouses.value
                               ? accentColor
-                              : Colors.grey.shade600,
+                              : context.scheme.textMuted,
                         ),
                         overflow: TextOverflow.ellipsis,
                       )),
@@ -233,12 +234,12 @@ class _Header extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: allWh
                           ? accentColor.withOpacity(0.12)
-                          : Colors.grey.shade100,
+                          : context.scheme.subtle,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: allWh
                             ? accentColor.withOpacity(0.5)
-                            : Colors.grey.shade300,
+                            : context.scheme.borderStrong,
                       ),
                     ),
                     child: Row(
@@ -249,7 +250,9 @@ class _Header extends StatelessWidget {
                               ? Icons.public_rounded
                               : Icons.warehouse_outlined,
                           size:  14,
-                          color: allWh ? accentColor : Colors.grey.shade600,
+                          color: allWh
+                              ? accentColor
+                              : context.scheme.textMuted,
                         ),
                         const SizedBox(width: 5),
                         Text(
@@ -261,7 +264,7 @@ class _Header extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                             color:      allWh
                                 ? accentColor
-                                : Colors.grey.shade600,
+                                : context.scheme.textMuted,
                           ),
                         ),
                       ],
@@ -301,7 +304,7 @@ class _SearchBar extends StatelessWidget {
                 )
               : const SizedBox.shrink()),
           filled:    true,
-          fillColor: Colors.grey.shade100,
+          fillColor: context.scheme.subtle,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide:   BorderSide.none,
@@ -369,13 +372,13 @@ class _BatchRow extends StatelessWidget {
             BalanceChip(
               balance:   row.balanceQty,
               isLoading: false,
-              color:     expired ? Colors.grey : accentColor,
+              color:     expired ? context.scheme.textMuted : accentColor,
               prefix:    '',
             ),
 
             const SizedBox(width: 4),
             Icon(Icons.chevron_right,
-                color: Colors.grey.shade400, size: 18),
+                color: context.scheme.textSubtle, size: 18),
           ],
         ),
       ),
@@ -398,11 +401,12 @@ class _ExpiryBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = 'Exp: ${_fmt(date)}';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = expired
-        ? Colors.red
+        ? (isDark ? AppColors.red300 : AppColors.red700)
         : expiringSoon
-            ? Colors.amber.shade700
-            : Colors.grey.shade500;
+            ? (isDark ? AppColors.orange300 : AppColors.orange700)
+            : context.scheme.textMuted;
     final icon  = expired
         ? Icons.warning_rounded
         : expiringSoon
@@ -480,7 +484,7 @@ class _SkeletonBar extends StatelessWidget {
       width:  width,
       height: height,
       decoration: BoxDecoration(
-        color:        Colors.grey.shade200,
+        color:        context.scheme.border,
         borderRadius: BorderRadius.circular(radius),
       ),
     );
@@ -514,7 +518,7 @@ class _EmptyState extends StatelessWidget {
             Icon(
               hasSearch ? Icons.search_off : Icons.inbox_outlined,
               size:  48,
-              color: Colors.grey.shade300,
+              color: context.scheme.textSubtle,
             ),
             const SizedBox(height: 12),
             Text(
@@ -522,7 +526,7 @@ class _EmptyState extends StatelessWidget {
                   ? 'No batches match your search'
                   : 'No batches with available stock',
               style: TextStyle(
-                color:      Colors.grey.shade500,
+                color:      context.scheme.textMuted,
                 fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
@@ -573,11 +577,11 @@ class _ErrorState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.cloud_off_outlined,
-                size: 48, color: Colors.grey.shade300),
+                size: 48, color: context.scheme.textSubtle),
             const SizedBox(height: 12),
             Text(
               message,
-              style:     TextStyle(color: Colors.grey.shade500),
+              style:     TextStyle(color: context.scheme.textMuted),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),

@@ -1,20 +1,479 @@
-import 'package:flutter/material.dart';
-import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'dart:async';
 
-class ToDoFormScreen extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
+import 'package:get/get.dart';
+import 'package:multimax/app/core/utils/html_text.dart';
+import 'package:multimax/app/data/constants/global_search_targets.dart';
+import 'package:multimax/app/data/models/todo_model.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
+import 'package:multimax/app/modules/todo/form/todo_form_controller.dart';
+
+class ToDoFormScreen extends GetView<ToDoFormController> {
   const ToDoFormScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          const DocTypeFormHeader(title: 'ToDo Form'),
-          const SliverFillRemaining(
-            child: Center(child: Text('ToDo Form Content')),
+    return Obx(() {
+      final t = controller.todo.value;
+      final isEditable = controller.isEditable;
+      final isDirty = controller.isDirty.value;
+      final isSaving = controller.isSaving.value;
+      final saveResult = controller.saveResult.value;
+      final isLoading = controller.isLoading.value;
+      final canShowClose = controller.canShowCloseAction;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track it.
+      final status = controller.status.value;
+      final mode = controller.mode.value;
+
+      final plainTitle = t == null ? '' : htmlToSingleLine(t.description);
+      final String title = mode == 'new'
+          ? 'New ToDo'
+          : t == null
+              ? 'Loading...'
+              : (plainTitle.isEmpty ? 'ToDo' : plainTitle);
+
+      final VoidCallback? onSave = isEditable ? controller.saveDocument : null;
+      final VoidCallback? onReload =
+          mode != 'new' ? controller.reloadDocument : null;
+
+      return PopScope(
+        canPop: !isDirty,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await controller.confirmDiscard();
+        },
+        child: Scaffold(
+          resizeToAvoidBottomInset: false,
+          body: NestedScrollView(
+            headerSliverBuilder: (ctx, _) => [
+              DocTypeFormHeader(
+                title: title,
+                docType: 'ToDo',
+                statusLabel: status,
+                canSave: isDirty,
+                isSaving: isSaving,
+                saveResult: saveResult,
+                onSave: onSave,
+                onReload: onReload,
+                extraActions: [
+                  if (mode == 'view' &&
+                      controller.name.isNotEmpty &&
+                      t != null)
+                    DocTypeGuard(
+                      doctype: 'ToDo',
+                      permType: 'write',
+                      child: IconButton(
+                        tooltip: 'Edit',
+                        onPressed: controller.enterEditMode,
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                    ),
+                  if (canShowClose)
+                    AsyncIconButton(
+                      busy: controller.isClosing,
+                      onPressed: controller.toggleCloseReopen,
+                      tooltip: status == 'Closed'
+                          ? 'Reopen'
+                          : 'Close',
+                      icon: Icon(
+                        status == 'Closed'
+                            ? Icons.replay
+                            : Icons.check_circle_outline,
+                      ),
+                    ),
+                  if (mode == 'edit' &&
+                      controller.name.isNotEmpty &&
+                      t != null)
+                    DocTypeGuard(
+                      doctype: 'ToDo',
+                      permType: 'write',
+                      child: AsyncIconButton(
+                        busy: controller.isDeleting,
+                        onPressed: controller.deleteDocument,
+                        tooltip: 'Delete',
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            body: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : t == null
+                    ? _buildNotFound(context)
+                    : _buildBody(context, t),
           ),
+        ),
+      );
+    });
+  }
+
+  // ── Not-found fallback ───────────────────────────────────────────────
+  //
+  // Reached when this ToDo can't be individually fetched (deleted, or a
+  // permission mismatch between the query that surfaced it — e.g. the
+  // Dashboard's owner/allocated_to scan — and single-document read access).
+  // The header back arrow only renders when there's a route to pop to
+  // (canPop derives from the navigator stack), so a deep-linked entry with
+  // no prior route would otherwise strand the user; this button always
+  // offers a working way back to the ToDo list regardless of back-stack.
+  Widget _buildNotFound(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off,
+                size: 48, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 16),
+            const Text('ToDo not found.'),
+            const SizedBox(height: 20),
+            FilledButton.tonalIcon(
+              onPressed: () => Get.offNamed(AppRoutes.TODO),
+              icon: const Icon(Icons.checklist),
+              label: const Text('Go to ToDos'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Body ─────────────────────────────────────────────────────────────
+
+  Widget _buildBody(BuildContext context, ToDo t) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DocSectionCard(
+            title: 'Task',
+            margin: EdgeInsets.zero,
+            children: [
+              if (controller.isEditable)
+                TextFormField(
+                  controller: controller.descriptionController,
+                  minLines: 3,
+                  maxLines: 8,
+                  style: TextStyle(color: colorScheme.onSurface),
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'What needs to be done?',
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: colorScheme.surface,
+                  ),
+                )
+              else if (t.description.trim().isEmpty)
+                Text(
+                  'No description',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
+              else
+                // Frappe stores the description as rich-text HTML — render
+                // it like the list card does instead of showing raw tags.
+                Html(
+                  data: t.description,
+                  style: {
+                    'body': Style(
+                      margin: Margins.zero,
+                      padding: HtmlPaddings.zero,
+                      fontSize:
+                          FontSize(theme.textTheme.bodyMedium?.fontSize ?? 14),
+                      color: colorScheme.onSurface,
+                    ),
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildDetailsSection(context),
+          const SizedBox(height: 16),
+          _buildReferenceSection(context),
+          const SizedBox(height: 80),
         ],
       ),
     );
+  }
+
+  // ── Details section ──────────────────────────────────────────────────
+
+  Widget _buildDetailsSection(BuildContext context) {
+    return Obx(() {
+      final editable = controller.isEditable;
+      return DocSectionCard(
+        title: 'Details',
+        margin: EdgeInsets.zero,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: DocPickerField(
+                  label: 'Status',
+                  icon: Icons.flag_outlined,
+                  value: controller.status.value,
+                  onTap: editable
+                      ? () => showOptionPickerSheet(
+                            context,
+                            title: 'Select Status',
+                            options: ToDoFormController.statusOptions,
+                            selected: controller.status.value,
+                            onSelected: controller.setStatus,
+                          )
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DocPickerField(
+                  label: 'Priority',
+                  icon: Icons.priority_high_outlined,
+                  value: controller.priority.value,
+                  onTap: editable
+                      ? () => showOptionPickerSheet(
+                            context,
+                            title: 'Select Priority',
+                            options: ToDoFormController.priorityOptions,
+                            selected: controller.priority.value,
+                            onSelected: controller.setPriority,
+                          )
+                      : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DocPickerField(
+            label: 'Due Date',
+            icon: Icons.event_outlined,
+            value: controller.date.value,
+            placeholder: 'No date set',
+            trailingIcon: Icons.edit_calendar_outlined,
+            onTap: editable ? controller.pickDate : null,
+          ),
+          if (editable && controller.date.value.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: controller.clearDate,
+                child: const Text('Clear date'),
+              ),
+            ),
+          const SizedBox(height: 12),
+          DocPickerField(
+            label: 'Assigned To',
+            icon: Icons.person_outline,
+            value: controller.allocatedToDisplay.value.isNotEmpty
+                ? controller.allocatedToDisplay.value
+                : controller.allocatedTo.value,
+            placeholder: 'Unassigned',
+            trailingIcon: Icons.chevron_right,
+            onTap: editable ? controller.showAllocatedToPicker : null,
+          ),
+          if (editable && controller.allocatedTo.value.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: controller.clearAllocatedTo,
+                child: const Text('Clear assignment'),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+
+  // ── Reference section ────────────────────────────────────────────────
+
+  Widget _buildReferenceSection(BuildContext context) {
+    return Obx(() {
+      final refType = controller.referenceType.value;
+      final refName = controller.referenceName.value;
+      final editable = controller.isEditable;
+
+      VoidCallback? nameOnTap;
+      IconData nameTrailingIcon = Icons.chevron_right;
+      if (editable) {
+        nameOnTap =
+            refType.isEmpty ? null : () => _showReferenceNamePicker(context);
+      } else if (refType.isNotEmpty && refName.isNotEmpty) {
+        final target = searchTargetForDoctype(refType);
+        if (target != null) {
+          nameOnTap = () =>
+              Get.toNamed(target.route, arguments: target.argsFor(refName));
+          nameTrailingIcon = Icons.open_in_new;
+        }
+      }
+
+      return DocSectionCard(
+        title: 'Reference',
+        margin: EdgeInsets.zero,
+        children: [
+          DocPickerField(
+            label: 'Reference Type',
+            icon: Icons.category_outlined,
+            value: refType,
+            placeholder: 'None',
+            onTap: editable ? () => _showReferenceTypePicker(context) : null,
+          ),
+          if (refType.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            DocPickerField(
+              label: 'Reference Document',
+              icon: Icons.link,
+              value: refName,
+              placeholder: editable ? 'Select document' : 'None',
+              trailingIcon: nameTrailingIcon,
+              onTap: nameOnTap,
+            ),
+          ],
+        ],
+      );
+    });
+  }
+
+  // ── Reference-type picker ────────────────────────────────────────────
+
+  void _showReferenceTypePicker(BuildContext context) {
+    final options = controller.referenceTypeOptions;
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return OptionPickerSheetShell(
+              title: 'Select Reference Type',
+              child: Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  children: [
+                    if (controller.referenceType.value.isNotEmpty)
+                      ListTile(
+                        leading: const Icon(Icons.link_off),
+                        title: const Text('None'),
+                        subtitle: const Text('Clear reference'),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          controller.clearReference();
+                        },
+                      ),
+                    for (final target in options)
+                      ListTile(
+                        leading: Icon(target.icon, color: target.color),
+                        title: Text(target.label),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          controller.setReferenceType(target.doctype);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  // ── Reference-document picker ────────────────────────────────────────
+
+  void _showReferenceNamePicker(BuildContext context) {
+    controller.searchReferenceDocs('');
+    Timer? debounce;
+
+    Get.bottomSheet(
+      SafeArea(
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return OptionPickerSheetShell(
+              title: 'Select ${controller.referenceType.value}',
+              child: Expanded(
+                child: Column(
+                  children: [
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Search...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                      onChanged: (val) {
+                        debounce?.cancel();
+                        debounce =
+                            Timer(const Duration(milliseconds: 300), () {
+                          controller.searchReferenceDocs(val);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Obx(() {
+                        if (controller.isSearchingReference.value) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        final results = controller.referenceSearchResults;
+                        if (results.isEmpty) {
+                          return const Center(child: Text('No results'));
+                        }
+                        return ListView.separated(
+                          controller: scrollController,
+                          itemCount: results.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final item = results[i];
+                            return ListTile(
+                              title: Text(item.title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: item.subtitle != null
+                                  ? Text(item.subtitle!)
+                                  : Text(item.id),
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                controller.setReferenceName(item.id);
+                              },
+                            );
+                          },
+                        );
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      isScrollControlled: true,
+    ).whenComplete(() => debounce?.cancel());
   }
 }

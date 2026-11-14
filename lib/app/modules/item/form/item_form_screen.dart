@@ -10,6 +10,20 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_image_upload.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_detail_row.dart';
+import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
+import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
+import 'package:multimax/app/modules/item/form/widgets/item_prices_tab.dart';
+import 'package:multimax/app/modules/item/form/widgets/reorder_rule_card.dart';
+import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -24,62 +38,105 @@ class ItemFormScreen extends GetView<ItemFormController> {
       final item      = controller.item.value;
       final isLoading = controller.isLoading.value;
 
-      return Scaffold(
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            DocTypeFormHeader(
-              title:   item?.name ?? controller.itemCode,
-              docType: 'Item',
-              extraActions: isModal
-                  ? [
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                        onPressed: Get.back,
-                      ),
-                    ]
-                  : null,
-              bottom: TabBar(
-                controller: tabCtrl.tabController,
-                isScrollable: true,
-                tabs: const [
-                  Tab(text: 'Overview'),
-                  Tab(text: 'Stock Levels'),
-                  Tab(text: 'Attributes'),
-                  Tab(text: 'Attachments'),
-                ],
+      return PopScope(
+        canPop: !controller.isReorderDirty.value,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          if (await _confirmDiscard()) Get.back();
+        },
+        child: Scaffold(
+          body: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              DocTypeFormHeader(
+                title:   item?.name ?? controller.itemCode,
+                docType: 'Item',
+                extraActions: isModal
+                    ? [
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Close',
+                          onPressed: () async {
+                            if (await _confirmDiscard()) Get.back();
+                          },
+                        ),
+                      ]
+                    : null,
+                bottom: TabBar(
+                  controller: tabCtrl.tabController,
+                  isScrollable: true,
+                  tabs: [
+                    const Tab(text: 'Overview'),
+                    const Tab(text: 'Stock Levels'),
+                    const Tab(text: 'Attributes'),
+                    const Tab(text: 'Attachments'),
+                    const Tab(text: 'Re-order'),
+                    if (tabCtrl.showPrices) const Tab(text: 'Prices'),
+                  ],
+                ),
               ),
-            ),
-          ],
-          body: (isLoading && item == null)
-              ? const Center(child: CircularProgressIndicator())
-              : item == null
-                  ? Center(
-                      child: _buildEmptyState(
-                        context, cs,
-                        icon: Icons.error_outline,
-                        message: 'Item not found.',
+            ],
+            body: (isLoading && item == null)
+                ? const Center(child: CircularProgressIndicator())
+                : item == null
+                    ? Center(
+                        child: const FormEmptyState(
+                          icon: Icons.error_outline,
+                          message: 'Item not found.',
+                        ),
+                      )
+                    : TabBarView(
+                        controller: tabCtrl.tabController,
+                        children: [
+                          _buildOverviewTab(context, item, cs),
+                          _buildStockLevelsTab(context, cs),
+                          _buildAttributesTab(context, item, cs),
+                          _buildAttachmentsTab(context, cs),
+                          _buildReorderTab(context, item, cs),
+                          if (tabCtrl.showPrices)
+                            Obx(() => ItemPricesTab(
+                                  isTemplate: item.hasVariants,
+                                  isLoading: controller.isLoadingPricing.value,
+                                  prices: controller.itemPrices.toList(),
+                                  rules: controller.itemRules.toList(),
+                                  pricesVisible: controller.pricesVisible.value,
+                                  rulesVisible: controller.rulesVisible.value,
+                                  canAddPrice: Get.find<PermissionService>()
+                                          .hasAccess('Item Price',
+                                              permType: 'create') ==
+                                      true,
+                                  onOpenPrice: controller.openItemPrice,
+                                  onAddPrice: controller.addItemPrice,
+                                  onOpenRule: controller.openPricingRule,
+                                )),
+                        ],
                       ),
-                    )
-                  : TabBarView(
-                      controller: tabCtrl.tabController,
-                      children: [
-                        _buildOverviewTab(context, item, cs),
-                        _buildStockLevelsTab(context, cs),
-                        _buildAttributesTab(context, item, cs),
-                        _buildAttachmentsTab(context, cs),
-                      ],
-                    ),
+          ),
         ),
       );
     });
+  }
+
+  /// Confirms before discarding unsaved re-order rules. Returns true when the
+  /// caller should proceed with closing.
+  ///
+  /// GlobalDialog.confirm returns null when dismissed by tapping outside, so
+  /// only an explicit `true` discards — an accidental tap keeps the edits.
+  Future<bool> _confirmDiscard() async {
+    if (!controller.isReorderDirty.value) return true;
+    final discard = await GlobalDialog.confirm(
+      title: 'Discard changes?',
+      message: 'Your re-order rules have not been saved.',
+      confirmText: 'Discard',
+      confirmColor: AppColors.red700,
+      icon: Icons.warning_amber_outlined,
+    );
+    return discard == true;
   }
 
   // ── Overview Tab ──────────────────────────────────────────────────────────
 
   Widget _buildOverviewTab(BuildContext context, Item item, ColorScheme cs) {
     final String baseUrl = Get.find<ApiProvider>().baseUrl;
-    final theme = Theme.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
@@ -95,51 +152,29 @@ class ItemFormScreen extends GetView<ItemFormController> {
             onUploaded: () { controller.fetchItemDetails(); },
           ),
 
-          _buildSectionCard(
-            context: context,
-            cs: cs,
+          DocSectionCard(
             title: 'General',
             children: [
-              _buildDetailRow(
-                context: context,
-                cs: cs,
+              DocDetailRow(
                 label: 'Item Code',
                 value: item.itemCode,
                 isCopyable: true,
                 onCopy: () => controller.copyToClipboard(item.itemCode),
               ),
               Divider(color: cs.outlineVariant),
-              _buildDetailRow(
-                  context: context,
-                  cs: cs,
-                  label: 'Item Name',
-                  value: item.itemName),
+              DocDetailRow(label: 'Item Name', value: item.itemName),
               Divider(color: cs.outlineVariant),
-              _buildDetailRow(
-                  context: context,
-                  cs: cs,
-                  label: 'Item Group',
-                  value: item.itemGroup),
+              DocDetailRow(label: 'Item Group', value: item.itemGroup),
             ],
           ),
 
-          const SizedBox(height: 16),
-
-          _buildSectionCard(
-            context: context,
-            cs: cs,
+          DocSectionCard(
             title: 'Inventory',
             children: [
-              _buildDetailRow(
-                  context: context,
-                  cs: cs,
-                  label: 'Default UOM',
-                  value: item.stockUom ?? '-'),
+              DocDetailRow(label: 'Default UOM', value: item.stockUom ?? '-'),
               if (item.countryOfOrigin != null) ...[
                 Divider(color: cs.outlineVariant),
-                _buildDetailRow(
-                    context: context,
-                    cs: cs,
+                DocDetailRow(
                     label: 'Country of Origin',
                     value: item.countryOfOrigin!),
               ],
@@ -147,18 +182,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
           ),
 
           if (item.variantOf != null || item.description != null) ...[
-            const SizedBox(height: 16),
-            _buildSectionCard(
-              context: context,
-              cs: cs,
+            DocSectionCard(
               title: 'Description',
               children: [
                 if (item.variantOf != null) ...[
-                  _buildDetailRow(
-                      context: context,
-                      cs: cs,
-                      label: 'Variant Of',
-                      value: item.variantOf!),
+                  DocDetailRow(label: 'Variant Of', value: item.variantOf!),
                   Divider(color: cs.outlineVariant),
                 ],
                 if (item.description != null)
@@ -226,25 +254,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
                       children: [
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: const Text('All'),
+                          child: SelectableFilterChip(
+                            label: 'All',
                             selected: selected == null,
-                            onSelected: (_) => controller.clearWarehouseFilter(),
-                            selectedColor: cs.primary,
-                            checkmarkColor: cs.onPrimary,
-                            labelStyle: TextStyle(
-                              color: selected == null
-                                  ? cs.onPrimary
-                                  : cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            side: BorderSide(
-                              color: selected == null
-                                  ? cs.primary
-                                  : cs.outlineVariant,
-                            ),
-                            backgroundColor: cs.surfaceContainer,
-                            visualDensity: VisualDensity.compact,
+                            onSelected: (_) =>
+                                controller.clearWarehouseFilter(),
                           ),
                         ),
                         ...warehouses.map((wh) {
@@ -254,25 +268,11 @@ class ItemFormScreen extends GetView<ItemFormController> {
                               : wh;
                           return Padding(
                             padding: const EdgeInsets.only(right: 8),
-                            child: FilterChip(
-                              label: Text(label),
+                            child: SelectableFilterChip(
+                              label: label,
                               selected: isActive,
                               onSelected: (_) =>
                                   controller.onWarehouseChanged(wh),
-                              selectedColor: cs.primary,
-                              checkmarkColor: cs.onPrimary,
-                              labelStyle: TextStyle(
-                                color: isActive
-                                    ? cs.onPrimary
-                                    : cs.onSurfaceVariant,
-                              ),
-                              side: BorderSide(
-                                color: isActive
-                                    ? cs.primary
-                                    : cs.outlineVariant,
-                              ),
-                              backgroundColor: cs.surfaceContainer,
-                              visualDensity: VisualDensity.compact,
                             ),
                           );
                         }),
@@ -284,9 +284,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
               );
             }),
 
-            // 1. Warehouse Balance
+            // 1. Stock Balance
             Text(
-              'Warehouse Balance',
+              'Stock Balance',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: cs.onSurface,
@@ -299,9 +299,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               }
               final levels = controller.filteredStockLevels;
               if (levels.isEmpty) {
-                return _buildEmptyState(
-                  context,
-                  cs,
+                return FormEmptyState(
                   icon: Icons.warehouse_outlined,
                   message: controller.selectedWarehouse.value != null
                       ? 'No stock in the selected warehouse.'
@@ -316,9 +314,9 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
             const SizedBox(height: 24),
 
-            // 2. Batch-Wise Balance
+            // 2. Batch-Wise Balance History
             Text(
-              'Batch-Wise Balance',
+              'Batch-Wise Balance History',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: cs.onSurface,
@@ -331,9 +329,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
               }
               final batches = controller.filteredBatchHistory;
               if (batches.isEmpty) {
-                return _buildEmptyState(
-                  context,
-                  cs,
+                return FormEmptyState(
                   icon: Icons.category_outlined,
                   message: controller.selectedWarehouse.value != null
                       ? 'No batches in the selected warehouse.'
@@ -513,9 +509,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
                 return const LinearProgressIndicator();
               }
               if (controller.stockLedgerEntries.isEmpty) {
-                return _buildEmptyState(
-                  context,
-                  cs,
+                return const FormEmptyState(
                   icon: Icons.receipt_long_outlined,
                   message: 'No transactions found in this period.',
                 );
@@ -633,9 +627,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
     if (item.attributes.isEmpty) {
       return Center(
-        child: _buildEmptyState(
-          context,
-          cs,
+        child: const FormEmptyState(
           icon: Icons.list_alt_outlined,
           message: 'No attributes defined.',
         ),
@@ -675,9 +667,7 @@ class ItemFormScreen extends GetView<ItemFormController> {
     return Obx(() {
       if (controller.attachments.isEmpty) {
         return Center(
-          child: _buildEmptyState(
-            context,
-            cs,
+          child: const FormEmptyState(
             icon: Icons.attach_file_outlined,
             message: 'No attachments found.',
           ),
@@ -773,119 +763,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
   // ── Shared helpers ────────────────────────────────────────────────────────
 
-  Widget _buildSectionCard({
-    required BuildContext context,
-    required ColorScheme cs,
-    required String title,
-    required List<Widget> children,
-  }) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: cs.surfaceContainer,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: cs.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: cs.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow({
-    required BuildContext context,
-    required ColorScheme cs,
-    required String label,
-    required String value,
-    bool isCopyable = false,
-    VoidCallback? onCopy,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(width: 16),
-          Flexible(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    value,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurface,
-                    ),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                if (isCopyable && onCopy != null) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onCopy,
-                    child: Icon(
-                      Icons.copy,
-                      size: 14,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(
-    BuildContext context,
-    ColorScheme cs, {
-    required IconData icon,
-    required String message,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 48, color: cs.outlineVariant),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _openFullScreenImage(BuildContext context, String url) {
     Get.dialog(
       barrierDismissible: true,
@@ -933,6 +810,191 @@ class ItemFormScreen extends GetView<ItemFormController> {
           ),
         ),
       ),
+    );
+  }
+
+  // ── Re-order Tab ──────────────────────────────────────────────────────────
+
+  /// Loads warehouses for the rule sheet's pickers.
+  ///
+  /// Filters mirror erpnext item.js:449-473 — group warehouses for
+  /// "Check in (group)", leaf warehouses for "Request for".
+  Future<List<String>> _loadWarehouses({required bool isGroup}) async {
+    try {
+      final response =
+          await Get.find<WarehouseProvider>().getWarehouses(isGroup: isGroup);
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        return (response.data['data'] as List)
+            .map((w) => w['name'].toString())
+            .toList();
+      }
+    } catch (_) {
+      // Picker opens empty rather than throwing over the sheet.
+    }
+    return const [];
+  }
+
+  void _openRuleSheet(BuildContext context, {int? index}) {
+    final isNew = index == null;
+    final initial =
+        isNew ? controller.newReorderRowTemplate() : controller.reorderRows[index];
+
+    Get.bottomSheet(
+      ReorderRuleSheet(
+        initial: initial,
+        loadWarehouses: _loadWarehouses,
+        onSaved: (row) => isNew
+            ? controller.addReorderRow(row)
+            : controller.updateReorderRow(index, row),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  Widget _buildReorderTab(BuildContext context, Item item, ColorScheme cs) {
+    final scheme = context.scheme;
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    // Desk gates the section on `depends_on: "is_stock_item"`. The tab count
+    // stays static at 5 — resizing a TabController built on
+    // GetSingleTickerProviderStateMixin is fragile (see item_tab_controller.dart)
+    // — so a non-stock item gets an empty state instead of a vanishing tab.
+    if (!item.isStockItem) {
+      return Center(
+        child: const FormEmptyState(
+          icon: Icons.inventory_2_outlined,
+          message: 'Auto re-order applies to stock items only.',
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // auto_indent defaults to 0 in v15, in which case these rules never
+        // raise a Material Request. Desk only warns on save; warn always.
+        Obx(() => InlineBanner(
+              visible: !controller.autoIndentEnabled.value,
+              message: 'Auto re-order is disabled in Stock Settings. '
+                  'These rules will not raise Material Requests.',
+              type: BannerType.warning,
+            )),
+        Expanded(
+          child: Obx(() {
+            final rows = controller.reorderRows;
+            final canWrite =
+                Get.find<PermissionService>().hasAccess('Item', permType: 'write') ??
+                    false;
+
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + bottomInset),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DocSectionCard(
+                    title: 'Auto re-order',
+                    children: [
+                      Text(
+                        'Reorder level based on Warehouse',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: scheme.textMuted),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        // "overrridden" is misspelled in the ERPNext source;
+                        // kept verbatim.
+                        'Will also apply for variants unless overrridden',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: scheme.textSubtle),
+                      ),
+                      const SizedBox(height: 12),
+                      if (rows.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            'No re-order rules. Nothing will be re-ordered '
+                            'automatically for this item.',
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(color: scheme.textMuted),
+                          ),
+                        ),
+                      ...rows.asMap().entries.map(
+                            (e) => ReorderRuleCard(
+                              rule: e.value,
+                              index: e.key,
+                              onEdit: canWrite
+                                  ? () => _openRuleSheet(context, index: e.key)
+                                  : null,
+                              onDelete: canWrite
+                                  ? () => controller.removeReorderRow(e.key)
+                                  : null,
+                            ),
+                          ),
+                      DocTypeGuard(
+                        doctype: 'Item',
+                        permType: 'write',
+                        fallback: const SizedBox.shrink(),
+                        loading: const SizedBox.shrink(),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => _openRuleSheet(context),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add rule'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Mirrors the Desk description: a variant with no rules of
+                  // its own falls back to the template's at scheduler time.
+                  // Stored rows only are shown — inheritance is computed
+                  // server-side in memory and never persisted, so rendering the
+                  // template's rows here would misrepresent stored state.
+                  if (item.variantOf != null && rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        'No rules of its own. The template\'s rules apply '
+                        'unless you add rules here.',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: scheme.textSubtle),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ),
+        // The save bar appears only when there is something to save, so the
+        // button is never enabled-but-inert. AsyncFilledButton requires a
+        // non-null onPressed, so visibility is the disable mechanism.
+        Obx(() {
+          if (!controller.isReorderDirty.value) return const SizedBox.shrink();
+          return DocTypeGuard(
+            doctype: 'Item',
+            permType: 'write',
+            fallback: const SizedBox.shrink(),
+            loading: const SizedBox.shrink(),
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + bottomInset),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                border: Border(
+                    top: BorderSide(color: cs.outlineVariant)),
+              ),
+              child: AsyncFilledButton(
+                busy: controller.isSavingReorder,
+                onPressed: controller.saveReorderLevels,
+                icon: const Icon(Icons.save_outlined, size: 18),
+                label: 'Save re-order rules',
+                loadingLabel: 'Saving…',
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 }

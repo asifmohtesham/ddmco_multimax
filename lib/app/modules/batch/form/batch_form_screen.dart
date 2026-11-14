@@ -4,6 +4,7 @@ import 'package:multimax/app/modules/batch/form/batch_form_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:barcode_widget/barcode_widget.dart';
@@ -42,6 +43,10 @@ class BatchFormScreen extends GetView<BatchFormController> {
                 isSaving:     isSaving,
                 onSave:       controller.saveDocument,
                 extraActions: [
+                  RealtimeSyncStatusIcon(
+                    isConnected: controller.isRealtimeConnected,
+                    isSyncing:   controller.isRemoteSyncing,
+                  ),
                   if (showExport) _buildExportActions(colorScheme, isExporting),
                 ],
               ),

@@ -5,6 +5,7 @@ import 'package:multimax/app/core/utils/app_navigator.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/database_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ConnectToInstanceController extends GetxController {
@@ -167,6 +168,10 @@ class ConnectToInstanceController extends GetxController {
   Future<void> _confirmAndSave(String url) async {
     await _dbService.saveConfig(DatabaseService.serverUrlKey, url);
     await _dbService.saveServerUrl(url);
+    // Mirror into GetStorage for the background digest isolate (Fix #2).
+    if (Get.isRegistered<StorageService>()) {
+      await Get.find<StorageService>().saveBaseUrl(url);
+    }
     serverUrlController.text = url;
     currentServerUrl = url;
     _apiProvider.setBaseUrl(url);

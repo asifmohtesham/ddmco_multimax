@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
@@ -6,7 +10,9 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
-import 'package:multimax/app/data/providers/work_order_provider.dart';
+import 'package:multimax/app/modules/home/widgets/pos_upload_scan_sheets.dart';
+import 'package:multimax/app/modules/home/widgets/sales_order_pick_sheet.dart';
+import 'package:multimax/app/modules/delivery_note/so_delivery_launcher.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
@@ -20,12 +26,24 @@ import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/packing_slip_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
-import 'package:multimax/app/modules/home/widgets/session_defaults_bottom_sheet.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/scan_constants.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
-import 'package:multimax/app/data/providers/bom_provider.dart';
+import 'package:multimax/app/data/models/todo_model.dart';
+import 'package:multimax/app/data/providers/todo_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
+import 'package:multimax/app/data/models/attendance_models.dart';
+import 'package:multimax/app/data/providers/attendance_provider.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
+import 'package:multimax/app/modules/notification_settings/notification_settings_controller.dart';
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
@@ -33,15 +51,32 @@ class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
   final ItemProvider _itemProvider = Get.find<ItemProvider>();
-  final WorkOrderProvider _woProvider = Get.find<WorkOrderProvider>();
   final JobCardProvider _jcProvider = Get.find<JobCardProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final PosUploadProvider _posUploadProvider = Get.find<PosUploadProvider>();
   final StockEntryProvider _stockEntryProvider = Get.find<StockEntryProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider = Get.find<DeliveryNoteProvider>();
-  final BomProvider _bomProvider = Get.find<BomProvider>();
   final ScanService _scanService = Get.find<ScanService>();
   final DataWedgeService _dataWedgeService = Get.find<DataWedgeService>();
+  final ToDoProvider _todoProvider = Get.find<ToDoProvider>();
+  final StorageService _storageService = Get.find<StorageService>();
+
+  /// Resolved lazily so HomeController construction never *requires* a Packing
+  /// Slip provider: home_binding registers one for production, and unit tests
+  /// that don't register it can still construct the controller. Falls back to a
+  /// fresh instance, which resolves ApiProvider from the container like every
+  /// other provider.
+  PackingSlipProvider get _packingSlipProvider =>
+      Get.isRegistered<PackingSlipProvider>()
+          ? Get.find<PackingSlipProvider>()
+          : Get.put(PackingSlipProvider());
+
+  /// Same lazy pattern as [_packingSlipProvider]: home_binding registers one,
+  /// controller unit tests need not.
+  AttendanceProvider get _attendanceProvider =>
+      Get.isRegistered<AttendanceProvider>()
+          ? Get.find<AttendanceProvider>()
+          : Get.put(AttendanceProvider());
 
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
@@ -80,6 +115,327 @@ class HomeController extends GetxController {
   final activeWipJcName      = RxnString();
   final activeWipJcOperation = RxnString();
 
+  /// Actionable open ToDos for the selected user — soonest due date first,
+  /// capped for the dashboard "Upcoming tasks" section.
+  var upcomingTodos = <ToDo>[].obs;
+
+  /// Draft counts for the five transactional DocTypes, keyed by doctype, for
+  /// the currently displayed [actionableScope]. Only DocTypes the user can
+  /// read appear as keys.
+  final actionableCounts = <String, int>{}.obs;
+
+  /// Number of open ToDos for the selected user (personal in both scopes) —
+  /// drives the Tasks chip. Derived from the [fetchUpcomingTodos] fetch.
+  final openTodoCount = 0.obs;
+
+  /// Mine/Everyone scope for the five document chips. Seeded from storage in
+  /// [onInit]; the Tasks chip is unaffected by it.
+  final actionableScope = ActionableScope.mine.obs;
+
+  /// True until the first count fetch for the current scope resolves (drives
+  /// the strip's loading placeholders). Starts true so the first build shows
+  /// placeholders rather than an empty strip.
+  final isLoadingActionable = true.obs;
+
+  /// Counts cache keyed by [actionableCacheKey] — `mine::<email>` / `all`.
+  final Map<String, Map<String, int>> _actionableCountCache = {};
+
+  /// The doctype whose 3-document preview is shown ('ToDo' = the Tasks chip).
+  /// Null when nothing is actionable. Transient — not persisted.
+  final selectedActionable = RxnString();
+
+  /// The selected doctype's preview rows (empty for 'ToDo', whose rows render
+  /// as DashboardTodoCards from [upcomingTodos]).
+  final previewDocs = <ActionableDocRowData>[].obs;
+
+  /// True while the selected doctype's preview fetch is in flight.
+  final isLoadingPreview = false.obs;
+
+  /// Preview cache keyed by '<doctype>::<actionableCacheKey(scope, email)>'.
+  final Map<String, List<ActionableDocRowData>> _previewCache = {};
+
+  // --- Today's attendance (site-wide; does NOT follow selectedFilterUser) ---
+  //
+  // Mirrors AttendanceController for today only: default shift once; employees,
+  // punches + ledger per refresh, status derived by the shared attendance_logic. No poll:
+  // pull-to-refresh / header refresh reload it with the rest of the dashboard.
+  final isLoadingAttendance = true.obs;
+  final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
+  /// The shift in focus now (in progress, else the day's first).
+  final attendanceShift = Rx<ShiftRules>(ShiftRules.fallback);
+  final attendanceHolidays = <String>{}.obs;
+  final attendanceLoadedAt = Rxn<DateTime>();
+  final attendanceLatestPunch = Rxn<EmployeeCheckin>();
+  List<TrackedEmployee> _attendanceEmployees = const [];
+  bool _attendanceMasterLoaded = false;
+  bool _attendanceHolidaysLoaded = false;
+
+  /// The last successfully loaded Shift Assignments for today, and the day
+  /// they were loaded for — a failed re-read on the same day keeps them
+  /// rather than dropping to `[]` (see [_fetchTodayAssignments]).
+  List<ShiftAssignmentRow> _lastAttendanceAssignments = const [];
+  DateTime? _lastAttendanceAssignmentsDay;
+
+  /// Shift Types by name: the default shift, today's assignments, ledger rows.
+  final Map<String, ShiftRules> attendanceCatalog = {};
+  List<ShiftAssignmentRow> _attendanceAssignments = const [];
+  List<ShiftRules> _attendanceDayShifts = const [];
+  ShiftRules _attendanceDefaultShift = ShiftRules.fallback;
+
+  /// Same fail-closed gate as the drawer entry for the Attendance screen.
+  bool get attendanceVisible =>
+      Get.find<PermissionService>().hasAccess('Attendance') == true;
+
+  bool get attendanceIsHoliday =>
+      attendanceHolidays.contains(kFrappeDate.format(DateTime.now()));
+
+  /// Before the day's first cut-off (the Morning's on a two-shift day).
+  bool get beforeAttendanceCutoff => DateTime.now().isBefore(
+      (_attendanceDayShifts.isEmpty ? attendanceShift.value : _attendanceDayShifts.first)
+          .cutoffOn(DateTime.now()));
+
+  /// Past the cut-off with zero punches for anyone → the terminal has most
+  /// likely not uploaded; before the cut-off an empty day is normal.
+  bool get attendanceLooksOffline =>
+      !attendanceIsHoliday &&
+      !beforeAttendanceCutoff &&
+      attendanceRows.isNotEmpty &&
+      attendanceRows.every((r) => r.punches.isEmpty);
+
+  AttendanceCounts get attendanceCounts => AttendanceCounts.of(attendanceRows);
+
+  /// The logged-in employee's own row, if they are an active employee.
+  EmployeeDayStatus? get myAttendance {
+    final id = _authController.currentUser.value?.employeeId;
+    if (id == null || id.isEmpty) return null;
+    return attendanceRows.firstWhereOrNull((r) => r.employee.name == id);
+  }
+
+  /// The viewer's own Attendance rows from the 1st to yesterday. Today stays
+  /// punch-derived until HRMS writes its row after 22:00, so one source per
+  /// day. Null = not loaded or the request failed → headline only.
+  final myMonthLedger = Rxn<List<AttendanceRecord>>();
+
+  bool get hasLinkedEmployee =>
+      (_authController.currentUser.value?.employeeId ?? '').isNotEmpty;
+
+  /// Only a System Manager is told the terminal may be offline.
+  bool get isSystemManager =>
+      _authController.currentUser.value?.hasRole('System Manager') ?? false;
+
+  /// The team card only helps viewers who can see more than their own row;
+  /// for an Employee-role viewer it would duplicate "My attendance".
+  bool get showTeamAttendance => attendanceCounts.tracked > 1;
+
+  MonthStrip? get myMonthStrip {
+    final me = myAttendance;
+    final ledger = myMonthLedger.value;
+    if (me == null || ledger == null || !me.employee.isTracked) return null;
+    final now = DateTime.now();
+    return buildMonthStrip(
+      month: DateTime(now.year, now.month),
+      ledger: ledger,
+      holidays: attendanceHolidays,
+      today: me,
+      now: now,
+      shift: attendanceShift.value,
+      employee: me.employee,
+      catalog: attendanceCatalog,
+    );
+  }
+
+  /// Opens the viewer's own month calendar with the dashboard's shift and
+  /// holidays, so Sundays and late minutes match (no dependency on the
+  /// Attendance list screen being underneath).
+  void openMyMonth() {
+    final me = myAttendance;
+    if (me == null || !me.employee.isTracked) return;
+    final now = DateTime.now();
+    Get.toNamed(AppRoutes.ATTENDANCE_MONTH, arguments: {
+      'employee': me.employee,
+      'month': DateTime(now.year, now.month),
+      'today': me,
+      'shift': attendanceShift.value,
+      'holidays': attendanceHolidays.toSet(),
+      'catalog': Map<String, ShiftRules>.of(attendanceCatalog),
+    });
+  }
+
+  /// A failed read keeps the last assignments successfully loaded for this
+  /// same day rather than dropping to `[]` and collapsing everyone to a
+  /// single fallback shift; `[]` only when nothing has ever loaded for today.
+  Future<List<ShiftAssignmentRow>> _fetchTodayAssignments(DateTime today) async {
+    try {
+      final result = await _attendanceProvider.fetchShiftAssignments(today, today);
+      _lastAttendanceAssignments = result;
+      _lastAttendanceAssignmentsDay = today;
+      return result;
+    } catch (_) {
+      return _lastAttendanceAssignmentsDay == today ? _lastAttendanceAssignments : const [];
+    }
+  }
+
+  /// Reads the Shift Types among [names] not cached yet.
+  Future<void> _ensureAttendanceCatalog(Iterable<String> names) async {
+    final missing =
+        names.where((n) => n.isNotEmpty && !attendanceCatalog.containsKey(n)).toSet();
+    if (missing.isEmpty) return;
+    try {
+      attendanceCatalog.addAll(await _attendanceProvider.fetchShiftTypes(missing));
+    } catch (_) {}
+  }
+
+  /// Reads holidays from today's own shifts' `holiday_list` (Morning/
+  /// Afternoon), else the default shift's, once per successful read — a
+  /// failure retries on the next load instead of sticking for the session
+  /// (unlike [_attendanceMasterLoaded], which never retries).
+  Future<void> _ensureAttendanceHolidays() async {
+    if (_attendanceHolidaysLoaded) return;
+    final list = _attendanceDayShifts
+        .map((s) => s.holidayList)
+        .firstWhere((h) => h.isNotEmpty, orElse: () => _attendanceDefaultShift.holidayList);
+    try {
+      attendanceHolidays.assignAll(await _attendanceProvider.fetchHolidays(list));
+      _attendanceHolidaysLoaded = true;
+    } catch (_) {}
+  }
+
+  /// Own rows 1st → yesterday; `[]` on the 1st, null when not linked or failed.
+  Future<List<AttendanceRecord>?> _fetchMyMonth(DateTime today) async {
+    final id = _authController.currentUser.value?.employeeId;
+    if (id == null || id.isEmpty) return null;
+    if (today.day == 1) return const [];
+    try {
+      return await _attendanceProvider.fetchAttendance(
+        DateTime(today.year, today.month),
+        today.subtract(const Duration(days: 1)),
+        employee: id,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> fetchTodayAttendance() async {
+    if (!attendanceVisible) {
+      attendanceRows.clear();
+      isLoadingAttendance.value = false;
+      return;
+    }
+    try {
+      // Employees reload on every refresh, like AttendanceController, so a new
+      // or newly enrolled employee appears; a failed re-read keeps the last list.
+      try {
+        _attendanceEmployees = await _attendanceProvider.fetchActiveEmployees();
+      } catch (_) {
+        if (!_attendanceMasterLoaded) rethrow;
+      }
+      if (!_attendanceMasterLoaded) {
+        final shiftName = _attendanceEmployees
+            .map((e) => e.defaultShift ?? '')
+            .firstWhere((s) => s.isNotEmpty, orElse: () => '')
+            .trim();
+        try {
+          _attendanceDefaultShift = await _attendanceProvider.fetchShiftRules(
+              shiftName.isEmpty ? ShiftRules.fallback.name : shiftName);
+        } catch (_) {
+          _attendanceDefaultShift = ShiftRules.fallback;
+        }
+        attendanceCatalog[_attendanceDefaultShift.name] = _attendanceDefaultShift;
+        attendanceShift.value = _attendanceDefaultShift;
+        _attendanceMasterLoaded = true;
+      }
+      final today = dateOnly(DateTime.now());
+      final results = await Future.wait<Object?>([
+        _attendanceProvider.fetchCheckins(today),
+        _attendanceProvider.fetchAttendance(today, today),
+        _fetchMyMonth(today),
+        _fetchTodayAssignments(today),
+      ]);
+      final checkins = results[0] as List<EmployeeCheckin>;
+      final ledger = results[1] as List<AttendanceRecord>;
+      myMonthLedger.value = results[2] as List<AttendanceRecord>?;
+      _attendanceAssignments = results[3] as List<ShiftAssignmentRow>;
+      await _ensureAttendanceCatalog([
+        for (final a in _attendanceAssignments) a.shiftType,
+        for (final r in ledger) r.shift,
+        for (final r in myMonthLedger.value ?? const <AttendanceRecord>[]) r.shift,
+      ]);
+      if (checkins.isEmpty) {
+        try {
+          attendanceLatestPunch.value = await _attendanceProvider.fetchLatestCheckin();
+        } catch (_) {}
+      }
+      final byEmp = <String, List<EmployeeCheckin>>{};
+      for (final c in checkins) {
+        byEmp.putIfAbsent(c.employee, () => []).add(c);
+      }
+      // Two ledger rows per employee on a Morning/Afternoon day.
+      final ledgerByEmp = <String, List<AttendanceRecord>>{};
+      for (final r in ledger) {
+        ledgerByEmp.putIfAbsent(r.employee, () => []).add(r);
+      }
+      final now = DateTime.now();
+      // Falls back to the employee's own Attendance-row shift names for today
+      // when no assignment covers it — HRMS already wrote them, so a stale/
+      // failed assignment read doesn't collapse a two-shift day to General.
+      List<ShiftRules> shiftsFor(TrackedEmployee e) => resolveShifts(
+            employee: e,
+            day: today,
+            assignments: _attendanceAssignments,
+            catalog: attendanceCatalog,
+            fallback: _attendanceDefaultShift,
+            ledgerNames: (ledgerByEmp[e.name] ?? const []).map((r) => r.shift),
+          );
+      _attendanceDayShifts =
+          distinctShifts(_attendanceEmployees.where((e) => e.isTracked).map(shiftsFor));
+      if (_attendanceDayShifts.isNotEmpty) {
+        attendanceShift.value = focusShift(_attendanceDayShifts, today, now);
+      }
+      // Needs today's resolved shifts to pick the right holiday_list, so this
+      // must run before `hol`/`rows` below are computed from it.
+      await _ensureAttendanceHolidays();
+      final hol = attendanceIsHoliday;
+      final rows = _attendanceEmployees.map((e) {
+        final shifts = shiftsFor(e);
+        return deriveDayStatus(
+          employee: e,
+          day: today,
+          now: now,
+          shift: shifts.first,
+          shifts: shifts,
+          isHoliday: hol,
+          punches: byEmp[e.name] ?? const [],
+          ledgers: ledgerByEmp[e.name] ?? const [],
+        );
+      }).toList()
+        ..sort(compareDayStatus);
+      attendanceRows.assignAll(rows);
+      attendanceLoadedAt.value = DateTime.now();
+    } catch (e) {
+      print("Error fetching today's attendance: $e");
+    } finally {
+      isLoadingAttendance.value = false;
+    }
+  }
+
+  void goToAttendance() => Get.toNamed(AppRoutes.ATTENDANCE);
+
+  /// Display names for owner resolution, keyed by email, from the loaded users.
+  Map<String, String> get namesByEmail => {
+        for (final u in userList)
+          if (u.email.isNotEmpty) u.email: u.name,
+      };
+
+  /// Quick Create card layout — 1 or 2 columns, persisted across sessions.
+  var dashboardColumns = 1.obs;
+
+  /// Whether "Upcoming tasks" leads the dashboard (manager persona with
+  /// open ToDos). Seeded from the persisted per-user verdict so the initial
+  /// build doesn't reflow when the async ToDo fetch lands; recomputed by
+  /// [_recomputeTasksFirst] after each fetch.
+  var tasksFirst = false.obs;
+
   final TextEditingController barcodeController = TextEditingController();
   var isScanning = false.obs;
   var isRackScanning = false.obs;
@@ -91,18 +447,17 @@ class HomeController extends GetxController {
   List<PosUpload> _allFulfillmentUploads = [];
   List<String> _fulfillmentPrefixFilters = [];
 
-  List<BottomNavigationBarItem> get homeBottomBarItems => [
-    const BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-    const BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Notifications'),
-  ];
-
-  List<BottomNavigationBarItem> get currentBottomBarItems => homeBottomBarItems;
-
   @override
   void onInit() {
     super.onInit();
+    dashboardColumns.value = _storageService.getDashboardColumns();
+    tasksFirst.value = _storageService.getDashboardTasksFirst(
+        _authController.currentUser.value?.email ?? '');
+    actionableScope.value =
+        actionableScopeFromString(_storageService.getDashboardActionableScope());
     _updateActiveScreenForRoute(Get.currentRoute);
     _initDashboard();
+    unawaited(_maybePromptAttendancePermission());
 
     // ── DataWedge hardware-scan worker ────────────────────────────────────
     _scanWorker = ever(_dataWedgeService.scannedCode, (String code) {
@@ -112,15 +467,65 @@ class HomeController extends GetxController {
     });
   }
 
+  /// Attendance reminders are on by default, so ask for notification
+  /// permission the first time a linked employee opens the Dashboard. The
+  /// answer is remembered either way; Notifications settings explains how to
+  /// turn it on later.
+  Future<void> _maybePromptAttendancePermission() async {
+    final user = _authController.currentUser.value;
+    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (!shouldPromptAttendancePermission(
+        user: user, isAndroid: isAndroid, storage: _storageService)) {
+      return;
+    }
+    await _storageService.saveAttendancePermissionPrompted(user!.id);
+    try {
+      await requestNotificationsPermission();
+    } catch (_) {
+      // Plugin failure must never break the Dashboard.
+    }
+  }
+
   @override
   void onClose() {
     _scanWorker?.dispose();
-    barcodeController.dispose();
+    // barcodeController is deliberately NOT disposed. GetX runs onClose
+    // synchronously when the route is disposed (router_report.dart), while the
+    // screen can still rebuild once before it unmounts; its scan box then
+    // re-attaches to a disposed controller ("used after being disposed" →
+    // '_dependents.isEmpty' red screen on logout). A TextEditingController
+    // holds no native resources, so it is simply garbage-collected.
     super.onClose();
   }
 
   void openSessionDefaults() {
-    Get.bottomSheet(const SessionDefaultsBottomSheet(), isScrollControlled: true);
+    Get.toNamed(AppRoutes.SESSION_DEFAULTS);
+  }
+
+  /// Switches the Quick Create grid between the 1- and 2-column layouts and
+  /// persists the choice. Any other value clamps to 1 (the default).
+  void setDashboardColumns(int columns) {
+    final cols = columns == 2 ? 2 : 1;
+    if (dashboardColumns.value == cols) return;
+    dashboardColumns.value = cols;
+    _storageService.saveDashboardColumns(cols);
+  }
+
+  /// Pure persona rule for dashboard section ordering: "Upcoming tasks"
+  /// leads only when the user holds a manager-ish role AND there are open
+  /// ToDos to show. AND, not OR — a manager with an empty list gains
+  /// nothing from leading with an empty section, and an operator's layout
+  /// must not flip whenever a task lands.
+  ///
+  /// Manager-ish = any role whose name contains "manager" (case-insensitive)
+  /// — covers Stock/Purchase/Manufacturing/System Manager and custom
+  /// "* Manager" roles with no maintained list.
+  static bool showTasksFirst({
+    required List<String> roles,
+    required bool hasOpenTodos,
+  }) {
+    if (!hasOpenTodos) return false;
+    return roles.any((r) => r.toLowerCase().contains('manager'));
   }
 
   Future<void> _initDashboard() async {
@@ -195,20 +600,255 @@ class HomeController extends GetxController {
       const Map<String, dynamic> bomFilters = {'is_active': 1, 'docstatus': 1};
 
       final results = await Future.wait([
-        _woProvider.getWorkOrders(limit: 0, filters: woFilters),
-        _jcProvider.getJobCards(limit: 0, filters: jcFilters),
-        _bomProvider.getBOMs(limit: 0, filters: bomFilters),
+        _apiProvider.getDocumentCount('Work Order', filters: woFilters),
+        _apiProvider.getDocumentCount('Job Card',   filters: jcFilters),
+        _apiProvider.getDocumentCount('BOM',        filters: bomFilters),
       ]);
 
-      activeWorkOrdersCount.value = _getCountFromResponse(results[0]);
-      activeJobCardsCount.value   = _getCountFromResponse(results[1]);
-      activeBomCount.value        = _getCountFromResponse(results[2]);
+      activeWorkOrdersCount.value = _extractCount(results[0]);
+      activeJobCardsCount.value   = _extractCount(results[1]);
+      activeBomCount.value        = _extractCount(results[2]);
 
-      await _fetchActiveWipJc();
+      await Future.wait([
+        _fetchActiveWipJc(),
+        fetchUpcomingTodos(),
+        fetchActionableCounts(force: true),
+        fetchTodayAttendance(), // swallows its own errors
+      ]);
+      _applyDefaultSelection();
     } catch (e) {
       print('Error fetching dashboard stats: $e');
     } finally {
       isLoadingStats.value = false;
+    }
+  }
+
+  /// Fetches open ToDos allocated to — or created by — the selected filter
+  /// user (self-created ToDos often have no `allocated_to`). The server
+  /// orders by due date ascending, but empty dates sort first there —
+  /// [selectUpcomingTodos] reorders them to the end and caps the list.
+  Future<void> fetchUpcomingTodos() async {
+    try {
+      final email = selectedFilterUser.value?.email ??
+          _authController.currentUser.value?.email;
+      if (email == null || email.isEmpty) {
+        upcomingTodos.clear();
+        openTodoCount.value = 0;
+        _recomputeTasksFirst();
+        return;
+      }
+      final res = await _todoProvider.getTodos(
+        limit: 50,
+        filters: {'status': 'Open'},
+        orFilterTuples: [
+          ['ToDo', 'allocated_to', '=', email],
+          ['ToDo', 'owner', '=', email],
+        ],
+        orderBy: 'date asc',
+      );
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final list = (res.data['data'] as List)
+            .map((e) => ToDo.fromJson(e))
+            .toList();
+        openTodoCount.value = list.length;
+        upcomingTodos.assignAll(selectUpcomingTodos(list));
+        _recomputeTasksFirst();
+      }
+    } catch (e) {
+      print('Error fetching upcoming todos: $e');
+    }
+  }
+
+  /// Fetches Draft counts for accessible document DocTypes in the current
+  /// [actionableScope]. Serves a cached result when present unless [force].
+  /// `mine` counts key by the viewed user's email; `everyone` counts are
+  /// user-independent. Only DocTypes the user can read are queried (no 403s).
+  Future<void> fetchActionableCounts({bool force = false}) async {
+    final scope = actionableScope.value;
+    final email = selectedFilterUser.value?.email ??
+        _authController.currentUser.value?.email;
+    final key = actionableCacheKey(scope, email);
+
+    if (force) _actionableCountCache.clear();
+
+    final cached = _actionableCountCache[key];
+    if (cached != null) {
+      actionableCounts.assignAll(cached);
+      isLoadingActionable.value = false;
+      return;
+    }
+
+    isLoadingActionable.value = true;
+    try {
+      final perm = Get.find<PermissionService>();
+      final doctypes = <String>[];
+      final requests = <Future<Response>>[];
+      for (final cfg in kActionableDocConfigs) {
+        if (perm.hasAccess(cfg.doctype) != true) continue;
+        doctypes.add(cfg.doctype);
+        requests.add(_apiProvider.getDocumentCount(
+          cfg.doctype,
+          filters: actionableFiltersFor(cfg.doctype, scope, email),
+        ));
+      }
+      final responses = await Future.wait(requests);
+      final counts = <String, int>{};
+      for (var i = 0; i < doctypes.length; i++) {
+        counts[doctypes[i]] = _extractCount(responses[i]);
+      }
+      _actionableCountCache[key] = counts;
+      // Guard against a scope flip landing before this fetch returns.
+      if (scope == actionableScope.value) actionableCounts.assignAll(counts);
+    } catch (e) {
+      print('Error fetching actionable counts: $e');
+    } finally {
+      if (scope == actionableScope.value) isLoadingActionable.value = false;
+    }
+  }
+
+  /// Selects a chip and loads its preview. 'ToDo' renders from [upcomingTodos]
+  /// and needs no fetch.
+  void selectActionable(String doctype) {
+    if (selectedActionable.value == doctype) return;
+    selectedActionable.value = doctype;
+    fetchPreviewDocs();
+  }
+
+  /// Applies the default chip when nothing is selected or the current selection
+  /// no longer has work, then refreshes the preview. Called after counts and
+  /// todos land.
+  void _applyDefaultSelection() {
+    final current = selectedActionable.value;
+    final stillHasWork = current != null &&
+        (current == 'ToDo'
+            ? openTodoCount.value > 0
+            : (actionableCounts[current] ?? 0) > 0);
+    if (!stillHasWork) {
+      selectedActionable.value =
+          defaultActionableSelection(actionableCounts, openTodoCount.value);
+    }
+    fetchPreviewDocs(force: true);
+  }
+
+  /// Fetches the selected doctype's first 3 Draft documents, using the SAME
+  /// filter as its count and its View All list. Served from cache unless
+  /// [force]. Queries ApiProvider directly (PO/PR providers are not registered
+  /// in HomeBinding) requesting only the fields a row renders.
+  Future<void> fetchPreviewDocs({bool force = false}) async {
+    if (force) _previewCache.clear();
+
+    final doctype = selectedActionable.value;
+    if (doctype == null || doctype == 'ToDo') {
+      previewDocs.clear();
+      isLoadingPreview.value = false;
+      return;
+    }
+    final cfg = kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
+    if (cfg == null) {
+      previewDocs.clear();
+      isLoadingPreview.value = false;
+      return;
+    }
+
+    final scope = actionableScope.value;
+    final email = selectedFilterUser.value?.email ??
+        _authController.currentUser.value?.email;
+    final key = '$doctype::${actionableCacheKey(scope, email)}';
+
+    final cached = _previewCache[key];
+    if (cached != null) {
+      previewDocs.assignAll(cached);
+      isLoadingPreview.value = false;
+      return;
+    }
+
+    previewDocs.clear();
+    isLoadingPreview.value = true;
+    try {
+      final res = await _apiProvider.getDocumentList(
+        doctype,
+        filters: actionableFiltersFor(doctype, scope, email),
+        fields: cfg.previewFields,
+        limit: 3,
+        orderBy: 'creation desc',
+      );
+      final rows = <ActionableDocRowData>[];
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final names = namesByEmail;
+        for (final e in (res.data['data'] as List)) {
+          final json = Map<String, dynamic>.from(e as Map);
+          rows.add(docRowFor(
+            doctype,
+            json,
+            (owner) => ownerLabelFor(owner, names),
+            onTap: () => Get.toNamed(
+              cfg.formRoute,
+              arguments: {'name': (json['name'] ?? '').toString(), 'mode': 'view'},
+            ),
+          ));
+        }
+      }
+      _previewCache[key] = rows;
+      // Guard against a chip change landing before this fetch returns.
+      if (doctype == selectedActionable.value) previewDocs.assignAll(rows);
+    } catch (e) {
+      print('Error fetching preview docs: $e');
+    } finally {
+      if (doctype == selectedActionable.value) isLoadingPreview.value = false;
+    }
+  }
+
+  /// Flips the strip scope, persists it, and loads the new scope's counts
+  /// (served from cache when available, so a second flip is instant), then
+  /// re-applies the default chip selection — the current selection may have
+  /// zero work under the new scope, and a chip with zero count is muted/
+  /// non-interactive, so it must not remain selected.
+  Future<void> setActionableScope(ActionableScope scope) async {
+    if (actionableScope.value == scope) return;
+    actionableScope.value = scope;
+    _storageService.saveDashboardActionableScope(actionableScopeToString(scope));
+    await fetchActionableCounts();
+    // Guard against a scope flip landing before this fetch returns — mirrors
+    // the fetchActionableCounts/fetchPreviewDocs guards above.
+    if (scope != actionableScope.value) return;
+    _applyDefaultSelection();
+  }
+
+  /// Opens [doctype]'s list pre-filtered to Draft (+ owner under Mine), via the
+  /// list controller's onReady `filters` hook (Task 4).
+  void openActionableList(String doctype) {
+    final cfg =
+        kActionableDocConfigs.firstWhereOrNull((c) => c.doctype == doctype);
+    if (cfg == null) return;
+    final email = selectedFilterUser.value?.email ??
+        _authController.currentUser.value?.email;
+    Get.toNamed(cfg.listRoute, arguments: {
+      'filters': actionableFiltersFor(doctype, actionableScope.value, email),
+    });
+  }
+
+  /// Recomputes the section-order verdict from the logged-in user's roles
+  /// and the just-fetched ToDo list, then persists it per user so the NEXT
+  /// session's initial build starts from this verdict. On a failed fetch
+  /// the previous verdict is deliberately kept (no recompute call).
+  ///
+  /// [tasksFirst.value] always reflects whatever is currently on screen,
+  /// including while viewing a direct report's dashboard via the
+  /// user-switcher (`selectedFilterUser`). Persistence, however, is
+  /// skipped in that case — it only happens when viewing self — so a
+  /// manager's own seed is never polluted by a viewed report's ToDo count.
+  void _recomputeTasksFirst() {
+    final user = _authController.currentUser.value;
+    final v = showTasksFirst(
+      roles: user?.roles ?? const [],
+      hasOpenTodos: upcomingTodos.isNotEmpty,
+    );
+    tasksFirst.value = v;
+    final email = user?.email;
+    final isViewingSelf = selectedFilterUser.value == null ||
+        selectedFilterUser.value?.email == email;
+    if (email != null && email.isNotEmpty && isViewingSelf) {
+      _storageService.saveDashboardTasksFirst(email, v);
     }
   }
 
@@ -219,7 +859,7 @@ class HomeController extends GetxController {
       final res = await _jcProvider.getJobCards(
         filters: {
           'status': 'Work In Progress',
-          '__child__Job Card Employee': ['Job Card Employee', 'employee', '=', empId],
+          '__child__Job Card Time Log': ['Job Card Time Log', 'employee', '=', empId],
         },
         limit: 1,
       );
@@ -364,6 +1004,16 @@ class HomeController extends GetxController {
 
     isScanning.value = true;
     try {
+      // POS Upload document labels (e.g. ML-2026-02011) are scanned on the
+      // Dashboard to jump straight to fulfillment work. Recognise them before
+      // ScanService, which would otherwise misread the hyphenated name as a
+      // rack asset-code and fail.
+      final trimmed = code.trim();
+      if (ScanConstants.isPosUploadDocName(trimmed)) {
+        await _handlePosUploadScan(trimmed);
+        return;
+      }
+
       final result = await _scanService.processScan(code);
 
       if (result.type == ScanType.rack && result.rackId != null) {
@@ -405,6 +1055,11 @@ class HomeController extends GetxController {
   void _openItemDetailSheet(String itemCode, {String? batchNo}) {
     Get.put(ItemTabController());
     Get.put(ItemFormController())..loadItem(itemCode, batchNo: batchNo);
+    // The modal path bypasses ItemFormBinding; the Re-order tab's warehouse
+    // pickers need this.
+    if (!Get.isRegistered<WarehouseProvider>()) {
+      Get.put(WarehouseProvider());
+    }
     barcodeController.clear();
 
     Get.bottomSheet(
@@ -416,7 +1071,11 @@ class HomeController extends GetxController {
         ),
       ),
       isScrollControlled: true,
-      enableDrag: true,
+      // Drag-dismiss calls Navigator.pop directly, which PopScope cannot
+      // intercept, so unsaved re-order rules could vanish with a swipe.
+      // enableDrag is fixed at open time and cannot track dirty state, so it
+      // is off; the Close button (guarded by _confirmDiscard) is the exit.
+      enableDrag: false,
     ).then((_) {
       Get.delete<ItemTabController>(force: true);
       Get.delete<ItemFormController>(force: true);
@@ -457,6 +1116,78 @@ class HomeController extends GetxController {
       GlobalSnackbar.error(message: 'Invalid Rack QR or Network Error');
     } finally {
       isRackScanning.value = false;
+    }
+  }
+
+  // --- Sales Order → Delivery Note ---
+  // Dashboard → Sales Order lists submitted orders with something left to
+  // deliver; picking one resumes its draft Delivery Note or starts a new
+  // scan-to-pick DN bound to the order.
+  final openSalesOrders = <OpenSalesOrder>[].obs;
+  List<OpenSalesOrder> _allOpenSalesOrders = [];
+  final isFetchingOpenSalesOrders = false.obs;
+  final openSalesOrderQuery = ''.obs;
+  final openingSalesOrder = RxnString();
+
+  Future<void> fetchOpenSalesOrders() async {
+    if (isFetchingOpenSalesOrders.value) return;
+    isFetchingOpenSalesOrders.value = true;
+    try {
+      final res = await _apiProvider.getDocumentList('Sales Order',
+          limit: 200,
+          filters: {
+            'docstatus': 1,
+            'status': ['in', ['To Deliver and Bill', 'To Deliver']],
+            'per_delivered': ['<', 100],
+          },
+          fields: const [
+            'name', 'customer', 'customer_name', 'delivery_date',
+            'per_delivered', 'total_qty',
+          ],
+          orderBy: 'delivery_date asc, modified desc');
+      final data = res.data is Map ? res.data['data'] : null;
+      if (res.statusCode == 200 && data is List) {
+        _allOpenSalesOrders = data
+            .map((e) => OpenSalesOrder.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        filterOpenSalesOrders(openSalesOrderQuery.value);
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load Sales Orders');
+    } finally {
+      isFetchingOpenSalesOrders.value = false;
+    }
+  }
+
+  void filterOpenSalesOrders(String query) {
+    openSalesOrderQuery.value = query;
+    openSalesOrders
+        .assignAll(_allOpenSalesOrders.where((o) => o.matches(query)));
+  }
+
+  Future<void> showSalesOrderPickSheet() async {
+    openSalesOrderQuery.value = '';
+    openSalesOrders.clear();
+    fetchOpenSalesOrders();
+    await Get.bottomSheet(
+      const SafeArea(child: SalesOrderPickSheet()),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  /// Opens the order's scan-to-pick DN (see [SoDeliveryLauncher]).
+  Future<void> openSalesOrderDelivery(OpenSalesOrder so) async {
+    if (openingSalesOrder.value != null) return;
+    openingSalesOrder.value = so.name;
+    try {
+      final draft =
+          await SoDeliveryLauncher.open(so.name, beforeNavigate: Get.back);
+      if (draft != null) GlobalSnackbar.info(message: 'Resuming draft $draft');
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not open ${so.name}: $e');
+    } finally {
+      openingSalesOrder.value = null;
     }
   }
 
@@ -513,24 +1244,206 @@ class HomeController extends GetxController {
     GlobalSnackbar.info(message: 'Processing ${posUpload.name}...');
     final name = posUpload.name.toUpperCase();
     if (name.startsWith('KX') || name.startsWith('MX')) {
-      try {
-        final res = await _stockEntryProvider.getStockEntries(limit: 1, filters: {'custom_reference_no': posUpload.name});
-        if(res.statusCode == 200 && res.data['data'] != null && (res.data['data'] as List).isNotEmpty) {
-          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
-        } else {
-          Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {'name': '', 'mode': 'new', 'stockEntryType': 'Material Issue', 'customReferenceNo': posUpload.name});
-        }
-      } catch(e) { GlobalSnackbar.error(message: 'Error processing Stock Entry'); }
+      await _openLinkedStockEntry(posUpload);
     } else {
-      try {
-        final res = await _deliveryNoteProvider.getDeliveryNotes(limit: 1, filters: {'po_no': posUpload.name});
-        if(res.statusCode == 200 && res.data['data'] != null && (res.data['data'] as List).isNotEmpty) {
-          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
-        } else {
-          Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {'name': '', 'mode': 'new', 'posUploadCustomer': posUpload.customer, 'posUploadName': posUpload.name});
-        }
-      } catch(e) { GlobalSnackbar.error(message: 'Error processing Delivery Note'); }
+      await _openLinkedDeliveryNote(posUpload);
     }
+  }
+
+  // ── POS Upload scan → linked document ────────────────────────────────────
+  // A POS Upload document label scanned on the Dashboard jumps to its
+  // fulfillment work. MX/KX uploads link to a Stock Entry (opened directly);
+  // ML/KA uploads link to a Delivery Note whose cartons are packed via Packing
+  // Slips, so the operator is asked which of the two to open.
+
+  Future<void> _handlePosUploadScan(String name) async {
+    final PosUpload? upload = await _fetchPosUploadByName(name);
+    if (upload == null) {
+      GlobalSnackbar.error(
+          title: 'Not Found', message: 'POS Upload "$name" was not found.');
+      return;
+    }
+
+    if (ScanConstants.isStockEntryFamilyUpload(name)) {
+      GlobalSnackbar.info(message: 'Opening Stock Entry for ${upload.name}…');
+      await _openLinkedStockEntry(upload);
+      return;
+    }
+
+    // Delivery-Note-family (ML/KA): let the operator choose DN vs Packing Slip.
+    Get.bottomSheet(
+      PosUploadScanTargetSheet(
+        posUpload: upload,
+        onDeliveryNote: () {
+          Get.back();
+          _openLinkedDeliveryNote(upload);
+        },
+        onPackingSlip: () {
+          Get.back();
+          _openLinkedPackingSlip(upload);
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
+  Future<PosUpload?> _fetchPosUploadByName(String name) async {
+    try {
+      final res = await _posUploadProvider.getPosUpload(name);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        return PosUpload.fromJson(res.data['data']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _openLinkedStockEntry(PosUpload posUpload) async {
+    try {
+      final res = await _stockEntryProvider.getStockEntries(
+          limit: 1, filters: {'custom_reference_no': posUpload.name});
+      if (res.statusCode == 200 &&
+          res.data['data'] != null &&
+          (res.data['data'] as List).isNotEmpty) {
+        Get.toNamed(AppRoutes.STOCK_ENTRY_FORM,
+            arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
+      } else {
+        Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
+          'name': '',
+          'mode': 'new',
+          'stockEntryType': 'Material Issue',
+          'customReferenceNo': posUpload.name
+        });
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error processing Stock Entry');
+    }
+  }
+
+  Future<void> _openLinkedDeliveryNote(PosUpload posUpload) async {
+    try {
+      final res = await _deliveryNoteProvider.getDeliveryNotes(
+          limit: 1, filters: {'po_no': posUpload.name});
+      if (res.statusCode == 200 &&
+          res.data['data'] != null &&
+          (res.data['data'] as List).isNotEmpty) {
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM,
+            arguments: {'name': res.data['data'][0]['name'], 'mode': 'edit'});
+      } else {
+        // An upload that belongs to a Sales Order is delivered against that
+        // order (scan-to-pick DN, resuming its draft) — never a second,
+        // POS-only DN.
+        final so = await _salesOrderForUpload(posUpload.name);
+        if (so != null) {
+          final draft = await SoDeliveryLauncher.open(so);
+          GlobalSnackbar.info(
+              message: draft != null
+                  ? '${posUpload.name} belongs to $so — resuming draft $draft'
+                  : '${posUpload.name} belongs to $so');
+          return;
+        }
+        Get.toNamed(AppRoutes.DELIVERY_NOTE_FORM, arguments: {
+          'name': '',
+          'mode': 'new',
+          'posUploadCustomer': posUpload.customer,
+          'posUploadName': posUpload.name
+        });
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error processing Delivery Note');
+    }
+  }
+
+  /// Submitted, still-deliverable Sales Order whose po_no names [upload].
+  Future<String?> _salesOrderForUpload(String upload) async {
+    final res = await _apiProvider.getDocumentList('Sales Order',
+        limit: 1,
+        fields: const ['name'],
+        filters: {
+          'po_no': upload,
+          'docstatus': 1,
+          'status': ['in', ['To Deliver and Bill', 'To Deliver']],
+        });
+    final data = res.data is Map ? res.data['data'] : null;
+    return (data is List && data.isNotEmpty)
+        ? (data.first as Map)['name']?.toString()
+        : null;
+  }
+
+  /// Opens the Packing Slip for a scanned ML/KA upload. A Packing Slip hangs
+  /// off the Delivery Note (not the upload), so the DN is resolved first: with
+  /// no DN the upload can have no slip (per product decision, we just say so);
+  /// with none yet a new case is started; with one it opens directly; with
+  /// several the operator picks the case.
+  Future<void> _openLinkedPackingSlip(PosUpload posUpload) async {
+    try {
+      final dnRes = await _deliveryNoteProvider.getDeliveryNotes(
+          limit: 1, filters: {'po_no': posUpload.name});
+      final dnList = (dnRes.data['data'] as List?) ?? const [];
+      if (dnRes.statusCode != 200 || dnList.isEmpty) {
+        GlobalSnackbar.error(
+            title: 'No Delivery Note',
+            message:
+                'No Delivery Note exists for ${posUpload.name} yet, so it has no Packing Slip.');
+        return;
+      }
+      final dnName = dnList.first['name'].toString();
+
+      final psRes = await _packingSlipProvider.getPackingSlips(
+          limit: 0,
+          filters: {'delivery_note': dnName},
+          orderBy: 'from_case_no asc');
+      if (psRes.statusCode != 200) {
+        GlobalSnackbar.error(message: 'Failed to load Packing Slips');
+        return;
+      }
+      final psList = ((psRes.data['data'] as List?) ?? const [])
+          .cast<Map<String, dynamic>>();
+
+      if (psList.isEmpty) {
+        _openNewPackingSlip(dnName, posUpload.name, 1);
+      } else if (psList.length == 1) {
+        Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+          'name': psList.first['name'].toString(),
+          'mode': 'edit'
+        });
+      } else {
+        final nextCase = psList
+                .map((e) => (e['to_case_no'] as num?)?.toInt() ?? 0)
+                .fold<int>(0, (a, b) => a > b ? a : b) +
+            1;
+        Get.bottomSheet(
+          PackingSlipPickerSheet(
+            deliveryNote: dnName,
+            nextCaseNo: nextCase,
+            packingSlips: psList,
+            onSelect: (psName) {
+              Get.back();
+              Get.toNamed(AppRoutes.PACKING_SLIP_FORM,
+                  arguments: {'name': psName, 'mode': 'edit'});
+            },
+            onNewCase: () {
+              Get.back();
+              _openNewPackingSlip(dnName, posUpload.name, nextCase);
+            },
+          ),
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+        );
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Error opening Packing Slip');
+    }
+  }
+
+  void _openNewPackingSlip(String dnName, String poNo, int nextCaseNo) {
+    Get.toNamed(AppRoutes.PACKING_SLIP_FORM, arguments: {
+      'name': '',
+      'mode': 'new',
+      'deliveryNote': dnName,
+      'customPoNo': poNo,
+      'nextCaseNo': nextCaseNo,
+    });
   }
 
   // Helpers
@@ -550,14 +1463,15 @@ class HomeController extends GetxController {
     }
     return [];
   }
-  int _getCountFromResponse(dynamic response) {
-    if (response is Response && response.statusCode == 200 && response.data != null && response.data['data'] != null) {
-      return (response.data['data'] as List).length;
+  int _extractCount(dynamic response) {
+    if (response is Response &&
+        response.statusCode == 200 &&
+        response.data?['message'] is int) {
+      return response.data['message'] as int;
     }
     return 0;
   }
 
-  void onBottomBarItemTapped(int index) { if (index == 0) fetchDashboardData(); }
   void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }
 
   void _updateActiveScreenForRoute(String route) {

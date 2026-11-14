@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 
 // ── POS Upload error reason ─────────────────────────────────────────────────
@@ -31,16 +32,17 @@ class GlobalDialog {
     required String title,
     required String message,
     String confirmText = 'Confirm',
-    Color confirmColor = Colors.blue,
+    Color confirmColor = AppColors.blue600,
     IconData icon = Icons.check_circle_outline,
   }) {
     return Get.bottomSheet<bool>(
       Builder(
         builder: (context) => Container(
           padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: context.scheme.fg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Column(
@@ -64,7 +66,8 @@ class GlobalDialog {
                 Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                  style: TextStyle(
+                      color: context.scheme.textMuted, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -77,10 +80,12 @@ class GlobalDialog {
                               const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
-                          side: BorderSide(color: Colors.grey.shade300),
+                          side: BorderSide(
+                              color: context.scheme.borderStrong),
                         ),
-                        child: const Text('Cancel',
-                            style: TextStyle(color: Colors.black87)),
+                        child: Text('Cancel',
+                            style:
+                                TextStyle(color: context.scheme.text)),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -117,16 +122,17 @@ class GlobalDialog {
     required String message,
     required VoidCallback onConfirm,
     String confirmText = 'Delete',
-    Color confirmColor = Colors.red,
+    Color confirmColor = AppColors.red700,
     IconData icon = Icons.delete_outline,
   }) {
     Get.bottomSheet(
       Builder(
         builder: (context) => Container(
           padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: context.scheme.fg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Column(
@@ -150,8 +156,8 @@ class GlobalDialog {
                 Text(
                   message,
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(color: Colors.grey, fontSize: 14),
+                  style: TextStyle(
+                      color: context.scheme.textMuted, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -164,11 +170,12 @@ class GlobalDialog {
                               const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
-                          side:
-                              BorderSide(color: Colors.grey.shade300),
+                          side: BorderSide(
+                              color: context.scheme.borderStrong),
                         ),
-                        child: const Text('Cancel',
-                            style: TextStyle(color: Colors.black87)),
+                        child: Text('Cancel',
+                            style:
+                                TextStyle(color: context.scheme.text)),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -211,7 +218,7 @@ class GlobalDialog {
       message:
           'You have unsaved changes. Are you sure you want to leave?',
       confirmText: 'Discard Changes',
-      confirmColor: Colors.orange,
+      confirmColor: AppColors.orange700,
       icon: Icons.warning_amber_rounded,
       onConfirm: onDiscard,
     );
@@ -307,7 +314,7 @@ class GlobalDialog {
                         : 'No customer is set on this POS Upload document.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 14, color: Colors.grey.shade700),
+                        fontSize: 14, color: context.scheme.textMuted),
                   ),
 
                   if (customer.isNotEmpty) ...[
@@ -351,7 +358,7 @@ class GlobalDialog {
                     'customer exists before retrying.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        fontSize: 13, color: Colors.grey.shade500),
+                        fontSize: 13, color: context.scheme.textMuted),
                   ),
                   const SizedBox(height: 28),
 
@@ -370,7 +377,7 @@ class GlobalDialog {
                       style: ElevatedButton.styleFrom(
                         padding:
                             const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.red.shade700,
+                        backgroundColor: AppColors.red700,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
@@ -411,9 +418,10 @@ class GlobalDialog {
       Builder(
         builder: (context) => Container(
           padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: context.scheme.fg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Column(
@@ -439,8 +447,8 @@ class GlobalDialog {
                 Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.grey, fontSize: 14),
+                  style: TextStyle(
+                      color: context.scheme.textMuted, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
                 if (onRetry != null) ...[
@@ -456,11 +464,11 @@ class GlobalDialog {
                                 borderRadius:
                                     BorderRadius.circular(12)),
                             side: BorderSide(
-                                color: Colors.grey.shade300),
+                                color: context.scheme.borderStrong),
                           ),
-                          child: const Text('Close',
-                              style:
-                                  TextStyle(color: Colors.black87)),
+                          child: Text('Close',
+                              style: TextStyle(
+                                  color: context.scheme.text)),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -477,7 +485,7 @@ class GlobalDialog {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 14),
-                            backgroundColor: Colors.red,
+                            backgroundColor: AppColors.red700,
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
@@ -498,11 +506,12 @@ class GlobalDialog {
                             const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
-                        side:
-                            BorderSide(color: Colors.grey.shade300),
+                        side: BorderSide(
+                            color: context.scheme.borderStrong),
                       ),
-                      child: const Text('Close',
-                          style: TextStyle(color: Colors.black87)),
+                      child: Text('Close',
+                          style:
+                              TextStyle(color: context.scheme.text)),
                     ),
                   ),
                 ],
@@ -569,9 +578,10 @@ class GlobalDialog {
       Builder(
         builder: (context) => Container(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: context.scheme.fg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Column(
@@ -615,7 +625,7 @@ class GlobalDialog {
                   hint,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 13, color: Colors.grey.shade600),
+                      fontSize: 13, color: context.scheme.textMuted),
                 ),
                 const SizedBox(height: 24),
 
@@ -624,22 +634,22 @@ class GlobalDialog {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: context.scheme.subtle,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
+                    border: Border.all(color: context.scheme.borderStrong),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.tag,
-                          size: 14, color: Colors.grey.shade500),
+                          size: 14, color: context.scheme.textMuted),
                       const SizedBox(width: 6),
                       Text(
                         posId,
                         style: TextStyle(
                           fontFamily: 'ShureTechMono',
                           fontSize: 13,
-                          color: Colors.grey.shade700,
+                          color: context.scheme.text,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -661,12 +671,13 @@ class GlobalDialog {
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12)),
                             side: BorderSide(
-                                color: Colors.grey.shade300),
+                                color: context.scheme.borderStrong),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Continue without POS',
                             style: TextStyle(
-                                color: Colors.black87, fontSize: 13),
+                                color: context.scheme.text,
+                                fontSize: 13),
                           ),
                         ),
                       ),
@@ -686,7 +697,7 @@ class GlobalDialog {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                                 vertical: 14),
-                            backgroundColor: Colors.amber.shade700,
+                            backgroundColor: AppColors.orange700,
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
@@ -706,11 +717,11 @@ class GlobalDialog {
                             const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
-                        side: BorderSide(color: Colors.grey.shade300),
+                        side: BorderSide(color: context.scheme.borderStrong),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Continue without POS',
-                        style: TextStyle(color: Colors.black87),
+                        style: TextStyle(color: context.scheme.text),
                       ),
                     ),
                   ),
@@ -750,16 +761,21 @@ class GlobalDialog {
     Get.bottomSheet(
       Builder(
         builder: (context) {
+          final scheme = context.scheme;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
           final remaining = (capQty - scannedQty).clamp(0.0, capQty);
           final isFulfilled = remaining <= 0;
-          final remainingColor =
-              isFulfilled ? Colors.red.shade600 : Colors.green.shade600;
+          // Status ramp: x700 text on light surfaces, x300 on dark.
+          final remainingColor = isFulfilled
+              ? (isDark ? AppColors.red300 : AppColors.red700)
+              : (isDark ? AppColors.green300 : AppColors.green700);
 
           return Container(
             padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            decoration: BoxDecoration(
+              color: scheme.fg,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: SafeArea(
               child: Column(
@@ -793,7 +809,7 @@ class GlobalDialog {
                     'Invoice Serial #$serialNo',
                     style: TextStyle(
                         fontSize: 13,
-                        color: Colors.grey.shade600),
+                        color: scheme.textMuted),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -809,33 +825,36 @@ class GlobalDialog {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: scheme.subtle,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         _dialogStatColumn(
+                          scheme,
                           'Allowed',
                           '${_fmtQty(capQty)} pcs',
-                          Colors.grey.shade700,
+                          scheme.text,
                         ),
                         Container(
                           width: 1,
                           height: 32,
-                          color: Colors.grey.shade300,
+                          color: scheme.borderStrong,
                         ),
                         _dialogStatColumn(
+                          scheme,
                           'Scanned',
                           '${_fmtQty(scannedQty)} pcs',
-                          Colors.orange.shade700,
+                          isDark ? AppColors.orange300 : AppColors.orange700,
                         ),
                         Container(
                           width: 1,
                           height: 32,
-                          color: Colors.grey.shade300,
+                          color: scheme.borderStrong,
                         ),
                         _dialogStatColumn(
+                          scheme,
                           'Remaining',
                           '${_fmtQty(remaining)} pcs',
                           remainingColor,
@@ -852,7 +871,7 @@ class GlobalDialog {
                         : 'You can still scan ${_fmtQty(remaining)} more unit(s) for this serial.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: Colors.grey.shade600, fontSize: 13),
+                        color: scheme.textMuted, fontSize: 13),
                   ),
                   const SizedBox(height: 24),
 
@@ -864,7 +883,7 @@ class GlobalDialog {
                       style: ElevatedButton.styleFrom(
                         padding:
                             const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: Colors.orange,
+                        backgroundColor: AppColors.orange700,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
@@ -911,9 +930,10 @@ class GlobalDialog {
       Builder(
         builder: (context) => Container(
           padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: context.scheme.fg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Column(
@@ -947,7 +967,8 @@ class GlobalDialog {
                   'The completed qty must equal the Work Order target qty '
                       'before this Job Card can be submitted.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                  style: TextStyle(
+                      color: context.scheme.textMuted, fontSize: 14),
                 ),
                 const SizedBox(height: 20),
 
@@ -957,30 +978,41 @@ class GlobalDialog {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: context.scheme.subtle,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _dialogStatColumn(
+                        context.scheme,
                         'Completed',
                         '${_fmtQty(completedQty)} pcs',
-                        Colors.grey.shade700,
+                        context.scheme.text,
                       ),
                       Container(
-                          width: 1, height: 32, color: Colors.grey.shade300),
+                          width: 1,
+                          height: 32,
+                          color: context.scheme.borderStrong),
                       _dialogStatColumn(
+                        context.scheme,
                         'Target',
                         '${_fmtQty(targetQty)} pcs',
-                        Colors.green.shade700,
+                        Theme.of(context).brightness == Brightness.dark
+                            ? AppColors.green300
+                            : AppColors.green700,
                       ),
                       Container(
-                          width: 1, height: 32, color: Colors.grey.shade300),
+                          width: 1,
+                          height: 32,
+                          color: context.scheme.borderStrong),
                       _dialogStatColumn(
+                        context.scheme,
                         'Remaining',
                         '${_fmtQty(remaining)} pcs',
-                        Colors.red.shade700,
+                        Theme.of(context).brightness == Brightness.dark
+                            ? AppColors.red300
+                            : AppColors.red700,
                       ),
                     ],
                   ),
@@ -992,7 +1024,7 @@ class GlobalDialog {
                   'Log ${_fmtQty(remaining)} more unit(s) to complete this Job Card.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.grey.shade500, fontSize: 13),
+                      color: context.scheme.textMuted, fontSize: 13),
                 ),
                 const SizedBox(height: 24),
 
@@ -1003,7 +1035,7 @@ class GlobalDialog {
                     onPressed: () => Navigator.of(context).pop(),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.red.shade700,
+                      backgroundColor: AppColors.red700,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1030,13 +1062,13 @@ class GlobalDialog {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   static Widget _dialogStatColumn(
-      String label, String value, Color valueColor) {
+      AppScheme scheme, String label, String value, Color valueColor) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+          style: TextStyle(fontSize: 11, color: scheme.textMuted),
         ),
         const SizedBox(height: 4),
         Text(
@@ -1073,11 +1105,20 @@ class GlobalDialog {
   }) {
     Get.bottomSheet(
       Builder(
-        builder: (context) => Container(
+        builder: (context) {
+          final scheme = context.scheme;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          // Status-pill convention: tinted fill over the surface, x700 ink
+          // in light mode / x300 in dark.
+          final orangeInk =
+              isDark ? AppColors.orange300 : AppColors.orange700;
+
+          return Container(
           padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: scheme.fg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Column(
@@ -1107,10 +1148,10 @@ class GlobalDialog {
                 const SizedBox(height: 8),
 
                 // ── Explanation ───────────────────────────────────────────
-                const Text(
+                Text(
                   'You must pause the currently running Job Card before starting another.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
+                  style: TextStyle(color: scheme.textMuted, fontSize: 14),
                 ),
                 const SizedBox(height: 20),
 
@@ -1120,14 +1161,16 @@ class GlobalDialog {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
+                    color: AppColors.orange500.withValues(alpha: 0.13),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.shade200),
+                    border: Border.all(
+                        color:
+                            AppColors.orange500.withValues(alpha: 0.35)),
                   ),
                   child: Row(
                     children: [
                       Icon(Icons.timer_outlined,
-                          size: 18, color: Colors.orange.shade700),
+                          size: 18, color: orangeInk),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -1138,7 +1181,7 @@ class GlobalDialog {
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 14,
-                                color: Colors.orange.shade800,
+                                color: orangeInk,
                               ),
                             ),
                             if (conflictingOperation.isNotEmpty) ...[
@@ -1147,7 +1190,7 @@ class GlobalDialog {
                                 conflictingOperation,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.orange.shade600,
+                                  color: orangeInk,
                                 ),
                               ),
                             ],
@@ -1158,7 +1201,8 @@ class GlobalDialog {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
+                          color:
+                              AppColors.orange500.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -1166,7 +1210,7 @@ class GlobalDialog {
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
-                            color: Colors.orange.shade800,
+                            color: orangeInk,
                           ),
                         ),
                       ),
@@ -1182,7 +1226,7 @@ class GlobalDialog {
                     onPressed: () => Navigator.of(context).pop(),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.orange.shade700,
+                      backgroundColor: AppColors.orange700,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1198,7 +1242,8 @@ class GlobalDialog {
               ],
             ),
           ),
-        ),
+        );
+        },
       ),
       isScrollControlled: true,
       isDismissible: false,

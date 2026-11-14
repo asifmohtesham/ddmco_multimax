@@ -8,6 +8,8 @@ class PurchaseOrder {
   final int docstatus;
   final String modified;
   final String creation;
+  final double? perReceived;
+  final double? perBilled;
   final List<PurchaseOrderItem> items;
 
   PurchaseOrder({
@@ -20,6 +22,8 @@ class PurchaseOrder {
     required this.docstatus,
     required this.modified,
     required this.creation,
+    this.perReceived,
+    this.perBilled,
     required this.items,
   });
 
@@ -38,6 +42,8 @@ class PurchaseOrder {
       docstatus:       json['docstatus'] as int? ?? 0,
       modified:        json['modified'] ?? '',
       creation:        json['creation'] ?? '',
+      perReceived:     (json['per_received'] as num?)?.toDouble(),
+      perBilled:       (json['per_billed'] as num?)?.toDouble(),
       items:           items,
     );
   }

@@ -16,23 +16,26 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
+import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/shared_invoice_serial_number_field.dart';
+import 'package:multimax/app/modules/packing_slip/form/dn_scan_item_matcher.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_serial_balance.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_serial_options.dart';
+import 'package:multimax/app/modules/packing_slip/form/ps_dn_reference_resolver.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_item_form_controller.dart';
 import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_item_form_sheet.dart'
     show BatchDisplayTile;
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
 
 class PackingSlipFormController extends GetxController
-    with OptimisticLockingMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin {
   final PackingSlipProvider  _provider              = Get.find<PackingSlipProvider>();
   final DeliveryNoteProvider _deliveryNoteProvider  = Get.find<DeliveryNoteProvider>();
   final PosUploadProvider    _posUploadProvider     = Get.find<PosUploadProvider>();
   final ApiProvider          _apiProvider           = Get.find<ApiProvider>();
-  final StorageService       _storageService        = Get.find<StorageService>();
   final DataWedgeService     _dataWedgeService      = Get.find<DataWedgeService>();
   final ScanService          _scanService           = Get.find<ScanService>();
 
@@ -40,10 +43,13 @@ class PackingSlipFormController extends GetxController
   String name = Get.arguments['name'];
   String mode = Get.arguments['mode'];
 
+  @override String get realtimeDoctype => 'Packing Slip';
+  @override String get realtimeDocname => name;
+
   var isLoading    = true.obs;
-  var isSaving     = false.obs;
+  @override var isSaving     = false.obs;
   var isScanning   = false.obs;
-  var isDirty      = false.obs;
+  @override var isDirty      = false.obs;
   var saveResult     = SaveResult.idle.obs;
   Timer? _saveResultTimer;
 
@@ -85,15 +91,36 @@ class PackingSlipFormController extends GetxController
   var isLoadingItemEdit  = false.obs;
   var loadingForItemName = RxnString();
 
+  /// Set to a DN item's row name briefly after a successful pack so the
+  /// matching checklist row can flash-then-fade. Mirrors
+  /// [DeliveryNoteFormController.addItem]'s `recentlyAddedItemCode` pattern;
+  /// cleared automatically by [_flashRecentlyPacked] after ~1.8s.
+  var recentlyPackedDnDetail = ''.obs;
+
+  /// Bumped on every rejected/invalid scan (Strap/Buckle gate, no DN match,
+  /// scan failure/error) so a [ShakeOnTrigger]-wrapped barcode field can
+  /// play a brief shake — a fast, pre-attentive cue a SnackBar alone can't
+  /// give. The value itself carries no meaning beyond "changed".
+  var shakeTrigger = 0.obs;
+
   String? currentItemDnDetail;
   String? currentItemCode;
   String? currentItemName;
   String? currentBatchNo;
   String? currentUom;
   String? currentSerial;
+  String? currentItemGroup;
   double? currentNetWeight;
   double? currentWeightUom;
   String? currentItemNameKey;
+
+  /// Batch from the scan result that opened the sheet; null for tap-to-add.
+  /// Narrows the serial options to rows of the scanned batch.
+  String? currentScannedBatch;
+
+  /// Reactive batch for the sheet's BatchDisplayTile — re-seeded when the
+  /// sheet is re-targeted to a different serial's DN row.
+  final bsBatchNo = RxnString();
 
   // Metadata shims kept until step-6.
   var bsItemOwner      = RxnString();
@@ -119,27 +146,22 @@ class PackingSlipFormController extends GetxController
     if (mode == 'new') {
       _initNewPackingSlip();
     } else {
-      fetchDocument();
+      fetchDocument().then((_) => initRealtimeSync());
     }
   }
 
   @override
   void onClose() {
+    disposeRealtimeSync();
     _scanWorker?.dispose();
     _saveResultTimer?.cancel();
-    barcodeController.dispose();
+    // barcodeController not disposed: see HomeController.onClose (use-after-dispose on logout).
     super.onClose();
   }
 
   // ── Sheet validation predicates ────────────────────────────────────────────
   // Each function answers exactly one question about validity.
   // Returns true when the sheet should be considered INVALID for that reason.
-
-  /// Returns true when the qty text is unparseable or zero / negative.
-  bool _isQtyInvalid(String text) {
-    final qty = double.tryParse(text);
-    return qty == null || qty <= 0;
-  }
 
   // ---------------------------------------------------------------------------
   // Pop / discard
@@ -348,43 +370,94 @@ class PackingSlipFormController extends GetxController
     final slip = packingSlip.value;
     if (slip == null) return;
 
-    // Build lookup of valid DN item names from the current fetch.
-    final validNames = {
-      for (final d in dn.items)
-        if (d.name != null && d.name!.isNotEmpty) d.name!,
-    };
-
-    // Determine which slip items need resolution.
-    final needsRefresh = slip.items.any(
-      (i) => i.dnDetail.isEmpty || !validNames.contains(i.dnDetail),
+    final result = resolveDnReferences(
+      slipItems:    slip.items,
+      dnItems:      dn.items,
+      remainingQty: _calcRemainingQtyForDnItem,
     );
-    if (!needsRefresh) return;
 
-    bool changed = false;
-    final patched = slip.items.map((item) {
-      // Already a valid, current DN item reference — keep it.
-      if (item.dnDetail.isNotEmpty && validNames.contains(item.dnDetail)) {
-        return item;
-      }
-
-      // Resolve by matching itemCode + serial (+ batch when present).
-      final itemSerial = item.customInvoiceSerialNumber ?? '0';
-      final match = dn.items.firstWhereOrNull((d) {
-        if (d.name == null || d.name!.isEmpty) return false;
-        if (d.itemCode != item.itemCode) return false;
-        if ((d.customInvoiceSerialNumber ?? '0') != itemSerial) return false;
-        if (item.batchNo.isNotEmpty && d.batchNo != item.batchNo) return false;
-        return true;
-      });
-
-      if (match == null) return item;
-      changed = true;
-      return item.copyWith(dnDetail: match.name!);
-    }).toList();
-
-    if (changed) {
-      packingSlip.value = slip.copyWith(items: patched);
+    if (result.fixed > 0) {
+      packingSlip.value = slip.copyWith(items: result.items);
       _checkForChanges();
+    }
+  }
+
+  // ── DN-reference validity (Items-tab indicator) ────────────────────────────
+
+  /// Names of the linked DN's item rows that are valid link targets.
+  Set<String> get _validDnNames =>
+      validDnItemNames(linkedDeliveryNote.value?.items ?? const []);
+
+  /// Slip rows whose `dn_detail` is empty or stale (would block ERPNext submit).
+  /// Empty while the linked DN is not loaded — validity is unknown then.
+  List<PackingSlipItem> get unlinkedItems {
+    if (linkedDeliveryNote.value == null) return const [];
+    final names = _validDnNames;
+    return packingSlip.value?.items
+            .where((i) => !isSlipItemLinked(i, names))
+            .toList() ??
+        const [];
+  }
+
+  /// Reactive validity status consumed by [PackingSlipDnLinkBanner].
+  DnRefStatus get dnRefStatus => computeDnRefStatus(
+        items:      packingSlip.value?.items ?? const [],
+        validNames: _validDnNames,
+        dnLoaded:   linkedDeliveryNote.value != null,
+      );
+
+  // ── User-triggered reference resolution ────────────────────────────────────
+
+  /// Re-matches orphaned `dn_detail` references and persists the slip so it
+  /// becomes immediately submittable in ERPNext. Guarded to draft documents
+  /// with a loaded Delivery Note.
+  Future<void> resolveDnReferencesAndSave() async {
+    final dn   = linkedDeliveryNote.value;
+    final slip = packingSlip.value;
+    if (dn == null || slip == null) {
+      GlobalSnackbar.error(message: 'Delivery Note not loaded yet.');
+      return;
+    }
+    if (slip.docstatus != 0) return;
+
+    final result = resolveDnReferences(
+      slipItems:    slip.items,
+      dnItems:      dn.items,
+      remainingQty: _calcRemainingQtyForDnItem,
+    );
+
+    if (result.fixed > 0) {
+      packingSlip.value = slip.copyWith(items: result.items);
+      _checkForChanges();
+      if (isDirty.value) await saveDocument();
+    }
+
+    // saveDocument() swallows errors and shows its own snackbar; if the patch
+    // failed to persist, isDirty stays true — suppress the success message so
+    // the user isn't told the links were saved when they weren't.
+    final saveFailed = result.fixed > 0 && isDirty.value;
+    if (!saveFailed) {
+      _announceResolveResult(result.fixed, result.unresolved);
+    }
+  }
+
+  /// Surfaces the outcome of [resolveDnReferencesAndSave] as a snackbar.
+  void _announceResolveResult(int fixed, int unresolved) {
+    if (fixed == 0 && unresolved == 0) {
+      GlobalSnackbar.info(
+          message: 'All items already linked to the Delivery Note.');
+      return;
+    }
+    final parts = <String>[];
+    if (fixed > 0) parts.add('Linked $fixed item(s) to the Delivery Note');
+    if (unresolved > 0) {
+      parts.add('$unresolved could not be matched — remove them to proceed');
+    }
+    final msg = parts.join('. ');
+    if (unresolved > 0) {
+      GlobalSnackbar.warning(message: msg);
+    } else {
+      GlobalSnackbar.success(message: msg);
     }
   }
 
@@ -446,9 +519,10 @@ class PackingSlipFormController extends GetxController
 
   void _checkForChanges() {
     if (packingSlip.value == null) return;
-    if (mode == 'new') { isDirty.value = true; return; }
+    if (mode == 'new') { isDirty.value = true; scheduleAutoSave(); return; }
     final currentJson = jsonEncode(packingSlip.value!.toJson());
     isDirty.value = currentJson != _originalJson;
+    if (isDirty.value) scheduleAutoSave();
   }
 
   // ── POS qty cap helpers ────────────────────────────────────────────────────
@@ -473,7 +547,7 @@ class PackingSlipFormController extends GetxController
   /// "no upload loaded" ([double.infinity]).
   double _posItemQtyForIdx(int idx) {
     final item = posUpload.value!.items.firstWhereOrNull((i) => i.idx == idx);
-    return item?.quantity?.toDouble() ?? 0.0;
+    return item?.quantity.toDouble() ?? 0.0;
   }
 
   // ── Public cap resolver ────────────────────────────────────────────────────
@@ -497,6 +571,61 @@ class PackingSlipFormController extends GetxController
     final idx = _serialToIdx(serial);
     if (idx == null) return 0.0;
     return _posItemQtyForIdx(idx);
+  }
+
+  /// External-system demand qty for [serial], for display as the top of the
+  /// fulfilment funnel (POS Upload Qty ≥ DN Qty ≥ Packed).
+  ///
+  /// Returns `null` when no POS Upload is loaded — [posQtyCapForSerial] reports
+  /// that as [double.infinity] (no cap), which is not displayable, so the
+  /// demand chip is hidden. Otherwise returns the matched upload qty (0.0 when
+  /// the serial has no matching upload line).
+  double? getPosUploadQtyForSerial(String serial) {
+    final cap = posQtyCapForSerial(serial);
+    return cap.isFinite ? cap : null;
+  }
+
+  /// Stock UOM for [serial], read from its DN rows for display on the qty
+  /// chips. Defaults to 'Nos' (ERPNext's default stock UOM) when no DN row for
+  /// the serial carries a non-empty unit.
+  String getUomForSerial(String serial) {
+    final uom = getDnItemsForSerial(serial)
+        .firstWhereOrNull((i) => (i.uom ?? '').isNotEmpty)
+        ?.uom;
+    return (uom == null || uom.isEmpty) ? 'Nos' : uom;
+  }
+
+  // ── Multi-serial sheet options ─────────────────────────────────────────────
+
+  /// Ordered serial options for the open item sheet — one per invoice serial
+  /// whose DN row matches the current item (and scanned batch, when present).
+  ///
+  /// In edit mode the row being edited is excluded from "packed" so its own
+  /// qty does not mark its serial Full (mirrors the DN dropdown semantics).
+  List<PsSerialOption> serialOptionsForSheet() {
+    final dn = linkedDeliveryNote.value;
+    final code = currentItemCode;
+    if (dn == null || code == null) return const [];
+    return buildPsSerialOptions(
+      items: dn.items,
+      code: code,
+      batch: currentScannedBatch,
+      remainingQty: (row) => _calcRemainingQtyForDnItem(
+        row,
+        excludeSlipItemName: isEditing.value ? currentItemNameKey : null,
+      ),
+    );
+  }
+
+  /// Re-seeds the open add-mode sheet session to [serial]'s DN row:
+  /// dnDetail, batch, uom, serial context, and the qty cap. The child
+  /// controller re-prefills its qty field afterwards.
+  void retargetSheetToSerial(String serial) {
+    final option = serialOptionsForSheet()
+        .firstWhereOrNull((o) => o.serial == serial);
+    if (option == null) return;
+    _populateItemDetails(option.dnRow);
+    bsMaxQty.value = option.remaining;
   }
 
   // ---------------------------------------------------------------------------
@@ -653,31 +782,49 @@ class PackingSlipFormController extends GetxController
   /// context field, then delegates to the sheet opener.
   /// Single responsibility: success-path routing after a resolved scan.
   Future<void> _handleScanResult(ScanResult result) async {
-    currentScannedEan = result.rawCode ?? '';
+    currentScannedEan = result.rawCode;
     final match = _findItemInDN(
       result.itemData!.itemCode,
       result.batchNo,
     );
     if (match != null) {
-      prepareSheetForAdd(match);
+      prepareSheetForAdd(match, scannedBatch: result.batchNo);
     } else {
-      GlobalSnackbar.error(
-        message:
-        'Item ${result.itemData!.itemCode} not found in Delivery Note'
-            ' or Batch mismatch.',
-      );
+      final code = result.itemData!.itemCode;
+      final batch = result.batchNo;
+      final dnItems = linkedDeliveryNote.value?.items ?? const [];
+      // This predicate mirrors findScannedDnItem's code/batch filter (minus
+      // skipRow/remainingQty), so a null match here means "matches existed but were all skipped".
+      final hasAnyMatch = dnItems.any((i) =>
+          i.itemCode == code && (batch == null || i.batchNo == batch));
+      shakeTrigger.value++;
+      if (hasAnyMatch) {
+        GlobalSnackbar.error(
+          message:
+              'All serials for $code have mismatched Strap/Buckle quantities. '
+              'Packing blocked until the Delivery Note is balanced.',
+        );
+      } else {
+        GlobalSnackbar.error(
+          message: 'Item $code not found in Delivery Note or Batch mismatch.',
+        );
+      }
     }
   }
 
   /// Called when [ScanService] returns a failed or unresolvable result.
   /// Single responsibility: failure-path feedback.
-  void _onScanFailed(ScanResult result) =>
-      GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+  void _onScanFailed(ScanResult result) {
+    shakeTrigger.value++;
+    GlobalSnackbar.error(message: result.message ?? 'Scan failed');
+  }
 
   /// Called when an exception is thrown during scan processing.
   /// Single responsibility: exception-path feedback.
-  void _onScanError(Object e) =>
-      GlobalSnackbar.error(message: 'Scan processing error: $e');
+  void _onScanError(Object e) {
+    shakeTrigger.value++;
+    GlobalSnackbar.error(message: 'Scan processing error: $e');
+  }
 
   // ── Orchestrator ────────────────────────────────────────────────────────────
 
@@ -717,12 +864,21 @@ class PackingSlipFormController extends GetxController
     }
   }
 
+  /// Same item code can appear on multiple DN rows (one per invoice serial).
+  /// Delegates to [findScannedDnItem] so a scan advances to the first row
+  /// that still has qty remaining instead of always resolving to row #1.
   DeliveryNoteItem? _findItemInDN(String code, String? batch) {
-    return linkedDeliveryNote.value!.items.firstWhereOrNull((item) {
-      final codeMatch  = item.itemCode == code;
-      final batchMatch = (batch == null) || (item.batchNo == batch);
-      return codeMatch && batchMatch;
-    });
+    final dnItems = linkedDeliveryNote.value!.items;
+    return findScannedDnItem(
+      items:        dnItems,
+      code:         code,
+      batch:        batch,
+      remainingQty: _calcRemainingQtyForDnItem,
+      skipRow: (row) =>
+          isPairedItemGroup(row.itemGroup) &&
+          isSerialStrapBuckleUnbalanced(
+              dnItems, row.customInvoiceSerialNumber ?? ''),
+    );
   }
 
   // ── Serial badge predicate ─────────────────────────────────────────────────
@@ -759,9 +915,13 @@ class PackingSlipFormController extends GetxController
       ) {
     final fields = <Widget>[];
 
-    if (currentBatchNo != null && currentBatchNo!.isNotEmpty) {
-      fields.add(BatchDisplayTile(batchNo: currentBatchNo!));
-    }
+    // Reactive: re-targeting the sheet to another serial's DN row can change
+    // (or clear) the batch — the tile follows bsBatchNo.
+    fields.add(Obx(() {
+      final batch = bsBatchNo.value;
+      if (batch == null || batch.isEmpty) return const SizedBox.shrink();
+      return BatchDisplayTile(batchNo: batch);
+    }));
 
     if (_shouldShowSerialBadge()) {
       final serial = currentSerial!;
@@ -771,7 +931,10 @@ class PackingSlipFormController extends GetxController
           accentColor: Colors.teal,
           label:       'Invoice Serial No',
           hint:        serial,
-          posItemQtyOverride: () => posQtyCapForSerial(serial),
+          // Read the live selection — the open-time serial is only the
+          // fallback before anything is selected.
+          posItemQtyOverride: () =>
+              posQtyCapForSerial(child.selectedSerial.value ?? serial),
         ),
       );
     }
@@ -954,8 +1117,18 @@ class PackingSlipFormController extends GetxController
 
   // ── Orchestrator ───────────────────────────────────────────────────────────
 
-  void prepareSheetForAdd(DeliveryNoteItem item) {
+  void prepareSheetForAdd(DeliveryNoteItem item, {String? scannedBatch}) {
     if (_isSheetAlreadyOpen()) return;
+    // Strap/Buckle gate: refuse to open the sheet for a paired item on an
+    // unbalanced serial (covers the Items-tab tap-to-add path, which seeds the
+    // serial directly and so bypasses the dropdown/scan navigation gates).
+    final serial = item.customInvoiceSerialNumber ?? '';
+    if (isStrapBuckleBlocked(item.itemGroup, serial)) {
+      shakeTrigger.value++;
+      GlobalSnackbar.error(message: strapBuckleBlockMessage(serial));
+      return;
+    }
+    currentScannedBatch = scannedBatch;
     _resetSessionForAdd(item);
     final remaining = _calcRemainingQtyForDnItem(item);
     _seedSheetQty(maxQty: remaining);
@@ -1051,6 +1224,7 @@ class PackingSlipFormController extends GetxController
       final dnItem = _resolveDnItemForSlipItem(item);
       if (dnItem == null) return;
       _resetSessionForEdit(item, dnItem);
+      currentScannedBatch = null;
       final remaining = _calcRemainingQtyForDnItem(
         dnItem,
         excludeSlipItemName: item.name,
@@ -1090,10 +1264,35 @@ class PackingSlipFormController extends GetxController
     currentItemCode      = item.itemCode;
     currentItemName      = item.itemName;
     currentBatchNo       = item.batchNo;
+    bsBatchNo.value      = item.batchNo;
     currentUom           = item.uom;
     currentSerial        = item.customInvoiceSerialNumber;
+    currentItemGroup     = item.itemGroup;
     currentNetWeight     = 0.0;
     currentWeightUom     = 0.0;
+  }
+
+  // ── Strap/Buckle balance gate (commit-level) ───────────────────────────────
+  //
+  // Authoritative block shared by every Packing Slip entry point. The serial
+  // dropdown disables blocked serials and scan skips them, but those are
+  // navigation gates only — the tap-to-add path opens the sheet pre-seeded to a
+  // serial, so the actual commit must be gated here too (defense in depth).
+
+  /// True when packing [itemGroup] on [serial] is blocked by the Strap/Buckle
+  /// balance rule for the currently linked Delivery Note.
+  bool isStrapBuckleBlocked(String? itemGroup, String? serial) =>
+      isPackBlockedByBalance(
+          linkedDeliveryNote.value?.items ?? const [], itemGroup, serial);
+
+  /// User-facing block message naming the offending Strap/Buckle figures.
+  String strapBuckleBlockMessage(String serial) {
+    final q = strapBuckleQtyFor(
+        linkedDeliveryNote.value?.items ?? const [], serial);
+    String f(double v) =>
+        v == v.truncateToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+    return 'Serial #$serial: Straps (${f(q.strap)}) ≠ Buckles (${f(q.buckle)}). '
+        'Packing blocked until the Delivery Note is balanced.';
   }
 
   /// E1 fix: PackingSlipItemFormController.adjustQty takes int, but delta
@@ -1238,7 +1437,18 @@ class PackingSlipFormController extends GetxController
     if (isEditing.value && currentItemNameKey != null) {
       updateItem(currentItemNameKey!, qty);
       Get.key.currentState?.pop();
+      _flashRecentlyPacked(currentItemDnDetail);
       _applyAndPersist(packingSlip.value?.items.toList() ?? []);
+      return;
+    }
+
+    // Backstop: never create a paired-item row on an unbalanced serial, even if
+    // a future entry path reaches here without the proactive open-time guard.
+    if (isStrapBuckleBlocked(currentItemGroup, currentSerial)) {
+      shakeTrigger.value++;
+      GlobalSnackbar.error(
+          message: strapBuckleBlockMessage(currentSerial ?? ''));
+      Get.key.currentState?.pop();
       return;
     }
 
@@ -1246,7 +1456,21 @@ class PackingSlipFormController extends GetxController
     final merged = _mergeItemQty(items, qty);
     if (!merged) _addItemToList(items, qty);
     Get.key.currentState?.pop();
+    _flashRecentlyPacked(currentItemDnDetail);
     _applyAndPersist(items);
+  }
+
+  /// Highlights the checklist row for [dnDetail] briefly after a successful
+  /// pack, then clears it — unless a newer pack has already replaced it.
+  /// Mirrors [DeliveryNoteFormController.addItem]'s flash-then-fade guard.
+  void _flashRecentlyPacked(String? dnDetail) {
+    if (dnDetail == null) return;
+    recentlyPackedDnDetail.value = dnDetail;
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (recentlyPackedDnDetail.value == dnDetail) {
+        recentlyPackedDnDetail.value = '';
+      }
+    });
   }
 
   /// Entry point called by the sheet's submit button and auto-submit.
@@ -1357,6 +1581,7 @@ class PackingSlipFormController extends GetxController
       _updateOriginalState(saved);
       name = saved.name;
       mode = 'edit';
+      await startRealtimeSyncAfterCreate();
       GlobalSnackbar.success(message: 'Packing Slip Created: ${saved.name}');
       _setSaveResult(SaveResult.success);
     } else {
@@ -1434,6 +1659,7 @@ class PackingSlipFormController extends GetxController
   /// [_buildItemsPayload], API calls to [_createDocument] / [_updateDocument],
   /// and error handling to [_handleSaveError]. The orchestrator contains no
   /// field access, no JSON construction, and no snackbar calls.
+  @override
   Future<void> saveDocument() async {
     if (!isDirty.value && mode != 'new') return;
     if (isSaving.value) return;

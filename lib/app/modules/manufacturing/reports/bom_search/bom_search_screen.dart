@@ -4,6 +4,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BomSearchScreen extends GetView<BomSearchController> {
@@ -53,29 +54,15 @@ class BomSearchScreen extends GetView<BomSearchController> {
   // ── Filter chip builder ────────────────────────────────────────────────
 
   List<Widget> _buildFilterChips(BuildContext context) {
-    final cs    = Theme.of(context).colorScheme;
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list and report screen.
     final chips = <Widget>[];
-
-    Widget chip(String key, String label) => Chip(
-          avatar: Icon(Icons.filter_alt_outlined,
-              size: 14, color: cs.onSecondaryContainer),
-          label: Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: cs.onSecondaryContainer,
-                fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: cs.secondaryContainer,
-          deleteIconColor: cs.onSecondaryContainer,
-          onDeleted: () => controller.clearFilter(key),
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          visualDensity: VisualDensity.compact,
-          side: BorderSide.none,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-        );
-
     controller.activeFilters.forEach((key, label) {
-      chips.add(chip(key, label));
+      chips.add(FilterChipWidget(
+        icon: Icons.filter_alt_outlined,
+        label: label,
+        onDeleted: () => controller.clearFilter(key),
+      ));
     });
     return chips;
   }

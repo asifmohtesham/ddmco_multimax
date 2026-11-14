@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:collection/collection.dart';
 
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:multimax/app/data/models/mr_item_row.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
@@ -21,8 +22,6 @@ import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 // docs only — tree-shaken at compile time; surfaces TEC rules in IDE hover
-import 'package:multimax/app/shared/item_sheet/tec_lifecycle_rules.dart'
-    show TecLifecycleRules; // ignore: unused_import
 
 /// Item-level sheet controller for Stock Entry.
 ///
@@ -212,8 +211,16 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   }
 
   // ── Abstract overrides ─────────────────────────────────────────────────
+  /// Warehouse scope for balance lookups (rack balance, batch balance,
+  /// pickers, rack-stock preload).
+  ///
+  /// Priority 1: warehouse resolved from the scanned source rack.
+  /// Priority 2: the document-level default source warehouse.
+  /// Mirrors ERPNext v15 row-precedence (row s_warehouse over parent
+  /// from_warehouse) and the submit() cascade below.
   @override
-  String? get resolvedWarehouse => _parent.fromWarehouse.value;
+  String? get resolvedWarehouse =>
+      itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
 
   @override bool get requiresBatch => true;
   @override bool get requiresRack  => false;
@@ -468,7 +475,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   @override
   RxnString get selectedToWarehouse => _parent.toWarehouse;
 
-  @override
   RxString get selectedStockEntryType => _parent.stockEntryType;
 
   // ── Dual-rack actions ──────────────────────────────────────────────────────
@@ -488,7 +494,39 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     itemTargetWarehouse.value    = null;
   }
 
-  @override
+  /// Fetches the authoritative warehouse for a rack from the Rack DocType.
+  /// Injectable so unit tests can stub server outcomes without a Dio mock.
+  Future<RackWarehouseLookup> Function(String rack) rackWarehouseFetcher =
+      (rack) => ApiProvider().getRackWarehouse(rack);
+
+  /// Resolves the warehouse for [rack] onto the item-level warehouse of the
+  /// given side (Priority 1 of the cascade; `submit()` falls back to the
+  /// document default when this stays null).
+  ///
+  /// Sets the rack-name parse optimistically for a zero-latency label, then
+  /// overwrites it with the Rack DocType's `warehouse` field. On 404 the
+  /// warehouse is cleared and `false` is returned — the rack is invalid.
+  /// On a transient failure the parse value stands (offline degradation).
+  Future<bool> resolveRackWarehouse(String rack, bool isSource) async {
+    if (isClosed) return false;
+    final target = isSource ? itemSourceWarehouse : itemTargetWarehouse;
+    target.value = RackLocation.tryParse(rack)?.warehouseName;
+
+    final lookup = await rackWarehouseFetcher(rack);
+    if (isClosed) return false;
+
+    switch (lookup.status) {
+      case RackLookupStatus.found:
+        if (lookup.warehouse != null) target.value = lookup.warehouse;
+        return true;
+      case RackLookupStatus.notFound:
+        target.value = null;
+        return false;
+      case RackLookupStatus.error:
+        return true;
+    }
+  }
+
   Future<void> validateDualRack(String rack, bool isSource) async {
     if (rack.isEmpty) {
       if (isSource) { resetSourceRackValidation(); } else { resetTargetRackValidation(); }
@@ -502,6 +540,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
       isTargetRackValid.value      = false;
     }
     try {
+      // Resolve the rack's warehouse FIRST so the balance lookup below is
+      // scoped to the rack's own warehouse rather than the document default
+      // (a rack in a non-default warehouse otherwise reads balance 0 and is
+      // falsely rejected).
+      final rackExists = await resolveRackWarehouse(rack, isSource);
+      if (!rackExists) {
+        if (isSource) {
+          isSourceRackValid.value = false;
+        } else {
+          isTargetRackValid.value = false;
+        }
+        rackError.value = 'Rack "$rack" not found.';
+        showError('Rack "$rack" not found');
+        return;
+      }
       if (isSource) {
         isLoadingRackBalance.value = true;
         if (_rackStockMap.containsKey(rack)) {
@@ -516,13 +569,11 @@ class StockEntryItemFormController extends ItemSheetControllerBase
           rackError.value =
               'Rack balance is ${rackBalance.value.toStringAsFixed(0)} — cannot issue from this rack.';
         } else {
-          isSourceRackValid.value   = true;
-          itemSourceWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
+          isSourceRackValid.value = true;
           rackError.value = '';
         }
       } else {
         isTargetRackValid.value   = true;
-        itemTargetWarehouse.value = RackLocation.tryParse(rack)?.warehouseName;
         // Only clear rackError if source rack has no active error.
         // Preserving source-side negative-balance error message.
         if (isSourceRackValid.value) {
@@ -586,6 +637,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     try { sourceRackController.removeListener(validateSheet); } catch (_) {}
     try { targetRackController.removeListener(validateSheet); } catch (_) {}
     super.removeSheetListeners();
+  }
+
+  /// Target rack gates [isSheetValid] for Material Transfer, so edits to it
+  /// must re-run [validateSheet]. Removed in [removeSheetListeners].
+  @override
+  void addSheetListeners() {
+    super.addSheetListeners();
+    targetRackController.addListener(validateSheet);
   }
 
   // ── Derived / computed ────────────────────────────────────────────────────────
@@ -699,14 +758,6 @@ class StockEntryItemFormController extends ItemSheetControllerBase
   String? _mrUom;
   String? _mrBatch;
 
-  // ── Whether this SE type requires a source rack ──────────────────────────
-  bool get _requiresSourceRack {
-    final t = _parent.stockEntryType.value;
-    return t == 'Material Issue' ||
-        t == 'Material Transfer' ||
-        t == 'Material Transfer for Manufacture';
-  }
-
   @override
   bool get showSourceRack {
     if (selectedStockEntryType.value == 'Manufacture' && isFinishedItem.value) {
@@ -786,7 +837,14 @@ class StockEntryItemFormController extends ItemSheetControllerBase
             isFinishedItem.value &&
             batchController.text.isNotEmpty);
 
-    final valid = batchOk && qtyOk && ceilOk && rackOk;
+    final serialOk = isInvoiceSerialSatisfied(
+      source:         _parent.entrySource,
+      stockEntryType: _parent.stockEntryType.value,
+      serial:         selectedSerial.value,
+    );
+
+    final valid =
+        batchOk && qtyOk && ceilOk && rackOk && serialOk && _targetRackOk;
 
     isSheetValid.value = valid;
 
@@ -809,6 +867,21 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final mr = _mrQty;
     if (mr != null && mr > 0) parts.add('MR: ${mr.toStringAsFixed(0)}');
     qtyInfoTooltip.value = parts.isEmpty ? null : parts.join('  \u00b7  ');
+  }
+
+  /// Invoice Serial Number is mandatory only for a POS Upload-sourced
+  /// Material Issue — a blank serial there reaches ERPNext as 0 and the
+  /// qty is never counted against any POS line. Every other SE ignores it.
+  static bool isInvoiceSerialSatisfied({
+    required StockEntrySource source,
+    required String? stockEntryType,
+    required String? serial,
+  }) {
+    if (source != StockEntrySource.posUpload ||
+        stockEntryType != 'Material Issue') {
+      return true;
+    }
+    return serial != null && serial.isNotEmpty && serial != '0';
   }
 
   // ── adjustQty ───────────────────────────────────────────────────────────────────
@@ -1150,6 +1223,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Target rack is mandatory only for Material Transfer (mirrors the ERP
+  /// "Stock Entry Target Rack Mandatory" Before Submit server script).
+  /// [submit] only sends a validated target rack, so validity is required.
+  bool get _targetRackOk =>
+      _parent.stockEntryType.value != 'Material Transfer' ||
+      (targetRackController.text.trim().isNotEmpty && isTargetRackValid.value);
+
   // ── submit ────────────────────────────────────────────────────────────────────
   @override
   Future<void> submit() async {
@@ -1160,6 +1240,13 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     final srcRack    = isSourceRackValid.value ? sourceRackController.text : null;
     final tgtRack    = isTargetRackValid.value ? targetRackController.text : null;
     final serial     = selectedSerial.value;
+    if (!isInvoiceSerialSatisfied(
+        source: _parent.entrySource,
+        stockEntryType: _parent.stockEntryType.value,
+        serial: serial)) {
+      throw Exception('Select an Invoice Serial Number');
+    }
+    if (!_targetRackOk) throw Exception('Scan or choose a target rack');
 
     final sWh = itemSourceWarehouse.value ?? _parent.fromWarehouse.value;
     final tWh = itemTargetWarehouse.value ?? _parent.toWarehouse.value;
@@ -1178,8 +1265,41 @@ class StockEntryItemFormController extends ItemSheetControllerBase
     }
   }
 
+  /// Re-fetches the batch balance when a rack scan resolves the item-level
+  /// source warehouse AFTER the batch was already validated (batch-first
+  /// scan order). Without this, the balance stays scoped to the document
+  /// default warehouse. Debounced 200 ms to coalesce the optimistic-parse
+  /// and API-overwrite writes.
+  Worker? _batchRescopeWorker;
+
+  /// Picking a serial in the dropdown must re-run the Save gate.
+  Worker? _serialWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _serialWorker = ever<String?>(selectedSerial, (_) {
+      if (!isClosed) validateSheet();
+    });
+    // debounce (not ever): resolveRackWarehouse writes itemSourceWarehouse
+    // twice in quick succession (optimistic parse, then API overwrite) —
+    // coalesce into one re-fetch so a stale intermediate balance never lands.
+    _batchRescopeWorker = debounce<String?>(
+      itemSourceWarehouse,
+      (_) {
+        if (isClosed) return;
+        if (isBatchValid.value && batchController.text.trim().isNotEmpty) {
+          fetchBatchBalance();
+        }
+      },
+      time: const Duration(milliseconds: 200),
+    );
+  }
+
   @override
   void onClose() {
+    _batchRescopeWorker?.dispose();
+    _serialWorker?.dispose();
     disposeBarcodeListener();   // BarcodeAwareMixin: safety-net disposal
     disposeAutoFillListener();
     super.onClose();

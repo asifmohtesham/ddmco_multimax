@@ -148,6 +148,12 @@ class DeliveryNoteItem {
   final int docstatus;
   final String? warehouse;
 
+  /// Sales Order link — ERPNext advances the SO's per_delivered only through
+  /// these, so they must survive every save.
+  final String? againstSalesOrder;
+  final String? soDetail;
+  final double? conversionFactor;
+
   DeliveryNoteItem({
     this.name,
     required this.itemCode,
@@ -171,6 +177,9 @@ class DeliveryNoteItem {
     this.companyTotalStock,
     this.docstatus = 0,
     this.warehouse,
+    this.againstSalesOrder,
+    this.soDetail,
+    this.conversionFactor,
   });
 
   factory DeliveryNoteItem.fromJson(Map<String, dynamic> json) {
@@ -199,6 +208,11 @@ class DeliveryNoteItem {
           DeliveryNote._parseDouble(json['company_total_stock']),
       docstatus: DeliveryNote._parseInt(json['docstatus']),
       warehouse: json['warehouse'] as String?,
+      againstSalesOrder: json['against_sales_order'] as String?,
+      soDetail: json['so_detail'] as String?,
+      conversionFactor: json['conversion_factor'] == null
+          ? null
+          : DeliveryNote._parseDouble(json['conversion_factor']),
     );
   }
 
@@ -217,6 +231,13 @@ class DeliveryNoteItem {
     }
     if (warehouse != null) {
       data['warehouse'] = warehouse;
+    }
+    if (againstSalesOrder != null && againstSalesOrder!.isNotEmpty) {
+      data['against_sales_order'] = againstSalesOrder;
+      data['so_detail'] = soDetail;
+    }
+    if (conversionFactor != null) {
+      data['conversion_factor'] = conversionFactor;
     }
     return data;
   }
@@ -244,6 +265,9 @@ class DeliveryNoteItem {
     double? companyTotalStock,
     int? docstatus,
     String? warehouse,
+    String? againstSalesOrder,
+    String? soDetail,
+    double? conversionFactor,
   }) {
     return DeliveryNoteItem(
       name: name ?? this.name,
@@ -269,6 +293,9 @@ class DeliveryNoteItem {
       companyTotalStock: companyTotalStock ?? this.companyTotalStock,
       docstatus: docstatus ?? this.docstatus,
       warehouse: warehouse ?? this.warehouse,
+      againstSalesOrder: againstSalesOrder ?? this.againstSalesOrder,
+      soDetail: soDetail ?? this.soDetail,
+      conversionFactor: conversionFactor ?? this.conversionFactor,
     );
   }
 }

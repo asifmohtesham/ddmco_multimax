@@ -68,10 +68,11 @@ class ItemController extends GetxController with ItemScrollMixin {
   // ── Filter state ────────────────────────────────────────────────────────────
   final activeFilters = <FilterRow>[].obs;
 
-  /// Length-mirror of [activeFilters] as a [RxMap] so [DocTypeListHeader]
-  /// can subscribe reactively without a synthetic shim rebuilt each frame.
-  /// Keys are positional sentinels (`'_0'`, `'_1'`, …); only `.length` and
-  /// `.isEmpty` are read by the header.
+  /// Real [RxMap] mirror of [activeFilters] that [DocTypeListHeader] subscribes
+  /// to. Keys are the filter's field (attribute rows keyed by `attr:<name>` to
+  /// avoid collisions); values are the entered filter value. Rebuilt from the
+  /// [FilterRow] source of truth via the [ever] worker in [onInit] — no
+  /// synthetic positional-sentinel shim.
   final activeFiltersMap = <String, dynamic>{}.obs;
 
   final List<FilterRow> availableFields = [
@@ -113,10 +114,13 @@ class ItemController extends GetxController with ItemScrollMixin {
   int get filterCount => activeFilters.length;
 
   void _syncFiltersMap() {
-    activeFiltersMap.clear();
-    for (var i = 0; i < activeFilters.length; i++) {
-      activeFiltersMap['_$i'] = true;
+    final next = <String, dynamic>{};
+    for (final f in activeFilters) {
+      if (f.value.isEmpty) continue;
+      final key = f.fieldType == 'Attribute' ? 'attr:${f.attributeName}' : f.field;
+      next[key] = f.value;
     }
+    activeFiltersMap.assignAll(next);
   }
 
   @override

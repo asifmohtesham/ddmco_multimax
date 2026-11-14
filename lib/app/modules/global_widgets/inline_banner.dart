@@ -1,38 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 // ── Banner variant ────────────────────────────────────────────────────────────
-/// Semantic type of an [InlineBanner]. Maps directly to the colour tokens
+/// Semantic type of an [InlineBanner]. Maps directly to the colour ramps
 /// already used by [StatusPill] so the palette is never duplicated.
 enum BannerType { success, error, warning, info }
 
-// ── Design tokens (mirrored from status_pill.dart) ────────────────────────────
-const _kSuccessBg   = Color(0xFFE5F8ED);
-const _kSuccessText = Color(0xFF36A564);
-
-const _kErrorBg     = Color(0xFFFFF5F5);
-const _kErrorText   = Color(0xFFE54D4D);
-
-const _kWarningBg   = Color(0xFFFFF3E1);
-const _kWarningText = Color(0xFFFFA00A);
-
-const _kInfoBg      = Color(0xFFEBF5FF);
-const _kInfoText    = Color(0xFF3688E5);
-
 // ── Token helpers ─────────────────────────────────────────────────────────────
-Color _bgFor(BannerType t) => switch (t) {
-  BannerType.success => _kSuccessBg,
-  BannerType.error   => _kErrorBg,
-  BannerType.warning => _kWarningBg,
-  BannerType.info    => _kInfoBg,
+// StatusPill convention: a translucent x500 tint over the ambient surface,
+// with x700 ink in light mode / x300 in dark. The old pastel constants gave
+// warning text ~1.9:1 and never adapted to dark mode.
+Color _baseFor(BannerType t) => switch (t) {
+  BannerType.success => AppColors.green500,
+  BannerType.error   => AppColors.red500,
+  BannerType.warning => AppColors.orange500,
+  BannerType.info    => AppColors.blue500,
 };
 
-Color _textFor(BannerType t) => switch (t) {
-  BannerType.success => _kSuccessText,
-  BannerType.error   => _kErrorText,
-  BannerType.warning => _kWarningText,
-  BannerType.info    => _kInfoText,
-};
+Color _bgFor(BannerType t) => _baseFor(t).withValues(alpha: 0.13);
+
+Color _textFor(BannerType t, Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return switch (t) {
+    BannerType.success => dark ? AppColors.green300 : AppColors.green700,
+    BannerType.error   => dark ? AppColors.red300 : AppColors.red700,
+    BannerType.warning => dark ? AppColors.orange300 : AppColors.orange700,
+    BannerType.info    => dark ? AppColors.blue300 : AppColors.blue700,
+  };
+}
 
 IconData _iconFor(BannerType t) => switch (t) {
   BannerType.success => Icons.check_circle_outline,
@@ -91,33 +87,16 @@ class InlineBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg      = _bgFor(type);
-    final fg      = _textFor(type);
+    final fg      = _textFor(type, Theme.of(context).brightness);
     final leadIcon = icon ?? _iconFor(type);
 
-    // AnimatedSwitcher drives a combined slide-down + fade so the banner
-    // appears/disappears without causing layout jumps in scroll views.
-    // The ClipRect + Align height-tween collapses the banner to zero height
-    // when hidden, matching the approach used in SaveIconButton transitions.
+    // AnimatedSwitcher drives a combined grow + slide-down + fade so the
+    // banner appears/disappears without causing layout jumps in scroll views.
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
       switchInCurve:  Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) {
-        final slide = Tween<Offset>(
-          begin: const Offset(0, -0.4),
-          end:   Offset.zero,
-        ).animate(animation);
-        return ClipRect(
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: animation.value,
-            child: FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: slide, child: child),
-            ),
-          ),
-        );
-      },
+      transitionBuilder: _transition,
       child: visible
           ? _BannerContent(
               key:      ValueKey('${type.name}:$message'),
@@ -129,6 +108,30 @@ class InlineBanner extends StatelessWidget {
           : const SizedBox.shrink(key: ValueKey('__empty__')),
     );
   }
+
+  static final _slideIn = Tween<Offset>(
+    begin: const Offset(0, -0.4),
+    end:   Offset.zero,
+  );
+
+  // Every piece of this transition must LISTEN to [animation]. AnimatedSwitcher
+  // calls the builder once per entry and caches the result — and it does so
+  // before it sets `controller.value = 1.0`, so the builder always sees 0.0.
+  // The old `Align(heightFactor: animation.value)` froze that 0.0 into the
+  // tree: the banner mounted but laid out at zero height and never painted.
+  // SizeTransition is the listening equivalent of that ClipRect + Align.
+  static Widget _transition(Widget child, Animation<double> animation) =>
+      SizeTransition(
+        sizeFactor: animation,
+        alignment:  Alignment.topCenter,
+        child: FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: _slideIn.animate(animation),
+            child:    child,
+          ),
+        ),
+      );
 }
 
 // ── Private content widget (extracted for clean key targeting) ────────────────

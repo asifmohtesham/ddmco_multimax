@@ -1,5 +1,4 @@
 import 'package:get/get.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/data/providers/bom_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -11,14 +10,13 @@ import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/data/providers/job_card_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
+import 'package:multimax/app/data/providers/attendance_provider.dart';
 class HomeBinding extends Bindings {
   @override
   void dependencies() {
-    // DataWedgeService, ScanService, and PermissionService are registered
-    // permanently in main() before runApp — do NOT put them here to avoid
-    // re-instantiation on every HOME route push.
-
-    Get.put(StorageService(), permanent: true);
+    // DataWedgeService, ScanService, PermissionService and StorageService
+    // are registered permanently in main() before runApp — do NOT put them
+    // here to avoid re-instantiation on every HOME route push.
 
     // Providers
     Get.lazyPut<BomProvider>(() => BomProvider());
@@ -31,6 +29,7 @@ class HomeBinding extends Bindings {
     Get.lazyPut<JobCardProvider>(() => JobCardProvider());
     Get.lazyPut<UserProvider>(() => UserProvider());
     Get.lazyPut<StockEntryProvider>(() => StockEntryProvider());
+    Get.lazyPut<AttendanceProvider>(() => AttendanceProvider());
 
     // Controller
     Get.lazyPut<HomeController>(() => HomeController());

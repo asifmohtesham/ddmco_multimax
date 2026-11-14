@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
@@ -20,6 +23,10 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
       final isLoading  = controller.isLoading.value;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track the
+      // permission cache (an RxMap) behind canCreateReceipt.
+      final canCreateReceipt = controller.canCreateReceipt;
 
       return PopScope(
         canPop: !isDirty,
@@ -47,6 +54,22 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    if (canCreateReceipt)
+                      // AsyncIconButton carries its own Obx, so it repaints the
+                      // icon↔spinner swap even though the SliverPersistentHeader
+                      // delegate's shouldRebuild keys on action count.
+                      AsyncIconButton(
+                        busy: controller.isCreatingReceipt,
+                        onPressed: controller.createPurchaseReceipt,
+                        icon: const Icon(Icons.receipt_long),
+                        tooltip: 'Create Purchase Receipt',
+                      ),
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -85,7 +108,8 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Status', style: TextStyle(color: Colors.grey[600])),
+              Text('Status',
+                  style: TextStyle(color: context.scheme.textMuted)),
               StatusPill(status: po.status),
             ],
           ),
@@ -152,6 +176,22 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             icon: Icons.account_balance_wallet,
             isBold: true,
           ),
+          if (po.perReceived != null && po.perReceived! > 0) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              'Received',
+              '${po.perReceived!.toStringAsFixed(2)}%',
+              icon: Icons.local_shipping_outlined,
+            ),
+          ],
+          if (po.perBilled != null && po.perBilled! > 0) ...[
+            const SizedBox(height: 16),
+            _buildInfoRow(
+              'Billed',
+              '${po.perBilled!.toStringAsFixed(2)}%',
+              icon: Icons.receipt_long_outlined,
+            ),
+          ],
         ],
       ),
     );
@@ -178,13 +218,35 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
                 ),
         ),
         if (controller.isEditable)
-          Obx(() => BarcodeInputWidget(
-            onScan:      (code) => controller.scanBarcode(code),
-            isLoading:   controller.isScanning.value,
-            controller:  controller.barcodeController,
-            hintText:    'Scan Item Code',
-            activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
-          )),
+          Obx(() {
+            if (controller.isItemSheetOpen.value) {
+              return const SizedBox.shrink();
+            }
+            return BarcodeInputWidget(
+              onScan:      (code) => controller.scanBarcode(code),
+              isLoading:   controller.isScanning.value,
+              controller:  controller.barcodeController,
+              hintText:    'Scan Item Code',
+              activeRoute: AppRoutes.PURCHASE_ORDER_FORM,
+            );
+          }),
+        if (controller.canCreateReceipt)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: AsyncFilledButton(
+                busy: controller.isCreatingReceipt,
+                onPressed: controller.createPurchaseReceipt,
+                icon: const Icon(Icons.receipt_long),
+                label: 'Create Purchase Receipt',
+                loadingLabel: 'Creating…',
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+            ),
+          ),
         SizedBox(height: MediaQuery.viewInsetsOf(context).bottom),
       ],
     );
@@ -253,10 +315,12 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
     IconData? icon,
     bool isBold = false,
   }) {
-    return Row(
+    return Builder(builder: (context) {
+      final scheme = context.scheme;
+      return Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 20, color: Colors.grey),
+          Icon(icon, size: 20, color: scheme.textMuted),
           const SizedBox(width: 12),
         ],
         Expanded(
@@ -264,7 +328,8 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: TextStyle(
+                      fontSize: 12, color: scheme.textMuted)),
               Text(
                 value,
                 style: TextStyle(
@@ -276,6 +341,7 @@ class PurchaseOrderFormScreen extends GetView<PurchaseOrderFormController> {
           ),
         ),
       ],
-    );
+      );
+    });
   }
 }

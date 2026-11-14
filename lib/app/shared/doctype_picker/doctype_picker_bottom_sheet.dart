@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'doctype_picker_config.dart';
 import 'doctype_picker_column.dart';
 import 'package:get/get.dart';
@@ -297,10 +298,10 @@ class _DocTypePickerBottomSheetState
                       flex: c.flex,
                       child: Text(
                         c.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Colors.grey,
+                          color: context.scheme.textMuted,
                         ),
                         textAlign: c.align,
                       ),
@@ -387,7 +388,8 @@ class _DocTypePickerBottomSheetState
               if (subtitleParts.isNotEmpty)
                 Text(
                   subtitleParts.join(' \u2022 '),
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                      fontSize: 12, color: context.scheme.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

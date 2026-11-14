@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart'; // clampDouble
+import 'package:multimax/app/modules/global_widgets/count_badge.dart';
+import 'package:multimax/app/modules/global_widgets/add_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Heights — keep all magic numbers in one place.
@@ -197,6 +200,20 @@ class DocTypeListHeader extends StatelessWidget {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  /// Chips that are always shown in the chip row, after the active-filter
+  /// chips and the `+ Filter` add-chip — e.g. a report's sort choices. Unlike
+  /// [filterChipsBuilder] they do not depend on a filter being active.
+  final List<Widget>? quickChips;
+
+  /// Changes whenever the state shown by [quickChips] changes (e.g. the
+  /// selected sort), so the cached header repaints; see [extraActionsKey].
+  final Object? quickChipsKey;
+
+  // ── Image scan ────────────────────────────────────────────────────────
+  /// When non-null, the search delegate shows a camera icon that opens the
+  /// image scan flow. Only [ItemListAppBar] sets this.
+  final ValueChanged<ImageScanResult>? onImageScanResult;
+
   // ── Bottom slot ───────────────────────────────────────────────────────
   /// Optional widget pinned below the collapsed toolbar — typically a [TabBar].
   ///
@@ -231,6 +248,9 @@ class DocTypeListHeader extends StatelessWidget {
     this.onFilterTap,
     this.filterChipsBuilder,
     this.onClearAllFilters,
+    this.quickChips,
+    this.quickChipsKey,
+    this.onImageScanResult,
     this.bottom,
     this.extraActionsKey,
   });
@@ -275,8 +295,20 @@ class DocTypeListHeader extends StatelessWidget {
         onFilterTap: onFilterTap,
         filterChipsBuilder: filterChipsBuilder,
         onClearAllFilters: onClearAllFilters,
+        quickChips: quickChips,
+        quickChipsKey: quickChipsKey,
+        onImageScanResult: onImageScanResult,
         bottom: bottom,
         statusBarHeight: statusBarHeight,
+        // Captured so shouldRebuild can detect a pure Theme/Brightness change
+        // (e.g. the user flips Light/Dark while this screen sits off-screen in
+        // the Navigator backstack). Without this, none of the other compared
+        // fields change, shouldRebuild returns false, SliverPersistentHeader
+        // never invalidates its cached child, and the header keeps painting
+        // the OLD theme's colorScheme.surface indefinitely — it was observed
+        // on-device as a header frozen on the dark surface colour while the
+        // rest of the (freshly-rebuilt) screen had already gone light.
+        themeSurface: Theme.of(context).colorScheme.surface,
       ),
     );
   }
@@ -315,12 +347,25 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// See [DocTypeListHeader.filterChipsBuilder] for the full contract.
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
+  /// See [DocTypeListHeader.quickChips].
+  final List<Widget>? quickChips;
+  final Object? quickChipsKey;
+
+  /// See [DocTypeListHeader.onImageScanResult].
+  final ValueChanged<ImageScanResult>? onImageScanResult;
 
   /// See [DocTypeListHeader.bottom].
   final PreferredSizeWidget? bottom;
 
   /// Height of the system status bar on this device / orientation.
   final double statusBarHeight;
+
+  /// [Theme.of(context).colorScheme.surface] at construction time — the exact
+  /// colour [build] paints the header's [Material] with. Compared in
+  /// [shouldRebuild] so a pure Theme/Brightness change (no title/filter/
+  /// search/action diff) still invalidates the cached child; see
+  /// [shouldRebuild] for why this is otherwise missed.
+  final Color themeSurface;
 
   // Snapshots captured at construction time so shouldRebuild can detect
   // in-place mutations to the shared RxMap / RxString objects. Without these,
@@ -343,8 +388,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onFilterTap,
     required this.filterChipsBuilder,
     required this.onClearAllFilters,
+    required this.quickChips,
+    required this.quickChipsKey,
+    required this.onImageScanResult,
     required this.bottom,
     required this.statusBarHeight,
+    required this.themeSurface,
   })  : _filterCount = activeFilters?.length ?? 0,
         _searchValue = searchQuery?.value ?? '';
 
@@ -356,6 +405,15 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       filterChipsBuilder != null &&
       (currentSearch.isNotEmpty || currentFilterCount > 0);
 
+  /// The chip row exists (and its height is reserved) whenever there are chips
+  /// to display *or* a `+ Filter` affordance to offer. With [onFilterTap] set
+  /// the row is always present — showing just the `+ Filter` add-chip when no
+  /// filter is active — so the add-chip is reachable directly from the row.
+  bool get _hasChipRow =>
+      filterChipsBuilder != null ||
+      onFilterTap != null ||
+      (quickChips?.isNotEmpty ?? false);
+
   // ── Extents ────────────────────────────────────────────────────────────
   double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
 
@@ -364,19 +422,18 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       statusBarHeight +
       _kToolbar +
       _bottomHeight +
-      // Chip row is always reserved in maxExtent when the builder is present,
-      // so minExtent must match — otherwise the layout overflows when collapsed.
-      (filterChipsBuilder != null ? _kChipRow : 0.0);
+      // Chip row is always reserved in maxExtent when present, so minExtent
+      // must match — otherwise the layout overflows when collapsed.
+      (_hasChipRow ? _kChipRow : 0.0);
 
   @override
   double get maxExtent =>
       statusBarHeight +
       _kToolbar +
       _kExpandedExtra +
-      // Reserve the chip row height whenever a builder is provided so the
-      // list does not jump when the first filter is applied.  The row renders
-      // empty when no chips are active.
-      (filterChipsBuilder != null ? _kChipRow : 0.0) +
+      // Reserve the chip row height whenever the row is present so the list
+      // does not jump when the first filter is applied.
+      (_hasChipRow ? _kChipRow : 0.0) +
       _bottomHeight;
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -442,46 +499,69 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
 
     // ─ Chip row ────────────────────────────────────────────────────────
     //
-    // filterChipsBuilder returns List<Widget>.  We render them in a
-    // horizontal SingleChildScrollView so they never wrap or overflow
-    // into the list content below.  A "Clear all" button is appended
-    // at the trailing end when onClearAllFilters is set and there are
-    // more than one chip visible.
+    // Renders, in a horizontal SingleChildScrollView (so chips never wrap or
+    // overflow into the list below):
+    //   • the active-filter chips from filterChipsBuilder,
+    //   • a trailing "Clear all" button when onClearAllFilters is set and more
+    //     than one chip is active,
+    //   • a persistent "+ Filter" add-chip when onFilterTap is set — so users
+    //     can add a filter straight from the row even when none is active.
+    //
+    // The row is built whenever _hasChipRow, so its reserved height is never
+    // an empty band: it shows at least the "+ Filter" chip.
     Widget? chipRow;
-    if (chipsNowActive && filterChipsBuilder != null) {
-      final chips = filterChipsBuilder!.call(context);
-      if (chips.isNotEmpty) {
-        chipRow = Material(
-          color: colorScheme.surface,
-          child: SizedBox(
-            height: _kChipRow,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ...chips.map((chip) => Padding(
+    if (_hasChipRow) {
+      final activeChips = (chipsNowActive && filterChipsBuilder != null)
+          ? filterChipsBuilder!.call(context)
+          : const <Widget>[];
+      chipRow = Material(
+        color: colorScheme.surface,
+        child: SizedBox(
+          height: _kChipRow,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...activeChips.map((chip) => Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: chip,
+                    )),
+                if (onFilterTap != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: AddFilterChip(onTap: onFilterTap!),
+                  ),
+                if (activeChips.length > 1 && onClearAllFilters != null)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: onClearAllFilters,
+                    icon: const Icon(Icons.clear_all, size: 16),
+                    label: const Text('Clear all'),
+                  ),
+                if (quickChips?.isNotEmpty ?? false) ...[
+                  if (onFilterTap != null || activeChips.isNotEmpty)
+                    Container(
+                      width: 1,
+                      height: 20,
+                      margin: const EdgeInsets.only(left: 2, right: 8),
+                      color: colorScheme.outlineVariant,
+                    ),
+                  ...quickChips!.map((chip) => Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: chip,
                       )),
-                  if (chips.length > 1 && onClearAllFilters != null)
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        foregroundColor: colorScheme.error,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onPressed: onClearAllFilters,
-                      icon: const Icon(Icons.clear_all, size: 16),
-                      label: const Text('Clear all'),
-                    ),
                 ],
-              ),
+              ],
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
     // ─ Full layout ───────────────────────────────────────────────────────
@@ -506,12 +586,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                   ),
                   toolbar,
                   if (bottom != null) bottom!,
-                  if (filterChipsBuilder != null)
+                  if (_hasChipRow)
                     SizedBox(
                       height: _kChipRow,
-                      // Empty when no chips are active; space is always
-                      // reserved so the list below does not jump.
-                      child: chipsNowActive ? chipRow : null,
+                      child: chipRow,
                     ),
                 ],
               ),
@@ -617,7 +695,18 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                     tooltip: tooltip,
                   );
             return isActive
-                ? Badge(label: Text('$count'), child: button)
+                ? Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      button,
+                      if (count > 0)
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: CountBadge(count: count),
+                        ),
+                    ],
+                  )
                 : button;
           });
         }),
@@ -651,6 +740,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                               onSearchClear: onSearchClear,
                               activeFilters: null,
                               onFilterTap: null,
+                              onImageScanResult: onImageScanResult,
                             ),
                           ),
                         ),
@@ -692,6 +782,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                       onSearchClear: onSearchClear,
                       activeFilters: null,
                       onFilterTap: null,
+                      onImageScanResult: onImageScanResult,
                     ),
                   ),
                 ),
@@ -718,14 +809,22 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // of (canSave, isSaving, saveResult, hasOnSave) so that button state
     // changes (e.g. isDirty true → enabled icon) trigger an immediate rebuild
     // rather than being deferred until the next scroll layout pass.
+    // themeSurface IS compared: a pure Theme/Brightness change (e.g. toggling
+    // Light/Dark while this screen sits off-screen in the Navigator backstack)
+    // touches none of the fields above, so without this the cached header
+    // keeps painting the old theme's colour indefinitely — see [themeSurface].
     return _filterCount != old._filterCount ||
         _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
+        themeSurface != old.themeSurface ||
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         searchDoctype != old.searchDoctype ||
         searchRoute != old.searchRoute ||
         (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
-        extraActionsKey != old.extraActionsKey;
+        extraActionsKey != old.extraActionsKey ||
+        // quickChips are compared by length and key, like extraActions.
+        (quickChips?.length ?? 0) != (old.quickChips?.length ?? 0) ||
+        quickChipsKey != old.quickChipsKey;
   }
 }

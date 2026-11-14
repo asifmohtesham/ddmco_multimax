@@ -1,3 +1,6 @@
 {
-  "cmake.sourceDirectory": "C:/Users/asifm/StudioProjects/ddmco_multimax/windows/flutter"
+  "cmake.sourceDirectory": "C:/Users/asifm/StudioProjects/ddmco_multimax/windows/flutter",
+  "cmake.configureOnOpen": false,
+  "cmake.configureOnEdit": false,
+  "cmake.automaticReconfigure": false
 }

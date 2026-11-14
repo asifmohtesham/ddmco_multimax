@@ -1,7 +1,7 @@
-/// Represents one row of the **Table MultiSelect** field `employee` on Job Card.
+/// Represents a selected employee entry on a Job Card.
 ///
-/// ERPNext fieldtype: Table MultiSelect → options: "Job Card Time Log"
-/// The API returns each selected employee as a dict with at minimum
+/// In ERPNext v15 employee tracking is via `Job Card Time Log` rows.
+/// The API returns each entry as a dict with at minimum
 /// `employee` (the link value) and optionally `employee_name`.
 class JobCardEmployee {
   final String employee;

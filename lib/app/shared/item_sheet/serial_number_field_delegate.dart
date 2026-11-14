@@ -28,12 +28,17 @@ class SerialDropdownItem {
   /// Displayed in the cap chip as "Used: N".
   final double used;
 
+  /// Non-null marks this serial non-selectable in the dropdown; the string is
+  /// the reason shown in the row (e.g. "Strap ≠ Buckle"). Null = selectable.
+  final String? blockedReason;
+
   const SerialDropdownItem({
     required this.serial,
     this.itemName,
     this.qty,
     required this.remaining,
     this.used = 0.0,
+    this.blockedReason,
   });
 
   /// True when a finite qty cap is set and no allocation remains.

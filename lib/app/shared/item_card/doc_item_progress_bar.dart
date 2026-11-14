@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// Standardised per-item progress bar shown inside [DocItemCard] when
 /// a target quantity is known.
@@ -15,7 +16,7 @@ import 'package:intl/intl.dart';
 /// Colour semantics — all colorScheme tokens:
 ///   not started (qty == 0)   → track only
 ///   in progress (0 < qty < target) → cs.primary
-///   complete    (qty >= target)    → cs.tertiary
+///   complete    (qty >= target)    → success green (AppColors.green)
 ///   over-received (qty > target)   → cs.error
 class DocItemProgressBar extends StatelessWidget {
   /// Quantity already processed on this row.
@@ -43,10 +44,16 @@ class DocItemProgressBar extends StatelessWidget {
     final bool isComplete  = qty >= targetQty;
     final bool isOver      = qty > targetQty;
 
+    // "Fully received / 100%" reads as success — use the design-system green
+    // (lightened on dark surfaces) rather than the maroon-seeded tertiary tone.
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color completeColor =
+        isDark ? AppColors.green300 : AppColors.green500;
+
     final Color progressColor = isOver
         ? cs.error
         : isComplete
-            ? cs.tertiary
+            ? completeColor
             : cs.primary;
 
     final String uomSuffix = uom != null ? ' $uom' : '';

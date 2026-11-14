@@ -39,4 +39,69 @@ void main() {
       expect(ctrl.itemWarehouse.value, isNull);
     });
   });
+
+  // Regression (2026-10-10, found on device): choosing an invoice serial
+  // lowers the qty ceiling to that voucher line's qty, but nothing
+  // re-validated, so a stale "valid" sheet saved 4 onto a line of 1.
+  _rackGroup();
+
+  group('DeliveryNoteItemFormController serial change', () {
+    test('T-4: selecting a serial re-runs validateSheet', () async {
+      final ctrl = Get.put(_ValidateSpy());
+      ctrl.selectedSerial.value = '2';
+      await Future<void>.delayed(Duration.zero);
+      expect(ctrl.validations, 1);
+      ctrl.selectedSerial.value = '1';
+      await Future<void>.delayed(Duration.zero);
+      expect(ctrl.validations, 2);
+    });
+  });
+}
+
+// Desk enforces Delivery Note Item.rack via mandatory_depends_on
+// (eval:doc.item_code); the server does not for API saves, so the sheet must.
+void _rackGroup() {
+  group('DeliveryNoteItemFormController rack is required', () {
+    DeliveryNoteItemFormController ready({required String rack}) {
+      final ctrl = Get.put(DeliveryNoteItemFormController());
+      ctrl.qtyController.text = '1';
+      ctrl.isBatchValid.value = true;
+      ctrl.rackController.text = rack;
+      return ctrl;
+    }
+
+    test('T-5: blank rack refuses add/update with a reason', () async {
+      final ctrl = ready(rack: '  ');
+      await expectLater(
+        ctrl.submit(),
+        throwsA(isA<Exception>().having(
+            (e) => e.toString(), 'message', contains('Scan or choose a rack'))),
+      );
+    });
+
+    test('T-7: the refusal reason reaches the sheet, not a hidden snackbar',
+        () async {
+      final ctrl = ready(rack: '');
+      final ok = await ctrl.submitWithFeedback();
+      expect(ok, isFalse);
+      expect(ctrl.submitError.value, 'Scan or choose a rack');
+    });
+
+    test('T-6: a rack passes the rack check', () async {
+      final ctrl = ready(rack: 'KA-WH-DXB1-121D');
+      // Proceeds past the precondition (and then needs a parent form, which
+      // this unit test does not build) — so any failure must not be the rack.
+      try {
+        await ctrl.submit();
+      } catch (e) {
+        expect(e.toString(), isNot(contains('Scan or choose a rack')));
+      }
+    });
+  });
+}
+
+class _ValidateSpy extends DeliveryNoteItemFormController {
+  int validations = 0;
+  @override
+  void validateSheet() => validations++;
 }

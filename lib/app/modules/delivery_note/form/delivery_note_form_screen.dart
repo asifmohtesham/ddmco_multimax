@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/global_widgets/inline_banner.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 import 'package:multimax/app/shared/item_card/doc_item_card.dart';
 import 'package:multimax/app/shared/item_card/item_card_data.dart';
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/models/delivery_note_model.dart';
+import 'package:multimax/app/modules/delivery_note/form/so_pick.dart';
+import 'package:multimax/app/modules/delivery_note/form/widgets/so_pick_header.dart';
 
 class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   const DeliveryNoteFormScreen({super.key});
@@ -21,7 +29,6 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       final isDirty    = controller.isDirty.value;
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
-      final isLoading  = controller.isLoading.value;
 
       return PopScope(
         canPop: !isDirty,
@@ -47,6 +54,12 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -55,16 +68,21 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   ),
                 ),
               ],
-              body: (isLoading && note == null)
-                  ? const Center(child: CircularProgressIndicator())
-                  : note == null
-                      ? const Center(child: Text('Delivery note not found.'))
-                      : TabBarView(
-                          children: [
-                            _buildDetailsView(context, note),
-                            _buildItemsView(context),
-                          ],
-                        ),
+              body: Obx(() {
+                final isLoading = controller.isLoading.value;
+                if (isLoading && note == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (note == null) {
+                  return const Center(child: Text('Delivery note not found.'));
+                }
+                return TabBarView(
+                  children: [
+                    _buildDetailsView(context, note),
+                    _buildItemsView(context),
+                  ],
+                );
+              }),
             ),
           ),
         ),
@@ -170,6 +188,27 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             ],
           ),
           const SizedBox(height: 16),
+          if (controller.salesOrder.value != null) ...[
+            _buildSectionCard(
+              context: context,
+              title: 'References',
+              children: [
+                TextFormField(
+                  initialValue: controller.salesOrder.value!.name,
+                  readOnly: true,
+                  decoration: InputDecoration(
+                    labelText: 'Sales Order',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.receipt_long_outlined,
+                        color: cs.secondary),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 14),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
           if (note.poNo != null && note.poNo!.isNotEmpty)
             _buildSectionCard(
               context: context,
@@ -238,8 +277,11 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   Widget _buildItemsView(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Obx(() {
-      if (controller.setWarehouse.value == null ||
-          controller.setWarehouse.value!.isEmpty) {
+      // SO rows ship from their order line's warehouse, so the header
+      // warehouse is optional there.
+      if (!controller.isSoMode &&
+          (controller.setWarehouse.value == null ||
+              controller.setWarehouse.value!.isEmpty)) {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -264,6 +306,23 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       return Column(
         children: [
           _buildBanner(),
+
+          if (controller.salesOrder.value != null)
+            SoPickHeader(
+              order:      controller.salesOrder.value!,
+              progress:   controller.soProgress,
+              isEditable: controller.deliveryNote.value?.docstatus == 0,
+              uploadName: controller.uploadLink.value == SoUploadLink.linked
+                  ? controller.posUpload.value?.name
+                  : null,
+            ),
+          if (controller.salesOrder.value != null &&
+              controller.deliveryNote.value?.docstatus == 0)
+            SoUploadLinkBanner(
+              link:     controller.uploadLink.value,
+              soPoNo:   controller.salesOrder.value!.poNo,
+              onAssign: controller.openVoucherAssignment,
+            ),
 
           // ── Filters ──────────────────────────────────────────────────────
           SingleChildScrollView(
@@ -301,6 +360,13 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                   controller.deliveryNote.value?.items ?? [];
               final currency =
                   controller.deliveryNote.value?.currency;
+
+              // ── Sales-Order-grouped list ─────────────────────────────
+              final so = controller.salesOrder.value;
+              if (so != null) {
+                return _buildSoLineList(
+                    context, so, deliveryNoteItems, isEditable, currency);
+              }
 
               // ── Flat (non-POS) list ───────────────────────────────────
               if (posUpload == null) {
@@ -512,69 +578,141 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
     });
   }
 
+  // ── Sales Order lines ─────────────────────────────────────────────────────────
+
+  /// One card per open SO line (ordered vs picked), with the DN rows picked
+  /// against it nested inside — the POS-grouped layout keyed by `so_detail`.
+  Widget _buildSoLineList(
+    BuildContext context,
+    SoPickContext so,
+    List<DeliveryNoteItem> rows,
+    bool isEditable,
+    String? currency,
+  ) {
+    final filter = controller.itemFilter.value;
+    // Read here, not in itemBuilder: the builder runs at layout time,
+    // outside the enclosing Obx, so a read there would not rebuild on toggle.
+    final expandedKey = controller.expandedInvoice.value;
+    final lines = so.lines.where((l) {
+      // Hide lines already delivered in full — unless this DN has rows on them.
+      if (l.pendingQty <= 0 && !rows.any((r) => r.soDetail == l.soDetail)) {
+        return false;
+      }
+      final picked = SoPick.pickedQty(l.soDetail, rows);
+      if (filter == 'Completed') return picked >= l.pendingQty;
+      if (filter == 'Pending') return picked < l.pendingQty;
+      return true;
+    }).toList();
+
+    // Rows not tied to any line of this order (e.g. added in desk) stay
+    // visible and editable rather than silently disappearing.
+    final details = so.lines.map((l) => l.soDetail).toSet();
+    final orphans = filter == 'All'
+        ? rows.where((r) => !details.contains(r.soDetail)).toList()
+        : const <DeliveryNoteItem>[];
+
+    if (lines.isEmpty && orphans.isEmpty) {
+      return Center(
+        child: Text(
+          filter == 'All'
+              ? 'Nothing left to deliver on ${so.name}.'
+              : 'No items match the filter.',
+          style: TextStyle(color: context.scheme.textMuted),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: controller.scrollController,
+      padding: const EdgeInsets.only(left: 8, right: 8, top: 4, bottom: 80),
+      itemCount: lines.length + orphans.length,
+      itemBuilder: (context, index) {
+        if (index >= lines.length) {
+          final item = orphans[index - lines.length];
+          return Obx(() => DocItemCard(
+                data: ItemCardData.fromDeliveryNoteItem(item,
+                    isEditable: isEditable),
+                onTap:  isEditable ? () => controller.editItem(item) : null,
+                onEdit: isEditable ? () => controller.editItem(item) : null,
+                isLoadingEdit: controller.loadingForItemName.value == item.name,
+                onDelete: isEditable ? () => controller.deleteItem(item) : null,
+              ));
+        }
+        final line = lines[index];
+        final key = 'so:${line.soDetail}';
+        controller.itemKeys.putIfAbsent(key, () => GlobalKey());
+        final lineRows =
+            rows.where((r) => r.soDetail == line.soDetail).toList();
+        final picked = SoPick.pickedQty(line.soDetail, rows);
+
+        return Container(
+          key: controller.itemKeys[key],
+          child: ItemGroupCard(
+            isExpanded:      expandedKey == key,
+            serialNo:        line.idx,
+            itemName:        '${line.itemCode} · ${line.itemName}',
+            rate:            line.rate,
+            totalQty:        line.pendingQty,
+            scannedQty:      picked,
+            remainingQty:    (line.pendingQty - picked).clamp(0.0, line.pendingQty),
+            currency:        currency,
+            totalQtyLabel:   'To deliver',
+            scannedQtyLabel: 'Picked',
+            unit:            (line.uom ?? 'pcs').toLowerCase(),
+            onToggle: () => controller.toggleInvoiceExpand(key),
+            children: lineRows.asMap().entries.map((entry) {
+              final item = entry.value;
+              if (item.name != null) {
+                controller.itemKeys.putIfAbsent(item.name!, () => GlobalKey());
+              }
+              return Obx(() => DocItemCard(
+                    key:  item.name == null ? null : controller.itemKeys[item.name],
+                    data: ItemCardData.fromDeliveryNoteItem(
+                      item,
+                      index:         entry.key,
+                      isEditable:    isEditable,
+                      isHighlighted:
+                          controller.recentlyAddedItemCode.value == item.itemCode,
+                    ),
+                    onTap:  isEditable ? () => controller.editItem(item) : null,
+                    onEdit: isEditable ? () => controller.editItem(item) : null,
+                    isLoadingEdit:
+                        controller.loadingForItemName.value == item.name,
+                    onDelete: isEditable ? () => controller.deleteItem(item) : null,
+                  ));
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
   // ── Shared helpers ────────────────────────────────────────────────────────────
+
+  // These thin adapters forward to the shared global widgets so the markup
+  // lives in one canonical place; only the controller wiring stays local.
 
   Widget _buildSectionCard({
     required BuildContext context,
     required String title,
     required List<Widget> children,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      margin:    EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: cs.outlineVariant)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+  }) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
 
   Widget _buildSummaryRow(BuildContext context, String label, String value,
-      {bool isBold = false}) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                fontSize:   isBold ? 16 : 14,
-                color:      isBold
-                    ? cs.onSurface
-                    : cs.onSurface.withValues(alpha: 0.6)),
-          ),
-        ],
-      ),
-    );
-  }
+          {bool isBold = false}) =>
+      DocSummaryRow(label: label, value: value, isBold: isBold);
 
-  Widget _buildFilterChip(String label, int count) {
-    return ChoiceChip(
-      label:    Text('$label ($count)'),
-      selected: controller.itemFilter.value == label,
-      onSelected: (bool selected) {
-        if (selected) controller.setFilter(label);
-      },
-    );
-  }
+  Widget _buildFilterChip(String label, int count) => SelectableFilterChip(
+        label: label,
+        count: count,
+        selected: controller.itemFilter.value == label,
+        onSelected: (selected) {
+          if (selected) controller.setFilter(label);
+        },
+      );
 }

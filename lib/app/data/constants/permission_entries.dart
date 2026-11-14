@@ -3,6 +3,8 @@ typedef PermEntry = ({String doctype, String permType});
 // Top-level drawer items (outside any _ModuleGroup)
 const List<PermEntry> kTopLevelPermissions = [
   (doctype: 'ToDo', permType: 'read'),
+  (doctype: 'ToDo', permType: 'create'), // New ToDo FAB
+  (doctype: 'ToDo', permType: 'write'),  // ToDo Edit / Close / Delete
 ];
 
 const List<PermEntry> kStockPermissions = [
@@ -12,13 +14,30 @@ const List<PermEntry> kStockPermissions = [
   (doctype: 'Stock Entry',      permType: 'read'),
   (doctype: 'Delivery Note',    permType: 'read'),
   (doctype: 'Packing Slip',     permType: 'read'),
-  (doctype: 'Batch',            permType: 'report'), // Batch-Wise Balance report
+  (doctype: 'Batch',            permType: 'report'), // Batch-Wise Balance History report
   (doctype: 'Item',             permType: 'report'), // Item Variant Details report
+  (doctype: 'Item',             permType: 'write'),  // Item Re-order rules editing
+  (doctype: 'Stock Entry',      permType: 'report'), // Stock Balance report
+  (doctype: 'Landed Cost Voucher', permType: 'read'),   // Stock → Tools
+  (doctype: 'Landed Cost Voucher', permType: 'create'), // New LCV FAB
+  (doctype: 'Landed Cost Voucher', permType: 'write'),  // LCV draft editing
+  // Gate the create/edit affordances so they resolve at login (no on-screen
+  // delay). create+write for one doctype share a single getdoctype fetch.
+  (doctype: 'Material Request', permType: 'create'), // New MR FAB
+  (doctype: 'Material Request', permType: 'write'),  // MR Delete / Edit
+  (doctype: 'Packing Slip',     permType: 'create'), // New PS FAB
+  (doctype: 'Packing Slip',     permType: 'write'),  // PS Edit
+  (doctype: 'Stock Entry',      permType: 'create'), // New Stock Entry FAB
+  (doctype: 'Stock Entry',      permType: 'write'),  // Stock Entry Edit
+  (doctype: 'Delivery Note',    permType: 'create'), // New Delivery Note FAB
+  (doctype: 'Delivery Note',    permType: 'write'),  // Delivery Note Edit
 ];
 
 const List<PermEntry> kBuyingPermissions = [
   (doctype: 'Purchase Order',   permType: 'read'),
   (doctype: 'Purchase Receipt', permType: 'read'),
+  (doctype: 'Purchase Order',   permType: 'create'), // New Purchase Order FAB
+  (doctype: 'Purchase Order',   permType: 'write'),  // Purchase Order Edit
 ];
 
 const List<PermEntry> kManufacturingPermissions = [
@@ -31,6 +50,23 @@ const List<PermEntry> kManufacturingPermissions = [
 
 const List<PermEntry> kSellingPermissions = [
   (doctype: 'POS Upload', permType: 'read'),
+  (doctype: 'POS Upload', permType: 'report'), // POS & DN Item Rate report
+  (doctype: 'Item Price',   permType: 'read'),   // Selling › Pricing (Sales/Purchase Master Manager)
+  (doctype: 'Item Price',   permType: 'create'), // New price FAB
+  (doctype: 'Item Price',   permType: 'write'),  // Edit / Delete (delete roles == write roles)
+  (doctype: 'Pricing Rule', permType: 'read'),   // Selling › Pricing (Sales/Purchase/Accounts Manager)
+  (doctype: 'Pricing Rule', permType: 'create'), // New rule FAB
+  (doctype: 'Pricing Rule', permType: 'write'),  // Edit / Delete
+  (doctype: 'Sales Order',  permType: 'read'),   // Selling › Sales Order
+  (doctype: 'Sales Order',  permType: 'create'), // New Sales Order FAB
+  (doctype: 'Sales Order',  permType: 'write'),  // Draft edit
+  // submit/cancel are checked per document (has_permission) — PermissionService
+  // would probe them with a read-level get_list and wrongly pass Stock Users.
+];
+
+const List<PermEntry> kHrPermissions = [
+  (doctype: 'Attendance', permType: 'read'), // Attendance monitor (needs HR User)
+  (doctype: 'Attendance', permType: 'report'), // Monthly Attendance Sheet report
 ];
 
 const List<PermEntry> kAppPermissions = [
@@ -39,4 +75,5 @@ const List<PermEntry> kAppPermissions = [
   ...kBuyingPermissions,
   ...kManufacturingPermissions,
   ...kSellingPermissions,
+  ...kHrPermissions,
 ];

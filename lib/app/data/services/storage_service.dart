@@ -3,7 +3,12 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
 class StorageService {
-  final GetStorage _box = GetStorage();
+  final dynamic _box;
+
+  StorageService() : _box = GetStorage();
+
+  // Internal constructor for testing - allows injection of a custom storage instance
+  StorageService.withStorage(this._box);
 
   // Keys
   static const String _userKey = 'currentUser';
@@ -16,6 +21,42 @@ class StorageService {
   // Auto Submit Keys
   static const String _autoSubmitEnabledKey = 'auto_submit_enabled';
   static const String _autoSubmitDelayKey = 'auto_submit_delay';
+
+  // Auto Save Keys
+  static const String _autoSaveDelayKey = 'auto_save_delay';
+
+  // Default Warehouse (optional; unset = no Stock Balance search shortcut)
+  static const String _defaultWarehouseKey = 'session_default_warehouse';
+
+  // Stock Balance view preferences
+  static const String _sbHideEmptyKey  = 'sb_hide_empty';
+  static const String _sbShowImagesKey = 'sb_show_images';
+  static const String _saCardFieldsKey = 'sa_card_columns';
+
+  // Dashboard view preferences
+  static const String _dashboardColumnsKey = 'dashboard_columns';
+  static const String _dashboardTasksFirstKey = 'dashboard_tasks_first';
+  static const _dashboardActionableScopeKey = 'dashboard_actionable_scope';
+
+  // Last drawer layout built from the user's Frappe workspaces, per user.
+  static const String _navMenuKey = 'nav_menu';
+
+  // Scheduled digest notification preferences (per user, keyed key::user —
+  // same convention as dashboard_tasks_first).
+  static const String _digestEnabledKey = 'notif_digest_enabled';
+  static const String _digestTimesKey = 'notif_digest_times';
+  static const String _digestDaysKey = 'notif_digest_days';
+  static const String _digestDoctypesKey = 'notif_digest_doctypes';
+  static const String _digestAlarmStyleKey = 'notif_digest_alarm_style';
+
+  // Attendance notification preferences (#2b), per user. Absent = on.
+  static const String _attEnabledKey = 'notif_att_enabled';
+  static const String _attTerminalKey = 'notif_att_terminal';
+  static const String _attPromptedKey = 'notif_att_prompted';
+
+  // Sales Order: last selling price list this user saved an order with
+  // (smoke-fix-1, Ruling 9 fallback (b)), per user.
+  static const String _soLastPriceListKey = 'so_last_selling_price_list';
 
   // --- User Data ---
   Future<void> saveUser(User user) async {
@@ -67,6 +108,21 @@ class StorageService {
     return _box.hasData(_companyKey);
   }
 
+  // --- Default Warehouse (optional) ---
+  Future<void> saveDefaultWarehouse(String? warehouse) async {
+    final w = warehouse?.trim() ?? '';
+    if (w.isEmpty) {
+      await _box.remove(_defaultWarehouseKey);
+    } else {
+      await _box.write(_defaultWarehouseKey, w);
+    }
+  }
+
+  String? getDefaultWarehouse() {
+    final w = _box.read<String>(_defaultWarehouseKey);
+    return (w == null || w.isEmpty) ? null : w;
+  }
+
   // --- Auto Submit Settings ---
   Future<void> saveAutoSubmitSettings(bool enabled, int delaySeconds) async {
     await _box.write(_autoSubmitEnabledKey, enabled);
@@ -80,4 +136,147 @@ class StorageService {
   int getAutoSubmitDelay() {
     return _box.read<int>(_autoSubmitDelayKey) ?? 1; // Default 1 second
   }
+
+  // --- Auto Save Settings ---
+  Future<void> saveAutoSaveDelay(int seconds) async =>
+      _box.write(_autoSaveDelayKey, seconds);
+
+  int getAutoSaveDelay() =>
+      _box.read<int>(_autoSaveDelayKey) ?? 5;
+
+  // --- Stock Balance view preferences ---
+  // Persisted so the "Hide empty" / "Images" toggles survive navigation,
+  // mirroring the web report's view preferences.
+  Future<void> saveSbHideEmpty(bool value) async =>
+      _box.write(_sbHideEmptyKey, value);
+
+  bool getSbHideEmpty() => _box.read<bool>(_sbHideEmptyKey) ?? false;
+
+  Future<void> saveSbShowImages(bool value) async =>
+      _box.write(_sbShowImagesKey, value);
+
+  bool getSbShowImages() => _box.read<bool>(_sbShowImagesKey) ?? true;
+
+  // --- Stock Ageing report: fields shown on each row card ---
+  // Null until the user changes the selection, so the default set applies.
+  Future<void> saveStockAgeingCardFields(List<String> fields) async =>
+      _box.write(_saCardFieldsKey, fields);
+
+  List<String>? getStockAgeingCardFields() {
+    final v = _box.read(_saCardFieldsKey);
+    return v is List ? v.map((e) => e.toString()).toList() : null;
+  }
+
+  // --- Dashboard view preferences ---
+  // Quick Create card layout: 1 or 2 columns. Anything else clamps to the
+  // 1-column default so a stale/corrupt value can never break the grid.
+  Future<void> saveDashboardColumns(int value) async =>
+      _box.write(_dashboardColumnsKey, value);
+
+  int getDashboardColumns() =>
+      _box.read<int>(_dashboardColumnsKey) == 2 ? 2 : 1;
+
+  // Last computed "Upcoming tasks lead" verdict, PER USER, so the initial
+  // dashboard build matches the previous session instead of reflowing when
+  // the async ToDo fetch lands. Missing key = false (operator layout).
+  Future<void> saveDashboardTasksFirst(String user, bool value) async =>
+      _box.write('$_dashboardTasksFirstKey::$user', value);
+
+  bool getDashboardTasksFirst(String user) =>
+      _box.read<bool>('$_dashboardTasksFirstKey::$user') ?? false;
+
+  // --- Scheduled digest notification preferences ---
+  Future<void> saveDigestEnabled(String user, bool value) async =>
+      _box.write('$_digestEnabledKey::$user', value);
+
+  bool getDigestEnabled(String user) =>
+      _box.read<bool>('$_digestEnabledKey::$user') ?? false;
+
+  Future<void> saveDigestTimes(String user, List<String> times) async =>
+      _box.write('$_digestTimesKey::$user', times);
+
+  List<String> getDigestTimes(String user) {
+    final raw = _box.read<List<dynamic>>('$_digestTimesKey::$user');
+    return raw == null ? const ['09:00'] : raw.cast<String>();
+  }
+
+  Future<void> saveDigestDays(String user, List<int> days) async =>
+      _box.write('$_digestDaysKey::$user', days);
+
+  List<int> getDigestDays(String user) {
+    final raw = _box.read<List<dynamic>>('$_digestDaysKey::$user');
+    return raw == null ? const [1, 2, 3, 4, 5, 6, 7] : raw.cast<int>();
+  }
+
+  Future<void> saveDigestDoctypes(String user, List<String> keys) async =>
+      _box.write('$_digestDoctypesKey::$user', keys);
+
+  List<String> getDigestDoctypes(String user) {
+    final raw = _box.read<List<dynamic>>('$_digestDoctypesKey::$user');
+    return raw == null
+        ? const [
+            'purchase_order',
+            'sales_order',
+            'purchase_receipt',
+            'delivery_note',
+            'stock_entry',
+            'pos_upload',
+          ]
+        : raw.cast<String>();
+  }
+
+  Future<void> saveDigestAlarmStyle(String user, String style) async =>
+      _box.write('$_digestAlarmStyleKey::$user', style);
+
+  /// 'alarm' (insistent) or 'standard' (single sound + vibration). Default
+  /// 'standard' — least-surprising for existing enabled managers.
+  String getDigestAlarmStyle(String user) =>
+      _box.read<String>('$_digestAlarmStyleKey::$user') ?? 'standard';
+
+  // --- Drawer layout (per user) ---
+  Future<void> saveNavMenu(String user, List<Map<String, dynamic>> menu) async =>
+      _box.write('$_navMenuKey::$user', menu);
+
+  List<dynamic>? getNavMenu(String user) =>
+      _box.read<List<dynamic>>('$_navMenuKey::$user');
+
+  // Persisted Mine/Everyone choice for the "Upcoming & actionable" strip.
+  // Stored as 'mine' | 'everyone'; any other value reads back as 'mine'.
+  Future<void> saveDashboardActionableScope(String value) async =>
+      _box.write(_dashboardActionableScopeKey, value);
+
+  String getDashboardActionableScope() =>
+      _box.read<String>(_dashboardActionableScopeKey) == 'everyone'
+          ? 'everyone'
+          : 'mine';
+
+  // --- Attendance notification preferences ---
+  Future<void> saveAttendanceRemindersEnabled(String user, bool value) async =>
+      _box.write('$_attEnabledKey::$user', value);
+
+  /// Attendance reminders are on by default for linked employees.
+  bool getAttendanceRemindersEnabled(String user) =>
+      _box.read<bool>('$_attEnabledKey::$user') ?? true;
+
+  Future<void> saveAttendanceTerminalAlerts(String user, bool value) async =>
+      _box.write('$_attTerminalKey::$user', value);
+
+  /// Terminal quiet/back alerts are on by default for System Managers.
+  bool getAttendanceTerminalAlerts(String user) =>
+      _box.read<bool>('$_attTerminalKey::$user') ?? true;
+
+  /// Written by the main isolate once the Dashboard has asked for
+  /// notification permission, so the prompt never repeats.
+  Future<void> saveAttendancePermissionPrompted(String user) async =>
+      _box.write('$_attPromptedKey::$user', true);
+
+  bool getAttendancePermissionPrompted(String user) =>
+      _box.read<bool>('$_attPromptedKey::$user') ?? false;
+
+  // --- Sales Order last-used price list (per user) ---
+  Future<void> saveSoLastSellingPriceList(String user, String value) async =>
+      _box.write('$_soLastPriceListKey::$user', value);
+
+  String? getSoLastSellingPriceList(String user) =>
+      _box.read<String>('$_soLastPriceListKey::$user');
 }

@@ -1,14 +1,20 @@
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/packing_slip/form/packing_slip_form_controller.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/shared/pos_upload/item_group_card.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/global_widgets/shake_on_trigger.dart';
+import 'package:multimax/app/modules/packing_slip/form/widgets/packing_slip_dn_link_banner.dart';
 
 class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   const PackingSlipFormScreen({super.key});
@@ -48,6 +54,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   onReload: (controller.mode != 'new' && !isDirty)
                       ? controller.reloadDocument
                       : null,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -105,8 +117,9 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                   labelText:  'Customer',
                   border:     OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person_outline),
+                  // fill comes from the themed InputDecorationTheme; a
+                  // hardcoded white fill hides the text in dark mode.
                   filled:     true,
-                  fillColor:  Colors.white,
                 ),
               ),
             ],
@@ -171,30 +184,12 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
   }
 
   Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin:    EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+          {required String title, required List<Widget> children}) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
 
   // ── Items tab ───────────────────────────────────────────────────────────────────
 
@@ -221,6 +216,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
               )),
         ),
         const Divider(height: 1),
+        const PackingSlipDnLinkBanner(),
         Expanded(
           child: Obx(() {
             final visibleGroups = controller.visibleGroupKeys;
@@ -262,8 +258,14 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     serialNo:   int.tryParse(serial) ?? 0,
                     itemName:   itemName,
                     rate:       0.0,
+                    posUploadQty:
+                        controller.getPosUploadQtyForSerial(serial),
+                    posUploadQtyLabel: 'POS Qty',
                     totalQty:   totalRequired,
+                    totalQtyLabel:   'DN Qty',
                     scannedQty: globalPacked,
+                    scannedQtyLabel: 'PS Qty',
+                    unit:       controller.getUomForSerial(serial),
                     onToggle: () =>
                         controller.toggleInvoiceExpand(serial),
                     children: sectionItems.map((dnItem) {
@@ -283,13 +285,21 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
           }),
         ),
         if (slip.docstatus == 0)
-          Obx(() => BarcodeInputWidget(
-                onScan:      (code) => controller.scanBarcode(code),
-                isLoading:   controller.isScanning.value,
-                hintText:    'Scan Item / Batch',
-                controller:  controller.barcodeController,
-                activeRoute: AppRoutes.PACKING_SLIP_FORM,
-              )),
+          Obx(() {
+                if (controller.isItemSheetOpen.value) {
+                  return const SizedBox.shrink();
+                }
+                return ShakeOnTrigger(
+                  trigger: controller.shakeTrigger.value,
+                  child: BarcodeInputWidget(
+                    onScan:      (code) => controller.scanBarcode(code),
+                    isLoading:   controller.isScanning.value,
+                    hintText:    'Scan Item / Batch',
+                    controller:  controller.barcodeController,
+                    activeRoute: AppRoutes.PACKING_SLIP_FORM,
+                  ),
+                );
+              }),
         Builder(builder: (ctx) =>
             SizedBox(height: MediaQuery.viewInsetsOf(ctx).bottom)),
       ],
@@ -314,17 +324,26 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
     final bool canEdit         =
         controller.packingSlip.value?.docstatus == 0;
 
-    return Obx(() {
+    return Builder(builder: (context) {
+      final scheme = context.scheme;
+      final cs = Theme.of(context).colorScheme;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final greenInk = isDark ? AppColors.green300 : AppColors.green700;
+      final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
+
+      return Obx(() {
       final isLoadingThis =
           controller.isLoadingItemEdit.value &&
           controller.loadingForItemName.value ==
               (currentItem?.name ?? '');
+      final isHighlighted =
+          controller.recentlyPackedDnDetail.value == dnItem.name;
 
       final inner = InkWell(
         onTap: () {
           if (isInCurrentSlip) {
             controller.isLoadingItemEdit.value  = true;
-            controller.loadingForItemName.value = currentItem!.name;
+            controller.loadingForItemName.value = currentItem.name;
             controller.editItem(currentItem);
             controller.isLoadingItemEdit.value  = false;
             controller.loadingForItemName.value = null;
@@ -342,10 +361,10 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isComplete
-                      ? Colors.green.shade50
+                      ? AppColors.green500.withValues(alpha: 0.13)
                       : (packedQty > 0
-                          ? Colors.orange.shade50
-                          : Colors.grey.shade100),
+                          ? AppColors.orange500.withValues(alpha: 0.13)
+                          : scheme.subtle),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -354,10 +373,8 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                       : Icons.inventory_2_outlined,
                   size:  16,
                   color: isComplete
-                      ? Colors.green.shade700
-                      : (packedQty > 0
-                          ? Colors.orange.shade700
-                          : Colors.grey),
+                      ? greenInk
+                      : (packedQty > 0 ? orangeInk : scheme.textMuted),
                 ),
               ),
               const SizedBox(width: 12),
@@ -376,8 +393,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     Text(
                       dnItem.itemName,
                       style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600),
+                          fontSize: 12, color: scheme.textMuted),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -386,14 +402,15 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                         'Row #${dnItem.idx}',
                         style: TextStyle(
                             fontSize: 11,
-                            color: Colors.indigo.shade400),
+                            color: isDark
+                                ? AppColors.blue300
+                                : AppColors.blue700),
                       ),
                     if (dnItem.batchNo != null)
                       Text(
                         'Batch: ${dnItem.batchNo}',
                         style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.blueGrey.shade700),
+                            fontSize: 11, color: scheme.textMuted),
                       ),
                   ],
                 ),
@@ -408,25 +425,23 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
                     '${FormattingHelper.formatQty(reqQty)}',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: isComplete
-                          ? Colors.green.shade700
-                          : Colors.black87,
+                      color: isComplete ? greenInk : cs.onSurface,
                     ),
                   ),
                   Text(
                     dnItem.uom,
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.grey),
+                    style: TextStyle(
+                        fontSize: 11, color: scheme.textMuted),
                   ),
                 ],
               ),
 
               // Edit chevron
               if (canEdit)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8.0),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0),
                   child: Icon(Icons.chevron_right,
-                      size: 18, color: Colors.grey),
+                      size: 18, color: scheme.textMuted),
                 ),
             ],
           ),
@@ -435,7 +450,7 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
 
       final Widget rowWidget = (isInCurrentSlip && canEdit)
           ? Dismissible(
-              key:       ValueKey(currentItem!.name),
+              key:       ValueKey(currentItem.name),
               direction: DismissDirection.endToStart,
               confirmDismiss: (_) async {
                 controller.deleteItem(currentItem);
@@ -452,33 +467,45 @@ class PackingSlipFormScreen extends GetView<PackingSlipFormController> {
             )
           : inner;
 
-      if (!isLoadingThis) return rowWidget;
-      return Stack(
-        children: [
-          rowWidget,
-          Positioned.fill(
-            child: Container(
-              color: Colors.white.withOpacity(0.65),
-              child: const Center(
-                child: SizedBox(
-                  width: 22, height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
+      final Widget content = !isLoadingThis
+          ? rowWidget
+          : Stack(
+              children: [
+                rowWidget,
+                Positioned.fill(
+                  child: Container(
+                    color: cs.surface.withValues(alpha: 0.65),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 22, height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ],
+              ],
+            );
+
+      // Flash-then-fade the row that was just packed by a scan, mirroring
+      // DocItemCard's isHighlighted tint (used by PO/PR/SE/DN).
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+        color: isHighlighted
+            ? cs.tertiaryContainer.withValues(alpha: 0.35)
+            : Colors.transparent,
+        child: content,
       );
+      });
     });
   }
 
-  Widget _buildFilterChip(String label, int count) {
-    return ChoiceChip(
-      label:    Text('$label ($count)'),
-      selected: controller.itemFilter.value == label,
-      onSelected: (bool selected) {
-        if (selected) controller.setFilter(label);
-      },
-    );
-  }
+  Widget _buildFilterChip(String label, int count) => SelectableFilterChip(
+        label: label,
+        count: count,
+        selected: controller.itemFilter.value == label,
+        onSelected: (selected) {
+          if (selected) controller.setFilter(label);
+        },
+      );
 }

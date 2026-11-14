@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 
@@ -24,6 +25,7 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 
 // Parent controller
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/delivery_note/form/so_pick.dart';
 import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart';
 
 /// Item-level sheet controller for Delivery Note.
@@ -78,6 +80,27 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 class DeliveryNoteItemFormController extends ItemSheetControllerBase
     with SerialFieldMixin, AutoFillRackMixin, BarcodeListenerMixin, BarcodeAwareMixin {
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  /// Choosing an invoice serial changes the qty ceiling (voucher line cap),
+  /// so the sheet must re-validate — otherwise a qty typed under a looser
+  /// ceiling stays "valid" and over-fills the newly chosen line.
+  Worker? _serialWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _serialWorker = ever(selectedSerial, (_) {
+      submitError.value = '';
+      validateSheet();
+    });
+  }
+
+  @override
+  void onClose() {
+    _serialWorker?.dispose();
+    super.onClose();
+  }
+
   // ── Parent back-reference ──────────────────────────────────────────────────
   late DeliveryNoteFormController _parent;
 
@@ -107,12 +130,30 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── Base abstract overrides ────────────────────────────────────────────────
   @override
-  String? get resolvedWarehouse =>
-      itemWarehouse.value ?? _parent.setWarehouse.value;
+  String? get resolvedWarehouse {
+    final header = _parent.setWarehouse.value;
+    return itemWarehouse.value ??
+        ((header != null && header.isNotEmpty) ? header : soLine?.warehouse);
+  }
+
+  /// Sales Order line this row is picked against (SO mode only): the edited
+  /// row's own `so_detail`, else the line the parent resolved at scan time.
+  SoPickLine? soLine;
+
+  bool get _soVoucherLinked =>
+      soLine != null && _parent.uploadLink.value == SoUploadLink.linked;
+
+  /// Open qty on [soLine] excluding the row being edited.
+  double get soRemaining => soLine == null
+      ? double.infinity
+      : _parent.soRemainingFor(soLine!, excludeRowName: editingItemName.value);
 
   @override bool  get requiresBatch => true;
-  @override bool  get requiresRack  => false;
-  @override Color get accentColor   => Colors.blueGrey;
+  /// Mirrors Desk's Property Setter on Delivery Note Item.rack
+  /// (`mandatory_depends_on: eval:doc.item_code`), which the server does not
+  /// enforce for API saves. Read by [_assertSubmitPreconditions].
+  @override bool  get requiresRack  => true;
+  @override Color get accentColor   => AppColors.gray700;
 
   @override
   bool get isAddMode => !isExistingItem.value;
@@ -156,6 +197,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
         final allowedByPos = (posQty - used).clamp(0.0, posQty);
         ceil = _applyConstraint(ceil, allowedByPos);
       }
+    }
+    if (soLine != null) {
+      // Hard cap even at 0 (_applyConstraint ignores non-positive values).
+      final rem = soRemaining;
+      ceil = ceil == null ? rem : (rem < ceil ? rem : ceil);
     }
     return ceil ?? double.infinity;
   }
@@ -420,6 +466,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     DeliveryNoteItem? editingItem,
   }) {
     _seedContext(parent: parent, scannedEan8: scannedEan8);
+    soLine = editingItem != null
+        ? parent.salesOrder.value?.lineByDetail(editingItem.soDetail)
+        : parent.pendingSoLine;
 
     if (editingItem != null) {
       _initEdit(item: editingItem, variantOf: variantOf);
@@ -797,6 +846,20 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
     if (!isBatchValid.value)     throw Exception('Batch validation required');
+    if (requiresRack && rackController.text.trim().isEmpty) {
+      throw Exception('Scan or choose a rack');
+    }
+    // Hard ceiling (batch/rack/voucher line/SO line) — never trust a stale
+    // isSheetValid alone.
+    final ceil = effectiveMaxQty;
+    if (ceil != double.infinity && qty > ceil + 1e-9) {
+      throw Exception('Qty cannot exceed ${_formatQty(ceil)}');
+    }
+    // SO linked to its POS Upload: the row must name its voucher line, or a
+    // provisional SO idx would sit on a DN whose po_no claims otherwise.
+    if (_soVoucherLinked && (selectedSerial.value ?? '').isEmpty) {
+      throw Exception('Choose the invoice serial (voucher line)');
+    }
     return qty;
   }
 
@@ -815,24 +878,50 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       rate:                      0.0,
       batchNo:                   batchController.text.trim(),
       rack:                      rack.isEmpty            ? null : rack,
-      warehouse:                 itemWarehouse.value,
+      warehouse:                 itemWarehouse.value ?? soLine?.warehouse,
       itemGroup:                 itemGroup.value,
       customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
-    );
+    ).withSoLine(soLine, _parent.salesOrder.value?.name,
+        serial: _soVoucherLinked ? selectedSerial.value : null);
   }
 
   /// Responsibility: write [item] into the parent document's items list —
-  /// replacing the row at [editingIndex] for edits, appending for new items.
+  /// replacing the row at [editingIndex] for edits; for new items, merging
+  /// the qty into an existing row with the same item/batch/rack/serial
+  /// (a rescanned duplicate) instead of appending a second line.
   void _commitToParent({required DeliveryNoteItem item}) {
     final items = _parent.deliveryNote.value?.items;
     if (items == null) return;
 
     if (isExistingItem.value && editingIndex.value >= 0) {
       items[editingIndex.value] = item;
+      return;
+    }
+
+    final dupIndex = items
+        .indexWhere((existing) => isDuplicateLine(existing, item));
+    if (dupIndex >= 0) {
+      items[dupIndex] =
+          items[dupIndex].copyWith(qty: items[dupIndex].qty + item.qty);
     } else {
       items.add(item);
     }
+  }
+
+  /// Responsibility: identify a rescanned duplicate line — same item, batch,
+  /// and rack, within the same POS invoice-serial context (so distinct POS
+  /// invoice lines are never merged into one another). Pure/static so it is
+  /// unit-testable without constructing the full sheet controller.
+  static bool isDuplicateLine(
+      DeliveryNoteItem existing, DeliveryNoteItem incoming) {
+    return existing.itemCode.trim().toLowerCase() ==
+            incoming.itemCode.trim().toLowerCase() &&
+        (existing.batchNo ?? '') == (incoming.batchNo ?? '') &&
+        (existing.rack ?? '') == (incoming.rack ?? '') &&
+        (existing.customInvoiceSerialNumber ?? '') ==
+            (incoming.customInvoiceSerialNumber ?? '') &&
+        (existing.soDetail ?? '') == (incoming.soDetail ?? '');
   }
 
   /// Responsibility: defer the Rx rebuild to the next frame so the sheet's
@@ -886,6 +975,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   Future<void> validateBatch(String batch) async {
     await super.validateBatch(batch);
+    // Like validateRack: re-evaluate once the balance has arrived. The sheet
+    // last validated while the lookup was in flight, so without this it kept
+    // "Batch has no available stock (balance: 0)" beside a Bal: 534 badge.
+    if (!isClosed) validateSheet();
     if (!isBatchValid.value) return;
     unawaited(maybeAutoFillRack());
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 
 /// KeyboardSafeBottomSheet
 ///
@@ -17,21 +18,25 @@ import 'package:get/get.dart';
 class KeyboardSafeBottomSheet extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
-  final Color backgroundColor;
+
+  /// Defaults to the themed surface; a hardcoded light colour here renders
+  /// theme-coloured (light) text invisible in dark mode.
+  final Color? backgroundColor;
 
   const KeyboardSafeBottomSheet({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(24.0),
-    this.backgroundColor = Colors.white,
+    this.backgroundColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: EdgeInsets.only(top: sheetStatusBarInset(context)),
       padding: padding,
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: backgroundColor ?? Theme.of(context).colorScheme.surface,
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(20.0),
         ),

@@ -84,7 +84,6 @@ class UniversalItemFormSheet extends StatelessWidget {
         // qtyInfoText, qtyInfoTooltip, adjustQty) from the delegate's Rx fields
         // without any unwrapping needed here.
         qtyDelegate:     controller,
-        qtyAccentColor:  controller.accentColor,
 
         // ── Save / delete ────────────────────────────────────────────────
         isSaveEnabledRx:  controller.isSheetValid,
@@ -95,20 +94,22 @@ class UniversalItemFormSheet extends StatelessWidget {
         // so _AnimatedSaveButton transitions correctly through loading / success
         // / error states.  Without this the button observed a dead idle.obs.
         saveButtonState:  controller.saveButtonState,
+        submitError:      controller.submitError,
         onSubmit:         onSubmit,
         onDelete: isEditing
             ? () => controller.deleteCurrentItem()
             : null,
 
         // ── Scan footer ─────────────────────────────────────────────────
-        onScan:             onScan,
+        // Hidden while sheet is open as per user request.
+        onScan:             null,
         scanController:     null,
         isScanning:         controller.isScanning.value,
 
         // ── Camera panel ────────────────────────────────────────────────
-        onCameraScan:         (raw) => controller.onCameraBarcode(raw),
-        isCameraExpanded:     controller.isCameraExpanded,
-        onToggleCamera:       controller.toggleCamera,
+        onCameraScan:         null,
+        isCameraExpanded:     null,
+        onToggleCamera:       null,
         mobileScanController: controller.sheetScanController,
 
         // ── DocType-specific fields ───────────────────────────────────────

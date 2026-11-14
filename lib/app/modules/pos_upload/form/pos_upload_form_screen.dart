@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
+import 'package:multimax/app/modules/pos_upload/widgets/pos_upload_timeline.dart';
 
 class PosUploadFormScreen extends GetView<PosUploadFormController> {
   const PosUploadFormScreen({super.key});
@@ -20,7 +23,11 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
               : 'POS Upload';
       final isLoading  = controller.isLoading.value;
       final posUpload  = controller.posUpload.value;
-      final hasPackingSlips = controller.packingSlips.isNotEmpty;
+      // Gate on the loaded DN object (not linkedDocName): if the DN detail
+      // fetch failed, deliveryNote stays null and the export stays disabled
+      // instead of throwing when the sheet opens.
+      final canShare = controller.deliveryNote.value != null ||
+          controller.packingSlips.isNotEmpty;
 
       return DefaultTabController(
         length: 2,
@@ -31,7 +38,13 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                 title:       title,
                 docType:     'POS Upload',
                 statusLabel: posUpload?.status,
-                onShare: hasPackingSlips ? () => _showShareSheet(context) : null,
+                onShare: canShare ? () => _showShareSheet(context) : null,
+                extraActions: [
+                  RealtimeSyncStatusIcon(
+                    isConnected: controller.isRealtimeConnected,
+                    isSyncing:   controller.isRemoteSyncing,
+                  ),
+                ],
                 bottom: const TabBar(
                   tabs: [Tab(text: 'Details'), Tab(text: 'Items')],
                 ),
@@ -65,15 +78,44 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
     });
   }
 
-  // Must match the column names in PosUploadFormController.sharePackingSlipExcel's columns list.
-  static List<String> _columnNames(bool compact) => compact
-      ? ['Case #', 'Invoice Serial #', 'Item Name', 'Qty', 'Country of Origin']
-      : ['Case #', 'Invoice Serial #', 'Variant Of', 'Item Code', 'Item Name', 'Qty', 'Country of Origin'];
+  // Must match the column names in the controller's export builders
+  // (_buildPackingSlipExcel / buildDeliveryNoteExcelBytes).
+  static List<String> _columnNames(ExportDocType docType, bool compact) {
+    // Ref Code resolves from the POS Upload items by invoice serial.
+    final base = compact
+        ? ['Invoice Serial #', 'Ref Code', 'Item Name', 'Qty', 'Country of Origin']
+        : [
+            'Invoice Serial #',
+            'Ref Code',
+            'Variant Of',
+            'Item Code',
+            'Item Name',
+            'Qty',
+            'Country of Origin',
+          ];
+    return docType == ExportDocType.packingSlip ? ['Case #', ...base] : base;
+  }
+
+  static const _shortLabels = {
+    'Case #': 'Case',
+    'Invoice Serial #': 'Serial',
+    'Ref Code': 'Ref',
+    'Variant Of': 'Variant',
+    'Item Code': 'Code',
+    'Item Name': 'Item',
+    'Qty': 'Qty',
+    'Country of Origin': 'Country',
+  };
 
   void _showShareSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) {
+        final hasDn = controller.deliveryNote.value != null;
+        final hasPs = controller.packingSlips.isNotEmpty;
+        // Default to the most-used export when available.
+        var docType =
+            hasPs ? ExportDocType.packingSlip : ExportDocType.deliveryNote;
         var compact = true;
         String? sortByColumn;
         var isExporting = false;
@@ -86,16 +128,57 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Export Packing Slip',
+                    'Export as Excel',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<ExportDocType>(
+                    segments: [
+                      ButtonSegment(
+                        value: ExportDocType.deliveryNote,
+                        icon: const Icon(Icons.local_shipping_outlined),
+                        label: const Text('Delivery Note'),
+                        enabled: hasDn,
+                      ),
+                      ButtonSegment(
+                        value: ExportDocType.packingSlip,
+                        icon: const Icon(Icons.inventory_outlined),
+                        label: const Text('Packing Slip'),
+                        enabled: hasPs,
+                      ),
+                    ],
+                    selected: {docType},
+                    onSelectionChanged: isExporting
+                        ? null
+                        : (selection) => setState(() {
+                              docType = selection.first;
+                              // Reset sort only if the column doesn't exist
+                              // for the new doc type (Case # is PS-only).
+                              if (sortByColumn != null &&
+                                  !_columnNames(docType, compact)
+                                      .contains(sortByColumn)) {
+                                sortByColumn = null;
+                              }
+                            }),
+                  ),
+                  if (!hasPs || !hasDn) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      !hasPs
+                          ? 'No packing slips yet'
+                          : 'Delivery note not available',
+                      style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   SwitchListTile(
                     title: const Text('Compact'),
                     subtitle: Text(
-                      compact
-                          ? 'Case · Serial · Item · Qty · Country'
-                          : 'Case · Serial · Variant · Code · Item · Qty · Country',
+                      _columnNames(docType, compact)
+                          .map((c) => _shortLabels[c]!)
+                          .join(' · '),
                     ),
                     value: compact,
                     onChanged: isExporting
@@ -120,7 +203,7 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         value: null,
                         child: Text('None (natural order)'),
                       ),
-                      ..._columnNames(compact).map(
+                      ..._columnNames(docType, compact).map(
                         (name) =>
                             DropdownMenuItem(value: name, child: Text(name)),
                       ),
@@ -146,12 +229,21 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                         ? () {}
                         : () async {
                             setState(() => isExporting = true);
+                            final docLabel =
+                                docType == ExportDocType.packingSlip
+                                    ? 'Packing Slip'
+                                    : 'Delivery Note';
                             try {
                               final filePath =
-                                  await controller.buildPackingSlipExcel(
-                                compact: compact,
-                                sortByColumn: sortByColumn,
-                              );
+                                  docType == ExportDocType.packingSlip
+                                      ? await controller.buildPackingSlipExcel(
+                                          compact: compact,
+                                          sortByColumn: sortByColumn,
+                                        )
+                                      : await controller.buildDeliveryNoteExcel(
+                                          compact: compact,
+                                          sortByColumn: sortByColumn,
+                                        );
                               if (ctx.mounted) Navigator.of(ctx).pop();
                               await Share.shareXFiles(
                                 [
@@ -161,12 +253,15 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                                   ),
                                 ],
                                 subject:
-                                    '${controller.posUpload.value?.name} – Packing Slip',
+                                    '${controller.posUpload.value?.name} – $docLabel',
                               );
                             } catch (e) {
                               if (ctx.mounted) {
                                 setState(() => isExporting = false);
                               }
+                              // GlobalSnackbar uses Get's global overlay, not
+                              // ctx — safe even after the sheet was popped
+                              // (e.g. Share.shareXFiles throws post-pop).
                               GlobalSnackbar.error(
                                   message: 'Export failed: $e');
                             }
@@ -199,17 +294,10 @@ class _DetailsTabState extends State<_DetailsTab> {
   late final TextEditingController _qtyCtrl;
   late final Worker _posUploadWorker;
 
-  /// All possible status values a POS Upload can have.
-  /// Must be kept in sync with ERPNext so the DropdownButtonFormField
-  /// never receives a value that isn't in this list (prevents assertion crash).
-  static const _statusOptions = [
-    'Draft',
-    'Pending',
-    'In Progress',
-    'Completed',
-    'Cancelled',
-    'Submitted',
-  ];
+  /// All possible status values a POS Upload can have — the shared
+  /// [PosUpload.statusOptions] list, so the form dropdown, list quick-filter
+  /// bar and filter sheet can never drift apart.
+  static const _statusOptions = PosUpload.statusOptions;
 
   @override
   void initState() {
@@ -256,11 +344,17 @@ class _DetailsTabState extends State<_DetailsTab> {
       }.toList();
 
       // ── Linked-doc banner ─────────────────────────────────────────────────
+      // Status ramp inks (x700 light / x300 dark) — the x500 bases fall
+      // below 4.5:1 as banner text on light surfaces.
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
+      final greenInk = isDark ? AppColors.green300 : AppColors.green700;
+      final blueInk = isDark ? AppColors.blue300 : AppColors.blue700;
       Widget? linkedBanner;
       if (ctrl.isLoadingLinked.value) {
-        linkedBanner = const _StatusBanner(
+        linkedBanner = _StatusBanner(
           icon: Icons.sync,
-          color: Colors.orange,
+          color: orangeInk,
           text: 'Fetching linked document…',
           isSpinning: true,
         );
@@ -273,10 +367,10 @@ class _DetailsTabState extends State<_DetailsTab> {
           icon: isDelivery
               ? Icons.local_shipping_outlined
               : Icons.inventory_2_outlined,
-          color: Colors.green,
+          color: greenInk,
           text:
               '${isDelivery ? 'Delivery Note' : 'Stock Entry'}: ${ctrl.linkedDocName.value}',
-          trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.green),
+          trailing: Icon(Icons.chevron_right, size: 16, color: greenInk),
           onTap: () {
             // TODO: navigate to DN/SE form screen when route is wired
             GlobalSnackbar.info(
@@ -289,9 +383,9 @@ class _DetailsTabState extends State<_DetailsTab> {
       Widget? psBanner;
       if (ctrl.linkedDocType.value == LinkedDocType.deliveryNote) {
         if (ctrl.isLoadingPackingSlips.value) {
-          psBanner = const _StatusBanner(
+          psBanner = _StatusBanner(
             icon: Icons.inventory_outlined,
-            color: Colors.blue,
+            color: blueInk,
             text: 'Loading Packing Slips…',
             isSpinning: true,
           );
@@ -349,21 +443,44 @@ class _DetailsTabState extends State<_DetailsTab> {
               ),
               const SizedBox(height: 16),
 
-              // Status dropdown — value is always guaranteed to be in statusItems
+              // Status dropdown — value is always guaranteed to be in statusItems.
+              // Editable only when the server confirmed document-level write
+              // permission (fail-closed); everyone else sees it read-only.
+              // The key re-syncs the field to the authoritative status after
+              // a reload or a failed update.
               DropdownButtonFormField<String>(
+                key: ValueKey(
+                    'status-${upload.status}-${ctrl.statusEditRevision.value}'),
                 // ignore: deprecated_member_use
                 value: upload.status,
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: 'Status',
                   border: const OutlineInputBorder(),
-                  filled: true,
+                  filled: !ctrl.canEditStatus,
                   fillColor: cs.surfaceContainerHighest,
+                  suffixIcon: ctrl.isSaving.value
+                      ? const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : ctrl.canEditStatus
+                          ? null
+                          : const Icon(Icons.lock,
+                              size: 16, color: Colors.grey),
                 ),
                 items: statusItems
                     .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                     .toList(),
-                onChanged: null,
+                onChanged: ctrl.canEditStatus
+                    ? (v) {
+                        if (v != null) ctrl.updateStatus(v);
+                      }
+                    : null,
               ),
               const SizedBox(height: 16),
 
@@ -393,11 +510,67 @@ class _DetailsTabState extends State<_DetailsTab> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // ── Progress timeline ────────────────────────────────────────
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              Text(
+                'Progress',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              PosUploadTimeline(checkpoints: _buildCheckpoints(ctrl, upload)),
+              const SizedBox(height: 24),
             ],
           ),
         ),
       );
     });
+  }
+
+  /// Reads the controller's linked-doc / packing-slip state and produces the
+  /// timeline checkpoints. Called inside the tab's [Obx] so every observable
+  /// touched here re-triggers a rebuild.
+  List<TimelineCheckpoint> _buildCheckpoints(
+      PosUploadFormController ctrl, PosUpload upload) {
+    final prefix =
+        upload.name.length >= 2 ? upload.name.substring(0, 2).toUpperCase() : '';
+    final isStockEntryUpload = prefix == 'MX' || prefix == 'KX';
+
+    final slips = ctrl.packingSlips;
+    final earliestPsCreation = slips.isEmpty
+        ? null
+        : slips
+            .map((p) => p.creation)
+            .where((c) => c.isNotEmpty)
+            .fold<String?>(null, (min, c) =>
+                (min == null || c.compareTo(min) < 0) ? c : min);
+
+    final hasLinkedDoc = isStockEntryUpload
+        ? (ctrl.linkedDocType.value == LinkedDocType.stockEntry &&
+            ctrl.linkedDocName.value.isNotEmpty)
+        : ctrl.deliveryNote.value != null;
+
+    return buildPosUploadTimeline(
+      isStockEntryUpload: isStockEntryUpload,
+      posUploadCreation: upload.creation,
+      itemCount: upload.items.length,
+      isLoadingLinked: ctrl.isLoadingLinked.value,
+      hasLinkedDoc: hasLinkedDoc,
+      linkedDocName: ctrl.linkedDocName.value,
+      linkedDocCreation: ctrl.linkedDocCreation.value,
+      orderedQty: upload.totalQty,
+      deliveredQty: ctrl.deliveryNote.value?.totalQty,
+      isLoadingPackingSlips: ctrl.isLoadingPackingSlips.value,
+      packingSlipCount: slips.length,
+      earliestPackingSlipCreation: earliestPsCreation,
+      packedItems:
+          ctrl.resolvedPackingSlips.values.where((v) => v != null).length,
+      totalSerials: ctrl.resolvedSerials.length,
+    );
   }
 }
 
@@ -527,7 +700,7 @@ class _ItemsTabState extends State<_ItemsTab> {
           );
         }),
 
-        // ── Progress summary strip ─────────────────────────────────────────────
+        // ── Linked-doc loading indicator ───────────────────────────────────────
         Obx(() {
           final isLoadingLinked = ctrl.isLoadingLinked.value;
           final isLoadingPS = ctrl.isLoadingPackingSlips.value;
@@ -553,26 +726,7 @@ class _ItemsTabState extends State<_ItemsTab> {
             );
           }
 
-          final activeCase = ctrl.activeCaseFilter.value;
-          if (activeCase == null) return const SizedBox.shrink();
-
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainer,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cs.outlineVariant),
-              ),
-              child: _SummaryChip(
-                icon: Icons.inventory_outlined,
-                label: activeCase.label,
-                color: cs.tertiary,
-              ),
-            ),
-          );
+          return const SizedBox.shrink();
         }),
 
         // ── List ──────────────────────────────────────────────────────────
@@ -1028,28 +1182,29 @@ class _ItemCardState extends State<_ItemCard> {
 
   _MatchStatus? _resolveMatchStatus() {
     if (!widget.hasLinkedDoc) return null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (widget.isLoadingLinked) {
       return _MatchStatus(
           icon: Icons.hourglass_top,
           label: 'Checking…',
-          color: Colors.orange);
+          color: isDark ? AppColors.orange300 : AppColors.orange700);
     }
     if (widget.resolvedSerial != null && widget.resolvedSerial!.isNotEmpty) {
       return _MatchStatus(
           icon: Icons.check_circle,
           label: 'Matched',
-          color: Colors.green.shade700);
+          color: isDark ? AppColors.green300 : AppColors.green700);
     }
     if (widget.resolvedSerial != null) {
       return _MatchStatus(
           icon: Icons.check_circle_outline,
           label: 'Matched – no serial',
-          color: Colors.teal.shade600);
+          color: isDark ? AppColors.cyan300 : AppColors.cyan700);
     }
     return _MatchStatus(
         icon: Icons.cancel_outlined,
         label: 'Not found',
-        color: Colors.red.shade600);
+        color: isDark ? AppColors.red300 : AppColors.red700);
   }
 }
 
@@ -1174,32 +1329,6 @@ class _InfoChip extends StatelessWidget {
     return tooltip != null
         ? Tooltip(message: tooltip!, child: chip)
         : chip;
-  }
-}
-
-class _SummaryChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  const _SummaryChip(
-      {required this.icon, required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: Theme.of(context)
-              .textTheme
-              .labelMedium
-              ?.copyWith(color: color, fontWeight: FontWeight.w600),
-        ),
-      ],
-    );
   }
 }
 

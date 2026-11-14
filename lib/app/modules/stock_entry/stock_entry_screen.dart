@@ -4,11 +4,16 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/stock_entry/widgets/stock_entry_filter_bottom_sheet.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({super.key});
@@ -166,24 +171,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     required String label,
     required VoidCallback onDeleted,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      backgroundColor: colorScheme.secondaryContainer,
-      deleteIconColor: colorScheme.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
+    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
   }
 
   @override
@@ -193,8 +183,9 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     final navBarHeight = MediaQuery.of(context).padding.bottom;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => RoleGuard(
-            roles: controller.writeRoles.toList(),
+      floatingActionButton: Obx(() => DocTypeGuard(
+            doctype: 'Stock Entry',
+            permType: 'create',
             child: _isFarFromTop.value
                 ? FloatingActionButton(
                     onPressed: controller.openCreateDialog,
@@ -226,6 +217,8 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             DocTypeListHeader(
               title: 'Stock Entry',
               automaticallyImplyLeading: false,
+              searchDoctype: 'Stock Entry',
+              searchRoute: AppRoutes.STOCK_ENTRY_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {
@@ -245,49 +238,14 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                     controller.stockEntries.isEmpty) {
                   return const SizedBox.shrink();
                 }
-                final count = controller.stockEntries.length;
-                final hasMore = controller.hasMore.value;
-                final hasFilters = controller.activeFilters.isNotEmpty ||
-                    controller.searchQuery.value.isNotEmpty;
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.receipt_long_outlined,
-                                size: 14,
-                                color: colorScheme.onSecondaryContainer),
-                            const SizedBox(width: 6),
-                            Text(
-                              hasMore
-                                  ? '$count+ entries'
-                                  : '$count entr${count == 1 ? 'y' : 'ies'}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSecondaryContainer,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (hasFilters) ...[
-                              const SizedBox(width: 6),
-                              Icon(Icons.filter_alt,
-                                  size: 12,
-                                  color: colorScheme.onSecondaryContainer
-                                      .withValues(alpha: 0.7)),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                return ResultCountPill(
+                  count: controller.stockEntries.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'entry',
+                  pluralNoun: 'entries',
+                  icon: Icons.receipt_long_outlined,
                 );
               }),
             ),
@@ -296,9 +254,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             Obx(() {
               if (controller.isLoading.value &&
                   controller.stockEntries.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.stockEntries.isEmpty) {
@@ -333,82 +289,29 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
 
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.inventory_2_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Entries'
-                                : 'No Stock Entries',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            emptySubtitle,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchStockEntries(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.inventory_2_outlined,
+                    emptyTitle: 'No Stock Entries',
+                    emptyMessage: emptySubtitle,
+                    filteredTitle: 'No Matching Entries',
+                    filteredMessage: emptySubtitle,
+                    onClearFilters: controller.clearFilters,
+                    onReload: () =>
+                        controller.fetchStockEntries(clear: true),
                   ),
                 );
               }
 
-              final showLoader = controller.hasMore.value;
               final baseCount = controller.stockEntries.length;
 
               return SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= baseCount) {
-                      if (showLoader) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-                      return Padding(
-                        padding: EdgeInsets.only(
-                            top: 16, bottom: 16 + navBarHeight),
-                        child: Center(
-                          child: Text(
-                            'End of results',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
+                      return ListEndFooter(
+                        hasMore: controller.hasMore.value,
+                        bottomPadding: navBarHeight,
                       );
                     }
 
@@ -559,9 +462,17 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.status == 'Draft')
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
-                  fallback: const SizedBox.shrink(),
+                DocTypeGuard(
+                  doctype: 'Stock Entry',
+                  permType: 'write',
+                  fallback: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.STOCK_ENTRY_FORM,
+                      arguments: {'name': detailed.name, 'mode': 'view'},
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('View Details'),
+                  ),
                   child: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                       AppRoutes.STOCK_ENTRY_FORM,

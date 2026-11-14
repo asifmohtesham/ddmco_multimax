@@ -9,8 +9,13 @@ import 'package:multimax/app/modules/purchase_order/widgets/purchase_order_filte
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
-import 'package:multimax/app/modules/global_widgets/role_guard.dart';
+import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
+import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 
 class PurchaseOrderScreen extends StatefulWidget {
   const PurchaseOrderScreen({super.key});
@@ -99,24 +104,9 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     required String label,
     required VoidCallback onDeleted,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Chip(
-      avatar: Icon(icon, size: 16, color: colorScheme.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.w600,
-            ),
-      ),
-      backgroundColor: colorScheme.secondaryContainer,
-      deleteIconColor: colorScheme.onSecondaryContainer,
-      onDeleted: onDeleted,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list screen.
+    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
   }
 
   @override
@@ -124,17 +114,22 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AppShellScaffold(
-      floatingActionButton: Obx(() => RoleGuard(
-        roles: controller.writeRoles.toList(),
+      // No Obx here: DocTypeGuard is reactive internally, and an Obx whose
+      // builder reads no observables throws GetX's improper-use error.
+      floatingActionButton: DocTypeGuard(
+        doctype: 'Purchase Order',
+        permType: 'create',
         child: FloatingActionButton.extended(
           onPressed: controller.openCreateDialog,
           tooltip: 'New Purchase Order',
           icon: const Icon(Icons.add),
           label: const Text('New Purchase Order'),
         ),
-      )),
+      ),
       body: RefreshIndicator(
         onRefresh: () => controller.fetchPurchaseOrders(clear: true),
+        color: colorScheme.primary,
+        backgroundColor: colorScheme.surfaceContainerHighest,
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -144,6 +139,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               title: 'Purchase Order',
               automaticallyImplyLeading: false,
               searchDoctype: 'Purchase Order',
+              searchRoute: AppRoutes.PURCHASE_ORDER_FORM,
               searchQuery: controller.searchQuery,
               onSearchChanged: controller.onSearchChanged,
               onSearchClear: () {
@@ -156,12 +152,28 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               onClearAllFilters: controller.clearFilters,
             ),
 
+            // ── Result count pill ──────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Obx(() {
+                if (controller.isLoading.value &&
+                    controller.purchaseOrders.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return ResultCountPill(
+                  count: controller.purchaseOrders.length,
+                  hasMore: controller.hasMore.value,
+                  hasActiveFilters: controller.activeFilters.isNotEmpty ||
+                      controller.searchQuery.value.isNotEmpty,
+                  noun: 'order',
+                  icon: Icons.shopping_cart_outlined,
+                );
+              }),
+            ),
+
             // ── List content ───────────────────────────────────────────────
             Obx(() {
               if (controller.isLoading.value && controller.purchaseOrders.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                );
+                return const SliverToBoxAdapter(child: DocCardSkeletonList());
               }
 
               if (controller.purchaseOrders.isEmpty) {
@@ -169,49 +181,17 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                     controller.searchQuery.value.isNotEmpty;
                 return SliverFillRemaining(
                   hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            hasFilters
-                                ? Icons.filter_alt_off_outlined
-                                : Icons.shopping_cart_outlined,
-                            size: 64,
-                            color: colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            hasFilters
-                                ? 'No Matching Orders'
-                                : 'No Purchase Orders',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  color: colorScheme.onSurface,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          const SizedBox(height: 24),
-                          if (hasFilters)
-                            FilledButton.tonalIcon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.clear_all),
-                              label: const Text('Clear Filters'),
-                            )
-                          else
-                            FilledButton.tonalIcon(
-                              onPressed: () =>
-                                  controller.fetchPurchaseOrders(clear: true),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reload'),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: ListEmptyState(
+                    hasActiveFilters: hasFilters,
+                    emptyIcon: Icons.shopping_cart_outlined,
+                    emptyTitle: 'No Purchase Orders',
+                    emptyMessage: 'Pull to refresh or create a new one.',
+                    filteredTitle: 'No Matching Orders',
+                    filteredMessage:
+                        'Try adjusting your filters or search query.',
+                    onClearFilters: controller.clearFilters,
+                    onReload: () =>
+                        controller.fetchPurchaseOrders(clear: true),
                   ),
                 );
               }
@@ -221,14 +201,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= baseCount) {
-                      return controller.hasMore.value
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(),
-                              ),
-                            )
-                          : const SizedBox(height: 80);
+                      return ListEndFooter(hasMore: controller.hasMore.value);
                     }
                     return _buildCard(context, controller.purchaseOrders[index]);
                   },
@@ -270,6 +243,18 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
             Icons.attach_money,
             '$currencySymbol $grandTotal',
           ),
+          if (po.perReceived != null && po.perReceived! > 0)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.local_shipping_outlined,
+              '${po.perReceived!.toStringAsFixed(0)}% Rcvd',
+            ),
+          if (po.perBilled != null && po.perBilled! > 0)
+            GenericDocumentCard.buildIconStat(
+              context,
+              Icons.receipt_long_outlined,
+              '${po.perBilled!.toStringAsFixed(0)}% Billed',
+            ),
         ],
         expandedContent: _buildExpandedContent(context, po),
       );
@@ -313,14 +298,52 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               ),
             ],
           ),
+          if ((detailed.perReceived != null && detailed.perReceived! > 0) ||
+              (detailed.perBilled != null && detailed.perBilled! > 0)) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (detailed.perReceived != null && detailed.perReceived! > 0)
+                  Expanded(
+                    child: InfoBlock(
+                      label: 'Received',
+                      value: '${detailed.perReceived!.toStringAsFixed(2)}%',
+                      icon: Icons.local_shipping_outlined,
+                    ),
+                  )
+                else
+                  const Expanded(child: SizedBox.shrink()),
+                const SizedBox(width: 12),
+                if (detailed.perBilled != null && detailed.perBilled! > 0)
+                  Expanded(
+                    child: InfoBlock(
+                      label: 'Billed',
+                      value: '${detailed.perBilled!.toStringAsFixed(2)}%',
+                      icon: Icons.receipt_long_outlined,
+                    ),
+                  )
+                else
+                  const Expanded(child: SizedBox.shrink()),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               if (detailed.docstatus == 0)
-                RoleGuard(
-                  roles: controller.writeRoles.toList(),
-                  fallback: const SizedBox.shrink(),
+                DocTypeGuard(
+                  doctype: 'Purchase Order',
+                  permType: 'write',
+                  fallback: FilledButton.tonalIcon(
+                    onPressed: () => Get.toNamed(
+                      AppRoutes.PURCHASE_ORDER_FORM,
+                      arguments: {'name': po.name, 'mode': 'view'},
+                    ),
+                    icon: const Icon(Icons.visibility_outlined, size: 18),
+                    label: const Text('View Details'),
+                  ),
                   child: FilledButton.tonalIcon(
                     onPressed: () => Get.toNamed(
                       AppRoutes.PURCHASE_ORDER_FORM,

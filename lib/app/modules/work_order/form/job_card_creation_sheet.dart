@@ -139,11 +139,6 @@ class _JobCardCreationSheetState extends State<JobCardCreationSheet> {
     await _c.createJobCards(selected, qtys);
   }
 
-  int _batchCount(WorkOrderOperation op) {
-    final qty = double.tryParse(_qtyControllers[op.name]?.text ?? '0') ?? 0;
-    return op.splitIntoBatches(qty).length;
-  }
-
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override

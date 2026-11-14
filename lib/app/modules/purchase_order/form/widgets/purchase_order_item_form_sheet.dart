@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_item_form_controller.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_controller.dart';
@@ -56,7 +57,9 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
         // automatically — adding manual spacers would double the gap.
         GlobalItemFormSheet.buildInputGroup(
           label: 'Reqd by Date',
-          color: Colors.orange,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? AppColors.orange300
+              : AppColors.orange700,
           child: TextFormField(
             controller: ctrl.scheduleDateController,
             readOnly:   true,
@@ -87,7 +90,7 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
         // ── Rate ──────────────────────────────────────────────────────────────
         GlobalItemFormSheet.buildInputGroup(
           label: 'Rate',
-          color: Colors.grey,
+          color: context.scheme.textMuted,
           child: TextFormField(
             key:          const ValueKey('po_rate_field'),
             controller:   ctrl.rateController,
@@ -106,34 +109,39 @@ class PurchaseOrderItemFormSheet extends StatelessWidget {
         ),
 
         // ── Running Amount tile ──────────────────────────────────────────────
-        Obx(() => Container(
-          padding:    const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color:        Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Total Amount',
-                style: TextStyle(
-                    color:      Colors.blue.shade900,
-                    fontWeight: FontWeight.bold),
-              ),
-              Text(
-                // FormattingHelper.formatAmount() — shared NumberFormat
-                // instance; no allocation on each Obx rebuild.
-                '${FormattingHelper.getCurrencySymbol(formCtrl.purchaseOrder.value?.currency ?? 'AED')} '
-                '${FormattingHelper.formatAmount(ctrl.sheetAmount)}',
-                style: TextStyle(
-                    color:      Colors.blue.shade900,
-                    fontWeight: FontWeight.bold,
-                    fontSize:   16),
-              ),
-            ],
-          ),
-        )),
+        Obx(() {
+          final blueInk = Theme.of(context).brightness == Brightness.dark
+              ? AppColors.blue300
+              : AppColors.blue700;
+          return Container(
+            padding:    const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color:        AppColors.blue500.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total Amount',
+                  style: TextStyle(
+                      color:      blueInk,
+                      fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  // FormattingHelper.formatAmount() — shared NumberFormat
+                  // instance; no allocation on each Obx rebuild.
+                  '${FormattingHelper.getCurrencySymbol(formCtrl.purchaseOrder.value?.currency ?? 'AED')} '
+                  '${FormattingHelper.formatAmount(ctrl.sheetAmount)}',
+                  style: TextStyle(
+                      color:      blueInk,
+                      fontWeight: FontWeight.bold,
+                      fontSize:   16),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     ));
   }

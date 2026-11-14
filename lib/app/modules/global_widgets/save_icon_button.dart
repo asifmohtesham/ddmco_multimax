@@ -20,6 +20,12 @@ class SaveIconButton extends StatefulWidget {
   final String tooltip;
   final bool showFilledWhenDirty;
 
+  /// Accent/foreground color for bars where the default theme colors are
+  /// illegible (e.g. the solid-maroon form header). When set, the saving
+  /// spinner and the filled-when-dirty state use this color instead of the
+  /// theme defaults.
+  final Color? onColor;
+
   const SaveIconButton({
     super.key,
     required this.onPressed,
@@ -28,6 +34,7 @@ class SaveIconButton extends StatefulWidget {
     this.saveResult           = SaveResult.idle,
     this.tooltip              = 'Save',
     this.showFilledWhenDirty  = false,
+    this.onColor,
   });
 
   @override
@@ -62,17 +69,22 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  /// Builds the current visual state as a keyed child so [AnimatedSwitcher]
+  /// can cross-fade between saving/success/error/idle instead of an instant
+  /// swap — notably the 1.5s-later revert from success/error back to the
+  /// idle save icon, which this widget's own contract promises but a bare
+  /// conditional build() cannot deliver.
+  Widget _buildChild(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     // ── Saving spinner ────────────────────────────────────────────────────
     if (widget.isSaving) {
       return SizedBox.square(       // ← enforces equal width & height
+        key: const ValueKey('saving'),
         dimension: 20,
         child: Center(              // ← centres within the IconButton tap zone
           child: CircularProgressIndicator(
-            color:       cs.primary,
+            color:       widget.onColor ?? cs.primary,
             strokeWidth: 2.5,
           ),
         ),
@@ -82,12 +94,14 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     // ── Post-save feedback ────────────────────────────────────────────────
     if (_displayed == SaveResult.success) {
       return Padding(
+        key: const ValueKey('success'),
         padding: const EdgeInsets.all(8.0),
         child: Icon(Icons.check_circle, color: Colors.greenAccent.shade400),
       );
     }
     if (_displayed == SaveResult.error) {
       return Padding(
+        key: const ValueKey('error'),
         padding: const EdgeInsets.all(8.0),
         child: Icon(Icons.error_outline, color: cs.error),
       );
@@ -98,10 +112,14 @@ class _SaveIconButtonState extends State<SaveIconButton> {
     // No explicit icon color: argument is ever set — that is the fix from
     // commit 48e1596b and must not regress.
     if (widget.showFilledWhenDirty && widget.isDirty) {
+      final bool hasOnColor = widget.onColor != null;
       return IconButton(
+        key: const ValueKey('filled-dirty'),
         style: IconButton.styleFrom(
-          backgroundColor: const Color(0xFF25286F),
-          foregroundColor: Colors.white,
+          backgroundColor: hasOnColor
+              ? widget.onColor!.withValues(alpha: 0.18)
+              : const Color(0xFF25286F),
+          foregroundColor: hasOnColor ? widget.onColor : Colors.white,
         ),
         icon:      const Icon(Icons.save),
         tooltip:   widget.tooltip,
@@ -109,11 +127,36 @@ class _SaveIconButtonState extends State<SaveIconButton> {
       );
     }
 
-    // Plain / disabled — no explicit color:
+    // Plain / disabled.
+    // When [onColor] is set (e.g. the solid-maroon form header) the default
+    // disabledColor renders dark-on-maroon = near-invisible. Honour onColor so
+    // the idle "nothing to save" icon stays a legible — but muted — onColor
+    // glyph instead of vanishing into the bar. Without onColor we keep the
+    // theme defaults (no explicit color — the fix from 48e1596b stands).
+    final bool hasOnColor = widget.onColor != null;
     return IconButton(
+      key: const ValueKey('plain'),
+      style: hasOnColor
+          ? IconButton.styleFrom(
+              foregroundColor:         widget.onColor,
+              disabledForegroundColor: widget.onColor!.withValues(alpha: 0.55),
+            )
+          : null,
       icon:      const Icon(Icons.save),
       tooltip:   widget.tooltip,
       onPressed: widget.isDirty ? widget.onPressed : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: animation, child: child),
+      ),
+      child: _buildChild(context),
     );
   }
 }

@@ -2,6 +2,10 @@ import 'package:multimax/app/modules/bom/bom_binding.dart';
 import 'package:multimax/app/modules/bom/bom_screen.dart';
 import 'package:multimax/app/modules/bom/form/bom_form_binding.dart';
 import 'package:multimax/app/modules/bom/form/bom_form_screen.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/form/landed_cost_voucher_form_binding.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/form/landed_cost_voucher_form_screen.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_binding.dart';
+import 'package:multimax/app/modules/landed_cost_voucher/landed_cost_voucher_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_binding.dart';
 import 'package:multimax/app/modules/job_card/job_card_form_screen.dart';
 import 'package:multimax/app/modules/job_card/job_card_screen.dart';
@@ -9,6 +13,16 @@ import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search
 import 'package:multimax/app/modules/manufacturing/reports/bom_search/bom_search_screen.dart';
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_binding.dart';
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_screen.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_binding.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/bom_stock_customer_code_screen.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_binding.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_screen.dart';
+import 'package:multimax/app/modules/hr/attendance/month/attendance_month_binding.dart';
+import 'package:multimax/app/modules/hr/attendance/month/attendance_month_screen.dart';
+import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_binding.dart';
+import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_screen.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_binding.dart';
+import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_screen.dart';
 import 'package:multimax/app/modules/work_order/work_order_binding.dart';
@@ -18,6 +32,8 @@ import 'package:multimax/app/modules/work_order/form/work_order_form_screen.dart
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/auth/login_controller.dart';
 import 'package:multimax/app/modules/auth/login_screen.dart';
+import 'package:multimax/app/modules/auth/splash/splash_controller.dart';
+import 'package:multimax/app/modules/auth/splash/splash_screen.dart';
 import 'package:multimax/app/modules/home/home_binding.dart';
 import 'package:multimax/app/modules/home/home_screen.dart';
 import 'package:multimax/app/modules/profile/user_profile_binding.dart';
@@ -28,6 +44,10 @@ import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form
 import 'package:multimax/app/modules/purchase_receipt/form/purchase_receipt_form_screen.dart';
 import 'package:multimax/app/modules/purchase_order/purchase_order_binding.dart';
 import 'package:multimax/app/modules/purchase_order/purchase_order_screen.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_binding.dart';
+import 'package:multimax/app/modules/selling/sales_order/sales_order_screen.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/sales_order_form_binding.dart';
+import 'package:multimax/app/modules/selling/sales_order/form/sales_order_form_screen.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_binding.dart';
 import 'package:multimax/app/modules/purchase_order/form/purchase_order_form_screen.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_binding.dart';
@@ -49,6 +69,15 @@ import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart
 import 'package:multimax/app/modules/todo/todo_binding.dart';
 import 'package:multimax/app/modules/todo/todo_screen.dart';
 import 'package:multimax/app/modules/todo/form/todo_form_screen.dart';
+import 'package:multimax/app/modules/todo/form/todo_form_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/item_price_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/item_price_screen.dart';
+import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_binding.dart';
+import 'package:multimax/app/modules/pricing/item_price/form/item_price_form_screen.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_binding.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_screen.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/form/pricing_rule_form_binding.dart';
+import 'package:multimax/app/modules/pricing/pricing_rule/form/pricing_rule_form_screen.dart';
 import 'package:multimax/app/modules/item/item_binding.dart';
 import 'package:multimax/app/modules/item/item_screen.dart';
 import 'package:multimax/app/modules/item/form/item_form_binding.dart';
@@ -62,15 +91,34 @@ import 'package:multimax/app/modules/material_request/material_request_binding.d
 import 'package:multimax/app/modules/material_request/material_request_screen.dart';
 import 'package:multimax/app/modules/about/about_binding.dart';
 import 'package:multimax/app/modules/about/about_screen.dart';
+import 'package:multimax/app/modules/theme/theme_screen.dart';
+import 'package:multimax/app/modules/theme/theme_binding.dart';
+import 'package:multimax/app/modules/session_defaults/session_defaults_screen.dart';
+import 'package:multimax/app/modules/session_defaults/session_defaults_binding.dart';
+import 'package:multimax/app/modules/notification_settings/notification_settings_screen.dart';
+import 'package:multimax/app/modules/notification_settings/notification_settings_binding.dart';
+import 'package:multimax/app/modules/user_area/user_area_screen.dart';
+import 'package:multimax/app/modules/user_area/user_area_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_binding.dart';
 import 'package:multimax/app/modules/stock/reports/batch_wise_balance/batch_wise_balance_screen.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
+import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_binding.dart';
+import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_screen.dart';
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_binding.dart';
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
 
   static final routes = [
+    GetPage(
+      name: AppRoutes.SPLASH,
+      page: () => const SplashScreen(),
+      binding: BindingsBuilder(() {
+        Get.put<SplashController>(SplashController());
+      }),
+    ),
     GetPage(
       name: AppRoutes.LOGIN,
       page: () => const LoginScreen(),
@@ -90,6 +138,12 @@ class AppPages {
       transition: Transition.rightToLeft,
     ),
     GetPage(
+      name: AppRoutes.USER_AREA,
+      page: () => const UserAreaScreen(),
+      binding: UserAreaBinding(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
       name: AppRoutes.PURCHASE_ORDER,
       page: () => const PurchaseOrderScreen(),
       binding: PurchaseOrderBinding(),
@@ -98,6 +152,17 @@ class AppPages {
       name: AppRoutes.PURCHASE_ORDER_FORM,
       page: () => const PurchaseOrderFormScreen(),
       binding: PurchaseOrderFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.SALES_ORDER,
+      page: () => const SalesOrderScreen(),
+      binding: SalesOrderBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.SALES_ORDER_FORM,
+      page: () => const SalesOrderFormScreen(),
+      binding: SalesOrderFormBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
@@ -163,6 +228,29 @@ class AppPages {
     GetPage(
       name: AppRoutes.TODO_FORM,
       page: () => const ToDoFormScreen(),
+      binding: ToDoFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.ITEM_PRICE,
+      page: () => const ItemPriceScreen(),
+      binding: ItemPriceBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.ITEM_PRICE_FORM,
+      page: () => const ItemPriceFormScreen(),
+      binding: ItemPriceFormBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.PRICING_RULE,
+      page: () => const PricingRuleScreen(),
+      binding: PricingRuleBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.PRICING_RULE_FORM,
+      page: () => const PricingRuleFormScreen(),
+      binding: PricingRuleFormBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
@@ -197,6 +285,35 @@ class AppPages {
       name: AppRoutes.JOB_CARD_SUMMARY,
       page: () => const JobCardSummaryScreen(),
       binding: JobCardSummaryBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.BOM_STOCK_CUSTOMER_CODE,
+      page: () => const BomStockCustomerCodeScreen(),
+      binding: BomStockCustomerCodeBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.POS_DN_ITEM_RATE,
+      page: () => const PosDnItemRateScreen(),
+      binding: PosDnItemRateBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.ATTENDANCE,
+      page: () => const AttendanceScreen(),
+      binding: AttendanceBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.ATTENDANCE_MONTH,
+      page: () => const AttendanceMonthScreen(),
+      binding: AttendanceMonthBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.MONTHLY_ATTENDANCE_SHEET,
+      page: () => const MonthlyAttendanceSheetScreen(),
+      binding: MonthlyAttendanceSheetBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
@@ -249,6 +366,24 @@ class AppPages {
       binding: AboutBinding(),
     ),
     GetPage(
+      name: AppRoutes.THEME,
+      page: () => const ThemeScreen(),
+      binding: ThemeBinding(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
+      name: AppRoutes.SESSION_DEFAULTS,
+      page: () => const SessionDefaultsScreen(),
+      binding: SessionDefaultsBinding(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
+      name: AppRoutes.NOTIFICATION_SETTINGS,
+      page: () => const NotificationSettingsScreen(),
+      binding: NotificationSettingsBinding(),
+      transition: Transition.rightToLeft,
+    ),
+    GetPage(
       name: AppRoutes.BATCH_WISE_BALANCE,
       page: () => const BatchWiseBalanceScreen(),
       binding: BatchWiseBalanceBinding(),
@@ -258,6 +393,29 @@ class AppPages {
       name:       AppRoutes.ITEM_VARIANT_DETAILS,
       page:       () => const ItemVariantDetailsScreen(),
       binding:    ItemVariantDetailsBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.STOCK_BALANCE,
+      page:       () => const StockBalanceScreen(),
+      binding:    StockBalanceBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.STOCK_AGEING,
+      page:       () => const StockAgeingScreen(),
+      binding:    StockAgeingBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.LANDED_COST_VOUCHER,
+      page:       () => const LandedCostVoucherScreen(),
+      binding:    LandedCostVoucherBinding(),
+    ),
+    GetPage(
+      name:       AppRoutes.LANDED_COST_VOUCHER_FORM,
+      page:       () => const LandedCostVoucherFormScreen(),
+      binding:    LandedCostVoucherFormBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
   ];

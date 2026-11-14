@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 /// A reusable warehouse-picker bottom sheet.
 ///
@@ -22,12 +21,14 @@ class WarehousePickerSheet extends StatefulWidget {
     required this.isLoading,
     required this.onSelected,
     this.title = 'Select Warehouse',
+    this.groupNames = const {},
   });
 
   final List<String> warehouses;
   final bool isLoading;
   final ValueChanged<String> onSelected;
   final String title;
+  final Set<String> groupNames;
 
   @override
   State<WarehousePickerSheet> createState() => _WarehousePickerSheetState();
@@ -61,14 +62,34 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
     super.dispose();
   }
 
+  Widget _groupTag(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        'Group',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         children: [
@@ -93,26 +114,31 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
                 ? const Center(child: CircularProgressIndicator())
                 : _filtered.isEmpty
                     ? const Center(child: Text('No warehouses found'))
-                    : ListView.separated(
-                        itemCount: _filtered.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final wh = _filtered[i];
-                          return ListTile(
-                            title: Text(wh),
-                            onTap: () {
-                              // Use Navigator.of(ctx).pop() instead of Get.back().
-                              // Get.back() unconditionally calls
-                              // Get.closeCurrentSnackbar() before popping; when a
-                              // SnackbarController is queued but not yet attached to
-                              // the Overlay, its late AnimationController throws
-                              // LateInitializationError.
-                              Navigator.of(ctx).pop();
-                              widget.onSelected(wh);
-                            },
-                          );
-                        },
+                    : Material(
+                        color: Colors.transparent,
+                        child: ListView.separated(
+                          itemCount: _filtered.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (ctx, i) {
+                            final wh = _filtered[i];
+                            final isGroup = widget.groupNames.contains(wh);
+                            return ListTile(
+                              title: Text(wh),
+                              trailing: isGroup ? _groupTag(ctx) : null,
+                              onTap: () {
+                                // Use Navigator.of(ctx).pop() instead of Get.back().
+                                // Get.back() unconditionally calls
+                                // Get.closeCurrentSnackbar() before popping; when a
+                                // SnackbarController is queued but not yet attached to
+                                // the Overlay, its late AnimationController throws
+                                // LateInitializationError.
+                                Navigator.of(ctx).pop();
+                                widget.onSelected(wh);
+                              },
+                            );
+                          },
+                        ),
                       ),
           ),
         ],

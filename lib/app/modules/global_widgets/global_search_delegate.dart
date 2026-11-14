@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_flow.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 /// Unified search + filter delegate for every DocType list screen.
 ///
@@ -56,9 +61,20 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
   /// Opens the DocType-specific filter bottom sheet.
   final VoidCallback? onFilterTap;
 
+  // ── Image scan (optional) ──────────────────────────────────────────────
+  /// When non-null, the search delegate shows a camera icon that opens the
+  /// image scan flow. Only [ItemListAppBar] sets this.
+  final ValueChanged<ImageScanResult>? onImageScanResult;
+
   // ── Internals ──────────────────────────────────────────────────────────
-  final GlobalSearchService _service = Get.put(GlobalSearchService());
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  // `late` so a local-mode delegate (and the widget tests) never touch GetX:
+  // resolving ApiProvider eagerly would throw wherever it isn't registered.
+  late final GlobalSearchService _service = Get.put(GlobalSearchService());
+  late final ApiProvider _apiProvider = Get.find<ApiProvider>();
+
+  /// Test seam for [_search] — defaults to the live [GlobalSearchService].
+  final Future<List<GlobalSearchItem>> Function(String doctype, String query)?
+      searcher;
 
   bool get _isApiMode => doctype.isNotEmpty && targetRoute.isNotEmpty;
 
@@ -70,11 +86,43 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     this.onSearchClear,
     this.activeFilters,
     this.onFilterTap,
+    this.onImageScanResult,
+    this.searcher,
   });
 
   @override
   String? get searchFieldLabel =>
       _isApiMode ? 'Search $doctype…' : 'Search…';
+
+  // ── Debounced API search ──────────────────────────────────────────────
+  //
+  // One delegate instance lives for the whole search session (showSearch is
+  // called once, per keystroke Flutter re-invokes buildSuggestions on the SAME
+  // object), so these fields survive across keystrokes.
+  //
+  // Without them a fresh Future — and therefore a fresh network round-trip —
+  // was created on every build: one request per character typed, plus more for
+  // incidental rebuilds (keyboard, theme, filter badge).  Mirrors the debounce
+  // already used by GlobalDocumentSearchDelegate.
+  Timer? _debounce;
+  String? _pendingKey;
+  Future<List<GlobalSearchItem>>? _pendingFuture;
+
+  Future<List<GlobalSearchItem>> _search(String q) {
+    if (q == _pendingKey && _pendingFuture != null) return _pendingFuture!;
+    _pendingKey = q;
+    _debounce?.cancel();
+    final completer = Completer<List<GlobalSearchItem>>();
+    _pendingFuture = completer.future;
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        completer.complete(await (searcher ?? _service.search)(doctype, q));
+      } catch (e) {
+        if (!completer.isCompleted) completer.completeError(e);
+      }
+    });
+    return completer.future;
+  }
 
   // ── Helper: post-frame safe notify ────────────────────────────────────
   //
@@ -113,59 +161,79 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
 
       // Filter badge button — migrated from SearchBar trailing suffix.
       // onTap is a gesture handler → synchronous call.
-      if (onFilterTap != null)
-        Obx(() {
-          final count = activeFilters?.length ?? 0;
-          return Tooltip(
-            message: count > 0
-                ? '$count filter${count > 1 ? 's' : ''} active'
-                : 'Filter',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: onFilterTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(
-                      count > 0 ? Icons.filter_alt : Icons.filter_list,
-                      color: count > 0
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                    if (count > 0)
-                      Positioned(
-                        top: -4,
-                        right: -6,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            color: colorScheme.error,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                              minWidth: 16, minHeight: 16),
-                          child: Text(
-                            '$count',
-                            style: TextStyle(
-                              color: colorScheme.onError,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              height: 1.0,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
+      // Only wrap in Obx when there is an RxMap to observe: an Obx whose
+      // builder reads no observables (activeFilters == null short-circuits
+      // ?.length) throws GetX's improper-use error on first build.
+      if (onFilterTap != null && activeFilters == null)
+        _filterButton(colorScheme, 0),
+      if (onFilterTap != null && activeFilters != null)
+        Obx(() => _filterButton(colorScheme, activeFilters!.length)),
+
+      // Camera icon — only shown when caller provides onImageScanResult.
+      if (onImageScanResult != null)
+        IconButton(
+          icon: const Icon(Icons.image_search),
+          tooltip: 'Search by image',
+          onPressed: () async {
+            final result = await ImageScanFlow.run(context);
+            if (result != null && context.mounted) {
+              close(context, null);
+              onImageScanResult!(result);
+            }
+          },
+        ),
     ];
+  }
+
+  Widget _filterButton(ColorScheme colorScheme, int count) {
+    return Tooltip(
+      message: count > 0
+          ? '$count filter${count > 1 ? 's' : ''} active'
+          : 'Filter',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onFilterTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                count > 0 ? Icons.filter_alt : Icons.filter_list,
+                color: count > 0
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+              if (count > 0)
+                Positioned(
+                  top: -4,
+                  right: -6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: colorScheme.error,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints:
+                        const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        color: colorScheme.onError,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        height: 1.0,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -220,7 +288,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     }
 
     return FutureBuilder<List<GlobalSearchItem>>(
-      future: _service.search(doctype, query),
+      future: _search(query),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: LinearProgressIndicator());
@@ -315,7 +383,11 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
       // onTap is a gesture handler → synchronous call is fine.
       onTap: () {
         close(context, null);
-        Get.toNamed(targetRoute, arguments: item.id);
+        // Resolve the argument shape the target form expects — a bare String
+        // crashes forms that read Get.arguments['name'] (String's [] wants an
+        // int index).
+        Get.toNamed(targetRoute,
+            arguments: searchNavArgsFor(targetRoute, item.id));
       },
     );
   }

@@ -1,4 +1,5 @@
 abstract class AppRoutes {
+  static const SPLASH                = '/splash';
   static const LOGIN                 = '/login';
   static const HOME                  = '/home';
   static const PROFILE               = _Paths.PROFILE;
@@ -6,6 +7,8 @@ abstract class AppRoutes {
   static const PURCHASE_RECEIPT_FORM = _Paths.PURCHASE_RECEIPT_FORM;
   static const PURCHASE_ORDER        = _Paths.PURCHASE_ORDER;
   static const PURCHASE_ORDER_FORM   = _Paths.PURCHASE_ORDER_FORM;
+  static const SALES_ORDER           = _Paths.SALES_ORDER;
+  static const SALES_ORDER_FORM      = _Paths.SALES_ORDER_FORM;
   static const STOCK_ENTRY           = _Paths.STOCK_ENTRY;
   static const STOCK_ENTRY_FORM      = _Paths.STOCK_ENTRY_FORM;
   static const DELIVERY_NOTE         = _Paths.DELIVERY_NOTE;
@@ -29,18 +32,41 @@ abstract class AppRoutes {
   static const BATCH_FORM            = _Paths.BATCH_FORM;
   static const MATERIAL_REQUEST      = _Paths.MATERIAL_REQUEST;
   static const MATERIAL_REQUEST_FORM = _Paths.MATERIAL_REQUEST_FORM;
+  static const ITEM_PRICE            = _Paths.ITEM_PRICE;
+  static const ITEM_PRICE_FORM       = _Paths.ITEM_PRICE_FORM;
+  static const PRICING_RULE          = _Paths.PRICING_RULE;
+  static const PRICING_RULE_FORM     = _Paths.PRICING_RULE_FORM;
   static const ABOUT                 = '/about';
+  static const USER_AREA             = _Paths.USER_AREA;
+  static const THEME                 = _Paths.THEME;
+  static const SESSION_DEFAULTS      = _Paths.SESSION_DEFAULTS;
+  static const NOTIFICATION_SETTINGS = _Paths.NOTIFICATION_SETTINGS;
   static const BATCH_WISE_BALANCE    = _Paths.BATCH_WISE_BALANCE;
   static const JOB_CARD_SUMMARY      = _Paths.JOB_CARD_SUMMARY;
   static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
+  static const STOCK_BALANCE              = _Paths.STOCK_BALANCE;
+  static const STOCK_AGEING               = _Paths.STOCK_AGEING;
+  static const BOM_STOCK_CUSTOMER_CODE    = _Paths.BOM_STOCK_CUSTOMER_CODE;
+  static const POS_DN_ITEM_RATE       = _Paths.POS_DN_ITEM_RATE;
+  static const ATTENDANCE             = _Paths.ATTENDANCE;
+  static const ATTENDANCE_MONTH       = _Paths.ATTENDANCE_MONTH;
+  static const MONTHLY_ATTENDANCE_SHEET = _Paths.MONTHLY_ATTENDANCE_SHEET;
+  static const LANDED_COST_VOUCHER      = _Paths.LANDED_COST_VOUCHER;
+  static const LANDED_COST_VOUCHER_FORM = _Paths.LANDED_COST_VOUCHER_FORM;
 }
 
 abstract class _Paths {
   static const PROFILE               = '/profile';
+  static const USER_AREA             = '/user-area';
+  static const THEME                 = '/theme';
+  static const SESSION_DEFAULTS      = '/session-defaults';
+  static const NOTIFICATION_SETTINGS = '/notification-settings';
   static const PURCHASE_RECEIPT      = '/purchase-receipt';
   static const PURCHASE_RECEIPT_FORM = '/purchase-receipt/form';
   static const PURCHASE_ORDER        = '/purchase-order';
   static const PURCHASE_ORDER_FORM   = '/purchase-order/form';
+  static const SALES_ORDER           = '/sales-order';
+  static const SALES_ORDER_FORM      = '/sales-order/form';
   static const STOCK_ENTRY           = '/stock-entry';
   static const STOCK_ENTRY_FORM      = '/stock-entry/form';
   static const DELIVERY_NOTE         = '/delivery-note';
@@ -64,7 +90,20 @@ abstract class _Paths {
   static const BATCH_FORM            = '/batch/form';
   static const MATERIAL_REQUEST      = '/material-request';
   static const MATERIAL_REQUEST_FORM = '/material-request/form';
+  static const ITEM_PRICE            = '/item-price';
+  static const ITEM_PRICE_FORM       = '/item-price/form';
+  static const PRICING_RULE          = '/pricing-rule';
+  static const PRICING_RULE_FORM     = '/pricing-rule/form';
   static const BATCH_WISE_BALANCE    = '/stock/batch-wise-balance';
   static const JOB_CARD_SUMMARY      = '/manufacturing/reports/job-card-summary';
   static const ITEM_VARIANT_DETAILS  = '/stock/reports/item-variant-details';
+  static const STOCK_BALANCE              = '/stock/reports/stock-balance';
+  static const STOCK_AGEING               = '/stock/reports/stock-ageing';
+  static const BOM_STOCK_CUSTOMER_CODE    = '/manufacturing/reports/bom-stock-customer-code';
+  static const POS_DN_ITEM_RATE       = '/selling/reports/pos-dn-item-rate';
+  static const ATTENDANCE             = '/hr/attendance';
+  static const ATTENDANCE_MONTH       = '/hr/attendance/month';
+  static const MONTHLY_ATTENDANCE_SHEET = '/hr/reports/monthly-attendance-sheet';
+  static const LANDED_COST_VOUCHER      = '/landed-cost-voucher';
+  static const LANDED_COST_VOUCHER_FORM = '/landed-cost-voucher/form';
 }

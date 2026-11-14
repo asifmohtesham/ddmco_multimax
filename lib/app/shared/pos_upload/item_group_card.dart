@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/animated_expand_icon.dart';
 
 class ItemGroupCard extends StatelessWidget {
@@ -32,6 +33,20 @@ class ItemGroupCard extends StatelessWidget {
   /// When non-null, a 'Packed Qty' stat chip is rendered after the scanned chip.
   final double? packedQty;
 
+  /// External-system demand qty for this serial (the top of the fulfilment
+  /// funnel: POS Upload Qty ≥ DN Qty ≥ Packed). When non-null, a demand chip
+  /// is rendered first as an at-a-glance reminder of the quantity to meet.
+  /// Coloured amber when below [totalQty] (under-supply vs the DN commitment),
+  /// otherwise primary.
+  final double? posUploadQty;
+
+  /// Override label for the [posUploadQty] chip (default: 'POS Upload Qty').
+  final String posUploadQtyLabel;
+
+  /// Unit suffix for all quantity chips (default: 'pcs'). Callers should pass
+  /// the document's stock UOM so the figures match the source document.
+  final String unit;
+
   const ItemGroupCard({
     super.key,
     required this.isExpanded,
@@ -47,6 +62,9 @@ class ItemGroupCard extends StatelessWidget {
     this.totalQtyLabel = 'Required',
     this.scannedQtyLabel = 'Scanned',
     this.packedQty,
+    this.posUploadQty,
+    this.posUploadQtyLabel = 'POS Upload Qty',
+    this.unit = 'pcs',
   });
 
   /// Returns a short display symbol for common ISO codes;
@@ -72,16 +90,28 @@ class ItemGroupCard extends StatelessWidget {
         (totalQty > 0) ? (scannedQty / totalQty).clamp(0.0, 1.0) : 0.0;
     final isCompleted = percent >= 1.0;
 
+    // Status ramp inks: x700 on light surfaces, x300 on dark, so labels and
+    // stat values stay ≥4.5:1 on the card in both themes.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final greenInk = isDark ? AppColors.green300 : AppColors.green700;
+    final orangeInk = isDark ? AppColors.orange300 : AppColors.orange700;
 
     // Semantic colour alias — resolved once, used for rail, border,
     // status label, progress ring, and Scanned stat chip.
-    final completionColor =
-        isCompleted ? Colors.green.shade600 : cs.primary;
+    final completionColor = isCompleted ? greenInk : cs.primary;
 
     final currSymbol  = _currencySymbol(currency);
     final rateDisplay = currSymbol.isEmpty
         ? NumberFormat('#,##0.00').format(rate)
         : '$currSymbol ${NumberFormat('#,##0.00').format(rate)}';
+
+    // ── POS Upload (demand) chip colour ────────────────────────────
+    // Amber when external demand is below the DN commitment (an unexpected
+    // under-supply that must not be silently trusted), else primary so it
+    // reads as the headline demand figure.
+    final Color posUploadColor = (posUploadQty != null && posUploadQty! < totalQty)
+        ? orangeInk
+        : cs.primary;
 
     // ── Remaining chip colour logic ────────────────────────────────
     // resolved here so it sits near the other semantic colours above.
@@ -89,11 +119,11 @@ class ItemGroupCard extends StatelessWidget {
     String? remainingDisplay;
     if (remainingQty != null && remainingQty!.isFinite) {
       remainingDisplay =
-          '${NumberFormat('#,##0.##').format(remainingQty!)} pcs';
+          '${NumberFormat('#,##0.##').format(remainingQty!)} $unit';
       if (remainingQty! <= 0) {
-        remainingColor = Colors.green.shade600;   // fully consumed
+        remainingColor = greenInk;   // fully consumed
       } else if (totalQty > 0 && remainingQty! / totalQty <= 0.2) {
-        remainingColor = Colors.amber.shade700;   // ≤ 20 % left → warn
+        remainingColor = orangeInk;  // ≤ 20 % left → warn
       } else {
         remainingColor = cs.primary;
       }
@@ -105,7 +135,9 @@ class ItemGroupCard extends StatelessWidget {
         color: cs.surface,
         borderRadius: BorderRadius.circular(12.0),
         border: Border.all(
-          color: isCompleted ? Colors.green.shade600 : cs.outlineVariant,
+          color: isCompleted
+              ? AppColors.green500.withValues(alpha: 0.5)
+              : cs.outlineVariant,
           width: 1,
         ),
       ),
@@ -200,23 +232,30 @@ class ItemGroupCard extends StatelessWidget {
                       spacing: 12,
                       runSpacing: 6,
                       children: [
+                        if (posUploadQty != null)
+                          _buildStatChip(
+                            context: context,
+                            label: posUploadQtyLabel,
+                            value: '${NumberFormat('#,##0.##').format(posUploadQty!)} $unit',
+                            valueColor: posUploadColor,
+                          ),
                         _buildStatChip(
                           context: context,
                           label: totalQtyLabel,
-                          value: '${NumberFormat('#,##0.##').format(totalQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(totalQty)} $unit',
                           valueColor: cs.onSurfaceVariant,
                         ),
                         _buildStatChip(
                           context: context,
                           label: scannedQtyLabel,
-                          value: '${NumberFormat('#,##0.##').format(scannedQty)} pcs',
+                          value: '${NumberFormat('#,##0.##').format(scannedQty)} $unit',
                           valueColor: completionColor,
                         ),
                         if (packedQty != null)
                           _buildStatChip(
                             context: context,
                             label: 'Packed Qty',
-                            value: '${NumberFormat('#,##0.##').format(packedQty!)} pcs',
+                            value: '${NumberFormat('#,##0.##').format(packedQty!)} $unit',
                             valueColor: cs.tertiary,
                           ),
                         _buildStatChip(

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 // NumberFormat and DateFormat are not const-constructible, so a
 // top-level final is the lightest allocation strategy.
 final _amountFmt = NumberFormat('#,##0.00');
+final _qtyGroupedFmt = NumberFormat('#,##0.##');
 final _dateFmt   = DateFormat('yyyy-MM-dd');
 
 class FormattingHelper {
@@ -73,6 +74,12 @@ class FormattingHelper {
     return qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
   }
 
+  /// Like [formatQty] but with thousands separators (e.g. 1432 → "1,432",
+  /// 1432.5 → "1,432.5"). Used for large aggregate quantities such as the
+  /// Stock Balance report's total row.
+  static String formatQtyGrouped(double? qty) =>
+      _qtyGroupedFmt.format(qty ?? 0);
+
   /// Formats a monetary amount as #,##0.00 (e.g. 1234.5 → "1,234.50").
   ///
   /// Uses a shared [NumberFormat] instance so no allocation occurs on
@@ -85,4 +92,17 @@ class FormattingHelper {
   /// (transaction_date, schedule_date, etc.). Centralised here so a
   /// single change propagates everywhere if the format ever needs to change.
   static String formatDate(DateTime date) => _dateFmt.format(date);
+
+  /// Normalises an ERPNext time string for display as HH:mm:ss.
+  ///
+  /// Server-loaded posting times carry microseconds ('9:46:34.234513');
+  /// locally-set ones are already 'HH:mm:ss'. Trims the fractional part and
+  /// zero-pads the hour. Anything that doesn't look like a time (or null)
+  /// is returned unchanged.
+  static String? formatTime(String? raw) {
+    if (raw == null || raw.isEmpty) return raw;
+    final m = RegExp(r'^(\d{1,2}):(\d{2}):(\d{2})').firstMatch(raw);
+    if (m == null) return raw;
+    return '${m[1]!.padLeft(2, '0')}:${m[2]}:${m[3]}';
+  }
 }

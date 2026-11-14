@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
+import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
+import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
+import 'package:multimax/app/modules/global_widgets/doc_summary_row.dart';
+import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_controller.dart';
 import 'package:multimax/app/modules/material_request/form/widgets/material_request_item_card.dart';
 
@@ -62,6 +68,12 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                   saveResult: saveResult,
                   onSave:     onSave,
                   onReload:   onReload,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),
@@ -100,8 +112,8 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Type + Warehouse banner ────────────────────────────────────
-          _buildTypeBanner(context),
+          // ── Request section (type + target warehouse) ─────────────────
+          _buildRequestSection(context),
 
           const SizedBox(height: 16),
 
@@ -116,10 +128,11 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                 return Row(
                   children: [
                     Expanded(
-                      child: _buildCompactField(
+                      child: DocPickerField(
                         label: 'Date',
                         value: controller.transactionDateController.text,
                         icon: Icons.calendar_today_outlined,
+                        trailingIcon: Icons.edit_calendar_outlined,
                         onTap: isEditable
                             ? () => controller
                                 .setDate(controller.transactionDateController)
@@ -128,10 +141,11 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _buildCompactField(
+                      child: DocPickerField(
                         label: 'Required By',
                         value: controller.scheduleDateController.text,
                         icon: Icons.event_outlined,
+                        trailingIcon: Icons.edit_calendar_outlined,
                         onTap: isEditable
                             ? () => controller
                                 .setDate(controller.scheduleDateController)
@@ -178,158 +192,43 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
     );
   }
 
-  // ── Type + Warehouse Banner ──────────────────────────────────────────
+  // ── Request section (type + target warehouse) ────────────────────────
   //
   // isEditable is derived HERE inside the Obx so every rebuild of this widget
   // (e.g. when selectedType changes) re-reads docstatus from the controller
-  // and always passes the correct live onTap callbacks to InkWell.
+  // and always passes the correct live onTap callbacks.
 
-  Widget _buildTypeBanner(BuildContext context) {
+  Widget _buildRequestSection(BuildContext context) {
     return Obx(() {
       // ⭐ Derive isEditable here, not from an outer parameter
       final isEditable = controller.materialRequest.value?.docstatus == 0;
       final type = controller.selectedType.value;
       final warehouseText = controller.setWarehouseController.text;
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.deepPurple.shade50, Colors.teal.shade50],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      return DocSectionCard(
+        title: 'Request',
+        margin: EdgeInsets.zero,
+        children: [
+          DocPickerField(
+            label: 'Request Type',
+            icon: Icons.category_outlined,
+            value: type,
+            placeholder: 'Select Type',
+            helperText: _typeHelperText(type),
+            onTap: isEditable ? () => _showTypePicker(context) : null,
           ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.teal.shade100),
-        ),
-        child: Column(
-          children: [
-            // ── Request Type row ───────────────────────────────────────────
-            InkWell(
-              // ⭐ onTap uses the live isEditable captured in this Obx frame
-              onTap: isEditable ? () => _showTypePicker(context) : null,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                child: Row(
-                  children: [
-                    Icon(Icons.category_outlined,
-                        size: 20, color: Colors.deepPurple.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'REQUEST TYPE',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              if (isEditable) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.edit,
-                                    size: 10, color: Colors.grey.shade500),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            type,
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepPurple.shade900,
-                                fontSize: 15),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isEditable)
-                      Icon(Icons.arrow_drop_down, color: Colors.blueGrey.shade400),
-                  ],
-                ),
-              ),
-            ),
-
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 28, top: 2, bottom: 4),
-                child: Text(
-                  _typeHelperText(type),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.blueGrey.shade700),
-                ),
-              ),
-            ),
-
-            const Divider(height: 20),
-
-            // ── Target Warehouse row ─────────────────────────────────────────
-            InkWell(
-              // ⭐ onTap uses the live isEditable captured in this Obx frame
-              onTap: isEditable
-                  ? () => controller.showWarehousePicker(forItem: false)
-                  : null,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                child: Row(
-                  children: [
-                    Icon(Icons.warehouse_outlined,
-                        size: 18, color: Colors.teal.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'TARGET WAREHOUSE',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              if (isEditable) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.edit,
-                                    size: 10, color: Colors.grey.shade500),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            warehouseText.isNotEmpty
-                                ? warehouseText
-                                : 'Select Warehouse',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: warehouseText.isNotEmpty
-                                  ? Colors.black87
-                                  : Colors.grey,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (isEditable)
-                      Icon(Icons.chevron_right,
-                          color: Colors.blueGrey.shade300),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+          const SizedBox(height: 12),
+          DocPickerField(
+            label: 'Target Warehouse',
+            icon: Icons.warehouse_outlined,
+            value: warehouseText,
+            placeholder: 'Select Warehouse',
+            trailingIcon: Icons.chevron_right,
+            onTap: isEditable
+                ? () => controller.showWarehousePicker(forItem: false)
+                : null,
+          ),
+        ],
       );
     });
   }
@@ -364,22 +263,27 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
             right: 0,
             bottom: MediaQuery.viewInsetsOf(context).bottom,
             child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                boxShadow: const [
                   BoxShadow(
                       color: Colors.black12,
                       blurRadius: 10,
                       offset: Offset(0, -4))
                 ],
               ),
-              child: Obx(() => BarcodeInputWidget(
-                    onScan: controller.scanBarcode,
-                    isLoading: controller.isScanning.value,
-                    controller: controller.barcodeController,
-                    activeRoute: AppRoutes.MATERIAL_REQUEST_FORM,
-                    hintText: 'Scan Item to Add...',
-                  )),
+              child: Obx(() {
+                if (controller.isItemSheetOpen.value) {
+                  return const SizedBox.shrink();
+                }
+                return BarcodeInputWidget(
+                  onScan: controller.scanBarcode,
+                  isLoading: controller.isScanning.value,
+                  controller: controller.barcodeController,
+                  activeRoute: AppRoutes.MATERIAL_REQUEST_FORM,
+                  hintText: 'Scan Item to Add...',
+                );
+              }),
             ),
           ),
       ],
@@ -389,122 +293,23 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
   // ── Shared helpers ────────────────────────────────────────────────────────
 
   Widget _buildSectionCard(
-      {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87)),
-            const SizedBox(height: 16),
-            ...children,
-          ],
+          {required String title, required List<Widget> children}) =>
+      DocSectionCard(
+        title: title,
+        margin: EdgeInsets.zero,
+        children: children,
+      );
+
+  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) =>
+      DocSummaryRow(label: label, value: value, isBold: isBold);
+
+  Widget _buildEmptyState() => const Center(
+        child: FormEmptyState(
+          icon: Icons.qr_code_scanner,
+          title: 'No Items',
+          message: 'Scan an item or tap + to add.',
         ),
-      ),
-    );
-  }
-
-  Widget _buildCompactField({
-    required String label,
-    required String? value,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
-    final content = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: onTap != null ? Colors.white : Colors.grey.shade50,
-        border: Border.all(
-            color: onTap != null
-                ? Colors.grey.shade300
-                : Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon,
-              size: 16,
-              color: onTap != null ? Colors.grey.shade600 : Colors.grey.shade400),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              Text(
-                value ?? '—',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: onTap != null
-                        ? Colors.black87
-                        : Colors.grey.shade500),
-              ),
-            ],
-          ),
-          const Spacer(),
-          if (onTap != null)
-            Icon(Icons.edit_calendar_outlined,
-                size: 14, color: Colors.grey.shade400),
-        ],
-      ),
-    );
-    if (onTap == null) return content;
-    return InkWell(
-        borderRadius: BorderRadius.circular(12), onTap: onTap, child: content);
-  }
-
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
-                fontSize: isBold ? 16 : 14,
-                color: isBold ? Colors.black87 : Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.qr_code_scanner, size: 80, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
-          Text(
-            'No Items',
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 8),
-          const Text('Scan an item or tap + to add.',
-              style: TextStyle(color: Colors.grey)),
-        ],
-      ),
-    );
-  }
+      );
 
   // ── Type Picker bottom-sheet ────────────────────────────────────────────
 
@@ -522,10 +327,10 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
           builder: (context, scrollController) {
             return Container(
               padding: const EdgeInsets.all(16.0),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 children: [
@@ -582,7 +387,7 @@ class MaterialRequestFormScreen extends GetView<MaterialRequestFormController> {
                                     .textTheme
                                     .bodySmall
                                     ?.copyWith(
-                                        color: Colors.grey.shade700),
+                                        color: context.scheme.textMuted),
                               ),
                               isThreeLine: true,
                               trailing: isSelected

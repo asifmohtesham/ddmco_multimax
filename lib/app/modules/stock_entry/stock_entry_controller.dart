@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
@@ -8,7 +9,6 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
@@ -22,7 +22,6 @@ class StockEntryController extends GetxController {
       Get.find<MaterialRequestProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -59,47 +58,33 @@ class StockEntryController extends GetxController {
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
 
-  var writeRoles = <String>['System Manager'].obs;
-
   StockEntry? get detailedEntry =>
       _detailedEntriesCache[expandedEntryName.value];
 
   @override
   void onInit() {
     super.onInit();
-    fetchStockEntries();
-    fetchStockEntryTypes();
-    fetchUsers();
-    fetchWarehouses();
-    fetchDocTypePermissions();
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      activeFilters.value = Map<String, dynamic>.from(args['filters'] as Map);
+    }
+    // ignore: unawaited_futures
+    Future.wait([
+      fetchStockEntries(),
+      fetchStockEntryTypes(),
+      fetchUsers(),
+      fetchWarehouses(),
+    ]);
+    debounce(searchQuery, (_) => fetchStockEntries(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
   void onReady() {
     super.onReady();
-    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+    final args = Get.arguments;
+    if (args is Map && args['openCreate'] == true) {
       openCreateDialog();
-    }
-  }
-
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response =
-          await _apiProvider.getDocument('DocType', 'Stock Entry');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'};
-        for (var p in perms) {
-          if (p['write'] == 1 &&
-              (p['permlevel'] == 0 || p['permlevel'] == null)) {
-            newRoles.add(p['role']);
-          }
-        }
-        writeRoles.assignAll(newRoles.toList());
-      }
-    } catch (e) {
-      print('Error fetching permissions: $e');
     }
   }
 
@@ -110,8 +95,11 @@ class StockEntryController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchStockEntries(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchStockEntries(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {
@@ -125,14 +113,7 @@ class StockEntryController extends GetxController {
     fetchStockEntries(isLoadMore: false, clear: true);
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchStockEntries(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   Future<void> fetchStockEntries(
       {bool isLoadMore = false, bool clear = false}) async {
@@ -383,9 +364,10 @@ class StockEntryController extends GetxController {
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.all(16.0),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        decoration: BoxDecoration(
+          color: Get.theme.colorScheme.surface,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(16.0)),
         ),
         child: SafeArea(
           child: Column(
@@ -395,7 +377,8 @@ class StockEntryController extends GetxController {
               const SizedBox(height: 16),
               ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.orange,
+                  // x700/x600 fills keep the white glyphs ≥4.5:1.
+                  backgroundColor: AppColors.orange700,
                   child: Icon(Icons.outbond, color: Colors.white),
                 ),
                 title: const Text('From POS Upload'),
@@ -408,7 +391,7 @@ class StockEntryController extends GetxController {
               const Divider(),
               ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.teal,
+                  backgroundColor: AppColors.cyan700,
                   child: Icon(Icons.assignment, color: Colors.white),
                 ),
                 title: const Text('From Material Request'),
@@ -421,17 +404,17 @@ class StockEntryController extends GetxController {
               const Divider(),
               ListTile(
                 leading: const CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.transform, color: Colors.white),
+                  backgroundColor: AppColors.blue600,
+                  child: Icon(Icons.add, color: Colors.white),
                 ),
-                title: const Text('Material Transfer'),
-                subtitle: const Text('Internal Transfer'),
+                title: const Text('New Stock Entry'),
+                subtitle: const Text('Select type after creating'),
                 onTap: () {
                   Get.back();
                   Get.toNamed(AppRoutes.STOCK_ENTRY_FORM, arguments: {
                     'name': '',
                     'mode': 'new',
-                    'stockEntryType': 'Material Transfer',
+                    'stockEntryType': '',
                     'customReferenceNo': ''
                   });
                 },
@@ -452,11 +435,12 @@ class StockEntryController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: scheme.fg,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -481,7 +465,7 @@ class StockEntryController extends GetxController {
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),
                       filled: true,
-                      fillColor: Colors.grey.shade50,
+                      fillColor: scheme.subtle,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -507,8 +491,7 @@ class StockEntryController extends GetxController {
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                    color: Colors.grey.shade200)),
+                                side: BorderSide(color: scheme.border)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
@@ -541,18 +524,25 @@ class StockEntryController extends GetxController {
                                               .symmetric(
                                               horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
-                                              color: Colors.orange.shade50,
+                                              color: AppColors.orange500
+                                                  .withValues(alpha: 0.13),
                                               borderRadius:
                                                   BorderRadius.circular(
                                                       8),
                                               border: Border.all(
-                                                  color: Colors
-                                                      .orange.shade200)),
+                                                  color: AppColors
+                                                      .orange500
+                                                      .withValues(
+                                                          alpha: 0.35))),
                                           child: Text(pos.status,
                                               style: TextStyle(
                                                   fontSize: 11,
-                                                  color: Colors
-                                                      .orange.shade800,
+                                                  color: Theme.of(context)
+                                                              .brightness ==
+                                                          Brightness.dark
+                                                      ? AppColors.orange300
+                                                      : AppColors
+                                                          .orange700,
                                                   fontWeight:
                                                       FontWeight.bold)),
                                         )
@@ -572,10 +562,10 @@ class StockEntryController extends GetxController {
                                       children: [
                                         Row(
                                           children: [
-                                            const Icon(
+                                            Icon(
                                                 Icons.inventory_2_outlined,
                                                 size: 14,
-                                                color: Colors.grey),
+                                                color: scheme.textMuted),
                                             const SizedBox(width: 4),
                                             Text(
                                               '${pos.totalQty?.toStringAsFixed(0) ?? 0} Items',
@@ -587,9 +577,9 @@ class StockEntryController extends GetxController {
                                           ],
                                         ),
                                         Text(pos.date,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.grey)),
+                                                color: scheme.textMuted)),
                                       ],
                                     ),
                                   ],
@@ -620,11 +610,12 @@ class StockEntryController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: scheme.fg,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(16.0)),
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -649,7 +640,7 @@ class StockEntryController extends GetxController {
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),
                       filled: true,
-                      fillColor: Colors.grey.shade50,
+                      fillColor: scheme.subtle,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -677,8 +668,7 @@ class StockEntryController extends GetxController {
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                    color: Colors.grey.shade200)),
+                                side: BorderSide(color: scheme.border)),
                             child: InkWell(
                               onTap: () {
                                 Get.back();
@@ -733,9 +723,9 @@ class StockEntryController extends GetxController {
                                       children: [
                                         Row(
                                           children: [
-                                            const Icon(Icons.date_range,
+                                            Icon(Icons.date_range,
                                                 size: 14,
-                                                color: Colors.grey),
+                                                color: scheme.textMuted),
                                             const SizedBox(width: 4),
                                             Text(mr.transactionDate,
                                                 style: const TextStyle(
@@ -744,9 +734,9 @@ class StockEntryController extends GetxController {
                                         ),
                                         Text(
                                             'Items: ${mr.items.length}',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.grey)),
+                                                color: scheme.textMuted)),
                                       ],
                                     ),
                                   ],

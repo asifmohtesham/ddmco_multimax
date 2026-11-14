@@ -22,9 +22,9 @@ class BottomScanBar extends StatelessWidget {
       left: false,
       right: false,
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          boxShadow: const [
             BoxShadow(
               color: Colors.black12,
               blurRadius: 10,

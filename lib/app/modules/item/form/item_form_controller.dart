@@ -1,18 +1,26 @@
+import 'dart:convert';
 import 'dart:developer';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/item_model.dart';
+import 'package:multimax/app/data/models/item_price_model.dart';
+import 'package:multimax/app/data/models/pricing_rule_model.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/item_price_provider.dart';
+import 'package:multimax/app/data/providers/pricing_rule_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/item/form/reorder_rules.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 
-class ItemFormController extends GetxController {
+class ItemFormController extends GetxController with OptimisticLockingMixin {
   final String docType = 'Item';
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -32,6 +40,43 @@ class ItemFormController extends GetxController {
   var isLoadingStock = false.obs;
   var isLoadingLedger = false.obs;
   var isLoadingBatches = false.obs;
+
+  // ── Auto re-order ─────────────────────────────────────────────────────────
+  /// Working copy of `Item.reorder_levels`, seeded on every successful fetch.
+  var reorderRows = <ItemReorder>[].obs;
+
+  /// True while [saveReorderLevels] is in flight.
+  var isSavingReorder = false.obs;
+
+  /// True when [reorderRows] differs from the last-fetched state.
+  var isReorderDirty = false.obs;
+
+  /// Mirrors `Stock Settings.auto_indent`. Defaults to **true** so the warning
+  /// banner stays hidden until we positively learn the setting is off — a
+  /// permission error must not produce a false alarm.
+  var autoIndentEnabled = true.obs;
+
+  /// JSON snapshot of [reorderRows] taken after each successful fetch, so the
+  /// dirty flag is a diff rather than a one-way latch (reverting an edit
+  /// clears it). Mirrors the DN/PO/PS/ToDo form controllers.
+  String _originalReorderJson = '';
+
+  bool _reorderTabLoaded = false;
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Prices tab ────────────────────────────────────────────────────────────
+  var itemPrices = <ItemPrice>[].obs;
+  var itemRules = <PricingRule>[].obs;
+  // Starts true (not false) so the Prices tab shows its spinner instead of
+  // flashing "No price set" / "Add price" before fetchPricing runs.
+  var isLoadingPricing = true.obs;
+
+  /// False once the server denies the DocType (Sales/Stock Users get 403 on
+  /// Item Price) — the section hides instead of erroring.
+  var pricesVisible = true.obs;
+  var rulesVisible = true.obs;
+  bool _pricesTabLoaded = false;
+  // ──────────────────────────────────────────────────────────────────────────
 
   /// Batch No from the last scan that opened this sheet. Null when the item
   /// was opened without batch context (e.g. by tapping a list row).
@@ -123,6 +168,18 @@ class ItemFormController extends GetxController {
           fetchAttachments();
         }
         break;
+      case 4:
+        if (!_reorderTabLoaded) {
+          _reorderTabLoaded = true;
+          fetchAutoIndentSetting();
+        }
+        break;
+      case 5:
+        if (!_pricesTabLoaded) {
+          _pricesTabLoaded = true;
+          fetchPricing();
+        }
+        break;
     }
   }
 
@@ -130,9 +187,12 @@ class ItemFormController extends GetxController {
     itemCode = code;
     highlightedBatchNo.value = batchNo;
     // Reset lazy-load flags so every fresh open of the sheet reloads
-    // Stock and Attachments tabs when visited for the first time.
+    // Stock, Attachments, Re-order and Prices tabs when visited for the
+    // first time.
     _stockTabLoaded = false;
     _attachmentsTabLoaded = false;
+    _reorderTabLoaded = false;
+    _pricesTabLoaded = false;
     _loadCoreData();
   }
 
@@ -157,6 +217,7 @@ class ItemFormController extends GetxController {
       final response = await _apiProvider.getDocument('Item', itemCode);
       if (response.statusCode == 200 && response.data['data'] != null) {
         item.value = Item.fromJson(response.data['data']);
+        _seedReorderRows();
       } else {
         GlobalSnackbar.error(message: 'Item not found');
       }
@@ -366,6 +427,249 @@ class ItemFormController extends GetxController {
       return 'N/A';
     }
   }
+
+  // ── Auto re-order ─────────────────────────────────────────────────────────
+
+  @override
+  Future<void> reloadDocument() async {
+    await fetchItemDetails();
+  }
+
+  String _reorderJson(List<ItemReorder> rows) =>
+      jsonEncode(rows.map((r) => r.toJson()).toList());
+
+  void _seedReorderRows() {
+    reorderRows.value =
+        List<ItemReorder>.from(item.value?.reorderLevels ?? const []);
+    _originalReorderJson = _reorderJson(reorderRows);
+    isReorderDirty.value = false;
+  }
+
+  void _checkReorderDirty() {
+    isReorderDirty.value = _reorderJson(reorderRows) != _originalReorderJson;
+  }
+
+  /// A blank row seeded with the item's default request type.
+  ItemReorder newReorderRowTemplate() => ItemReorder(
+        warehouse: '',
+        materialRequestType:
+            defaultReorderTypeFor(item.value?.defaultMaterialRequestType),
+      );
+
+  void addReorderRow(ItemReorder row) {
+    reorderRows.add(row);
+    _checkReorderDirty();
+  }
+
+  void updateReorderRow(int index, ItemReorder row) {
+    if (index < 0 || index >= reorderRows.length) return;
+    reorderRows[index] = row;
+    _checkReorderDirty();
+  }
+
+  void removeReorderRow(int index) {
+    if (index < 0 || index >= reorderRows.length) return;
+    reorderRows.removeAt(index);
+    _checkReorderDirty();
+  }
+
+  /// Reads `Stock Settings.auto_indent`.
+  ///
+  /// **Fails open by design.** Reading the Stock Settings Single needs
+  /// permission on that doctype and the resource API 403s for non-System
+  /// Managers. On any error [autoIndentEnabled] is left `true`, so the warning
+  /// banner is simply not shown rather than shown wrongly.
+  Future<void> fetchAutoIndentSetting() async {
+    try {
+      final response = await _provider.getStockSettings();
+      if (response.statusCode == 200 && response.data?['data'] != null) {
+        final v = response.data['data']['auto_indent'];
+        autoIndentEnabled.value = v == 1 || v == true || v == '1';
+      }
+    } catch (e) {
+      if (kDebugMode) log('Could not read Stock Settings.auto_indent: $e');
+    }
+  }
+
+  /// Extracts a human-readable message from a Frappe error body.
+  ///
+  /// Frappe returns validation throws in `_server_messages` — a JSON-encoded
+  /// list of JSON-encoded maps each carrying a `message`. The reorder
+  /// descendant check (item.py:523-534) arrives this way, and its text is
+  /// specific enough to be worth surfacing verbatim rather than replacing with
+  /// a generic string. Public and static so it is unit-testable directly.
+  static String parseServerMessage(dynamic data) {
+    if (data is! Map) return 'Save failed';
+
+    final raw = data['_server_messages'];
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List && decoded.isNotEmpty) {
+          final messages = <String>[];
+          for (final entry in decoded) {
+            final m = entry is String ? jsonDecode(entry) : entry;
+            final text = m is Map ? m['message'] : null;
+            if (text != null) messages.add(text.toString());
+          }
+          if (messages.isNotEmpty) {
+            // Frappe embeds <b>/<br> in throw messages.
+            return messages
+                .join('\n')
+                .replaceAll(RegExp(r'<br\s*/?>'), '\n')
+                .replaceAll(RegExp(r'<[^>]*>'), '')
+                .trim();
+          }
+        }
+      } catch (_) {
+        // Malformed payload — fall through to the exception key.
+      }
+    }
+
+    if (data['exception'] != null) {
+      return data['exception'].toString().split(':').last.trim();
+    }
+    return 'Save failed';
+  }
+
+  /// Writes [reorderRows] back to `Item.reorder_levels`.
+  ///
+  /// The full array is sent: Frappe replaces the child table wholesale, so an
+  /// omitted row is deleted. Existing rows carry their `name` and are updated
+  /// in place; new rows omit it and are inserted.
+  Future<void> saveReorderLevels() async {
+    if (isSavingReorder.value) return;
+
+    final error = validateReorderRows(reorderRows);
+    if (error != null) {
+      GlobalSnackbar.error(message: error);
+      return;
+    }
+    if (checkStaleAndBlock()) return;
+
+    isSavingReorder.value = true;
+
+    final data = <String, dynamic>{
+      'reorder_levels': reorderRows.map((r) => r.toJson()).toList(),
+      'modified': item.value?.modified,
+    };
+
+    try {
+      final response = await _provider.updateReorderLevels(itemCode, data);
+      if (response.statusCode == 200) {
+        // Reseeds rows and the dirty baseline from the server's own version,
+        // which includes any warehouse_group the server defaulted for us.
+        await fetchItemDetails();
+        GlobalSnackbar.success(message: 'Re-order rules saved');
+      } else {
+        GlobalSnackbar.error(message: 'Failed to save re-order rules');
+      }
+    } on DioException catch (e) {
+      if (handleVersionConflict(e)) return;
+      GlobalSnackbar.error(message: parseServerMessage(e.response?.data));
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Save failed: $e');
+    } finally {
+      isSavingReorder.value = false;
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Prices tab ────────────────────────────────────────────────────────────
+  Future<void> fetchPricing() async {
+    if (itemCode.isEmpty) {
+      isLoadingPricing.value = false;
+      return;
+    }
+    // The Item form can open as a sheet without ItemFormBinding.
+    if (!Get.isRegistered<ItemPriceProvider>()) {
+      Get.lazyPut<ItemPriceProvider>(() => ItemPriceProvider(), fenix: true);
+    }
+    if (!Get.isRegistered<PricingRuleProvider>()) {
+      Get.lazyPut<PricingRuleProvider>(() => PricingRuleProvider(), fenix: true);
+    }
+    isLoadingPricing.value = true;
+    try {
+      await Future.wait([_loadItemPrices(), _loadItemRules()]);
+    } finally {
+      isLoadingPricing.value = false;
+    }
+  }
+
+  Future<void> _loadItemPrices() async {
+    if (Get.find<PermissionService>().hasAccess('Item Price') == false) {
+      pricesVisible.value = false;
+      return;
+    }
+    if (item.value?.hasVariants == true) {
+      itemPrices.clear();
+      // A prior 403 on another item must not hide the template's
+      // "Prices are set on variants" state.
+      pricesVisible.value = true;
+      return;
+    }
+    try {
+      final res = await Get.find<ItemPriceProvider>().getItemPrices(
+        limit: 0,
+        filters: [
+          ['Item Price', 'item_code', '=', itemCode]
+        ],
+        orderBy: 'price_list asc',
+      );
+      itemPrices.assignAll([
+        for (final e in (res.data['data'] as List?) ?? const [])
+          ItemPrice.fromJson(Map<String, dynamic>.from(e as Map)),
+      ]);
+      pricesVisible.value = true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        pricesVisible.value = false;
+      } else {
+        GlobalSnackbar.error(message: 'Could not load item prices');
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load item prices');
+    }
+  }
+
+  Future<void> _loadItemRules() async {
+    if (Get.find<PermissionService>().hasAccess('Pricing Rule') == false) {
+      rulesVisible.value = false;
+      return;
+    }
+    try {
+      itemRules.assignAll(await Get.find<PricingRuleProvider>()
+          .rulesForItem(itemCode, item.value?.variantOf));
+      rulesVisible.value = true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        rulesVisible.value = false;
+      } else {
+        GlobalSnackbar.error(message: 'Could not load pricing rules');
+      }
+    } catch (e) {
+      GlobalSnackbar.error(message: 'Could not load pricing rules');
+    }
+  }
+
+  Future<void> openItemPrice(ItemPrice price) async {
+    await Get.toNamed(AppRoutes.ITEM_PRICE_FORM,
+        arguments: {'name': price.name, 'mode': 'edit'});
+    fetchPricing();
+  }
+
+  Future<void> addItemPrice() async {
+    await Get.toNamed(AppRoutes.ITEM_PRICE_FORM,
+        arguments: {'name': '', 'mode': 'new', 'item_code': itemCode});
+    fetchPricing();
+  }
+
+  Future<void> openPricingRule(PricingRule rule) async {
+    await Get.toNamed(AppRoutes.PRICING_RULE_FORM,
+        arguments: {'name': rule.name, 'mode': 'edit'});
+    fetchPricing();
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   bool isImage(String? url) {
     if (url == null) return false;

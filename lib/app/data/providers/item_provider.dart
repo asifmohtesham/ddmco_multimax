@@ -110,7 +110,14 @@ class ItemProvider {
   }
 
   Future<Response> getStockLevels(String itemCode) async {
-    return _apiProvider.getReport('Stock Balance', filters: {'item_code': itemCode});
+    return _apiProvider.getReport('Stock Balance', filters: {
+      'item_code': await _apiProvider.stockBalanceItemCodeFilter(itemCode),
+      // Split balances per Rack (inventory dimension); without this ERPNext
+      // collapses every rack in a warehouse into one aggregated row, so the
+      // app would show a single rack tile with the warehouse-wide quantity.
+      'show_dimension_wise_stock': 1,
+      'show_variant_attributes': 1,
+    });
   }
 
   Future<Response> getWarehouseStock(String warehouse) async {
@@ -143,6 +150,28 @@ class ItemProvider {
     final fromDate = DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(const Duration(days: 365)));
     final toDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
     return _apiProvider.getReport('Batch-Wise Balance History', filters: {'item_code': itemCode, 'from_date': fromDate, 'to_date': toDate});
+  }
+
+  /// Writes `reorder_levels` back onto the Item.
+  ///
+  /// [data] must carry the full `reorder_levels` array — Frappe replaces the
+  /// child table wholesale, so any row omitted here is deleted — plus the
+  /// optimistic-lock `modified` token.
+  Future<Response> updateReorderLevels(
+    String itemCode,
+    Map<String, dynamic> data,
+  ) async {
+    return _apiProvider.updateDocument('Item', itemCode, data);
+  }
+
+  /// Reads the `Stock Settings` Single.
+  ///
+  /// Needed for `auto_indent`, which erpnext version-15 defaults to 0 — with
+  /// it off, reorder rows never raise Material Requests. Requires read
+  /// permission on Stock Settings; the resource API 403s for non-System
+  /// Managers, so callers must fail open rather than showing a false alarm.
+  Future<Response> getStockSettings() async {
+    return _apiProvider.getDocument('Stock Settings', 'Stock Settings');
   }
 }
 

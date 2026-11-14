@@ -2,6 +2,7 @@ import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/models/purchase_receipt_model.dart';
+import 'package:multimax/app/data/models/sales_order_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 
 /// Canonical, immutable data contract for a single line-item card
@@ -59,7 +60,7 @@ class ItemCardData {
   /// rendered immediately below the item headline in DocItemCard.
   final double? packedQty;
 
-  // ── Pricing (retained in model; suppressed in all factories — C11) ─────────
+  // ── Pricing (suppressed in all factories — C11 — except Sales Order) ───────
 
   final double? rate;
   final double? amount;
@@ -78,7 +79,7 @@ class ItemCardData {
   // ── Label hints ────────────────────────────────────────────────────────────
 
   final String? qtyLabel;
-  final String? rateLabel;       // null in all factories (C11)
+  final String? rateLabel;       // null in all factories except SO (C11)
   final String? warehouseLabel;  // null in all factories (C11)
 
   // ── Behaviour flags ────────────────────────────────────────────────────────
@@ -181,6 +182,41 @@ class ItemCardData {
     );
   }
 
+  /// Maps a [SalesOrderItem] to [ItemCardData].
+  ///
+  /// `targetQty` is left null: `DocItemProgressBar` computes qty ÷ targetQty
+  /// as a "how much is left to receive" bar, but SO qty is what the customer
+  /// ordered and deliveredQty only shrinks that gap — the same math would
+  /// read a partially-delivered row as if it still needed receiving.
+  /// Rate is shown beside Qty (selling needs the price at a glance); the
+  /// row warehouse is suppressed — it almost always mirrors the header's
+  /// Set Warehouse and is still editable from the item sheet.
+  factory ItemCardData.fromSalesOrderItem(
+    SalesOrderItem item, {
+    int? index,
+    required bool isEditable,
+    bool isHighlighted = false,
+  }) {
+    return ItemCardData(
+      rowName:       item.name,
+      index:         index,
+      itemCode:      item.itemCode,
+      itemName:      item.itemName.isNotEmpty ? item.itemName : null,
+      qty:           item.qty,
+      uom:           item.uom,
+      targetQty:     null,
+      rate:          item.rate,
+      amount:        item.amount,
+      warehouse:     null,
+      toWarehouse:   null,
+      qtyLabel:      'Qty',
+      rateLabel:     'Rate',
+      warehouseLabel: null,
+      isEditable:    isEditable,
+      isHighlighted: isHighlighted,
+    );
+  }
+
   /// Maps a [PurchaseReceiptItem] to [ItemCardData].
   ///
   /// C11: rate, amount, warehouse, warehouseLabel suppressed (null).
@@ -190,15 +226,9 @@ class ItemCardData {
     required bool isEditable,
     bool isHighlighted = false,
   }) {
-    // purchaseOrderQty is populated by the API on persisted docs.
-    // For locally-added rows (new PR from PO), fall back to poQty which is
-    // set by addItem() via the child controller's poQty field.
-    final double? resolvedTargetQty =
-    (item.purchaseOrderQty != null && item.purchaseOrderQty! > 0)
-        ? item.purchaseOrderQty
-        : (item.poQty != null && item.poQty! > 0)
-        ? item.poQty
-        : null;
+    // Single source of truth on the model so the Items-tab status chips and
+    // this progress bar resolve the PO target identically.
+    final double? resolvedTargetQty = item.resolvedTargetQty;
 
     return ItemCardData(
       rowName:       item.name,

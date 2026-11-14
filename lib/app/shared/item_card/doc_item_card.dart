@@ -164,6 +164,8 @@ class DocItemCard extends StatelessWidget {
                     qty:            data.qty,
                     uom:            data.uom,
                     qtyLabel:       data.qtyLabel ?? 'Qty',
+                    rate:           data.rate,
+                    rateLabel:      data.rateLabel ?? 'Rate',
                     rack:           data.rack,
                     toRack:         data.toRack,
                     rackDisplayMode: data.rackDisplayMode,
@@ -292,6 +294,7 @@ class _VariantOfRow extends StatelessWidget {
 ///
 /// DocType coverage:
 ///   PO  — qty, warehouse
+///   SO  — qty, rate
 ///   PR  — qty, batchNo, rack, warehouse
 ///   SE  — qty, batchNo, rack, toRack, warehouse, toWarehouse
 ///   DN  — qty, batchNo, rack, warehouse
@@ -301,6 +304,8 @@ class _OperationalZone extends StatelessWidget {
   final double  qty;
   final String? uom;
   final String  qtyLabel;
+  final double? rate;
+  final String  rateLabel;
   final String? rack;
   final String? toRack;
   final RackDisplayMode rackDisplayMode;
@@ -308,13 +313,16 @@ class _OperationalZone extends StatelessWidget {
   final String? toWarehouse;
   final String  warehouseLabel;
 
-  static final _fmt = NumberFormat('#,##0.##');
+  static final _fmt     = NumberFormat('#,##0.##');
+  static final _rateFmt = NumberFormat('#,##0.00');
 
   const _OperationalZone({
     this.batchNo,
     required this.qty,
     this.uom,
     required this.qtyLabel,
+    this.rate,
+    required this.rateLabel,
     this.rack,
     this.toRack,
     required this.rackDisplayMode,
@@ -358,6 +366,25 @@ class _OperationalZone extends StatelessWidget {
             const SizedBox(width: 6),
             // Qty hugs its content; Batch No gets all remaining width.
             IntrinsicWidth(child: qtyCell),
+          ],
+        ),
+      );
+    } else if (rate != null) {
+      // SO — Qty and Rate share the row equally.
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: qtyCell),
+            const SizedBox(width: 6),
+            Expanded(
+              child: _LabelValueCell(
+                icon:  Icons.sell_outlined,
+                label: rateLabel,
+                value: _rateFmt.format(rate),
+                role:  MetaChipRole.rate,
+              ),
+            ),
           ],
         ),
       );

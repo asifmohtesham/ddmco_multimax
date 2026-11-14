@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User Area — Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="multimax-ds/ds.css">
+<link rel="stylesheet" href="ua.css">
+<style>
+  html,body{margin:0;background:#f0eee9;}
+</style>
+</head>
+<body>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="22" fill="#2490ef"/>
+    <circle cx="50" cy="38" r="13" fill="#bfe0fb"/>
+    <path d="M28 74c0-13 10-20 22-20s22 7 22 20" fill="#bfe0fb"/>
+    <rect x="62" y="20" width="20" height="20" rx="10" fill="#fff"/>
+    <circle cx="72" cy="30" r="4" fill="#2490ef"/>
+  </svg>
+</template>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="ua-shared.jsx"></script>
+<script type="text/babel" src="ua-baseline.jsx"></script>
+<script type="text/babel" src="ua-redesign.jsx"></script>
+<script type="text/babel" src="ua-prototype.jsx"></script>
+<script type="text/babel">
+  const { createRoot } = ReactDOM;
+
+  // centers a phone on a neutral mat so the bezel ring reads
+  const Mat = ({ children, dark }) => (
+    <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',
+      background: dark ? '#1a1f24' : '#fbfbfa'}}>{children}</div>
+  );
+
+  // Logout recommendation explainer card
+  const LogoutRec = () => (
+    <div style={{height:'100%',background:'var(--fg)',padding:'26px 24px',display:'flex',flexDirection:'column',
+      fontFamily:'var(--font)',color:'var(--text)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:11,marginBottom:6}}>
+        <span style={{width:40,height:40,borderRadius:11,flex:'none',display:'flex',alignItems:'center',justifyContent:'center',
+          background:'color-mix(in srgb,var(--red-500) 13%,var(--fg))',color:'var(--red-600)'}}>
+          <span style={{width:22,height:22,display:'flex'}}>{UA_ICON.logout}</span></span>
+        <div style={{fontSize:21,fontWeight:700,letterSpacing:'-.01em'}}>Logout placement</div>
+      </div>
+      <div style={{fontSize:14,color:'var(--text-muted)',lineHeight:1.5,marginBottom:20}}>
+        Today it lives in <b style={{color:'var(--text)'}}>two</b> places — the drawer user menu and
+        inside <i>My&nbsp;Profile → Account&nbsp;Settings</i>, right next to “Change&nbsp;Password.”
+      </div>
+
+      <div style={{fontSize:11,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',color:'var(--text-subtle)',marginBottom:10}}>Recommendation</div>
+      <div style={{background:'color-mix(in srgb,var(--green-500) 9%,var(--fg))',border:'1px solid color-mix(in srgb,var(--green-500) 26%,var(--border))',
+        borderRadius:'var(--r-lg)',padding:'15px 16px',marginBottom:18}}>
+        <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>Keep one logout — in the User Area.</div>
+        <div style={{fontSize:13.5,color:'var(--text-muted)',lineHeight:1.5}}>
+          Anchored at the bottom of the hub, visually separated, and gated by a confirm dialog.
+          Remove the duplicate from My&nbsp;Profile.
+        </div>
+      </div>
+
+      {[
+        ['Single source of truth','One predictable spot beats hunting in two screens.'],
+        ['Lower mis-tap risk','Pulled away from Change Password and given a confirm step.'],
+        ['Bottom = exit','Destructive actions belong at the end, not mid-list.'],
+      ].map((r,i)=>(
+        <div key={i} style={{display:'flex',gap:11,alignItems:'flex-start',marginBottom:13}}>
+          <span style={{width:20,height:20,flex:'none',marginTop:1,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',
+            background:'color-mix(in srgb,var(--green-500) 16%,var(--fg))',color:'var(--green-600)'}}>
+            <span style={{width:13,height:13,display:'flex'}}>{UA_ICON.check}</span></span>
+          <div><div style={{fontSize:14,fontWeight:600}}>{r[0]}</div>
+            <div style={{fontSize:13,color:'var(--text-muted)',lineHeight:1.45,marginTop:1}}>{r[1]}</div></div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const PW = 412, PH = 800; // phone artboard size
+
+  createRoot(document.getElementById('root')).render(
+    <DesignCanvas>
+
+      <DCSection id="proto" title="Interactive prototype"
+        subtitle="Tap the account row in the drawer → explore the User Area → change the theme live (light/dark/accent/size) → try Log out. Everything is clickable.">
+        <DCArtboard id="flow" label="Menu → User Area → screens · fully interactive" width={PW} height={PH}>
+          <Mat><UAPrototype/></Mat>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="drawer" title="1 · Nav Drawer → User Area"
+        subtitle="Before: tapping the header arrow swaps the module list for a flat inline menu. After: the account row opens a dedicated, grouped Account hub with room for Theme.">
+        <DCArtboard id="d-before" label="Current — inline user menu" width={PW} height={PH}>
+          <Mat><UAPhone statusbar={false}><BaselineUserMenu/></UAPhone></Mat>
+        </DCArtboard>
+        <DCArtboard id="d-after" label="Redesign — drawer account row" width={PW} height={PH}>
+          <Mat><RedesignDrawer/></Mat>
+        </DCArtboard>
+        <DCArtboard id="hub" label="Redesign — Account hub" width={PW} height={PH}>
+          <Mat><RedesignUserArea/></Mat>
+        </DCArtboard>
+        <DCArtboard id="hub-dark" label="Account hub — dark" width={PW} height={PH}>
+          <Mat dark><RedesignUserArea theme="dark"/></Mat>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="profile" title="2 · My Profile"
+        subtitle="Same content, calmer hierarchy: a tighter hero, grouped cards, all roles visible, and a dedicated Security group. Logout removed from here (see recommendation).">
+        <DCArtboard id="p-before" label="Current" width={PW} height={PH}>
+          <Mat><UAPhone><BaselineProfile/></UAPhone></Mat>
+        </DCArtboard>
+        <DCArtboard id="p-after" label="Redesign" width={PW} height={PH}>
+          <Mat><RedesignProfile/></Mat>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="session" title="3 · Session Defaults"
+        subtitle="Promoted from a cramped bottom sheet to a full screen consistent with the others — clearer field grouping and a persistent Save bar.">
+        <DCArtboard id="s-before" label="Current — bottom sheet" width={PW} height={PH}>
+          <Mat><UAPhone><BaselineSession/></UAPhone></Mat>
+        </DCArtboard>
+        <DCArtboard id="s-after" label="Redesign — full screen" width={PW} height={PH}>
+          <Mat><RedesignSession/></Mat>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="about" title="4 · About → System Information"
+        subtitle="Same health checklist, on-system surfaces and indicator colors, plus a version/build/channel strip.">
+        <DCArtboard id="a-before" label="Current" width={PW} height={PH}>
+          <Mat><UAPhone><BaselineAbout/></UAPhone></Mat>
+        </DCArtboard>
+        <DCArtboard id="a-after" label="Redesign" width={PW} height={PH}>
+          <Mat><RedesignAbout/></Mat>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="theme" title="5 · Theme — new screen"
+        subtitle="Net-new. Light / Dark / System, an accent picker drawn from the DS ramps, and a text-size control — all reflected in a live preview. Both cards below are interactive.">
+        <DCArtboard id="t-light" label="Live · try the controls" width={PW} height={PH}>
+          <Mat><ThemeDemo start={{mode:'light',accent:'purple',dens:'comfortable'}}/></Mat>
+        </DCArtboard>
+        <DCArtboard id="t-dark" label="Live · dark + cyan" width={PW} height={PH}>
+          <Mat dark><ThemeDemo start={{mode:'dark',accent:'cyan',dens:'comfortable'}}/></Mat>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="logout" title="6 · Logout placement"
+        subtitle="Your call — here's the recommendation.">
+        <DCArtboard id="rec" label="Recommendation" width={400} height={620}>
+          <LogoutRec/>
+        </DCArtboard>
+      </DCSection>
+
+    </DesignCanvas>
+  );
+</script>
+</body>
+</html>

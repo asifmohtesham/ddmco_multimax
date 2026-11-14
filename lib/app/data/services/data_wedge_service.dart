@@ -86,6 +86,11 @@ class DataWedgeService extends GetxService {
     }
   }
 
+  /// Public entry point for non-EventChannel scan sources (e.g. the HID
+  /// keyboard-wedge bridge). Funnels into the same queue as native scans so
+  /// downstream consumers behave identically to a Zebra/DataWedge scan.
+  void injectScan(String code) => _enqueueScan(code);
+
   void _enqueueScan(String code) {
     if (code.isEmpty) return;
     _scanQueue.add(code);

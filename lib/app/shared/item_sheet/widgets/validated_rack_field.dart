@@ -75,9 +75,12 @@ class ValidatedRackField extends StatelessWidget {
   /// is not rendered (to prevent concurrent requests).
   final bool isValidating;
 
-  /// Inner hint/label text shown inside the field boundary.
+  /// Floating label text.
+  final String? labelText;
+
+  /// Inner hint text shown inside the field boundary.
   /// Typically `'Enter or scan rack ID'` or a DocType-specific variant.
-  final String label;
+  final String hintText;
 
   /// Accent colour used for the validate icon, valid check-circle, and
   /// field border highlights. Should match the parent DocType's theme colour.
@@ -118,7 +121,8 @@ class ValidatedRackField extends StatelessWidget {
     required this.textController,
     required this.isValid,
     required this.isValidating,
-    required this.label,
+    this.labelText,
+    required this.hintText,
     required this.color,
     this.onEdit,
     required this.onReset,
@@ -166,7 +170,8 @@ class ValidatedRackField extends StatelessWidget {
     return ValidatedFieldWidget(
       controller: textController,
       color: color,
-      hintText: label,
+      labelText: labelText,
+      hintText: hintText,
       // Field becomes read-only once validated so accidental edits do not
       // silently invalidate a confirmed rack without the reset action.
       isReadOnly: isValid,

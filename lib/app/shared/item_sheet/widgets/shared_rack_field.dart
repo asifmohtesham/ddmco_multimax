@@ -83,7 +83,7 @@ import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.d
 ///   pass balanceOverride; all existing callers fall back to _rackBalance().
 class SharedRackField extends StatelessWidget {
   final RackFieldWithBrowseDelegate c;
-  final Color  accentColor;
+  final Color? accentColor;
   final String label;
   final String hint;
   final bool   editMode;
@@ -124,7 +124,7 @@ class SharedRackField extends StatelessWidget {
   const SharedRackField({
     super.key,
     required this.c,
-    required this.accentColor,
+    this.accentColor,
     this.label          = 'Rack',
     this.hint           = 'Enter or scan rack ID',
     this.editMode       = false,
@@ -145,14 +145,16 @@ class SharedRackField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return editMode ? _EditModeRack(this) : _SimpleRack(this);
+    final effectiveColor = accentColor ?? Theme.of(context).colorScheme.primary;
+    return editMode ? _EditModeRack(this, effectiveColor) : _SimpleRack(this, effectiveColor);
   }
 }
 
 // ── Simple (borderless) mode — SE style, unchanged ────────────────────────
 class _SimpleRack extends StatelessWidget {
   final SharedRackField w;
-  const _SimpleRack(this.w);
+  final Color effectiveColor;
+  const _SimpleRack(this.w, this.effectiveColor);
 
   @override
   Widget build(BuildContext context) {
@@ -173,64 +175,90 @@ class _SimpleRack extends StatelessWidget {
           ? theme.colorScheme.error
           : isValid
               ? Colors.green
-              : w.accentColor;
+              : effectiveColor;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GlobalItemFormSheet.buildInputGroup(
-            label: w.label,
-            color: borderColor,
-            child: TextField(
-              controller: c.rackController,
-              focusNode:  c.rackFocusNode,
-              style:      theme.textTheme.bodyMedium,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (v) {
-                if (v.isNotEmpty) c.validateRack(v);
-              },
-              decoration: InputDecoration(
-                hintText:    w.hint,
-                border:      InputBorder.none,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                errorText:   hasError ? c.rackError.value : null,
-                errorMaxLines: 2,
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (validating)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 8),
-                        child: SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    else if (isValid)
-                      Padding(
+          TextField(
+            controller: c.rackController,
+            focusNode:  c.rackFocusNode,
+            style:      theme.textTheme.bodyMedium,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (v) {
+              if (v.isNotEmpty) c.validateRack(v);
+            },
+            decoration: InputDecoration(
+              labelText:   w.label,
+              hintText:    w.hint,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              isDense: true,
+              errorText:   hasError ? c.rackError.value : null,
+              errorMaxLines: 2,
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (validating)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else if (isValid)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Icon(Icons.check_circle,
+                          color: Colors.green, size: 20),
+                    ),
+                  if (c.rackStockTooltip.value != null)
+                    Tooltip(
+                      message: c.rackStockTooltip.value!,
+                      child: Padding(
                         padding: const EdgeInsets.only(right: 4),
-                        child: Icon(Icons.check_circle,
-                            color: Colors.green, size: 20),
+                        child: Icon(Icons.inventory_2_outlined,
+                            color: effectiveColor, size: 20),
                       ),
-                    if (c.rackStockTooltip.value != null)
-                      Tooltip(
-                        message: c.rackStockTooltip.value!,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Icon(Icons.inventory_2_outlined,
-                              color: w.accentColor, size: 20),
-                        ),
-                      ),
-                    if (c.rackController.text.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          c.rackController.clear();
-                          c.resetRack();
-                        },
-                      ),
-                  ],
+                    ),
+                  if (c.rackController.text.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        c.rackController.clear();
+                        c.resetRack();
+                      },
+                    ),
+                ],
+              ),
+              border: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(8)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.outlineVariant,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: effectiveColor,
+                  width: 2,
+                ),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.error,
+                  width: 2,
                 ),
               ),
             ),
@@ -240,7 +268,7 @@ class _SimpleRack extends StatelessWidget {
           BalanceChip(
             balance:   rackBal,
             isLoading: validating,
-            color:     w.accentColor,
+            color:     effectiveColor,
             prefix:    'Rack Balance:',
             forceShow: validating || isValid,
           ),
@@ -265,7 +293,8 @@ class _SimpleRack extends StatelessWidget {
 // DN-10: rackBal now respects balanceOverride, matching _SimpleRack.
 class _EditModeRack extends StatelessWidget {
   final SharedRackField w;
-  const _EditModeRack(this.w);
+  final Color effectiveColor;
+  const _EditModeRack(this.w, this.effectiveColor);
 
   @override
   Widget build(BuildContext context) {
@@ -290,7 +319,7 @@ class _EditModeRack extends StatelessWidget {
           ? theme.colorScheme.error
           : isValid
               ? Colors.green
-              : w.accentColor;
+              : effectiveColor;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,22 +328,19 @@ class _EditModeRack extends StatelessWidget {
           // section label (w.label, e.g. 'Rack' / 'Source Rack') is
           // rendered above the field, consistent with every other
           // SharedXxxField in the sheet.
-          GlobalItemFormSheet.buildInputGroup(
-            label: w.label,
-            color: borderColor,
-            child: ValidatedRackField(
-              key:            const ValueKey('shared_rack_edit'),
-              textController: c.rackController,
-              isValid:        isValid,
-              isValidating:   validating,
-              label:          w.hint,   // inner field hint/label
-              color:          w.accentColor,
-              onEdit:         c.softResetRack,
-              onReset:        c.resetRack,
-              onValidate:     () => c.validateRack(c.rackController.text),
-              onSubmitted:    (val) => c.validateRack(val),
-              onPickerTap:    w.onPickerTap,
-            ),
+          ValidatedRackField(
+            key:            const ValueKey('shared_rack_edit'),
+            textController: c.rackController,
+            isValid:        isValid,
+            isValidating:   validating,
+            labelText:      w.label,
+            hintText:       w.hint,   // inner field hint
+            color:          effectiveColor,
+            onEdit:         c.softResetRack,
+            onReset:        c.resetRack,
+            onValidate:     () => c.validateRack(c.rackController.text),
+            onSubmitted:    (val) => c.validateRack(val),
+            onPickerTap:    w.onPickerTap,
           ),
           if (hasError && c.rackController.text.isNotEmpty)
             Padding(
@@ -330,7 +356,7 @@ class _EditModeRack extends StatelessWidget {
             BalanceChip(
               balance:   rackBal,
               isLoading: validating,
-              color:     w.accentColor,
+              color:     effectiveColor,
               prefix:    'Rack Balance:',
               forceShow: validating || isValid,
             ),

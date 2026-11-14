@@ -1,14 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/modules/common/widgets/awesome_bar.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
+import 'package:multimax/app/modules/global_widgets/camera_scan_overlay.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_todo_card.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_actionable_preview.dart';
+import 'package:multimax/app/modules/home/widgets/dashboard_attendance_card.dart';
+import 'package:multimax/app/modules/home/widgets/my_attendance_card.dart';
+import 'package:multimax/app/modules/hr/attendance/attendance_logic.dart';
+import 'package:multimax/app/modules/hr/attendance/widgets/employee_detail_sheet.dart';
+import 'package:multimax/app/data/models/attendance_models.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 
 class HomeScreen extends GetView<HomeController> {
@@ -16,15 +29,15 @@ class HomeScreen extends GetView<HomeController> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return AppShellScaffold(
+      // Approach A — the persistent barcode field stays the actual scan input;
+      // the hero card up top is the discoverable entry point that opens it.
       bottomNavigationBar: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
         child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
           ),
           child: Obx(() => BarcodeInputWidget(
             onScan: controller.onScan,
@@ -47,91 +60,60 @@ class HomeScreen extends GetView<HomeController> {
               title: 'Dashboard',
               automaticallyImplyLeading: false,
               extraActions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh Data',
-                  onPressed: () {
-                    controller.fetchDashboardData();
-                    controller.fetchPerformanceData();
-                  },
-                ),
+                AwesomeBar(),
               ],
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  _buildUserContextCard(context),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Quick Access',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuickAccessGrid(context),
-                  const SizedBox(height: 24),
-                  Obx(() => PerformanceTimelineCard(
-                    viewMode: controller.timelineViewMode.value,
-                    onToggleView: controller.toggleTimelineView,
-                    data: controller.timelineData,
-                    isLoading: controller.isLoadingTimeline.value,
-                    selectedDate: controller.timelineViewMode.value != 'Weekly'
-                        ? controller.selectedDailyDate.value
-                        : null,
-                    selectedRange: controller.timelineViewMode.value == 'Weekly'
-                        ? controller.selectedWeeklyRange.value
-                        : null,
-                    onDateChanged: controller.onDailyDateChanged,
-                    onRangeChanged: controller.onWeeklyRangeChanged,
-                  )),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Manufacturing Pulse',
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
+                  // 1 ── Greeting + context chip ──────────────────────────────
+                  _buildGreeting(context),
+                  const SizedBox(height: 18),
+
+                  // 1b ── My attendance: own day + month, above the fold ──────
+                  _buildMyAttendance(),
+
+                  // 2 ── Hero scan ────────────────────────────────────────────
+                  ScanHeroCard(onTap: () => _openScanner(context)),
+                  const SizedBox(height: 18),
+
+                  // 3-5 ── Quick Create / Needs attention / Upcoming tasks ────
+                  // Manager persona (manager role + open ToDos) leads with
+                  // Upcoming tasks; everyone else keeps Quick Create first.
+                  // Only the tasks section moves — the middle block keeps
+                  // today's internal order in both modes.
+                  Obx(() => DashboardSectionOrder(
+                        tasksFirst: controller.tasksFirst.value,
+                        tasks: _buildUpcomingActionable(context),
+                        middle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionHeader(
+                              context,
+                              'Quick Create',
+                              trailing: Obx(() => DashboardColumnsToggle(
+                                    columns: controller.dashboardColumns.value,
+                                    onChanged: controller.setDashboardColumns,
+                                  )),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildQuickAccessGrid(context),
+                            const SizedBox(height: 18),
+                            _buildNeedsAttention(context),
+                            _buildTodayAttendance(context),
+                          ],
+                        ),
+                      )),
+
+                  // 6 ── Today's pulse ────────────────────────────────────────
+                  _buildSectionHeader(context, "Today's pulse"),
                   const SizedBox(height: 12),
                   Obx(() {
                     if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
-                      return const _ManufacturingPulseSkeleton();
+                      return const PulseSkeleton();
                     }
-                    return Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: SpeedometerKpiCard(
-                                title: 'Work Orders',
-                                actual: controller.activeWorkOrdersCount.value,
-                                target: controller.targetWorkOrders,
-                                icon: Icons.precision_manufacturing_outlined,
-                                onTap: controller.goToWorkOrder,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: SpeedometerKpiCard(
-                                title: 'Job Cards',
-                                actual: controller.activeJobCardsCount.value,
-                                target: controller.targetJobCards,
-                                icon: Icons.assignment_ind_outlined,
-                                onTap: controller.goToJobCard,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        BomCountCard(
-                          count: controller.activeBomCount.value,
-                          onTap: controller.goToBOM,
-                        ),
-                        Obx(() {
-                          final jcName = controller.activeWipJcName.value;
-                          final op = controller.activeWipJcOperation.value;
-                          if (jcName == null) return const SizedBox.shrink();
-                          return _ResumeJobCard(jcName: jcName, operation: op);
-                        }),
-                      ],
-                    );
+                    return _buildPulse(context);
                   }),
                   const SizedBox(height: 80),
                 ]),
@@ -143,17 +125,434 @@ class HomeScreen extends GetView<HomeController> {
     );
   }
 
+  /// Opens the camera scanner — the SAME entry point used by the persistent
+  /// [BarcodeInputWidget]'s camera button — and routes the result through the
+  /// existing [HomeController.onScan] plumbing. No new scan logic.
+  Future<void> _openScanner(BuildContext context) async {
+    final result = await CameraScanOverlay.show(context);
+    if (result != null && result.isNotEmpty) {
+      controller.onScan(result);
+    }
+  }
+
   // ---------------------------------------------------------------------------
-  // Quick Access Grid
+  // Greeting + context chip (replaces the old full-width user-context card)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildGreeting(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scheme = context.scheme;
+    final text = Theme.of(context).textTheme;
+
+    return Obx(() {
+      final user = controller.selectedFilterUser.value;
+      final fullName = user?.name ?? 'Select User';
+      final firstName = fullName.split(' ').first;
+      final initial = fullName.isNotEmpty ? fullName[0].toUpperCase() : 'U';
+
+      return Row(
+        children: [
+          CircleAvatar(
+            radius: 21,
+            backgroundColor: cs.primary,
+            child: Text(
+              initial,
+              style: TextStyle(
+                color: cs.onPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome back, $firstName',
+                  style: text.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.text,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                _ContextChip(
+                  name: fullName,
+                  onTap: () => _showUserSearchModal(context),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Section header — major section label with optional count badge + rule
+  // ---------------------------------------------------------------------------
+
+  Widget _buildSectionHeader(BuildContext context, String label,
+      {int? count, Widget? trailing}) {
+    final cs = Theme.of(context).colorScheme;
+    final scheme = context.scheme;
+    return Row(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: scheme.text,
+            letterSpacing: -0.1,
+          ),
+        ),
+        if (count != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: cs.primary,
+            ),
+          ),
+        ],
+        const SizedBox(width: 10),
+        Expanded(child: Divider(color: scheme.border, height: 1)),
+        if (trailing != null) ...[
+          const SizedBox(width: 10),
+          trailing,
+        ],
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Needs attention
+  // ---------------------------------------------------------------------------
+  //
+  // Only rows with a REAL controller-backed source are rendered:
+  //   • Resume Job Card — gated on activeWipJcName (live WIP for the session).
+  //   • Work Orders in process — activeWorkOrdersCount (status "In Process").
+  //   • Open Job Cards — activeJobCardsCount (status "Open").
+  // The "Deliveries to pack" and "Purchase Receipts pending QC" rows from the
+  // design are intentionally omitted until the controller exposes those counts
+  // — per the handoff, rows with no real data source are hidden, not faked.
+  Widget _buildNeedsAttention(BuildContext context) {
+    return Obx(() {
+      final wip = controller.activeWipJcName.value;
+      final wo = controller.activeWorkOrdersCount.value;
+      final jc = controller.activeJobCardsCount.value;
+
+      final rows = <Widget>[];
+
+      if (wip != null) {
+        rows.add(ResumeJobCard(
+          jcName: wip,
+          operation: controller.activeWipJcOperation.value,
+        ));
+      }
+      if (wo > 0) {
+        rows.add(AttentionRow(
+          icon: Icons.precision_manufacturing_outlined,
+          color: Colors.indigo,
+          title: 'Work Orders in process',
+          subtitle: 'Active manufacturing orders',
+          count: wo,
+          onTap: controller.goToWorkOrder,
+        ));
+      }
+      if (jc > 0) {
+        rows.add(AttentionRow(
+          icon: Icons.assignment_ind_outlined,
+          color: Colors.deepOrange,
+          title: 'Open Job Cards',
+          subtitle: 'Awaiting start',
+          count: jc,
+          onTap: controller.goToJobCard,
+        ));
+      }
+
+      if (rows.isEmpty) return const SizedBox.shrink();
+
+      // Interleave the rows with 9px gaps, matching the design's tight stack.
+      final stacked = <Widget>[];
+      for (var i = 0; i < rows.length; i++) {
+        if (i > 0) stacked.add(const SizedBox(height: 9));
+        stacked.add(rows[i]);
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'Needs attention', count: rows.length),
+          const SizedBox(height: 11),
+          ...stacked,
+          const SizedBox(height: 18),
+        ],
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // My attendance — the viewer's own status today + the month dot strip.
+  // Hidden without a linked Employee or Attendance access (the Employee role
+  // has read on Attendance, so ordinary staff see their own).
+  // ---------------------------------------------------------------------------
+  Widget _buildMyAttendance() {
+    return Obx(() {
+      // hasLinkedEmployee reads currentUser (an Rx) on every path — keep it first.
+      if (!controller.hasLinkedEmployee || !controller.attendanceVisible) {
+        return const SizedBox.shrink();
+      }
+      final me = controller.myAttendance;
+      final loading = controller.isLoadingAttendance.value &&
+          controller.attendanceLoadedAt.value == null;
+      if (me == null && !loading) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: MyAttendanceCard(
+          row: me,
+          shift: controller.attendanceShift.value,
+          now: DateTime.now(),
+          strip: controller.myMonthStrip,
+          isLoading: loading,
+          onTap: controller.openMyMonth,
+        ),
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Today's attendance — site-wide summary of the HR attendance monitor.
+  // Hidden (SizedBox.shrink) for users without Attendance access, so operator
+  // Dashboards are unchanged. Does NOT follow the "Viewing {user}" chip: the
+  // terminal is one site. Hidden for self-only viewers (MyAttendanceCard covers them).
+  // ---------------------------------------------------------------------------
+  Widget _buildTodayAttendance(BuildContext context) {
+    return Obx(() {
+      if (!controller.attendanceVisible) return const SizedBox.shrink();
+      final loading = controller.isLoadingAttendance.value;
+      final rows = controller.attendanceRows;
+      if (!loading && rows.isEmpty) return const SizedBox.shrink();
+      if (!loading && !controller.showTeamAttendance) return const SizedBox.shrink();
+      final now = DateTime.now();
+      final selfId = controller.myAttendance?.employee.name;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            context,
+            "Today's attendance",
+            trailing: TextButton(
+              onPressed: controller.goToAttendance,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              child: const Text('Open',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 11),
+          DashboardAttendanceCard(
+            counts: controller.attendanceCounts,
+            shift: controller.attendanceShift.value,
+            now: now,
+            isHoliday: controller.attendanceIsHoliday,
+            beforeCutoff: controller.beforeAttendanceCutoff,
+            looksOffline: controller.attendanceLooksOffline,
+            latestPunch: controller.attendanceLatestPunch.value?.time,
+            isSystemManager: controller.isSystemManager,
+            highlights: dashboardAttendanceHighlights(rows, selfEmployee: selfId),
+            loadedAt: controller.attendanceLoadedAt.value,
+            isLoading: loading,
+            onViewAll: controller.goToAttendance,
+            onRowTap: (EmployeeDayStatus row) => showEmployeeDetailSheet(
+              context,
+              row: row,
+              day: dateOnly(now),
+              shift: controller.attendanceShift.value,
+              loadedAt: controller.attendanceLoadedAt.value,
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upcoming & actionable — a horizontal DocType chip slider (Draft counts
+  // across PO/PR/SE/DN/PS + open ToDos) driving a 3-document preview.
+  // ---------------------------------------------------------------------------
+  Widget _buildUpcomingActionable(BuildContext context) {
+    return Obx(() {
+      final chips = _actionableChips(context);
+      final loading = controller.isLoadingActionable.value;
+      final selected = controller.selectedActionable.value;
+      final todos = controller.upcomingTodos;
+
+      // Nothing to show and nothing loading → collapse entirely.
+      if (chips.isEmpty && !loading) return const SizedBox.shrink();
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            context,
+            'Upcoming & actionable',
+            trailing: ActionableScopeToggle(
+              scope: controller.actionableScope.value,
+              onChanged: controller.setActionableScope,
+            ),
+          ),
+          const SizedBox(height: 11),
+          DashboardActionableStrip(chips: chips, isLoading: loading),
+          if (selected == 'ToDo' && todos.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            for (var i = 0; i < todos.length; i++) ...[
+              if (i > 0) const SizedBox(height: 9),
+              DashboardTodoCard(
+                todo: todos[i],
+                onTap: () => Get.toNamed(
+                  AppRoutes.TODO_FORM,
+                  arguments: {'name': todos[i].name, 'mode': 'view'},
+                ),
+              ),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: controller.goToToDo,
+                child: const Text('View All'),
+              ),
+            ),
+          ] else if (selected != null && selected != 'ToDo') ...[
+            const SizedBox(height: 14),
+            ActionableDocPreview(
+              rows: controller.previewDocs.toList(),
+              isLoading: controller.isLoadingPreview.value,
+              onViewAll: () => controller.openActionableList(selected),
+            ),
+          ],
+          const SizedBox(height: 6),
+        ],
+      );
+    });
+  }
+
+  /// Chip data in slider order: Tasks first (personal, gated on ToDo access),
+  /// then one per accessible document DocType present in [actionableCounts].
+  /// A zero count → null onTap, so the chip is muted and cannot be selected.
+  List<ActionableChipData> _actionableChips(BuildContext context) {
+    final chips = <ActionableChipData>[];
+    final selected = controller.selectedActionable.value;
+
+    if (Get.find<PermissionService>().hasAccess('ToDo') == true) {
+      final count = controller.openTodoCount.value;
+      chips.add(ActionableChipData(
+        doctype: 'ToDo',
+        label: 'Tasks',
+        icon: Icons.check_circle_outline,
+        count: count,
+        selected: selected == 'ToDo',
+        onTap: count == 0 ? null : () => controller.selectActionable('ToDo'),
+      ));
+    }
+
+    for (final cfg in kActionableDocConfigs) {
+      if (!controller.actionableCounts.containsKey(cfg.doctype)) continue;
+      final count = controller.actionableCounts[cfg.doctype] ?? 0;
+      chips.add(ActionableChipData(
+        doctype: cfg.doctype,
+        label: cfg.label,
+        icon: cfg.icon,
+        count: count,
+        selected: selected == cfg.doctype,
+        onTap: count == 0 ? null : () => controller.selectActionable(cfg.doctype),
+      ));
+    }
+    return chips;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Today's pulse
+  // ---------------------------------------------------------------------------
+
+  Widget _buildPulse(BuildContext context) {
+    return Column(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: PulseStat(
+                  title: 'Work Orders',
+                  icon: Icons.precision_manufacturing_outlined,
+                  actual: controller.activeWorkOrdersCount.value,
+                  target: controller.targetWorkOrders,
+                  onTap: controller.goToWorkOrder,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: PulseStat(
+                  title: 'Job Cards',
+                  icon: Icons.assignment_ind_outlined,
+                  actual: controller.activeJobCardsCount.value,
+                  target: controller.targetJobCards,
+                  onTap: controller.goToJobCard,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Obx(() => PerformanceTimelineCard(
+              viewMode: controller.timelineViewMode.value,
+              onToggleView: controller.toggleTimelineView,
+              data: controller.timelineData,
+              isLoading: controller.isLoadingTimeline.value,
+              selectedDate: controller.timelineViewMode.value != 'Weekly'
+                  ? controller.selectedDailyDate.value
+                  : null,
+              selectedRange: controller.timelineViewMode.value == 'Weekly'
+                  ? controller.selectedWeeklyRange.value
+                  : null,
+              onDateChanged: controller.onDailyDateChanged,
+              onRangeChanged: controller.onWeeklyRangeChanged,
+            )),
+        const SizedBox(height: 12),
+        BomCountCard(
+          count: controller.activeBomCount.value,
+          onTap: controller.goToBOM,
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quick Create Grid
   // ---------------------------------------------------------------------------
 
   /// Configuration-driven quick action — adding a new tile is a one-line change
   /// in each section list below. Satisfies OCP: open for extension, no inline
   /// mutation of the builder method.
   Widget _buildQuickAccessGrid(BuildContext context) {
-    return LayoutBuilder(
+    return Obx(() {
+      final int columns = controller.dashboardColumns.value;
+      return LayoutBuilder(
       builder: (context, constraints) {
-        final double itemWidth = (constraints.maxWidth - 24) / 3;
+        final double itemWidth = columns == 1
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 12) / 2;
 
         // ── Operations row ────────────────────────────────────────────────────
         final operationItems = [
@@ -163,6 +562,13 @@ class HomeScreen extends GetView<HomeController> {
             color: Colors.orange,
             doctype: 'Stock Entry',
             onTap: () => Get.toNamed(AppRoutes.STOCK_ENTRY, arguments: {'openCreate': true}),
+          ),
+          _QuickActionConfig(
+            label: 'Sales Order',
+            icon: Icons.point_of_sale_outlined,
+            color: Colors.teal,
+            doctype: 'Sales Order',
+            onTap: controller.showSalesOrderPickSheet,
           ),
           _QuickActionConfig(
             label: 'Delivery Note',
@@ -237,7 +643,8 @@ class HomeScreen extends GetView<HomeController> {
               spacing: 12,
               runSpacing: 12,
               children: operationItems.map((cfg) {
-                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                final tile = _buildQuickActionItem(context, cfg, itemWidth,
+                    horizontal: columns == 1);
                 if (cfg.doctype == null) return tile;
                 return DocTypeGuard(
                   doctype: cfg.doctype!,
@@ -252,7 +659,8 @@ class HomeScreen extends GetView<HomeController> {
               spacing: 12,
               runSpacing: 12,
               children: manufacturingItems.map((cfg) {
-                final tile = _buildQuickActionItem(context, cfg, itemWidth);
+                final tile = _buildQuickActionItem(context, cfg, itemWidth,
+                    horizontal: columns == 1);
                 if (cfg.doctype == null) return tile;
                 return DocTypeGuard(
                   doctype: cfg.doctype!,
@@ -263,61 +671,178 @@ class HomeScreen extends GetView<HomeController> {
           ],
         );
       },
-    );
+      );
+    });
   }
 
-  /// Slim labelled divider between quick-access sections.
+  /// Slim labelled divider between quick-create sections.
   Widget _buildSectionDivider(String label) {
-    return Row(
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey,
-            letterSpacing: 0.8,
+    return Builder(builder: (context) {
+      final scheme = context.scheme;
+      return Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: scheme.textMuted,
+              letterSpacing: 0.7,
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(child: Divider(color: Colors.grey.shade300, height: 1)),
-      ],
-    );
+          const SizedBox(width: 8),
+          Expanded(child: Divider(color: scheme.border, height: 1)),
+        ],
+      );
+    });
   }
 
   Widget _buildQuickActionItem(
     BuildContext context,
     _QuickActionConfig cfg,
-    double width,
-  ) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 1,
-      child: InkWell(
-        onTap: cfg.onTap,
+    double width, {
+    bool horizontal = false,
+  }) {
+    final scheme = context.scheme;
+
+    // 1-column layout — full-width row: accent bar, icon, label, "+" affordance.
+    if (horizontal) {
+      return SizedBox(
+        width: width,
+        child: Material(
+          color: scheme.fg,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: cfg.onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: scheme.border),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: cfg.color.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cfg.color.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(cfg.icon, color: cfg.color, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      cfg.label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.text,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    width: 17,
+                    height: 17,
+                    decoration: BoxDecoration(
+                      color: scheme.subtle,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.add, size: 11, color: scheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: scheme.fg,
         borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: width,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: cfg.color.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: cfg.onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: scheme.border),
+            ),
+            child: Stack(
+              children: [
+                // 3px top accent bar in the tile colour.
+                Positioned(
+                  top: 0,
+                  left: 14,
+                  right: 14,
+                  child: Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: cfg.color.withValues(alpha: 0.9),
+                      borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(3),
+                      ),
+                    ),
+                  ),
                 ),
-                child: Icon(cfg.icon, color: cfg.color, size: 24),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                cfg.label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
-              ),
-            ],
+                // "+" create affordance, top-right.
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    width: 17,
+                    height: 17,
+                    decoration: BoxDecoration(
+                      color: scheme.subtle,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.add, size: 11, color: scheme.textMuted),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 14, 8, 12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: cfg.color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(cfg.icon, color: cfg.color, size: 23),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        cfg.label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                          color: scheme.text,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -337,10 +862,12 @@ class HomeScreen extends GetView<HomeController> {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 children: [
@@ -389,28 +916,11 @@ class HomeScreen extends GetView<HomeController> {
                                 Text(pos.customer),
                                 Text(
                                   FormattingHelper.getRelativeTime(pos.modified),
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  style: TextStyle(fontSize: 11, color: scheme.textMuted),
                                 ),
                               ],
                             ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: pos.status == 'Pending' ? Colors.orange.shade50 : Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: pos.status == 'Pending' ? Colors.orange.shade200 : Colors.blue.shade200,
-                                ),
-                              ),
-                              child: Text(
-                                pos.status,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: pos.status == 'Pending' ? Colors.orange.shade800 : Colors.blue.shade800,
-                                ),
-                              ),
-                            ),
+                            trailing: StatusPill(status: pos.status),
                             onTap: () => controller.handleFulfillmentSelection(pos),
                           );
                         },
@@ -428,74 +938,8 @@ class HomeScreen extends GetView<HomeController> {
   }
 
   // ---------------------------------------------------------------------------
-  // User Context Card
+  // User search modal (unchanged)
   // ---------------------------------------------------------------------------
-
-  Widget _buildUserContextCard(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).primaryColor.withValues(alpha: 0.05),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Theme.of(context).primaryColor.withValues(alpha: 0.1)),
-      ),
-      child: InkWell(
-        onTap: () => _showUserSearchModal(context),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Obx(() {
-                final selectedUser = controller.selectedFilterUser.value;
-                final userName = selectedUser?.name ?? 'Select User';
-                return CircleAvatar(
-                  backgroundColor: Theme.of(context).primaryColor,
-                  child: Text(
-                    userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                );
-              }),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Showing data for',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 4),
-                    Obx(() {
-                      final selectedUser = controller.selectedFilterUser.value;
-                      return Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              selectedUser?.name ?? 'Select User',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.keyboard_arrow_down, size: 20, color: Colors.blueGrey),
-                        ],
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   void _showUserSearchModal(BuildContext context) {
     final TextEditingController searchController = TextEditingController();
@@ -595,7 +1039,7 @@ class HomeScreen extends GetView<HomeController> {
 }
 
 // =============================================================================
-// _QuickActionConfig — data class to drive the quick-access grid (DRY/OCP)
+// _QuickActionConfig — data class to drive the quick-create grid (DRY/OCP)
 // =============================================================================
 
 class _QuickActionConfig {
@@ -618,91 +1062,560 @@ class _QuickActionConfig {
 }
 
 // =============================================================================
-// _ResumeJobCard — quick-link to the user's active WIP Job Card
+// _ContextChip — compact "Viewing {user}" pill that opens the user switcher
 // =============================================================================
 
-class _ResumeJobCard extends StatelessWidget {
-  final String jcName;
-  final String? operation;
+class _ContextChip extends StatelessWidget {
+  final String name;
+  final VoidCallback onTap;
 
-  const _ResumeJobCard({required this.jcName, this.operation});
+  const _ContextChip({required this.name, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Card(
-        elevation: 2,
-        shadowColor: cs.primary.withValues(alpha: 0.15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: InkWell(
-          onTap: () => Get.toNamed(
-            AppRoutes.JOB_CARD_FORM,
-            arguments: {'name': jcName},
-          ),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                colors: [
-                  cs.primaryContainer,
-                  cs.primaryContainer.withValues(alpha: 0.5),
-                ],
+    final scheme = context.scheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.full),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(9, 3, 8, 3),
+        decoration: BoxDecoration(
+          color: scheme.subtle,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          border: Border.all(color: scheme.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_outline, size: 13, color: scheme.textSubtle),
+            const SizedBox(width: 5),
+            Flexible(
+              child: RichText(
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                text: TextSpan(
+                  style: TextStyle(fontSize: 12, color: scheme.textMuted),
+                  children: [
+                    const TextSpan(text: 'Viewing '),
+                    TextSpan(
+                      text: name,
+                      style: TextStyle(
+                        color: scheme.text,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+            const SizedBox(width: 3),
+            Icon(Icons.keyboard_arrow_down, size: 14, color: scheme.textSubtle),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// DashboardColumnsToggle — 1↔2 column switch for the Quick Create grid
+// =============================================================================
+
+/// Segmented two-icon pill. Public (like the other dashboard widgets) so it
+/// can be exercised in widget tests without the full HomeController DI graph.
+class DashboardColumnsToggle extends StatelessWidget {
+  /// Current layout — 1 or 2.
+  final int columns;
+  final ValueChanged<int> onChanged;
+
+  const DashboardColumnsToggle({
+    super.key,
+    required this.columns,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scheme = context.scheme;
+
+    Widget option(int value, IconData icon, String tooltip) {
+      final selected = columns == value;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: () => onChanged(value),
+          borderRadius: BorderRadius.circular(AppRadius.full),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.13)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+            ),
+            child: Icon(
+              icon,
+              size: 15,
+              color: selected ? cs.primary : scheme.textSubtle,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: scheme.subtle,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        border: Border.all(color: scheme.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          option(1, Icons.view_agenda_outlined, 'Single column'),
+          const SizedBox(width: 2),
+          option(2, Icons.grid_view_rounded, 'Two columns'),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// ScanHeroCard — discoverable "Scan to start" entry point (maroon gradient)
+// =============================================================================
+
+class ScanHeroCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const ScanHeroCard({super.key, required this.onTap});
+
+  // The hero is an intentional brand banner. colorScheme.primary lightens to a
+  // pink (#D9707C) on dark surfaces — fine for small accents, but it washes out
+  // a large filled slab — so the gradient is pinned to the canonical maroon in
+  // BOTH themes (matching Dashboard Revamp.html) with white content for contrast.
+  static const Color _brand = Color(0xFF870E18); // AppScheme.light.primary
+  static const Color _brandDark = Color(0xFF5F0F1A); // ds.css maroon-700
+
+  @override
+  Widget build(BuildContext context) {
+    const primary = _brand;
+    const primaryDark = _brandDark;
+    const onTint = Colors.white;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [primary, primaryDark],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: primary.withValues(alpha: 0.32),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
-                    color: cs.primary.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
+                    color: onTint.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
-                  child: Icon(Icons.play_circle_outline, color: cs.primary, size: 22),
+                  child: Icon(Icons.qr_code_scanner, color: onTint, size: 26),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 13),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Resume Job Card',
-                        style: text.labelSmall?.copyWith(
-                          color: cs.onPrimaryContainer.withValues(alpha: 0.7),
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.4,
+                        'Scan to start',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: onTint,
+                          letterSpacing: -0.1,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        jcName,
-                        style: text.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onPrimaryContainer,
+                        'Item, batch or rack — look up or add stock',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: onTint.withValues(alpha: 0.82),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if ((operation ?? '').isNotEmpty)
-                        Text(
-                          operation!,
-                          style: text.bodySmall?.copyWith(
-                            color: cs.onPrimaryContainer.withValues(alpha: 0.8),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, color: cs.primary),
+                const SizedBox(width: 8),
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: onTint.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: Icon(Icons.photo_camera_outlined, color: onTint, size: 22),
+                ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// ResumeJobCard — brand-tinted "Resume Job Card" attention item (live WIP)
+// =============================================================================
+
+class ResumeJobCard extends StatelessWidget {
+  final String jcName;
+  final String? operation;
+
+  const ResumeJobCard({super.key, required this.jcName, this.operation});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scheme = context.scheme;
+    final op = (operation ?? '').trim();
+    final title = op.isNotEmpty ? '$jcName · $op' : jcName;
+
+    return Material(
+      color: Color.alphaBlend(cs.primary.withValues(alpha: 0.09), scheme.fg),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        onTap: () => Get.toNamed(
+          AppRoutes.JOB_CARD_FORM,
+          arguments: {'name': jcName},
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(
+              color: Color.alphaBlend(cs.primary.withValues(alpha: 0.22), scheme.border),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'RESUME JOB CARD',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: cs.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.text,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: cs.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// AttentionRow — actionable "what to do now" row with a count badge
+// =============================================================================
+
+class AttentionRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final int count;
+  final VoidCallback onTap;
+
+  const AttentionRow({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+
+    return Material(
+      color: scheme.fg,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: scheme.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                        color: scheme.text,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: scheme.textMuted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                constraints: const BoxConstraints(minWidth: 30),
+                height: 30,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, color: scheme.textSubtle, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// PulseStat — compact actual/target progress stat (replaces the KPI gauges)
+// =============================================================================
+
+class PulseStat extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final int actual;
+  final int target;
+  final VoidCallback onTap;
+
+  const PulseStat({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.actual,
+    required this.target,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final pct = target > 0 ? (actual / target).clamp(0.0, 1.0) : 0.0;
+    final stateColor = pct < 0.4
+        ? AppColors.red500
+        : (pct < 0.8 ? AppColors.orange500 : AppColors.green500);
+
+    return Material(
+      color: scheme.fg,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: scheme.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 15, color: scheme.textSubtle),
+                  const SizedBox(width: 7),
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.textMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  TweenAnimationBuilder<int>(
+                    tween: IntTween(begin: 0, end: actual),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) => Text(
+                      '$value',
+                      style: TextStyle(
+                        fontSize: 27,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.text,
+                        letterSpacing: -0.5,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '/ $target target',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.textMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.full),
+                child: Container(
+                  height: 6,
+                  color: scheme.border,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: pct == 0 ? 0.001 : pct),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, child) => FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: value,
+                      child: Container(color: stateColor),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      // No "due today" source on the controller; show the honest,
+                      // derivable distance-to-target instead (spec's footer intent).
+                      actual >= target ? 'Target met' : '${target - actual} to target',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: stateColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '${(pct * 100).round()}%',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: scheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -722,38 +1635,46 @@ class BomCountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      shadowColor: Colors.teal.withValues(alpha: 0.15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    final scheme = context.scheme;
+    return Material(
+      color: scheme.fg,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: scheme.border),
+          ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.teal.withValues(alpha: 0.1),
+                  color: Colors.teal.withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.account_tree_outlined, color: Colors.teal, size: 22),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Active BOMs',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.text,
+                      ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Submitted & active bills of materials',
-                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                      style: TextStyle(fontSize: 11, color: scheme.textMuted),
                     ),
                   ],
                 ),
@@ -761,20 +1682,25 @@ class BomCountCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.teal.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.teal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.full),
                 ),
-                child: Text(
-                  '$count',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.teal,
+                child: TweenAnimationBuilder<int>(
+                  tween: IntTween(begin: 0, end: count),
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) => Text(
+                    '$value',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+              Icon(Icons.chevron_right, color: scheme.textSubtle, size: 20),
             ],
           ),
         ),
@@ -784,136 +1710,19 @@ class BomCountCard extends StatelessWidget {
 }
 
 // =============================================================================
-// SpeedometerKpiCard — half-arc KPI gauge (Work Orders, Job Cards)
+// PulseSkeleton — shimmer placeholder while stats are loading
 // =============================================================================
 
-class SpeedometerKpiCard extends StatelessWidget {
-  final String title;
-  final int actual;
-  final int target;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const SpeedometerKpiCard({
-    super.key,
-    required this.title,
-    required this.actual,
-    required this.target,
-    required this.icon,
-    required this.onTap,
-  });
+class PulseSkeleton extends StatefulWidget {
+  const PulseSkeleton({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final double percent = (target > 0) ? (actual / target).clamp(0.0, 1.0) : 0.0;
-
-    const LinearGradient progressGradient = LinearGradient(
-      colors: [Colors.redAccent, Colors.amber, Colors.green],
-      stops: [0.0, 0.5, 1.0],
-      tileMode: TileMode.clamp,
-    );
-
-    Color textColor = percent < 0.4
-        ? Colors.redAccent
-        : (percent < 0.8 ? Colors.amber.shade800 : Colors.green);
-
-    return Card(
-      elevation: 2,
-      shadowColor: textColor.withValues(alpha: 0.2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 16, color: Colors.grey[700]),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      title,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              CircularPercentIndicator(
-                radius: 60.0,
-                lineWidth: 12.0,
-                percent: percent,
-                animation: true,
-                arcType: ArcType.HALF,
-                startAngle: 270,
-                circularStrokeCap: CircularStrokeCap.round,
-                linearGradient: progressGradient,
-                backgroundColor: Colors.grey.shade200,
-                center: Padding(
-                  padding: const EdgeInsets.only(top: 20.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "$actual",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24.0,
-                          color: textColor,
-                        ),
-                      ),
-                      const Text(
-                        "Actual",
-                        style: TextStyle(fontSize: 10.0, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  "Target: $target",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12.0,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  State<PulseSkeleton> createState() => PulseSkeletonState();
 }
 
-// =============================================================================
-// _ManufacturingPulseSkeleton — shimmer placeholder while stats are loading
-// =============================================================================
-
-class _ManufacturingPulseSkeleton extends StatefulWidget {
-  const _ManufacturingPulseSkeleton();
-
-  @override
-  State<_ManufacturingPulseSkeleton> createState() =>
-      _ManufacturingPulseSkeletonState();
-}
-
-class _ManufacturingPulseSkeletonState
-    extends State<_ManufacturingPulseSkeleton>
+class PulseSkeletonState extends State<PulseSkeleton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _anim;
-  late final Animation<Color?> _color;
 
   @override
   void initState() {
@@ -922,10 +1731,6 @@ class _ManufacturingPulseSkeletonState
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    _color = ColorTween(
-      begin: Colors.grey.shade100,
-      end: Colors.grey.shade300,
-    ).animate(_anim);
   }
 
   @override
@@ -934,14 +1739,15 @@ class _ManufacturingPulseSkeletonState
     super.dispose();
   }
 
-  Widget _box({double w = double.infinity, double h = 14, double r = 8}) {
+  Widget _box(BuildContext context, {double w = double.infinity, double h = 14, double r = 12}) {
+    final scheme = context.scheme;
     return AnimatedBuilder(
-      animation: _color,
+      animation: _anim,
       builder: (_, __) => Container(
         width: w,
         height: h,
         decoration: BoxDecoration(
-          color: _color.value,
+          color: Color.lerp(scheme.subtle, scheme.border, _anim.value),
           borderRadius: BorderRadius.circular(r),
         ),
       ),
@@ -954,14 +1760,51 @@ class _ManufacturingPulseSkeletonState
       children: [
         Row(
           children: [
-            Expanded(child: _box(h: 200, r: 16)),
-            const SizedBox(width: 16),
-            Expanded(child: _box(h: 200, r: 16)),
+            Expanded(child: _box(context, h: 112)),
+            const SizedBox(width: 10),
+            Expanded(child: _box(context, h: 112)),
           ],
         ),
         const SizedBox(height: 12),
-        _box(h: 70, r: 16),
+        _box(context, h: 190),
+        const SizedBox(height: 12),
+        _box(context, h: 64),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// DashboardSectionOrder — persona-aware Tasks ↔ Quick-Create ordering
+// =============================================================================
+
+/// Places [tasks] above [middle] (manager persona: manager role + open
+/// ToDos) or below it (everyone else — exactly today's layout). Public and
+/// controller-free (like the other dashboard widgets) so widget tests can
+/// assert the flip without the full HomeController DI graph.
+class DashboardSectionOrder extends StatelessWidget {
+  const DashboardSectionOrder({
+    super.key,
+    required this.tasksFirst,
+    required this.tasks,
+    required this.middle,
+  });
+
+  /// True when Upcoming tasks lead.
+  final bool tasksFirst;
+
+  /// The Upcoming-tasks section (hides itself when there are no ToDos).
+  final Widget tasks;
+
+  /// The Quick Create + Needs attention block, kept in its existing
+  /// internal order in both modes.
+  final Widget middle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: tasksFirst ? [tasks, middle] : [middle, tasks],
     );
   }
 }

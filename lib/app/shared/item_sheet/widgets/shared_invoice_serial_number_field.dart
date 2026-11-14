@@ -147,7 +147,15 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                  if (hasQty)
+                  if (item.blockedReason != null)
+                    Text(
+                      item.blockedReason!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.red.shade400,
+                      ),
+                    )
+                  else if (hasQty)
                     Text(
                       item.isFull
                           ? '\u00d7${SerialFieldMixin.fmtQty(item.qty!)}  \u2014  Full'
@@ -169,11 +177,12 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
         tile = badge;
       }
 
+      final isBlocked = item.blockedReason != null;
       return DropdownMenuItem<String>(
         value: item.serial,
-        enabled: !item.isFull || allowFull,
+        enabled: (!item.isFull || allowFull) && !isBlocked,
         child: Opacity(
-          opacity: (item.isFull && !allowFull) ? 0.4 : 1.0,
+          opacity: (isBlocked || (item.isFull && !allowFull)) ? 0.4 : 1.0,
           child: tile,
         ),
       );
@@ -212,17 +221,16 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
 
       // Also subscribe to serialItemsStamp so the dropdown rebuilds
       // whenever a sibling item is committed (isFull state changes).
-      if (c is SerialFieldMixin) {
-        (c as SerialFieldMixin).serialItemsStamp.value; // reactive read
-      }
+      final serialMixin = c is SerialFieldMixin ? c as SerialFieldMixin : null;
+      serialMixin?.serialItemsStamp.value; // reactive read
 
       // Build the items list inside Obx so isFull is re-evaluated
       // whenever liveRemaining changes.
       final dropdownItems = c.serialDropdownItems;
 
-      final allowFull = (c is SerialFieldMixin)
-          ? (c as SerialFieldMixin).allowFullSerials.value
-          : false;
+      final supportsToggle = serialMixin?.supportsAllowFullToggle ?? false;
+      final allowFull =
+          supportsToggle && (serialMixin?.allowFullSerials.value ?? false);
       final anyFull = dropdownItems.any((i) => i.isFull);
 
       return Column(
@@ -232,8 +240,8 @@ class SharedInvoiceSerialNumberField extends StatelessWidget {
           GlobalItemFormSheet.buildInputGroup(
             label: label,
             color: accentColor,
-            labelTrailing: anyFull && c is SerialFieldMixin
-                ? _AllowFullToggle(c: c as SerialFieldMixin, accentColor: accentColor)
+            labelTrailing: anyFull && serialMixin != null && supportsToggle
+                ? _AllowFullToggle(c: serialMixin, accentColor: accentColor)
                 : null,
             child: DropdownButtonFormField<String>(
               value: serial,

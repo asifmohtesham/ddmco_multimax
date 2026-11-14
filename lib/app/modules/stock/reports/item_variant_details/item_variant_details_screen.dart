@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 
@@ -25,24 +27,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
 
   // ── Filter chip builder ────────────────────────────────────────────────────
   List<Widget> _buildFilterChips(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    Widget chip(String key, String label) => Chip(
-      avatar: Icon(Icons.filter_alt_outlined, size: 14, color: cs.onSecondaryContainer),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: cs.onSecondaryContainer, fontWeight: FontWeight.w600),
-      ),
-      backgroundColor:      cs.secondaryContainer,
-      deleteIconColor:      cs.onSecondaryContainer,
-      onDeleted:            () => controller.clearFilter(key),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity:        VisualDensity.compact,
-      side:                 BorderSide.none,
-      padding:              const EdgeInsets.symmetric(horizontal: 4),
-    );
+    // Routes through the shared FilterChipWidget so chip styling stays uniform
+    // across every list and report screen.
     final chips = <Widget>[];
-    controller.activeFilters.forEach((key, label) => chips.add(chip(key, label)));
+    controller.activeFilters.forEach((key, label) => chips.add(FilterChipWidget(
+          icon: Icons.filter_alt_outlined,
+          label: label,
+          onDeleted: () => controller.clearFilter(key),
+        )));
     return chips;
   }
 
@@ -575,17 +567,21 @@ class _StockRow extends StatelessWidget {
   final num    qty;
   const _StockRow({required this.rack, required this.qty});
 
-  Color _qtyColor(ColorScheme cs) {
+  Color _qtyColor(ColorScheme cs, Brightness brightness) {
     if (qty < 0) return cs.error;
     if (qty == 0) return cs.onSurfaceVariant;
-    return const Color(0xFF2E7D32); // green.shade800 — accessible on white
+    // Status ramp: x700 on light surfaces, x300 on dark — a fixed dark
+    // green is unreadable on the dark-mode tint.
+    return brightness == Brightness.dark
+        ? AppColors.green300
+        : AppColors.green700;
   }
 
   @override
   Widget build(BuildContext context) {
     final cs    = Theme.of(context).colorScheme;
     final text  = Theme.of(context).textTheme;
-    final color = _qtyColor(cs);
+    final color = _qtyColor(cs, Theme.of(context).brightness);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

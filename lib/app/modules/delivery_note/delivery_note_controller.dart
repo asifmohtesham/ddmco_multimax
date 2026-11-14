@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -8,7 +9,6 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/data/providers/customer_provider.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -20,7 +20,6 @@ class DeliveryNoteController extends GetxController {
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
   final CustomerProvider _customerProvider = Get.find<CustomerProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -53,49 +52,32 @@ class DeliveryNoteController extends GetxController {
   var customers = <CustomerEntry>[].obs;
   var isFetchingCustomers = false.obs;
 
-  // Role-gated write access — mirrors StockEntryController
-  var writeRoles = <String>['System Manager'].obs;
-
   DeliveryNote? get detailedNote => _detailedNotesCache[expandedNoteName.value];
 
   @override
   void onInit() {
     super.onInit();
-    fetchDeliveryNotes();
-    fetchUsers();
-    fetchWarehouses();
-    fetchCustomers();
-    fetchDocTypePermissions();
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      activeFilters.value = Map<String, dynamic>.from(args['filters'] as Map);
+    }
+    // ignore: unawaited_futures
+    Future.wait([
+      fetchDeliveryNotes(),
+      fetchUsers(),
+      fetchWarehouses(),
+      fetchCustomers(),
+    ]);
+    debounce(searchQuery, (_) => fetchDeliveryNotes(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   @override
   void onReady() {
     super.onReady();
-    if (Get.arguments is Map && Get.arguments['openCreate'] == true) {
+    final args = Get.arguments;
+    if (args is Map && args['openCreate'] == true) {
       openCreateDialog();
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Permissions
-  // ---------------------------------------------------------------------------
-
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response = await _apiProvider.getDocument('DocType', 'Delivery Note');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'};
-        for (var p in perms) {
-          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
-            newRoles.add(p['role']);
-          }
-        }
-        writeRoles.assignAll(newRoles.toList());
-      }
-    } catch (e) {
-      print('Error fetching permissions: $e');
     }
   }
 
@@ -110,8 +92,11 @@ class DeliveryNoteController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchDeliveryNotes(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchDeliveryNotes(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {
@@ -125,14 +110,7 @@ class DeliveryNoteController extends GetxController {
     fetchDeliveryNotes(isLoadMore: false, clear: true);
   }
 
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchDeliveryNotes(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ---------------------------------------------------------------------------
   // Fetch
@@ -381,10 +359,12 @@ class DeliveryNoteController extends GetxController {
           minChildSize: 0.5,
           maxChildSize: 0.95,
           builder: (context, scrollController) {
+            final scheme = context.scheme;
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              decoration: BoxDecoration(
+                color: scheme.fg,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16.0)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,7 +395,7 @@ class DeliveryNoteController extends GetxController {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Colors.grey[100],
+                        fillColor: scheme.subtle,
                         contentPadding:
                         const EdgeInsets.symmetric(horizontal: 16),
                       ),
@@ -432,10 +412,11 @@ class DeliveryNoteController extends GetxController {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.search_off,
-                                  size: 64, color: Colors.grey[300]),
+                                  size: 64, color: scheme.textSubtle),
                               const SizedBox(height: 16),
-                              const Text('No POS Uploads found.',
-                                  style: TextStyle(color: Colors.grey)),
+                              Text('No POS Uploads found.',
+                                  style:
+                                      TextStyle(color: scheme.textMuted)),
                             ],
                           ),
                         );
@@ -461,8 +442,8 @@ class DeliveryNoteController extends GetxController {
                               children: [
                                 const SizedBox(height: 4),
                                 Row(children: [
-                                  const Icon(Icons.person_outline,
-                                      size: 14, color: Colors.grey),
+                                  Icon(Icons.person_outline,
+                                      size: 14, color: scheme.textMuted),
                                   const SizedBox(width: 4),
                                   Expanded(
                                       child: Text(posUpload.customer,
@@ -482,8 +463,8 @@ class DeliveryNoteController extends GetxController {
                                 ]),
                               ],
                             ),
-                            trailing: const Icon(Icons.chevron_right,
-                                color: Colors.grey),
+                            trailing: Icon(Icons.chevron_right,
+                                color: scheme.textMuted),
                             onTap: () {
                               Get.back();
                               createNewDeliveryNote(posUpload);
@@ -496,7 +477,7 @@ class DeliveryNoteController extends GetxController {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: scheme.fg,
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.05),

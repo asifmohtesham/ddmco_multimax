@@ -5,19 +5,23 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
+import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 class ItemListAppBar extends StatelessWidget {
   const ItemListAppBar({super.key});
 
-  // Fix #7: ensure reference data is loaded before opening the sheet.
+  // Open instantly; warm the reference data in the background. The sheet's
+  // main content needs no reference data — it's only consumed by the
+  // Link/Attribute selectors, which show per-field spinners until it arrives.
+  // Awaiting here would make the tap feel unresponsive (no feedback, then a
+  // late open); progressive in-sheet loading is the better UX.
   static void _openFilterSheet(ItemController controller) {
-    controller.ensureReferenceDataLoaded().then((_) {
-      Get.bottomSheet(
-        const ItemFilterBottomSheet(),
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-      );
-    });
+    controller.ensureReferenceDataLoaded();
+    Get.bottomSheet(
+      const ItemFilterBottomSheet(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
   }
 
   List<Widget> _buildFilterChips(
@@ -51,6 +55,15 @@ class ItemListAppBar extends StatelessWidget {
       automaticallyImplyLeading: false,
       searchDoctype: 'Item',
       searchRoute: AppRoutes.ITEM_FORM,
+      onImageScanResult: (ImageScanResult result) {
+        Get.toNamed(
+          AppRoutes.ITEM_FORM,
+          arguments: {
+            'itemCode': result.itemCode,
+            'batchNo': result.batchNo,
+          },
+        );
+      },
 
       extraActions: [
         // Fix #13: standalone image-toggle icon button in AppBar.

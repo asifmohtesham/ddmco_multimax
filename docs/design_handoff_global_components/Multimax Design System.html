@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multimax Design System — ERPNext v15</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ds.css">
+<style>
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:var(--t-base);line-height:1.5;-webkit-font-smoothing:antialiased;}
+  a{color:var(--primary);text-decoration:none;}
+
+  /* ---- page chrome ---- */
+  .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:var(--s-4);
+    padding:0 var(--s-6);height:60px;background:color-mix(in srgb,var(--fg) 88%,transparent);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--border);}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:var(--t-md);}
+  .brand .mark{width:28px;height:28px;border-radius:8px;background:var(--primary);color:var(--on-primary);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;}
+  .brand small{color:var(--text-subtle);font-weight:500;font-size:var(--t-sm);}
+  .topnav{display:flex;gap:2px;margin-left:auto;}
+  .topnav a{color:var(--text-muted);font-weight:500;font-size:var(--t-sm);padding:7px 11px;border-radius:var(--r-sm);}
+  .topnav a:hover{color:var(--text);background:var(--subtle);}
+  .theme-toggle{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border-strong);
+    background:var(--fg);color:var(--text);border-radius:var(--r-full);padding:6px 12px 6px 10px;cursor:pointer;
+    font-family:var(--font);font-size:var(--t-sm);font-weight:500;}
+  .theme-toggle:hover{background:var(--subtle);}
+
+  .wrap{max-width:1120px;margin:0 auto;padding:0 var(--s-6) var(--s-10);}
+  .cover{padding:var(--s-10) 0 var(--s-8);border-bottom:1px solid var(--border);margin-bottom:var(--s-8);}
+  .cover h1{font-size:var(--t-3xl);font-weight:600;letter-spacing:-.02em;margin:0 0 var(--s-3);}
+  .cover p{font-size:var(--t-lg);color:var(--text-muted);max-width:62ch;margin:0;line-height:1.5;}
+  .cover .tagrow{display:flex;gap:var(--s-2);flex-wrap:wrap;margin-top:var(--s-5);}
+
+  section.block{padding:var(--s-8) 0;border-bottom:1px solid var(--border);}
+  .eyebrow{font-size:var(--t-xs);font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--primary);margin:0 0 6px;}
+  .block > h2{font-size:var(--t-2xl);font-weight:600;letter-spacing:-.01em;margin:0 0 6px;}
+  .block > .lede{color:var(--text-muted);font-size:var(--t-md);margin:0 0 var(--s-6);max-width:64ch;}
+  h3.sub{font-size:var(--t-base);font-weight:600;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.05em;margin:var(--s-6) 0 var(--s-3);}
+
+  .grid{display:grid;gap:var(--s-4);}
+  .demo{background:var(--fg);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--s-5);display:flex;flex-wrap:wrap;gap:var(--s-3);align-items:center;}
+  .demo.col{flex-direction:column;align-items:stretch;}
+  .cap{font-size:var(--t-xs);color:var(--text-subtle);font-family:var(--mono);margin-top:8px;}
+
+  /* color swatches */
+  .ramp{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;}
+  .sw{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--fg);}
+  .sw .chip{height:56px;}
+  .sw .lab{padding:7px 9px;font-size:var(--t-xs);}
+  .sw .lab b{display:block;color:var(--text);font-weight:600;}
+  .sw .lab span{color:var(--text-subtle);font-family:var(--mono);font-size:10px;}
+
+  .tok-row{display:flex;align-items:center;gap:var(--s-4);padding:10px 0;border-bottom:1px solid var(--border);}
+  .tok-row:last-child{border-bottom:none;}
+  .tok-row .swatch{width:40px;height:40px;border-radius:var(--r-md);border:1px solid var(--border);flex:none;}
+  .tok-row code{font-family:var(--mono);font-size:var(--t-sm);color:var(--text);}
+  .tok-row .meta{color:var(--text-subtle);font-size:var(--t-sm);margin-left:auto;font-family:var(--mono);}
+
+  .type-row{display:flex;align-items:baseline;gap:var(--s-5);padding:12px 0;border-bottom:1px solid var(--border);}
+  .type-row:last-child{border-bottom:none;}
+  .type-row .tn{width:160px;flex:none;color:var(--text-subtle);font-family:var(--mono);font-size:var(--t-xs);}
+
+  .radius-row,.elev-row{display:flex;gap:var(--s-4);flex-wrap:wrap;}
+  .radius-demo{width:96px;height:64px;background:var(--subtle);border:1px solid var(--border-strong);display:flex;align-items:flex-end;justify-content:center;padding:6px;color:var(--text-subtle);font-family:var(--mono);font-size:10px;}
+  .elev-card{width:130px;height:84px;background:var(--fg);border:1px solid var(--border);border-radius:var(--r-md);display:flex;align-items:flex-end;justify-content:center;padding:8px;color:var(--text-subtle);font-family:var(--mono);font-size:10px;}
+  .space-row{display:flex;align-items:flex-end;gap:var(--s-4);flex-wrap:wrap;}
+  .space-demo{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-subtle);font-family:var(--mono);font-size:10px;}
+  .space-demo .bar{background:var(--primary);border-radius:3px;width:18px;}
+
+  .screens{display:flex;gap:var(--s-8);flex-wrap:wrap;justify-content:center;}
+  .screen-label{text-align:center;margin-top:var(--s-4);font-size:var(--t-sm);color:var(--text-muted);font-weight:500;}
+  .icon{width:22px;height:22px;display:inline-block;vertical-align:middle;}
+  .muted{color:var(--text-muted);}
+</style>
+</head>
+<body>
+
+<!-- splash thumbnail for bundling -->
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="22" fill="#2490ef"/>
+    <text x="50" y="64" font-family="Inter,sans-serif" font-size="44" font-weight="700" fill="#fff" text-anchor="middle">M</text>
+  </svg>
+</template>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark">M</span>
+    Multimax DS <small>· ERPNext v15</small>
+  </div>
+  <nav class="topnav">
+    <a href="#foundations">Foundations</a>
+    <a href="#components">Components</a>
+    <a href="#patterns">Patterns</a>
+    <a href="#screens">Screens</a>
+  </nav>
+  <button class="theme-toggle" id="themeBtn" aria-label="Toggle dark mode">
+    <svg class="icon" id="themeIcon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"></svg>
+    <span id="themeLabel">Dark</span>
+  </button>
+</header>
+
+<div class="wrap">
+
+  <!-- COVER -->
+  <div class="cover">
+    <p class="eyebrow">Design System</p>
+    <h1>Multimax × ERPNext v15</h1>
+    <p>A mobile-first design language for the Multimax fulfillment app, built on the visual grammar of Frappe / ERPNext v15 — Inter type, a calm neutral gray scale, the signature <b>#2490EF</b> blue, and the colored-dot status indicators that make DocType lists instantly scannable on the warehouse floor.</p>
+    <div class="tagrow">
+      <span class="pill ind-blue">Inter</span>
+      <span class="pill ind-green">Light + Dark</span>
+      <span class="pill ind-purple">Mobile-first</span>
+      <span class="pill ind-orange">Scan-ready</span>
+    </div>
+  </div>
+
+  <!-- ===================== FOUNDATIONS ===================== -->
+  <section class="block" id="foundations">
+    <p class="eyebrow">Foundations</p>
+    <h2>Color</h2>
+    <p class="lede">A single neutral ramp carries 90% of the UI. The blue accent is reserved for primary actions, links and focus. Every status communicates through ERPNext's colored-dot indicators — never through layout.</p>
+
+    <h3 class="sub">Neutral ramp</h3>
+    <div class="ramp" id="grayRamp"></div>
+
+    <h3 class="sub">Accent &amp; status hues</h3>
+    <div class="ramp" id="accentRamp"></div>
+
+    <h3 class="sub">Semantic tokens <span class="muted" style="text-transform:none;font-weight:400;">— resolve per theme</span></h3>
+    <div class="demo col" style="gap:0;">
+      <div class="tok-row"><span class="swatch" style="background:var(--bg)"></span><code>--bg</code><span class="meta">page background</span></div>
+      <div class="tok-row"><span class="swatch" style="background:var(--fg)"></span><code>--fg</code><span class="meta">cards / surfaces</span></div>
+      <div class="tok-row"><span class="swatch" style="background:var(--subtle)"></span><code>--subtle</code><span class="meta">hover / inset fill</span></div>
+      <div class="tok-row"><span class="swatch" style="background:var(--text)"></span><code>--text</code><span class="meta">primary text</span></div>
+      <div class="tok-row"><span class="swatch" style="background:var(--text-muted)"></span><code>--text-muted</code><span class="meta">secondary text</span></div>
+      <div class="tok-row"><span class="swatch" style="background:var(--border)"></span><code>--border</code><span class="meta">hairline dividers</span></div>
+      <div class="tok-row"><span class="swatch" style="background:var(--primary)"></span><code>--primary</code><span class="meta">#2490EF · actions, links</span></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Foundations</p>
+    <h2>Typography</h2>
+    <p class="lede">Inter, the ERPNext v15 desk font. The scale is nudged up from the data-dense desk for comfortable one-handed reading on a phone. Numbers use tabular figures in tables and quantities.</p>
+    <div class="demo col">
+      <div class="type-row"><span class="tn">3xl · 30 / 600</span><span style="font-size:var(--t-3xl);font-weight:600;letter-spacing:-.02em;">Work Orders</span></div>
+      <div class="type-row"><span class="tn">2xl · 24 / 600</span><span style="font-size:var(--t-2xl);font-weight:600;">Stock Entry</span></div>
+      <div class="type-row"><span class="tn">lg · 17 / 600</span><span style="font-size:var(--t-lg);font-weight:600;">Multimax Ergonomic Chair</span></div>
+      <div class="type-row"><span class="tn">md · 15 / 400</span><span style="font-size:var(--t-md);">Body and form input text sits here.</span></div>
+      <div class="type-row"><span class="tn">base · 14 / 500</span><span style="font-size:var(--t-base);font-weight:500;">Labels, buttons, list metadata</span></div>
+      <div class="type-row"><span class="tn">sm · 12 / 500</span><span style="font-size:var(--t-sm);font-weight:500;color:var(--text-muted)">Field labels · captions</span></div>
+      <div class="type-row"><span class="tn">xs · 11 / 500 mono</span><span style="font-family:var(--mono);font-size:var(--t-xs);color:var(--text-subtle)">WO-00042 · BOM-MX-CHAIR-001</span></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Foundations</p>
+    <h2>Space · Radius · Elevation</h2>
+    <p class="lede">Spacing follows a 4px grid. Corners are soft but restrained — pills are fully round, cards use 12px. Elevation is whisper-quiet; ERPNext leans on borders, not shadows.</p>
+
+    <h3 class="sub">Spacing scale (4px grid)</h3>
+    <div class="demo space-row" id="spaceRow"></div>
+
+    <h3 class="sub">Radius</h3>
+    <div class="demo radius-row">
+      <div class="radius-demo" style="border-radius:var(--r-xs)">xs 4</div>
+      <div class="radius-demo" style="border-radius:var(--r-sm)">sm 6</div>
+      <div class="radius-demo" style="border-radius:var(--r-md)">md 8</div>
+      <div class="radius-demo" style="border-radius:var(--r-lg)">lg 12</div>
+      <div class="radius-demo" style="border-radius:var(--r-xl)">xl 16</div>
+      <div class="radius-demo" style="border-radius:var(--r-full)">full</div>
+    </div>
+
+    <h3 class="sub">Elevation</h3>
+    <div class="demo elev-row">
+      <div class="elev-card" style="box-shadow:var(--shadow-xs)">xs</div>
+      <div class="elev-card" style="box-shadow:var(--shadow-sm)">sm</div>
+      <div class="elev-card" style="box-shadow:var(--shadow-md)">md</div>
+      <div class="elev-card" style="box-shadow:var(--shadow-lg)">lg</div>
+    </div>
+  </section>
+
+  <!-- ===================== COMPONENTS ===================== -->
+  <section class="block" id="components">
+    <p class="eyebrow">Components</p>
+    <h2>Buttons</h2>
+    <p class="lede">One primary action per view. Secondary actions stay neutral; subtle buttons recede into toolbars. All targets are ≥44px tall for gloved, on-the-move tapping.</p>
+    <div class="demo">
+      <button class="btn btn-primary">Submit</button>
+      <button class="btn btn-secondary">Save Draft</button>
+      <button class="btn btn-subtle">Cancel</button>
+      <button class="btn btn-ghost">Add Row</button>
+      <button class="btn btn-danger">Delete</button>
+      <button class="btn btn-primary" disabled>Disabled</button>
+    </div>
+    <div class="demo">
+      <button class="btn btn-primary btn-sm">Small</button>
+      <button class="btn btn-secondary btn-sm">Small</button>
+      <button class="icon-btn" aria-label="search">
+        <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Components</p>
+    <h2>Status indicators</h2>
+    <p class="lede">ERPNext's defining pattern. A colored dot plus a label encodes document state. Use the dot-only <code>.indicator</code> inline in dense rows; use the filled <code>.pill</code> when status leads a card.</p>
+    <h3 class="sub">Indicator pills</h3>
+    <div class="demo">
+      <span class="pill ind-gray">Draft</span>
+      <span class="pill ind-blue">In Process</span>
+      <span class="pill ind-orange">Pending</span>
+      <span class="pill ind-yellow">On Hold</span>
+      <span class="pill ind-green">Completed</span>
+      <span class="pill ind-red">Cancelled</span>
+      <span class="pill ind-purple">Submitted</span>
+      <span class="pill ind-cyan">Transit</span>
+    </div>
+    <h3 class="sub">Inline dot indicators</h3>
+    <div class="demo">
+      <span class="indicator ind-green">Stock available</span>
+      <span class="indicator ind-orange">Low stock</span>
+      <span class="indicator ind-red">Out of stock</span>
+      <span class="indicator ind-gray">Not tracked</span>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Components</p>
+    <h2>Form fields</h2>
+    <p class="lede">Frappe's control vocabulary: labelled inputs, link fields with a search affordance, selects, dates, checkboxes and switches — grouped into bordered sections with an uppercase head.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start;">
+      <div class="form-section">
+        <p class="form-section-head">Details</p>
+        <div class="field">
+          <label class="field-label">Item Code <span class="req">*</span></label>
+          <div class="field-link">
+            <svg class="lead" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input class="field-control" placeholder="Search Item…" value="MX-CHAIR-ERGO">
+          </div>
+        </div>
+        <div class="field field-select">
+          <label class="field-label">Warehouse</label>
+          <select class="field-control"><option>Stores - MX</option><option>Finished Goods - MX</option><option>WIP - MX</option></select>
+        </div>
+        <div class="field">
+          <label class="field-label">Posting Date</label>
+          <input class="field-control" type="date" value="2026-06-20">
+        </div>
+      </div>
+      <div class="form-section">
+        <p class="form-section-head">Quantity</p>
+        <div class="field">
+          <label class="field-label">Qty to Manufacture</label>
+          <input class="field-control" type="number" value="50">
+          <span class="field-help">Available raw material covers 64 units.</span>
+        </div>
+        <div class="field field-error">
+          <label class="field-label">Target Qty</label>
+          <input class="field-control" value="0">
+          <span class="field-help">Target quantity must be greater than zero.</span>
+        </div>
+        <label class="check"><input type="checkbox" checked> Update stock on submit</label>
+        <label class="check" style="justify-content:space-between;">
+          Use serial / batch
+          <span class="switch"><input type="checkbox" checked><span class="track"></span><span class="thumb"></span></span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Components</p>
+    <h2>Badges · Avatars · Tabs</h2>
+    <div class="demo">
+      <span class="badge">v15</span>
+      <span class="badge ind-green" style="color:var(--green-700);background:color-mix(in srgb,var(--green-500) 12%,var(--fg));border-color:transparent;">Synced</span>
+      <span class="count-badge">3</span>
+      <span class="avatar">AK</span>
+      <span class="avatar sq">MX</span>
+      <span class="avatar-group"><span class="avatar">AK</span><span class="avatar">RP</span><span class="avatar">JS</span></span>
+    </div>
+    <div class="demo col" style="padding-bottom:0;">
+      <div class="tabs">
+        <button class="tab" aria-selected="true">Details</button>
+        <button class="tab">Items <span class="count-badge" style="background:var(--text-subtle)">6</span></button>
+        <button class="tab">Connections</button>
+        <button class="tab">Activity</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Components</p>
+    <h2>Bottom sheet · Dialog</h2>
+    <p class="lede">Selection and confirmation happen in sheets that rise from the bottom — thumb-reachable. Destructive confirmations use a centered dialog.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:start;">
+      <div style="border-radius:var(--r-xl) var(--r-xl) var(--r-lg) var(--r-lg);overflow:hidden;border:1px solid var(--border);">
+        <div class="sheet" style="box-shadow:none;">
+          <div class="sheet-handle"></div>
+          <div class="sheet-title">Select Warehouse</div>
+          <div class="field-link" style="margin-bottom:12px;">
+            <svg class="lead" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input class="field-control" placeholder="Filter…">
+          </div>
+          <label class="check" style="border-bottom:1px solid var(--border)"><input type="radio" name="wh" checked> Stores - MX</label>
+          <label class="check" style="border-bottom:1px solid var(--border)"><input type="radio" name="wh"> Finished Goods - MX</label>
+          <label class="check"><input type="radio" name="wh"> WIP - MX</label>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;padding:var(--s-6);background:var(--subtle);border-radius:var(--r-lg);border:1px solid var(--border);">
+        <div class="dialog" style="max-width:320px;box-shadow:var(--shadow-md);">
+          <div class="dialog-title">Cancel this Work Order?</div>
+          <div class="dialog-body">WO-00042 will be marked cancelled. This action cannot be undone.</div>
+          <div class="dialog-actions">
+            <button class="btn btn-subtle btn-sm">Keep</button>
+            <button class="btn btn-danger btn-sm">Cancel WO</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Components</p>
+    <h2>Empty &amp; loading states</h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));">
+      <div class="demo" style="justify-content:center;">
+        <div class="empty">
+          <span class="glyph"><svg class="icon" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z"/></svg></span>
+          <h4>No Work Orders</h4>
+          <p>Nothing matches your filters. Try clearing them or create a new Work Order.</p>
+          <button class="btn btn-secondary btn-sm">Clear filters</button>
+        </div>
+      </div>
+      <div class="demo col">
+        <div class="doc-card" style="box-shadow:none;">
+          <div class="doc-card-top"><span class="skeleton" style="width:74px;height:22px;border-radius:var(--r-full)"></span><span class="skeleton" style="width:60px;height:12px"></span></div>
+          <span class="skeleton" style="width:70%;height:18px;margin-top:4px"></span>
+          <span class="skeleton" style="width:45%;height:12px"></span>
+          <span class="skeleton" style="width:100%;height:6px;border-radius:var(--r-full);margin-top:8px"></span>
+        </div>
+        <div class="doc-card" style="box-shadow:none;">
+          <div class="doc-card-top"><span class="skeleton" style="width:74px;height:22px;border-radius:var(--r-full)"></span><span class="skeleton" style="width:60px;height:12px"></span></div>
+          <span class="skeleton" style="width:60%;height:18px;margin-top:4px"></span>
+          <span class="skeleton" style="width:50%;height:12px"></span>
+          <span class="skeleton" style="width:100%;height:6px;border-radius:var(--r-full);margin-top:8px"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PATTERNS ===================== -->
+  <section class="block" id="patterns">
+    <p class="eyebrow">Patterns</p>
+    <h2>DocType list card</h2>
+    <p class="lede">The atom of every list screen. Status leads, the document ID sits quiet and monospaced, the title dominates, and a progress bar or meta row gives at-a-glance state.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));">
+      <div class="doc-card">
+        <div class="doc-card-top"><span class="pill ind-blue">In Process</span><span class="doc-id">WO-00042</span></div>
+        <div class="doc-title">Multimax Ergonomic Chair</div>
+        <div class="doc-sub">BOM-MX-CHAIR-001</div>
+        <div class="doc-meta" style="margin-top:4px;"><span>Produced <b>24 / 50</b></span><span>·</span><span>Due <b>24 Jun</b></span></div>
+        <div class="progress" style="margin-top:6px;"><i style="width:48%"></i></div>
+      </div>
+      <div class="doc-card">
+        <div class="doc-card-top"><span class="pill ind-green">Completed</span><span class="doc-id">WO-00040</span></div>
+        <div class="doc-title">Hydraulic Lift Table 500kg</div>
+        <div class="doc-sub">BOM-LIFT-HYD-003</div>
+        <div class="doc-meta" style="margin-top:4px;"><span>Produced <b>20 / 20</b></span><span>·</span><span class="indicator ind-green">On time</span></div>
+        <div class="progress" style="margin-top:6px;"><i style="width:100%;background:var(--green-500)"></i></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Patterns</p>
+    <h2>App bar · Filter chips</h2>
+    <p class="lede">List screens use a large title with a hamburger and list-level actions; horizontal filter chips sit beneath. Form screens swap in a back arrow and reload / save / share.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));">
+      <div style="border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;">
+        <div class="appbar">
+          <div class="toolbar">
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+            <span style="flex:1"></span>
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg></button>
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></button>
+          </div>
+          <div class="title-lg">Work Orders</div>
+          <div class="chip-row">
+            <span class="chip active">In Process <svg class="x" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+            <span class="chip">This week</span>
+            <span class="chip chip-add">+ Filter</span>
+          </div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;">
+        <div class="appbar solid">
+          <div class="toolbar">
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+            <span style="flex:1"></span>
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2z"/></svg></button>
+            <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 1 0-3-3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 1 0 0 6c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65a2.92 2.92 0 1 0 2.92-2.92z"/></svg></button>
+          </div>
+          <div class="title-lg" style="font-size:var(--t-xl);">WO-00042</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Patterns</p>
+    <h2>Report / table view</h2>
+    <p class="lede">For drill-downs and BOM explosions. Compact rows, uppercase column heads, right-aligned tabular numbers, status as inline indicators.</p>
+    <div class="demo" style="padding:0;overflow-x:auto;">
+      <table class="report">
+        <thead><tr><th>Item</th><th>Item Code</th><th class="num">Required</th><th class="num">On hand</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Gas Lift Cylinder</td><td>MX-GAS-LIFT</td><td class="num">50</td><td class="num">220</td><td><span class="indicator ind-green">OK</span></td></tr>
+          <tr><td>Seat Foam Pad</td><td>MX-FOAM-SEAT</td><td class="num">50</td><td class="num">42</td><td><span class="indicator ind-orange">Short 8</span></td></tr>
+          <tr><td>Caster Wheel</td><td>MX-CASTER-5</td><td class="num">250</td><td class="num">0</td><td><span class="indicator ind-red">Out</span></td></tr>
+          <tr><td>Armrest Assembly</td><td>MX-ARM-ADJ</td><td class="num">100</td><td class="num">1,040</td><td><span class="indicator ind-green">OK</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block">
+    <p class="eyebrow">Patterns</p>
+    <h2>Scan states</h2>
+    <p class="lede">Multimax is driven by hardware barcode scanners (DataWedge / HID wedge). The UI always shows scan readiness, and confirms every capture with a green, animated hit that names the resolved item.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));">
+      <div class="demo col">
+        <div class="scan-banner scan-armed"><span class="dot"></span> Scanner ready — scan an item barcode</div>
+        <div class="scan-banner scan-idle"><span class="dot"></span> Scanner idle — tap a field to arm</div>
+      </div>
+      <div class="demo col">
+        <div class="scan-hit">
+          <span class="check"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></span>
+          <div><div class="nm">Gas Lift Cylinder</div><div class="code">8901234 567890</div></div>
+          <span class="pill ind-green" style="margin-left:auto;">+1</span>
+        </div>
+        <span class="cap">.scan-hit — animates in on each successful capture</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== APPLIED SCREENS ===================== -->
+  <section class="block" id="screens" style="border-bottom:none;">
+    <p class="eyebrow">Applied</p>
+    <h2>Screens in context</h2>
+    <p class="lede">The system assembled into real Multimax flows. Toggle the theme in the header — the device frames track it.</p>
+    <div class="screens">
+
+      <!-- LIST SCREEN -->
+      <div>
+        <div class="device"><div class="screen">
+          <div class="statusbar">
+            <span class="clock">9:41</span>
+            <span class="sysico">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4 2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.34C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+            </span>
+          </div>
+          <div class="appbar">
+            <div class="toolbar">
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+              <span style="flex:1"></span>
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg></button>
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></button>
+            </div>
+            <div class="title-lg">Work Orders</div>
+            <div class="chip-row">
+              <span class="chip active">In Process <svg class="x" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+              <span class="chip">This week</span>
+              <span class="chip chip-add">+ Filter</span>
+            </div>
+          </div>
+          <div class="screen-scroll" style="padding:var(--s-4);display:flex;flex-direction:column;gap:var(--s-3);">
+            <div class="doc-card">
+              <div class="doc-card-top"><span class="pill ind-blue">In Process</span><span class="doc-id">WO-00042</span></div>
+              <div class="doc-title">Multimax Ergonomic Chair</div>
+              <div class="doc-sub">BOM-MX-CHAIR-001</div>
+              <div class="doc-meta" style="margin-top:4px;"><span>Produced <b>24 / 50</b></span><span>·</span><span>Due <b>24 Jun</b></span></div>
+              <div class="progress" style="margin-top:6px;"><i style="width:48%"></i></div>
+            </div>
+            <div class="doc-card">
+              <div class="doc-card-top"><span class="pill ind-blue">In Process</span><span class="doc-id">WO-00041</span></div>
+              <div class="doc-title">Steel Shelf Unit — 4 Tier</div>
+              <div class="doc-sub">BOM-SHELF-ST-002</div>
+              <div class="doc-meta" style="margin-top:4px;"><span>Produced <b>8 / 30</b></span><span>·</span><span>Due <b>26 Jun</b></span></div>
+              <div class="progress" style="margin-top:6px;"><i style="width:27%"></i></div>
+            </div>
+            <div class="doc-card">
+              <div class="doc-card-top"><span class="pill ind-green">Completed</span><span class="doc-id">WO-00040</span></div>
+              <div class="doc-title">Hydraulic Lift Table 500kg</div>
+              <div class="doc-sub">BOM-LIFT-HYD-003</div>
+              <div class="doc-meta" style="margin-top:4px;"><span>Produced <b>20 / 20</b></span><span>·</span><span class="indicator ind-green">On time</span></div>
+              <div class="progress" style="margin-top:6px;"><i style="width:100%;background:var(--green-500)"></i></div>
+            </div>
+            <button class="fab"><svg class="ico" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>
+          </div>
+        </div></div>
+        <div class="screen-label">List View — Work Orders</div>
+      </div>
+
+      <!-- FORM SCREEN -->
+      <div>
+        <div class="device"><div class="screen">
+          <div class="statusbar">
+            <span class="clock">9:41</span>
+            <span class="sysico">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4 2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.34C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+            </span>
+          </div>
+          <div class="appbar solid">
+            <div class="toolbar">
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+              <span style="flex:1"></span>
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7a2 2 0 0 0-2 2v16l7-3 7 3V5a2 2 0 0 0-2-2z"/></svg></button>
+              <button class="icon-btn"><svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 1 0-3-3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 1 0 0 6c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65a2.92 2.92 0 1 0 2.92-2.92z"/></svg></button>
+            </div>
+            <div class="title-lg" style="font-size:var(--t-xl);">WO-00042</div>
+          </div>
+          <div class="screen-scroll" style="padding:var(--s-4);display:flex;flex-direction:column;gap:0;">
+            <div style="display:flex;align-items:center;gap:var(--s-3);margin-bottom:var(--s-3);">
+              <span class="pill ind-blue">In Process</span>
+              <span class="doc-id">Manufacturing</span>
+            </div>
+            <div class="scan-banner scan-armed" style="margin-bottom:var(--s-3);"><span class="dot"></span> Scanner ready — scan to log produced qty</div>
+            <div class="form-section">
+              <p class="form-section-head">Production Item</p>
+              <div class="field">
+                <label class="field-label">Item</label>
+                <input class="field-control" value="Multimax Ergonomic Chair" disabled>
+              </div>
+              <div class="field field-select">
+                <label class="field-label">BOM No <span class="req">*</span></label>
+                <select class="field-control"><option>BOM-MX-CHAIR-001</option></select>
+              </div>
+            </div>
+            <div class="form-section">
+              <p class="form-section-head">Quantity</p>
+              <div style="display:flex;gap:var(--s-3);">
+                <div class="field" style="flex:1;margin-bottom:0;">
+                  <label class="field-label">Qty to Make</label>
+                  <input class="field-control" value="50" inputmode="numeric">
+                </div>
+                <div class="field" style="flex:1;margin-bottom:0;">
+                  <label class="field-label">Produced</label>
+                  <input class="field-control" value="24" inputmode="numeric">
+                </div>
+              </div>
+              <div class="progress" style="margin-top:var(--s-4)"><i style="width:48%"></i></div>
+              <div class="doc-meta" style="margin-top:8px;justify-content:space-between;"><span>48% complete</span><span><b>26</b> remaining</span></div>
+            </div>
+            <button class="btn btn-primary btn-block" style="margin-top:var(--s-2)">Start Job Card</button>
+          </div>
+        </div></div>
+        <div class="screen-label">Form View — Work Order</div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var KEY='multimax-ds-theme';
+  var root=document.documentElement;
+  var sun='<path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM2 13h2a1 1 0 1 0 0-2H2a1 1 0 1 0 0 2zm18 0h2a1 1 0 1 0 0-2h-2a1 1 0 1 0 0 2zM11 2v2a1 1 0 1 0 2 0V2a1 1 0 1 0-2 0zm0 18v2a1 1 0 1 0 2 0v-2a1 1 0 1 0-2 0zM5.99 4.58 4.58 5.99a1 1 0 1 0 1.41 1.41l1.41-1.41A1 1 0 1 0 5.99 4.58zm12.02 12.02-1.41 1.41a1 1 0 1 0 1.41 1.41l1.41-1.41a1 1 0 0 0-1.41-1.41zM18.01 4.58a1 1 0 0 0-1.41 1.41l1.41 1.41a1 1 0 0 0 1.41-1.41l-1.41-1.41zM5.99 16.6l-1.41 1.41a1 1 0 1 0 1.41 1.41l1.41-1.41a1 1 0 0 0-1.41-1.41z"/>';
+  var moon='<path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-5.4-5.4c0-1.86.94-3.5 2.36-4.46C12.92 3.04 12.46 3 12 3z"/>';
+  var icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel');
+  function apply(t){
+    root.setAttribute('data-theme',t);
+    icon.innerHTML = t==='dark' ? sun : moon;
+    label.textContent = t==='dark' ? 'Light' : 'Dark';
+  }
+  var saved='light';
+  try{ saved=localStorage.getItem(KEY)||'light'; }catch(e){}
+  apply(saved);
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    var next=root.getAttribute('data-theme')==='dark'?'light':'dark';
+    apply(next);
+    try{ localStorage.setItem(KEY,next); }catch(e){}
+  });
+
+  // build color ramps
+  var grays=[['50','#f9fafa'],['100','#f4f5f6'],['200','#ebeef0'],['300','#d8dee3'],['400','#bcc4cb'],['500','#98a1a9'],['600','#74808b'],['700','#525c66'],['800','#323a45'],['900','#1f272e']];
+  var accents=[['blue','#2490ef'],['green','#38a160'],['orange','#f0851b'],['yellow','#e0a93a'],['red','#e03636'],['purple','#7c4dff'],['pink','#e84ba6'],['cyan','#1aafc4']];
+  function swatch(name,hex){return '<div class="sw"><div class="chip" style="background:'+hex+'"></div><div class="lab"><b>'+name+'</b><span>'+hex+'</span></div></div>';}
+  document.getElementById('grayRamp').innerHTML=grays.map(function(g){return swatch('gray-'+g[0],g[1]);}).join('');
+  document.getElementById('accentRamp').innerHTML=accents.map(function(a){return swatch(a[0]+'-500',a[1]);}).join('');
+
+  // spacing scale
+  var spaces=[['1',4],['2',8],['3',12],['4',16],['5',20],['6',24],['8',32],['10',40]];
+  document.getElementById('spaceRow').innerHTML=spaces.map(function(s){
+    return '<div class="space-demo"><div class="bar" style="height:'+s[1]+'px"></div>'+s[1]+'</div>';
+  }).join('');
+})();
+</script>
+</body>
+</html>

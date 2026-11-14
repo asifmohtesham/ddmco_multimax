@@ -1,4 +1,6 @@
 import 'package:get/get.dart';
+import 'package:multimax/app/data/providers/item_provider.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 
@@ -10,5 +12,7 @@ class ItemFormBinding extends Bindings {
     // synchronously during the first frame.
     Get.lazyPut<ItemTabController>(() => ItemTabController(), fenix: true);
     Get.lazyPut<ItemFormController>(() => ItemFormController(), fenix: true);
+    Get.lazyPut<WarehouseProvider>(() => WarehouseProvider(), fenix: true);
+    Get.lazyPut<ItemProvider>(() => ItemProvider(), fenix: true);
   }
 }

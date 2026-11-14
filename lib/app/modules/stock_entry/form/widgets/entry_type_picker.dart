@@ -31,10 +31,10 @@ class EntryTypePicker {
             builder: (context, scrollController) {
               return Container(
                 padding: const EdgeInsets.all(16.0),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(16.0)),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16.0)),
                 ),
                 child: Column(
                   children: [
@@ -106,7 +106,9 @@ class EntryTypePicker {
                                     .textTheme
                                     .bodySmall
                                     ?.copyWith(
-                                        color: Colors.grey.shade700),
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant),
                               ),
                               isThreeLine: true,
                               trailing: isSelected

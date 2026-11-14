@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
 import 'package:multimax/app/data/models/job_card_employee_model.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
@@ -40,8 +41,6 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   /// True while a toggle-employee PATCH is in-flight.
   final isSavingEmployees = false.obs;
-
-  bool _disposed = false;
 
   /// Fetches Active employees from ERP and stores in [availableEmployees].
   /// Safe to call multiple times — skips if the list is already populated.
@@ -224,19 +223,12 @@ class JobCardFormController extends GetxController with DioErrorMixin {
 
   @override
   void onClose() {
-    _disposed = true;
     _ticker?.cancel();
     startTimeController.dispose();
     completeTimeController.dispose();
     completedQtyController.dispose();
     pauseQtyController.dispose();
     super.onClose();
-  }
-
-  // Wrapper to safely set isUpdatingStatus:
-  void _setUpdating(bool value) {
-    if (_disposed) return;
-    isUpdatingStatus.value = value;
   }
 
   // ── Computed guards ───────────────────────────────────────────────────────
@@ -803,13 +795,13 @@ class JobCardFormController extends GetxController with DioErrorMixin {
         return;
       }
 
-      // Step 2: set the Job Card document status to 'On Hold'.
+      // Step 2: put the Job Card document on hold.
       //
-      // make_time_log does NOT update the parent document's status field
-      // when called with 'Resume Job' — it only closes the time log row.
-      // We must PATCH the status field directly so the UI transitions to
-      // "On Hold" and shows Resume instead of Pause.
-      final holdRes = await _provider.setJobCardStatus(name, 'On Hold');
+      // make_time_log does NOT put the parent document on hold when called
+      // with 'Resume Job' — it only closes the time log row. The hold must
+      // be written to the document so the UI transitions to "On Hold" and
+      // shows Resume instead of Pause.
+      final holdRes = await _provider.setJobCardPaused(name, paused: true);
       if (holdRes.statusCode != 200) {
         // Non-fatal: time log is already closed. Warn but don't block.
         GlobalSnackbar.warning(
@@ -1091,8 +1083,8 @@ class JobCardFormController extends GetxController with DioErrorMixin {
       final res = await _provider.getJobCards(
         limit: 2,
         filters: {
-          'status':   'Work In Progress',
-          'employee': empId,
+          'status': 'Work In Progress',
+          '__child__Job Card Time Log': ['Job Card Time Log', 'employee', '=', empId],
         },
       );
 
@@ -1152,6 +1144,18 @@ class JobCardFormController extends GetxController with DioErrorMixin {
     final now = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 
     try {
+      // ERPNext v16 keeps the card "On Hold" for as long as `is_paused` is
+      // set, whatever time logs exist, so the flag is cleared before the new
+      // time log is opened. v15 has no such flag (isPaused == null).
+      if (jobCard.value?.isPaused == true) {
+        final releaseRes =
+            await _provider.setJobCardPaused(name, paused: false);
+        if (releaseRes.statusCode != 200) {
+          GlobalSnackbar.error(message: 'Failed to resume Job Card');
+          return;
+        }
+      }
+
       final res = await _provider.updateJobCardStatus(
         jobCardId:    name,
         status:       erpNextStatus,
@@ -1426,12 +1430,12 @@ class _EditTimeLogSheetState extends State<_EditTimeLogSheet> {
     final textTheme = Theme.of(context).textTheme;
     final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     final navBarHeight = MediaQuery.of(context).viewPadding.bottom;
-    final padding   = MediaQuery.of(context).viewInsets.bottom;
 
     return SafeArea(
       bottom: false,
       child: Padding(
         padding: EdgeInsets.only(
+          top: sheetStatusBarInset(context),
           bottom: isKeyboardOpen ? 0 : navBarHeight,
         ),
         child: SingleChildScrollView(
@@ -1635,6 +1639,7 @@ class _PauseQtySheetState extends State<_PauseQtySheet> {
         // Only add nav bar clearance when keyboard is CLOSED.
         // Flutter already lifts the sheet above the keyboard automatically.
         padding: EdgeInsets.only(
+          top: sheetStatusBarInset(context),
           bottom: isKeyboardOpen ? 0 : navBarHeight,
         ),
         child: SingleChildScrollView(

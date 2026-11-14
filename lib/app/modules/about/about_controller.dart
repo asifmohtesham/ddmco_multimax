@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode, kProfileMode;
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -33,6 +34,11 @@ class AboutController extends GetxController {
   // Dynamic System Status
   final RxList<SystemIntegration> systemStatus = <SystemIntegration>[].obs;
   final RxBool isCheckingHealth = true.obs;
+
+  /// No build-flavor metadata exists; derive a coarse channel from build mode.
+  /// Phase-1 placeholder (see spec) — not a real release-channel field.
+  String get channel =>
+      kReleaseMode ? 'Stable' : (kProfileMode ? 'Profile' : 'Debug');
 
   @override
   void onInit() {
@@ -78,17 +84,16 @@ class AboutController extends GetxController {
     final start = DateTime.now();
     try {
       final api = Get.find<ApiProvider>();
-      // Fix: Use callMethod instead of .get() which is not exposed
       final response = await api.callMethod('ping');
 
       final elapsed = DateTime.now().difference(start).inMilliseconds;
       final statusItem = systemStatus[index];
 
-      // Fix: Use Dio's statusCode instead of GetConnect's status.hasError
       if (response.statusCode == 200) {
         statusItem.state = IntegrationState.connected;
-        statusItem.details = 'Server Online';
         statusItem.latency = '${elapsed}ms';
+        final erpVersion = await api.getErpNextVersion();
+        statusItem.details = erpVersion != null ? 'ERP v$erpVersion' : 'Server Online';
       } else {
         statusItem.state = IntegrationState.error;
         statusItem.details = 'Status: ${response.statusCode}';

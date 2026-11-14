@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 
 /// A row of three [FilterChip]s (All / Pending / Completed) that controls
@@ -40,6 +41,7 @@ class MrItemFilterBar extends StatelessWidget {
         }
       }
 
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Container(
         color: Theme.of(context).scaffoldBackgroundColor,
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
@@ -48,20 +50,32 @@ class MrItemFilterBar extends StatelessWidget {
             final isSelected = active == label;
             final count = _countFor(label);
 
-            Color selectedBg;
+            // Status-pill convention: tinted fill + x700 (light) / x300
+            // (dark) ink, readable on both themes.
+            Color base;
+            switch (label) {
+              case 'Pending':
+                base = AppColors.orange500;
+                break;
+              case 'Completed':
+                base = AppColors.green500;
+                break;
+              default:
+                base = AppColors.blue500;
+            }
+            final selectedBg = base.withValues(alpha: 0.2);
             Color selectedFg;
             switch (label) {
               case 'Pending':
-                selectedBg = Colors.orange.shade100;
-                selectedFg = Colors.orange.shade800;
+                selectedFg =
+                    isDark ? AppColors.orange300 : AppColors.orange700;
                 break;
               case 'Completed':
-                selectedBg = Colors.green.shade100;
-                selectedFg = Colors.green.shade800;
+                selectedFg =
+                    isDark ? AppColors.green300 : AppColors.green700;
                 break;
               default:
-                selectedBg = Colors.blue.shade100;
-                selectedFg = Colors.blue.shade800;
+                selectedFg = isDark ? AppColors.blue300 : AppColors.blue700;
             }
 
             return Padding(
@@ -72,7 +86,9 @@ class MrItemFilterBar extends StatelessWidget {
                 onSelected: (_) => controller.mrItemFilter.value = label,
                 selectedColor: selectedBg,
                 labelStyle: TextStyle(
-                  color: isSelected ? selectedFg : Colors.black87,
+                  color: isSelected
+                      ? selectedFg
+                      : Theme.of(context).colorScheme.onSurface,
                   fontWeight:
                       isSelected ? FontWeight.bold : FontWeight.normal,
                   fontSize: 12,

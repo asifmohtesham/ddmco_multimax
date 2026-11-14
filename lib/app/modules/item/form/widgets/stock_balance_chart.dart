@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:intl/intl.dart';
 
@@ -10,20 +11,23 @@ class StockBalanceChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (stockLevels.isEmpty) {
+      final scheme = context.scheme;
       return Container(
         height: 80,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
+          color: scheme.subtle,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: scheme.border),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.inventory_2_outlined, color: Colors.grey, size: 18),
-            SizedBox(width: 8),
-            Text('No stock data', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            Icon(Icons.inventory_2_outlined,
+                color: scheme.textMuted, size: 18),
+            const SizedBox(width: 8),
+            Text('No stock data',
+                style: TextStyle(color: scheme.textMuted, fontSize: 13)),
           ],
         ),
       );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/widgets/keyboard_safe_bottom_sheet.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/auth/connect/connect_to_instance_controller.dart';
 import 'package:multimax/app/modules/auth/connect/qr_scan_sheet.dart';
 
@@ -23,15 +24,16 @@ class ConnectToInstanceSheet extends GetView<ConnectToInstanceController> {
                 ?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Enter the URL of your ERP instance.',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: context.scheme.textMuted),
           ),
           if (c.currentServerUrl.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               'Current: ${c.currentServerUrl}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                  fontSize: 12, color: context.scheme.textMuted),
             ),
           ],
           const SizedBox(height: 24),
@@ -74,12 +76,12 @@ class ConnectToInstanceSheet extends GetView<ConnectToInstanceController> {
           ),
           if (c.recentUrls.isNotEmpty) ...[
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'RECENT',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey,
+                color: context.scheme.textMuted,
                 letterSpacing: 0.8,
               ),
             ),
@@ -137,9 +139,9 @@ class _RecentUrlTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: context.scheme.border),
             borderRadius: BorderRadius.circular(6),
-            color: Colors.grey.shade50,
+            color: context.scheme.subtle,
           ),
           child: Row(
             children: [
@@ -157,7 +159,8 @@ class _RecentUrlTile extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.close, size: 16, color: Colors.grey),
+                icon: Icon(Icons.close,
+                    size: 16, color: context.scheme.textMuted),
                 onPressed: onDelete,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 constraints: const BoxConstraints(),

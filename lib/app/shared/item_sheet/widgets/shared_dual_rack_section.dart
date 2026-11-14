@@ -93,8 +93,12 @@ class SharedDualRackSection extends StatelessWidget {
               if (result != null) await srcAdapter.handleRackPicked(result);
             }
                 : null,
-            accentColor: Colors.purple,
           ),
+
+        // Match GlobalItemFormSheet's 20px inter-field gap so the source
+        // BalanceChip never sits flush against the target field.
+        if (controller.showSourceRack && controller.showTargetRack)
+          const SizedBox(height: 20),
 
         // ── Target Rack ───────────────────────────────────────────────────
         // Shown only for SE types that require a destination rack.
@@ -115,7 +119,6 @@ class SharedDualRackSection extends StatelessWidget {
               if (result != null) await tgtAdapter.handleRackPicked(result);
             }
                 : null,
-            accentColor: Colors.blueGrey,
           ),
       ],
     ));

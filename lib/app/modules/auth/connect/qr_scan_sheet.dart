@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:multimax/app/core/widgets/keyboard_safe_bottom_sheet.dart';
 
@@ -63,9 +64,9 @@ class _QRScanSheetState extends State<QRScanSheet>
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Point camera at the QR code for your ERP instance',
-          style: TextStyle(color: Colors.grey, fontSize: 13),
+          style: TextStyle(color: context.scheme.textMuted, fontSize: 13),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 16),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/quantity_input_controller.dart';
 
 /// A quantity input row with press-and-hold increment / decrement buttons.
@@ -38,7 +39,9 @@ class QuantityInputWidget extends StatelessWidget {
   /// When null the badge is non-interactive.
   final VoidCallback? onInfoTap;
 
-  final Color color;
+  /// Label ink. Defaults to the themed onSurface — a hardcoded dark ink
+  /// here disappears on dark-mode surfaces.
+  final Color? color;
   final Function(String)? onChanged;
 
   /// Optional stable identifier used to derive [Key]s for the internal
@@ -60,7 +63,7 @@ class QuantityInputWidget extends StatelessWidget {
     this.isReadOnly = false,
     this.infoText,
     this.onInfoTap,
-    this.color = Colors.black87,
+    this.color,
     this.onChanged,
     this.widgetTag,
   });
@@ -73,8 +76,11 @@ class QuantityInputWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
-    final borderColor = Colors.grey.shade300;
+    final theme = Theme.of(context);
+    final primaryColor = theme.primaryColor;
+    final scheme = context.scheme;
+    final labelColor = color ?? theme.colorScheme.onSurface;
+    final borderColor = scheme.borderStrong;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -88,7 +94,7 @@ class QuantityInputWidget extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: color,
+                    color: labelColor,
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
@@ -106,7 +112,7 @@ class QuantityInputWidget extends StatelessWidget {
         Container(
           height: 56,
           decoration: BoxDecoration(
-            color: isReadOnly ? Colors.grey.shade50 : Colors.white,
+            color: isReadOnly ? scheme.subtle : theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: borderColor),
             // C-2: boxShadow removed — animated shadow was the path through
@@ -127,8 +133,8 @@ class QuantityInputWidget extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                     color: isReadOnly
-                        ? Colors.grey.shade600
-                        : Colors.black87,
+                        ? scheme.textMuted
+                        : theme.colorScheme.onSurface,
                   ),
                   onChanged: onChanged,
                   inputFormatters: [
@@ -151,16 +157,14 @@ class QuantityInputWidget extends StatelessWidget {
                 ),
               ),
               if (!isReadOnly) ...[
-                Container(
-                    width: 1, height: 32, color: Colors.grey.shade200),
+                Container(width: 1, height: 32, color: scheme.border),
                 _QtyActionButton(
                   key: _decKey,
                   icon: Icons.remove,
                   onPressed: onDecrement,
-                  color: Colors.grey.shade700,
+                  color: scheme.textMuted,
                 ),
-                Container(
-                    width: 1, height: 32, color: Colors.grey.shade200),
+                Container(width: 1, height: 32, color: scheme.border),
                 _QtyActionButton(
                   key: _incKey,
                   icon: Icons.add,

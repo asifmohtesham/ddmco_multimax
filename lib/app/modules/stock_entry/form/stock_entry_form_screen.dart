@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/global_widgets/realtime_sync_status_icon.dart';
 import 'package:multimax/app/modules/stock_entry/form/stock_entry_form_controller.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/details_tab.dart';
 import 'package:multimax/app/modules/stock_entry/form/widgets/items_tab/standard_items_view.dart';
@@ -24,21 +25,30 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final entry = controller.stockEntry.value;
       final bool isEditable = entry?.docstatus == 0;
 
+      // Save and Submit are mutually exclusive (ERPNext morph): show Save only
+      // while there are unsaved changes; once the draft is clean the header
+      // shows Submit instead. Avoids Save + Submit appearing side by side.
       final VoidCallback? onSave =
-          isEditable ? controller.saveDocument : null;
+          (isEditable && controller.isDirty.value)
+              ? controller.saveDocument
+              : null;
       final VoidCallback? onReload =
           controller.mode != 'new' ? controller.reloadDocument : null;
 
       final String title = entry == null
           ? 'Loading...'
-          : (entry.name?.isNotEmpty == true
-              ? entry.name!
+          : (entry.name.isNotEmpty
+              ? entry.name
               : 'New ${controller.stockEntryType.value}');
 
       final isDirty    = controller.isDirty.value;
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
       final isLoading  = controller.isLoading.value;
+      // Read here, not inside headerSliverBuilder: NestedScrollView calls
+      // that closure after this builder returns, so Obx would not track it.
+      final isSubmitting = controller.isSubmitting.value;
+      final canSubmit    = controller.canSubmit;
 
       return PopScope(
         canPop: !isDirty,
@@ -62,6 +72,15 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   saveResult: saveResult,
                   onSave:     onSave,
                   onReload:   onReload,
+                  onSubmit:     controller.submitDocument,
+                  canSubmit:    canSubmit,
+                  isSubmitting: isSubmitting,
+                  extraActions: [
+                    RealtimeSyncStatusIcon(
+                      isConnected: controller.isRealtimeConnected,
+                      isSyncing:   controller.isRemoteSyncing,
+                    ),
+                  ],
                   bottom: const TabBar(
                     tabs: [
                       Tab(text: 'Details'),

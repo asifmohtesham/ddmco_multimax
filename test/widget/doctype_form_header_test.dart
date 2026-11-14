@@ -1,4 +1,3 @@
-import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
@@ -46,7 +45,9 @@ void main() {
       expect(find.byType(StatusPill), findsNothing);
     });
 
-    testWidgets('unsaved indicator visible when canSave and docStatus==0', (tester) async {
+    testWidgets('shows the "Not Saved" pill when canSave and docStatus==0', (tester) async {
+      // When the doc is dirty and editable (docStatus 0), the header mirrors
+      // frappe.get_indicator and surfaces a "Not Saved" status pill.
       await tester.pumpWidget(_wrapInSliver(
         const DocTypeFormHeader(
           title: 'WO-2024-00123',
@@ -54,10 +55,13 @@ void main() {
           docStatus: 0,
         ),
       ));
-      expect(find.text('Unsaved changes'), findsOneWidget);
+      expect(find.text('Not Saved'), findsWidgets);
+      expect(find.byType(StatusPill), findsWidgets);
     });
 
-    testWidgets('unsaved indicator hidden when canSave but docStatus==1', (tester) async {
+    testWidgets('no "Not Saved" pill when canSave but docStatus==1', (tester) async {
+      // Submitted docs (docStatus 1) are not editable, so the dirty indicator
+      // is suppressed even if canSave is passed.
       await tester.pumpWidget(_wrapInSliver(
         const DocTypeFormHeader(
           title: 'WO-2024-00123',
@@ -65,7 +69,8 @@ void main() {
           docStatus: 1,
         ),
       ));
-      expect(find.text('Unsaved changes'), findsNothing);
+      expect(find.text('Not Saved'), findsNothing);
+      expect(find.byType(StatusPill), findsNothing);
     });
 
     testWidgets('emits a single SliverPersistentHeader', (tester) async {
@@ -73,6 +78,88 @@ void main() {
         const DocTypeFormHeader(title: 'TEST-001'),
       ));
       expect(find.byType(SliverPersistentHeader), findsOneWidget);
+    });
+
+    testWidgets('renders Submit button when onSubmit set and canSubmit true',
+        (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        DocTypeFormHeader(
+          title: 'MAT-STE-0001',
+          onSubmit: () {},
+          canSubmit: true,
+        ),
+      ));
+      expect(find.widgetWithText(FilledButton, 'Submit'), findsOneWidget);
+    });
+
+    testWidgets('hides Submit button when canSubmit false', (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        DocTypeFormHeader(
+          title: 'MAT-STE-0001',
+          onSubmit: () {},
+          canSubmit: false,
+        ),
+      ));
+      expect(find.text('Submit'), findsNothing);
+    });
+
+    testWidgets('hides Submit button when onSubmit is null (backwards compat)',
+        (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        const DocTypeFormHeader(title: 'MAT-STE-0001', canSubmit: true),
+      ));
+      expect(find.text('Submit'), findsNothing);
+    });
+
+    testWidgets('collapse animation never overflows the large-title area',
+        (tester) async {
+      // Regression: the large-title Column used to receive the animated
+      // (shrinking) SizedBox height as its layout constraint, so every
+      // intermediate frame below its natural content height threw
+      // "A RenderFlex overflowed" (seen as 0.234px on-device).
+      final scrollController = ScrollController();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: CustomScrollView(
+            controller: scrollController,
+            slivers: const [
+              DocTypeFormHeader(
+                title: 'MAT-DN-2026-00042',
+                docType: 'Delivery Note',
+                statusLabel: 'Draft',
+              ),
+              SliverToBoxAdapter(child: SizedBox(height: 1000)),
+            ],
+          ),
+        ),
+      ));
+
+      // Sweep the whole 88dp shrink range, including fractional offsets.
+      for (double offset = 0; offset <= 96; offset += 3.7) {
+        scrollController.jumpTo(offset);
+        await tester.pump();
+        expect(tester.takeException(), isNull,
+            reason: 'layout exception at shrinkOffset $offset');
+      }
+      scrollController.dispose();
+    });
+
+    testWidgets('shows spinner instead of label while submitting',
+        (tester) async {
+      await tester.pumpWidget(_wrapInSliver(
+        DocTypeFormHeader(
+          title: 'MAT-STE-0001',
+          onSubmit: () {},
+          canSubmit: true,
+          isSubmitting: true,
+        ),
+      ));
+      expect(find.text('Submit'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
     });
   });
 }

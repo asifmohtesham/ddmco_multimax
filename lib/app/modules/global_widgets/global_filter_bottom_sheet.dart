@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/core/widgets/sheet_status_bar_gap.dart';
 
 class SortOption {
   final String label;
@@ -39,9 +40,11 @@ class GlobalFilterBottomSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // 1. Get System Top Padding (Status Bar)
+    // 1. Get System Top Padding (Status Bar). From the view, not MediaQuery:
+    // Get.bottomSheet pushes its route with removeTop: true, which zeroes
+    // viewPadding.top here, silently degrading the margin below to a bare 48.
     final mediaQuery = MediaQuery.of(context);
-    final topPadding = mediaQuery.viewPadding.top;
+    final topPadding = sheetStatusBarInset(context);
     final bottomPadding = mediaQuery.viewPadding.bottom;
 
     return Container(
@@ -195,7 +198,7 @@ class GlobalFilterBottomSheet extends StatelessWidget {
               ),
               child: Text(
                 activeFilterCount > 0
-                    ? 'Show $activeFilterCount Result${activeFilterCount > 1 ? 's' : ''}'
+                    ? 'Apply $activeFilterCount filter${activeFilterCount > 1 ? 's' : ''}'
                     : 'Show Results',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),

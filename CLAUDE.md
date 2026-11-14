@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Flutter mobile app ("KA-ML Fulfillment") for supply-chain operations against a Frappe/ERPNext backend at `https://erp.domain.com`. Covers stock, purchase orders, delivery notes, work orders, job cards, packing slips, and manufacturing. Primary platform is Android (USB/WiFi device), but configured for iOS, desktop, and web.
+Flutter mobile app ("Multimax") for supply-chain operations against a Frappe/ERPNext backend at `https://erp.domain.com`. Covers stock, purchase orders, delivery notes, work orders, job cards, packing slips, and manufacturing. Primary platform is Android (USB/WiFi device), but configured for iOS, desktop, and web.
 
 ## Common Commands
 
@@ -67,11 +67,70 @@ Shared form components (used across modules) live in `lib/app/modules/global_wid
 - `ItemSheet` — bottom-sheet for inline item selection within form screens
 - `RackField` / `SharedRackField` — warehouse rack picker (universal delegate pattern)
 - `DocTypeGuard` — wraps a widget and hides it when the user lacks access to a DocType
+- `AsyncIconButton` / `AsyncFilledButton` — action controls that bake in spinner + disabled state + repaint-safe loading feedback (see Async feedback below)
+
+### Async feedback
+
+Any control that triggers async work (network/disk/heavy compute) MUST give immediate loading feedback. Prefer `AsyncIconButton` / `AsyncFilledButton` (`lib/app/modules/global_widgets/async_action_buttons.dart`), driven by a controller `RxBool` busy flag that the controller sets and clears in a `finally`, with a re-entrancy guard (`if (busy.value) return;`) before launching the work.
+
+When hand-rolling instead of using those widgets, three things must hold:
+
+- **Disabled + guarded** while in flight, so a double-tap can't fire duplicate work.
+- **Actually repaints.** Beware render layers that skip rebuilds for content-only changes — a `SliverPersistentHeader` whose `shouldRebuild` keys on action *count* will not repaint an icon→spinner swap. Wrap the reactive control in its own `Obx`.
+- **Visible.** A bare `CircularProgressIndicator` renders in `colorScheme.primary` (maroon) and is invisible on the solid-maroon form header. Use `colorScheme.onPrimary` (or the ambient `IconTheme` colour) on primary-coloured surfaces.
+
+Verify by toggling the flag in a widget test or on-device — a clean `flutter analyze` proves nothing here.
+
+## List / report screen conventions
+
+Any vertically-scrollable result list (list screens, report screens) MUST:
+
+- **Scrollbar.** Wrap the `CustomScrollView`/`ListView` in a `Scrollbar` sharing a single `ScrollController` with the scroll view — users need a scroll-position indicator on long result sets. (No screen did this before the POS & DN Item Rate report; it is now the standard.)
+- **Clear the system nav bar.** The last item must not sit under the Android gesture/nav bar. Read `MediaQuery.of(context).padding.bottom` once and add it to the trailing padding or footer (see `delivery_note_screen` and the POS & DN Item Rate report).
+- **End-of-list marker.** End the list with an "End of list" marker so the user knows they've reached the bottom. **Report** lists put a totals summary there — sum the quantity columns, **never** rate columns (summing rates across items is meaningless).
+
+## Contrast / colour usage
+
+Never hardcode surface or ink colours — they break in the other theme mode. The rules (enforced by `test/unit/theme_contrast_test.dart` and the dark-mode widget tests):
+
+- **Surfaces**: bottom sheets, cards, and input fills use `context.scheme.fg` / `colorScheme.surface` / `scheme.subtle` — never `Colors.white` or `grey.shade50/100`. A hardcoded white sheet renders theme-default text invisible in dark mode (~1.1:1).
+- **Inks**: body text `scheme.text`/`onSurface`, secondary text `scheme.textMuted` (AA at all sizes), decorative icons only `scheme.textSubtle`. Never `Colors.black87`, `Colors.grey`, or `grey.shadeX` as text.
+- **Status colours as text**: use the `AppColors` ramp — x700 in light mode, x300 in dark (`isDark ? AppColors.orange300 : AppColors.orange700`). The x500 bases and material shades (`green.shade600`, `amber.shade700`) fall below 4.5:1 on light surfaces.
+- **Status tints**: fill = `x500.withValues(alpha: 0.13)` over the surface, border ≈ alpha 0.35 — the StatusPill convention. Never pastel `shade50` fills (light islands in dark mode).
+- **Filled buttons/snackbars on status colours**: fill with x700 + white foreground (all ≥4.9:1). White-on-`orange.shade700` is 2.9:1; white-on-`amber.shade700` is 1.75:1.
+
+## Versioning
+
+Every version bump MUST follow `docs/versioning_conventions.md` — read it each time.
+Do **not** default to a PATCH bump; historically features were mis-shipped as PATCH.
+
+`pubspec.yaml` `version: X.Y.Z+B` — `X.Y.Z` is semver; `B` is the Play Store `versionCode`
+and **always increments by 1** on every release (independent of semver).
+
+Decide the semver field by analysing everything since the last tag — commit prefixes
+**and** the actual diff:
+
+```bash
+LAST=$(git describe --tags --abbrev=0)
+git log --pretty='%s' "$LAST..HEAD" && git diff --stat "$LAST..HEAD"
+```
+
+- Any breaking change (`feat!`/`fix!`/`BREAKING CHANGE:`, or backend/workflow incompatibility) → **MAJOR** (`X+1.0.0`).
+- Else any `feat:` (new module/screen/report/flow) → **MINOR** (`X.Y+1.0`).
+- Else fixes/polish/refactor/docs/chore only → **PATCH** (`X.Y.Z+1`).
+- **Highest level wins**; MINOR resets PATCH to 0, MAJOR resets both. The diff overrides a
+  mislabeled commit (a `fix:` that adds a `lib/app/modules/**` module is a feature → MINOR).
+
+`dart run tool/bump_version.dart` classifies the range and proposes the next version
+(dry-run; `--write` applies it; `--major/--minor/--patch` override the classification).
 
 ## Codebase Docs
 
 The `docs/` folder contains important design and architecture notes:
 
+- `docs/versioning_conventions.md` — semver bump procedure (diff-driven; MAJOR/MINOR/PATCH + build-number rules)
 - `docs/app_bar_conventions.md` — AppBar/header standards for list vs. form screens
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
+- `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact
+- `docs/sales_order_delivery_flow.md` — Dashboard Sales Order → scan-to-pick Delivery Note (SO line binding, caps, resume, v16 CSRF)

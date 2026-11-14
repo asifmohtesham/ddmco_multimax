@@ -1,5 +1,4 @@
 import 'package:get/get.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/supplier_model.dart';
 import 'package:multimax/app/data/providers/supplier_provider.dart';
 import 'package:multimax/app/data/models/purchase_order_model.dart';
@@ -15,7 +14,6 @@ class PurchaseOrderController extends GetxController {
   final SupplierProvider _supplierProvider = Get.find<SupplierProvider>();
   final UserProvider _userProvider = Get.find<UserProvider>();
   final WarehouseProvider _warehouseProvider = Get.find<WarehouseProvider>();
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
 
   var isLoading = true.obs;
   var isFetchingMore = false.obs;
@@ -49,24 +47,20 @@ class PurchaseOrderController extends GetxController {
   // Warehouses for filter
   var warehouses = <String>[].obs;
   var isFetchingWarehouses = false.obs;
-  // Role-gated write access — mirrors StockEntryController
-  var writeRoles = <String>['System Manager'].obs;
 
   @override
   void onInit() {
     super.onInit();
+    final args = Get.arguments;
+    if (args is Map && args['filters'] is Map) {
+      activeFilters.value = Map<String, dynamic>.from(args['filters'] as Map);
+    }
     fetchPurchaseOrders();
     fetchSuppliers();
     fetchUsers();
     fetchWarehouses();
-    fetchDocTypePermissions();
-  }
-
-  @override
-  void onReady() {
-    super.onReady();
-    // onReady fires after the first frame; safe place for deferred work.
-    // Reserved for future use (e.g. deep-link argument handling).
+    debounce(searchQuery, (_) => fetchPurchaseOrders(clear: true),
+        time: const Duration(milliseconds: 500));
   }
 
   Future<void> fetchSuppliers() async {
@@ -119,25 +113,6 @@ class PurchaseOrderController extends GetxController {
     }
   }
 
-  Future<void> fetchDocTypePermissions() async {
-    try {
-      final response = await _apiProvider.getDocument('DocType', 'Purchase Order');
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final data = response.data['data'];
-        final List<dynamic> perms = data['permissions'] ?? [];
-        final newRoles = <String>{'System Manager'};
-        for (var p in perms) {
-          if (p['write'] == 1 && (p['permlevel'] == 0 || p['permlevel'] == null)) {
-            newRoles.add(p['role']);
-          }
-        }
-        writeRoles.assignAll(newRoles.toList());
-      }
-    } catch (e) {
-      print('Error fetching permissions: $e');
-    }
-  }
-
   // ── Filter / sort ─────────────────────────────────────────────────────────
 
   void applyFilters(Map<String, dynamic> filters) {
@@ -147,8 +122,11 @@ class PurchaseOrderController extends GetxController {
 
   void clearFilters() {
     activeFilters.clear();
-    searchQuery.value = '';
-    fetchPurchaseOrders(isLoadMore: false, clear: true);
+    if (searchQuery.value.isEmpty) {
+      fetchPurchaseOrders(isLoadMore: false, clear: true);
+    } else {
+      searchQuery.value = '';
+    }
   }
 
   void removeFilter(String key) {
@@ -165,14 +143,7 @@ class PurchaseOrderController extends GetxController {
   // ── Search ────────────────────────────────────────────────────────────────
 
   /// Debounced handler wired to the SearchBar's [onChanged].
-  void onSearchChanged(String val) {
-    searchQuery.value = val;
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (searchQuery.value == val) {
-        fetchPurchaseOrders(clear: true);
-      }
-    });
-  }
+  void onSearchChanged(String val) => searchQuery.value = val;
 
   // ── Data ──────────────────────────────────────────────────────────────────
 

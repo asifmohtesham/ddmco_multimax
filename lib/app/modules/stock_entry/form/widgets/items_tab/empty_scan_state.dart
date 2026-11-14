@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// Empty-state widget shown when no items have been scanned yet.
 /// Step 6 — extracted from StockEntryFormScreen._buildEmptyState().
@@ -7,25 +8,25 @@ class EmptyScanState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.qr_code_scanner,
-              size: 80, color: Colors.grey.shade300),
+          Icon(Icons.qr_code_scanner, size: 80, color: scheme.textSubtle),
           const SizedBox(height: 16),
           Text(
             'Ready to Scan',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade600,
+              color: scheme.text,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Scan items, batches or racks to start.',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: scheme.textMuted),
           ),
         ],
       ),

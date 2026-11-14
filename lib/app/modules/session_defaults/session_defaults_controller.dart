@@ -1,0 +1,133 @@
+import 'package:get/get.dart';
+import 'package:multimax/app/core/utils/app_notification.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/providers/warehouse_provider.dart';
+import 'package:multimax/app/modules/auth/authentication_controller.dart';
+
+/// Full-screen replacement for the old Session Defaults bottom sheet.
+/// UI-free [persist] is split out so it is unit-testable without GetX overlay.
+class SessionDefaultsController extends GetxController {
+  final StorageService _storage;
+  ApiProvider? _api;
+  WarehouseProvider? _wh;
+
+  SessionDefaultsController({
+    StorageService? storage,
+    WarehouseProvider? warehouseProvider,
+  })  : _storage = storage ?? Get.find<StorageService>(),
+        _wh = warehouseProvider;
+
+  ApiProvider get _apiProvider => _api ??= Get.find<ApiProvider>();
+  WarehouseProvider get _warehouseProvider => _wh ??= WarehouseProvider();
+
+  final isLoading = true.obs;
+  final isSaving = false.obs;
+  final companies = <String>[].obs;
+  final selectedCompany = RxnString();
+  final autoSubmitEnabled = true.obs;
+  final autoSubmitDelay = 1.obs;
+  final autoSaveDelay = 5.obs;
+  final warehouses = <String>[].obs;
+  final selectedWarehouse = RxnString();
+  final isLoadingWarehouses = false.obs;
+  final groupWarehouses = <String>{}.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    load();
+  }
+
+  Future<void> load() async {
+    isLoading.value = true;
+    autoSubmitEnabled.value = _storage.getAutoSubmitEnabled();
+    autoSubmitDelay.value = _storage.getAutoSubmitDelay();
+    autoSaveDelay.value = _storage.getAutoSaveDelay();
+    selectedCompany.value =
+        _storage.hasSessionDefaults() ? _storage.getCompany() : null;
+    selectedWarehouse.value = _storage.getDefaultWarehouse();
+    try {
+      final list = await _apiProvider.getList('Company');
+      companies.assignAll(list.map((c) => c['name'] as String));
+      if (companies.length == 1 && selectedCompany.value == null) {
+        selectedCompany.value = companies.first;
+      }
+    } catch (_) {
+      AppNotification.error('Failed to load companies');
+    } finally {
+      isLoading.value = false;
+    }
+    await _loadWarehouses();
+  }
+
+  Future<void> _loadWarehouses() async {
+    isLoadingWarehouses.value = true;
+    try {
+      final res = await _warehouseProvider.getWarehouses(includeGroups: true);
+      final data = res.data['data'] as List? ?? const [];
+      final parsed = partitionWarehouses(data);
+      warehouses.assignAll(parsed.names);
+      groupWarehouses.assignAll(parsed.groups);
+    } catch (_) {
+      AppNotification.error('Failed to load warehouses');
+    } finally {
+      isLoadingWarehouses.value = false;
+    }
+  }
+
+  /// Splits raw Warehouse rows into a name list (kept in received order) and the
+  /// set of names that are group warehouses (`is_group` truthy: `1`, `true`, or
+  /// `'1'`). Blank names are skipped. Pure — no GetX/DI, so it is unit-testable.
+  static ({List<String> names, Set<String> groups}) partitionWarehouses(
+    List<dynamic> data,
+  ) {
+    final names = <String>[];
+    final groups = <String>{};
+    for (final w in data) {
+      final name = (w['name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      names.add(name);
+      final g = w['is_group'];
+      if (g == 1 || g == true || g == '1') groups.add(name);
+    }
+    return (names: names, groups: groups);
+  }
+
+  /// Writes current settings to storage. Returns false if no company chosen.
+  Future<bool> persist() async {
+    final company = selectedCompany.value;
+    if (company == null || company.isEmpty) return false;
+    await _storage.saveSessionDefaults(company);
+    await _storage.saveAutoSubmitSettings(
+        autoSubmitEnabled.value, autoSubmitDelay.value);
+    await _storage.saveAutoSaveDelay(autoSaveDelay.value);
+    await _storage.saveDefaultWarehouse(selectedWarehouse.value);
+    return true;
+  }
+
+  void clearWarehouse() => selectedWarehouse.value = null;
+
+  Future<void> save() async {
+    isSaving.value = true;
+    final ok = await persist();
+    isSaving.value = false;
+    if (!ok) {
+      AppNotification.warning('Company is required');
+      return;
+    }
+    AppNotification.success('Settings saved');
+    Get.back();
+  }
+
+  Future<void> reloadPermissions() async {
+    try {
+      Get.find<PermissionService>().clearCache();
+      await Get.find<AuthenticationController>().fetchUserDetails();
+      AppNotification.success('Permissions & roles reloaded');
+    } catch (e) {
+      AppNotification.error('Failed to reload permissions');
+    }
+  }
+}

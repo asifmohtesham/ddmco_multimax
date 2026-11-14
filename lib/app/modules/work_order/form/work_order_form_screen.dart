@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/data/models/work_order_item_model.dart';
@@ -412,24 +413,30 @@ class _WorkOrderForm extends StatelessWidget {
                       linkedCards.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8, left: 2),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_outlined,
-                            size: 13,
-                            color: Colors.orange.shade700,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Complete all Job Cards to enable "Finish Work Order".',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Colors.orange.shade700,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                          ),
-                        ],
-                      ),
+                      child: Builder(builder: (context) {
+                        final orangeInk = Theme.of(context).brightness ==
+                                Brightness.dark
+                            ? AppColors.orange300
+                            : AppColors.orange700;
+                        return Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_outlined,
+                              size: 13,
+                              color: orangeInk,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Complete all Job Cards to enable "Finish Work Order".',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: orangeInk,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                            ),
+                          ],
+                        );
+                      }),
                     ),
 
                   const SizedBox(height: 4),
@@ -561,9 +568,11 @@ class _WorkOrderForm extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: executing ? null : controller.executeWorkOrder,
+                    // orange700 token, not orange.shade700 — white on the
+                    // material shade was 2.9:1.
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
-                      backgroundColor: Colors.orange.shade700,
+                      backgroundColor: AppColors.orange700,
                       foregroundColor: Colors.white,
                     ),
                     icon: executing
@@ -641,7 +650,6 @@ class _WorkOrderForm extends StatelessWidget {
             // [5] Finish — shown when WO is "In Process" and producedQty < qty.
             // Navigates to Stock Entry: Manufacture prefilled form.
             Obx(() {
-              final wo = controller.workOrder.value;
               final executing = controller.isExecuting.value;
               final canFinish = controller.canFinish;
               if (!canFinish) return const SizedBox.shrink();
@@ -653,7 +661,7 @@ class _WorkOrderForm extends StatelessWidget {
                     onPressed: executing ? null : controller.finishWorkOrder,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.all(16),
-                      backgroundColor: Colors.green.shade700,
+                      backgroundColor: AppColors.green700,
                       foregroundColor: Colors.white,
                     ),
                     icon: executing
@@ -717,8 +725,8 @@ class _BomOperationsPreview extends StatelessWidget {
           final idx = entry.key;
           final op = entry.value;
           final hasWorkstation = (op.workstation ?? '').isNotEmpty;
-          final timeLabel = op.timeInMins != null && op.timeInMins! > 0
-              ? _fmtTime(op.timeInMins!)
+          final timeLabel = op.timeInMins > 0
+              ? _fmtTime(op.timeInMins)
               : null;
 
           return Container(
@@ -1548,8 +1556,8 @@ class _JobCardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final name = jc.name ?? '';
-    final status = jc.status ?? 'Open';
+    final name = jc.name;
+    final status = jc.status;
     final clr = _statusColor(status, cs);
 
     // Safe accessors for additional display fields

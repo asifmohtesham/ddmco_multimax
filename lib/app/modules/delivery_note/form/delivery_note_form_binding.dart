@@ -1,5 +1,7 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/providers/delivery_note_provider.dart';
+import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
 
@@ -11,5 +13,7 @@ class DeliveryNoteFormBinding extends Bindings {
     );
     Get.lazyPut<StorageService>(()=>StorageService());
     Get.lazyPut<WorkOrderProvider>(() => WorkOrderProvider());
+    Get.lazyPut<DeliveryNoteProvider>(() => DeliveryNoteProvider(), fenix: true);
+    Get.lazyPut<PosUploadProvider>(() => PosUploadProvider(), fenix: true);
   }
 }

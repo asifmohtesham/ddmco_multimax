@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/material_request_model.dart';
 
 /// Upgraded M3 item card for Material Request.
@@ -29,12 +30,15 @@ class MaterialRequestItemCard extends StatelessWidget {
         (item.qty > 0) ? (item.orderedQty / item.qty).clamp(0.0, 1.0) : 0.0;
     final bool isComplete = progress >= 1.0;
     final bool hasStarted = progress > 0;
+    final bool isDark = theme.brightness == Brightness.dark;
 
-    // Semantic progress colour: green = done, amber = partial, primary = not started
+    // Semantic progress colour: green = done, orange = partial, primary =
+    // not started. Status-ramp inks (x700 light / x300 dark) stay readable
+    // on both surfaces — the old green600/amber700 fell below 3:1.
     final Color progressColor = isComplete
-        ? Colors.green.shade600
+        ? (isDark ? AppColors.green300 : AppColors.green700)
         : hasStarted
-            ? Colors.amber.shade700
+            ? (isDark ? AppColors.orange300 : AppColors.orange700)
             : colorScheme.primary;
 
     return Card(
@@ -44,12 +48,15 @@ class MaterialRequestItemCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: isComplete
-              ? Colors.green.shade200
+              ? AppColors.green500.withValues(alpha: 0.4)
               : colorScheme.outlineVariant,
         ),
       ),
+      // A green TINT over the themed surface, not the pastel green.shade50 —
+      // the pastel forces a light island that hides dark-mode text.
       color: isComplete
-          ? Colors.green.shade50
+          ? Color.alphaBlend(AppColors.green500.withValues(alpha: 0.12),
+              colorScheme.surfaceContainerLowest)
           : colorScheme.surfaceContainerLowest,
       child: InkWell(
         onTap: onTap,

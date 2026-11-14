@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
+import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
@@ -284,13 +285,7 @@ class _PosUploadFilterBottomSheetState
           scrollDirection: Axis.horizontal,
           child: Obx(() => Row(
             children: [
-              for (final s in [
-                'Pending',
-                'Processed',
-                'Completed',
-                'Failed',
-                'Cancelled',
-              ])
+              for (final s in PosUpload.statusOptions)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
