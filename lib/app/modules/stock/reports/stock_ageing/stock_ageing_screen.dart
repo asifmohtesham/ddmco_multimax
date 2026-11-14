@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_controller.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_logic.dart';
@@ -77,6 +78,8 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
         final hasData = controller.rows.isNotEmpty;
         final shown = controller.visibleRows;
         final buckets = controller.buckets.toList();
+        final fields = controller.cardFields.toSet();
+        final sort = controller.sort.value;
 
         return RefreshIndicator(
           onRefresh: controller.refreshReport,
@@ -92,6 +95,25 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                 onFilterTap: () => _openFilters(context),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters: controller.clearFilters,
+                extraActions: [
+                  IconButton(
+                    tooltip: 'Card fields',
+                    icon: const Icon(Icons.view_agenda_outlined),
+                    onPressed: () => _openCardFields(context),
+                  ),
+                ],
+                // Sort choices live in the header's chip row, next to the
+                // filter chips.
+                quickChips: [
+                  for (final e in _sorts.entries)
+                    ChoiceChip(
+                      label: Text(e.value),
+                      selected: sort == e.key,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => controller.setSort(e.key),
+                    ),
+                ],
+                quickChipsKey: sort,
               ),
 
               // Always present so the slivers below keep their positions
@@ -117,29 +139,10 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
                     child: _SearchField(
                       controller: controller.searchController,
                       onChanged: controller.onSearchChanged,
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                    child: Row(
-                      children: [
-                        for (final e in _sorts.entries)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(e.value),
-                              selected: controller.sort.value == e.key,
-                              onSelected: (_) => controller.setSort(e.key),
-                            ),
-                          ),
-                      ],
                     ),
                   ),
                 ),
@@ -180,6 +183,8 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                       child: _AgeingTile(
                         row: shown[i],
                         buckets: buckets,
+                        fields: fields,
+                        imageUrl: controller.imageUrlOf(shown[i]),
                         onTap: () => _showDetail(context, shown[i], buckets),
                       ),
                     ),
@@ -189,6 +194,16 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
           ),
         );
       }),
+    );
+  }
+
+  void _openCardFields(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _CardFieldsSheet(controller: controller),
     );
   }
 
@@ -429,23 +444,58 @@ class _BucketBar extends StatelessWidget {
 class _AgeingTile extends StatelessWidget {
   final Map<String, dynamic> row;
   final List<AgeBucket> buckets;
+
+  /// The optional fields the user has chosen to show.
+  final Set<AgeingCardField> fields;
+  final String? imageUrl;
   final VoidCallback onTap;
 
   const _AgeingTile({
     required this.row,
     required this.buckets,
+    required this.fields,
+    required this.imageUrl,
     required this.onTap,
   });
+
+  bool _on(AgeingCardField f) => fields.contains(f);
+
+  String _text(String key) => row[key]?.toString().trim() ?? '';
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final code = row['item_code']?.toString() ?? '';
-    final name = row['item_name']?.toString() ?? '';
-    final warehouse = row['warehouse']?.toString() ?? '';
-    final uom = row['uom']?.toString() ?? '';
+    final muted = theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant);
+    final strong = theme.textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final code = _text('item_code');
+    final name = _text('item_name');
+    final warehouse = _text('warehouse');
     final age = StockAgeingLogic.num_(row['average_age']).round();
+
+    // Label: value pairs shown as one wrapped line under the header.
+    final extras = <(String, String)>[
+      if (_on(AgeingCardField.value))
+        ('Value', _valueFormat.format(StockAgeingLogic.rowValue(row, buckets))),
+      if (_on(AgeingCardField.earliestLatest))
+        (
+          'Earliest / latest',
+          '${StockAgeingLogic.num_(row['earliest']).round()} / '
+              '${StockAgeingLogic.num_(row['latest']).round()} d'
+        ),
+      if (_on(AgeingCardField.variantOf) && _text('variant_of').isNotEmpty)
+        ('Variant of', _text('variant_of')),
+      if (_on(AgeingCardField.itemGroup) && _text('item_group').isNotEmpty)
+        ('Group', _text('item_group')),
+      if (_on(AgeingCardField.brand) && _text('brand').isNotEmpty)
+        ('Brand', _text('brand')),
+      if (_on(AgeingCardField.country) &&
+          _text('country_of_origin').isNotEmpty)
+        ('Origin', _text('country_of_origin')),
+    ];
 
     return Material(
       color: cs.surface,
@@ -462,27 +512,26 @@ class _AgeingTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_on(AgeingCardField.image)) ...[
+                    ItemThumbnail(
+                      imageUrl: imageUrl,
+                      itemCode: code,
+                      itemName: name,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          code,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures(),
-                            ],
-                          ),
-                        ),
-                        if (name.isNotEmpty && name != code)
-                          Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant),
-                          ),
+                        Text(code, style: strong),
+                        if (_on(AgeingCardField.itemName) &&
+                            name.isNotEmpty &&
+                            name != code)
+                          Text(name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: muted),
                       ],
                     ),
                   ),
@@ -491,23 +540,18 @@ class _AgeingTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${_qty(StockAgeingLogic.num_(row['qty']))} $uom'
+                        '${_qty(StockAgeingLogic.num_(row['qty']))} ${_text('uom')}'
                             .trim(),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                        style: strong,
                       ),
-                      Text(
-                        'avg $age ${age == 1 ? 'day' : 'days'}',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
+                      if (_on(AgeingCardField.averageAge))
+                        Text('avg $age ${age == 1 ? 'day' : 'days'}',
+                            style: muted),
                     ],
                   ),
                 ],
               ),
-              if (warehouse.isNotEmpty) ...[
+              if (_on(AgeingCardField.warehouse) && warehouse.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -515,18 +559,40 @@ class _AgeingTile extends StatelessWidget {
                         size: 14, color: cs.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Expanded(
-                      child: Text(
-                        warehouse,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
-                      ),
+                      child: Text(warehouse,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: muted),
                     ),
                   ],
                 ),
               ],
-              if (buckets.isNotEmpty) ...[
+              if (extras.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 2,
+                  children: [
+                    for (final (label, value) in extras)
+                      Text.rich(
+                        TextSpan(
+                          text: '$label ',
+                          style: muted,
+                          children: [
+                            TextSpan(
+                              text: value,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+              if (_on(AgeingCardField.bucketBar) && buckets.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 _BucketBar(values: [
                   for (final b in buckets) StockAgeingLogic.num_(row[b.qtyKey]),
@@ -536,6 +602,66 @@ class _AgeingTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Card fields picker ──────────────────────────────────────────────────────
+
+class _CardFieldsSheet extends StatelessWidget {
+  final StockAgeingController controller;
+  const _CardFieldsSheet({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(
+          bottom: 16 + MediaQuery.viewPaddingOf(context).bottom),
+      child: Obx(() {
+        final chosen = controller.cardFields.toSet();
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Card fields',
+                        style: theme.textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                  ),
+                  TextButton(
+                    onPressed: controller.resetCardFields,
+                    child: const Text('Reset'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Item code and quantity are always shown. '
+                'Tap a row to see everything.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+            for (final f in AgeingCardField.values)
+              CheckboxListTile(
+                dense: true,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(f.label),
+                value: chosen.contains(f),
+                onChanged: (_) => controller.toggleCardField(f),
+              ),
+          ],
+        );
+      }),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_cache.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_controller.dart';
+import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_logic.dart';
 
 Response _response(Map<String, dynamic> message) => Response(
       requestOptions: RequestOptions(path: '/'),
@@ -38,10 +39,12 @@ void main() {
 
   late Directory dir;
   late List<Map<String, dynamic>?> calls;
+  List<String>? stored;
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('stock_ageing_ctrl_test');
     calls = [];
+    stored = null;
   });
 
   tearDown(() async {
@@ -54,6 +57,9 @@ void main() {
       StockAgeingController(
         cache: StockAgeingCache(directory: () async => dir),
         company: () => 'Session Co',
+        baseUrl: () => 'https://erp.domain.com',
+        loadCardFields: () => stored,
+        saveCardFields: (f) => stored = f,
         run: ({Map<String, dynamic>? filters}) {
           calls.add(filters);
           return run(filters);
@@ -134,6 +140,36 @@ void main() {
     expect(calls, [null]);
     expect(c.asOn.value, '');
     expect(c.rows.length, 1);
+    c.onClose();
+  });
+
+  test('card fields start at the defaults, persist on toggle and reset',
+      () async {
+    final c = build((_) async => _response(_message(customFilters: _saved)));
+    c.onInit();
+    expect(c.cardFields, AgeingCardField.defaults);
+
+    c.toggleCardField(AgeingCardField.image);
+    c.toggleCardField(AgeingCardField.warehouse);
+    expect(stored, ['image', 'itemName', 'averageAge', 'bucketBar']);
+
+    c.resetCardFields();
+    expect(c.cardFields, AgeingCardField.defaults);
+    expect(stored, ['itemName', 'warehouse', 'averageAge', 'bucketBar']);
+    await pumpEventQueue();
+    c.onClose();
+  });
+
+  test('a saved selection is restored and image paths become absolute',
+      () async {
+    stored = ['brand'];
+    final c = build((_) async => _response(_message(customFilters: _saved)));
+    c.onInit();
+    expect(c.cardFields, {AgeingCardField.brand});
+    expect(c.imageUrlOf({'image': '/files/a b.jpg'}),
+        'https://erp.domain.com/files/a%20b.jpg');
+    expect(c.imageUrlOf({'image': null}), isNull);
+    await pumpEventQueue();
     c.onClose();
   });
 }

@@ -12,6 +12,28 @@ class AgeBucket {
   });
 }
 
+/// An optional field on a report row card. Item code and quantity are always
+/// shown; everything else is the user's choice.
+enum AgeingCardField {
+  image('Item image'),
+  itemName('Item name'),
+  warehouse('Warehouse'),
+  averageAge('Average age'),
+  bucketBar('Age bar'),
+  value('Stock value'),
+  earliestLatest('Earliest / latest age'),
+  variantOf('Variant of'),
+  itemGroup('Item group'),
+  brand('Brand'),
+  country('Country of origin');
+
+  final String label;
+  const AgeingCardField(this.label);
+
+  /// The card as first shipped.
+  static const defaults = {itemName, warehouse, averageAge, bucketBar};
+}
+
 /// Totals over a set of report rows.
 class StockAgeingTotals {
   final double qty;
@@ -140,6 +162,46 @@ abstract final class StockAgeingLogic {
     return x.length == y.length &&
         x.entries.every((e) => y[e.key] == e.value);
   }
+
+  /// Sum of every bucket's value for one row.
+  static double rowValue(Map<String, dynamic> row, List<AgeBucket> buckets) {
+    var v = 0.0;
+    for (final b in buckets) {
+      v += num_(row[b.valueKey]);
+    }
+    return v;
+  }
+
+  /// Absolute URL for a row's `image` cell: relative Frappe paths
+  /// ("/files/x.jpg") are prefixed with [baseUrl]; absolute URLs are kept;
+  /// blank or null is null.
+  static String? imageUrl(dynamic image, String baseUrl) {
+    final path = image?.toString().trim() ?? '';
+    if (path.isEmpty) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    return Uri.encodeFull('$base${path.startsWith('/') ? '' : '/'}$path');
+  }
+
+  /// Reads a stored card-field selection. Null (never saved) or a value of
+  /// the wrong shape gives the defaults; unknown names (a field removed in a
+  /// later version) are dropped. An empty saved list is a valid choice.
+  static Set<AgeingCardField> decodeCardFields(dynamic stored) {
+    if (stored is! List) return {...AgeingCardField.defaults};
+    final byName = {for (final f in AgeingCardField.values) f.name: f};
+    return {
+      for (final name in stored)
+        if (byName[name.toString()] != null) byName[name.toString()]!,
+    };
+  }
+
+  /// Stored form of a selection, in declaration order.
+  static List<String> encodeCardFields(Set<AgeingCardField> fields) => [
+        for (final f in AgeingCardField.values)
+          if (fields.contains(f)) f.name,
+      ];
 
   /// How long a same-day cached run is shown without a background refetch.
   static const maxCacheAge = Duration(hours: 4);

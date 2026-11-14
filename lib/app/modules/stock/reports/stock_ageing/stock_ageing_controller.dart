@@ -20,7 +20,15 @@ class StockAgeingController extends GetxController {
     StockAgeingCache? cache,
     Future<Response> Function({Map<String, dynamic>? filters})? run,
     String Function()? company,
+    String Function()? baseUrl,
+    List<String>? Function()? loadCardFields,
+    void Function(List<String> fields)? saveCardFields,
   })  : _cache = cache ?? StockAgeingCache(),
+        _baseUrl = baseUrl ?? (() => Get.find<ApiProvider>().baseUrl),
+        _loadCardFields = loadCardFields ??
+            (() => Get.find<StorageService>().getStockAgeingCardFields()),
+        _saveCardFields = saveCardFields ??
+            ((f) => Get.find<StorageService>().saveStockAgeingCardFields(f)),
         _run = run ?? Get.find<ApiProvider>().runStockAgeingCustom,
         _sessionCompany =
             company ?? (() => Get.find<StorageService>().getCompany());
@@ -28,6 +36,9 @@ class StockAgeingController extends GetxController {
   final StockAgeingCache _cache;
   final Future<Response> Function({Map<String, dynamic>? filters}) _run;
   final String Function() _sessionCompany;
+  final String Function() _baseUrl;
+  final List<String>? Function() _loadCardFields;
+  final void Function(List<String> fields) _saveCardFields;
 
   // ── Filter controllers (keys match the report's filter fieldnames) ───────
 
@@ -123,6 +134,9 @@ class StockAgeingController extends GetxController {
   final searchController = TextEditingController();
   final sort = 'age'.obs;
 
+  /// Optional fields shown on each row card (persisted per device).
+  final cardFields = <AgeingCardField>{}.obs;
+
   /// Filters that differ from the report's saved defaults, for the chip row.
   final activeFilters = <String, String>{}.obs;
 
@@ -148,6 +162,7 @@ class StockAgeingController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    cardFields.assignAll(StockAgeingLogic.decodeCardFields(_loadCardFields()));
     _restore();
   }
 
@@ -187,6 +202,20 @@ class StockAgeingController extends GetxController {
 
   StockAgeingTotals totalsOf(List<Map<String, dynamic>> shown) =>
       StockAgeingLogic.totals(shown, buckets);
+
+  /// Absolute image URL for [row], or null when the item has no image.
+  String? imageUrlOf(Map<String, dynamic> row) =>
+      StockAgeingLogic.imageUrl(row['image'], _baseUrl());
+
+  void toggleCardField(AgeingCardField field) {
+    if (!cardFields.remove(field)) cardFields.add(field);
+    _saveCardFields(StockAgeingLogic.encodeCardFields(cardFields));
+  }
+
+  void resetCardFields() {
+    cardFields.assignAll(AgeingCardField.defaults);
+    _saveCardFields(StockAgeingLogic.encodeCardFields(cardFields));
+  }
 
   void setSort(String v) => sort.value = v;
   void onSearchChanged(String v) => searchQuery.value = v;

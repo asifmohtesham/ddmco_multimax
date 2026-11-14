@@ -31,6 +31,7 @@ class StorageService {
   // Stock Balance view preferences
   static const String _sbHideEmptyKey  = 'sb_hide_empty';
   static const String _sbShowImagesKey = 'sb_show_images';
+  static const String _saCardFieldsKey = 'sa_card_fields';
 
   // Dashboard view preferences
   static const String _dashboardColumnsKey = 'dashboard_columns';
@@ -155,6 +156,16 @@ class StorageService {
       _box.write(_sbShowImagesKey, value);
 
   bool getSbShowImages() => _box.read<bool>(_sbShowImagesKey) ?? true;
+
+  // --- Stock Ageing report: fields shown on each row card ---
+  // Null until the user changes the selection, so the default set applies.
+  Future<void> saveStockAgeingCardFields(List<String> fields) async =>
+      _box.write(_saCardFieldsKey, fields);
+
+  List<String>? getStockAgeingCardFields() {
+    final v = _box.read(_saCardFieldsKey);
+    return v is List ? v.map((e) => e.toString()).toList() : null;
+  }
 
   // --- Dashboard view preferences ---
   // Quick Create card layout: 1 or 2 columns. Anything else clamps to the

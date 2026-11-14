@@ -200,6 +200,15 @@ class DocTypeListHeader extends StatelessWidget {
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
 
+  /// Chips that are always shown in the chip row, after the active-filter
+  /// chips and the `+ Filter` add-chip — e.g. a report's sort choices. Unlike
+  /// [filterChipsBuilder] they do not depend on a filter being active.
+  final List<Widget>? quickChips;
+
+  /// Changes whenever the state shown by [quickChips] changes (e.g. the
+  /// selected sort), so the cached header repaints; see [extraActionsKey].
+  final Object? quickChipsKey;
+
   // ── Image scan ────────────────────────────────────────────────────────
   /// When non-null, the search delegate shows a camera icon that opens the
   /// image scan flow. Only [ItemListAppBar] sets this.
@@ -239,6 +248,8 @@ class DocTypeListHeader extends StatelessWidget {
     this.onFilterTap,
     this.filterChipsBuilder,
     this.onClearAllFilters,
+    this.quickChips,
+    this.quickChipsKey,
     this.onImageScanResult,
     this.bottom,
     this.extraActionsKey,
@@ -284,6 +295,8 @@ class DocTypeListHeader extends StatelessWidget {
         onFilterTap: onFilterTap,
         filterChipsBuilder: filterChipsBuilder,
         onClearAllFilters: onClearAllFilters,
+        quickChips: quickChips,
+        quickChipsKey: quickChipsKey,
         onImageScanResult: onImageScanResult,
         bottom: bottom,
         statusBarHeight: statusBarHeight,
@@ -334,6 +347,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// See [DocTypeListHeader.filterChipsBuilder] for the full contract.
   final List<Widget> Function(BuildContext context)? filterChipsBuilder;
   final VoidCallback? onClearAllFilters;
+  /// See [DocTypeListHeader.quickChips].
+  final List<Widget>? quickChips;
+  final Object? quickChipsKey;
 
   /// See [DocTypeListHeader.onImageScanResult].
   final ValueChanged<ImageScanResult>? onImageScanResult;
@@ -372,6 +388,8 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.onFilterTap,
     required this.filterChipsBuilder,
     required this.onClearAllFilters,
+    required this.quickChips,
+    required this.quickChipsKey,
     required this.onImageScanResult,
     required this.bottom,
     required this.statusBarHeight,
@@ -391,7 +409,10 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// to display *or* a `+ Filter` affordance to offer. With [onFilterTap] set
   /// the row is always present — showing just the `+ Filter` add-chip when no
   /// filter is active — so the add-chip is reachable directly from the row.
-  bool get _hasChipRow => filterChipsBuilder != null || onFilterTap != null;
+  bool get _hasChipRow =>
+      filterChipsBuilder != null ||
+      onFilterTap != null ||
+      (quickChips?.isNotEmpty ?? false);
 
   // ── Extents ────────────────────────────────────────────────────────────
   double get _bottomHeight => bottom?.preferredSize.height ?? 0.0;
@@ -523,6 +544,19 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                     icon: const Icon(Icons.clear_all, size: 16),
                     label: const Text('Clear all'),
                   ),
+                if (quickChips?.isNotEmpty ?? false) ...[
+                  if (onFilterTap != null || activeChips.isNotEmpty)
+                    Container(
+                      width: 1,
+                      height: 20,
+                      margin: const EdgeInsets.only(left: 2, right: 8),
+                      color: colorScheme.outlineVariant,
+                    ),
+                  ...quickChips!.map((chip) => Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: chip,
+                      )),
+                ],
               ],
             ),
           ),
@@ -788,6 +822,9 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         searchDoctype != old.searchDoctype ||
         searchRoute != old.searchRoute ||
         (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
-        extraActionsKey != old.extraActionsKey;
+        extraActionsKey != old.extraActionsKey ||
+        // quickChips are compared by length and key, like extraActions.
+        (quickChips?.length ?? 0) != (old.quickChips?.length ?? 0) ||
+        quickChipsKey != old.quickChipsKey;
   }
 }

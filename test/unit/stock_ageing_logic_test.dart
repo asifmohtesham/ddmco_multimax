@@ -181,4 +181,42 @@ void main() {
       expect(stale(DateTime(2026, 11, 14, 8, 0)), isTrue);
     });
   });
+
+  group('card fields', () {
+    test('never saved gives the defaults', () {
+      expect(StockAgeingLogic.decodeCardFields(null), AgeingCardField.defaults);
+      expect(StockAgeingLogic.decodeCardFields('x'), AgeingCardField.defaults);
+    });
+
+    test('round trip keeps the selection; unknown names are dropped', () {
+      final chosen = {AgeingCardField.image, AgeingCardField.brand};
+      final stored = StockAgeingLogic.encodeCardFields(chosen);
+      expect(stored, ['image', 'brand']);
+      expect(StockAgeingLogic.decodeCardFields([...stored, 'gone']), chosen);
+    });
+
+    test('an empty saved selection stays empty', () {
+      expect(StockAgeingLogic.decodeCardFields(const []), isEmpty);
+    });
+  });
+
+  test('rowValue sums every bucket value', () {
+    expect(StockAgeingLogic.rowValue(rows.first, buckets), closeTo(110.5, 1e-9));
+  });
+
+  group('imageUrl', () {
+    test('relative paths are prefixed and encoded', () {
+      expect(
+          StockAgeingLogic.imageUrl(
+              '/files/1000 ART COW.jpg', 'https://erp.domain.com/'),
+          'https://erp.domain.com/files/1000%20ART%20COW.jpg');
+    });
+
+    test('absolute URLs are kept; blank and null are null', () {
+      expect(StockAgeingLogic.imageUrl('https://x.test/a.jpg', 'https://e'),
+          'https://x.test/a.jpg');
+      expect(StockAgeingLogic.imageUrl('  ', 'https://e'), isNull);
+      expect(StockAgeingLogic.imageUrl(null, 'https://e'), isNull);
+    });
+  });
 }
