@@ -114,7 +114,10 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
                       onSelected: (_) => controller.setSort(e.key),
                     ),
                 ],
-                quickChipsKey: sort,
+                // The header repaints only when a compared field changes, and
+                // it compares filters by count. Include the chip texts so a
+                // filter whose value changes (same count) is redrawn too.
+                quickChipsKey: (sort, controller.activeFilters.values.join('|')),
               ),
 
               // Always present so the slivers below keep their positions
