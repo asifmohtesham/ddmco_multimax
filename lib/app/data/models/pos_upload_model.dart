@@ -60,6 +60,10 @@ class PosUploadItem {
   final String itemName;
   final double quantity;
   final double rate;
+
+  /// Unit the [rate] is quoted in (e.g. `Doz`, `Nos`). Empty on rows uploaded
+  /// before the field existed. [quantity] is always in single pieces.
+  final String uom;
   final double amount;
 
   PosUploadItem({
@@ -68,6 +72,7 @@ class PosUploadItem {
     required this.itemName,
     required this.quantity,
     required this.rate,
+    this.uom = '',
     required this.amount,
   });
 
@@ -79,6 +84,7 @@ class PosUploadItem {
       // Map 'qty' to 'quantity', fallback to 'quantity' if 'qty' is missing, defaulting to 0.0
       quantity: (json['qty'] as num?)?.toDouble() ?? (json['quantity'] as num?)?.toDouble() ?? 0.0,
       rate: (json['rate'] as num?)?.toDouble() ?? 0.0,
+      uom: json['uom'] ?? '',
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
     );
   }

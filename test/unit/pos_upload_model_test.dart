@@ -18,6 +18,26 @@ void main() {
       expect(item.quantity, 4);
     });
 
+    test('parses uom, the unit the rate is quoted in', () {
+      final item = PosUploadItem.fromJson({
+        'idx': 1,
+        'item_name': 'WALLETS GOAT HQ',
+        'rate': 220,
+        'uom': 'Doz',
+        'quantity': 120,
+        'amount': 2200,
+      });
+      expect(item.uom, 'Doz');
+    });
+
+    test('missing or null uom defaults to empty string', () {
+      expect(PosUploadItem.fromJson({'idx': 1, 'item_name': 'X'}).uom, '');
+      expect(
+        PosUploadItem.fromJson({'idx': 1, 'item_name': 'X', 'uom': null}).uom,
+        '',
+      );
+    });
+
     test('missing ref_code defaults to empty string', () {
       final item = PosUploadItem.fromJson({'idx': 1, 'item_name': 'X'});
       expect(item.refCode, '');

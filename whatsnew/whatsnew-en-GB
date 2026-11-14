@@ -1,1 +1,1 @@
-New report: Stock Ageing (Stock > Reports). Shows the Stock Ageing - Custom report with the same default filters as the web, opens instantly from the last result, and lets you search, sort and choose which columns appear on each card. Tap a card to see every column and the item image.
+POS Upload items now show the UOM the rate is quoted in (Doz or Nos), next to Rate on each item card, so a per-dozen price is no longer mistaken for a per-piece one. Quantity is always in pieces. Items uploaded before this release show a dash until their invoice XML is uploaded again.
