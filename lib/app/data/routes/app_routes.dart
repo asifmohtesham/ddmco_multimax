@@ -45,6 +45,7 @@ abstract class AppRoutes {
   static const JOB_CARD_SUMMARY      = _Paths.JOB_CARD_SUMMARY;
   static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
   static const STOCK_BALANCE              = _Paths.STOCK_BALANCE;
+  static const STOCK_AGEING               = _Paths.STOCK_AGEING;
   static const BOM_STOCK_CUSTOMER_CODE    = _Paths.BOM_STOCK_CUSTOMER_CODE;
   static const POS_DN_ITEM_RATE       = _Paths.POS_DN_ITEM_RATE;
   static const ATTENDANCE             = _Paths.ATTENDANCE;
@@ -97,6 +98,7 @@ abstract class _Paths {
   static const JOB_CARD_SUMMARY      = '/manufacturing/reports/job-card-summary';
   static const ITEM_VARIANT_DETAILS  = '/stock/reports/item-variant-details';
   static const STOCK_BALANCE              = '/stock/reports/stock-balance';
+  static const STOCK_AGEING               = '/stock/reports/stock-ageing';
   static const BOM_STOCK_CUSTOMER_CODE    = '/manufacturing/reports/bom-stock-customer-code';
   static const POS_DN_ITEM_RATE       = '/selling/reports/pos-dn-item-rate';
   static const ATTENDANCE             = '/hr/attendance';
