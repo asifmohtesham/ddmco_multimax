@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
@@ -217,6 +218,22 @@ void main() {
     expect(api.calls.last.filters!['from_date'], kReportDate.format(day));
     expect(api.calls.last.filters!['to_date'], kReportDate.format(day));
   });
+
+  test(
+    'the Employee filter chip reads the employee name, sends the ID',
+    () async {
+      LinkTitleCache.clear();
+      LinkTitleCache.remember('Employee', const [
+        LinkOption(name: 'HR-EMP-1', title: 'Test Person One'),
+      ]);
+      api.message = _shiftMessage;
+      final controller = ShiftAttendanceController()..onInit();
+      controller.employeeController.text = 'HR-EMP-1';
+      await controller.runReport();
+      expect(controller.activeFilters['employee'], 'Employee: Test Person One');
+      expect(api.calls.last.filters!['employee'], 'HR-EMP-1');
+    },
+  );
 
   testWidgets('Employee Hours shows the server permission error', (
     tester,

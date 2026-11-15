@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_logic.dart';
@@ -144,6 +145,7 @@ class MonthlyAttendanceSheetController extends GetxController {
           type: ReportFilterType.doctypeLink,
           prefixIcon: Icons.badge_outlined,
           linkDoctype: 'Employee',
+          linkTitleField: 'employee_name',
         ),
         ReportFilterField(
           key: 'department',
@@ -357,9 +359,13 @@ class MonthlyAttendanceSheetController extends GetxController {
   /// The period bar owns the month/range, so it is deliberately not a chip.
   void _rebuildActiveFilters() {
     activeFilters.clear();
+    _resolveEmployeeTitle();
     _filterLabels.forEach((key, label) {
       final value = filterControllers[key]?.text.trim() ?? '';
-      if (value.isNotEmpty) activeFilters[key] = '$label: $value';
+      if (value.isEmpty) return;
+      activeFilters[key] = key == 'employee'
+          ? '$label: ${linkChipValue('Employee', value)}'
+          : '$label: $value';
     });
     if (isSummarized) activeFilters['summarized_view'] = 'Summarized';
   }
@@ -389,4 +395,17 @@ class MonthlyAttendanceSheetController extends GetxController {
   }
 
   String _fmt(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
+
+  /// An employee set without the picker (e.g. kept from an earlier run) has
+  /// no remembered name yet: look it up once, then relabel the chip.
+  void _resolveEmployeeTitle() {
+    final id = employeeController.text.trim();
+    if (id.isEmpty || LinkTitleCache.peek('Employee', id) != null) return;
+    LinkTitleCache.resolve('Employee', 'employee_name', id, _api).then((title) {
+      if (title == null || isClosed) return;
+      if (employeeController.text.trim() == id) {
+        activeFilters['employee'] = 'Employee: $title';
+      }
+    });
+  }
 }
