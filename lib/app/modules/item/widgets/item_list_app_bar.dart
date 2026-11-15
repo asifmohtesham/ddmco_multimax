@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
@@ -15,10 +16,12 @@ class ItemListAppBar extends StatelessWidget {
   // Link/Attribute selectors, which show per-field spinners until it arrives.
   // Awaiting here would make the tap feel unresponsive (no feedback, then a
   // late open); progressive in-sheet loading is the better UX.
-  static void _openFilterSheet(ItemController controller) {
+  //
+  // [focusKey] opens the sheet on that filter, ready to edit.
+  static void _openFilterSheet(ItemController controller, {String? focusKey}) {
     controller.ensureReferenceDataLoaded();
     Get.bottomSheet(
-      const ItemFilterBottomSheet(),
+      FilterFocusScope.wrap(const ItemFilterBottomSheet(), focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -31,7 +34,7 @@ class ItemListAppBar extends StatelessWidget {
     // showImagesOnly is NOT added to the filter badge chips;
     // it has its own AppBar icon toggle (see extraActions below).
 
-    for (final filter in controller.activeFilters) {
+    for (final (index, filter) in controller.activeFilters.indexed) {
       if (filter.value.isEmpty) continue;
       chips.add(FilterChipWidget(
         icon: Icons.filter_alt_outlined,
@@ -40,6 +43,9 @@ class ItemListAppBar extends StatelessWidget {
           controller.activeFilters.remove(filter);
           controller.fetchItems(clear: true);
         },
+        // The sheet's rows start as copies of activeFilters, in order.
+        onTap: () => _openFilterSheet(controller,
+            focusKey: ItemFilterBottomSheet.rowFocusKey(index)),
       ));
     }
 

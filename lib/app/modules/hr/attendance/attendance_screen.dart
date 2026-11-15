@@ -35,11 +35,14 @@ class AttendanceScreen extends GetView<AttendanceController> {
             icon: e.key == 'department' ? Icons.apartment_outlined : Icons.flag_outlined,
             label: '${e.value}',
             onDeleted: () => controller.clearFilter(e.key),
+            onTap: () => _openFilterSheet(context, focusKey: e.key),
           ),
       ];
 
-  void _openFilterSheet(BuildContext context) => showReportFilterSheet(
+  void _openFilterSheet(BuildContext context, {String? focusKey}) =>
+      showReportFilterSheet(
         context: context,
+        focusKey: focusKey,
         title: 'Filter attendance',
         fields: const [],
         controllers: controller.filterControllers,

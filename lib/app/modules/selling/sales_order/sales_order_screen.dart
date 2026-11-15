@@ -9,6 +9,8 @@ import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
@@ -55,9 +57,11 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         _scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void _showFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const SalesOrderFilterBottomSheet(),
+      FilterFocusScope.wrap(const SalesOrderFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -75,6 +79,17 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
           controller.searchQuery.value = '';
           controller.fetch(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Sales Order',
+          targetRoute: AppRoutes.SALES_ORDER_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetch(clear: true);
+          },
+        ),
       ));
     }
 
@@ -83,6 +98,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         icon: Icons.flag_outlined,
         label: 'Status: ${statusFilterLabel(filters['status'])}',
         onDeleted: () => controller.removeFilter('status'),
+        onTap: () => _showFilterSheet(focusKey: 'status'),
       ));
     }
 
@@ -91,6 +107,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         icon: Icons.person_outline,
         label: 'Customer: ${filters['customer']}',
         onDeleted: () => controller.removeFilter('customer'),
+        onTap: () => _showFilterSheet(focusKey: 'customer'),
       ));
     }
 
@@ -109,6 +126,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         icon: Icons.event_outlined,
         label: label,
         onDeleted: () => controller.removeFilter('delivery_date'),
+        onTap: () => _showFilterSheet(focusKey: 'delivery_date'),
       ));
     }
 
@@ -119,6 +137,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         icon: Icons.person_search_outlined,
         label: 'Owner: ${match?.name ?? owner}',
         onDeleted: () => controller.removeFilter('owner'),
+        onTap: () => _showFilterSheet(focusKey: 'owner'),
       ));
     }
 
@@ -165,7 +184,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                   controller.fetch(clear: true);
                 },
                 activeFilters: controller.activeFilters,
-                onFilterTap: _showFilterSheet,
+                onFilterTap: () => _showFilterSheet(),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters: controller.clearFilters,
                 bottom: _StatusChipBar(controller),

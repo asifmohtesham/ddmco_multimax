@@ -35,12 +35,15 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
           icon: Icons.filter_alt_outlined,
           label: label,
           onDeleted: () => controller.clearFilter(key),
+          onTap: () => _openFilters(context, focusKey: key),
         )));
     return chips;
   }
 
-  void _openFilters(BuildContext context) => showReportFilterSheet(
+  void _openFilters(BuildContext context, {String? focusKey}) =>
+      showReportFilterSheet(
     context:     context,
+    focusKey:    focusKey,
     title:       'Item Variant Details Filters',
     fields:      _fields,
     controllers: controller.filterControllers,

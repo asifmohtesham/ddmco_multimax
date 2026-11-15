@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class PosUploadFilterBottomSheet extends StatefulWidget {
@@ -281,7 +282,9 @@ class _PosUploadFilterBottomSheetState
         // ── Status chips ────────────────────────────────────────────
         Text('Status', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
-        SingleChildScrollView(
+        FilterFocusTarget(
+          filterKey: 'status',
+          child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Obx(() => Row(
             children: [
@@ -297,11 +300,14 @@ class _PosUploadFilterBottomSheetState
                 ),
             ],
           )),
-        ),
+        )),
         const SizedBox(height: 16),
 
         // ── Date range ───────────────────────────────────────────────
-        TextFormField(
+        FilterFocusTarget(
+          filterKey: 'date',
+          onActivate: _pickDateRange,
+          child: TextFormField(
           controller: dateRangeController,
           readOnly: true,
           decoration: const InputDecoration(
@@ -312,11 +318,14 @@ class _PosUploadFilterBottomSheetState
             isDense: true,
           ),
           onTap: _pickDateRange,
-        ),
+        )),
         const SizedBox(height: 16),
 
         // ── Customer Link picker ─────────────────────────────────────
-        Obx(() => TextFormField(
+        FilterFocusTarget(
+          filterKey: 'customer',
+          onActivate: _showCustomerPicker,
+          child: Obx(() => TextFormField(
           controller: customerController,
           readOnly: true,
           onTap: _showCustomerPicker,
@@ -338,7 +347,7 @@ class _PosUploadFilterBottomSheetState
                 : const Icon(Icons.arrow_drop_down),
             isDense: true,
           ),
-        )),
+        ))),
       ],
     ));
   }

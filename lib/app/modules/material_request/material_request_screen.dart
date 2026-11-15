@@ -6,6 +6,8 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
@@ -74,9 +76,11 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
   // Filter sheet
   // ---------------------------------------------------------------------------
 
-  void _showFilterSheet(BuildContext context) {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet(BuildContext context, {String? focusKey}) {
     Get.bottomSheet(
-      const MaterialRequestFilterBottomSheet(),
+      FilterFocusScope.wrap(const MaterialRequestFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -99,6 +103,17 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           controller.searchQuery.value = '';
           controller.fetchMaterialRequests(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Material Request',
+          targetRoute: AppRoutes.MATERIAL_REQUEST_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchMaterialRequests(clear: true);
+          },
+        ),
       ));
     }
 
@@ -107,6 +122,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         context,
         icon: Icons.flag_outlined,
         label: 'Status: ${filters['status']}',
+        filterKey: 'status',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -116,6 +132,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         context,
         icon: Icons.category_outlined,
         label: 'Type: ${filters['material_request_type']}',
+        filterKey: 'material_request_type',
         onDeleted: () => controller.removeFilter('material_request_type'),
       ));
     }
@@ -125,6 +142,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         context,
         icon: Icons.warehouse_outlined,
         label: 'Warehouse: ${filters['set_warehouse']}',
+        filterKey: 'set_warehouse',
         onDeleted: () => controller.removeFilter('set_warehouse'),
       ));
     }
@@ -135,6 +153,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
         context,
         icon: Icons.person_outline,
         label: 'Created By: ${filters['owner']}',
+        filterKey: 'owner',
         onDeleted: () => controller.removeFilter('owner'),
       ));
     }
@@ -151,6 +170,7 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
           context,
           icon: Icons.date_range,
           label: '${dates[0]}  →  ${dates[1]}',
+          filterKey: 'transaction_date',
           onDeleted: () => controller.removeFilter('transaction_date'),
         ));
       }
@@ -164,10 +184,20 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onDeleted,
+    String? filterKey,
+    VoidCallback? onTap,
   }) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterSheet(context, focusKey: filterKey)),
+    );
   }
 
   // ---------------------------------------------------------------------------

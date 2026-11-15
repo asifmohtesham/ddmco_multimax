@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class PurchaseReceiptFilterBottomSheet extends StatefulWidget {
@@ -88,16 +89,20 @@ class _PurchaseReceiptFilterBottomSheetState extends State<PurchaseReceiptFilter
 
       // Filter Widgets
       filterWidgets: [
-        TextField(
+        FilterFocusTarget(
+          filterKey: 'supplier',
+          child: TextField(
           controller: supplierController,
           decoration: const InputDecoration(
             labelText: 'Supplier',
             prefixIcon: Icon(Icons.store),
             border: OutlineInputBorder(),
           ),
-        ),
+        )),
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
+        FilterFocusTarget(
+          filterKey: 'status',
+          child: DropdownButtonFormField<String>(
           value: selectedStatus,
           decoration: const InputDecoration(
             labelText: 'Status',
@@ -108,7 +113,7 @@ class _PurchaseReceiptFilterBottomSheetState extends State<PurchaseReceiptFilter
               .map((status) => DropdownMenuItem(value: status, child: Text(status)))
               .toList(),
           onChanged: (value) => setState(() => selectedStatus = value),
-        ),
+        )),
       ],
     ));
   }

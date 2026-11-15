@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/todo/todo_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class ToDoFilterBottomSheet extends StatefulWidget {
@@ -108,13 +109,18 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
     return count;
   }
 
+  /// [filterKey] is the active-filter key the screen's chip passes, so a
+  /// tapped chip scrolls this group into view.
   Widget _chipRow({
     required BuildContext context,
+    required String filterKey,
     required String label,
     required List<String> options,
     required RxnString selected,
   }) {
-    return Column(
+    return FilterFocusTarget(
+        filterKey: filterKey,
+        child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: Theme.of(context).textTheme.labelLarge),
@@ -136,7 +142,7 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
           ),
         ),
       ],
-    );
+    ));
   }
 
   @override
@@ -161,6 +167,7 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
             // ── Status ──────────────────────────────────────────────────
             _chipRow(
               context: context,
+              filterKey: 'status',
               label: 'Status',
               options: const ['Open', 'Closed', 'Cancelled'],
               selected: _status,
@@ -170,6 +177,7 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
             // ── Priority ──────────────────────────────────────────────
             _chipRow(
               context: context,
+              filterKey: 'priority',
               label: 'Priority',
               options: const ['Low', 'Medium', 'High', 'Urgent'],
               selected: _priority,
@@ -177,7 +185,10 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
             const SizedBox(height: 16),
 
             // ── Due Date Range ────────────────────────────────────────
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'date',
+              onActivate: _pickDateRange,
+              child: TextFormField(
               controller: _dateRangeController,
               readOnly: true,
               decoration: InputDecoration(
@@ -198,7 +209,7 @@ class _ToDoFilterBottomSheetState extends State<ToDoFilterBottomSheet> {
                     horizontal: 16, vertical: 14),
               ),
               onTap: _pickDateRange,
-            ),
+            )),
           ],
         ));
   }

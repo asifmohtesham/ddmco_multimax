@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
@@ -78,9 +80,11 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     return currentScroll >= (maxScroll * 0.9);
   }
 
-  void _showFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const PackingSlipFilterBottomSheet(),
+      FilterFocusScope.wrap(const PackingSlipFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -100,6 +104,17 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           controller.searchQuery.value = '';
           controller.fetchPackingSlips(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Packing Slip',
+          targetRoute: AppRoutes.PACKING_SLIP_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchPackingSlips(clear: true);
+          },
+        ),
       ));
     }
 
@@ -110,6 +125,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         context,
         icon: Icons.flag_outlined,
         label: 'Status: $label',
+        filterKey: 'docstatus',
         onDeleted: () => controller.removeFilter('docstatus'),
       ));
     }
@@ -119,6 +135,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         context,
         icon: Icons.local_shipping_outlined,
         label: 'DN: ${filters['delivery_note']}',
+        filterKey: 'delivery_note',
         onDeleted: () => controller.removeFilter('delivery_note'),
       ));
     }
@@ -128,6 +145,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         context,
         icon: Icons.tag,
         label: 'PO: ${filters['custom_po_no']}',
+        filterKey: 'custom_po_no',
         onDeleted: () => controller.removeFilter('custom_po_no'),
       ));
     }
@@ -144,6 +162,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           context,
           icon: Icons.date_range,
           label: '${dates[0]}  →  ${dates[1]}',
+          filterKey: 'posting_date',
           onDeleted: () => controller.removeFilter('posting_date'),
         ));
       }
@@ -154,6 +173,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
         context,
         icon: Icons.sort,
         label: 'Sort: ${filters['_sort']}',
+        filterKey: '_sort',
         onDeleted: () {
           controller.removeFilter('_sort');
           controller.setSort('creation', 'desc');
@@ -169,10 +189,20 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onDeleted,
+    String? filterKey,
+    VoidCallback? onTap,
   }) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterSheet(focusKey: filterKey)),
+    );
   }
 
   /// Small pill showing the slip count inside a group header.

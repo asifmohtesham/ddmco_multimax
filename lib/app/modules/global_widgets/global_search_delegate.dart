@@ -448,3 +448,29 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
 /// Backward-compatibility alias.  Any call-site still using
 /// [GlobalSearchDelegate] compiles without change.
 typedef GlobalSearchDelegate = DocTypeSearchDelegate;
+
+/// Re-opens a list screen's search to edit the active query — what its
+/// "Search: …" filter chip does when tapped. Pass the same wiring the
+/// screen gives [DocTypeListHeader]; the search bar opens holding the
+/// current [searchQuery].
+Future<void> editListSearch(
+  BuildContext context, {
+  required RxString searchQuery,
+  String doctype = '',
+  String targetRoute = '',
+  ValueChanged<String>? onSearchChanged,
+  VoidCallback? onSearchClear,
+  ValueChanged<ImageScanResult>? onImageScanResult,
+}) =>
+    showSearch(
+      context: context,
+      query: searchQuery.value,
+      delegate: DocTypeSearchDelegate(
+        doctype: doctype,
+        targetRoute: targetRoute,
+        searchQuery: searchQuery,
+        onSearchChanged: onSearchChanged,
+        onSearchClear: onSearchClear,
+        onImageScanResult: onImageScanResult,
+      ),
+    );

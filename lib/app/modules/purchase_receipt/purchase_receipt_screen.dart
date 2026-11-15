@@ -8,6 +8,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
@@ -58,9 +59,11 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         _scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void _showFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const PurchaseReceiptFilterBottomSheet(),
+      FilterFocusScope.wrap(const PurchaseReceiptFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -77,18 +80,21 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
       chips.add(_chip(context,
           icon: Icons.flag_outlined,
           label: 'Status: ${f['status']}',
+          filterKey: 'status',
           onDeleted: () => controller.removeFilter('status')));
     }
     if (f.containsKey('supplier') && f['supplier'].toString().isNotEmpty) {
       chips.add(_chip(context,
           icon: Icons.business_outlined,
           label: 'Supplier: ${f['supplier']}',
+          filterKey: 'supplier',
           onDeleted: () => controller.removeFilter('supplier')));
     }
     if (f.containsKey('set_warehouse')) {
       chips.add(_chip(context,
           icon: Icons.warehouse_outlined,
           label: 'Warehouse: ${f['set_warehouse']}',
+          filterKey: 'set_warehouse',
           onDeleted: () => controller.removeFilter('set_warehouse')));
     }
     if (f.containsKey('posting_date')) {
@@ -99,6 +105,7 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
         chips.add(_chip(context,
             icon: Icons.date_range,
             label: '${dates[0]}  →  ${dates[1]}',
+            filterKey: 'posting_date',
             onDeleted: () => controller.removeFilter('posting_date')));
       }
     }
@@ -110,10 +117,20 @@ class _PurchaseReceiptScreenState extends State<PurchaseReceiptScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onDeleted,
+    String? filterKey,
+    VoidCallback? onTap,
   }) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterSheet(focusKey: filterKey)),
+    );
   }
 
   // ---------------------------------------------------------------------------

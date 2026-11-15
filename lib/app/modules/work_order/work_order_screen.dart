@@ -5,6 +5,8 @@ import 'package:multimax/app/modules/work_order/work_order_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
@@ -51,13 +53,24 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     final chips = <Widget>[];
 
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
+    // across every list screen. Tapping the chip edits its filter (the sheet
+    // only edits Status; the other chips just open it).
     Widget chip({
       required IconData icon,
       required String label,
       required VoidCallback onDeleted,
+      String? filterKey,
+      VoidCallback? onTap,
     }) =>
-        FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+        FilterChipWidget(
+          icon: icon,
+          label: label,
+          onDeleted: onDeleted,
+          onTap: onTap ??
+              (filterKey == null
+                  ? null
+                  : () => _showFilterSheet(context, focusKey: filterKey)),
+        );
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
@@ -67,6 +80,17 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
           controller.searchQuery.value = '';
           controller.fetchWorkOrders(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Work Order',
+          targetRoute: AppRoutes.WORK_ORDER_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchWorkOrders(clear: true);
+          },
+        ),
       ));
     }
     if (controller.activeFilters.containsKey('status')) {
@@ -74,6 +98,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       chips.add(chip(
         icon: Icons.flag_outlined,
         label: 'Status: $statusVal',
+        filterKey: 'status',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -81,6 +106,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       chips.add(chip(
         icon: Icons.inventory_2_outlined,
         label: 'Item: ${controller.activeFilters['production_item']}',
+        filterKey: 'production_item',
         onDeleted: () => controller.removeFilter('production_item'),
       ));
     }
@@ -88,6 +114,7 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       chips.add(chip(
         icon: Icons.person_outline,
         label: 'Owner: ${controller.activeFilters['owner']}',
+        filterKey: 'owner',
         onDeleted: () => controller.removeFilter('owner'),
       ));
     }
@@ -373,7 +400,8 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
     );
   }
 
-  void _showFilterSheet(BuildContext context) {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet(BuildContext context, {String? focusKey}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -381,7 +409,9 @@ class _WorkOrderScreenState extends State<WorkOrderScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => _WorkOrderFilterSheet(controller: controller),
+      builder: (_) => FilterFocusScope.wrap(
+          _WorkOrderFilterSheet(controller: controller),
+          focusKey: focusKey),
     );
   }
 }
@@ -427,7 +457,9 @@ class _WorkOrderFilterSheet extends StatelessWidget {
             const SizedBox(height: 12),
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
-            Obx(() {
+            FilterFocusTarget(
+              filterKey: 'status',
+              child: Obx(() {
               final active =
                   controller.activeFilters['status'] as String?;
               return Wrap(
@@ -446,7 +478,7 @@ class _WorkOrderFilterSheet extends StatelessWidget {
                   );
                 }).toList(),
               );
-            }),
+            })),
           ],
         ),
       ),

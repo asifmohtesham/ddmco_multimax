@@ -4,6 +4,8 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
@@ -55,9 +57,11 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
         _scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void _showFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const PosUploadFilterBottomSheet(),
+      FilterFocusScope.wrap(const PosUploadFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -74,12 +78,24 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
           onDeleted: () {
             controller.searchQuery.value = '';
             controller.fetchPosUploads(clear: true);
-          }));
+          },
+          onTap: () => editListSearch(
+            context,
+            doctype: 'POS Upload',
+            targetRoute: AppRoutes.POS_UPLOAD_FORM,
+            searchQuery: controller.searchQuery,
+            onSearchChanged: controller.onSearchChanged,
+            onSearchClear: () {
+              controller.searchQuery.value = '';
+              controller.fetchPosUploads(clear: true);
+            },
+          )));
     }
     if (f.containsKey('status')) {
       chips.add(_chip(context,
           icon: Icons.flag_outlined,
           label: 'Status: ${f['status']}',
+          filterKey: 'status',
           onDeleted: () => controller.removeFilter('status')));
     }
     if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
@@ -90,6 +106,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
       chips.add(_chip(context,
           icon: Icons.person_outline,
           label: 'Customer: $display',
+          filterKey: 'customer',
           onDeleted: () => controller.removeFilter('customer')));
     }
     if (f.containsKey('date')) {
@@ -99,6 +116,7 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
         chips.add(_chip(context,
             icon: Icons.date_range,
             label: '${dates[0]}  →  ${dates[1]}',
+            filterKey: 'date',
             onDeleted: () => controller.removeFilter('date')));
       }
     }
@@ -108,10 +126,20 @@ class _PosUploadScreenState extends State<PosUploadScreen> {
   Widget _chip(BuildContext context,
       {required IconData icon,
         required String label,
-        required VoidCallback onDeleted}) {
+        required VoidCallback onDeleted,
+        String? filterKey,
+        VoidCallback? onTap}) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterSheet(focusKey: filterKey)),
+    );
   }
 
   @override

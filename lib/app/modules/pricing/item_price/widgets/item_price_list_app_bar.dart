@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_controller.dart';
 import 'package:multimax/app/modules/pricing/item_price/widgets/item_price_filter_sheet.dart';
@@ -10,8 +11,10 @@ import 'package:multimax/app/modules/pricing/item_price/widgets/item_price_filte
 class ItemPriceListAppBar extends StatelessWidget {
   const ItemPriceListAppBar({super.key});
 
-  void _openFilters() => Get.bottomSheet(
-        const ItemPriceFilterSheet(),
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _openFilters({String? focusKey}) => Get.bottomSheet(
+        FilterFocusScope.wrap(const ItemPriceFilterSheet(),
+            focusKey: focusKey),
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
       );
@@ -24,24 +27,28 @@ class ItemPriceListAppBar extends StatelessWidget {
           icon: Icons.event_outlined,
           label: '${af['validity']}',
           onDeleted: () => c.removeFilter('validity'),
+          onTap: () => _openFilters(focusKey: 'validity'),
         ),
       if (af['scoped'] == true)
         FilterChipWidget(
           icon: Icons.person_outline,
           label: 'Has customer or supplier',
           onDeleted: () => c.removeFilter('scoped'),
+          onTap: () => _openFilters(focusKey: 'scoped'),
         ),
       if (af['batch'] == true)
         FilterChipWidget(
           icon: Icons.tag,
           label: 'Has batch',
           onDeleted: () => c.removeFilter('batch'),
+          onTap: () => _openFilters(focusKey: 'batch'),
         ),
       if (af['zero'] == true)
         FilterChipWidget(
           icon: Icons.exposure_zero,
           label: 'Zero rate',
           onDeleted: () => c.removeFilter('zero'),
+          onTap: () => _openFilters(focusKey: 'zero'),
         ),
     ];
   }
@@ -58,7 +65,7 @@ class ItemPriceListAppBar extends StatelessWidget {
       onSearchChanged: c.onSearchChanged,
       onSearchClear: () => c.onSearchChanged(''),
       activeFilters: c.activeFilters,
-      onFilterTap: _openFilters,
+      onFilterTap: () => _openFilters(),
       filterChipsBuilder: (_) => _chips(c),
       onClearAllFilters: c.clearFilters,
       // Own Obx: the sliver header does not repaint on content-only changes.
