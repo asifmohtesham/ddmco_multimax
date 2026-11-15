@@ -40,6 +40,24 @@ Named routes defined in `lib/app/data/routes/app_pages.dart` and `app_routes.dar
 - `DatabaseService` stores the base URL in SQLite; the app can point at different ERPNext instances
 - Feature-specific REST calls live in `lib/app/data/providers/*_provider.dart`
 
+### Server versions
+
+The app must work against ERPNext/Frappe **v15 and v16**. Production runs v16
+(Frappe 16.56, ERPNext 16.55, HRMS 16.53 at the last audit). Read
+`docs/erpnext_v16_compatibility_audit.md` before adding or changing a server call.
+
+- Never branch on the server version; send a form both accept, or fall back on
+  what the server answers. The one version check is
+  `ApiProvider.stockBalanceUsesListFilters`, and it compares the major first.
+- v16 has no `get_roles` and (from 16.56) no whitelisted workspace endpoint.
+  Roles and workspace pages fall back to the boot data Desk embeds in its page:
+  `ApiProvider.getDeskHtml` (one shared, short-lived download) parsed by
+  `deskBootFromHtml` in `workspace_menu.dart`.
+- Call only standard frappe / erpnext / hrms methods, never a site's own
+  Server Script.
+- A check as an administrator proves little: a System Manager's roles come from
+  the User document and bypass the fallbacks. Test as an ordinary user.
+
 ### Module Structure
 
 Each of the 16 feature modules under `lib/app/modules/` follows this pattern:
@@ -129,6 +147,7 @@ git log --pretty='%s' "$LAST..HEAD" && git diff --stat "$LAST..HEAD"
 The `docs/` folder contains important design and architecture notes:
 
 - `docs/versioning_conventions.md` — semver bump procedure (diff-driven; MAJOR/MINOR/PATCH + build-number rules)
+- `docs/erpnext_v16_compatibility_audit.md` — live v16 audit (15 November 2026): what broke, how each fix serves v15 and v16, what was verified, what was not, and the smoke test for a new server version
 - `docs/app_bar_conventions.md` — AppBar/header standards for list vs. form screens
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)

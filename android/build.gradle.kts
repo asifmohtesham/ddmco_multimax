@@ -13,12 +13,12 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 
     afterEvaluate {
-        // Check if the project is an Android library or app
-        if (extensions.findByName("android") != null) {
-            configure<com.android.build.gradle.BaseExtension> {
-                // Force compileSdk to 36 (required by image_picker → androidx.activity:1.12.4+)
-                compileSdkVersion(36)
-            }
+        // Android app and library modules only. `CommonExtension` is AGP's public
+        // DSL interface; the `BaseExtension` type used here before is deprecated in
+        // AGP 9 and survives only while `android.newDsl=false`.
+        (extensions.findByName("android") as? com.android.build.api.dsl.CommonExtension)?.apply {
+            // Force compileSdk to 36 (required by image_picker → androidx.activity:1.12.4+)
+            compileSdk = 36
         }
     }
 }

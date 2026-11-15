@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 class ItemVariantDetailsController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
@@ -134,7 +135,8 @@ class ItemVariantDetailsController extends GetxController {
   }
 
   Future<void> _fetchDetails() async {
-    final codes = reportData
+    // Template subtotal rows (v16.55) are headings; only variants get a tile.
+    final codes = variantRowsOf(reportData)
         .map((r) => r['variant_name']?.toString() ?? r['item']?.toString() ?? '')
         .where((c) => c.isNotEmpty)
         .toList();

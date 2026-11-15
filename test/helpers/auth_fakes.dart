@@ -102,6 +102,16 @@ class FakeApiProvider extends Fake implements ApiProvider {
   @override
   Future<Response> getUserDetails(String email) => onGetUserDetails(email);
 
+  /// The Desk page (`frappe.boot`). `null` = not readable, as when offline.
+  Future<String?> Function() onGetDeskHtml = () async => null;
+  int deskHtmlCalls = 0;
+
+  @override
+  Future<String?> getDeskHtml() {
+    deskHtmlCalls++;
+    return onGetDeskHtml();
+  }
+
   @override
   Future<Response> logoutApiCall({CancelToken? cancelToken}) {
     logoutCalls++;
@@ -120,17 +130,37 @@ class FakeApiProvider extends Fake implements ApiProvider {
   }
 
   /// The navigation drawer loads its workspaces through this after login.
-  /// Unreachable here, so the drawer keeps its default menu.
+  /// Unreachable by default, so the drawer keeps its default menu.
+  Future<Response> Function(String method) onCallMethod =
+      (_) async => throw networkError();
+  final List<String> methodCalls = [];
+
   @override
   Future<Response> callMethod(String method,
-          {Map<String, dynamic>? params}) async =>
-      throw networkError();
+      {Map<String, dynamic>? params}) {
+    methodCalls.add(method);
+    return onCallMethod(method);
+  }
 }
 
 class FakeUserProvider extends Fake implements UserProvider {
+  /// Frappe v15's `get_roles`. v16 removed it: make this throw `httpError(417)`.
+  Future<Response> Function(String userId) onGetUserRoles =
+      (_) async => jsonResponse({'message': <String>['Stock User']});
+
+  /// Roles read from Desk's boot data, the v16 source.
+  Future<List<String>> Function(String userId) onGetRolesFromDesk =
+      (_) async => const <String>[];
+  int deskRoleCalls = 0;
+
   @override
-  Future<Response> getUserRoles(String userId) async =>
-      jsonResponse({'message': <String>['Stock User']});
+  Future<Response> getUserRoles(String userId) => onGetUserRoles(userId);
+
+  @override
+  Future<List<String>> getRolesFromDesk(String userId) {
+    deskRoleCalls++;
+    return onGetRolesFromDesk(userId);
+  }
 
   @override
   Future<Response> getEmployeeIdForUser(String userEmail) async =>

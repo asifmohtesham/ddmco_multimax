@@ -156,6 +156,8 @@ final List<NavLink> kNavCatalog = [
   // ── HR ──
   NavLink('DocType', 'Attendance', 'Attendance', Icons.how_to_reg_rounded, AppRoutes.ATTENDANCE, _r('Attendance'), 'HR'),
   NavLink('Report', 'Monthly Attendance Sheet', 'Monthly Attendance Sheet', Icons.calendar_month_rounded, AppRoutes.MONTHLY_ATTENDANCE_SHEET, _rep('Attendance'), 'HR', 'Reports'),
+  NavLink('Report', 'Shift Attendance', 'Shift Attendance', Icons.schedule_rounded, AppRoutes.SHIFT_ATTENDANCE, _rep('Attendance'), 'HR', 'Reports'),
+  NavLink('Report', 'Employee Hours Utilization Based On Timesheet', 'Employee Hours Utilisation', Icons.timelapse_rounded, AppRoutes.EMPLOYEE_HOURS_UTILIZATION, _rep('Timesheet'), 'HR', 'Reports'),
 
   // ── Search-only (not shown in drawer) ──
   NavLink('DocType', 'ToDo', 'ToDo', Icons.check_circle_outline, AppRoutes.TODO, _r('ToDo'), 'Tools',
@@ -226,10 +228,27 @@ class DeskBoot {
   /// v16 `module_app`: module scrubbed (`lower_snake`) → app name.
   final Map<String, String> moduleApp;
 
+  /// `workspaces.pages`: the session user's workspace pages, the same rows
+  /// `get_workspace_sidebar_items` / `get_workspaces` return. Frappe 16.56
+  /// whitelists neither, so there this is the only source. Empty when the
+  /// boot object carries none (v15).
+  final List<Map<String, dynamic>> pages;
+
+  /// `user.name`: who the boot data was rendered for.
+  final String? userId;
+
+  /// `user.roles`: the session user's roles. The only place a user who is
+  /// not a System Manager can read them on v16 (`get_roles` is gone and the
+  /// User `roles` table is permlevel 1).
+  final List<String> roles;
+
   const DeskBoot({
     this.moduleWorkspaces = const {},
     this.sidebars = const {},
     this.moduleApp = const {},
+    this.pages = const [],
+    this.userId,
+    this.roles = const [],
   });
 }
 
@@ -273,33 +292,78 @@ dynamic _bootFromHtml(String html) {
   return obj == null ? null : jsonDecode(obj);
 }
 
+/// Workspace page rows from a `pages` list, whatever served it (the
+/// workspace endpoints or Desk's boot data). Anything that is not a row is
+/// dropped; a missing or malformed list yields none.
+List<Map<String, dynamic>> workspacePagesOf(dynamic pages) => [
+      if (pages is List)
+        for (final p in pages)
+          if (p is Map) Map<String, dynamic>.from(p),
+    ];
+
+/// Sidebars by lower-cased title. `workspace_sidebar_item` (up to Frappe
+/// 16.26) is already keyed that way; 16.56 replaced it with
+/// `module_sidebars`, keyed by module name, whose entries carry the same
+/// `{label, app, items}`.
+Map<String, Map<String, dynamic>> _bootSidebars(Map boot) {
+  final legacy = boot['workspace_sidebar_item'];
+  final source = legacy is Map ? legacy : boot['module_sidebars'];
+  return {
+    if (source is Map)
+      for (final e in source.entries)
+        if (e.key is String && e.value is Map)
+          (legacy is Map ? e.key as String : (e.key as String).toLowerCase()):
+              Map<String, dynamic>.from(e.value as Map),
+  };
+}
+
+/// Module → its workspaces. `module_wise_workspaces` where Desk still
+/// sends it, else each 16.56 module sidebar's own `workspaces` list.
+Map<String, List<String>> _bootModuleWorkspaces(Map boot) {
+  final legacy = boot['module_wise_workspaces'];
+  if (legacy is Map) {
+    return {
+      for (final e in legacy.entries)
+        if (e.key is String && e.value is List)
+          e.key as String: [for (final n in e.value as List) if (n is String) n],
+    };
+  }
+  final sidebars = boot['module_sidebars'];
+  return {
+    if (sidebars is Map)
+      for (final e in sidebars.entries)
+        if (e.key is String && e.value is Map && (e.value as Map)['workspaces'] is List)
+          e.key as String: [
+            for (final n in (e.value as Map)['workspaces'] as List)
+              if (n is String) n,
+          ],
+  }..removeWhere((_, v) => v.isEmpty);
+}
+
 /// [DeskBoot] from the page Desk serves (`/app` on v15, `/desk` on v16).
 /// `null` when the page carries no boot data (e.g. a login page).
 DeskBoot? deskBootFromHtml(String html) {
   try {
     final boot = _bootFromHtml(html);
     if (boot is! Map) return null;
-    final mw = boot['module_wise_workspaces'];
-    final ws = boot['workspace_sidebar_item'];
     final ma = boot['module_app'];
+    final user = boot['user'];
+    final workspaces = boot['workspaces'];
     return DeskBoot(
-      moduleWorkspaces: {
-        if (mw is Map)
-          for (final e in mw.entries)
-            if (e.key is String && e.value is List)
-              e.key as String: [for (final n in e.value as List) if (n is String) n],
-      },
-      sidebars: {
-        if (ws is Map)
-          for (final e in ws.entries)
-            if (e.key is String && e.value is Map)
-              e.key as String: Map<String, dynamic>.from(e.value as Map),
-      },
+      moduleWorkspaces: _bootModuleWorkspaces(boot),
+      sidebars: _bootSidebars(boot),
       moduleApp: {
         if (ma is Map)
           for (final e in ma.entries)
             if (e.key is String && e.value is String) e.key as String: e.value as String,
       },
+      pages: workspacePagesOf(workspaces is Map ? workspaces['pages'] : null),
+      userId: user is Map && user['name'] is String ? user['name'] as String : null,
+      roles: [
+        if (user is Map && user['roles'] is List)
+          for (final r in user['roles'] as List)
+            if (r is String && r.isNotEmpty) r,
+      ],
     );
   } catch (_) {
     return null;

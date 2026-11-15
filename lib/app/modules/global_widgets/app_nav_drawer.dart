@@ -78,17 +78,43 @@ class AppNavDrawerController extends GetxController {
           ? Get.find<AppNavDrawerController>()
           : Get.put(AppNavDrawerController(), permanent: true);
 
-  /// The user's workspaces, as `{pages: [...]}`.
+  /// The endpoints that list the user's workspace pages as `{pages: [...]}`:
+  /// Frappe v15's name first, then the one v16 renamed it to.
+  static const workspaceMethods = [
+    'frappe.desk.desktop.get_workspace_sidebar_items',
+    'frappe.desk.desktop.get_workspaces',
+  ];
+
+  /// Server whose workspace endpoints are known not to answer, so later
+  /// loads go straight to Desk's boot data instead of failing twice first.
+  String? _bootOnlyServer;
+
+  /// The user's workspace pages.
   ///
-  /// Frappe v16 renamed `get_workspace_sidebar_items` to `get_workspaces`;
-  /// the `pages` rows keep the fields read here. The v15 name is tried first.
-  Future<dio.Response> _fetchWorkspaces(ApiProvider api) async {
-    try {
-      return await api
-          .callMethod('frappe.desk.desktop.get_workspace_sidebar_items');
-    } on dio.DioException {
-      return await api.callMethod('frappe.desk.desktop.get_workspaces');
+  /// Frappe 16.56 whitelists neither endpoint (the first is gone, the second
+  /// answers 403), but Desk's boot data carries the same rows — [desk] is
+  /// that boot data, already being fetched for the drawer's grouping. Throws
+  /// when no source yields pages, so the caller keeps the current menu.
+  Future<List<Map<String, dynamic>>> _fetchPages(
+      ApiProvider api, Future<DeskBoot> desk) async {
+    if (_bootOnlyServer != api.baseUrl) {
+      for (final method in workspaceMethods) {
+        try {
+          final res = await api.callMethod(method);
+          return workspacePagesOf(res.data['message']?['pages']);
+        } on dio.DioException catch (e) {
+          // Only a server that answered "no such method / not allowed" has
+          // ruled the endpoint out; a timeout says nothing about it.
+          if (e.response == null) rethrow;
+        }
+      }
     }
+    final pages = (await desk).pages;
+    if (pages.isEmpty) {
+      throw StateError('No workspace source answered');
+    }
+    _bootOnlyServer = api.baseUrl;
+    return pages;
   }
 
   /// What Desk's breadcrumbs are built from, read from the boot data Desk
@@ -97,16 +123,11 @@ class AppNavDrawerController extends GetxController {
   /// list (readable by Workspace Managers on v15, every Desk User on v16).
   /// Empty on failure: the drawer then falls back to sidebar order.
   Future<DeskBoot> _fetchDeskBoot(ApiProvider api) async {
-    // v16 serves Desk at /desk (its /app only redirects there); v15 at /app.
-    for (final path in const ['/desk', '/app']) {
-      try {
-        final r = await api.dio.get<String>(path,
-            options: dio.Options(
-                responseType: dio.ResponseType.plain, followRedirects: false));
-        final boot = deskBootFromHtml(r.data ?? '');
-        if (boot != null) return boot;
-      } catch (_) {}
-    }
+    try {
+      final html = await api.getDeskHtml();
+      final boot = html == null ? null : deskBootFromHtml(html);
+      if (boot != null) return boot;
+    } catch (_) {}
     try {
       final r = await api.callMethod('frappe.client.get_list', params: {
         'doctype': 'Workspace',
@@ -137,17 +158,18 @@ class AppNavDrawerController extends GetxController {
         buildWorkspaceMenu(const [], const {});
     try {
       final api = Get.find<ApiProvider>();
-      final res = await _fetchWorkspaces(api);
-      final pages = [
-        for (final p in (res.data['message']?['pages'] as List? ?? const []))
-          Map<String, dynamic>.from(p as Map)
-      ].where((p) => p['is_hidden'] != 1).toList();
+      // Started once: it is both the grouping data and, on Frappe 16.56,
+      // the only place the pages can be read from.
+      final deskBoot = _fetchDeskBoot(api);
+      final pages = (await _fetchPages(api, deskBoot))
+          .where((p) => p['is_hidden'] != 1)
+          .toList();
       final desktop = <String, Map<String, dynamic>>{};
       final modules = <String, String>{};
       var desk = const DeskBoot();
       await Future.wait([
         () async {
-          desk = await _fetchDeskBoot(api);
+          desk = await deskBoot;
         }(),
         ...pages.map((p) async {
           try {

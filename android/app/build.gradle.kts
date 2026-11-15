@@ -2,7 +2,11 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    // No `kotlin-android` here (Flutter's AGP 9 migration). While
+    // `android.builtInKotlin=false` (gradle.properties) the Flutter Gradle plugin
+    // applies the Kotlin plugin itself, using the version from settings.gradle.kts;
+    // once built-in Kotlin is switched on, AGP compiles Kotlin without it.
+    // The Flutter Gradle plugin must stay after the Android plugin.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -21,10 +25,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -52,6 +52,13 @@ android {
             else
                 signingConfigs.getByName("debug")
         }
+    }
+}
+
+// Replaces the `android { kotlinOptions { … } }` block, which AGP 9 removed.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
