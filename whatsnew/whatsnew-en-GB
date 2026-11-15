@@ -1,1 +1,1 @@
-Material Request and Packing Slip filters now show their chip: an applied Status or date range appears above the list, is kept when you reopen the filters, and can be tapped to change or cleared with the x. The Material Request date range now filters on the request date shown on each row.
+Packing Slip filters now show the Delivery Note and PO number as you typed them, instead of raw filter text. Opening Packing Slips for one Delivery Note keeps that Delivery Note in the filters when you reopen and apply them.
