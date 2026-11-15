@@ -235,6 +235,8 @@ class StockAgeingScreen extends GetView<StockAgeingController> {
         columns: columns,
         buckets: buckets,
         imageUrl: controller.imageUrlOf(row),
+        asOn: StockAgeingLogic.reportDate(
+            controller.asOn.value, controller.fetchedAt.value),
       ),
     );
   }
@@ -741,11 +743,15 @@ class _DetailSheet extends StatelessWidget {
   final List<AgeBucket> buckets;
   final String? imageUrl;
 
+  /// The date the row's ages are counted from; null leaves out the year.
+  final DateTime? asOn;
+
   const _DetailSheet({
     required this.row,
     required this.columns,
     required this.buckets,
     required this.imageUrl,
+    required this.asOn,
   });
 
   @override
@@ -825,7 +831,9 @@ class _DetailSheet extends StatelessWidget {
                       label: c.label,
                       value: c.isImage
                           ? '—'
-                          : StockAgeingLogic.formatCell(c, row[c.fieldname]),
+                          : StockAgeingLogic.formatDetailCell(
+                              c, row[c.fieldname],
+                              asOn: asOn),
                       dot: bucketIndex.containsKey(c.fieldname)
                           ? _bucketColour(
                               bucketIndex[c.fieldname]!, buckets.length)

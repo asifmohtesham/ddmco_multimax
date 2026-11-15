@@ -1,1 +1,1 @@
-Packing Slip filters now show the Delivery Note and PO number as you typed them, instead of raw filter text. Opening Packing Slips for one Delivery Note keeps that Delivery Note in the filters when you reopen and apply them.
+Stock Ageing: the item sheet now shows how old the oldest and newest stock is, with the year it came in, such as "1,612 days · since 2022". Average Age now shows its unit in days.

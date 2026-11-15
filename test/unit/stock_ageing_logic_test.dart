@@ -233,6 +233,53 @@ void main() {
     });
   });
 
+  group('detail sheet ages', () {
+    final cols = StockAgeingLogic.parseColumns(const [
+      {'fieldname': 'average_age', 'label': 'Average Age', 'fieldtype': 'Float'},
+      {'fieldname': 'earliest', 'label': 'Earliest', 'fieldtype': 'Int'},
+      {'fieldname': 'latest', 'label': 'Latest', 'fieldtype': 'Int'},
+      {'fieldname': 'qty', 'label': 'Available Qty', 'fieldtype': 'Float'},
+    ]);
+    final avg = cols[0], earliest = cols[1], latest = cols[2], qty = cols[3];
+    final asOn = DateTime(2026, 11, 15);
+
+    test('batch ages add the year they arrived', () {
+      expect(StockAgeingLogic.formatDetailCell(earliest, 1612, asOn: asOn),
+          '1,612 days · since 2022');
+      expect(StockAgeingLogic.formatDetailCell(latest, 58, asOn: asOn),
+          '58 days · since 2026');
+      expect(StockAgeingLogic.formatDetailCell(latest, 1, asOn: asOn),
+          '1 day · since 2026');
+    });
+
+    test('the year is counted from the as-on date, across New Year', () {
+      final jan5 = DateTime(2026, 1, 5);
+      expect(StockAgeingLogic.formatDetailCell(latest, 4, asOn: jan5),
+          '4 days · since 2026');
+      expect(StockAgeingLogic.formatDetailCell(latest, 5, asOn: jan5),
+          '5 days · since 2025');
+    });
+
+    test('average age gets the unit but no year', () {
+      expect(StockAgeingLogic.formatDetailCell(avg, 1247.5, asOn: asOn),
+          '1,247.5 days');
+    });
+
+    test('no date, blank cells and other columns', () {
+      expect(StockAgeingLogic.formatDetailCell(earliest, 1612), '1,612 days');
+      expect(StockAgeingLogic.formatDetailCell(earliest, null, asOn: asOn), '—');
+      expect(StockAgeingLogic.formatDetailCell(qty, 1240, asOn: asOn), '1,240');
+    });
+
+    test('reportDate prefers the as-on date, then the fetch day', () {
+      final fetched = DateTime(2026, 11, 14, 9, 42);
+      expect(StockAgeingLogic.reportDate('2026-10-31', fetched),
+          DateTime(2026, 10, 31));
+      expect(StockAgeingLogic.reportDate('', fetched), DateTime(2026, 11, 14));
+      expect(StockAgeingLogic.reportDate('bad', null), isNull);
+    });
+  });
+
   group('imageUrl', () {
     test('relative paths are prefixed and encoded', () {
       expect(
