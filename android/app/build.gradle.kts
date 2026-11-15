@@ -2,10 +2,9 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    // No `kotlin-android` here (Flutter's AGP 9 migration). While
-    // `android.builtInKotlin=false` (gradle.properties) the Flutter Gradle plugin
-    // applies the Kotlin plugin itself, using the version from settings.gradle.kts;
-    // once built-in Kotlin is switched on, AGP compiles Kotlin without it.
+    // No `kotlin-android` here: with `android.builtInKotlin=true`
+    // (gradle.properties) AGP 9 compiles Kotlin itself, using the Kotlin Gradle
+    // plugin version pinned in settings.gradle.kts.
     // The Flutter Gradle plugin must stay after the Android plugin.
     id("dev.flutter.flutter-gradle-plugin")
 }
