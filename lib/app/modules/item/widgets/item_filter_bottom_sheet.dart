@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class ItemFilterBottomSheet extends StatefulWidget {
   const ItemFilterBottomSheet({super.key});
+
+  /// The focus key the screen's chip for the [index]th active filter
+  /// passes; the sheet's rows start as copies of the active filters, in
+  /// order, so the same index names the same row here.
+  static String rowFocusKey(int index) => 'row:$index';
 
   @override
   State<ItemFilterBottomSheet> createState() => _ItemFilterBottomSheetState();
@@ -130,6 +136,48 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
     );
   }
 
+  void _pickAttributeValue(BuildContext context, FilterRow filter) {
+    if (filter.attributeName.isEmpty) {
+      GlobalSnackbar.info(message: 'Select an Attribute Name first');
+      return;
+    }
+    _showSelectionSheet(
+      context: context,
+      title: "Select Value",
+      itemsBuilder: () =>
+          controller.currentAttributeValues,
+      isLoadingBuilder: () =>
+          controller.isLoadingAttributeValues.value,
+      onSelected: (val) {
+        filter.value = val;
+        localFilters.refresh();
+      },
+    );
+  }
+
+  void _pickLinkValue(BuildContext context, FilterRow filter) {
+    final isGroup = filter.doctype == 'Item Group';
+    final isItem = filter.doctype == 'Item';
+    _showSelectionSheet(
+      context: context,
+      title: "Select ${filter.label}",
+      itemsBuilder: () {
+        if (isGroup) return controller.itemGroups;
+        if (isItem) return controller.templateItems;
+        return const <String>[];
+      },
+      isLoadingBuilder: () {
+        if (isGroup) return controller.isLoadingGroups.value;
+        if (isItem) return controller.isLoadingTemplates.value;
+        return false;
+      },
+      onSelected: (val) {
+        filter.value = val;
+        localFilters.refresh();
+      },
+    );
+  }
+
   // --- Filter Logic ---
   void _addFilterRow() {
     localFilters.add(controller.availableFields[0].clone());
@@ -192,7 +240,22 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
           final filter = entry.value;
           final isAttribute = filter.fieldType == 'Attribute';
 
-          return Container(
+          // A tapped chip opens its row's value picker, or focuses its
+          // free-text value field.
+          return FilterFocusTarget(
+            filterKey: ItemFilterBottomSheet.rowFocusKey(index),
+            onActivate: isAttribute
+                ? () {
+                    // The loaded values may belong to another attribute.
+                    if (filter.attributeName.isNotEmpty) {
+                      controller.fetchAttributeValues(filter.attributeName);
+                    }
+                    _pickAttributeValue(context, filter);
+                  }
+                : filter.fieldType == 'Link'
+                    ? () => _pickLinkValue(context, filter)
+                    : null,
+            child: Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -271,24 +334,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: InkWell(
-                          onTap: () {
-                            if (filter.attributeName.isEmpty) {
-                              GlobalSnackbar.info(message: 'Select an Attribute Name first');
-                              return;
-                            }
-                            _showSelectionSheet(
-                              context: context,
-                              title: "Select Value",
-                              itemsBuilder: () =>
-                                  controller.currentAttributeValues,
-                              isLoadingBuilder: () =>
-                                  controller.isLoadingAttributeValues.value,
-                              onSelected: (val) {
-                                filter.value = val;
-                                localFilters.refresh();
-                              },
-                            );
-                          },
+                          onTap: () => _pickAttributeValue(context, filter),
                           child: InputDecorator(
                             decoration: const InputDecoration(labelText: 'Value', isDense: true, border: OutlineInputBorder()),
                             child: Text(filter.value.isEmpty ? 'Select...' : filter.value),
@@ -329,7 +375,7 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
                 ],
               ],
             ),
-          );
+          ));
         }),
 
         OutlinedButton.icon(
@@ -347,29 +393,8 @@ class _ItemFilterBottomSheetState extends State<ItemFilterBottomSheet> {
 
   Widget _buildValueInput(BuildContext context, FilterRow filter, int index) {
     if (filter.fieldType == 'Link') {
-      final isGroup = filter.doctype == 'Item Group';
-      final isItem = filter.doctype == 'Item';
       return InkWell(
-        onTap: () {
-          _showSelectionSheet(
-            context: context,
-            title: "Select ${filter.label}",
-            itemsBuilder: () {
-              if (isGroup) return controller.itemGroups;
-              if (isItem) return controller.templateItems;
-              return const <String>[];
-            },
-            isLoadingBuilder: () {
-              if (isGroup) return controller.isLoadingGroups.value;
-              if (isItem) return controller.isLoadingTemplates.value;
-              return false;
-            },
-            onSelected: (val) {
-              filter.value = val;
-              localFilters.refresh();
-            },
-          );
-        },
+        onTap: () => _pickLinkValue(context, filter),
         child: InputDecorator(
           decoration: const InputDecoration(labelText: 'Value', isDense: true, border: OutlineInputBorder()),
           child: Text(filter.value.isEmpty ? 'Select...' : filter.value, overflow: TextOverflow.ellipsis),

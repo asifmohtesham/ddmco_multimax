@@ -61,6 +61,7 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
         icon: Icons.filter_alt_outlined,
         label: label,
         onDeleted: () => controller.clearFilter(key),
+        onTap: () => _openFilters(context, focusKey: key),
       ));
     });
     return chips;
@@ -68,8 +69,10 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
 
   // ── Filter sheet helper ───────────────────────────────────────────────────
 
-  void _openFilters(BuildContext context) => showReportFilterSheet(
+  void _openFilters(BuildContext context, {String? focusKey}) =>
+      showReportFilterSheet(
         context: context,
+        focusKey: focusKey,
         title: 'Stock Balance Filters',
         fields: StockBalanceController.filterFields,
         controllers: controller.filterControllers,

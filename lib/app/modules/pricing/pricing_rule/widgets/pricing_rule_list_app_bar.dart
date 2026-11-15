@@ -11,6 +11,16 @@ import 'package:multimax/app/modules/pricing/pricing_rule/pricing_rule_controlle
 class PricingRuleListAppBar extends StatelessWidget {
   const PricingRuleListAppBar({super.key});
 
+  // The side picker is the screen's whole filter sheet; its chip re-opens it.
+  void _pickSide(BuildContext context, PricingRuleController c) =>
+      showOptionPickerSheet(
+        context,
+        title: 'Side',
+        options: const ['All sides', 'Selling', 'Buying'],
+        selected: c.side.isEmpty ? 'All sides' : c.side,
+        onSelected: (v) => c.setSide(v == 'All sides' ? '' : v),
+      );
+
   @override
   Widget build(BuildContext context) {
     final c = Get.find<PricingRuleController>();
@@ -23,19 +33,14 @@ class PricingRuleListAppBar extends StatelessWidget {
       onSearchChanged: c.onSearchChanged,
       onSearchClear: () => c.onSearchChanged(''),
       activeFilters: c.activeFilters,
-      onFilterTap: () => showOptionPickerSheet(
-        context,
-        title: 'Side',
-        options: const ['All sides', 'Selling', 'Buying'],
-        selected: c.side.isEmpty ? 'All sides' : c.side,
-        onSelected: (v) => c.setSide(v == 'All sides' ? '' : v),
-      ),
+      onFilterTap: () => _pickSide(context, c),
       filterChipsBuilder: (_) => [
         if (c.side.isNotEmpty)
           FilterChipWidget(
             icon: Icons.storefront_outlined,
             label: c.side,
             onDeleted: () => c.setSide(''),
+            onTap: () => _pickSide(context, c),
           ),
       ],
       onClearAllFilters: c.clearFilters,

@@ -84,4 +84,57 @@ void main() {
     expect(find.text('Filters'), findsOneWidget);
     expect(find.byType(DatePickerDialog), findsNothing);
   });
+
+  testWidgets('a chip group below many fields is brought into view',
+      (tester) async {
+    final many = [
+      for (var i = 0; i < 14; i++) ReportFilterField(key: 'f$i', label: 'F$i'),
+    ];
+    final c = {
+      for (final f in many) f.key: TextEditingController(),
+      'status': TextEditingController(text: 'Present'),
+    };
+    addTearDown(() {
+      for (final x in c.values) {
+        x.dispose();
+      }
+    });
+    await tester.binding.setSurfaceSize(const Size(390, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (ctx) => FilledButton(
+            onPressed: () => showReportFilterSheet(
+              context: ctx,
+              title: 'Filters',
+              fields: many,
+              controllers: c,
+              onRun: () {},
+              chipGroups: const [
+                ReportFilterChipGroup(
+                  key: 'status',
+                  label: 'Status',
+                  options: [
+                    ReportFilterChipOption(value: 'Present', label: 'Present'),
+                    ReportFilterChipOption(value: 'Absent', label: 'Absent'),
+                  ],
+                ),
+              ],
+              focusKey: 'status',
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    final absent = find.text('Absent');
+    expect(absent, findsOneWidget);
+    final y = tester.getCenter(absent).dy;
+    expect(y, inInclusiveRange(0, 700)); // above the Run Report bar
+  });
 }

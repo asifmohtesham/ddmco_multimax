@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/link_field_widget.dart';
 import 'package:multimax/app/modules/global_widgets/link_search_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/warehouse_picker_sheet.dart';
@@ -8,11 +9,15 @@ import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_co
 
 /// Opens the BOM Stock with Customer Code filter editor as a scrollable
 /// bottom sheet. Reads/writes the controller's reactive filter state.
+/// [focusKey] (an `activeFilters` key) opens the sheet on that filter, ready
+/// to edit: a link opens its picker, the codes field takes focus, a switch
+/// scrolls into view.
 void showBomStockFilterSheet(
-    BuildContext context, BomStockCustomerCodeController c) {
+    BuildContext context, BomStockCustomerCodeController c,
+    {String? focusKey}) {
   c.loadWarehouseOptions();
   Get.bottomSheet(
-    _BomStockFilterSheet(c: c),
+    FilterFocusScope.wrap(_BomStockFilterSheet(c: c), focusKey: focusKey),
     isScrollControlled: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
   );
@@ -63,6 +68,37 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
     );
   }
 
+  Future<void> _pickCustomer() => _pickLink(
+        doctype: 'Customer',
+        title: 'Select Customer',
+        onSelected: (v) {
+          c.customer.value = v;
+          _customerCtrl.text = v ?? '';
+          setState(() {});
+        },
+      );
+
+  Future<void> _addWarehouse() async {
+    await Get.bottomSheet(
+      Obx(() => WarehousePickerSheet(
+            warehouses: c.warehouseOptions.toList(),
+            isLoading: c.isLoadingWarehouses.value,
+            onSelected: c.addWarehouse,
+          )),
+      isScrollControlled: true,
+    );
+  }
+
+  Future<void> _pickPosUpload() => _pickLink(
+        doctype: 'POS Upload',
+        title: 'Select POS Upload',
+        onSelected: (v) async {
+          _posCtrl.text = v ?? '';
+          setState(() {});
+          await c.onPosUploadSelected(v);
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -93,33 +129,37 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
             ],
           ),
           const SizedBox(height: 8),
+          // Built eagerly (not a lazy ListView) so a filter lower down exists
+          // to be scrolled to when its chip asks for it.
           Expanded(
-            child: ListView(
+            child: SingleChildScrollView(
+              child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // ── Customer ────────────────────────────────────────────
-                LinkFieldWidget(
+                FilterFocusTarget(
+                  filterKey: 'customer',
+                  onActivate: _pickCustomer,
+                  child: LinkFieldWidget(
                   controller: _customerCtrl,
                   labelText: 'Customer',
                   hintText: 'Select Customer',
                   prefixIcon: Icons.person_outline,
-                  onTap: () => _pickLink(
-                    doctype: 'Customer',
-                    title: 'Select Customer',
-                    onSelected: (v) {
-                      c.customer.value = v;
-                      _customerCtrl.text = v ?? '';
-                      setState(() {});
-                    },
-                  ),
+                  onTap: _pickCustomer,
                   onClear: () {
                     c.customer.value = null;
                     _customerCtrl.clear();
                     setState(() {});
                   },
-                ),
+                )),
                 const SizedBox(height: 16),
 
                 // ── Customer Codes (chips) ──────────────────────────────
+                FilterFocusTarget(
+                  filterKey: 'customer_code',
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                 _label('Customer Codes'),
                 Obx(() => Wrap(
                       spacing: 6,
@@ -164,9 +204,17 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
                           ],
                         ),
                       )),
+                  ],
+                )),
                 const SizedBox(height: 16),
 
                 // ── Warehouses (chips) ──────────────────────────────────
+                FilterFocusTarget(
+                  filterKey: 'warehouse',
+                  onActivate: _addWarehouse,
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                 _label('Warehouses'),
                 Obx(() => Wrap(
                       spacing: 6,
@@ -183,55 +231,50 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
                   child: TextButton.icon(
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add warehouse'),
-                    onPressed: () => Get.bottomSheet(
-                      Obx(() => WarehousePickerSheet(
-                            warehouses: c.warehouseOptions.toList(),
-                            isLoading: c.isLoadingWarehouses.value,
-                            onSelected: c.addWarehouse,
-                          )),
-                      isScrollControlled: true,
-                    ),
+                    onPressed: _addWarehouse,
                   ),
                 ),
+                  ],
+                )),
                 const SizedBox(height: 16),
 
                 // ── POS Upload ──────────────────────────────────────────
-                LinkFieldWidget(
+                FilterFocusTarget(
+                  filterKey: 'pos_upload',
+                  onActivate: _pickPosUpload,
+                  child: LinkFieldWidget(
                   controller: _posCtrl,
                   labelText: 'POS Upload',
                   hintText: 'Select POS Upload',
                   prefixIcon: Icons.cloud_upload_outlined,
-                  onTap: () => _pickLink(
-                    doctype: 'POS Upload',
-                    title: 'Select POS Upload',
-                    onSelected: (v) async {
-                      _posCtrl.text = v ?? '';
-                      setState(() {});
-                      await c.onPosUploadSelected(v);
-                    },
-                  ),
+                  onTap: _pickPosUpload,
                   onClear: () async {
                     _posCtrl.clear();
                     setState(() {});
                     await c.onPosUploadSelected(null);
                   },
-                ),
+                )),
                 const SizedBox(height: 8),
 
                 // ── Switches ────────────────────────────────────────────
-                Obx(() => SwitchListTile(
+                FilterFocusTarget(
+                  filterKey: 'show_exploded_view',
+                  child: Obx(() => SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Show Exploded View'),
                       value: c.showExplodedView.value,
                       onChanged: (v) => c.showExplodedView.value = v,
-                    )),
-                Obx(() => SwitchListTile(
+                    ))),
+                FilterFocusTarget(
+                  filterKey: 'hide_out_of_stock',
+                  child: Obx(() => SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Hide Out of Stock'),
                       value: c.hideOutOfStock.value,
                       onChanged: (v) => c.hideOutOfStock.value = v,
-                    )),
+                    ))),
               ],
+            ),
             ),
           ),
           const SizedBox(height: 8),

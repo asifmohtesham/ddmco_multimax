@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/batch/batch_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 // ---------------------------------------------------------------------------
@@ -298,23 +299,39 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
           .length +
       (_showDisabled.value ? 1 : 0);
 
+  void _openPicker({
+    required BuildContext context,
+    required String label,
+    required RxString value,
+    required Future<List<_PickerItem>> Function(String) searcher,
+  }) =>
+      _showSearchPicker(
+        context: context,
+        title: 'Select $label',
+        hintText: 'Search $label…',
+        searcher: searcher,
+        onSelected: (v, _) => value.value = v,
+      );
+
+  /// [filterKey] is the active-filter key the screen's chip passes, so a
+  /// tapped chip opens this tile's picker.
   Widget _pickerTile({
     required BuildContext context,
+    required String filterKey,
     required String label,
     required RxString value,
     required String hint,
     required Future<List<_PickerItem>> Function(String) searcher,
     required IconData icon,
   }) {
-    return Obx(() => InkWell(
+    void open() => _openPicker(
+        context: context, label: label, value: value, searcher: searcher);
+    return FilterFocusTarget(
+        filterKey: filterKey,
+        onActivate: open,
+        child: Obx(() => InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _showSearchPicker(
-            context: context,
-            title: 'Select $label',
-            hintText: 'Search $label…',
-            searcher: searcher,
-            onSelected: (v, _) => value.value = v,
-          ),
+          onTap: open,
           child: InputDecorator(
             decoration: InputDecoration(
               labelText: label,
@@ -342,7 +359,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               maxLines: 1,
             ),
           ),
-        ));
+        )));
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -372,6 +389,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
             const SizedBox(height: 16),
             _pickerTile(
               context: context,
+              filterKey: 'item',
               label: 'Item Code',
               value: _itemCode,
               hint: 'All Items',
@@ -381,6 +399,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
             const SizedBox(height: 12),
             _pickerTile(
               context: context,
+              filterKey: 'name',
               label: 'Batch No',
               value: _batchNo,
               hint: 'All Batches',
@@ -390,6 +409,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
             const SizedBox(height: 12),
             _pickerTile(
               context: context,
+              filterKey: 'custom_purchase_order',
               label: 'Purchase Order',
               value: _purchaseOrder,
               hint: 'All POs',
@@ -399,6 +419,7 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
             const SizedBox(height: 12),
             _pickerTile(
               context: context,
+              filterKey: 'custom_supplier_name',
               label: 'Supplier Name',
               value: _supplierName,
               hint: 'All Suppliers',
@@ -406,14 +427,16 @@ class _BatchFilterBottomSheetState extends State<BatchFilterBottomSheet> {
               searcher: _searchSuppliers,
             ),
             const SizedBox(height: 16),
-            SwitchListTile(
+            FilterFocusTarget(
+              filterKey: 'disabled',
+              child: SwitchListTile(
               title: const Text('Include Disabled Batches'),
               subtitle:
                   const Text('By default only active batches are shown'),
               value: _showDisabled.value,
               onChanged: (v) => _showDisabled.value = v,
               contentPadding: EdgeInsets.zero,
-            ),
+            )),
           ],
         ));
   }

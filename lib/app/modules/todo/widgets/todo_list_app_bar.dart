@@ -5,6 +5,7 @@ import 'package:multimax/app/modules/todo/todo_controller.dart';
 import 'package:multimax/app/modules/todo/widgets/todo_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 
 /// DocTypeListAppBar for the **ToDo** DocType.
 ///
@@ -20,9 +21,10 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 class ToDoListAppBar extends StatelessWidget {
   const ToDoListAppBar({super.key});
 
-  static void _openFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  static void _openFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const ToDoFilterBottomSheet(),
+      FilterFocusScope.wrap(const ToDoFilterBottomSheet(), focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -40,6 +42,7 @@ class ToDoListAppBar extends StatelessWidget {
         icon: Icons.label_outline,
         label: 'Status: ${af['status']}',
         onDeleted: () => ctrl.removeFilter('status'),
+        onTap: () => _openFilterSheet(focusKey: 'status'),
       ));
     }
 
@@ -50,6 +53,7 @@ class ToDoListAppBar extends StatelessWidget {
         icon: Icons.flag_outlined,
         label: 'Priority: ${af['priority']}',
         onDeleted: () => ctrl.removeFilter('priority'),
+        onTap: () => _openFilterSheet(focusKey: 'priority'),
       ));
     }
 
@@ -67,6 +71,7 @@ class ToDoListAppBar extends StatelessWidget {
         icon: Icons.calendar_today_outlined,
         label: display,
         onDeleted: () => ctrl.removeFilter('date'),
+        onTap: () => _openFilterSheet(focusKey: 'date'),
       ));
     }
 
@@ -95,7 +100,7 @@ class ToDoListAppBar extends StatelessWidget {
 
       // Filter badge + sheet
       activeFilters: ctrl.activeFilters,
-      onFilterTap: _openFilterSheet,
+      onFilterTap: () => _openFilterSheet(),
 
       // Active filter chips row
       filterChipsBuilder: (ctx) => _buildFilterChips(ctx, ctrl),

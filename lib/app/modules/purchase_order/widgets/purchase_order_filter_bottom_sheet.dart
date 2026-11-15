@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/supplier_model.dart';
 import 'package:multimax/app/modules/purchase_order/purchase_order_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class PurchaseOrderFilterBottomSheet extends StatefulWidget {
@@ -218,7 +219,10 @@ class _PurchaseOrderFilterBottomSheetState
             controller.clearFilters();
           },
           filterWidgets: [
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'supplier',
+              onActivate: _showSupplierPicker,
+              child: Obx(() => TextFormField(
                   controller: supplierController,
                   readOnly: true,
                   onTap: _showSupplierPicker,
@@ -240,7 +244,7 @@ class _PurchaseOrderFilterBottomSheetState
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
           ],
         ));
   }

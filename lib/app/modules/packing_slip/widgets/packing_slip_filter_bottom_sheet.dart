@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/packing_slip/packing_slip_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class PackingSlipFilterBottomSheet extends StatefulWidget {
@@ -291,21 +292,26 @@ class _PackingSlipFilterBottomSheetState
 
   Widget _pickerTile({
     required BuildContext context,
+    required String filterKey,
     required String label,
     required RxString value,
     required String hint,
     required IconData icon,
     required Future<List<_PickerItem>> Function(String) searcher,
   }) {
-    return Obx(() => InkWell(
+    void openPicker() => _showSearchPicker(
+          context: context,
+          title: 'Select $label',
+          hintText: 'Search $label…',
+          searcher: searcher,
+          onSelected: (v) => value.value = v,
+        );
+    return FilterFocusTarget(
+        filterKey: filterKey,
+        onActivate: openPicker,
+        child: Obx(() => InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _showSearchPicker(
-            context: context,
-            title: 'Select $label',
-            hintText: 'Search $label…',
-            searcher: searcher,
-            onSelected: (v) => value.value = v,
-          ),
+          onTap: openPicker,
           child: InputDecorator(
             decoration: InputDecoration(
               labelText: label,
@@ -333,7 +339,7 @@ class _PackingSlipFilterBottomSheetState
               maxLines: 1,
             ),
           ),
-        ));
+        )));
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -361,6 +367,7 @@ class _PackingSlipFilterBottomSheetState
             // ── Delivery Note ────────────────────────────────────────────
             _pickerTile(
               context: context,
+              filterKey: 'delivery_note',
               label: 'Delivery Note',
               value: _deliveryNote,
               hint: 'All Delivery Notes',
@@ -372,6 +379,7 @@ class _PackingSlipFilterBottomSheetState
             // ── PO No ────────────────────────────────────────────────────
             _pickerTile(
               context: context,
+              filterKey: 'custom_po_no',
               label: 'PO No',
               value: _poNo,
               hint: 'All PO Numbers',
@@ -387,7 +395,10 @@ class _PackingSlipFilterBottomSheetState
                   style: Theme.of(context).textTheme.labelLarge),
             ),
             const SizedBox(height: 8),
-            SingleChildScrollView(
+            FilterFocusTarget(
+              filterKey: 'docstatus',
+              alsoMatches: const ['status'],
+              child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: ['Draft', 'Submitted', 'Cancelled'].map((s) {
@@ -402,11 +413,15 @@ class _PackingSlipFilterBottomSheetState
                   );
                 }).toList(),
               ),
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Creation Date Range ──────────────────────────────────────
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'creation',
+              alsoMatches: const ['posting_date'],
+              onActivate: _pickDateRange,
+              child: TextFormField(
               controller: _dateRangeController,
               readOnly: true,
               decoration: InputDecoration(
@@ -427,7 +442,7 @@ class _PackingSlipFilterBottomSheetState
                     horizontal: 16, vertical: 14),
               ),
               onTap: _pickDateRange,
-            ),
+            )),
           ],
         ));
   }
