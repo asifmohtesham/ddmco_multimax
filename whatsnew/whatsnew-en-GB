@@ -1,1 +1,1 @@
-Scanning a rack on the Dashboard works again with the upgraded ERP server: it opens the rack's contents instead of showing an error. If a look-up does fail, the message now says whether the code was not a rack, the server returned an error, or the network was unreachable.
+HR reports: the Employee filter now lists, searches and shows employees by name, with the employee ID underneath, in Shift Attendance, Employee Hours Utilisation and the Monthly Attendance Sheet.
