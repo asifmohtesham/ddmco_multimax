@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
@@ -56,9 +58,11 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         _scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void _showFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const StockEntryFilterBottomSheet(),
+      FilterFocusScope.wrap(const StockEntryFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -80,6 +84,17 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           controller.searchQuery.value = '';
           controller.fetchStockEntries(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Stock Entry',
+          targetRoute: AppRoutes.STOCK_ENTRY_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchStockEntries(clear: true);
+          },
+        ),
       ));
     }
 
@@ -90,6 +105,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         context,
         icon: Icons.flag_outlined,
         label: 'Status: $label',
+        filterKey: 'docstatus',
         onDeleted: () => controller.removeFilter('docstatus'),
       ));
     }
@@ -99,6 +115,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         context,
         icon: Icons.category_outlined,
         label: 'Type: ${filters['stock_entry_type']}',
+        filterKey: 'stock_entry_type',
         onDeleted: () => controller.removeFilter('stock_entry_type'),
       ));
     }
@@ -108,6 +125,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         context,
         icon: Icons.warehouse_outlined,
         label: 'Warehouse: ${filters['from_warehouse']}',
+        filterKey: 'from_warehouse',
         onDeleted: () => controller.removeFilter('from_warehouse'),
       ));
     }
@@ -121,6 +139,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         context,
         icon: Icons.tag,
         label: 'Ref: $display',
+        filterKey: 'custom_reference_no',
         onDeleted: () => controller.removeFilter('custom_reference_no'),
       ));
     }
@@ -131,6 +150,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         context,
         icon: Icons.person_outline,
         label: 'Created By: ${filters['owner']}',
+        filterKey: 'owner',
         onDeleted: () => controller.removeFilter('owner'),
       ));
     }
@@ -141,6 +161,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
         context,
         icon: Icons.edit_outlined,
         label: 'Modified By: ${filters['modified_by']}',
+        filterKey: 'modified_by',
         onDeleted: () => controller.removeFilter('modified_by'),
       ));
     }
@@ -157,6 +178,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
           context,
           icon: Icons.date_range,
           label: '${dates[0]}  →  ${dates[1]}',
+          filterKey: 'posting_date',
           onDeleted: () => controller.removeFilter('posting_date'),
         ));
       }
@@ -170,10 +192,20 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onDeleted,
+    String? filterKey,
+    VoidCallback? onTap,
   }) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterSheet(focusKey: filterKey)),
+    );
   }
 
   @override
@@ -226,7 +258,7 @@ class _StockEntryScreenState extends State<StockEntryScreen> {
                 controller.fetchStockEntries(clear: true);
               },
               activeFilters: controller.activeFilters,
-              onFilterTap: _showFilterSheet,
+              onFilterTap: () => _showFilterSheet(),
               filterChipsBuilder: _buildFilterChips,
               onClearAllFilters: controller.clearFilters,
             ),

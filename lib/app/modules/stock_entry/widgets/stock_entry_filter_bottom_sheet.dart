@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/core/utils/navigator_utils.dart';
 import 'package:multimax/app/modules/stock_entry/stock_entry_controller.dart';
 import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 const _kDraftColor     = Color(0xFFE54D4D);
@@ -381,6 +382,24 @@ class _StockEntryFilterBottomSheetState
     );
   }
 
+  void _pickOwner() => _showUserPicker(
+        title: 'Select Owner',
+        onSelected: (userId, displayName) {
+          owner.value            = userId;
+          ownerController.text   = displayName;
+          ownerDisplayName.value = displayName;
+        },
+      );
+
+  void _pickModifiedBy() => _showUserPicker(
+        title: 'Select Modified By',
+        onSelected: (userId, displayName) {
+          modifiedBy.value            = userId;
+          modifiedByController.text   = displayName;
+          modifiedByDisplayName.value = displayName;
+        },
+      );
+
   void _applyFilters() {
     final filters = <String, dynamic>{};
 
@@ -490,7 +509,9 @@ class _StockEntryFilterBottomSheetState
           filterWidgets: [
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
-            SingleChildScrollView(
+            FilterFocusTarget(
+              filterKey: 'docstatus',
+              child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Obx(() => Row(
                     children: [
@@ -508,12 +529,14 @@ class _StockEntryFilterBottomSheetState
                           frappeColor: _kCancelledColor),
                     ],
                   )),
-            ),
+            )),
             const SizedBox(height: 16),
 
             Text('Entry Type', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
-            ShaderMask(
+            FilterFocusTarget(
+              filterKey: 'stock_entry_type',
+              child: ShaderMask(
               shaderCallback: (bounds) => LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
@@ -543,10 +566,13 @@ class _StockEntryFilterBottomSheetState
                   ],
                 ),
               ),
-            ),
+            )),
             const SizedBox(height: 16),
 
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'posting_date',
+              onActivate: _pickDateRange,
+              child: TextFormField(
               controller: dateRangeController,
               readOnly: true,
               decoration: const InputDecoration(
@@ -557,10 +583,13 @@ class _StockEntryFilterBottomSheetState
                 isDense: true,
               ),
               onTap: _pickDateRange,
-            ),
+            )),
             const SizedBox(height: 16),
 
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'from_warehouse',
+              onActivate: _showWarehousePicker,
+              child: Obx(() => TextFormField(
                   controller: fromWarehouseController,
                   readOnly: true,
                   onTap: _showWarehousePicker,
@@ -581,10 +610,12 @@ class _StockEntryFilterBottomSheetState
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 16),
 
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'custom_reference_no',
+              child: TextFormField(
               controller: referenceController,
               decoration: const InputDecoration(
                 labelText: 'Reference No',
@@ -593,20 +624,16 @@ class _StockEntryFilterBottomSheetState
                 isDense: true,
               ),
               onChanged: (val) => reference.value = val,
-            ),
+            )),
             const SizedBox(height: 16),
 
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'owner',
+              onActivate: _pickOwner,
+              child: Obx(() => TextFormField(
                   controller: ownerController,
                   readOnly: true,
-                  onTap: () => _showUserPicker(
-                    title: 'Select Owner',
-                    onSelected: (userId, displayName) {
-                      owner.value            = userId;
-                      ownerController.text   = displayName;
-                      ownerDisplayName.value = displayName;
-                    },
-                  ),
+                  onTap: _pickOwner,
                   decoration: InputDecoration(
                     labelText: 'Created By',
                     border: const OutlineInputBorder(),
@@ -624,20 +651,16 @@ class _StockEntryFilterBottomSheetState
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 16),
 
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'modified_by',
+              onActivate: _pickModifiedBy,
+              child: Obx(() => TextFormField(
                   controller: modifiedByController,
                   readOnly: true,
-                  onTap: () => _showUserPicker(
-                    title: 'Select Modified By',
-                    onSelected: (userId, displayName) {
-                      modifiedBy.value            = userId;
-                      modifiedByController.text   = displayName;
-                      modifiedByDisplayName.value = displayName;
-                    },
-                  ),
+                  onTap: _pickModifiedBy,
                   decoration: InputDecoration(
                     labelText: 'Modified By',
                     border: const OutlineInputBorder(),
@@ -655,7 +678,7 @@ class _StockEntryFilterBottomSheetState
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 8),
           ],
         ));

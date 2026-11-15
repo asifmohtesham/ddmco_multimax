@@ -25,11 +25,14 @@ class ShiftAttendanceScreen extends GetView<ShiftAttendanceController> {
         icon: Icons.filter_alt_outlined,
         label: entry.value,
         onDeleted: () => controller.clearFilter(entry.key),
+        onTap: () => _openFilters(context, focusKey: entry.key),
       ),
   ];
 
-  void _openFilters(BuildContext context) => showReportFilterSheet(
+  void _openFilters(BuildContext context, {String? focusKey}) =>
+    showReportFilterSheet(
     context: context,
+    focusKey: focusKey,
     title: 'Shift Attendance',
     fields: controller.filterFields,
     controllers: controller.filterControllers,

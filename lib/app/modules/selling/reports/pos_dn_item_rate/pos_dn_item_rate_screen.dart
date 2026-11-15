@@ -37,6 +37,8 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
         icon: Icons.filter_alt_outlined,
         label: label,
         onDeleted: () => controller.clearFilter(key),
+        onTap: () =>
+            showPosDnItemRateFilterSheet(context, controller, focusKey: key),
       ));
     });
     return chips;

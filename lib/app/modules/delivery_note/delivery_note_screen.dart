@@ -9,6 +9,8 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
@@ -56,9 +58,10 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         _scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void _showFilterBottomSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterBottomSheet({String? focusKey}) {
     Get.bottomSheet(
-      const FilterBottomSheet(),
+      FilterFocusScope.wrap(const FilterBottomSheet(), focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -80,12 +83,24 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
           controller.searchQuery.value = '';
           controller.fetchDeliveryNotes(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Delivery Note',
+          targetRoute: AppRoutes.DELIVERY_NOTE_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchDeliveryNotes(clear: true);
+          },
+        ),
       ));
     }
     if (f.containsKey('status')) {
       chips.add(_chip(context,
           icon: Icons.flag_outlined,
           label: 'Status: ${f['status']}',
+          filterKey: 'status',
           onDeleted: () => controller.removeFilter('status')));
     }
     if (f.containsKey('customer') && f['customer'].toString().isNotEmpty) {
@@ -96,6 +111,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
       chips.add(_chip(context,
           icon: Icons.business_outlined,
           label: 'Customer: $display',
+          filterKey: 'customer',
           onDeleted: () => controller.removeFilter('customer')));
     }
     if (f.containsKey('po_no')) {
@@ -106,18 +122,21 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
       chips.add(_chip(context,
           icon: Icons.tag,
           label: 'PO: $display',
+          filterKey: 'po_no',
           onDeleted: () => controller.removeFilter('po_no')));
     }
     if (f.containsKey('set_warehouse')) {
       chips.add(_chip(context,
           icon: Icons.warehouse_outlined,
           label: 'Warehouse: ${f['set_warehouse']}',
+          filterKey: 'set_warehouse',
           onDeleted: () => controller.removeFilter('set_warehouse')));
     }
     if (f.containsKey('owner') && f['owner'].toString().isNotEmpty) {
       chips.add(_chip(context,
           icon: Icons.person_outline,
           label: 'Created By: ${f['owner']}',
+          filterKey: 'owner',
           onDeleted: () => controller.removeFilter('owner')));
     }
     if (f.containsKey('modified_by') &&
@@ -125,6 +144,7 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
       chips.add(_chip(context,
           icon: Icons.edit_outlined,
           label: 'Modified By: ${f['modified_by']}',
+          filterKey: 'modified_by',
           onDeleted: () => controller.removeFilter('modified_by')));
     }
     if (f.containsKey('creation')) {
@@ -138,7 +158,8 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
         chips.add(_chip(context,
             icon: Icons.date_range,
             label: '${dates[0]}  →  ${dates[1]}',
-            onDeleted: () => controller.removeFilter('creation')));
+            filterKey: 'creation',
+          onDeleted: () => controller.removeFilter('creation')));
       }
     }
     return chips;
@@ -149,10 +170,20 @@ class _DeliveryNoteScreenState extends State<DeliveryNoteScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onDeleted,
+    String? filterKey,
+    VoidCallback? onTap,
   }) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterBottomSheet(focusKey: filterKey)),
+    );
   }
 
   // ---------------------------------------------------------------------------

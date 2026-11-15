@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/settings_controls.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_controller.dart';
 
@@ -63,7 +64,9 @@ class _ItemPriceFilterSheetState extends State<ItemPriceFilterSheet> {
                 ],
               ),
               _label(context, 'VALIDITY'),
-              SettingsSegmented<String>(
+              FilterFocusTarget(
+                filterKey: 'validity',
+                child: SettingsSegmented<String>(
                 options: const [
                   SegmentOption(value: '', label: 'Any'),
                   SegmentOption(value: 'Active', label: 'Active'),
@@ -72,30 +75,36 @@ class _ItemPriceFilterSheetState extends State<ItemPriceFilterSheet> {
                 ],
                 value: validity,
                 onChanged: (v) => setState(() => validity = v),
-              ),
+              )),
               _label(context, 'SCOPE'),
-              CheckboxListTile(
+              FilterFocusTarget(
+                filterKey: 'scoped',
+                child: CheckboxListTile(
                 value: scoped,
                 onChanged: (v) => setState(() => scoped = v ?? false),
                 title: const Text('Has customer or supplier'),
                 subtitle: const Text('Price limited to one party'),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
-              ),
-              CheckboxListTile(
+              )),
+              FilterFocusTarget(
+                filterKey: 'batch',
+                child: CheckboxListTile(
                 value: batch,
                 onChanged: (v) => setState(() => batch = v ?? false),
                 title: const Text('Has batch'),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
-              ),
-              CheckboxListTile(
+              )),
+              FilterFocusTarget(
+                filterKey: 'zero',
+                child: CheckboxListTile(
                 value: zero,
                 onChanged: (v) => setState(() => zero = v ?? false),
                 title: const Text('Zero rate'),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
-              ),
+              )),
               const SizedBox(height: 12),
               Row(
                 children: [

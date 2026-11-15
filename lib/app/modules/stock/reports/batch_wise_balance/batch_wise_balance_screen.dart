@@ -16,6 +16,18 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
   // internally, so this builder only needs to produce the chip widgets.
   // InputChip gives the delete icon a full 48dp tap target out of the box.
 
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _openFilters(BuildContext context, {String? focusKey}) =>
+      showReportFilterSheet(
+        context: context,
+        focusKey: focusKey,
+        title: 'Batch-Wise Balance History Filters',
+        fields: controller.filterFields,
+        controllers: controller.filterControllers,
+        onRun: controller.runReport,
+        onClear: controller.clearFilters,
+      );
+
   List<Widget> _buildFilterChips(BuildContext context) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
     // across every list and report screen.
@@ -25,6 +37,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
         icon: Icons.filter_alt_outlined,
         label: label,
         onDeleted: () => controller.clearFilter(key),
+        onTap: () => _openFilters(context, focusKey: key),
       ));
     });
     return chips;
@@ -52,14 +65,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                 activeFilters: controller.activeFilters
                     .map((k, v) => MapEntry(k, v as dynamic))
                     .obs,
-                onFilterTap: () => showReportFilterSheet(
-                  context: context,
-                  title:       'Batch-Wise Balance History Filters',
-                  fields:      controller.filterFields,
-                  controllers: controller.filterControllers,
-                  onRun:       controller.runReport,
-                  onClear:     controller.clearFilters,
-                ),
+                onFilterTap: () => _openFilters(context),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters:  controller.clearFilters,
               ),
@@ -91,14 +97,7 @@ class BatchWiseBalanceScreen extends GetView<BatchWiseBalanceController> {
                           ),
                           const SizedBox(height: 24),
                           FilledButton.tonalIcon(
-                            onPressed: () => showReportFilterSheet(
-                              context: context,
-                              title:   'Batch-Wise Balance History Filters',
-                              fields:  controller.filterFields,
-                              controllers: controller.filterControllers,
-                              onRun:   controller.runReport,
-                              onClear: controller.clearFilters,
-                            ),
+                            onPressed: () => _openFilters(context),
                             icon: const Icon(Icons.filter_alt_outlined),
                             label: const Text('Set Filters'),
                           ),

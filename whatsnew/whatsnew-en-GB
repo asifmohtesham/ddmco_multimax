@@ -1,1 +1,1 @@
-HR reports: the Employee filter now lists, searches and shows employees by name, with the employee ID underneath, in Shift Attendance, Employee Hours Utilisation and the Monthly Attendance Sheet.
+Filters are quicker to change: tap any active filter chip, on any list or report, to edit that filter. The filter sheet opens on it, with text ready to type, pickers such as dates, customers and warehouses already open, and choices like Status in view. Tapping a Search chip reopens the search with your text in it. The x on a chip still clears it.

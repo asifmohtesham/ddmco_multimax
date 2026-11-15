@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 
 // ---------------------------------------------------------------------------
 // ReportFilterField descriptor
@@ -213,8 +214,8 @@ Future<void> showReportFilterSheet({
   /// Key of the field the user asked to edit (e.g. by tapping its active
   /// filter chip). The sheet opens tall, brings that field into view and
   /// starts editing it: a text field takes focus, a date or link field opens
-  /// its picker. A key that is not one of [fields] (a toggle, say) only
-  /// opens the sheet tall.
+  /// its picker. A chip group's or toggle's key brings its choices into
+  /// view; any other key only opens the sheet tall.
   String? focusKey,
 }) async {
   await showModalBottomSheet(
@@ -222,7 +223,7 @@ Future<void> showReportFilterSheet({
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _ReportFilterSheet(
+    builder: (_) => FilterFocusScope.wrap(focusKey: focusKey, _ReportFilterSheet(
       title:         title,
       fields:        fields,
       controllers:   controllers,
@@ -233,7 +234,7 @@ Future<void> showReportFilterSheet({
       toggles:       toggles,
       togglesLabel:  togglesLabel,
       focusKey:      focusKey,
-    ),
+    )),
   );
 }
 
@@ -342,10 +343,14 @@ class _ReportFilterSheet extends StatelessWidget {
               const SizedBox(height: 4),
 
               // ── fields ────────────────────────────────────────────────────
+              // Built eagerly (not a lazy ListView) so a field far down the
+              // sheet exists to be scrolled to when its chip asks for it.
               Expanded(
-                child: ListView(
+                child: SingleChildScrollView(
                   controller: scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // ── text / date / browse fields (unchanged) ──────────────────
                     for (final field in fields) ...[
@@ -361,27 +366,43 @@ class _ReportFilterSheet extends StatelessWidget {
                     ],
 
                     // ── ChoiceChip groups (NEW) ───────────────────────────────────
-                    for (final group in chipGroups) ...[
-                      _SheetSubheading(group.label),          // reuses existing heading widget
-                      const SizedBox(height: 6),
-                      _ChipGroupWidget(
-                        group:      group,
-                        controller: controllers[group.key]!,
+                    for (final group in chipGroups)
+                      FilterFocusTarget(
+                        filterKey: group.key,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _SheetSubheading(group.label),
+                            const SizedBox(height: 6),
+                            _ChipGroupWidget(
+                              group:      group,
+                              controller: controllers[group.key]!,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
 
                     // ── On/off toggles (one FilterChip row) ───────────────────────
-                    if (toggles.isNotEmpty) ...[
-                      _SheetSubheading(togglesLabel),
-                      const SizedBox(height: 6),
-                      _ToggleChipsWidget(
-                        toggles:     toggles,
-                        controllers: controllers,
+                    if (toggles.isNotEmpty)
+                      FilterFocusTarget(
+                        filterKey: toggles.first.key,
+                        alsoMatches: [for (final t in toggles) t.key],
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _SheetSubheading(togglesLabel),
+                            const SizedBox(height: 6),
+                            _ToggleChipsWidget(
+                              toggles:     toggles,
+                              controllers: controllers,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
                   ],
+                ),
                 ),
               ),
 

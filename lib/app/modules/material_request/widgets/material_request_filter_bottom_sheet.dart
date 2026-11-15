@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/material_request/material_request_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 /// Filter bottom sheet for Material Request List View.
@@ -269,7 +270,10 @@ class _MaterialRequestFilterBottomSheetState
           },
           filterWidgets: [
             // ── Status ─────────────────────────────────────────────────────────
-            Column(
+            FilterFocusTarget(
+              filterKey: 'status',
+              alsoMatches: const ['docstatus'],
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Status',
@@ -300,11 +304,13 @@ class _MaterialRequestFilterBottomSheetState
                   ),
                 ),
               ],
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Request Type ───────────────────────────────────────────────
-            Column(
+            FilterFocusTarget(
+              filterKey: 'material_request_type',
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Request Type',
@@ -328,11 +334,15 @@ class _MaterialRequestFilterBottomSheetState
                   ),
                 ),
               ],
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Date Range ──────────────────────────────────────────────────
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'creation',
+              alsoMatches: const ['transaction_date'],
+              onActivate: _pickDateRange,
+              child: TextFormField(
               controller: dateRangeController,
               readOnly: true,
               decoration: const InputDecoration(
@@ -342,11 +352,14 @@ class _MaterialRequestFilterBottomSheetState
                 isDense: true,
               ),
               onTap: _pickDateRange,
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Owner ──────────────────────────────────────────────────────────
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'owner',
+              onActivate: _showUserPicker,
+              child: TextFormField(
               controller: ownerController,
               readOnly: true,
               onTap: _showUserPicker,
@@ -357,7 +370,7 @@ class _MaterialRequestFilterBottomSheetState
                 suffixIcon: Icon(Icons.arrow_drop_down),
                 isDense: true,
               ),
-            ),
+            )),
           ],
         ));
   }

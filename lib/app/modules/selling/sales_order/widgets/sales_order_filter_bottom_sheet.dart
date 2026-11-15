@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/link_search_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/option_picker_sheet.dart';
@@ -85,6 +86,38 @@ class _SalesOrderFilterBottomSheetState
     }
   }
 
+  /// The delivery-date chip edits whichever bound is set (From by default).
+  Future<void> _pickDeliveryDate() => _pickDate(
+      (from.value ?? '').isEmpty && (to.value ?? '').isNotEmpty ? to : from);
+
+  void _pickCustomer() => showLinkSearchSheet(
+        doctype: 'Customer',
+        title: 'Select Customer',
+        onSelected: (v) => customer.value = v,
+      );
+
+  void _pickStatus() => showOptionPickerSheet(
+        context,
+        title: 'Status',
+        options: SalesOrderController.statusChips,
+        selected: status.value ?? '',
+        onSelected: (v) => status.value = v,
+      );
+
+  void _pickOwner() => Get.bottomSheet(
+        Obx(() => UserPickerSheet(
+              title: 'Select Owner',
+              users: controller.users,
+              isLoading: controller.isFetchingUsers.value,
+              onSelected: (id, display) {
+                owner.value = id;
+                ownerName.value = display;
+                Get.back();
+              },
+            )),
+        isScrollControlled: true,
+      );
+
   void _applyFilters() {
     final f = <String, dynamic>{};
     if ((customer.value ?? '').isNotEmpty) f['customer'] = customer.value;
@@ -134,34 +167,33 @@ class _SalesOrderFilterBottomSheetState
           onApply: _applyFilters,
           onClear: _clear,
           filterWidgets: [
-            Obx(() => DocPickerField(
+            FilterFocusTarget(
+              filterKey: 'customer',
+              onActivate: _pickCustomer,
+              child: Obx(() => DocPickerField(
                   label: 'Customer',
                   icon: Icons.person_outline,
                   value: customer.value,
-                  onTap: () => showLinkSearchSheet(
-                    doctype: 'Customer',
-                    title: 'Select Customer',
-                    onSelected: (v) => customer.value = v,
-                  ),
-                )),
+                  onTap: _pickCustomer,
+                ))),
             const SizedBox(height: 12),
-            Obx(() => DocPickerField(
+            FilterFocusTarget(
+              filterKey: 'status',
+              onActivate: _pickStatus,
+              child: Obx(() => DocPickerField(
                   label: 'Status',
                   icon: Icons.flag_outlined,
                   value: status.value ??
                       (_originalNonStringStatus != null
                           ? statusFilterLabel(_originalNonStringStatus)
                           : null),
-                  onTap: () => showOptionPickerSheet(
-                    context,
-                    title: 'Status',
-                    options: SalesOrderController.statusChips,
-                    selected: status.value ?? '',
-                    onSelected: (v) => status.value = v,
-                  ),
-                )),
+                  onTap: _pickStatus,
+                ))),
             const SizedBox(height: 12),
-            Row(
+            FilterFocusTarget(
+              filterKey: 'delivery_date',
+              onActivate: _pickDeliveryDate,
+              child: Row(
               children: [
                 Expanded(
                   child: Obx(() => DocPickerField(
@@ -183,26 +215,17 @@ class _SalesOrderFilterBottomSheetState
                       )),
                 ),
               ],
-            ),
+            )),
             const SizedBox(height: 12),
-            Obx(() => DocPickerField(
+            FilterFocusTarget(
+              filterKey: 'owner',
+              onActivate: _pickOwner,
+              child: Obx(() => DocPickerField(
                   label: 'Owner',
                   icon: Icons.person_search_outlined,
                   value: ownerName.value,
-                  onTap: () => Get.bottomSheet(
-                    Obx(() => UserPickerSheet(
-                          title: 'Select Owner',
-                          users: controller.users,
-                          isLoading: controller.isFetchingUsers.value,
-                          onSelected: (id, display) {
-                            owner.value = id;
-                            ownerName.value = display;
-                            Get.back();
-                          },
-                        )),
-                    isScrollControlled: true,
-                  ),
-                )),
+                  onTap: _pickOwner,
+                ))),
           ],
         ));
   }

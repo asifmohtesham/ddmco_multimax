@@ -10,6 +10,8 @@ import 'package:multimax/app/modules/global_widgets/generic_document_card.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/info_block.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
@@ -53,9 +55,11 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         _scrollController.position.maxScrollExtent * 0.9;
   }
 
-  void _showFilterSheet() {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet({String? focusKey}) {
     Get.bottomSheet(
-      const PurchaseOrderFilterBottomSheet(),
+      FilterFocusScope.wrap(const PurchaseOrderFilterBottomSheet(),
+          focusKey: focusKey),
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
     );
@@ -74,6 +78,17 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
           controller.searchQuery.value = '';
           controller.fetchPurchaseOrders(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Purchase Order',
+          targetRoute: AppRoutes.PURCHASE_ORDER_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchPurchaseOrders(clear: true);
+          },
+        ),
       ));
     }
 
@@ -82,6 +97,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         context,
         icon: Icons.flag_outlined,
         label: 'Status: ${filters['status']}',
+        filterKey: 'status',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -91,6 +107,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
         context,
         icon: Icons.business_outlined,
         label: 'Supplier: ${filters['supplier']}',
+        filterKey: 'supplier',
         onDeleted: () => controller.removeFilter('supplier'),
       ));
     }
@@ -103,10 +120,20 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     required IconData icon,
     required String label,
     required VoidCallback onDeleted,
+    String? filterKey,
+    VoidCallback? onTap,
   }) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
-    return FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+    // across every list screen. Tapping the chip edits its filter.
+    return FilterChipWidget(
+      icon: icon,
+      label: label,
+      onDeleted: onDeleted,
+      onTap: onTap ??
+          (filterKey == null
+              ? null
+              : () => _showFilterSheet(focusKey: filterKey)),
+    );
   }
 
   @override

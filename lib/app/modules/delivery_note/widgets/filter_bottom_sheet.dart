@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
 class FilterBottomSheet extends StatefulWidget {
@@ -402,6 +403,22 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
     );
   }
 
+  void _pickOwner() => _showUserPicker(
+        title: 'Select Owner',
+        onSelected: (userId, displayName) {
+          owner.value          = userId;
+          ownerController.text = displayName;
+        },
+      );
+
+  void _pickModifiedBy() => _showUserPicker(
+        title: 'Select Modified By',
+        onSelected: (userId, displayName) {
+          modifiedBy.value          = userId;
+          modifiedByController.text = displayName;
+        },
+      );
+
   // ---------------------------------------------------------------------------
   // Warehouse picker
   // ---------------------------------------------------------------------------
@@ -587,7 +604,9 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
             // ── Status chips ──────────────────────────────────────────────
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
-            SingleChildScrollView(
+            FilterFocusTarget(
+              filterKey: 'status',
+              child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Obx(() => Row(
                     children: [
@@ -609,11 +628,14 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         ),
                     ],
                   )),
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Creation date range ───────────────────────────────────────
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'creation',
+              onActivate: _pickDateRange,
+              child: TextFormField(
               controller: dateRangeController,
               readOnly: true,
               decoration: const InputDecoration(
@@ -624,11 +646,14 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 isDense: true,
               ),
               onTap: _pickDateRange,
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Customer picker ───────────────────────────────────────────
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'customer',
+              onActivate: _showCustomerPicker,
+              child: Obx(() => TextFormField(
                   controller: customerController,
                   readOnly: true,
                   onTap: _showCustomerPicker,
@@ -650,11 +675,13 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 16),
 
             // ── PO Number ────────────────────────────────────────────────
-            TextFormField(
+            FilterFocusTarget(
+              filterKey: 'po_no',
+              child: TextFormField(
               controller: poNoController,
               decoration: const InputDecoration(
                 labelText: 'PO Number',
@@ -663,11 +690,14 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                 isDense: true,
               ),
               onChanged: (val) => poNo.value = val,
-            ),
+            )),
             const SizedBox(height: 16),
 
             // ── Source Warehouse ──────────────────────────────────────────
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'set_warehouse',
+              onActivate: _showWarehousePicker,
+              child: Obx(() => TextFormField(
                   controller: setWarehouseController,
                   readOnly: true,
                   onTap: _showWarehousePicker,
@@ -688,20 +718,17 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 16),
 
             // ── Created By ────────────────────────────────────────────────
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'owner',
+              onActivate: _pickOwner,
+              child: Obx(() => TextFormField(
                   controller: ownerController,
                   readOnly: true,
-                  onTap: () => _showUserPicker(
-                    title: 'Select Owner',
-                    onSelected: (userId, displayName) {
-                      owner.value          = userId;
-                      ownerController.text = displayName;
-                    },
-                  ),
+                  onTap: _pickOwner,
                   decoration: InputDecoration(
                     labelText: 'Created By',
                     border: const OutlineInputBorder(),
@@ -718,20 +745,17 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 16),
 
             // ── Modified By ───────────────────────────────────────────────
-            Obx(() => TextFormField(
+            FilterFocusTarget(
+              filterKey: 'modified_by',
+              onActivate: _pickModifiedBy,
+              child: Obx(() => TextFormField(
                   controller: modifiedByController,
                   readOnly: true,
-                  onTap: () => _showUserPicker(
-                    title: 'Select Modified By',
-                    onSelected: (userId, displayName) {
-                      modifiedBy.value          = userId;
-                      modifiedByController.text = displayName;
-                    },
-                  ),
+                  onTap: _pickModifiedBy,
                   decoration: InputDecoration(
                     labelText: 'Modified By',
                     border: const OutlineInputBorder(),
@@ -748,7 +772,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
                         : const Icon(Icons.arrow_drop_down),
                     isDense: true,
                   ),
-                )),
+                ))),
             const SizedBox(height: 8),
           ],
         ));

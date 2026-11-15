@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/link_search_sheet.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
 
 /// Opens the POS & DN Item Rate filter editor as a scrollable bottom sheet.
 /// Reads/writes the controller's reactive filter state; multi-select link
 /// filters render as removable chips fed by a searchable picker.
+/// [focusKey] (an `activeFilters` key) opens the sheet on that filter, ready
+/// to edit: a link list opens its picker, a date its date picker, a switch
+/// scrolls into view.
 void showPosDnItemRateFilterSheet(
-    BuildContext context, PosDnItemRateController c) {
+    BuildContext context, PosDnItemRateController c, {String? focusKey}) {
   Get.bottomSheet(
-    _PosDnFilterSheet(c: c),
+    FilterFocusScope.wrap(_PosDnFilterSheet(c: c), focusKey: focusKey),
     isScrollControlled: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
   );
@@ -58,6 +62,30 @@ class _PosDnFilterSheetState extends State<_PosDnFilterSheet> {
     }
   }
 
+  void _addPosUpload() => _pickLink(
+        doctype: 'POS Upload',
+        title: 'Select POS Upload',
+        onSelected: (v) => c.addTo(c.posUploads, v),
+      );
+
+  void _addCustomer() => _pickLink(
+        doctype: 'Customer',
+        title: 'Select Customer',
+        onSelected: (v) => c.addTo(c.customers, v),
+      );
+
+  void _addCustomerGroup() => _pickLink(
+        doctype: 'Customer Group',
+        title: 'Select Customer Group',
+        onSelected: (v) => c.addTo(c.customerGroups, v),
+      );
+
+  void _addItemGroup() => _pickLink(
+        doctype: 'Item Group',
+        title: 'Select Item Group',
+        onSelected: (v) => c.addTo(c.itemGroups, v),
+      );
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -91,69 +119,73 @@ class _PosDnFilterSheetState extends State<_PosDnFilterSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                _MultiLinkSection(
+                FilterFocusTarget(
+                  filterKey: 'pos_upload',
+                  onActivate: _addPosUpload,
+                  child: _MultiLinkSection(
                   label: 'POS Uploads',
                   values: c.posUploads,
-                  onAdd: () => _pickLink(
-                    doctype: 'POS Upload',
-                    title: 'Select POS Upload',
-                    onSelected: (v) => c.addTo(c.posUploads, v),
-                  ),
+                  onAdd: _addPosUpload,
                   onRemove: (v) => c.removeFrom(c.posUploads, v),
-                ),
-                _MultiLinkSection(
+                )),
+                FilterFocusTarget(
+                  filterKey: 'customer',
+                  onActivate: _addCustomer,
+                  child: _MultiLinkSection(
                   label: 'Customers',
                   values: c.customers,
-                  onAdd: () => _pickLink(
-                    doctype: 'Customer',
-                    title: 'Select Customer',
-                    onSelected: (v) => c.addTo(c.customers, v),
-                  ),
+                  onAdd: _addCustomer,
                   onRemove: (v) => c.removeFrom(c.customers, v),
-                ),
-                _MultiLinkSection(
+                )),
+                FilterFocusTarget(
+                  filterKey: 'customer_group',
+                  onActivate: _addCustomerGroup,
+                  child: _MultiLinkSection(
                   label: 'Customer Groups',
                   values: c.customerGroups,
-                  onAdd: () => _pickLink(
-                    doctype: 'Customer Group',
-                    title: 'Select Customer Group',
-                    onSelected: (v) => c.addTo(c.customerGroups, v),
-                  ),
+                  onAdd: _addCustomerGroup,
                   onRemove: (v) => c.removeFrom(c.customerGroups, v),
-                ),
-                _MultiLinkSection(
+                )),
+                FilterFocusTarget(
+                  filterKey: 'item_group',
+                  onActivate: _addItemGroup,
+                  child: _MultiLinkSection(
                   label: 'Item Groups',
                   values: c.itemGroups,
-                  onAdd: () => _pickLink(
-                    doctype: 'Item Group',
-                    title: 'Select Item Group',
-                    onSelected: (v) => c.addTo(c.itemGroups, v),
-                  ),
+                  onAdd: _addItemGroup,
                   onRemove: (v) => c.removeFrom(c.itemGroups, v),
-                ),
+                )),
                 const SizedBox(height: 8),
 
                 // ── Dates ───────────────────────────────────────────────
-                Obx(() => _DateRow(
+                FilterFocusTarget(
+                  filterKey: 'from_date',
+                  onActivate: () => _pickDate(c.fromDate),
+                  child: Obx(() => _DateRow(
                       label: 'From Date',
                       value: c.fromDate.value,
                       onTap: () => _pickDate(c.fromDate),
                       onClear: () => c.fromDate.value = null,
-                    )),
+                    ))),
                 const SizedBox(height: 12),
-                Obx(() => _DateRow(
+                FilterFocusTarget(
+                  filterKey: 'to_date',
+                  onActivate: () => _pickDate(c.toDate),
+                  child: Obx(() => _DateRow(
                       label: 'To Date',
                       value: c.toDate.value,
                       onTap: () => _pickDate(c.toDate),
                       onClear: () => c.toDate.value = null,
-                    )),
+                    ))),
                 const SizedBox(height: 8),
 
                 // ── Switches ────────────────────────────────────────────
                 // Each SwitchListTile gets a transparent Material so its ink +
                 // background paint above the sheet's colour-painted Container
                 // instead of being hidden by it.
-                Obx(() => Material(
+                FilterFocusTarget(
+                  filterKey: 'show_mapped',
+                  child: Obx(() => Material(
                       color: Colors.transparent,
                       child: SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -161,8 +193,10 @@ class _PosDnFilterSheetState extends State<_PosDnFilterSheet> {
                         value: c.showMapped.value,
                         onChanged: (v) => c.showMapped.value = v,
                       ),
-                    )),
-                Obx(() => Material(
+                    ))),
+                FilterFocusTarget(
+                  filterKey: 'only_coded',
+                  child: Obx(() => Material(
                       color: Colors.transparent,
                       child: SwitchListTile(
                         contentPadding: EdgeInsets.zero,
@@ -170,7 +204,7 @@ class _PosDnFilterSheetState extends State<_PosDnFilterSheet> {
                         value: c.onlyCoded.value,
                         onChanged: (v) => c.onlyCoded.value = v,
                       ),
-                    )),
+                    ))),
                 ],
               ),
             ),

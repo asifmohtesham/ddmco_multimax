@@ -22,6 +22,8 @@ class BomStockCustomerCodeScreen
         icon: Icons.filter_alt_outlined,
         label: label,
         onDeleted: () => controller.clearFilter(key),
+        onTap: () =>
+            showBomStockFilterSheet(context, controller, focusKey: key),
       ));
     });
     return chips;

@@ -10,6 +10,8 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/data/models/job_card_model.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/search_highlight.dart';
@@ -68,13 +70,23 @@ class _JobCardScreenState extends State<JobCardScreen>
     final chips = <Widget>[];
 
     // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list screen.
+    // across every list screen. Tapping the chip edits its filter.
     Widget chip({
       required IconData icon,
       required String label,
       required VoidCallback onDeleted,
+      String? filterKey,
+      VoidCallback? onTap,
     }) =>
-        FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+        FilterChipWidget(
+          icon: icon,
+          label: label,
+          onDeleted: onDeleted,
+          onTap: onTap ??
+              (filterKey == null
+                  ? null
+                  : () => _showFilterSheet(context, focusKey: filterKey)),
+        );
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
@@ -84,12 +96,24 @@ class _JobCardScreenState extends State<JobCardScreen>
           controller.searchQuery.value = '';
           controller.fetchJobCards(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'Job Card',
+          targetRoute: AppRoutes.JOB_CARD_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: () {
+            controller.searchQuery.value = '';
+            controller.fetchJobCards(clear: true);
+          },
+        ),
       ));
     }
     if (controller.activeFilters.containsKey('status')) {
       chips.add(chip(
         icon: Icons.flag_outlined,
         label: 'Status: ${controller.activeFilters['status']}',
+        filterKey: 'status',
         onDeleted: () => controller.removeFilter('status'),
       ));
     }
@@ -100,6 +124,7 @@ class _JobCardScreenState extends State<JobCardScreen>
       chips.add(chip(
         icon: Icons.badge_outlined,
         label: 'Employee: ${controller.assignedEmployeeLabel.value}',
+        filterKey: 'Job Card Time Log',
         onDeleted: () => controller.setAssignedToFilter(null, null),
       ));
     }
@@ -110,6 +135,7 @@ class _JobCardScreenState extends State<JobCardScreen>
       chips.add(chip(
         icon: Icons.person_add_alt_1_outlined,
         label: 'Created By: ${controller.createdByUserLabel.value}',
+        filterKey: 'owner',
         onDeleted: () => controller.setCreatedByFilter(null, null),
       ));
     }
@@ -227,7 +253,8 @@ class _JobCardScreenState extends State<JobCardScreen>
     );
   }
 
-  void _showFilterSheet(BuildContext context) {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet(BuildContext context, {String? focusKey}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -235,7 +262,9 @@ class _JobCardScreenState extends State<JobCardScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => _JobCardFilterSheet(controller: controller),
+      builder: (_) => FilterFocusScope.wrap(
+          _JobCardFilterSheet(controller: controller),
+          focusKey: focusKey),
     );
   }
 }
@@ -481,6 +510,19 @@ class _JobCardFilterSheet extends StatelessWidget {
     );
   }
 
+  void _pickEmployee(BuildContext context) => _openEmployeePicker(
+        context,
+        onSelected: (empId, display) =>
+            controller.setAssignedToFilter(empId, display),
+      );
+
+  void _pickCreatedBy(BuildContext context) => _openUserPicker(
+        context,
+        title: 'Select Created By',
+        onSelected: (userId, display) =>
+            controller.setCreatedByFilter(userId, display),
+      );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -513,7 +555,9 @@ class _JobCardFilterSheet extends StatelessWidget {
             // Status chips (unchanged)
             Text('Status', style: theme.textTheme.labelLarge),
             const SizedBox(height: 8),
-            Obx(() {
+            FilterFocusTarget(
+              filterKey: 'status',
+              child: Obx(() {
               final active = controller.activeFilters['status'] as String?;
               return Wrap(
                 spacing: 8,
@@ -529,19 +573,18 @@ class _JobCardFilterSheet extends StatelessWidget {
                   );
                 }).toList(),
               );
-            }),
+            })),
             const SizedBox(height: 16),
 
             // Assigned Employee (backed by employee child table)
-            Obx(() {
+            FilterFocusTarget(
+              filterKey: 'Job Card Time Log',
+              onActivate: () => _pickEmployee(context),
+              child: Obx(() {
               final label = controller.assignedEmployeeLabel.value;
               return TextFormField(
                 readOnly: true,
-                onTap: () => _openEmployeePicker(
-                  context,
-                  onSelected: (empId, display) =>
-                      controller.setAssignedToFilter(empId, display),
-                ),
+                onTap: () => _pickEmployee(context),
                 decoration: InputDecoration(
                   labelText: 'Assigned Employee',
                   border: const OutlineInputBorder(),
@@ -557,20 +600,18 @@ class _JobCardFilterSheet extends StatelessWidget {
                 ),
                 controller: TextEditingController(text: label),
               );
-            }),
+            })),
             const SizedBox(height: 16),
 
             // Created By (backed by owner)
-            Obx(() {
+            FilterFocusTarget(
+              filterKey: 'owner',
+              onActivate: () => _pickCreatedBy(context),
+              child: Obx(() {
               final label = controller.createdByUserLabel.value;
               return TextFormField(
                 readOnly: true,
-                onTap: () => _openUserPicker(
-                  context,
-                  title: 'Select Created By',
-                  onSelected: (userId, display) =>
-                      controller.setCreatedByFilter(userId, display),
-                ),
+                onTap: () => _pickCreatedBy(context),
                 decoration: InputDecoration(
                   labelText: 'Created By',
                   border: const OutlineInputBorder(),
@@ -586,7 +627,7 @@ class _JobCardFilterSheet extends StatelessWidget {
                 ),
                 controller: TextEditingController(text: label),
               );
-            }),
+            })),
           ],
         ),
       ),

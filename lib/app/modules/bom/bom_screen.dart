@@ -7,6 +7,7 @@ import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/bom/bom_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
@@ -64,8 +65,10 @@ class _BomScreenState extends State<BomScreen> {
       required IconData icon,
       required String label,
       required VoidCallback onDeleted,
+      required VoidCallback onTap,
     }) =>
-        FilterChipWidget(icon: icon, label: label, onDeleted: onDeleted);
+        FilterChipWidget(
+            icon: icon, label: label, onDeleted: onDeleted, onTap: onTap);
 
     if (controller.searchQuery.value.isNotEmpty) {
       chips.add(chip(
@@ -75,6 +78,14 @@ class _BomScreenState extends State<BomScreen> {
           controller.searchQuery.value = '';
           controller.fetchBOMs(clear: true);
         },
+        onTap: () => editListSearch(
+          context,
+          doctype: 'BOM',
+          targetRoute: AppRoutes.BOM_FORM,
+          searchQuery: controller.searchQuery,
+          onSearchChanged: controller.onSearchChanged,
+          onSearchClear: controller.clearFilters,
+        ),
       ));
     }
     if (controller.activeFilters.containsKey('is_active')) {
@@ -82,6 +93,7 @@ class _BomScreenState extends State<BomScreen> {
         icon: Icons.check_circle_outline,
         label: 'Active only',
         onDeleted: () => controller.removeFilter('is_active'),
+        onTap: () => _showFilterSheet(context, focusKey: 'is_active'),
       ));
     }
     if (controller.activeFilters.containsKey('docstatus')) {
@@ -89,6 +101,7 @@ class _BomScreenState extends State<BomScreen> {
         icon: Icons.verified_outlined,
         label: 'Submitted',
         onDeleted: () => controller.removeFilter('docstatus'),
+        onTap: () => _showFilterSheet(context, focusKey: 'docstatus'),
       ));
     }
     return chips;
@@ -215,12 +228,14 @@ class _BomScreenState extends State<BomScreen> {
     );
   }
 
-  void _showFilterSheet(BuildContext context) {
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _showFilterSheet(BuildContext context, {String? focusKey}) {
     // Activate the DataWedge worker before the sheet opens.
     controller.initBarcodeListener();
 
     showReportFilterSheet(
       context:     context,
+      focusKey:    focusKey,
       title:       'BOM Search Filters',
       fields:      [ /* 5 item code fields — unchanged */ ],
       controllers: controller.filterControllers,

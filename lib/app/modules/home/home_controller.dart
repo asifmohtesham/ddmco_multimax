@@ -11,6 +11,8 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/home/rack_scan_logic.dart';
+import 'package:multimax/app/modules/home/rack_contents_logic.dart';
+import 'package:multimax/app/modules/home/widgets/rack_contents_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/modules/home/widgets/pos_upload_scan_sheets.dart';
 import 'package:multimax/app/modules/home/widgets/sales_order_pick_sheet.dart';
@@ -1106,8 +1108,18 @@ class HomeController extends GetxController {
       if (rackItems.isEmpty) {
         GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
       } else {
+        // Item master fields for the whole rack in one request. Still inside
+        // the isRackScanning window, so the scan spinner covers it and the
+        // cards never re-lay-out as details arrive.
+        final itemFields = await _fetchRackItemFields(rackItems);
         Get.bottomSheet(
-          RackContentsSheet(rackId: rackCode, items: rackItems),
+          RackContentsSheet(
+            rackId: rackCode,
+            entries: mergeRackContents(rackItems, itemFields),
+            baseUrl: _apiProvider.baseUrl,
+            itemDetailsFailed: itemFields == null,
+            onItemTap: _openItemFromRack,
+          ),
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
         );
@@ -1119,6 +1131,32 @@ class HomeController extends GetxController {
     } finally {
       isRackScanning.value = false;
     }
+  }
+
+  /// Item master fields for the rack's items, keyed by item code, or null
+  /// when the fetch fails (no read permission on Item, network, odd reply).
+  /// A failure never stops the rack sheet opening; it opens with the report
+  /// data and a quiet note instead.
+  Future<Map<String, Map<String, dynamic>>?> _fetchRackItemFields(
+    List<Map<String, dynamic>> rackItems,
+  ) async {
+    final codes = rackItemCodes(rackItems);
+    if (codes.isEmpty) return const {};
+    try {
+      final response =
+          await _itemProvider.getItemFieldsByCodes(codes, rackItemFields);
+      return itemFieldsByCode(response.data);
+    } catch (e) {
+      debugPrint('Item details for rack items failed: $e');
+      return null;
+    }
+  }
+
+  /// Opens the Item form sheet over the rack sheet, which stays open
+  /// underneath. Ignores a second tap while one item sheet is already up.
+  void _openItemFromRack(String itemCode) {
+    if (Get.isRegistered<ItemFormController>()) return;
+    _openItemDetailSheet(itemCode);
   }
 
   // --- Sales Order → Delivery Note ---

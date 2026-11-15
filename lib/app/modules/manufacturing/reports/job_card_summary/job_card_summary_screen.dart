@@ -59,6 +59,19 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
   // Direct copy of BomSearchScreen._buildFilterChips — same chip style,
   // same controller.activeFilters.forEach loop, same onDeleted callback.
 
+  /// [focusKey] opens the sheet on that filter, ready to edit.
+  void _openFilters(BuildContext context, {String? focusKey}) =>
+      showReportFilterSheet(
+        context: context,
+        focusKey: focusKey,
+        title: 'Job Card Summary Filters',
+        fields: _fields,
+        controllers: controller.filterControllers,
+        onRun: controller.runReport,
+        onClear: controller.clearFilters,
+        sectionLabels: _sectionLabels,
+      );
+
   List<Widget> _buildFilterChips(BuildContext context) {
     // Routes through the shared FilterChipWidget so chip styling stays uniform
     // across every list and report screen.
@@ -68,6 +81,7 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
         icon: Icons.filter_alt_outlined,
         label: label,
         onDeleted: () => controller.clearFilter(key),
+        onTap: () => _openFilters(context, focusKey: key),
       ));
     });
     return chips;
@@ -96,15 +110,7 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
                 activeFilters: controller.activeFilters
                     .map((k, v) => MapEntry(k, v as dynamic))
                     .obs,
-                onFilterTap: () => showReportFilterSheet(
-                  context:       context,
-                  title:         'Job Card Summary Filters',
-                  fields:        _fields,
-                  controllers:   controller.filterControllers,
-                  onRun:         controller.runReport,
-                  onClear:       controller.clearFilters,
-                  sectionLabels: _sectionLabels,
-                ),
+                onFilterTap: () => _openFilters(context),
                 filterChipsBuilder: _buildFilterChips,
                 onClearAllFilters:  controller.clearFilters,
               ),
@@ -135,15 +141,7 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
                           ),
                           const SizedBox(height: 24),
                           FilledButton.tonalIcon(
-                            onPressed: () => showReportFilterSheet(
-                              context:       context,
-                              title:         'Job Card Summary Filters',
-                              fields:        _fields,
-                              controllers:   controller.filterControllers,
-                              onRun:         controller.runReport,
-                              onClear:       controller.clearFilters,
-                              sectionLabels: _sectionLabels,
-                            ),
+                            onPressed: () => _openFilters(context),
                             icon:  const Icon(Icons.filter_alt_outlined),
                             label: const Text('Set Filters'),
                           ),
