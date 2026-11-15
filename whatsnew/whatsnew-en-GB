@@ -1,1 +1,1 @@
-Two new HR reports. Shift Attendance shows each shift's check-in and check-out, hours worked, late arrivals and early exits, and flags a missing punch. Employee Hours Utilisation shows each employee's billed, non-billed and untracked timesheet hours against the period.
+Scanning a rack on the Dashboard works again with the upgraded ERP server: it opens the rack's contents instead of showing an error. If a look-up does fail, the message now says whether the code was not a rack, the server returned an error, or the network was unreachable.
