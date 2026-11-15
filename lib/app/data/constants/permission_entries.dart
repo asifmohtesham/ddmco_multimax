@@ -66,7 +66,8 @@ const List<PermEntry> kSellingPermissions = [
 
 const List<PermEntry> kHrPermissions = [
   (doctype: 'Attendance', permType: 'read'), // Attendance monitor (needs HR User)
-  (doctype: 'Attendance', permType: 'report'), // Monthly Attendance Sheet report
+  (doctype: 'Attendance', permType: 'report'), // Monthly Attendance Sheet + Shift Attendance reports
+  (doctype: 'Timesheet', permType: 'report'), // Employee Hours Utilization Based On Timesheet report
 ];
 
 const List<PermEntry> kAppPermissions = [
