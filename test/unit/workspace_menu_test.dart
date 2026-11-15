@@ -362,6 +362,88 @@ void main() {
     expect(deskBootFromHtml(v16)!.moduleApp, {'accounts': 'erpnext'});
   });
 
+  group('Frappe 16.56 boot data', () {
+    // 16.56 dropped `workspace_sidebar_item` / `module_wise_workspaces` and
+    // un-whitelisted `get_workspaces`; the same data sits in the boot object.
+    final boot = jsonEncode({
+      'user': {
+        'name': 'op@example.com',
+        'roles': ['Stock User', 'Sales User', 'All', 7],
+      },
+      'workspaces': {
+        'pages': [
+          {'name': 'Stock', 'title': 'Stock', 'module': 'Stock', 'public': 1},
+          {'name': 'Hidden', 'title': 'Hidden', 'is_hidden': 1},
+          'not a page',
+        ],
+        'has_access': true,
+      },
+      'module_sidebars': {
+        'Stock': {
+          'label': 'Stock',
+          'app': 'erpnext',
+          'workspaces': ['Stock'],
+          'items': [
+            {'type': 'Link', 'link_type': 'DocType', 'link_to': 'Item'},
+            {'type': 'Section Break', 'label': 'Transactions'},
+            {'type': 'Link', 'link_to': 'Delivery Note', 'child': 1},
+          ],
+        },
+        'Selling': {
+          'label': 'Selling',
+          'app': 'erpnext',
+          'workspaces': ['Selling'],
+          'items': [
+            {'type': 'Link', 'link_to': 'Item'},
+            {'type': 'Link', 'link_to': 'Delivery Note'},
+          ],
+        },
+        'Data': {'label': 'Data', 'app': 'frappe', 'items': []},
+      },
+      'module_app': {'stock': 'erpnext', 'selling': 'erpnext'},
+    });
+    final desk = deskBootFromHtml('<script>frappe.boot = $boot;</script>')!;
+
+    test('workspace pages come from boot.workspaces', () {
+      expect(desk.pages.map((p) => p['name']), ['Stock', 'Hidden']);
+    });
+
+    test('session user and roles come from boot.user', () {
+      expect(desk.userId, 'op@example.com');
+      expect(desk.roles, ['Stock User', 'Sales User', 'All']);
+    });
+
+    test('module_sidebars stand in for the removed sidebar keys', () {
+      expect(desk.sidebars.keys, ['stock', 'selling', 'data']);
+      expect(desk.moduleWorkspaces, {
+        'Stock': ['Stock'],
+        'Selling': ['Selling'],
+      });
+      // Linked from Stock and Selling → the one named like the module.
+      expect(resolveDeskSidebar('Item', 'Stock', desk), 'Stock');
+      expect(sidebarSpot('Stock', 'Delivery Note', desk),
+          (section: 'Transactions', index: 2));
+    });
+
+    test('older boot shapes still win when present', () {
+      final old = jsonEncode({
+        'module_wise_workspaces': {'Stock': ['Stock', 'Extra']},
+        'workspace_sidebar_item': {
+          'stock': {'label': 'Stock', 'items': []},
+        },
+        'module_sidebars': {
+          'Buying': {'label': 'Buying', 'workspaces': ['Buying'], 'items': []},
+        },
+      });
+      final d = deskBootFromHtml('<script>frappe.boot = $old;</script>')!;
+      expect(d.sidebars.keys, ['stock']);
+      expect(d.moduleWorkspaces, {'Stock': ['Stock', 'Extra']});
+      expect(d.pages, isEmpty);
+      expect(d.roles, isEmpty);
+      expect(d.userId, isNull);
+    });
+  });
+
   test('cached menu round-trips and heals against the current catalog', () {
     final menu = buildWorkspaceMenu([
       {'name': 'Stock', 'title': 'Stock', 'module': 'Stock'},

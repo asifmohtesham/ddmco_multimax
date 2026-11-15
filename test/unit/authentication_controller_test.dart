@@ -18,6 +18,7 @@ void main() {
   late FakeApiProvider api;
   late FakeStorageService storage;
   late FakePermissionService permissions;
+  late FakeUserProvider users;
 
   setUpAll(TestWidgetsFlutterBinding.ensureInitialized);
 
@@ -27,7 +28,8 @@ void main() {
     storage = FakeStorageService();
     permissions = FakePermissionService();
     Get.put<ApiProvider>(api);
-    Get.put<UserProvider>(FakeUserProvider());
+    users = FakeUserProvider();
+    Get.put<UserProvider>(users);
     Get.put<StorageService>(storage);
     Get.put<PermissionService>(permissions);
   });
@@ -134,6 +136,76 @@ void main() {
       expect(result, SessionCheck.unverified);
       expect(api.clearCookieCalls, 0);
       expect(auth.isAuthenticated.value, isTrue);
+    });
+  });
+
+  group('fetchUserDetails — roles', () {
+    /// What a user who is not a System Manager gets: the `roles` table is
+    /// permlevel 1, so the User document arrives without it.
+    Map<String, dynamic> userDocumentWithoutRoles() {
+      final doc = userDocument();
+      (doc['data'] as Map<String, dynamic>).remove('roles');
+      return doc;
+    }
+
+    test('v15: get_roles answers, Desk is not consulted', () async {
+      api.onGetUserDetails = (_) async => jsonResponse(userDocumentWithoutRoles());
+      final auth = AuthenticationController();
+
+      await auth.fetchUserDetails();
+
+      expect(auth.currentUser.value?.roles, ['Stock User']);
+      expect(users.deskRoleCalls, 0);
+    });
+
+    test('System Manager: roles on the User document are used as they are',
+        () async {
+      users.onGetUserRoles = (_) async => throw httpError(417);
+      final auth = AuthenticationController();
+
+      await auth.fetchUserDetails();
+
+      expect(auth.currentUser.value?.roles, ['Stock User']);
+      expect(users.deskRoleCalls, 0);
+    });
+
+    test('v16: get_roles is gone, roles come from Desk boot data', () async {
+      api.onGetUserDetails = (_) async => jsonResponse(userDocumentWithoutRoles());
+      users.onGetUserRoles = (_) async => throw httpError(417);
+      users.onGetRolesFromDesk =
+          (id) async => id == kTestEmail ? ['Sales User', 'Stock User - Custom'] : [];
+      final auth = AuthenticationController();
+
+      final result = await auth.fetchUserDetails();
+
+      expect(result, SessionCheck.valid);
+      expect(auth.currentUser.value?.roles, ['Sales User', 'Stock User - Custom']);
+      expect(storage.stored?.roles, ['Sales User', 'Stock User - Custom']);
+    });
+
+    test('no source answers: the roles already known for this user are kept',
+        () async {
+      api.onGetUserDetails = (_) async => jsonResponse(userDocumentWithoutRoles());
+      users.onGetUserRoles = (_) async => throw httpError(417);
+      users.onGetRolesFromDesk = (_) async => throw networkError();
+      final auth = signedInController(); // cached user holds ['Stock User']
+
+      final result = await auth.fetchUserDetails();
+
+      expect(result, SessionCheck.valid);
+      expect(auth.currentUser.value?.roles, ['Stock User']);
+    });
+
+    test('no source answers and nobody was signed in: roles stay unknown',
+        () async {
+      api.onGetUserDetails = (_) async => jsonResponse(userDocumentWithoutRoles());
+      users.onGetUserRoles = (_) async => throw httpError(417);
+      final auth = AuthenticationController();
+
+      final result = await auth.fetchUserDetails();
+
+      expect(result, SessionCheck.valid);
+      expect(auth.currentUser.value?.roles, isEmpty);
     });
   });
 
