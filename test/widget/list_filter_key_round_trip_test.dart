@@ -1,7 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
 import 'package:multimax/app/data/providers/material_request_provider.dart';
@@ -25,6 +26,10 @@ import 'package:multimax/app/modules/packing_slip/widgets/packing_slip_filter_bo
 // Status or date filter showed no chip. Each test drives the real screen and
 // sheet: apply → chip with the right label → tap chip reopens the sheet on
 // that filter with the value shown → × clears it and refetches.
+//
+// Also: the Packing Slip DN / PO chips printed the raw filter
+// ("DN: [like, %x%]"), and the sheet did not read back a plain-string DN
+// (a deep link or "all slips for this DN").
 
 class _QuietMaterialRequestController extends MaterialRequestController {
   int fetches = 0;
@@ -61,6 +66,20 @@ class _QuietPackingSlipController extends PackingSlipController {
   }
 }
 
+/// Answers the sheet's DN / PO pickers with no results instead of the network.
+class _QuietPackingSlipProvider extends PackingSlipProvider {
+  Response _empty() => Response(
+      requestOptions: RequestOptions(path: ''),
+      statusCode: 200,
+      data: {'data': []});
+
+  @override
+  Future<Response> searchDeliveryNotes(String query) async => _empty();
+
+  @override
+  Future<Response> searchPONumbers(String query) async => _empty();
+}
+
 class _StubPermissionService extends PermissionService {
   final Rx<bool?> grant = Rx<bool?>(false);
 
@@ -89,6 +108,14 @@ Future<void> _apply(WidgetTester tester) =>
 Future<void> _closeDatePicker(WidgetTester tester) async {
   final picker = find.byType(DateRangePickerDialog);
   expect(picker, findsOneWidget, reason: 'tapping the date chip opens the picker');
+  Navigator.of(tester.element(picker)).pop();
+  await tester.pumpAndSettle();
+}
+
+/// Closes the search picker a DN / PO chip's tap opens over the sheet.
+Future<void> _closePicker(WidgetTester tester, String title) async {
+  final picker = find.text(title);
+  expect(picker, findsOneWidget, reason: 'tapping the chip opens the picker');
   Navigator.of(tester.element(picker)).pop();
   await tester.pumpAndSettle();
 }
@@ -200,7 +227,7 @@ void main() {
     late _QuietPackingSlipController ctrl;
 
     Future<void> pump(WidgetTester tester) async {
-      Get.put(PackingSlipProvider());
+      Get.put<PackingSlipProvider>(_QuietPackingSlipProvider());
       Get.put(DeliveryNoteProvider());
       Get.put(PosUploadProvider());
       ctrl = Get.put<PackingSlipController>(_QuietPackingSlipController())
@@ -271,6 +298,71 @@ void main() {
       expect(ctrl.activeFilters, isEmpty);
       expect(ctrl.fetches, before + 1);
       expect(_chip(label), findsNothing);
+    });
+
+    testWidgets('a like DN filter: clean chip, reopen on it, remove',
+        (tester) async {
+      await pump(tester);
+      ctrl.activeFilters.value = {
+        'delivery_note': ['like', '%DN-0001%'],
+        'custom_po_no': ['like', '%4500123%'],
+      };
+      await tester.pumpAndSettle();
+
+      expect(_chip('DN: DN-0001'), findsOneWidget);
+      expect(_chip('PO: 4500123'), findsOneWidget);
+      expect(find.textContaining('[like'), findsNothing);
+      // The empty state names the filters the same way.
+      expect(find.text('No slips found for DN: DN-0001 + PO: 4500123.'),
+          findsOneWidget);
+
+      // The chip opens the sheet straight into the DN picker, and the sheet
+      // shows the plain value.
+      await _tap(tester, _chip('DN: DN-0001'));
+      await _closePicker(tester, 'Select Delivery Note');
+      expect(find.byType(PackingSlipFilterBottomSheet), findsOneWidget);
+      expect(find.text('DN-0001'), findsOneWidget);
+      expect(find.text('4500123'), findsOneWidget);
+
+      // Re-applying sends the same keys and operator.
+      await _apply(tester);
+      expect(ctrl.activeFilters, {
+        'delivery_note': ['like', '%DN-0001%'],
+        'custom_po_no': ['like', '%4500123%'],
+      });
+
+      final before = ctrl.fetches;
+      await _removeChip(tester, 'DN: DN-0001');
+      expect(ctrl.activeFilters.keys, ['custom_po_no']);
+      expect(ctrl.fetches, before + 1);
+      expect(_chip('DN: DN-0001'), findsNothing);
+      expect(_chip('PO: 4500123'), findsOneWidget);
+    });
+
+    testWidgets('a plain-string DN deep link: chip, reads back, remove',
+        (tester) async {
+      await pump(tester);
+      ctrl.activeFilters.value = {'delivery_note': 'DN-0001'};
+      await tester.pumpAndSettle();
+
+      expect(_chip('DN: DN-0001'), findsOneWidget);
+      expect(find.text('No slips found for DN: DN-0001.'), findsOneWidget);
+
+      await _tap(tester, _chip('DN: DN-0001'));
+      await _closePicker(tester, 'Select Delivery Note');
+      expect(find.text('DN-0001'), findsOneWidget,
+          reason: 'the sheet reads the plain string back');
+
+      // Apply keeps the filter (it used to drop it), still an exact match.
+      await _apply(tester);
+      expect(ctrl.activeFilters, {'delivery_note': 'DN-0001'});
+      expect(_chip('DN: DN-0001'), findsOneWidget);
+
+      final before = ctrl.fetches;
+      await _removeChip(tester, 'DN: DN-0001');
+      expect(ctrl.activeFilters, isEmpty);
+      expect(ctrl.fetches, before + 1);
+      expect(_chip('DN: DN-0001'), findsNothing);
     });
   });
 }

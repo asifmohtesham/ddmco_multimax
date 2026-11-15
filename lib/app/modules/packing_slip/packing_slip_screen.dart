@@ -90,6 +90,10 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     );
   }
 
+  /// A DN / PO filter's value for display, in either stored form.
+  static String _textFilterLabel(Object? filter) =>
+      PackingSlipFilterBottomSheet.textFilterValue(filter) ?? '$filter';
+
   /// Builds dismissible filter chips for every active filter + search query.
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
@@ -134,7 +138,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       chips.add(_chip(
         context,
         icon: Icons.local_shipping_outlined,
-        label: 'DN: ${filters['delivery_note']}',
+        label: 'DN: ${_textFilterLabel(filters['delivery_note'])}',
         filterKey: 'delivery_note',
         onDeleted: () => controller.removeFilter('delivery_note'),
       ));
@@ -144,7 +148,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       chips.add(_chip(
         context,
         icon: Icons.tag,
-        label: 'PO: ${filters['custom_po_no']}',
+        label: 'PO: ${_textFilterLabel(filters['custom_po_no'])}',
         filterKey: 'custom_po_no',
         onDeleted: () => controller.removeFilter('custom_po_no'),
       ));
@@ -322,10 +326,10 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                         'Status: ${labels[af['docstatus']] ?? af['docstatus']}');
                   }
                   if (af.containsKey('delivery_note')) {
-                    parts.add('DN: ${af['delivery_note']}');
+                    parts.add('DN: ${_textFilterLabel(af['delivery_note'])}');
                   }
                   if (af.containsKey('custom_po_no')) {
-                    parts.add('PO: ${af['custom_po_no']}');
+                    parts.add('PO: ${_textFilterLabel(af['custom_po_no'])}');
                   }
                   if (controller.searchQuery.value.isNotEmpty) {
                     parts.add('Search: "${controller.searchQuery.value}"');

@@ -12,6 +12,18 @@ class PackingSlipFilterBottomSheet extends StatefulWidget {
   /// list screen's chip reads the same map.
   static const docstatusLabels = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
 
+  /// The value a text filter (`delivery_note`, `custom_po_no`) holds, as the
+  /// user would type it: the sheet stores `['like', '%x%']`, while a deep link
+  /// or [PackingSlipController.fetchAllForDeliveryNote] stores a plain `'x'`.
+  /// Null when [filter] is absent or in neither form.
+  static String? textFilterValue(Object? filter) {
+    if (filter is String) return filter;
+    if (filter is List && filter.length == 2 && filter[0] == 'like') {
+      return filter[1].toString().replaceAll(RegExp(r'^%+|%+$'), '');
+    }
+    return null;
+  }
+
   @override
   State<PackingSlipFilterBottomSheet> createState() =>
       _PackingSlipFilterBottomSheetState();
@@ -39,17 +51,11 @@ class _PackingSlipFilterBottomSheetState
 
     final af = _ctrl.activeFilters;
 
-    // Restore Delivery Note
-    final dn = af['delivery_note'];
-    if (dn is List && dn.length == 2 && dn[0] == 'like') {
-      _deliveryNote.value = dn[1].toString().replaceAll('%', '');
-    }
-
-    // Restore PO No
-    final po = af['custom_po_no'];
-    if (po is List && po.length == 2 && po[0] == 'like') {
-      _poNo.value = po[1].toString().replaceAll('%', '');
-    }
+    // Restore Delivery Note / PO No, in either stored form.
+    _deliveryNote.value =
+        PackingSlipFilterBottomSheet.textFilterValue(af['delivery_note']) ?? '';
+    _poNo.value =
+        PackingSlipFilterBottomSheet.textFilterValue(af['custom_po_no']) ?? '';
 
     // Restore Status (applied as `docstatus`; see _apply)
     _status.value = _docstatusLabels[af['docstatus']];
@@ -247,12 +253,19 @@ class _PackingSlipFilterBottomSheetState
   void _apply() {
     final filters = <String, dynamic>{};
 
-    if (_deliveryNote.value.isNotEmpty) {
-      filters['delivery_note'] = ['like', '%${_deliveryNote.value}%'];
+    void text(String key, String value) {
+      if (value.isEmpty) return;
+      // An unchanged value keeps its stored form, so re-applying a deep-linked
+      // exact DN does not widen it to a `like` match.
+      final current = _ctrl.activeFilters[key];
+      filters[key] =
+          PackingSlipFilterBottomSheet.textFilterValue(current) == value
+              ? current
+              : ['like', '%$value%'];
     }
-    if (_poNo.value.isNotEmpty) {
-      filters['custom_po_no'] = ['like', '%${_poNo.value}%'];
-    }
+
+    text('delivery_note', _deliveryNote.value);
+    text('custom_po_no', _poNo.value);
     // Status is sent as docstatus filter since 'status' is virtual.
     // Frappe Packing Slip: Draft=0, Submitted=1, Cancelled=2
     if (_status.value != null) {
