@@ -1,1 +1,1 @@
-Maintenance release. The Android build tools and the background-task library behind scheduled reminders (draft digest and attendance notifications) have been updated. There are no changes to screens or workflows.
+Two new HR reports. Shift Attendance shows each shift's check-in and check-out, hours worked, late arrivals and early exits, and flags a missing punch. Employee Hours Utilisation shows each employee's billed, non-billed and untracked timesheet hours against the period.
