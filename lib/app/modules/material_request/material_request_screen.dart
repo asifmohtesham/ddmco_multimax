@@ -117,13 +117,15 @@ class _MaterialRequestScreenState extends State<MaterialRequestScreen> {
       ));
     }
 
-    if (filters.containsKey('status')) {
+    if (filters.containsKey('docstatus')) {
+      final ds = filters['docstatus'];
       chips.add(_filterChip(
         context,
         icon: Icons.flag_outlined,
-        label: 'Status: ${filters['status']}',
-        filterKey: 'status',
-        onDeleted: () => controller.removeFilter('status'),
+        label:
+            'Status: ${MaterialRequestFilterBottomSheet.docstatusLabels[ds] ?? ds}',
+        filterKey: 'docstatus',
+        onDeleted: () => controller.removeFilter('docstatus'),
       ));
     }
 

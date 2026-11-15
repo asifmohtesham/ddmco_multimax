@@ -8,6 +8,10 @@ import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.d
 class PackingSlipFilterBottomSheet extends StatefulWidget {
   const PackingSlipFilterBottomSheet({super.key});
 
+  /// The `docstatus` values the Status filter offers, with their labels; the
+  /// list screen's chip reads the same map.
+  static const docstatusLabels = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
+
   @override
   State<PackingSlipFilterBottomSheet> createState() =>
       _PackingSlipFilterBottomSheetState();
@@ -16,6 +20,8 @@ class PackingSlipFilterBottomSheet extends StatefulWidget {
 class _PackingSlipFilterBottomSheetState
     extends State<PackingSlipFilterBottomSheet> {
   final PackingSlipController _ctrl = Get.find();
+
+  static const _docstatusLabels = PackingSlipFilterBottomSheet.docstatusLabels;
 
   // Local reactive state — committed only on Apply
   final _deliveryNote = ''.obs;
@@ -45,8 +51,8 @@ class _PackingSlipFilterBottomSheetState
       _poNo.value = po[1].toString().replaceAll('%', '');
     }
 
-    // Restore Status
-    _status.value = af['status'] as String?;
+    // Restore Status (applied as `docstatus`; see _apply)
+    _status.value = _docstatusLabels[af['docstatus']];
 
     // Restore Date Range
     final creation = af['creation'];
@@ -250,8 +256,10 @@ class _PackingSlipFilterBottomSheetState
     // Status is sent as docstatus filter since 'status' is virtual.
     // Frappe Packing Slip: Draft=0, Submitted=1, Cancelled=2
     if (_status.value != null) {
-      final docstatusMap = {'Draft': 0, 'Submitted': 1, 'Cancelled': 2};
-      final ds = docstatusMap[_status.value];
+      final ds = _docstatusLabels.entries
+          .where((e) => e.value == _status.value)
+          .map((e) => e.key)
+          .firstOrNull;
       if (ds != null) filters['docstatus'] = ds;
     }
     if (_startDate.value != null && _endDate.value != null) {
@@ -397,11 +405,10 @@ class _PackingSlipFilterBottomSheetState
             const SizedBox(height: 8),
             FilterFocusTarget(
               filterKey: 'docstatus',
-              alsoMatches: const ['status'],
               child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: ['Draft', 'Submitted', 'Cancelled'].map((s) {
+                children: _docstatusLabels.values.map((s) {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Obx(() => ChoiceChip(
@@ -419,7 +426,6 @@ class _PackingSlipFilterBottomSheetState
             // ── Creation Date Range ──────────────────────────────────────
             FilterFocusTarget(
               filterKey: 'creation',
-              alsoMatches: const ['posting_date'],
               onActivate: _pickDateRange,
               child: TextFormField(
               controller: _dateRangeController,

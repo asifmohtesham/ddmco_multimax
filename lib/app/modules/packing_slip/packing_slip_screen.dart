@@ -119,8 +119,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     }
 
     if (filters.containsKey('docstatus')) {
-      const labels = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
-      final label = labels[filters['docstatus']] ?? '${filters['docstatus']}';
+      final ds = filters['docstatus'];
+      final label = PackingSlipFilterBottomSheet.docstatusLabels[ds] ?? '$ds';
       chips.add(_chip(
         context,
         icon: Icons.flag_outlined,
@@ -150,8 +150,9 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       ));
     }
 
-    if (filters.containsKey('posting_date')) {
-      final f = filters['posting_date'];
+    // Packing Slip has no posting_date: the sheet's range is on `creation`.
+    if (filters.containsKey('creation')) {
+      final f = filters['creation'];
       if (f is List &&
           f.length >= 2 &&
           f[0] == 'between' &&
@@ -162,8 +163,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           context,
           icon: Icons.date_range,
           label: '${dates[0]}  →  ${dates[1]}',
-          filterKey: 'posting_date',
-          onDeleted: () => controller.removeFilter('posting_date'),
+          filterKey: 'creation',
+          onDeleted: () => controller.removeFilter('creation'),
         ));
       }
     }
@@ -316,11 +317,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                   final parts = <String>[];
                   final af = controller.activeFilters;
                   if (af.containsKey('docstatus')) {
-                    const labels = {
-                      0: 'Draft',
-                      1: 'Submitted',
-                      2: 'Cancelled'
-                    };
+                    const labels = PackingSlipFilterBottomSheet.docstatusLabels;
                     parts.add(
                         'Status: ${labels[af['docstatus']] ?? af['docstatus']}');
                   }

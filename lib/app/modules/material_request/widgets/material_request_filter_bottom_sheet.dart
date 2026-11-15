@@ -12,10 +12,14 @@ import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.d
 ///   • Uses [GlobalFilterBottomSheet] shell (Sort + Filter header, sticky Apply)
 ///   • Status via docstatus ChoiceChips (Draft/Submitted/Cancelled)
 ///   • Request Type ChoiceChips
-///   • Date Range picker
+///   • Date Range picker (on `transaction_date`)
 ///   • Owner text field + user picker sheet
 class MaterialRequestFilterBottomSheet extends StatefulWidget {
   const MaterialRequestFilterBottomSheet({super.key});
+
+  /// The `docstatus` values the Status filter offers, with their labels; the
+  /// list screen's chip reads the same map.
+  static const docstatusLabels = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
 
   @override
   State<MaterialRequestFilterBottomSheet> createState() =>
@@ -53,19 +57,22 @@ class _MaterialRequestFilterBottomSheetState
     dateRangeController = TextEditingController();
     owner.value = initialOwner;
 
-    selectedDocstatus.value = controller.activeFilters['docstatus'];
+    final docstatus = controller.activeFilters['docstatus'];
+    selectedDocstatus.value = docstatus is int ? docstatus : null;
     selectedType.value =
         controller.activeFilters['material_request_type']?.toString();
 
-    if (controller.activeFilters.containsKey('creation') &&
-        controller.activeFilters['creation'] is List &&
-        controller.activeFilters['creation'][0] == 'between') {
-      final dates = controller.activeFilters['creation'][1] as List;
+    final range = controller.activeFilters['transaction_date'];
+    if (range is List &&
+        range.length >= 2 &&
+        range[0] == 'between' &&
+        range[1] is List) {
+      final dates = range[1] as List;
       if (dates.length >= 2) {
         dateRangeController.text = '${dates[0]} - ${dates[1]}';
         try {
-          startDate.value = DateTime.parse(dates[0]);
-          endDate.value = DateTime.parse(dates[1]);
+          startDate.value = DateTime.parse(dates[0].toString());
+          endDate.value = DateTime.parse(dates[1].toString());
         } catch (_) {}
       }
     }
@@ -229,8 +236,9 @@ class _MaterialRequestFilterBottomSheetState
     if (ownerController.text.isNotEmpty) {
       filters['owner'] = ownerController.text;
     }
+    // The document's own date (what each list row shows), not `creation`.
     if (startDate.value != null && endDate.value != null) {
-      filters['creation'] = [
+      filters['transaction_date'] = [
         'between',
         [
           DateFormat('yyyy-MM-dd').format(startDate.value!),
@@ -271,8 +279,7 @@ class _MaterialRequestFilterBottomSheetState
           filterWidgets: [
             // ── Status ─────────────────────────────────────────────────────────
             FilterFocusTarget(
-              filterKey: 'status',
-              alsoMatches: const ['docstatus'],
+              filterKey: 'docstatus',
               child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -283,11 +290,8 @@ class _MaterialRequestFilterBottomSheetState
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      for (final entry in {
-                        0: 'Draft',
-                        1: 'Submitted',
-                        2: 'Cancelled'
-                      }.entries)
+                      for (final entry in MaterialRequestFilterBottomSheet
+                          .docstatusLabels.entries)
                         Padding(
                           padding: const EdgeInsets.only(right: 8.0),
                           child: ChoiceChip(
@@ -339,8 +343,7 @@ class _MaterialRequestFilterBottomSheetState
 
             // ── Date Range ──────────────────────────────────────────────────
             FilterFocusTarget(
-              filterKey: 'creation',
-              alsoMatches: const ['transaction_date'],
+              filterKey: 'transaction_date',
               onActivate: _pickDateRange,
               child: TextFormField(
               controller: dateRangeController,
