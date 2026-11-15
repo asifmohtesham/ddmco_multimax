@@ -21,6 +21,10 @@ import 'package:multimax/app/modules/hr/attendance/month/attendance_month_bindin
 import 'package:multimax/app/modules/hr/attendance/month/attendance_month_screen.dart';
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_binding.dart';
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_screen.dart';
+import 'package:multimax/app/modules/hr/reports/shift_attendance/shift_attendance_binding.dart';
+import 'package:multimax/app/modules/hr/reports/shift_attendance/shift_attendance_screen.dart';
+import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_binding.dart';
+import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_screen.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_binding.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 import 'package:multimax/app/modules/material_request/form/material_request_form_binding.dart';
@@ -314,6 +318,18 @@ class AppPages {
       name: AppRoutes.MONTHLY_ATTENDANCE_SHEET,
       page: () => const MonthlyAttendanceSheetScreen(),
       binding: MonthlyAttendanceSheetBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.SHIFT_ATTENDANCE,
+      page: () => const ShiftAttendanceScreen(),
+      binding: ShiftAttendanceBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name: AppRoutes.EMPLOYEE_HOURS_UTILIZATION,
+      page: () => const EmployeeHoursUtilizationScreen(),
+      binding: EmployeeHoursUtilizationBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

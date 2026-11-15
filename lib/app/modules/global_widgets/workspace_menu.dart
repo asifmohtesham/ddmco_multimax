@@ -156,6 +156,8 @@ final List<NavLink> kNavCatalog = [
   // ── HR ──
   NavLink('DocType', 'Attendance', 'Attendance', Icons.how_to_reg_rounded, AppRoutes.ATTENDANCE, _r('Attendance'), 'HR'),
   NavLink('Report', 'Monthly Attendance Sheet', 'Monthly Attendance Sheet', Icons.calendar_month_rounded, AppRoutes.MONTHLY_ATTENDANCE_SHEET, _rep('Attendance'), 'HR', 'Reports'),
+  NavLink('Report', 'Shift Attendance', 'Shift Attendance', Icons.schedule_rounded, AppRoutes.SHIFT_ATTENDANCE, _rep('Attendance'), 'HR', 'Reports'),
+  NavLink('Report', 'Employee Hours Utilization Based On Timesheet', 'Employee Hours Utilisation', Icons.timelapse_rounded, AppRoutes.EMPLOYEE_HOURS_UTILIZATION, _rep('Timesheet'), 'HR', 'Reports'),
 
   // ── Search-only (not shown in drawer) ──
   NavLink('DocType', 'ToDo', 'ToDo', Icons.check_circle_outline, AppRoutes.TODO, _r('ToDo'), 'Tools',
