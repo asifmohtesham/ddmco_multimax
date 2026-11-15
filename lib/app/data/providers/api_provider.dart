@@ -179,6 +179,7 @@ class ApiProvider {
     _baseUrl = url;
     _stockBalanceUsesListFilters = null;
     _erpNextVersion = null;
+    clearDeskHtml();
     if (_dioInitialised) {
       _dio.options.baseUrl = _baseUrl;
     }
@@ -2227,6 +2228,7 @@ class ApiProvider {
   Future<Response> createPurchaseOrder(Map<String, dynamic> data) async => createDocument('Purchase Order', data);
   Future<Response> updatePurchaseOrder(String name, Map<String, dynamic> data) async => updateDocument('Purchase Order', name, data);
   Future<Response> login(String email, String password) async {
+    clearDeskHtml();
     if (!_dioInitialised) await _initDio();
     try {
       final response = await _dio.post('/api/method/login', data: {'usr': email, 'pwd': password}, options: SessionExpiryInterceptor.unchecked());
@@ -2240,6 +2242,7 @@ class ApiProvider {
     }
   }
   Future<Response> loginWithFrappe(String username, String password) async {
+    clearDeskHtml();
     if (!_dioInitialised) await _initDio();
     try {
       final formData = FormData.fromMap({'usr': username, 'pwd': password});
@@ -2248,12 +2251,70 @@ class ApiProvider {
       rethrow;
     }
   }
+  // ── Desk boot page ────────────────────────────────────────────────────────
+  /// How long a downloaded Desk page is reused.
+  static const deskHtmlLifetime = Duration(minutes: 2);
+  static final _deskBootMarker = RegExp(r'frappe\.boot\s*=');
+
+  Future<String?>? _deskHtml;
+  DateTime? _deskHtmlAt;
+
+  /// The page Desk serves, which embeds `frappe.boot`: the session user's
+  /// workspaces, sidebars and roles. v16 serves it at /desk (its /app only
+  /// redirects there); v15 at /app. `null` when neither carries boot data
+  /// (signed out, offline).
+  ///
+  /// The page is about half a megabyte and is wanted by several callers
+  /// right after sign-in, so concurrent calls share one download and the
+  /// result is reused for [deskHtmlLifetime]. A failed read is not kept.
+  Future<String?> getDeskHtml() {
+    final cached = _deskHtml;
+    final at = _deskHtmlAt;
+    if (cached != null &&
+        at != null &&
+        DateTime.now().difference(at) < deskHtmlLifetime) {
+      return cached;
+    }
+    late final Future<String?> request;
+    request = _fetchDeskHtml().then((html) {
+      if (html == null && identical(_deskHtml, request)) clearDeskHtml();
+      return html;
+    });
+    _deskHtmlAt = DateTime.now();
+    return _deskHtml = request;
+  }
+
+  /// Forgets the reused Desk page: it belongs to one session on one server.
+  void clearDeskHtml() {
+    _deskHtml = null;
+    _deskHtmlAt = null;
+  }
+
+  Future<String?> _fetchDeskHtml() async {
+    if (!_dioInitialised) await _initDio();
+    for (final path in const ['/desk', '/app']) {
+      try {
+        final r = await _dio.get<String>(
+          path,
+          options: Options(
+              responseType: ResponseType.plain, followRedirects: false),
+        );
+        final html = r.data;
+        if (html != null && _deskBootMarker.hasMatch(html)) return html;
+      } catch (_) {
+        // Wrong path for this version, or not reachable: try the next.
+      }
+    }
+    return null;
+  }
+
   Future<bool> hasSessionCookies() async {
     if (!_dioInitialised) await _initDio();
     final cookies = await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
     return cookies.any((cookie) => cookie.name == 'sid');
   }
   Future<void> clearSessionCookies() async {
+    clearDeskHtml();
     if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
   }

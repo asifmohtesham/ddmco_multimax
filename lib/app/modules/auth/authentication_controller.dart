@@ -118,28 +118,12 @@ class AuthenticationController extends GetxController {
       }
       var user = User.fromJson(userDetailsResponse.data['data']);
 
-      // --- ROLE FETCHING FIX ---
-      // The `roles` table is permlevel 1, so it is empty here unless the
-      // user is a System Manager. The endpoint below fills it in on
-      // Frappe v15; it was removed in v16, where the roles of other
-      // users stay empty and PermissionService asks the server instead.
+      // The `roles` table is permlevel 1, so the document above carries it
+      // only for a System Manager. Everyone else is filled in here.
       if (user.roles.isEmpty) {
-        try {
-          final rolesResponse =
-              await _userProvider.getUserRoles(user.id);
-          if (rolesResponse.statusCode == 200 &&
-              rolesResponse.data['message'] != null) {
-            final roleList =
-                List<String>.from(rolesResponse.data['message']);
-            if (roleList.isNotEmpty) {
-              user = user.copyWith(roles: roleList);
-            }
-          }
-        } catch (e) {
-          print('Failed to fetch roles manually: $e');
-        }
+        final roles = await _rolesOf(user.id);
+        if (roles.isNotEmpty) user = user.copyWith(roles: roles);
       }
-      // -------------------------
 
       // --- LINK EMPLOYEE DOCUMENT ---
       try {
@@ -190,6 +174,34 @@ class AuthenticationController extends GetxController {
       printError(info: 'Failed to fetch user details: $e');
       return SessionCheck.unverified;
     }
+  }
+
+  /// The roles of [userId] when the User document did not carry them.
+  ///
+  /// Frappe v15 answers `get_roles`; v16 removed it, and there the roles are
+  /// read from Desk's boot data. If neither answers (offline, a server
+  /// hiccup) the roles already known for this same user are kept, so a
+  /// refresh never strips role-dependent features from a signed-in user.
+  /// Empty when nothing is known: [PermissionService] then asks the server
+  /// per permission instead.
+  Future<List<String>> _rolesOf(String userId) async {
+    try {
+      final response = await _userProvider.getUserRoles(userId);
+      final message = response.statusCode == 200 ? response.data['message'] : null;
+      if (message is List && message.isNotEmpty) {
+        return List<String>.from(message);
+      }
+    } catch (_) {
+      // Not available on this server (v16) or not reachable: try Desk.
+    }
+    try {
+      final roles = await _userProvider.getRolesFromDesk(userId);
+      if (roles.isNotEmpty) return roles;
+    } catch (e) {
+      printError(info: 'Could not read roles from Desk: $e');
+    }
+    final known = currentUser.value;
+    return known != null && known.id == userId ? known.roles : const [];
   }
 
   Future<void> checkAuthenticationStatus() async {
