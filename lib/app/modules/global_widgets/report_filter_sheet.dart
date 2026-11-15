@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/link_title_cache.dart';
 
 // ---------------------------------------------------------------------------
 // ReportFilterField descriptor
@@ -94,6 +96,12 @@ class ReportFilterField {
   /// other operators.  Ignored for all non-[ReportFilterType.doctypeLink] types.
   final Map<String, dynamic>? linkFilters;
 
+  /// For a [ReportFilterType.doctypeLink] whose `name` is an opaque ID, the
+  /// field holding its human title (Employee → `'employee_name'`). The picker
+  /// then lists and searches by title with the ID beneath, and the field shows
+  /// the title; the controller — and the report filter — still hold the ID.
+  final String? linkTitleField;
+
   const ReportFilterField({
     required this.key,
     required this.label,
@@ -104,6 +112,7 @@ class ReportFilterField {
     this.focusNode,
     this.linkDoctype,
     this.linkFilters,
+    this.linkTitleField,
   });
 }
 
@@ -497,20 +506,55 @@ class _FieldWidgetState extends State<_FieldWidget> {
 
   FocusNode? get _focusNode => widget.field.focusNode ?? _ownFocus;
 
+  /// What a title-backed link field shows (the title); the real controller
+  /// keeps the ID the report is filtered by.
+  TextEditingController? _display;
+
+  bool get _hasTitle =>
+      widget.field.type == ReportFilterType.doctypeLink &&
+      (widget.field.linkTitleField?.isNotEmpty ?? false) &&
+      (widget.field.linkDoctype?.isNotEmpty ?? false);
+
   @override
   void initState() {
     super.initState();
     _hasText = widget.controller.text.isNotEmpty;
     widget.controller.addListener(_onTextChanged);
+    if (_hasTitle) {
+      _display = TextEditingController();
+      _syncDisplay();
+    }
     if (widget.activate) {
       if (widget.field.focusNode == null) _ownFocus = FocusNode();
       WidgetsBinding.instance.addPostFrameCallback((_) => _activate());
     }
   }
 
+  /// Shows the remembered title for the current ID, or the ID while its
+  /// title is looked up.
+  void _syncDisplay() {
+    final display = _display;
+    if (display == null) return;
+    final id = widget.controller.text.trim();
+    final doctype = widget.field.linkDoctype!;
+    final title = id.isEmpty ? null : LinkTitleCache.peek(doctype, id);
+    display.text = title ?? id;
+    if (id.isEmpty || title != null) return;
+    final api = Get.isRegistered<ApiProvider>()
+        ? Get.find<ApiProvider>()
+        : ApiProvider();
+    LinkTitleCache.resolve(doctype, widget.field.linkTitleField!, id, api)
+        .then((resolved) {
+      if (!mounted || resolved == null) return;
+      if (widget.controller.text.trim() != id) return;
+      setState(() => display.text = resolved); // helper text shows the ID now
+    });
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_onTextChanged);
+    _display?.dispose();
     _ownFocus?.dispose();
     super.dispose();
   }
@@ -538,6 +582,7 @@ class _FieldWidgetState extends State<_FieldWidget> {
   }
 
   void _onTextChanged() {
+    _syncDisplay();
     final nowHasText = widget.controller.text.isNotEmpty;
     // Multi-link chips are derived from the full text, so every change repaints.
     if (nowHasText != _hasText ||
@@ -644,14 +689,19 @@ class _FieldWidgetState extends State<_FieldWidget> {
     // ── doctypeLink ────────────────────────────────────────────────────────
     // Read-only tap-to-pick field. Opens _DoctypeLinkSheet.
     if (field.type == ReportFilterType.doctypeLink) {
+      final id = controller.text.trim();
+      final showingTitle =
+          _display != null && id.isNotEmpty && _display!.text != id;
       return TextField(
-        controller: controller,
+        controller: _display ?? controller,
         focusNode:  field.focusNode,
         readOnly:   true,
         onTap: () => _openDoctypeSheet(context, field, controller),
         decoration: InputDecoration(
           labelText:  field.label,
           hintText:   field.hint ?? 'Tap to select',
+          // The ID the report is filtered by, under the name it belongs to.
+          helperText: showingTitle ? id : null,
           border:     const OutlineInputBorder(),
           prefixIcon: Icon(field.prefixIcon ?? Icons.list_alt_outlined),
           suffixIcon: _hasText
@@ -726,6 +776,7 @@ class _FieldWidgetState extends State<_FieldWidget> {
         doctype:  doctype,
         title:    field.label,
         filters:  field.linkFilters,
+        titleField: field.linkTitleField,
       ),
     );
 
@@ -826,10 +877,14 @@ class _DoctypeLinkSheet extends StatefulWidget {
   final String                  title;
   final Map<String, dynamic>?   filters;
 
+  /// See [ReportFilterField.linkTitleField].
+  final String?                 titleField;
+
   const _DoctypeLinkSheet({
     required this.doctype,
     required this.title,
     this.filters,
+    this.titleField,
   });
 
   @override
@@ -839,10 +894,13 @@ class _DoctypeLinkSheet extends StatefulWidget {
 class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
   final _searchCtrl  = TextEditingController();
   final _searchFocus = FocusNode();
-  final _apiProvider = ApiProvider();
+  // The app's shared provider (session cookies, base URL) when registered.
+  final _apiProvider = Get.isRegistered<ApiProvider>()
+      ? Get.find<ApiProvider>()
+      : ApiProvider();
   Timer? _debounce;
 
-  List<String> _items   = [];
+  List<LinkOption> _items = [];
   bool         _loading = true;
   String?      _errorMsg;
 
@@ -879,15 +937,27 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
     try {
       // Shared link-option fetch: adds the doctype's active-record filter
       // (disabled = 0 / enabled = 1) so disabled records never show here.
-      final names = await _apiProvider.searchLinkOptions(
-        widget.doctype,
-        query:   q,
-        filters: widget.filters,
-        limit:   50,
-      );
+      final titleField = widget.titleField;
+      final options = titleField == null || titleField.isEmpty
+          ? [
+              for (final name in await _apiProvider.searchLinkOptions(
+                widget.doctype,
+                query:   q,
+                filters: widget.filters,
+                limit:   50,
+              ))
+                LinkOption(name: name, title: ''),
+            ]
+          : await _apiProvider.searchLinkOptionsWithTitle(
+              widget.doctype,
+              titleField: titleField,
+              query:      q,
+              filters:    widget.filters,
+              limit:      50,
+            );
       if (mounted) {
         setState(() {
-          _items   = names;
+          _items   = options;
           _loading = false;
         });
       }
@@ -979,7 +1049,9 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                   focusNode:  _searchFocus,
                   autofocus:  true,
                   decoration: InputDecoration(
-                    hintText:    'Search ${widget.doctype}…',
+                    hintText:    (widget.titleField?.isNotEmpty ?? false)
+                        ? 'Search ${widget.doctype} by name or ID…'
+                        : 'Search ${widget.doctype}…',
                     prefixIcon:  const Icon(Icons.search, size: 20),
                     border:      const OutlineInputBorder(),
                     isDense:     true,
@@ -1013,19 +1085,29 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                                   style: TextStyle(color: cs.onSurfaceVariant),
                                 ),
                               )
-                            : ListView.builder(
+                            // ListTile inks on the nearest Material; without
+                            // this the sheet's coloured box hides the ripple.
+                            : Material(
+                                type: MaterialType.transparency,
+                                child: ListView.builder(
                                 controller: scrollCtrl,
                                 itemCount:  _items.length,
                                 itemBuilder: (_, i) {
-                                  final name = _items[i];
+                                  final option = _items[i];
                                   return ListTile(
                                     dense:    true,
-                                    title:    Text(name),
-                                    onTap:    () => Navigator.of(ctx).pop(name),
+                                    title:    Text(option.display),
+                                    // The ID under the name it belongs to.
+                                    subtitle: option.hasDistinctTitle
+                                        ? Text(option.name)
+                                        : null,
+                                    onTap:    () =>
+                                        Navigator.of(ctx).pop(option.name),
                                     trailing: const Icon(
                                         Icons.chevron_right, size: 18),
                                   );
                                 },
+                              ),
                               ),
               ),
             ],

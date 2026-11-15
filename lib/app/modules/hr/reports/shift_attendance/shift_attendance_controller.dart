@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
@@ -139,6 +140,7 @@ class ShiftAttendanceController extends GetxController {
       type: ReportFilterType.doctypeLink,
       prefixIcon: Icons.badge_outlined,
       linkDoctype: 'Employee',
+      linkTitleField: 'employee_name',
     ),
     ReportFilterField(
       key: 'shift',
@@ -315,9 +317,13 @@ class ShiftAttendanceController extends GetxController {
   /// a chip only when switched off — on is the default.
   void _rebuildActiveFilters() {
     activeFilters.clear();
+    _resolveEmployeeTitle();
     _filterLabels.forEach((key, label) {
       final value = filterControllers[key]?.text.trim() ?? '';
-      if (value.isNotEmpty) activeFilters[key] = '$label: $value';
+      if (value.isEmpty) return;
+      activeFilters[key] = key == 'employee'
+          ? '$label: ${linkChipValue('Employee', value)}'
+          : '$label: $value';
     });
     if (_on(lateEntryController)) activeFilters['late_entry'] = 'Late entry';
     if (_on(earlyExitController)) activeFilters['early_exit'] = 'Early exit';
@@ -328,5 +334,18 @@ class ShiftAttendanceController extends GetxController {
       activeFilters['include_attendance_without_checkins'] =
           'Incl. without check-ins';
     }
+  }
+
+  /// An employee set without the picker (e.g. kept from an earlier run) has
+  /// no remembered name yet: look it up once, then relabel the chip.
+  void _resolveEmployeeTitle() {
+    final id = employeeController.text.trim();
+    if (id.isEmpty || LinkTitleCache.peek('Employee', id) != null) return;
+    LinkTitleCache.resolve('Employee', 'employee_name', id, _api).then((title) {
+      if (title == null || isClosed) return;
+      if (employeeController.text.trim() == id) {
+        activeFilters['employee'] = 'Employee: $title';
+      }
+    });
   }
 }

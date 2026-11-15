@@ -1,7 +1,8 @@
 # ERPNext / Frappe v16 Compatibility Audit
 
 **Date:** 15 November 2026
-**App:** `release/play-store` at 2.34.1+112
+**App:** audited at 2.34.1+112; amended on the same day for 2.35.1+115 (finding N4,
+which the audit missed)
 **Server audited:** the production instance, migrated to v16 on 14 November 2026
 
 | App | Version on the server | Upstream tag read |
@@ -29,6 +30,17 @@ minor releases further on, and nothing in it had been run against a server.
 5. Diff v15 against v16 for each report, method and DocType the app depends on.
 6. Smoke-test the fixes on a device against the live server.
 
+Two shortcuts in how steps 2 and 4 were first carried out let finding N4 through;
+do not repeat them:
+
+- **Look at every row of a report result, not the first.** The shape of each
+  result was judged from its first row. A report with a total row returns keyed
+  rows followed by one positional row.
+- **Follow each provider method to all of its callers.** Calls were traced from
+  `ApiProvider` outwards. The rack scan reaches the server through
+  `ItemProvider.getWarehouseStock` and parses the reply in `HomeController`,
+  which was never read.
+
 Everything in steps 1–5 was read-only. No document was created or changed on
 the server.
 
@@ -42,12 +54,13 @@ the server.
 | B1–B6 | Breaking | Job Card, pickers, permissions, Sales Order, navigation | Found in the September audit | Fixed in 2.26.0 |
 | — | Breaking | Writes | v16 enforces CSRF on cookie-session writes | Fixed in 2.29.0 |
 | — | Breaking | Stock Balance | `item_code` must be a list on every v16 | Fixed in 2.30.0 |
+| N4 | Functional | Dashboard rack scan | The Stock Balance result ends with a positional total row; the scan read it as a keyed row and always failed | Fixed in 2.35.1; missed by the audit |
 | P1 | Pre-existing | Lists | Child-table lists without a parent are refused on v15 and v16 | Open |
 | P3 | Pre-existing | Search | `SearchProvider.getBootData` calls `frappe.boot`, a module, not a method | Open |
 
 **Minimum app version for a v16 server: 2.30.0.** Below 2.26.0 Job Card timers
 and Sales Order pricing fail; below 2.29.0 writes are rejected; below 2.30.0 the
-rack picker returns nothing. 2.34.1 is needed for N1–N3.
+rack picker returns nothing. 2.34.1 is needed for N1–N3 and 2.35.1 for N4.
 
 ## Findings fixed in 2.34.1
 
@@ -113,6 +126,49 @@ UOMs) is omitted. The image gallery and the item-detail lookup skip template
 rows. `item_group` and `stock_uom` are shown as chips like any other report
 column.
 
+## Finding fixed in 2.35.1
+
+### N4 — Dashboard rack scan and the Stock Balance total row
+
+Scanning a rack on the Dashboard always ended in "Invalid Rack QR or Network
+Error" on the audited server.
+
+The Stock Balance report has `add_total_row` set, so `message.result` is the
+keyed rows followed by one positional list:
+
+```
+[{"item_code": "…", "rack": "…", "bal_qty": 36, …}, …, ["Total", "", "", …]]
+```
+
+`HomeController` read `row['rack']` on every entry. On the list that throws,
+and a catch-all turned the error into the generic message.
+
+Whether this is new in v16 is **not established**. Upstream declares
+`add_total_row` for Stock Balance on `version-15` as well as on 16.55, and
+`frappe.desk.query_report.run` appends the row on both. The v15 site could not
+be examined after the migration, so it is unknown whether the scan worked there.
+The fix does not depend on the answer.
+
+**Fix** (`lib/app/modules/home/rack_scan_logic.dart`, commit `56239975`):
+
+- `rackRowsFromStockBalance` keeps only keyed rows, so the total row and any
+  other non-map entry are skipped. The rack match is still applied on the
+  client.
+- The request now passes the rack as the `rack` inventory-dimension filter
+  (`ItemProvider.getWarehouseStock(warehouse, rack: …)`), a list on v15 and
+  v16, so the reply is the one rack and not the whole warehouse.
+- A failure is reported as what it is: a code that is not a rack code, a server
+  error with its status and text, a network failure, or an unrecognised reply.
+
+The fix was checked against live replies from the audited server by the session
+that wrote it. It has not been confirmed on a device as part of this audit.
+
+**Was anything else exposed?** After N4 was found, every place that reads a
+report's `message.result` was re-read (18 other sites, in `ApiProvider`, the
+Item screens and the report controllers). All of them keep only keyed rows, or handle
+positional rows explicitly. The Dashboard rack scan was the only one that did
+not.
+
 ## How both versions are served
 
 No fix depends on knowing the server version. Each one either uses a form both
@@ -130,6 +186,7 @@ servers accept or detects the capability from what the server answers.
 | `AppNavDrawerController._fetchPages` | Endpoints first, boot data when they refuse |
 | `AuthenticationController._rolesOf` | User document, then `get_roles`, then boot data, then the roles already known |
 | `isTemplateRow` | A v15 row has no `indent` and is always a variant |
+| `rackRowsFromStockBalance` | Keeps keyed rows only; a total row is skipped wherever it appears |
 
 ## Verified on the live server
 
@@ -139,7 +196,9 @@ servers accept or detects the capability from what the server answers.
   Stock Ledger, Item Variant Details, BOM Search, Job Card Summary, Stock
   Ageing - Custom (default and filtered), BOM Stock with Customer Code, POS and
   Delivery Note Item Rate, and Monthly Attendance Sheet all run and return the
-  columns the app reads.
+  columns the app reads. This check looked at columns and at the first row of
+  each result; it did not catch that a result with a total row ends in a
+  positional row (N4).
 - **Read-only methods:** `get_item_details` (with `args` and `ctx`),
   `get_party_details`, `get_stock_reservation_status`, `has_permission` with and
   without a document name, `get_count` with dict and tuple filters,
@@ -229,7 +288,8 @@ from the User document and bypass the fallbacks.
 2. Open the profile: the role list is filled in.
 3. Open a POS Upload: the Status field is enabled for a user with level-1 write.
 4. Run Item Variant Details for a template: one heading, then its variants.
-5. Stock Entry, Delivery Note, Packing Slip and Purchase Receipt: save and
+5. Scan a rack on the Dashboard: the rack's contents open.
+6. Stock Entry, Delivery Note, Packing Slip and Purchase Receipt: save and
    submit one of each.
-6. Job Card: start, pause with a quantity, resume, complete, submit.
-7. Sales Order: add an item and confirm the rate and UOM are filled in.
+7. Job Card: start, pause with a quantity, resume, complete, submit.
+8. Sales Order: add an item and confirm the rate and UOM are filled in.

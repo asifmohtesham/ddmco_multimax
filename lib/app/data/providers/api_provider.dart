@@ -15,6 +15,7 @@ import 'package:multimax/app/data/services/database_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 class ApiProvider {
@@ -1894,6 +1895,39 @@ class ApiProvider {
         .where((s) => s.isNotEmpty)
         .toSet()
         .toList();
+  }
+
+  /// Like [searchLinkOptions], but for a DocType whose `name` is an opaque ID:
+  /// also reads [titleField] (Employee → `employee_name`), matches [query]
+  /// against the ID **or** the title, and orders by title.
+  Future<List<LinkOption>> searchLinkOptionsWithTitle(
+    String doctype, {
+    required String titleField,
+    String query = '',
+    int limit = 20,
+    Map<String, dynamic>? filters,
+  }) async {
+    final q = query.trim();
+    final response = await getDocumentList(
+      doctype,
+      fields: ['name', titleField],
+      filters: {
+        ...await activeRecordFilter(doctype),
+        ...?filters,
+      },
+      orFilters: q.isEmpty
+          ? null
+          : {
+              'name': ['like', '%$q%'],
+              titleField: ['like', '%$q%'],
+            },
+      limit: limit,
+      orderBy: '$titleField asc',
+    );
+    final data = response.data is Map ? response.data['data'] : null;
+    final options = parseLinkOptions(data, titleField);
+    LinkTitleCache.remember(doctype, options);
+    return options;
   }
 
   /// All Warehouse names (the warehouse list is small enough to prefetch and

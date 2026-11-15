@@ -1,1 +1,1 @@
-Two new HR reports. Shift Attendance shows each shift's check-in and check-out, hours worked, late arrivals and early exits, and flags a missing punch. Employee Hours Utilisation shows each employee's billed, non-billed and untracked timesheet hours against the period.
+HR reports: the Employee filter now lists, searches and shows employees by name, with the employee ID underneath, in Shift Attendance, Employee Hours Utilisation and the Monthly Attendance Sheet.
