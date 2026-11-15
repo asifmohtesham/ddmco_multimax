@@ -120,7 +120,12 @@ class ItemProvider {
     });
   }
 
-  Future<Response> getWarehouseStock(String warehouse) async {
+  /// Stock Balance for [warehouse], split per rack.
+  ///
+  /// [rack] narrows the report to one rack server-side (the `rack` inventory
+  /// dimension filter, a list on both v15 and v16). On production a whole
+  /// warehouse is ~1.8 MB / 4.5 s; one rack is ~10 KB / 1.3 s.
+  Future<Response> getWarehouseStock(String warehouse, {String? rack}) async {
     final storage = Get.find<StorageService>();
     final company = storage.getCompany();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -130,6 +135,7 @@ class ItemProvider {
       "from_date": today,
       "to_date": today,
       "warehouse": warehouse,
+      if (rack != null && rack.isNotEmpty) "rack": [rack],
       "valuation_field_type": "Currency",
       "show_variant_attributes": 1,
       "show_dimension_wise_stock": 1,

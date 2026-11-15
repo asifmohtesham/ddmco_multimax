@@ -10,6 +10,8 @@ import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
+import 'package:multimax/app/modules/home/rack_scan_logic.dart';
+import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/modules/home/widgets/pos_upload_scan_sheets.dart';
 import 'package:multimax/app/modules/home/widgets/sales_order_pick_sheet.dart';
 import 'package:multimax/app/modules/delivery_note/so_delivery_launcher.dart';
@@ -1086,34 +1088,34 @@ class HomeController extends GetxController {
     isRackScanning.value = true;
     barcodeController.clear();
     try {
-      final parts = rackCode.split('-');
-      if (parts.length < 3) throw Exception('Invalid Rack Format');
-      final String warehouse = '${parts[1]}-${parts[2]} - ${parts[0]}';
-
-      final response = await _itemProvider.getWarehouseStock(warehouse);
-
-      if (response.statusCode == 200 && response.data['message']?['result'] != null) {
-        final List<dynamic> data = response.data['message']['result'];
-
-        final rackItems = data.where((row) {
-          final rowRack = row['rack']?.toString() ?? '';
-          return rowRack == rackCode;
-        }).toList();
-
-        if (rackItems.isEmpty) {
-          GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
-        } else {
-          Get.bottomSheet(
-            RackContentsSheet(rackId: rackCode, items: rackItems),
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-          );
-        }
-      } else {
-        GlobalSnackbar.error(message: 'Failed to fetch stock for warehouse $warehouse');
+      final location = RackLocation.tryParse(rackCode);
+      if (location == null) {
+        GlobalSnackbar.error(
+          title: 'Invalid Rack QR',
+          message: invalidRackCodeMessage(rackCode),
+        );
+        return;
       }
-    } catch (e) {
-      GlobalSnackbar.error(message: 'Invalid Rack QR or Network Error');
+
+      final response = await _itemProvider.getWarehouseStock(
+        location.warehouseName,
+        rack: rackCode,
+      );
+      final rackItems = rackRowsFromStockBalance(response.data, rackCode);
+
+      if (rackItems.isEmpty) {
+        GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
+      } else {
+        Get.bottomSheet(
+          RackContentsSheet(rackId: rackCode, items: rackItems),
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+        );
+      }
+    } catch (e, st) {
+      debugPrint('Rack look-up for $rackCode failed: $e\n$st');
+      final failure = rackLookupFailure(e);
+      GlobalSnackbar.error(title: failure.title, message: failure.message);
     } finally {
       isRackScanning.value = false;
     }
