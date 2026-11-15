@@ -1,296 +1,235 @@
-# ERPNext / Frappe `version-16` Compatibility Audit
+# ERPNext / Frappe v16 Compatibility Audit
 
-**Date:** 2026-09-27
-**App base:** `release/play-store` at `1458c2a3` (2.25.7+85)
-**Method:** static audit. Every Frappe / ERPNext / HRMS touchpoint in `lib/` was
-inventoried and checked against the upstream source of both branches.
+**Date:** 15 November 2026
+**App:** `release/play-store` at 2.34.1+112
+**Server audited:** the production instance, migrated to v16 on 14 November 2026
 
-| Reference repo | Branch | Revision | Commit date |
-|---|---|---|---|
-| frappe/erpnext | `version-15` | `4aee12e` | 2026-09-23 |
-| frappe/erpnext | `version-16` | `b30aa53` | 2026-09-23 |
-| frappe/frappe | `version-15` | `8f801ad` | 2026-09-22 |
-| frappe/frappe | `version-16` | `012667b` | 2026-09-22 |
-| frappe/hrms | `version-15` | `2238ff6` | 2026-09-23 |
-| frappe/hrms | `version-16` | `c0a04b8` | 2026-09-23 |
+| App | Version on the server | Upstream tag read |
+|---|---|---|
+| Frappe | 16.56.0 | `v16.56.0` |
+| ERPNext | 16.55.0 | `v16.55.0` |
+| HRMS | 16.53.2 | `v16.53.2` |
 
-> **Not covered:** nothing here was exercised against a running v15 or v16 site.
-> Findings are derived from reading server source. Site-level customisations
-> (`Rack`, `POS Upload`, the `BOM Stock with Customer Code` and
-> `POS and Delivery Note Item Rate` reports, `custom_*` fields, server scripts)
-> are not in the upstream repos and could not be checked — see
-> [Site migration checklist](#site-migration-checklist).
+This replaces the static audit of 27 September 2026 (app 2.25.7, upstream as of
+16.26). That version is in the git history of this file. It could not be relied
+on any longer: the app had gained about 7,900 lines since, the server was 30
+minor releases further on, and nothing in it had been run against a server.
+
+## Method
+
+1. Read the server's versions from `frappe.utils.change_log.get_versions` and
+   check out upstream at exactly those tags, plus `version-15` as a baseline.
+2. Inventory every server call in `lib/` (providers, services, and the
+   controllers that call `ApiProvider` directly).
+3. Fetch live field metadata (`frappe.desk.form.load.getdoctype`) for every
+   DocType the app touches (96) and cross-check every field key the app reads
+   or writes.
+4. Replay every list, picker, report and read-only method call against the
+   live server with the app's exact fields, filters, sort and argument shapes.
+5. Diff v15 against v16 for each report, method and DocType the app depends on.
+6. Smoke-test the fixes on a device against the live server.
+
+Everything in steps 1–5 was read-only. No document was created or changed on
+the server.
 
 ## Summary
 
 | # | Severity | Area | Finding | Status |
 |---|---|---|---|---|
-| B1 | **Breaking** | Job Card | `make_time_log` parameter renamed `args` → `kwargs`; every timer call fails | Fixed |
-| B2 | **Breaking** | Job Card | Pause no longer sticks: `status` is recomputed from the new `is_paused` field | Fixed |
-| B3 | **Breaking** | Pickers | `` `modified` desc `` sort is rejected by the v16 query engine; every DocType picker fails to load | Fixed |
-| B4 | **Breaking** | Permissions | `user.get_roles` was removed, so the user's roles are unknown and every create / edit button is hidden for users who are not System Managers | Fixed |
-| B5 | **Breaking** | Sales Order | `get_item_details` parameter renamed `args` → `ctx`; adding an item to a Sales Order fails | Fixed |
-| B6 | Degraded | Navigation | `get_workspace_sidebar_items` renamed `get_workspaces`; the drawer falls back to its default layout | Fixed |
-| L1 | Limitation | POS Upload | Status field stays read-only on v16 for users who are not System Managers | Open |
-| C1 | Behaviour change | Job Card | `make_time_log` ignores `status`; time-log rows are written with `db_set`/`db_update` | No action |
-| C2 | Behaviour change | Work Order | `make_job_card` overrides payload `workstation` with the Work Order Operation row | No action |
-| C3 | Behaviour change | Work Order | New statuses `Stock Reserved`, `Stock Partially Reserved` bypass app logic keyed on `Not Started` | Open |
-| C4 | Behaviour change | Stock Entry | Four new `purpose` values; `is_scrap_item` removed from Stock Entry Detail | No action |
-| C5 | Behaviour change | Sales Order | New status `To Pay` | Open |
-| C6 | Behaviour change | Lists | `limit_start` / `limit_page_length` are deprecated (removal targeted for v17) | No action |
-| P1 | Pre-existing | Item | Child-table list of `Item Variant Attribute` without `parent` is denied on v15 and v16 | Open |
-| P2 | Pre-existing | Job Card | The running-Job-Card check filters on a field with no database column | Open |
-| P3 | Pre-existing | Search | `SearchProvider.getBootData` calls `frappe.boot`, which is a module, not a method | Open |
+| N1 | Degraded | Navigation | Both workspace endpoints refuse on 16.56; the drawer kept its cached or default layout | Fixed in 2.34.1 |
+| N2 | Functional | Roles | Users who are not System Managers have no readable roles on v16; role-dependent features switched off | Fixed in 2.34.1 |
+| N3 | Cosmetic | Item Variant Details | 16.55 adds a template subtotal row, shown as if it were a variant | Fixed in 2.34.1 |
+| B1–B6 | Breaking | Job Card, pickers, permissions, Sales Order, navigation | Found in the September audit | Fixed in 2.26.0 |
+| — | Breaking | Writes | v16 enforces CSRF on cookie-session writes | Fixed in 2.29.0 |
+| — | Breaking | Stock Balance | `item_code` must be a list on every v16 | Fixed in 2.30.0 |
+| P1 | Pre-existing | Lists | Child-table lists without a parent are refused on v15 and v16 | Open |
+| P3 | Pre-existing | Search | `SearchProvider.getBootData` calls `frappe.boot`, a module, not a method | Open |
 
-Everything else that was checked is compatible — see [Verified compatible](#verified-compatible).
+**Minimum app version for a v16 server: 2.30.0.** Below 2.26.0 Job Card timers
+and Sales Order pricing fail; below 2.29.0 writes are rejected; below 2.30.0 the
+rack picker returns nothing. 2.34.1 is needed for N1–N3.
+
+## Findings fixed in 2.34.1
+
+### N1 — Workspace endpoints refuse on Frappe 16.56
+
+`frappe.desk.desktop.get_workspace_sidebar_items` does not exist on v16 (HTTP
+417). `frappe.desk.desktop.get_workspaces`, which the September fix fell back
+to, is **no longer whitelisted** in 16.56 (HTTP 403). With no pages, the drawer
+kept the last cached layout, or the default grouping on a fresh install, and
+retried both calls every time it opened.
+
+The same `{pages: [...]}` is in the boot object Desk embeds in its page, as
+`frappe.boot.workspaces`. 16.56 also dropped the boot keys
+`workspace_sidebar_item` and `module_wise_workspaces`; their replacement,
+`module_sidebars`, is keyed by module name and carries the same
+`{label, app, items}` plus each module's `workspaces`.
+
+**Fix:** `AppNavDrawerController` tries the v15 endpoint, then the v16 one, then
+takes the pages from the boot data. A server whose endpoints answered "no" is
+remembered so later loads skip them; a timeout rules nothing out.
+`deskBootFromHtml` reads the older boot keys where present and `module_sidebars`
+otherwise, so `resolveDeskSidebar` and `sidebarSpot` are unchanged.
+
+### N2 — Roles are unreadable for users who are not System Managers
+
+v16 removed `frappe.core.doctype.user.user.get_roles`, and the User document's
+`roles` table is permlevel 1. The September fix (B4) made create and edit
+permissions ask the server when roles are unknown, but everything that reads
+`user.roles` directly still saw an empty list:
+
+- the POS Upload **Status** control (the field is permlevel 1 on this site),
+- the digest notification entry and scheduler (`User.isManager`),
+- the role list on the profile screen,
+- the home dashboard's tasks-first ordering.
+
+On the audited site this affected 26 of 29 enabled users.
+
+**Fix:** when the User document carries no roles and `get_roles` is not
+available, `UserProvider.getRolesFromDesk` reads `frappe.boot.user.roles`, and
+only when `frappe.boot.user.name` is the signed-in user. If no source answers,
+the roles already known for that same user are kept, so a refresh while offline
+does not switch features off. This closes limitation L1 of the September audit.
+
+The Desk page is about half a megabyte. `ApiProvider.getDeskHtml` shares one
+download between the drawer and the role lookup, reuses it for two minutes, and
+drops it on sign-in, sign-out and server change.
+
+Only standard endpoints are used. The site has an API Server Script that
+returns the session user's roles, but relying on it would tie the app to one
+site's customisation.
+
+### N3 — Item Variant Details template row
+
+ERPNext 16.55 rewrote this report. Each template's variants are now listed
+under a subtotal row for the template (`indent: 0`; variants are `indent: 1`),
+and `item_group` and `stock_uom` became columns. On v15 every row is a variant
+and no row has `indent`.
+
+**Fix:** a row with `indent` equal to 0 is rendered as a heading — template
+code, Item Group, and the totals the report gives it under the report's own
+column labels. A figure the server leaves empty (variants with different stock
+UOMs) is omitted. The image gallery and the item-detail lookup skip template
+rows. `item_group` and `stock_uom` are shown as chips like any other report
+column.
 
 ## How both versions are served
 
 No fix depends on knowing the server version. Each one either uses a form both
-servers accept, or detects the capability from data the app already has.
+servers accept or detects the capability from what the server answers.
 
-| # | Change | Why it works on both |
-|---|---|---|
-| B1 | `JobCardProvider.timeLogParams` | Payload is sent under `args` and `kwargs`; each server keeps the key it declares |
-| B2 | `JobCardProvider.setJobCardPaused`, `JobCard.isPaused` | Pause writes `status` (v15) and `is_paused` (v16) together. Resume clears `is_paused` first, only when the document carries that field |
-| B3 | `DocTypePickerProvider.queryDocType` | Sort is `modified desc`, valid on both |
-| B4 | `PermissionService`, `ApiProvider.hasDocTypePermission` | Known roles are intersected with the DocPerm rows as before. When the roles are unknown, the server is asked through `frappe.client.has_permission` |
-| B5 | `SalesOrderProvider.itemDetailsParams` | Payload is sent under `args` and `ctx` |
-| B6 | `AppNavDrawerController._fetchWorkspaces` | The v15 name is tried first, then the v16 name |
+| Change | Why it works on v15 and v16 |
+|---|---|
+| `JobCardProvider.timeLogParams` | Payload sent under `args` and `kwargs`; each server keeps the key it declares |
+| `JobCardProvider.setJobCardPaused` | Pause writes `status` (v15) and `is_paused` (v16) together |
+| `DocTypePickerProvider.queryDocType` | Sort is the unquoted `modified desc` |
+| `PermissionService` | Known roles are intersected with DocPerm rows; unknown roles ask `frappe.client.has_permission` |
+| `SalesOrderProvider.itemDetailsParams` | Payload sent under `args` and `ctx` |
+| `CsrfInterceptor` | Token fetched only after the first CSRF rejection, then retried once |
+| `ApiProvider.stockBalanceUsesListFilters` | Compares major, then minor; the only version check in the app |
+| `AppNavDrawerController._fetchPages` | Endpoints first, boot data when they refuse |
+| `AuthenticationController._rolesOf` | User document, then `get_roles`, then boot data, then the roles already known |
+| `isTemplateRow` | A v15 row has no `indent` and is always a variant |
 
----
+## Verified on the live server
 
-## Breaking
+- **List and picker queries:** 134 of 136 succeed with the app's exact fields,
+  filters, sort options and child-table joins. The two refusals are P1.
+- **Reports:** Stock Balance (seven filter shapes), Batch-Wise Balance History,
+  Stock Ledger, Item Variant Details, BOM Search, Job Card Summary, Stock
+  Ageing - Custom (default and filtered), BOM Stock with Customer Code, POS and
+  Delivery Note Item Rate, and Monthly Attendance Sheet all run and return the
+  columns the app reads.
+- **Read-only methods:** `get_item_details` (with `args` and `ctx`),
+  `get_party_details`, `get_stock_reservation_status`, `has_permission` with and
+  without a document name, `get_count` with dict and tuple filters,
+  `global_search.search`, `get_data_for_custom_field`, `get_desktop_page`,
+  `getdoctype`, and `hrms.api.get_attendance_calendar_events`.
+- **Paging and errors:** `limit_page_length=0` returns every row; a missing
+  document answers 404 with `DoesNotExistError`.
+- **On a device:** the drawer (admin and non-admin), roles for a non-admin
+  user, the POS Upload Status control, and the Item Variant Details heading.
 
-### B1 — `make_time_log` parameter renamed
+## Field-level comparison
 
-`erpnext/manufacturing/doctype/job_card/job_card.py`
+v16 removed no field the app depends on, apart from Company
+`expenses_included_in_valuation`, which `LandedCostVoucherProvider` already
+replaces with an Account lookup. No DocType the app writes gained a mandatory
+field, and no Select option the app sends was removed.
 
-```python
-# version-15
-def make_time_log(args):
-# version-16
-def make_time_log(kwargs):
-```
+New Select values the app may now see: Purchase Order and Sales Order status
+`To Pay` (only with an advance payment request), Work Order status
+`Stock Reserved` and `Stock Partially Reserved`, Job Card status
+`To Manufacture`, Material Request type `Subcontracting`, and four Stock Entry
+purposes for subcontracting. `StatusPill` handles `To Pay`.
 
-Frappe's dispatcher (`frappe.get_newargs`) discards request keys that are not in
-the function signature, so on v16 `args` is dropped and the call raises
-`TypeError: make_time_log() missing 1 required positional argument: 'kwargs'`.
+## Behaviour changes worth knowing
 
-**Affected:** start, pause, complete and manual time-log entry.
+- `get_item_details` now authorises the pricing context: `doctype` must be a
+  transaction DocType, the customer needs `select` permission, the price list
+  must be a selling one, and the resolved warehouse must be within the user's
+  User Permissions. A refusal falls back to manual rate entry.
+- `make_time_log` accepts POST only (the app posts). 16.55 adds
+  `JobCard.validate_on_hold`, which clears the pause on a Job Card that has no
+  time logs or nothing left to make.
+- REST create and update responses omit fields the user cannot read at their
+  permlevel.
+- The timestamp-conflict message now names the document. The app detects the
+  conflict by `TimestampMismatchError`, not by the text.
+- `upload_file` gained chunked uploads; a single-part upload is unchanged.
+- The realtime socket still requires the site name as namespace and a matching
+  Origin; subscription events are unchanged.
 
-### B2 — Pause cannot be set through `status`
+## Pre-existing, not v16 regressions
 
-v16 adds an `is_paused` Check field to Job Card and `set_status()` now ends with:
+- **P1** — `ItemProvider.getItemVariantsByAttribute` (`Item Variant Attribute`)
+  and `PurchaseOrderProvider.getOpenDraftReceiptsForPo` (`Purchase Receipt
+  Item`) list a child table without a parent. Both versions refuse. The Item
+  attribute filter falls back, and the Purchase Order "resume draft receipt"
+  sheet never appears.
+- **P3** — `/api/method/frappe.boot` names a module and answers 500.
+- `ApiProvider.getStockBalance` sends `batch_no`, which the Stock Balance report
+  ignores on both versions.
+- `ApiProvider.getRackBatchStock` has no callers.
 
-```python
-if self.is_paused:
-    self.status = "On Hold"
-```
+## Not verified
 
-The v15 early return (`if self.status == "On Hold" and self.docstatus == 0: return`)
-is gone, so a `status` written by the app is recomputed on the same save.
+- **Saving and submitting documents on the production server.** The REST
+  handlers, unknown-field handling and `use_serial_batch_fields` behaviour are
+  unchanged from v15 by source, and Stock Settings has `use_serial_batch_fields`
+  on. None of it was executed during the audit.
+- **Sales Orders, Work Orders, Job Cards and Landed Cost Vouchers.** The audited
+  site has none, so these were checked against source only.
+- **Server Scripts.** The site runs 13 DocType-event scripts on Stock Entry,
+  Delivery Note, Purchase Receipt and Material Request saves and submits. They
+  use only APIs the v16 sandbox still provides, and attribute access behaves as
+  on v15, but they were read, not run.
 
-The fix does **not** use the v16 `pause_job` / `resume_job` document methods.
-`pause_job` always records a completed quantity of `0` and takes its employees
-from the Job Card's employee table. The app asks for the quantity completed at
-pause and records it against the employees on the open time log, so calling
-`pause_job` would have dropped that. `make_time_log` still exists on v16.
+## Site requirements
 
-v16 also refuses to submit a Job Card while `is_paused` is set. The app only
-offers Complete while the card is Work In Progress, so this is not reachable.
+Required by the app and not part of upstream:
 
-### B3 — Picker sort expression rejected
-
-In v16 both `/api/resource/<doctype>` and `frappe.desk.reportview.get` run through
-the query-builder engine (`frappe/model/qb_query.py` → `frappe/database/query.py`).
-Its `ORDER BY` / `GROUP BY` validator accepts a backticked identifier only in the
-fully qualified form:
-
-```python
-BACKTICK_FIELD_PARSE_REGEX = re.compile(r"^`tab([\w\s-]+)`\.(`?)(\w+)\2$")
-```
-
-`` `modified` desc `` raises `Order By has invalid backtick notation`.
-
-Every other sort and group expression in the app is accepted by v16, including
-`` `tabItem`.`modified` desc ``, `` `tabPricing Rule`.`modified` desc ``,
-multi-column sorts, and ``group_by: `tab<DocType>`.`name` ``.
-
-### B4 — The user's roles cannot be read
-
-`frappe.core.doctype.user.user.get_roles` exists on v15 and is absent from v16.
-
-It is the primary source of roles, not a fallback: the `roles` table on User is
-`permlevel 1` in both versions, so `GET /api/resource/User/<email>` returns no
-roles unless the user is a System Manager. No standard v16 endpoint returns the
-session user's roles; `Has Role` cannot be listed either, because Desk Users hold
-only `select` on User.
-
-`PermissionService` resolves `create` and `write` by intersecting a DocType's
-DocPerm rows with the user's roles. With no roles, every check fails closed.
-
-**Affected:** every create and edit control gated through `DocTypeGuard` — Material
-Request, Packing Slip, Stock Entry, Delivery Note, Purchase Order, Sales Order,
-Item, Item Price, Pricing Rule and ToDo.
-
-**Fix:** an empty role set is treated as "unknown" rather than "none", since
-every Frappe user holds at least the automatic roles. In that case the server
-evaluates the permission. Users whose roles are known — all users on v15, System
-Managers on v16 — take exactly the path they took before.
-
-A user who is signing out also has no roles. The fallback therefore checks that
-a session exists, and that it is still the session the lookup started under,
-before it asks the server. This keeps the rule that nothing is probed after
-logout.
-
-Checks that look for `System Manager` directly (attendance alerts, notification
-settings, the home dashboard) stay correct on v16: System Managers can read their
-own roles, and for everyone else the answer is `false` either way.
-
-### B5 — `get_item_details` parameter renamed
-
-`erpnext/stock/get_item_details.py`
-
-```python
-# version-15
-def get_item_details(args, doc=None, for_validate=False, overwrite_warehouse=True):
-# version-16
-def get_item_details(ctx: ItemDetailsCtx, doc=None, for_validate=False, overwrite_warehouse=True):
-```
-
-Same mechanism as B1.
-
-### B6 — Workspace sidebar endpoint renamed
-
-`frappe.desk.desktop.get_workspace_sidebar_items` became `get_workspaces` in v16.
-The response keeps its `pages` list and every field the app reads, with a few
-added. The drawer already tolerated the failure by keeping its cached or default
-layout, so this was a loss of the workspace grouping rather than a crash.
-
----
-
-## Limitation
-
-### L1 — POS Upload status field on v16
-
-The Status control on POS Upload is enabled only when the user holds a `write`
-rule at the field's permlevel. That is decided from the user's roles
-(`ApiProvider.fieldWriteGranted`), and Frappe has no endpoint that evaluates a
-field-level permission for the caller. On v16 the control therefore stays
-disabled for users who are not System Managers.
-
-Closing this needs the roles. The smallest change is a whitelisted method in the
-site's custom app that returns `frappe.get_roles()`, called when `get_roles`
-fails.
-
-The same missing roles leave the profile screen's role list empty and make the
-home dashboard's tasks-first ordering fall back to its default.
-
----
-
-## Behaviour changes
-
-- **C1** — v16 removed `reset_timer_value()`. The `status` key the app sends to
-  `make_time_log` is ignored and the status is derived by `set_status()`. Totals
-  are refreshed by a later save, which the app's `touchJobCard` already does.
-  The removed fields `current_time`, `started_time`, `job_started` and
-  `scrap_items` are not referenced by the app.
-- **C2** — `make_job_card` now merges each row with the Work Order Operation it
-  names, so the `workstation` in the payload is overwritten by the stored value.
-  The app sends the row `name`, which v16 requires.
-- **C3** — Logic keyed on the Work Order status `Not Started` will not match a
-  reserved Work Order. Applies only with stock reservation enabled.
-- **C4** — New Stock Entry purposes: `Receive from Customer`,
-  `Return Raw Material to Customer`, `Subcontracting Delivery`,
-  `Subcontracting Return`. `batch_no`, `serial_no` and `use_serial_batch_fields`
-  are unchanged.
-- **C5** — Sales Order gains the status `To Pay`. `sales_order_logic.dart` should
-  be checked for status lists that need it.
-- **C6** — `limit_page_length: 0` still means "no limit".
-
----
-
-## Pre-existing (not v16 regressions)
-
-- **P1** — `ItemProvider.getItemVariantsByAttribute` lists the child table
-  `Item Variant Attribute` without a `parent` argument. Both versions refuse
-  child-table queries that do not name a parent DocType.
-- **P2** — `_checkForRunningJobCard` filters Job Card on `employee`, a Table
-  MultiSelect field with no database column. The query fails on both versions
-  and the check is skipped by its own error handler.
-- **P3** — `SearchProvider.getBootData` calls `/api/method/frappe.boot`. That path
-  names a module, so the call fails on both versions.
-- `LogInterceptor(responseBody: true, requestBody: true)` in `ApiProvider` logs
-  request bodies, including the login password.
-
----
-
-## Verified compatible
-
-**Frappe endpoints** — signature and behaviour unchanged for the way the app calls
-them: `login`, `logout`, `ping`, `upload_file` (now POST-only; the app uses POST),
-`frappe.auth.get_logged_user`, `frappe.client.get_list`, `get_count`, `insert`,
-`cancel`, `has_permission`, `frappe.desk.reportview.get`,
-`frappe.desk.query_report.run`, `get_data_for_custom_field`,
-`frappe.desk.form.load.getdoctype`, `frappe.desk.form.utils.add_comment`,
-`frappe.desk.desktop.get_desktop_page`, `frappe.desk.search.awesomebar_search`,
-`frappe.utils.global_search.search`, `frappe.utils.change_log.get_versions`,
-`user.reset_password`, `user.update_password`.
-The login response still carries `message: "Logged In"` and `full_name`.
-CSRF validation still applies only when the session holds a token, which API
-logins do not create. The realtime socket namespace is unchanged.
-
-**REST resource API** — `GET/POST/PUT/DELETE /api/resource/...` handlers are
-unchanged, including submit via `PUT {docstatus: 1}` and child-row updates.
-Filters in 2-, 3- and 4-element form, child-table filters, `like`, `in`,
-`between`, `!=` and `<` are all handled by the v16 engine.
-
-**ERPNext methods** — `work_order.make_stock_entry`, `job_card.make_stock_entry`,
-`sales_order.make_delivery_note`, `sales_order.get_stock_reservation_status`,
-`sales_order.update_status` (now POST-only; the app uses POST),
-`accounts.party.get_party_details`.
-
-**HRMS** — `hrms.api.get_attendance_calendar_events` is unchanged. The Monthly
-Attendance Sheet report gains optional filters.
-
-**Reports** — Stock Balance, Batch-Wise Balance History, Stock Ledger, Item
-Variant Details, BOM Search and Job Card Summary exist on v16 with the same
-filter names and the columns the app reads.
-
-**DocTypes and fields** — all standard DocTypes the app uses exist on v16, and
-every standard field read by a model is present.
-
----
-
-## Site migration checklist
-
-These are required by the app and are not part of upstream, so they must exist on
-the v16 site:
-
-- DocTypes: `Rack`, `POS Upload`
-- Reports: `BOM Stock with Customer Code`, `POS and Delivery Note Item Rate`
+- DocTypes: `Rack`, `POS Upload`, `Attendance Sync Status`
+- Reports: `BOM Stock with Customer Code`, `POS and Delivery Note Item Rate`,
+  `Stock Ageing - Custom`
 - Inventory Dimension `rack` (and `to_rack`)
 - Custom fields: `custom_po_no`, `custom_reference_no`, `custom_purchase_order`,
   `custom_supplier_name`, `custom_total_qty`, `custom_invoice_serial_number`,
   `custom_variant_of`, `custom_packaging_qty`, `custom_item_barcode`,
   `custom_country_of_origin`
-- Any server scripts or custom-app code need their own v16 review, in particular
-  anything passing raw SQL field strings such as `sum(x) as y` to
-  `frappe.get_list` / `frappe.get_all`. Upstream replaced these with dict syntax
-  (`{"SUM": "x", "as": "y"}`) for v16.
+- Server Scripts must stay enabled (`server_script_enabled`); the POS Upload
+  status updates and the rack and packing checks depend on them.
 
-## Before release
+## Smoke test before relying on a new server version
 
-Test on a v15 site and a v16 site:
+Sign in as a user who is **not** a System Manager; an administrator's roles come
+from the User document and bypass the fallbacks.
 
-1. Job Card: start, pause with a quantity, resume, complete, submit.
-2. Open a DocType picker (for example Workstation on a Work Order operation).
-3. Sign in as a user who is not a System Manager. Confirm the create and edit
-   buttons appear where that user has the permission, and are hidden where the
-   user has read-only access.
-4. Sales Order: add an item and confirm the rate and UOM are filled in.
-5. Open the navigation drawer and confirm screens are grouped by workspace.
-
-Step 3 matters most on v16. Permission checks fail closed, so if
-`has_permission` misbehaves on a real server the buttons disappear.
+1. Open the drawer: screens are grouped under the server's workspaces.
+2. Open the profile: the role list is filled in.
+3. Open a POS Upload: the Status field is enabled for a user with level-1 write.
+4. Run Item Variant Details for a template: one heading, then its variants.
+5. Stock Entry, Delivery Note, Packing Slip and Purchase Receipt: save and
+   submit one of each.
+6. Job Card: start, pause with a quantity, resume, complete, submit.
+7. Sales Order: add an item and confirm the rate and UOM are filled in.
