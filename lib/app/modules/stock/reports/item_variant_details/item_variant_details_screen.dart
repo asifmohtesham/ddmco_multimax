@@ -8,6 +8,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   const ItemVariantDetailsScreen({super.key});
@@ -110,6 +111,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final row = controller.reportData[index];
+                        // v16.55 heads each template's variants with a
+                        // subtotal row; it is a heading, not a variant.
+                        if (isTemplateRow(row)) {
+                          return _TemplateHeader(
+                            row:     row,
+                            columns: controller.reportColumns,
+                          );
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _VariantTile(
@@ -153,6 +162,75 @@ void _openImageViewer(
       initialIndex: initialIndex,
     ),
   );
+}
+
+// ── Template heading ──────────────────────────────────────────────────────────
+
+/// The subtotal row ERPNext v16.55 puts above each template's variants:
+/// the template's code and Item Group, and the totals the report gives it,
+/// under the report's own column labels.
+class _TemplateHeader extends StatelessWidget {
+  final Map<String, dynamic>       row;
+  final List<Map<String, dynamic>> columns;
+
+  const _TemplateHeader({required this.row, required this.columns});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    final code      = row['variant_name']?.toString() ?? '';
+    final itemGroup = row['item_group']?.toString() ?? '';
+    final totals    = templateTotals(row, columns);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            code,
+            style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          if (itemGroup.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Text(
+                itemGroup,
+                style: text.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+          if (totals.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Wrap(
+                spacing: 14, runSpacing: 4,
+                children: [
+                  for (final t in totals)
+                    Text.rich(
+                      TextSpan(
+                        text: '${t.label}  ',
+                        style: text.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                        children: [
+                          TextSpan(
+                            text: t.value,
+                            style: text.labelMedium?.copyWith(
+                              color:      cs.onSurface,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Variant tile ──────────────────────────────────────────────────────────────
@@ -225,7 +303,7 @@ class _VariantTile extends StatelessWidget {
                   // can slide between items; open at the tapped item's index.
                   final items       = <_GalleryItem>[];
                   var   startIndex  = 0;
-                  for (final r in controller.reportData) {
+                  for (final r in variantRowsOf(controller.reportData)) {
                     final code = r['variant_name']?.toString()
                         ?? r['item']?.toString() ?? '';
                     final url  = _imageUrl(
