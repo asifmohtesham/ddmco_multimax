@@ -293,6 +293,44 @@ abstract final class StockAgeingLogic {
     }
   }
 
+  /// Columns whose cells are ages in whole days, counted back from the
+  /// report's "as on" date.
+  static const ageFields = {'average_age', 'earliest', 'latest'};
+
+  /// Age columns that belong to a real batch, so the age maps to the year it
+  /// arrived. Average Age is a qty-weighted mean over batches; its "year"
+  /// could be one in which nothing arrived, so it gets none.
+  static const datedAgeFields = {'earliest', 'latest'};
+
+  /// The date the report's ages are counted from: [asOn] (yyyy-MM-dd), else
+  /// the day of [fetchedAt] (a run without a date is as on the server's
+  /// today), else null.
+  static DateTime? reportDate(String asOn, DateTime? fetchedAt) {
+    final d = DateTime.tryParse(asOn.trim());
+    if (d != null) return DateTime(d.year, d.month, d.day);
+    if (fetchedAt == null) return null;
+    return DateTime(fetchedAt.year, fetchedAt.month, fetchedAt.day);
+  }
+
+  /// Formats a cell for the detail sheet: as [formatCell], except that age
+  /// columns read "1,612 days", and batch ages add the year the batch
+  /// arrived, counted back from [asOn] ("1,612 days · since 2022").
+  static String formatDetailCell(
+    ReportColumn column,
+    dynamic v, {
+    DateTime? asOn,
+  }) {
+    final text = formatCell(column, v);
+    if (text == '—' || !ageFields.contains(column.fieldname)) return text;
+    final days = num_(v);
+    final withUnit = '$text ${days == 1 ? 'day' : 'days'}';
+    if (asOn == null || !datedAgeFields.contains(column.fieldname)) {
+      return withUnit;
+    }
+    final since = DateTime(asOn.year, asOn.month, asOn.day - days.round());
+    return '$withUnit · since ${since.year}';
+  }
+
   /// Reads a stored card-field selection (column fieldnames, plus
   /// [ageBarField]). Null (never saved) or a value of the wrong shape gives
   /// the defaults; an empty saved list is a valid choice. Names are kept even
