@@ -90,6 +90,10 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     );
   }
 
+  /// A DN / PO filter's value for display, in either stored form.
+  static String _textFilterLabel(Object? filter) =>
+      PackingSlipFilterBottomSheet.textFilterValue(filter) ?? '$filter';
+
   /// Builds dismissible filter chips for every active filter + search query.
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
@@ -119,8 +123,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
     }
 
     if (filters.containsKey('docstatus')) {
-      const labels = {0: 'Draft', 1: 'Submitted', 2: 'Cancelled'};
-      final label = labels[filters['docstatus']] ?? '${filters['docstatus']}';
+      final ds = filters['docstatus'];
+      final label = PackingSlipFilterBottomSheet.docstatusLabels[ds] ?? '$ds';
       chips.add(_chip(
         context,
         icon: Icons.flag_outlined,
@@ -134,7 +138,7 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       chips.add(_chip(
         context,
         icon: Icons.local_shipping_outlined,
-        label: 'DN: ${filters['delivery_note']}',
+        label: 'DN: ${_textFilterLabel(filters['delivery_note'])}',
         filterKey: 'delivery_note',
         onDeleted: () => controller.removeFilter('delivery_note'),
       ));
@@ -144,14 +148,15 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
       chips.add(_chip(
         context,
         icon: Icons.tag,
-        label: 'PO: ${filters['custom_po_no']}',
+        label: 'PO: ${_textFilterLabel(filters['custom_po_no'])}',
         filterKey: 'custom_po_no',
         onDeleted: () => controller.removeFilter('custom_po_no'),
       ));
     }
 
-    if (filters.containsKey('posting_date')) {
-      final f = filters['posting_date'];
+    // Packing Slip has no posting_date: the sheet's range is on `creation`.
+    if (filters.containsKey('creation')) {
+      final f = filters['creation'];
       if (f is List &&
           f.length >= 2 &&
           f[0] == 'between' &&
@@ -162,8 +167,8 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
           context,
           icon: Icons.date_range,
           label: '${dates[0]}  →  ${dates[1]}',
-          filterKey: 'posting_date',
-          onDeleted: () => controller.removeFilter('posting_date'),
+          filterKey: 'creation',
+          onDeleted: () => controller.removeFilter('creation'),
         ));
       }
     }
@@ -316,19 +321,15 @@ class _PackingSlipScreenState extends State<PackingSlipScreen> {
                   final parts = <String>[];
                   final af = controller.activeFilters;
                   if (af.containsKey('docstatus')) {
-                    const labels = {
-                      0: 'Draft',
-                      1: 'Submitted',
-                      2: 'Cancelled'
-                    };
+                    const labels = PackingSlipFilterBottomSheet.docstatusLabels;
                     parts.add(
                         'Status: ${labels[af['docstatus']] ?? af['docstatus']}');
                   }
                   if (af.containsKey('delivery_note')) {
-                    parts.add('DN: ${af['delivery_note']}');
+                    parts.add('DN: ${_textFilterLabel(af['delivery_note'])}');
                   }
                   if (af.containsKey('custom_po_no')) {
-                    parts.add('PO: ${af['custom_po_no']}');
+                    parts.add('PO: ${_textFilterLabel(af['custom_po_no'])}');
                   }
                   if (controller.searchQuery.value.isNotEmpty) {
                     parts.add('Search: "${controller.searchQuery.value}"');
