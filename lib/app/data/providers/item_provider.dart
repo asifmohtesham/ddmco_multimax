@@ -144,6 +144,28 @@ class ItemProvider {
     return _apiProvider.getReport('Stock Balance', filters: filters);
   }
 
+  /// Item master [fields] for [itemCodes] in one list request
+  /// (`name in [...]`), for the Dashboard rack-contents sheet.
+  ///
+  /// The page length is the number of codes, so every match comes back in
+  /// one page. A plain `/api/resource` list, identical on v15 and v16; a user
+  /// without read permission on Item gets a 403, which the caller reports
+  /// quietly instead of failing the rack look-up.
+  Future<Response> getItemFieldsByCodes(
+    List<String> itemCodes,
+    List<String> fields,
+  ) {
+    return _apiProvider.getDocumentList(
+      'Item',
+      limit: itemCodes.length,
+      fields: fields,
+      filterTuples: [
+        ['Item', 'name', 'in', itemCodes],
+      ],
+      orderBy: 'name asc',
+    );
+  }
+
   Future<Response> getStockLedger(String itemCode, {DateTime? fromDate, DateTime? toDate}) async {
     final Map<String, dynamic> filters = {'item_code': itemCode};
     if (fromDate != null && toDate != null) {

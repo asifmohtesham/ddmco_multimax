@@ -1,0 +1,173 @@
+/// Pure helpers behind the Dashboard rack-contents sheet: which Item master
+/// fields to ask for, how to read the Item list reply, and how to merge it
+/// with the Stock Balance rows of the scanned rack.
+///
+/// Free of Flutter/GetX so the merge unit-tests without a binding. The rows
+/// themselves come from `rackRowsFromStockBalance` in `rack_scan_logic.dart`.
+library;
+
+import 'package:multimax/app/core/utils/html_text.dart';
+
+/// Item fields the rack card shows that the Stock Balance report does not
+/// carry. Item Name, Item Group and the stock UOM already arrive with the
+/// report rows, so they are not asked for again.
+///
+/// Every field is a standard ERPNext Item field on v15 and v16.
+const rackItemFields = <String>[
+  'name',
+  'image',
+  'variant_of',
+  'country_of_origin',
+  'brand',
+  'description',
+  'disabled',
+];
+
+/// Distinct, non-empty item codes of [rows], in first-seen order — the
+/// `name in [...]` list for the one Item request.
+List<String> rackItemCodes(List<Map<String, dynamic>> rows) {
+  final seen = <String>{};
+  return [
+    for (final row in rows)
+      if (_text(row['item_code']) case final code? when seen.add(code)) code,
+  ];
+}
+
+/// Item list reply (`/api/resource/Item`, `{"data": [...]}`) keyed by Item
+/// `name`.
+///
+/// Throws [FormatException] when the body has no `data` list, so a reply the
+/// app does not recognise is treated like a failed fetch.
+Map<String, Map<String, dynamic>> itemFieldsByCode(Object? body) {
+  final data = body is Map ? body['data'] : null;
+  if (data is! List) {
+    throw const FormatException('Item list response has no data list');
+  }
+  return {
+    for (final entry in data)
+      if (entry is Map && _text(entry['name']) != null)
+        _text(entry['name'])!: Map<String, dynamic>.from(entry),
+  };
+}
+
+/// One card of the rack-contents sheet: a Stock Balance row plus, when the
+/// Item fetch worked, that item's master fields.
+class RackContentsEntry {
+  const RackContentsEntry({
+    required this.itemCode,
+    required this.itemName,
+    required this.balanceQty,
+    this.stockUom,
+    this.itemGroup,
+    this.batchNo,
+    this.image,
+    this.variantOf,
+    this.countryOfOrigin,
+    this.brand,
+    this.description,
+    this.disabled = false,
+  });
+
+  // From the Stock Balance row.
+  final String itemCode;
+  final String itemName;
+  final double balanceQty;
+  final String? stockUom;
+  final String? itemGroup;
+  final String? batchNo;
+
+  // From the Item master (null when the fetch failed or the field is empty).
+  /// Server-relative path such as `/files/3000247-SGPU-14.jpg`, or a full URL.
+  final String? image;
+  final String? variantOf;
+  final String? countryOfOrigin;
+  final String? brand;
+
+  /// Plain text, and only when it says more than the item name or code does.
+  final String? description;
+  final bool disabled;
+}
+
+/// Merges the rack's Stock Balance [rows] with [itemFields] (from
+/// [itemFieldsByCode]), one entry per row, in report order.
+///
+/// [itemFields] is null when the Item fetch failed; the entries then carry
+/// the report data alone. A row whose item is missing from [itemFields]
+/// (no read permission on that Item, say) does too. `variant_of` falls back
+/// to the row's own value, which some Stock Balance versions include.
+List<RackContentsEntry> mergeRackContents(
+  List<Map<String, dynamic>> rows,
+  Map<String, Map<String, dynamic>>? itemFields,
+) {
+  return [
+    for (final row in rows) _entry(row, itemFields?[_text(row['item_code'])]),
+  ];
+}
+
+RackContentsEntry _entry(
+  Map<String, dynamic> row,
+  Map<String, dynamic>? item,
+) {
+  final code = _text(row['item_code']) ?? 'Unknown';
+  final name = _text(row['item_name']) ?? code;
+  return RackContentsEntry(
+    itemCode: code,
+    itemName: name,
+    balanceQty: (row['bal_qty'] as num?)?.toDouble() ?? 0.0,
+    stockUom: _text(row['stock_uom']),
+    itemGroup: _text(row['item_group']),
+    batchNo: _text(row['batch_no']),
+    image: _text(item?['image']),
+    variantOf: _text(item?['variant_of']) ?? _text(row['variant_of']),
+    countryOfOrigin: _text(item?['country_of_origin']),
+    brand: _text(item?['brand']),
+    description: _usefulDescription(item?['description'], code, name),
+    disabled: _truthy(item?['disabled']),
+  );
+}
+
+/// The description as one line of plain text, or null when it is empty or
+/// only repeats the item code or name — ERPNext copies the item name into
+/// the description by default, so most items would otherwise say it twice.
+String? _usefulDescription(Object? raw, String code, String name) {
+  final html = _text(raw);
+  if (html == null) return null;
+  final plain = htmlToSingleLine(html);
+  if (plain.isEmpty) return null;
+  final lower = plain.toLowerCase();
+  if (lower == code.toLowerCase() || lower == name.toLowerCase()) return null;
+  return plain;
+}
+
+/// Sum of the rack's Balance Qty — the end-of-list total. Quantities only;
+/// no rate or value is ever summed.
+double rackQtyTotal(List<RackContentsEntry> entries) =>
+    entries.fold(0.0, (sum, e) => sum + e.balanceQty);
+
+/// The one stock UOM every entry shares, or null when they differ (or none
+/// has one) — a total across mixed units must not be labelled with one.
+String? sharedStockUom(List<RackContentsEntry> entries) {
+  final uoms = {for (final e in entries) e.stockUom};
+  return uoms.length == 1 ? uoms.single : null;
+}
+
+/// Full URL for an Item `image` value: server-relative paths are joined to
+/// [baseUrl]; absolute URLs are kept. Null for an empty value.
+String? itemImageUrl(String baseUrl, String? image) {
+  final path = image?.trim() ?? '';
+  if (path.isEmpty) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  final base = baseUrl.endsWith('/')
+      ? baseUrl.substring(0, baseUrl.length - 1)
+      : baseUrl;
+  return path.startsWith('/') ? '$base$path' : '$base/$path';
+}
+
+String? _text(Object? value) {
+  if (value == null) return null;
+  final s = value.toString().trim();
+  return s.isEmpty ? null : s;
+}
+
+bool _truthy(Object? value) =>
+    value == true || value == 1 || value == '1' || value == 1.0;
