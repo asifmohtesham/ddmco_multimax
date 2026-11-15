@@ -1,1 +1,1 @@
-Works with the upgraded ERP server (v16): the menu is grouped by your ERP workspaces again, and role-based features work for every user — the POS Upload Status field, digest notifications and the roles on your profile. Item Variant Details now shows the template as a heading with its totals above its variants.
+Maintenance release. The Android build tools and the background-task library behind scheduled reminders (draft digest and attendance notifications) have been updated. There are no changes to screens or workflows.
