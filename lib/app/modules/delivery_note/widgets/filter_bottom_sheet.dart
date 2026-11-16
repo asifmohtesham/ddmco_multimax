@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/customer_model.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/modules/delivery_note/delivery_note_controller.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_status_filter.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
@@ -539,18 +540,24 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   void _applyFilters() {
     final filters = <String, dynamic>{};
 
-    if (selectedStatus.value != null)
+    if (selectedStatus.value != null) {
       filters['status'] = selectedStatus.value;
-    if (customer.value.isNotEmpty)
+    }
+    if (customer.value.isNotEmpty) {
       filters['customer'] = customer.value; // exact match
-    if (poNoController.text.isNotEmpty)
+    }
+    if (poNoController.text.isNotEmpty) {
       filters['po_no'] = ['like', '%${poNoController.text}%'];
-    if (owner.value.isNotEmpty)
+    }
+    if (owner.value.isNotEmpty) {
       filters['owner'] = owner.value;
-    if (modifiedBy.value.isNotEmpty)
+    }
+    if (modifiedBy.value.isNotEmpty) {
       filters['modified_by'] = modifiedBy.value;
-    if (setWarehouse.value.isNotEmpty)
+    }
+    if (setWarehouse.value.isNotEmpty) {
       filters['set_warehouse'] = setWarehouse.value;
+    }
     if (startDate.value != null && endDate.value != null) {
       filters['creation'] = [
         'between',
@@ -610,13 +617,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               scrollDirection: Axis.horizontal,
               child: Obx(() => Row(
                     children: [
-                      for (final s in [
-                        'Draft',
-                        'Submitted',
-                        'Return',
-                        'Completed',
-                        'Cancelled',
-                      ])
+                      for (final s in deliveryNoteStatusChoices)
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: ChoiceChip(
