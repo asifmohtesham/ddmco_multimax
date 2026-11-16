@@ -9,6 +9,7 @@ import 'package:multimax/app/modules/hr/attendance/attendance_screen.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/attendance_summary_strip.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/date_context_row.dart';
 import 'package:multimax/app/modules/hr/attendance/widgets/employee_attendance_card.dart';
+import 'package:multimax/app/modules/hr/attendance/widgets/employee_detail_sheet.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
 void main() {
@@ -179,4 +180,82 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // Clocked hours (from 2026-11-30): one row per day, net against expected.
+  const standard = ShiftRules(
+      name: 'Standard', start: Duration(hours: 8), end: Duration(hours: 20), graceMinutes: 15,
+      checkInBeforeMinutes: 120, checkOutAfterMinutes: 120, expectedHours: 10,
+      breakStart: Duration(hours: 12, minutes: 15), breakEnd: Duration(hours: 13, minutes: 30),
+      breakStartFriday: Duration(hours: 12), breakEndFriday: Duration(hours: 14, minutes: 30));
+  final mon = DateTime(2026, 11, 30);
+  EmployeeCheckin tap(int h, int m) =>
+      EmployeeCheckin(name: '$h$m', employee: emp.name, time: DateTime(2026, 11, 30, h, m));
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testWidgets('clocked row today: net so far against expected, no shortfall yet [$b]', (tester) async {
+      final row = deriveDayStatus(
+        employee: emp, day: mon, now: DateTime(2026, 11, 30, 15), shift: standard,
+        isHoliday: false, punches: [tap(8, 0), tap(12, 15), tap(13, 30)],
+      );
+      await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {}), brightness: b));
+      expect(find.text('Present'), findsOneWidget);
+      expect(find.textContaining('Net 4h 15m of 10h', findRichText: true), findsOneWidget);
+      expect(find.textContaining('short', findRichText: true), findsNothing);
+      expect(find.text('Missing punch'), findsNothing); // odd is normal while the day runs
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('clocked row, day over: Missing punch pill, late flag, shortfall [$b]', (tester) async {
+      final row = deriveDayStatus(
+        employee: emp, day: mon, now: DateTime(2026, 12, 1, 8), shift: standard,
+        isHoliday: false,
+        ledger: AttendanceRecord(
+          name: 'A', employee: emp.name, employeeName: '', date: mon, status: 'Present',
+          lateEntry: true, inTime: DateTime(2026, 11, 30, 8, 20), outTime: DateTime(2026, 11, 30, 20),
+          shift: 'Standard', punchCount: 3, missingPunch: true, netHours: 3.92,
+          expectedHours: 10, shortfallHours: 6.08,
+        ),
+      );
+      await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {}), brightness: b));
+      expect(find.text('Missing punch'), findsOneWidget);
+      expect(find.text('5 min late'), findsOneWidget);
+      expect(find.textContaining('Net 3h 55m of 10h · short 6h 05m', findRichText: true), findsOneWidget);
+      final (_, ink) = StatusPill.colourForStatus('Missing punch', brightness: b);
+      expect(ink, b == Brightness.dark ? AppColors.yellow300 : AppColors.yellow700);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('detail sheet: own pattern, break and the hours panel [$b]', (tester) async {
+      final row = deriveDayStatus(
+        employee: emp, day: mon, now: DateTime(2026, 12, 1, 8), shift: standard,
+        isHoliday: false, punches: [tap(8, 0), tap(12, 15), tap(13, 30), tap(18, 0)],
+      );
+      await tester.pumpWidget(app(
+        // The screen's focus shift is another pattern: the sheet must use the row's own.
+        EmployeeDetailSheet(row: row, day: mon, shift: shift, loadedAt: null),
+        brightness: b,
+      ));
+      expect(find.textContaining('Standard', findRichText: true), findsWidgets);
+      expect(find.textContaining('break 12:15–13:30', findRichText: true), findsOneWidget);
+      expect(find.byType(ClockedHoursPanel), findsOneWidget);
+      expect(find.text('8h 45m'), findsOneWidget); // net
+      expect(find.text('10h'), findsOneWidget); // expected
+      expect(find.text('1h 15m'), findsOneWidget); // shortfall
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a non-clocked single-shift row shows no hours line', (tester) async {
+    final row = deriveDayStatus(
+      employee: emp, day: day, now: DateTime(2026, 9, 9, 21), shift: shift, isHoliday: false,
+      punches: [
+        EmployeeCheckin(name: 'a', employee: emp.name, time: DateTime(2026, 9, 9, 8)),
+        EmployeeCheckin(name: 'b', employee: emp.name, time: DateTime(2026, 9, 9, 12)),
+        EmployeeCheckin(name: 'c', employee: emp.name, time: DateTime(2026, 9, 9, 13)),
+      ],
+    );
+    await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {})));
+    expect(find.text('Present'), findsOneWidget);
+    expect(find.textContaining('Net', findRichText: true), findsNothing);
+  });
 }

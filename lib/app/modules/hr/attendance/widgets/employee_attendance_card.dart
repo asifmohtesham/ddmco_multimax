@@ -20,8 +20,9 @@ ImageProvider? employeeImage(String? path) {
 }
 
 /// One employee row: avatar · name / department / In–Out · status pill + flag;
-/// on a two-shift day each shift line carries its own pill instead.
-/// Untracked rows drop the time row and render dimmed.
+/// on a two-shift day each shift line carries its own pill instead. A
+/// clocked-hours day adds its net hours against the expected ones and any
+/// shortfall. Untracked rows drop the time row and render dimmed.
 class EmployeeAttendanceCard extends StatelessWidget {
   const EmployeeAttendanceCard({super.key, required this.row, required this.onTap});
 
@@ -84,6 +85,9 @@ class EmployeeAttendanceCard extends StatelessWidget {
                           children: [
                             InOutStat(label: 'In', time: row.inTime),
                             InOutStat(label: 'Out', time: row.outTime),
+                            if (row.hoursLabel != null)
+                              ClockedHoursStat(
+                                  label: row.hoursLabel!, shortfall: row.shortfallLabel),
                           ],
                         ),
                       ],
@@ -125,6 +129,7 @@ class ShiftInOutLine extends StatelessWidget {
     AttendanceStatus.late,
     AttendanceStatus.absent,
     AttendanceStatus.noCheckOut,
+    AttendanceStatus.missingPunch,
   };
 
   @override
@@ -159,6 +164,44 @@ class ShiftInOutLine extends StatelessWidget {
         const SizedBox(width: 8),
         StatusPill(status: segment.status.label),
       ],
+    );
+  }
+}
+
+/// "Net 6h 10m of 10h", plus "· short 1h 15m" in the attention ink once the
+/// day is over and short of its expected hours.
+class ClockedHoursStat extends StatelessWidget {
+  const ClockedHoursStat({super.key, required this.label, this.shortfall});
+  final String label;
+  final String? shortfall;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(fontSize: 12, color: s.textMuted),
+        children: [
+          const TextSpan(text: 'Net '),
+          TextSpan(
+            text: label,
+            style: TextStyle(
+              color: s.text,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (shortfall != null)
+            TextSpan(
+              text: ' · ${shortfall!.toLowerCase()}',
+              style: TextStyle(
+                color: dark ? AppColors.orange300 : AppColors.orange700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -207,7 +250,11 @@ class AttendanceFlag extends StatelessWidget {
         ? Icons.logout
         : text.contains('Punched')
             ? Icons.login
-            : Icons.schedule;
+            : text.contains('Missing')
+                ? Icons.touch_app_outlined
+                : text.startsWith('Short')
+                    ? Icons.hourglass_bottom
+                    : Icons.schedule;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

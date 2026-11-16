@@ -12,6 +12,7 @@ enum AttendanceStatus {
   notInYet('Not in yet'),
   absent('Absent'),
   noCheckOut('No check-out'),
+  missingPunch('Missing punch'),
   holiday('Holiday'),
   onLeave('On Leave'),
   halfDay('Half Day'),
@@ -21,11 +22,12 @@ enum AttendanceStatus {
   const AttendanceStatus(this.label);
   final String label;
 
-  /// Sort order: attention first. Absent › No check-out › Late › Not in ›
-  /// Present › rest.
+  /// Sort order: attention first. Absent › No check-out / Missing punch ›
+  /// Late › Not in › Present › rest.
   int get severity => switch (this) {
         absent => 0,
         noCheckOut => 1,
+        missingPunch => 1,
         late => 2,
         notInYet => 3,
         present => 4,
@@ -55,6 +57,26 @@ class EmployeeDayStatus {
   /// a single-shift day.
   final List<ShiftDayStatus> shifts;
 
+  /// The shift the single-shift day was derived against (the employee's own
+  /// pattern); null on a two-shift day, where each segment has its own.
+  final ShiftRules? rules;
+
+  /// Clocked-hours figures (design 3.4), null unless the day is on a clocked
+  /// pattern ([ShiftRules.isClocked]) or its Attendance row was stamped:
+  /// [netHours] = paired hours less the break; [expectedHours] = the
+  /// pattern's minimum for that weekday; [shortfallHours] = expected − net,
+  /// never below 0, and only once the day is over (null while it is running).
+  final double? netHours;
+  final double? expectedHours;
+  final double? shortfallHours;
+
+  /// Taps counted for the clocked day (inside the shift's window).
+  final int? punchCount;
+
+  /// An odd number of taps on a clocked day. While today is still running an
+  /// odd count is normal (the person is in) and this stays false.
+  final bool missingPunch;
+
   const EmployeeDayStatus({
     required this.employee,
     required this.status,
@@ -66,14 +88,25 @@ class EmployeeDayStatus {
     this.punches = const [],
     this.ledger,
     this.shifts = const [],
+    this.rules,
+    this.netHours,
+    this.expectedHours,
+    this.shortfallHours,
+    this.punchCount,
+    this.missingPunch = false,
   });
 
-  /// Secondary line under the status pill, or null.
+  /// A clocked-hours day: net / expected / shortfall apply.
+  bool get isClocked => expectedHours != null;
+
+  /// Secondary line under the status pill, or null. A Missing punch day
+  /// still names its late minutes (the pill already says Missing punch).
   String? get flag {
     if (lateBy != null && lateBy!.inMinutes > 0) {
       return '${lateBy!.inMinutes} min late';
     }
     if (earlyExit) return 'Early exit';
+    if (missingPunch && status != AttendanceStatus.missingPunch) return 'Missing punch';
     if (status == AttendanceStatus.holiday && punches.isNotEmpty) {
       return 'Punched on holiday';
     }
@@ -81,7 +114,91 @@ class EmployeeDayStatus {
   }
 
   /// A flag that needs the orange "attention" ink rather than neutral grey.
-  bool get flagIsWarning => lateBy != null || earlyExit;
+  bool get flagIsWarning =>
+      lateBy != null || earlyExit || (missingPunch && status != AttendanceStatus.holiday);
+
+  /// "6h 10m of 10h" / "10h 45m of 10h", or null when not clocked.
+  String? get hoursLabel => !isClocked ||
+          status == AttendanceStatus.onLeave ||
+          status == AttendanceStatus.holiday ||
+          status == AttendanceStatus.untracked
+      ? null
+      : expectedHours! > 0
+          ? '${formatHours(netHours ?? 0)} of ${formatHours(expectedHours!)}'
+          : formatHours(netHours ?? 0);
+
+  /// "Short 1h 15m", or null when there is no shortfall (or not yet known).
+  String? get shortfallLabel => (shortfallHours ?? 0) > 0.004
+      ? 'Short ${formatHours(shortfallHours!)}'
+      : null;
+}
+
+/// "10h 45m" / "8h" / "0h" / "25m" for decimal [hours] (rounded to the minute).
+String formatHours(double hours) {
+  final mins = (hours * 60).round();
+  final h = mins ~/ 60, m = mins % 60;
+  if (h == 0 && m > 0) return '${m}m';
+  return m == 0 ? '${h}h' : '${h}h ${m.toString().padLeft(2, '0')}m';
+}
+
+/// The clocked-hours figures for one day, as the Server Script stamps them.
+class ClockedDay {
+  final int punchCount;
+  final bool oddTaps;
+  final double netHours;
+  final double expectedHours;
+
+  const ClockedDay({
+    required this.punchCount,
+    required this.oddTaps,
+    required this.netHours,
+    required this.expectedHours,
+  });
+
+  /// expected − net, never below 0; 0 for any status but Present / Half Day
+  /// (Late is Present in HRMS).
+  double shortfallFor(AttendanceStatus status) {
+    final counts = status == AttendanceStatus.present ||
+        status == AttendanceStatus.late ||
+        status == AttendanceStatus.halfDay ||
+        status == AttendanceStatus.missingPunch;
+    return counts && expectedHours > netHours ? _round2(expectedHours - netHours) : 0;
+  }
+}
+
+double _round2(double v) => (v * 100).round() / 100;
+
+/// The pairing-and-break rule (design 3.4; `clocked-hours/attendance-stamp.
+/// server-script.py`): [punches] inside [shift]'s check-in/check-out window
+/// on [day], in time order, pair 1st–2nd, 3rd–4th, … by position (`log_type`
+/// is ignored); each pair counts its length less the part inside the day's
+/// break window, rounded to 2 decimals per pair as HRMS rounds; an unpaired
+/// last tap adds nothing. Time before the pattern's start or after its end
+/// counts.
+ClockedDay clockedDay(List<EmployeeCheckin> punches, ShiftRules shift, DateTime day) {
+  final lo = shift.windowStartOn(day), hi = shift.windowEndOn(day);
+  final times = [
+    for (final p in punches)
+      if (!p.time.isBefore(lo) && !p.time.isAfter(hi)) p.time,
+  ]..sort();
+  final brk = shift.breakOn(day);
+  var net = 0.0;
+  for (var i = 0; i + 1 < times.length; i += 2) {
+    final a = times[i], b = times[i + 1];
+    var secs = b.difference(a).inMilliseconds / 1000;
+    if (brk != null) {
+      final s = a.isAfter(brk.start) ? a : brk.start;
+      final e = b.isBefore(brk.end) ? b : brk.end;
+      if (e.isAfter(s)) secs -= e.difference(s).inMilliseconds / 1000;
+    }
+    net += _round2(secs / 3600);
+  }
+  return ClockedDay(
+    punchCount: times.length,
+    oddTaps: times.length.isOdd,
+    netHours: _round2(net),
+    expectedHours: shift.expectedHoursOn(day),
+  );
 }
 
 /// One shift of an employee's day: its own status, in/out and flags.
@@ -170,25 +287,40 @@ EmployeeDayStatus deriveDayStatus({
 
   if (!employee.isTracked) {
     return EmployeeDayStatus(
-        employee: employee, status: AttendanceStatus.untracked, punches: sorted);
+        employee: employee, status: AttendanceStatus.untracked, punches: sorted, rules: shift);
   }
 
   // Past days: the ledger is authoritative once it exists.
   if (ledger != null) {
-    final st = _ledgerStatus(ledger);
+    var st = _ledgerStatus(ledger);
     final firstIn = ledger.inTime ?? (sorted.isNotEmpty ? sorted.first.time : null);
+    final lateBy = st == AttendanceStatus.late && firstIn != null
+        ? firstIn.difference(cutoff)
+        : null;
+    // A row the clocked-hours Server Script stamped: its figures are the
+    // record. An unstamped row (old shift, or a site without the fields)
+    // stays as HRMS wrote it.
+    final stamped = ledger.isClocked;
+    final missing = stamped && ledger.missingPunch;
+    if (missing && (st == AttendanceStatus.present || st == AttendanceStatus.late)) {
+      st = AttendanceStatus.missingPunch;
+    }
     return EmployeeDayStatus(
       employee: employee,
       status: st,
       inTime: firstIn,
       outTime: ledger.outTime,
-      lateBy: st == AttendanceStatus.late && firstIn != null
-          ? firstIn.difference(cutoff)
-          : null,
+      lateBy: lateBy,
       earlyExit: ledger.earlyExit,
       workingHours: ledger.workingHours,
       punches: sorted,
       ledger: ledger,
+      rules: shift,
+      netHours: stamped ? ledger.netHours ?? 0 : null,
+      expectedHours: stamped ? ledger.expectedHours : null,
+      shortfallHours: stamped ? ledger.shortfallHours ?? 0 : null,
+      punchCount: stamped ? ledger.punchCount : null,
+      missingPunch: missing,
     );
   }
 
@@ -204,18 +336,36 @@ EmployeeDayStatus deriveDayStatus({
       inTime: firstIn,
       outTime: lastOut,
       punches: sorted,
+      rules: shift,
     );
   }
 
+  // A clocked pattern with no Attendance row yet (today, or a past day HRMS
+  // has not marked): the same figures the Server Script will stamp. The day
+  // is over once the check-out window has closed; only then is an odd count
+  // a Missing punch and a shortfall final.
+  final clocked = shift.isClocked ? clockedDay(sorted, shift, day) : null;
+  final dayOver = !now.isBefore(shift.windowEndOn(day));
+
   if (firstIn != null) {
     final late = firstIn.isAfter(cutoff);
+    var st = late ? AttendanceStatus.late : AttendanceStatus.present;
+    final missing = clocked != null && dayOver && clocked.oddTaps;
+    if (missing) st = AttendanceStatus.missingPunch;
     return EmployeeDayStatus(
       employee: employee,
-      status: late ? AttendanceStatus.late : AttendanceStatus.present,
+      status: st,
       inTime: firstIn,
       outTime: lastOut,
       lateBy: late ? firstIn.difference(cutoff) : null,
+      workingHours: clocked?.netHours ?? 0,
       punches: sorted,
+      rules: shift,
+      netHours: clocked?.netHours,
+      expectedHours: clocked?.expectedHours,
+      shortfallHours: clocked != null && dayOver ? clocked.shortfallFor(st) : null,
+      punchCount: clocked?.punchCount,
+      missingPunch: missing,
     );
   }
 
@@ -226,6 +376,12 @@ EmployeeDayStatus deriveDayStatus({
     status: !isPastDay && now.isBefore(cutoff)
         ? AttendanceStatus.notInYet
         : AttendanceStatus.absent,
+    rules: shift,
+    // An Absent day carries its expected hours but no shortfall (design 3.4).
+    netHours: clocked == null ? null : 0,
+    expectedHours: clocked?.expectedHours,
+    shortfallHours: clocked == null ? null : 0,
+    punchCount: clocked == null ? null : 0,
   );
 }
 
@@ -279,7 +435,9 @@ ShiftDayStatus deriveShiftStatus({
     var st = _ledgerStatus(ledger);
     final firstIn = ledger.inTime ?? (sorted.isNotEmpty ? sorted.first.time : null);
     final attended = st == AttendanceStatus.present || st == AttendanceStatus.late;
-    if (requireCheckOut && attended && ledger.outTime == null) {
+    if (ledger.isClocked && ledger.missingPunch && attended) {
+      st = AttendanceStatus.missingPunch;
+    } else if (requireCheckOut && attended && ledger.outTime == null) {
       st = AttendanceStatus.noCheckOut;
     }
     return ShiftDayStatus(
@@ -475,6 +633,18 @@ ShiftDayStatus? currentSegment(EmployeeDayStatus row, DateTime now) {
   return pick;
 }
 
+/// Every employee's own `default_shift` (their clocked-hours pattern), once
+/// each, so the whole catalogue loads rather than the first employee's only.
+Set<String> defaultShiftNames(Iterable<TrackedEmployee> employees) => {
+      for (final e in employees)
+        if ((e.defaultShift ?? '').trim().isNotEmpty) e.defaultShift!.trim(),
+    };
+
+/// The company of [employees] for the company Holiday List Assignment: the
+/// first one set ('' when none is, which reads every company's assignments).
+String companyOf(Iterable<TrackedEmployee> employees) =>
+    employees.map((e) => e.company.trim()).firstWhere((c) => c.isNotEmpty, orElse: () => '');
+
 /// Every distinct shift in [lists] (one list per employee), earliest first.
 List<ShiftRules> distinctShifts(Iterable<List<ShiftRules>> lists) {
   final byName = <String, ShiftRules>{};
@@ -526,19 +696,20 @@ List<EmployeeDayStatus> dashboardAttendanceHighlights(
 
 /// Counts for the summary strip; untracked rows are never counted.
 class AttendanceCounts {
-  final int present, late, notIn, absent, noOut, holiday, tracked;
+  final int present, late, notIn, absent, noOut, missing, holiday, tracked;
   const AttendanceCounts({
     this.present = 0,
     this.late = 0,
     this.notIn = 0,
     this.absent = 0,
     this.noOut = 0,
+    this.missing = 0,
     this.holiday = 0,
     this.tracked = 0,
   });
 
   static AttendanceCounts of(Iterable<EmployeeDayStatus> rows) {
-    var p = 0, l = 0, n = 0, a = 0, o = 0, h = 0, t = 0;
+    var p = 0, l = 0, n = 0, a = 0, o = 0, m = 0, h = 0, t = 0;
     for (final r in rows) {
       switch (r.status) {
         case AttendanceStatus.untracked:
@@ -556,6 +727,9 @@ class AttendanceCounts {
         case AttendanceStatus.noCheckOut:
           p++; // on site (just missing an OUT) — counts toward Present too
           o++;
+        case AttendanceStatus.missingPunch:
+          p++; // came in (an odd number of taps) — counts toward Present too
+          m++;
         case AttendanceStatus.holiday:
         case AttendanceStatus.onLeave:
           h++;
@@ -563,19 +737,31 @@ class AttendanceCounts {
       t++;
     }
     return AttendanceCounts(
-        present: p, late: l, notIn: n, absent: a, noOut: o, holiday: h, tracked: t);
+        present: p,
+        late: l,
+        notIn: n,
+        absent: a,
+        noOut: o,
+        missing: m,
+        holiday: h,
+        tracked: t);
   }
 }
 
 /// Status-filter keys used by the summary tiles and the filter sheet. Present
-/// also matches No check-out (they're on site, just missing an OUT) — the
-/// dedicated 'No check-out' option below still isolates just them.
+/// also matches No check-out and Missing punch (they came in, just with a tap
+/// short) — the dedicated options below still isolate just them.
 const kStatusFilterOptions = <String, List<AttendanceStatus>>{
-  'Present': [AttendanceStatus.present, AttendanceStatus.noCheckOut],
+  'Present': [
+    AttendanceStatus.present,
+    AttendanceStatus.noCheckOut,
+    AttendanceStatus.missingPunch,
+  ],
   'Late': [AttendanceStatus.late],
   'Not in yet': [AttendanceStatus.notInYet],
   'Absent': [AttendanceStatus.absent],
   'No check-out': [AttendanceStatus.noCheckOut],
+  'Missing punch': [AttendanceStatus.missingPunch],
   'Holiday': [AttendanceStatus.holiday, AttendanceStatus.onLeave],
   'Not tracked': [AttendanceStatus.untracked],
 };
@@ -633,7 +819,7 @@ class MonthStrip {
 
   /// Index of today within [days]; null when [month] is not the current one.
   final int? todayIndex;
-  final int present, late, absent, leave, noOut;
+  final int present, late, absent, leave, noOut, missing;
 
   const MonthStrip({
     required this.month,
@@ -644,13 +830,15 @@ class MonthStrip {
     this.absent = 0,
     this.leave = 0,
     this.noOut = 0,
+    this.missing = 0,
   });
 
   /// "September · 5 present · 2 late · 1 absent" (+ " · 1 no check-out",
-  /// " · 1 leave").
+  /// " · 1 missing punch", " · 1 leave").
   String get tallyLabel =>
       '${DateFormat('MMMM').format(month)} · $present present · $late late · $absent absent'
       '${noOut > 0 ? ' · $noOut no check-out' : ''}'
+      '${missing > 0 ? ' · $missing missing punch' : ''}'
       '${leave > 0 ? ' · $leave leave' : ''}';
 }
 
@@ -680,7 +868,7 @@ MonthStrip buildMonthStrip({
   final days = <AttendanceStatus?>[];
   int? todayIndex;
   // Short names like AttendanceCounts.of — `late` is a Dart contextual keyword.
-  var p = 0, l = 0, a = 0, v = 0, o = 0;
+  var p = 0, l = 0, a = 0, v = 0, o = 0, m = 0;
 
   for (var i = 0; i < dayCount; i++) {
     final d = DateTime(first.year, first.month, i + 1);
@@ -722,6 +910,8 @@ MonthStrip buildMonthStrip({
         a++;
       case AttendanceStatus.noCheckOut:
         o++;
+      case AttendanceStatus.missingPunch:
+        m++;
       case AttendanceStatus.onLeave:
         v++;
       default:
@@ -739,6 +929,7 @@ MonthStrip buildMonthStrip({
     absent: a,
     leave: v,
     noOut: o,
+    missing: m,
   );
 }
 
@@ -772,15 +963,22 @@ MonthStrip buildMonthStrip({
     switch (row.status) {
       AttendanceStatus.noCheckOut =>
         ('No check-out', 'Ended ${shift.endLabel} with no out punch'),
+      AttendanceStatus.missingPunch => (
+          'Missing punch',
+          '${row.punchCount ?? row.punches.length} taps, an odd number · ask HR to add the missing one',
+        ),
       AttendanceStatus.notInYet =>
         ('Not in yet', 'Punch before ${shift.cutoffLabel} to be on time'),
       AttendanceStatus.present || AttendanceStatus.late => (
           row.inTime == null ? row.status.label : 'In · ${kHHmm.format(row.inTime!)}',
-          row.lateBy != null && row.lateBy!.inMinutes > 0
-              ? '${row.lateBy!.inMinutes} min late'
-              : row.status == AttendanceStatus.late
-                  ? 'After the ${shift.cutoffLabel} cut-off'
-                  : 'On time',
+          [
+            row.lateBy != null && row.lateBy!.inMinutes > 0
+                ? '${row.lateBy!.inMinutes} min late'
+                : row.status == AttendanceStatus.late
+                    ? 'After the ${shift.cutoffLabel} cut-off'
+                    : 'On time',
+            if (row.hoursLabel != null) row.hoursLabel!,
+          ].join(' · '),
         ),
       AttendanceStatus.holiday =>
         ('Holiday', '${DateFormat('EEEE').format(now)} · no attendance expected'),

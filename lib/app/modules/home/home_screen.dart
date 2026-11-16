@@ -317,7 +317,8 @@ class HomeScreen extends GetView<HomeController> {
         padding: const EdgeInsets.only(bottom: 18),
         child: MyAttendanceCard(
           row: me,
-          shift: controller.attendanceShift.value,
+          // The viewer's own pattern: cut-off and hours are theirs, not the focus shift's.
+          shift: me?.rules ?? controller.attendanceShift.value,
           now: DateTime.now(),
           strip: controller.myMonthStrip,
           isLoading: loading,

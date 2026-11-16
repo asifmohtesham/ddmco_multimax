@@ -139,7 +139,10 @@ Color _dotColor(AttendanceStatus s) => switch (s) {
       AttendanceStatus.present || AttendanceStatus.workFromHome => AppColors.green500,
       AttendanceStatus.late => AppColors.orange500,
       AttendanceStatus.absent => AppColors.red500,
-      AttendanceStatus.halfDay || AttendanceStatus.noCheckOut => AppColors.yellow500,
+      AttendanceStatus.halfDay ||
+      AttendanceStatus.noCheckOut ||
+      AttendanceStatus.missingPunch =>
+        AppColors.yellow500,
       AttendanceStatus.holiday || AttendanceStatus.onLeave => AppColors.blue500,
       AttendanceStatus.notInYet || AttendanceStatus.untracked => AppColors.gray400,
     };
@@ -268,7 +271,7 @@ class _Legend extends StatelessWidget {
           item('Present', AppColors.green500),
           item('Late', AppColors.orange500),
           item('Absent', AppColors.red500),
-          item('Half day', AppColors.yellow500),
+          item('Half day / missing punch', AppColors.yellow500),
           item('Leave / holiday', AppColors.blue500),
         ],
       ),
@@ -277,7 +280,8 @@ class _Legend extends StatelessWidget {
 }
 
 /// One ledger row (one shift of a day): date block · pill (+ the shift's name
-/// on a two-shift day) + In/Out + flags · hours.
+/// on a two-shift day) + In/Out + flags · hours. A clocked-hours row shows its
+/// net hours against the expected ones, and its shortfall.
 class _LedgerRow extends StatelessWidget {
   const _LedgerRow({required this.record, required this.seg, this.showShift = false});
   final AttendanceRecord record;
@@ -287,9 +291,12 @@ class _LedgerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
-    final hasHours = record.workingHours > 0;
-    final h = record.workingHours.floor();
-    final m = ((record.workingHours - h) * 60).round();
+    final clocked = record.isClocked;
+    final hours = clocked ? record.netHours ?? 0 : record.workingHours;
+    final hasHours = hours > 0;
+    final short = clocked ? record.shortfallHours ?? 0 : 0.0;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final orange = dark ? AppColors.orange300 : AppColors.orange700;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
@@ -346,6 +353,10 @@ class _LedgerRow extends StatelessWidget {
                   const SizedBox(height: 4),
                   AttendanceFlag(text: seg.flag!),
                 ],
+                if (short > 0.004) ...[
+                  const SizedBox(height: 4),
+                  AttendanceFlag(text: 'Short ${formatHours(short)}'),
+                ],
               ],
             ),
           ),
@@ -354,15 +365,18 @@ class _LedgerRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                hasHours ? '${h}h ${m.toString().padLeft(2, '0')}m' : '—',
+                hasHours ? formatHours(hours) : '—',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: hasHours ? FontWeight.w600 : FontWeight.w500,
-                  color: hasHours ? s.text : s.textSubtle,
+                  color: hasHours ? (short > 0.004 ? orange : s.text) : s.textSubtle,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-              Text('hours', style: TextStyle(fontSize: 12, color: s.textMuted)),
+              Text(
+                clocked ? 'of ${formatHours(record.expectedHours!)}' : 'hours',
+                style: TextStyle(fontSize: 12, color: s.textMuted),
+              ),
             ],
           ),
         ],
