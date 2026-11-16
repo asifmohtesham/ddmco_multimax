@@ -12,6 +12,7 @@ import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/delivery_note/delivery_note_status_filter.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 
 class DeliveryNoteController extends GetxController {
@@ -130,7 +131,8 @@ class DeliveryNoteController extends GetxController {
     }
 
     try {
-      final Map<String, dynamic> queryFilters = Map.from(activeFilters);
+      // The status label becomes docstatus / is_return where needed.
+      final queryFilters = deliveryNoteQueryFilters(activeFilters);
       if (searchQuery.value.isNotEmpty) {
         queryFilters['name'] = ['like', '%${searchQuery.value}%'];
       }
