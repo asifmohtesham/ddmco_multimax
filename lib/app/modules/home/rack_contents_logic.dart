@@ -88,6 +88,18 @@ class RackContentsEntry {
   final bool disabled;
 }
 
+/// One load of the rack-contents sheet: its entries on a given date, and
+/// whether the Item master fetch behind them failed.
+class RackContentsSnapshot {
+  const RackContentsSnapshot({
+    required this.entries,
+    this.itemDetailsFailed = false,
+  });
+
+  final List<RackContentsEntry> entries;
+  final bool itemDetailsFailed;
+}
+
 /// Merges the rack's Stock Balance [rows] with [itemFields] (from
 /// [itemFieldsByCode]), one entry per row, in report order.
 ///
@@ -138,6 +150,48 @@ String? _usefulDescription(Object? raw, String code, String name) {
   if (lower == code.toLowerCase() || lower == name.toLowerCase()) return null;
   return plain;
 }
+
+/// Entries matching the sheet's search [query], in their original order.
+///
+/// The query is split on whitespace and every word must appear (case-
+/// insensitive) in at least one of the card's text fields, so "focus belt"
+/// finds a FOCUS-brand belt whatever order the words are typed in. A blank
+/// query returns [entries] unchanged.
+List<RackContentsEntry> filterRackContents(
+  List<RackContentsEntry> entries,
+  String query,
+) {
+  final words = query
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .toList();
+  if (words.isEmpty) return entries;
+  return [
+    for (final e in entries)
+      if (_matchesAll(_searchText(e), words)) e,
+  ];
+}
+
+String _searchText(RackContentsEntry e) => [
+      e.itemCode,
+      e.itemName,
+      e.variantOf,
+      e.brand,
+      e.itemGroup,
+      e.batchNo,
+      e.countryOfOrigin,
+      e.description,
+    ].whereType<String>().join('\n').toLowerCase();
+
+bool _matchesAll(String haystack, List<String> words) =>
+    words.every(haystack.contains);
+
+/// Whether [date] falls on the same calendar day as [today].
+bool isSameDay(DateTime date, DateTime today) =>
+    date.year == today.year &&
+    date.month == today.month &&
+    date.day == today.day;
 
 /// Sum of the rack's Balance Qty — the end-of-list total. Quantities only;
 /// no rate or value is ever summed.

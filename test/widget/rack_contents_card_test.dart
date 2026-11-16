@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -207,6 +209,188 @@ void main() {
       });
     });
   }
+
+  group('RackContentsSheet search and as-on date', () {
+    Widget sheet({
+      List<RackContentsEntry> entries = const [full, bare],
+      DateTime? asOf,
+      RackContentsLoader? load,
+    }) =>
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: RackContentsSheet(
+            rackId: 'KA-WH-DXB1-121D',
+            entries: entries,
+            baseUrl: 'https://erp.domain.com',
+            asOf: asOf,
+            loadAsOf: load,
+          ),
+        );
+
+    /// Types the date into the picker rather than tapping a calendar day, so
+    /// the test does not depend on today's date. Leaves the picker closed
+    /// but the load un-settled when [settle] is false.
+    Future<void> pickDate(WidgetTester tester, String typed,
+        {bool settle = true}) async {
+      await tester.tap(find.byKey(const ValueKey('rack-as-of')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, typed);
+      await tester.tap(find.text('OK'));
+      if (settle) {
+        await tester.pumpAndSettle();
+      } else {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+    }
+
+    testWidgets('search narrows the cards and the footer counts them',
+        (tester) async {
+      await pump(tester, sheet(), brightness: Brightness.light, height: 2000);
+
+      await tester.enterText(find.byKey(const ValueKey('rack-search')), 'focus');
+      await tester.pump();
+
+      expect(find.byType(RackContentsCard), findsOneWidget);
+      expect(find.text('BELTS LADIES PU'), findsOneWidget);
+      expect(find.text('End of list · 1 of 2 items · Balance Qty 36 Nos'),
+          findsOneWidget);
+
+      await tester.tap(find.byTooltip('Clear search'));
+      await tester.pump();
+      expect(find.byType(RackContentsCard), findsNWidgets(2));
+      expect(find.text('End of list · 2 items · Balance Qty 36 Nos'),
+          findsOneWidget);
+    });
+
+    testWidgets('a search with no match says so and can be cleared',
+        (tester) async {
+      await pump(tester, sheet(), brightness: Brightness.dark, height: 2000);
+
+      await tester.enterText(find.byKey(const ValueKey('rack-search')), 'zzz');
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(RackContentsCard), findsNothing);
+      expect(find.text('No matching items'), findsOneWidget);
+
+      await tester.tap(find.text('Clear Filters'));
+      await tester.pump();
+      expect(find.byType(RackContentsCard), findsNWidgets(2));
+    });
+
+    testWidgets('opens on today and reloads the rack for a picked date',
+        (tester) async {
+      final asked = <DateTime>[];
+      await pump(
+        tester,
+        sheet(
+          asOf: DateTime.now(),
+          load: (date) async {
+            asked.add(date);
+            return const RackContentsSnapshot(entries: [full]);
+          },
+        ),
+        brightness: Brightness.light,
+        height: 2000,
+      );
+      expect(find.textContaining('· Today'), findsOneWidget);
+
+      await pickDate(tester, '01/15/2025');
+
+      expect(asked, [DateTime(2025, 1, 15)]);
+      expect(find.text('As on 15 Jan 2025'), findsOneWidget);
+      expect(find.byType(RackContentsCard), findsOneWidget);
+      expect(find.text('End of list · 1 item · Balance Qty 36 Nos'),
+          findsOneWidget);
+
+      // "Today" goes back to the current stock.
+      await tester.tap(find.widgetWithText(TextButton, 'Today'));
+      await tester.pumpAndSettle();
+      expect(asked, hasLength(2));
+      expect(isSameDay(asked.last, DateTime.now()), isTrue);
+      expect(find.textContaining('· Today'), findsOneWidget);
+    });
+
+    testWidgets('the date button is disabled with a spinner while loading',
+        (tester) async {
+      final pending = Completer<RackContentsSnapshot>();
+      await pump(
+        tester,
+        sheet(asOf: DateTime.now(), load: (_) => pending.future),
+        brightness: Brightness.dark,
+        height: 2000,
+      );
+
+      await pickDate(tester, '01/15/2025', settle: false);
+
+      final button = find.byKey(const ValueKey('rack-as-of'));
+      expect(tester.widget<ButtonStyleButton>(button).enabled, isFalse);
+      expect(
+          find.descendant(
+              of: button, matching: find.byType(CircularProgressIndicator)),
+          findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      // The old list stays until the new one arrives.
+      expect(find.byType(RackContentsCard), findsNWidgets(2));
+
+      pending.complete(const RackContentsSnapshot(entries: [bare]));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ButtonStyleButton>(button).enabled, isTrue);
+      expect(find.byType(RackContentsCard), findsOneWidget);
+    });
+
+    testWidgets('a failed load keeps the previous date and list',
+        (tester) async {
+      await pump(
+        tester,
+        sheet(
+          asOf: DateTime.now(),
+          load: (_) async => throw const FormatException('bad'),
+        ),
+        brightness: Brightness.light,
+        height: 2000,
+      );
+
+      await pickDate(tester, '01/15/2025');
+
+      expect(find.byKey(const ValueKey('rack-load-error')), findsOneWidget);
+      expect(find.textContaining('Could not load stock as on 15 Jan 2025'),
+          findsOneWidget);
+      expect(find.textContaining('· Today'), findsOneWidget);
+      expect(find.byType(RackContentsCard), findsNWidgets(2));
+    });
+
+    testWidgets('a date the rack was empty shows the empty state',
+        (tester) async {
+      await pump(
+        tester,
+        sheet(
+          asOf: DateTime.now(),
+          load: (_) async => const RackContentsSnapshot(entries: []),
+        ),
+        brightness: Brightness.dark,
+        height: 2000,
+      );
+
+      await pickDate(tester, '01/15/2025');
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Rack was empty'), findsOneWidget);
+      expect(find.text('Nothing was on KA-WH-DXB1-121D on 15 Jan 2025.'),
+          findsOneWidget);
+      expect(find.text('Back to Today'), findsOneWidget);
+    });
+  });
+
+  test('footer names the full count while a search narrows the list', () {
+    expect(rackContentsFooterLabel(const [full], outOf: 5),
+        'End of list · 1 of 5 items · Balance Qty 36 Nos');
+    expect(rackContentsFooterLabel(const [full], outOf: 1),
+        'End of list · 1 item · Balance Qty 36 Nos');
+  });
 
   test('footer omits the unit when rows mix UOMs', () {
     const pair = RackContentsEntry(
