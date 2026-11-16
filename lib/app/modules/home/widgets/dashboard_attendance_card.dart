@@ -25,6 +25,7 @@ class DashboardAttendanceCard extends StatelessWidget {
     required this.onViewAll,
     required this.onRowTap,
     this.isHoliday = false,
+    this.holidayName = '',
     this.beforeCutoff = false,
     this.looksOffline = false,
     this.latestPunch,
@@ -38,6 +39,9 @@ class DashboardAttendanceCard extends StatelessWidget {
   final ShiftRules shift;
   final DateTime now;
   final bool isHoliday;
+
+  /// Today's holiday name ("Eid al-Fitr"); '' on a weekly off.
+  final String holidayName;
   final bool beforeCutoff;
   final bool looksOffline;
   final DateTime? latestPunch;
@@ -108,7 +112,10 @@ class DashboardAttendanceCard extends StatelessWidget {
   (String, String) _copy() {
     final inCount = counts.present + counts.late;
     if (isHoliday) {
-      return ('Holiday today', '${DateFormat('EEEE').format(now)} · no attendance expected');
+      return (
+        holidayName.isEmpty ? 'Holiday today' : '$holidayName today',
+        '${DateFormat('EEEE').format(now)} · no attendance expected',
+      );
     }
     if (beforeCutoff) {
       return ('Shift starts ${shift.startLabel}',

@@ -167,7 +167,8 @@ class HomeController extends GetxController {
   final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
   /// The shift in focus now (in progress, else the day's first).
   final attendanceShift = Rx<ShiftRules>(ShiftRules.fallback);
-  final attendanceHolidays = <String>{}.obs;
+  /// `yyyy-MM-dd` → the holiday's name ('' for a weekly off).
+  final attendanceHolidays = <String, String>{}.obs;
   final attendanceLoadedAt = Rxn<DateTime>();
   final attendanceLatestPunch = Rxn<EmployeeCheckin>();
   List<TrackedEmployee> _attendanceEmployees = const [];
@@ -191,7 +192,11 @@ class HomeController extends GetxController {
       Get.find<PermissionService>().hasAccess('Attendance') == true;
 
   bool get attendanceIsHoliday =>
-      attendanceHolidays.contains(kFrappeDate.format(DateTime.now()));
+      attendanceHolidays.containsKey(kFrappeDate.format(DateTime.now()));
+
+  /// Today's holiday name ("Eid al-Fitr"); '' on a weekly off or a working day.
+  String get attendanceHolidayName =>
+      attendanceHolidays[kFrappeDate.format(DateTime.now())] ?? '';
 
   /// Before the day's first cut-off (the Morning's on a two-shift day).
   bool get beforeAttendanceCutoff => DateTime.now().isBefore(
@@ -239,7 +244,7 @@ class HomeController extends GetxController {
     return buildMonthStrip(
       month: DateTime(now.year, now.month),
       ledger: ledger,
-      holidays: attendanceHolidays,
+      holidays: attendanceHolidays.keys.toSet(),
       today: me,
       now: now,
       shift: me.rules ?? attendanceShift.value, // the viewer's own pattern
@@ -260,7 +265,7 @@ class HomeController extends GetxController {
       'month': DateTime(now.year, now.month),
       'today': me,
       'shift': me.rules ?? attendanceShift.value,
-      'holidays': attendanceHolidays.toSet(),
+      'holidays': Map<String, String>.of(attendanceHolidays),
       'catalog': Map<String, ShiftRules>.of(attendanceCatalog),
     });
   }
@@ -304,6 +309,7 @@ class HomeController extends GetxController {
       attendanceHolidays.assignAll(await _attendanceProvider.fetchHolidays(
         list,
         company: companyOf(_attendanceEmployees),
+        employee: _authController.currentUser.value?.employeeId ?? '',
       ));
       _attendanceHolidaysLoaded = true;
     } catch (_) {}

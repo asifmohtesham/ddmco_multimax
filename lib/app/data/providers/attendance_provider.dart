@@ -196,7 +196,9 @@ class AttendanceProvider {
     return ShiftRules.fromJson(Map<String, dynamic>.from(d));
   }
 
-  /// `yyyy-MM-dd` strings of every holiday (weekly offs included).
+  /// Every holiday (weekly offs included) as `yyyy-MM-dd` → its name: the
+  /// Holiday row's description ("Eid al-Fitr"), or '' for a weekly off or an
+  /// unnamed row.
   ///
   /// With a [holidayList] (the Shift Type names one): HR roles read that list
   /// itself. With none (HRMS 16 then resolves the list per date from the dated
@@ -204,10 +206,12 @@ class AttendanceProvider {
   /// [from]..[to] — the latest one starting on or before each date — and
   /// their lists. Either read is 403 for the Employee role, so both fall back
   /// to HRMS's self-service calendar for the logged-in employee; if that fails
-  /// too, the original error surfaces. [from]/[to] default to the current
-  /// year.
-  Future<Set<String>> fetchHolidays(String holidayList,
-      {DateTime? from, DateTime? to, String company = ''}) async {
+  /// too, the original error surfaces; that calendar has no names, so they
+  /// come from [employee]'s `hrms.api.get_holidays_for_employee` (dates
+  /// stay unnamed without one, or if it fails). [from]/[to] default to the
+  /// current year.
+  Future<Map<String, String>> fetchHolidays(String holidayList,
+      {DateTime? from, DateTime? to, String company = '', String employee = ''}) async {
     final year = DateTime.now().year;
     final rangeFrom = dateOnly(from ?? DateTime(year));
     final rangeTo = dateOnly(to ?? DateTime(year, 12, 31));
@@ -216,23 +220,22 @@ class AttendanceProvider {
       return await _assignedHolidays(rangeFrom, rangeTo, company);
     } catch (e, st) {
       try {
-        return await _fetchOwnHolidays(rangeFrom, rangeTo);
+        return await _fetchOwnHolidays(rangeFrom, rangeTo, employee);
       } catch (_) {
         Error.throwWithStackTrace(e, st);
       }
     }
   }
 
-  Future<Set<String>> _holidayListDates(String holidayList) async {
+  Future<Map<String, String>> _holidayListDates(String holidayList) async {
     final r = await _api.getDocument('Holiday List', holidayList);
     final d = (r.data as Map?)?['data'];
     final rows = (d is Map ? d['holidays'] : null) as List? ?? const [];
-    return rows
-        .whereType<Map>()
-        .map((h) => (h['holiday_date'] ?? '').toString())
-        .where((s) => s.length >= 10)
-        .map((s) => s.substring(0, 10))
-        .toSet();
+    return {
+      for (final h in rows.whereType<Map>())
+        if ('${h['holiday_date'] ?? ''}'.length >= 10)
+          '${h['holiday_date']}'.substring(0, 10): holidayName(h),
+    };
   }
 
   /// Holidays for [from]..[to] from the submitted company Holiday List
@@ -240,7 +243,7 @@ class AttendanceProvider {
   /// the next assignment starts (HRMS `resolve_holiday_list_assignment`).
   /// No assignment → no holidays. Employee-level assignments are not read:
   /// one set of holidays serves the whole list screen.
-  Future<Set<String>> _assignedHolidays(DateTime from, DateTime to, String company) async {
+  Future<Map<String, String>> _assignedHolidays(DateTime from, DateTime to, String company) async {
     const dt = 'Holiday List Assignment';
     final r = await _api.getDocumentList(
       dt,
@@ -260,13 +263,13 @@ class AttendanceProvider {
             DateTime.tryParse('${j['from_date'] ?? ''}') != null)
           (list: '${j['holiday_list']}'.trim(), from: DateTime.parse('${j['from_date']}')),
     ], from, to);
-    final out = <String>{};
-    final cache = <String, Set<String>>{};
+    final out = <String, String>{};
+    final cache = <String, Map<String, String>>{};
     for (final p in periods) {
       final dates = cache[p.list] ??= await _holidayListDates(p.list);
-      for (final s in dates) {
-        final d = DateTime.tryParse(s);
-        if (d != null && !d.isBefore(p.from) && !d.isAfter(p.to)) out.add(s);
+      for (final e in dates.entries) {
+        final d = DateTime.tryParse(e.key);
+        if (d != null && !d.isBefore(p.from) && !d.isAfter(p.to)) out[e.key] = e.value;
       }
     }
     return out;
@@ -274,19 +277,57 @@ class AttendanceProvider {
 
   /// The logged-in employee's holiday dates in [from]..[to] (weekly offs
   /// included) from `hrms.api.get_attendance_calendar_events`, which maps
-  /// each date to "Holiday" or an Attendance status.
-  Future<Set<String>> _fetchOwnHolidays(DateTime from, DateTime to) async {
+  /// each date to "Holiday" or an Attendance status, named from
+  /// [_ownHolidayNames].
+  Future<Map<String, String>> _fetchOwnHolidays(DateTime from, DateTime to, String employee) async {
     final r = await _api.callMethod(
       'hrms.api.get_attendance_calendar_events',
       params: {'from_date': kFrappeDate.format(from), 'to_date': kFrappeDate.format(to)},
     );
     final events = (r.data as Map?)?['message'];
     if (events is! Map) return const {};
-    return {
+    final dates = [
       for (final e in events.entries)
         if (e.value == 'Holiday') e.key.toString(),
-    };
+    ];
+    final names = dates.isEmpty ? const <String, String>{} : await _ownHolidayNames(employee);
+    return {for (final d in dates) d: names[d] ?? ''};
   }
+
+  /// [employee]'s named holidays (weekly offs excluded) from
+  /// `hrms.api.get_holidays_for_employee`, which the Employee role may call
+  /// for themselves. Names only: a failure leaves the dates unnamed.
+  Future<Map<String, String>> _ownHolidayNames(String employee) async {
+    if (employee.trim().isEmpty) return const {};
+    try {
+      final r = await _api.callMethod('hrms.api.get_holidays_for_employee',
+          params: {'employee': employee.trim()});
+      final rows = (r.data as Map?)?['message'];
+      if (rows is! List) return const {};
+      return {
+        for (final h in rows.whereType<Map>())
+          if ('${h['holiday_date'] ?? ''}'.length >= 10)
+            '${h['holiday_date']}'.substring(0, 10): holidayName(h),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+}
+
+/// A Holiday row's name: its description as plain text ("Eid al-Fitr"), or ''
+/// for a weekly off (HRMS describes those by weekday, which says nothing the
+/// calendar does not). Description is a Text Editor field, so markup set in
+/// Desk ("<p>Eid al-Fitr</p>") is stripped.
+String holidayName(Map h) {
+  final off = h['weekly_off'];
+  if (off == 1 || off == true || off == '1') return '';
+  return '${h['description'] ?? ''}'
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }
 
 /// Which Holiday List applies when within [from]..[to], given dated

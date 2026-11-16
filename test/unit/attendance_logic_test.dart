@@ -359,6 +359,14 @@ void main() {
     test('holiday names the weekday', () {
       expect(h(AttendanceStatus.holiday), ('Holiday', 'Thursday · no attendance expected'));
     });
+    test('a named holiday heads with its name; other days ignore it', () {
+      final hol = EmployeeDayStatus(employee: tracked, status: AttendanceStatus.holiday);
+      expect(myAttendanceHeadline(hol, shift, now, holidayName: 'Eid al-Fitr'),
+          ('Eid al-Fitr', 'Thursday · no attendance expected'));
+      final absent = EmployeeDayStatus(employee: tracked, status: AttendanceStatus.absent);
+      expect(myAttendanceHeadline(absent, shift, now, holidayName: 'Eid al-Fitr'),
+          ('Absent', 'No check-in recorded'));
+    });
     test('late without minutes never says on time', () {
       expect(h(AttendanceStatus.late, inTime: DateTime(2026, 9, 10, 8, 27)),
           ('In · 08:27', 'After the 08:15 cut-off'));
@@ -366,6 +374,27 @@ void main() {
     test('late with no in-time', () {
       expect(h(AttendanceStatus.late), ('Late', 'After the 08:15 cut-off'));
     });
+  });
+
+  test('withNamedHolidays: each holiday before its own and earlier days', () {
+    AttendanceRecord rec(int d) => AttendanceRecord(
+        name: 'A$d', employee: 'E', employeeName: 'E', date: DateTime(2026, 3, d, 9), status: 'Present');
+    final out = withNamedHolidays(
+      [rec(23), rec(22), rec(19)], // newest first, as the screen sorts them
+      [
+        (date: DateTime(2026, 3, 20), name: 'Eid al-Fitr'),
+        (date: DateTime(2026, 3, 21), name: 'Eid al-Fitr'),
+        (date: DateTime(2026, 3, 2), name: 'Earliest'),
+        (date: DateTime(2026, 3, 30), name: 'Latest'),
+      ],
+    );
+    String key(Object e) => e is AttendanceRecord
+        ? 'r${e.date.day}'
+        : 'h${(e as ({DateTime date, String name})).date.day}';
+    expect(out.map(key), ['h30', 'r23', 'r22', 'h21', 'h20', 'r19', 'h2']);
+    // No holidays: the rows unchanged; no rows: just the holidays.
+    expect(withNamedHolidays([rec(5)], const []).map(key), ['r5']);
+    expect(withNamedHolidays(const [], [(date: DateTime(2026, 3, 20), name: 'x')]).map(key), ['h20']);
   });
 
   test('unenrolledLabel pluralises', () {

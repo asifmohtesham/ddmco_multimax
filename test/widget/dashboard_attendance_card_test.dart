@@ -143,6 +143,25 @@ void main() {
       expect(find.byType(EmployeeAttendanceCard), findsNothing);
     });
 
+    testWidgets('named holiday: the headline names it ($mode)', (tester) async {
+      await pump(
+        tester,
+        DashboardAttendanceCard(
+          counts: const AttendanceCounts(holiday: 16, tracked: 16),
+          shift: shift,
+          now: DateTime(2026, 5, 27, 9), // a Wednesday
+          loadedAt: DateTime(2026, 5, 27, 9),
+          isHoliday: true,
+          holidayName: 'Eid al-Adha',
+          onViewAll: () {},
+          onRowTap: (_) {},
+        ),
+        brightness,
+      );
+      expect(find.text('Eid al-Adha today'), findsOneWidget);
+      expect(find.text('Wednesday · no attendance expected'), findsOneWidget);
+    });
+
     testWidgets('offline, System Manager: terminal diagnosis, all dashed ($mode)',
         (tester) async {
       await pump(

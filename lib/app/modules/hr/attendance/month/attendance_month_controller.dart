@@ -17,7 +17,8 @@ class AttendanceMonthController extends GetxController {
   final records = <AttendanceRecord>[].obs;
   final assignments = <ShiftAssignmentRow>[].obs;
   final isLoading = true.obs;
-  final holidays = <String>{}.obs;
+  /// `yyyy-MM-dd` → the holiday's name ('' for a weekly off).
+  final holidays = <String, String>{}.obs;
   EmployeeDayStatus? today;
   final scrollController = ScrollController();
 
@@ -47,11 +48,12 @@ class AttendanceMonthController extends GetxController {
         ? Get.find<AttendanceController>()
         : null;
     shift = args['shift'] as ShiftRules? ?? list?.shift.value ?? ShiftRules.fallback;
-    holidays.assignAll(args['holidays'] as Set<String>? ?? list?.holidays ?? const <String>{});
+    holidays.assignAll(
+        args['holidays'] as Map<String, String>? ?? list?.holidays ?? const <String, String>{});
     // A handed-over set is trusted for its own months (one holiday in a
     // month is enough to know that month was covered: every month has a
     // Sunday); other months are read in [load].
-    for (final h in holidays) {
+    for (final h in holidays.keys) {
       final d = DateTime.tryParse(h);
       if (d != null) _holidayMonths.add(_monthKey(d));
     }
@@ -91,6 +93,7 @@ class AttendanceMonthController extends GetxController {
             from: first,
             to: last,
             company: employee.company,
+            employee: employee.name,
           ));
           _holidayMonths.add(_monthKey(first));
         } catch (_) {} // a month without holiday labels beats no month
@@ -139,7 +142,15 @@ class AttendanceMonthController extends GetxController {
     load();
   }
 
-  bool isHoliday(DateTime d) => holidays.contains(kFrappeDate.format(d));
+  bool isHoliday(DateTime d) => holidays.containsKey(kFrappeDate.format(d));
+
+  /// The month's named holidays (Eid al-Fitr, not the weekly offs), by date.
+  List<({DateTime date, String name})> get namedHolidays => [
+        for (final e in holidays.entries)
+          if (e.value.isNotEmpty)
+            if (DateTime.tryParse(e.key) case final d?)
+              if (!d.isBefore(first) && !d.isAfter(last)) (date: d, name: e.value),
+      ]..sort((a, b) => a.date.compareTo(b.date));
 
   List<AttendanceRecord> recordsOn(DateTime d) {
     final key = kFrappeDate.format(d);

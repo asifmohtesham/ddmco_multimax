@@ -31,6 +31,9 @@ class _FakeApi extends ApiProvider {
 
   /// Calendar events returned by callMethod; null makes callMethod throw.
   Map<String, dynamic>? calendar;
+
+  /// `hrms.api.get_holidays_for_employee` rows; null makes that call throw.
+  List<Map<String, dynamic>>? ownHolidays;
   final calls = <({String method, Map<String, dynamic>? params})>[];
 
   /// Rows returned by getDocumentList, and the arguments of the last call.
@@ -95,6 +98,14 @@ class _FakeApi extends ApiProvider {
   Future<Response> callMethod(String method,
       {Map<String, dynamic>? params}) async {
     calls.add((method: method, params: params));
+    if (method == 'hrms.api.get_holidays_for_employee') {
+      if (ownHolidays == null) throw Exception('holidays unavailable');
+      return Response(
+        requestOptions: RequestOptions(path: '/api/method/$method'),
+        statusCode: 200,
+        data: {'message': ownHolidays},
+      );
+    }
     if (calendar == null) throw Exception('calendar unavailable');
     return Response(
       requestOptions: RequestOptions(path: '/api/method/$method'),
@@ -152,8 +163,24 @@ void main() {
       ],
     };
     expect(await provider.fetchHolidays('Multimax 2026'),
-        {'2026-09-06', '2026-09-13'});
+        {'2026-09-06': '', '2026-09-13': ''});
     expect(api.calls, isEmpty);
+  });
+
+  test('a named row carries its description; weekly offs stay unnamed', () async {
+    api.holidayListDoc = {
+      'holidays': [
+        {'holiday_date': '2026-03-15', 'weekly_off': 1, 'description': 'Sunday'},
+        {'holiday_date': '2026-03-20', 'weekly_off': 0, 'description': 'Eid al-Fitr'},
+        // Set in Desk, the Text Editor wraps it in markup.
+        {'holiday_date': '2026-03-21', 'description': '<div class="ql-editor"><p>Eid al-Fitr</p></div>'},
+      ],
+    };
+    expect(await provider.fetchHolidays('Multimax 2026-2027'), {
+      '2026-03-15': '',
+      '2026-03-20': 'Eid al-Fitr',
+      '2026-03-21': 'Eid al-Fitr',
+    });
   });
 
   test('Employee role (403) falls back to the HRMS calendar, Sundays included',
@@ -165,11 +192,40 @@ void main() {
       '2026-09-13': 'Holiday',
     };
     expect(await provider.fetchHolidays('Multimax 2026'),
-        {'2026-09-06', '2026-09-13'});
+        {'2026-09-06': '', '2026-09-13': ''});
     final year = DateTime.now().year;
+    // No employee to name them for: the calendar alone.
     expect(api.calls.single.method, 'hrms.api.get_attendance_calendar_events');
     expect(api.calls.single.params,
         {'from_date': '$year-01-01', 'to_date': '$year-12-31'});
+  });
+
+  test('Employee role: names come from get_holidays_for_employee', () async {
+    api.holidayListError = _forbidden();
+    api.calendar = {
+      '2026-03-15': 'Holiday',
+      '2026-03-20': 'Holiday',
+      '2026-03-21': 'Holiday',
+      '2026-03-22': 'Present',
+    };
+    api.ownHolidays = [
+      {'name': 'h1', 'holiday_date': '2026-03-20', 'description': 'Eid al-Fitr'},
+      {'name': 'h2', 'holiday_date': '2026-03-21', 'description': 'Eid al-Fitr'},
+    ];
+    expect(
+        await provider.fetchHolidays('Multimax 2026-2027',
+            from: DateTime(2026, 3), to: DateTime(2026, 3, 31), employee: 'HR-EMP-00026'),
+        {'2026-03-15': '', '2026-03-20': 'Eid al-Fitr', '2026-03-21': 'Eid al-Fitr'});
+    expect(api.calls.last.method, 'hrms.api.get_holidays_for_employee');
+    expect(api.calls.last.params, {'employee': 'HR-EMP-00026'});
+  });
+
+  test('Employee role: a failed name read still gives the dates', () async {
+    api.holidayListError = _forbidden();
+    api.calendar = {'2026-03-20': 'Holiday'};
+    expect(
+        await provider.fetchHolidays('Multimax 2026-2027', employee: 'HR-EMP-00026'),
+        {'2026-03-20': ''});
   });
 
   test('when the fallback fails too, the original error surfaces', () async {
@@ -300,19 +356,19 @@ void main() {
         'Multimax 2026': {
           'holidays': [
             {'holiday_date': '2026-12-27'},
-            {'holiday_date': '2027-01-03'}, // a stray row past its own period
+            {'holiday_date': '2027-01-03', 'description': 'Stray'}, // past its own period
           ],
         },
         'Multimax 2027': {
           'holidays': [
-            {'holiday_date': '2027-01-03'},
+            {'holiday_date': '2027-01-03', 'description': 'New Year (observed)'},
             {'holiday_date': '2027-01-10'},
           ],
         },
       };
       final h = await provider.fetchHolidays('',
           from: DateTime(2026, 12, 1), to: DateTime(2027, 1, 5), company: 'Multimax');
-      expect(h, {'2026-12-27', '2027-01-03'});
+      expect(h, {'2026-12-27': '', '2027-01-03': 'New Year (observed)'});
       expect(api.lastList!.doctype, 'Holiday List Assignment');
       expect(api.lastList!.filterTuples, containsAll([
         ['Holiday List Assignment', 'docstatus', '=', 1],
@@ -334,7 +390,7 @@ void main() {
       api.calendar = {'2026-12-06': 'Holiday', '2026-12-07': 'Present'};
       final h = await provider.fetchHolidays('',
           from: DateTime(2026, 12, 1), to: DateTime(2026, 12, 31));
-      expect(h, {'2026-12-06'});
+      expect(h, {'2026-12-06': ''});
       expect(api.calls.single.params, {'from_date': '2026-12-01', 'to_date': '2026-12-31'});
     });
 

@@ -84,6 +84,20 @@ class AttendanceMonthScreen extends GetView<AttendanceMonthController> {
                   final byDate = b.date.compareTo(a.date);
                   return byDate != 0 ? byDate : start(a).compareTo(start(b));
                 });
+              // Named holidays (Eid, not the weekly offs) sit among the rows by
+              // date, newest first like them: HRMS writes no Attendance row for
+              // them, so the list would otherwise skip the day without a word.
+              final entries = [
+                for (final e in withNamedHolidays(rows, controller.namedHolidays))
+                  if (e case final AttendanceRecord r)
+                    _LedgerRow(
+                      record: r,
+                      seg: controller.ledgerRowStatus(r),
+                      showShift: controller.shiftsOn(r.date).length > 1,
+                    )
+                  else if (e case (date: final DateTime d, name: final String n))
+                    _HolidayRow(date: d, name: n),
+              ];
               return SliverPadding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                 sliver: SliverList(
@@ -111,14 +125,7 @@ class AttendanceMonthScreen extends GetView<AttendanceMonthController> {
                           ),
                         ),
                       ),
-                    for (final r in rows) ...[
-                      _LedgerRow(
-                        record: r,
-                        seg: controller.ledgerRowStatus(r),
-                        showShift: controller.shiftsOn(r.date).length > 1,
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                    for (final e in entries) ...[e, const SizedBox(height: 8)],
                     ListEndFooter(
                       hasMore: false,
                       bottomPadding: bottomInset + 48,
@@ -273,6 +280,57 @@ class _Legend extends StatelessWidget {
           item('Absent', AppColors.red500),
           item('Half day / missing punch', AppColors.yellow500),
           item('Leave / holiday', AppColors.blue500),
+        ],
+      ),
+    );
+  }
+}
+
+/// A named holiday among the ledger rows: date block · Holiday pill · its
+/// name ("Eid al-Fitr"). No in/out or hours: nobody is expected in.
+class _HolidayRow extends StatelessWidget {
+  const _HolidayRow({required this.date, required this.name});
+  final DateTime date;
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      decoration: BoxDecoration(
+        color: s.fg,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: s.border),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 40,
+            child: Column(
+              children: [
+                Text(date.day.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w700, height: 1, color: s.text,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+                const SizedBox(height: 2),
+                Text(DateFormat('EEE').format(date).toUpperCase(),
+                    style: TextStyle(
+                        fontSize: 10.5, fontWeight: FontWeight.w600, letterSpacing: 0.5, color: s.textSubtle)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          StatusPill(status: AttendanceStatus.holiday.label),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: s.text),
+            ),
+          ),
         ],
       ),
     );

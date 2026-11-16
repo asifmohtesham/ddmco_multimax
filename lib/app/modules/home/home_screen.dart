@@ -323,6 +323,7 @@ class HomeScreen extends GetView<HomeController> {
           strip: controller.myMonthStrip,
           isLoading: loading,
           onTap: controller.openMyMonth,
+          holidayName: controller.attendanceHolidayName,
         ),
       );
     });
@@ -366,6 +367,7 @@ class HomeScreen extends GetView<HomeController> {
             shift: controller.attendanceShift.value,
             now: now,
             isHoliday: controller.attendanceIsHoliday,
+            holidayName: controller.attendanceHolidayName,
             beforeCutoff: controller.beforeAttendanceCutoff,
             looksOffline: controller.attendanceLooksOffline,
             latestPunch: controller.attendanceLatestPunch.value?.time,

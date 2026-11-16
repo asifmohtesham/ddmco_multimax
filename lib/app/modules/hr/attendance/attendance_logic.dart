@@ -933,12 +933,36 @@ MonthStrip buildMonthStrip({
   );
 }
 
+/// The month list's entries, newest first: [rows] (already newest first) with
+/// each of [named] (any order) placed before the rows of its own and earlier
+/// dates. An entry is an [AttendanceRecord] or a `({DateTime date, String
+/// name})` holiday.
+List<Object> withNamedHolidays(
+    List<AttendanceRecord> rows, List<({DateTime date, String name})> named) {
+  final hol = [...named]..sort((a, b) => b.date.compareTo(a.date));
+  final out = <Object>[];
+  var h = 0;
+  for (final r in rows) {
+    while (h < hol.length && !hol[h].date.isBefore(dateOnly(r.date))) {
+      out.add(hol[h++]);
+    }
+    out.add(r);
+  }
+  out.addAll(hol.skip(h));
+  return out;
+}
+
 /// Headline + sub-line for the viewer's own "My attendance" block. Wording
 /// never blames the terminal: "No check-in recorded yet" is true whether the
 /// person or the device is at fault. On a Morning/Afternoon day it describes
-/// the shift in progress ([currentSegment]) and names it in the sub-line.
+/// the shift in progress ([currentSegment]) and names it in the sub-line. A
+/// named holiday ([holidayName], "Eid al-Fitr") heads the card in place of
+/// "Holiday".
 (String, String) myAttendanceHeadline(
-    EmployeeDayStatus row, ShiftRules shift, DateTime now) {
+    EmployeeDayStatus row, ShiftRules shift, DateTime now, {String holidayName = ''}) {
+  if (row.status == AttendanceStatus.holiday && holidayName.isNotEmpty) {
+    return (holidayName, '${DateFormat('EEEE').format(now)} · no attendance expected');
+  }
   final seg = currentSegment(row, now);
   if (seg == null ||
       row.status == AttendanceStatus.holiday ||
