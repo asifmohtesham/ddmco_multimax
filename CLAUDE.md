@@ -152,4 +152,5 @@ The `docs/` folder contains important design and architecture notes:
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
 - `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact
+- `docs/stock_entry_item_image_field.md` — Desk-only virtual `Item Image` column on Stock Entry Detail (Custom Field + Client Script): shown and exported, never saved, never dirties the form
 - `docs/sales_order_delivery_flow.md` — Dashboard Sales Order → scan-to-pick Delivery Note (SO line binding, caps, resume, v16 CSRF)
