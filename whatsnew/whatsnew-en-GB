@@ -1,1 +1,1 @@
-Delivery Notes and Purchase Receipts: the Status filter's "Submitted" choice now lists your submitted documents instead of always showing none. On Delivery Notes, "Return" now includes billed and draft returns too.
+POS Upload: the Status filter no longer offers "Draft" and "Submitted". No upload can have either status, so both always showed an empty list. The same two choices are gone from the status field on the upload form.
