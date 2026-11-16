@@ -194,7 +194,8 @@ class ClockedHoursStat extends StatelessWidget {
           ),
           if (shortfall != null)
             TextSpan(
-              text: ' · ${shortfall!.toLowerCase()}',
+              // Non-breaking spaces: "short 5h 54m" wraps as one piece.
+              text: ' · ${shortfall!.toLowerCase().replaceAll(' ', '\u00A0')}',
               style: TextStyle(
                 color: dark ? AppColors.orange300 : AppColors.orange700,
                 fontWeight: FontWeight.w600,
@@ -267,14 +268,28 @@ class AttendanceFlag extends StatelessWidget {
 }
 
 /// "NOT TRACKED · 10 · NO TERMINAL ID ────────" section divider.
+///
+/// [wrap] is for a sentence that may not fit one line (the month summary):
+/// the text wraps over the full width and the trailing rule is dropped.
 class AttendanceGroupHeader extends StatelessWidget {
-  const AttendanceGroupHeader({super.key, required this.text, this.icon});
+  const AttendanceGroupHeader({super.key, required this.text, this.icon, this.wrap = false});
   final String text;
   final IconData? icon;
+  final bool wrap;
 
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
+    final label = Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        height: wrap ? 1.5 : null,
+        color: s.textSubtle,
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 6, 2, 0),
       child: Row(
@@ -283,17 +298,13 @@ class AttendanceGroupHeader extends StatelessWidget {
             Icon(icon, size: 14, color: s.textSubtle),
             const SizedBox(width: 8),
           ],
-          Text(
-            text.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-              color: s.textSubtle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(height: 1, color: s.border)),
+          if (wrap)
+            Expanded(child: label)
+          else ...[
+            label,
+            const SizedBox(width: 8),
+            Expanded(child: Divider(height: 1, color: s.border)),
+          ],
         ],
       ),
     );

@@ -215,7 +215,10 @@ class AttendanceMonthController extends GetxController {
           break;
       }
     }
-    final short = records.fold(0.0, (t, r) => t + (r.isClocked ? r.shortfallHours ?? 0 : 0));
+    // Same days as the counts: a row dated after today adds nothing yet.
+    final short = records
+        .where((r) => !dateOnly(r.date).isAfter(end))
+        .fold(0.0, (t, r) => t + (r.isClocked ? r.shortfallHours ?? 0 : 0));
     return '$working working day${working == 1 ? '' : 's'} · $present present · $absent absent'
         '${noOut > 0 ? ' · $noOut no check-out' : ''}'
         '${missing > 0 ? ' · $missing missing punch' : ''}'

@@ -219,7 +219,7 @@ void main() {
       await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {}), brightness: b));
       expect(find.text('Missing punch'), findsOneWidget);
       expect(find.text('5 min late'), findsOneWidget);
-      expect(find.textContaining('Net 3h 55m of 10h · short 6h 05m', findRichText: true), findsOneWidget);
+      expect(find.textContaining('Net 3h 55m of 10h · short\u00A06h\u00A005m', findRichText: true), findsOneWidget);
       final (_, ink) = StatusPill.colourForStatus('Missing punch', brightness: b);
       expect(ink, b == Brightness.dark ? AppColors.yellow300 : AppColors.yellow700);
       expect(tester.takeException(), isNull);
@@ -257,5 +257,19 @@ void main() {
     await tester.pumpWidget(app(EmployeeAttendanceCard(row: row, onTap: () {})));
     expect(find.text('Present'), findsOneWidget);
     expect(find.textContaining('Net', findRichText: true), findsNothing);
+  });
+
+  // Found on a 1080 px phone: the month summary ran past the screen edge.
+  testWidgets('month summary header wraps on a phone-width screen', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const text = '13 working days · 7 present · 0 absent · 6 no check-out'
+        ' · 1 missing punch · short 3h 54m';
+    await tester.pumpWidget(app(const Scaffold(
+      body: Padding(padding: EdgeInsets.all(12), child: AttendanceGroupHeader(text: text, wrap: true)),
+    )));
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.textContaining('MISSING PUNCH')).height, greaterThan(20));
   });
 }

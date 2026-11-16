@@ -96,7 +96,7 @@ class AttendanceMonthScreen extends GetView<AttendanceMonthController> {
                     const SizedBox(height: 8),
                     const _Legend(),
                     const SizedBox(height: 8),
-                    AttendanceGroupHeader(text: controller.summary),
+                    AttendanceGroupHeader(text: controller.summary, wrap: true),
                     const SizedBox(height: 8),
                     if (rows.isEmpty)
                       Padding(
