@@ -1099,25 +1099,24 @@ class HomeController extends GetxController {
         return;
       }
 
-      final response = await _itemProvider.getWarehouseStock(
-        location.warehouseName,
-        rack: rackCode,
-      );
-      final rackItems = rackRowsFromStockBalance(response.data, rackCode);
+      final today = DateTime.now();
+      // Still inside the isRackScanning window, so the scan spinner covers
+      // the Item fetch too and the cards never re-lay-out as details arrive.
+      final contents =
+          await _loadRackContents(rackCode, location.warehouseName, today);
 
-      if (rackItems.isEmpty) {
+      if (contents.entries.isEmpty) {
         GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
       } else {
-        // Item master fields for the whole rack in one request. Still inside
-        // the isRackScanning window, so the scan spinner covers it and the
-        // cards never re-lay-out as details arrive.
-        final itemFields = await _fetchRackItemFields(rackItems);
         Get.bottomSheet(
           RackContentsSheet(
             rackId: rackCode,
-            entries: mergeRackContents(rackItems, itemFields),
+            entries: contents.entries,
             baseUrl: _apiProvider.baseUrl,
-            itemDetailsFailed: itemFields == null,
+            itemDetailsFailed: contents.itemDetailsFailed,
+            asOf: today,
+            loadAsOf: (date) =>
+                _loadRackContents(rackCode, location.warehouseName, date),
             onItemTap: _openItemFromRack,
           ),
           isScrollControlled: true,
@@ -1131,6 +1130,28 @@ class HomeController extends GetxController {
     } finally {
       isRackScanning.value = false;
     }
+  }
+
+  /// The rack's Stock Balance rows as on [asOf], merged with their Item
+  /// master fields. Throws what the Stock Balance request throws; an Item
+  /// fetch failure only sets `itemDetailsFailed`.
+  Future<RackContentsSnapshot> _loadRackContents(
+    String rackCode,
+    String warehouse,
+    DateTime asOf,
+  ) async {
+    final response = await _itemProvider.getWarehouseStock(
+      warehouse,
+      rack: rackCode,
+      asOf: asOf,
+    );
+    final rackItems = rackRowsFromStockBalance(response.data, rackCode);
+    if (rackItems.isEmpty) return const RackContentsSnapshot(entries: []);
+    final itemFields = await _fetchRackItemFields(rackItems);
+    return RackContentsSnapshot(
+      entries: mergeRackContents(rackItems, itemFields),
+      itemDetailsFailed: itemFields == null,
+    );
   }
 
   /// Item master fields for the rack's items, keyed by item code, or null

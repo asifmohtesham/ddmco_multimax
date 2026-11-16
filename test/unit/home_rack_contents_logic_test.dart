@@ -179,6 +179,60 @@ void main() {
     });
   });
 
+  group('filterRackContents', () {
+    const belt = RackContentsEntry(
+      itemCode: '3000247',
+      itemName: 'BELTS LADIES PU',
+      balanceQty: 36,
+      variantOf: 'SGPU-14',
+      brand: 'FOCUS',
+      itemGroup: 'Belts',
+      countryOfOrigin: 'China',
+    );
+    const wallet = RackContentsEntry(
+      itemCode: '2002654',
+      itemName: 'WALLET MENS',
+      balanceQty: 4,
+      brand: 'ARROW',
+      batchNo: 'B-0091',
+      description: 'Genuine leather bifold',
+    );
+    const all = [belt, wallet];
+
+    test('a blank query keeps every entry', () {
+      expect(filterRackContents(all, ''), all);
+      expect(filterRackContents(all, '   '), all);
+    });
+
+    test('matches code, name, variant, brand, batch and description, any case',
+        () {
+      expect(filterRackContents(all, '3000'), [belt]);
+      expect(filterRackContents(all, 'wallet'), [wallet]);
+      expect(filterRackContents(all, 'sgpu'), [belt]);
+      expect(filterRackContents(all, 'Arrow'), [wallet]);
+      expect(filterRackContents(all, 'b-0091'), [wallet]);
+      expect(filterRackContents(all, 'LEATHER'), [wallet]);
+      expect(filterRackContents(all, 'china'), [belt]);
+    });
+
+    test('every word must match, in any order', () {
+      expect(filterRackContents(all, 'focus belts'), [belt]);
+      expect(filterRackContents(all, 'belts arrow'), isEmpty);
+      expect(filterRackContents(all, 'nothing-like-this'), isEmpty);
+    });
+  });
+
+  group('isSameDay', () {
+    test('compares the calendar day only', () {
+      expect(isSameDay(DateTime(2026, 11, 16, 23, 59),
+          DateTime(2026, 11, 16, 0, 1)), isTrue);
+      expect(isSameDay(DateTime(2026, 11, 15), DateTime(2026, 11, 16)),
+          isFalse);
+      expect(isSameDay(DateTime(2025, 11, 16), DateTime(2026, 11, 16)),
+          isFalse);
+    });
+  });
+
   group('itemImageUrl', () {
     test('joins a server-relative path to the base URL', () {
       expect(itemImageUrl('https://erp.domain.com', '/files/a.jpg'),

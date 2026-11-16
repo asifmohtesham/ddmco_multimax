@@ -125,15 +125,24 @@ class ItemProvider {
   /// [rack] narrows the report to one rack server-side (the `rack` inventory
   /// dimension filter, a list on both v15 and v16). On production a whole
   /// warehouse is ~1.8 MB / 4.5 s; one rack is ~10 KB / 1.3 s.
-  Future<Response> getWarehouseStock(String warehouse, {String? rack}) async {
+  ///
+  /// [asOf] is the day the balance is taken at (default today): Stock
+  /// Balance's `bal_qty` is the closing balance at `to_date`, so a past date
+  /// gives the stock as it stood at the end of that day. `from_date` only
+  /// bounds the in/out columns, which the app does not read.
+  Future<Response> getWarehouseStock(
+    String warehouse, {
+    String? rack,
+    DateTime? asOf,
+  }) async {
     final storage = Get.find<StorageService>();
     final company = storage.getCompany();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final date = DateFormat('yyyy-MM-dd').format(asOf ?? DateTime.now());
 
     final filters = {
       "company": company,
-      "from_date": today,
-      "to_date": today,
+      "from_date": date,
+      "to_date": date,
       "warehouse": warehouse,
       if (rack != null && rack.isNotEmpty) "rack": [rack],
       "valuation_field_type": "Currency",
