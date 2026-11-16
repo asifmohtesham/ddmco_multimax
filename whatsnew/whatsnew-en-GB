@@ -1,1 +1,1 @@
-Lists and reports: a filter chip now updates as soon as you change that filter. Before, picking a different item on a report such as Item Variant Details could leave the chip showing the old item until you scrolled.
+Delivery Notes and Purchase Receipts: the Status filter's "Submitted" choice now lists your submitted documents instead of always showing none. On Delivery Notes, "Return" now includes billed and draft returns too.
