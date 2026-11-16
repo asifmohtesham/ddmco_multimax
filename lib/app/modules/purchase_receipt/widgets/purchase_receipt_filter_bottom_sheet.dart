@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_controller.dart';
+import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_status_filter.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/global_widgets/global_filter_bottom_sheet.dart';
 
@@ -109,7 +110,7 @@ class _PurchaseReceiptFilterBottomSheetState extends State<PurchaseReceiptFilter
             prefixIcon: Icon(Icons.flag),
             border: OutlineInputBorder(),
           ),
-          items: ['Draft', 'Submitted', 'Completed', 'Cancelled']
+          items: purchaseReceiptStatusChoices
               .map((status) => DropdownMenuItem(value: status, child: Text(status)))
               .toList(),
           onChanged: (value) => setState(() => selectedStatus = value),
