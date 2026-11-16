@@ -1,1 +1,1 @@
-Stock Ageing: the item sheet now shows how old the oldest and newest stock is, with the year it came in, such as "1,612 days · since 2022". Average Age now shows its unit in days.
+Lists and reports: a filter chip now updates as soon as you change that filter. Before, picking a different item on a report such as Item Variant Details could leave the chip showing the old item until you scrolled.
