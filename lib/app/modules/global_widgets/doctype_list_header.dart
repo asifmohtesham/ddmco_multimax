@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:auto_size_text/auto_size_text.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -136,7 +137,7 @@ const double _kChipRow = 48.0;
 /// Rx mutation
 ///   └─ Obx in build() re-runs DocTypeListHeader.build()     [Fix 3]
 ///        └─ new delegate with fresh Rx snapshots
-///             └─ shouldRebuild compares .length / .value       [Fix 2]
+///             └─ shouldRebuild compares filter content / .value [Fix 2]
 ///                  └─ returns true → SliverPersistentHeader
 ///                       recalculates maxExtent
 ///                            └─ Column guard == maxExtent      [Fix 1]
@@ -262,7 +263,10 @@ class DocTypeListHeader extends StatelessWidget {
   //
   // Obx reads both Rx values unconditionally so both are registered with
   // GetX's reactive graph regardless of whether filterChipsBuilder is set.
-  // The reads use null-safe fallbacks so no NPE is possible.
+  // Reading `.length` is enough to hear every mutation, value changes
+  // included: each RxMap read goes through its `value` getter, which
+  // registers the listener. The reads use null-safe fallbacks so no NPE is
+  // possible.
   @override
   Widget build(BuildContext context) {
     if (activeFilters != null || searchQuery != null) {
@@ -371,8 +375,18 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   // in-place mutations to the shared RxMap / RxString objects. Without these,
   // both `this` and `old` delegates read the same post-mutation value and
   // filtersChanged / searchChanged are always false.
-  final int _filterCount;
+  //
+  // The filter snapshot holds the entries, not just the count: replacing one
+  // filter's value (Item A → Item B on a report) keeps the count at one, and
+  // a count-only compare left the chip row showing the old value until the
+  // next scroll rebuilt the header.
+  final Map<dynamic, dynamic> _filterSnapshot;
   final String _searchValue;
+
+  /// Compares filter values by content, so list-valued filters such as
+  /// `['like', '%x%']` — usually reassigned as fresh lists — don't force a
+  /// rebuild on every Obx run when nothing has actually changed.
+  static const _filterEquality = DeepCollectionEquality();
 
   _DocTypeListHeaderDelegate({
     required this.title,
@@ -394,7 +408,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.bottom,
     required this.statusBarHeight,
     required this.themeSurface,
-  })  : _filterCount = activeFilters?.length ?? 0,
+  })  : _filterSnapshot = Map<dynamic, dynamic>.of(activeFilters ?? const {}),
         _searchValue = searchQuery?.value ?? '';
 
   // ── Chip presence ──────────────────────────────────────────────────────────
@@ -809,11 +823,12 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     // of (canSave, isSaving, saveResult, hasOnSave) so that button state
     // changes (e.g. isDirty true → enabled icon) trigger an immediate rebuild
     // rather than being deferred until the next scroll layout pass.
+    // Filters ARE compared by content (see [_filterSnapshot]), not by count.
     // themeSurface IS compared: a pure Theme/Brightness change (e.g. toggling
     // Light/Dark while this screen sits off-screen in the Navigator backstack)
     // touches none of the fields above, so without this the cached header
     // keeps painting the old theme's colour indefinitely — see [themeSurface].
-    return _filterCount != old._filterCount ||
+    return !_filterEquality.equals(_filterSnapshot, old._filterSnapshot) ||
         _searchValue != old._searchValue ||
         statusBarHeight != old.statusBarHeight ||
         themeSurface != old.themeSurface ||
