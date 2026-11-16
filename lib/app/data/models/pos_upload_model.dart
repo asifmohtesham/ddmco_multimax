@@ -1,14 +1,23 @@
 class PosUpload {
-  /// All status values a POS Upload can have, in ERPNext option order.
-  /// Must be kept in sync with the ERPNext DocType so status dropdowns
-  /// and filter chips never miss (or invent) a status.
+  /// The `status` values a POS Upload can be given, in the DocType's option
+  /// order. Feeds the form's status dropdown, the list's status bar and the
+  /// filter sheet, so keep it in step with the server.
+  ///
+  /// POS Upload is a site DocType (Selling module, custom). Its `status` is a
+  /// Select with the options blank, Pending, In Progress, Completed and
+  /// Cancelled (default Pending, permlevel 1), read on production (v16) on
+  /// 16/11/2026. It is not submittable, so every upload has docstatus 0 and
+  /// there is no "Draft" or "Submitted": the server rejects either on save and
+  /// a filter on either matches nothing. Those two were left over from the
+  /// first model, which derived the status from docstatus.
+  ///
+  /// The blank option is not offered: it is not a state anyone should set,
+  /// and [PosUpload.fromJson] shows a blank status as "Pending".
   static const List<String> statusOptions = [
-    'Draft',
     'Pending',
     'In Progress',
     'Completed',
     'Cancelled',
-    'Submitted',
   ];
 
   final String name;
