@@ -49,7 +49,7 @@ class StockSheetController extends GetxController {
        _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path));
 
   static const int maxPhotos = 100;
-  static const String _title = 'Stock sheet';
+  static const String _title = 'Items';
   static const String _xlsxMime =
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   static const String _pdfMime = 'application/pdf';

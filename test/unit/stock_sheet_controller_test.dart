@@ -143,7 +143,7 @@ void main() {
       pdfDocs.single.subtitle,
       '17/11/2026 09:05 · 1 photos · 1 items · 0 out of stock',
     );
-    expect(pdfDocs.single.title, 'Stock sheet');
+    expect(pdfDocs.single.title, 'Items');
     expect(pdfDocs.single.showStatus, isFalse);
 
     final path = shared.last.first.path;

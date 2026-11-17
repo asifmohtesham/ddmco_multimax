@@ -21,7 +21,7 @@ StockSheetRow _row(int i, {bool oos = false, String? path}) => StockSheetRow(
 
 StockSheetDocument _doc(int n, {bool status = false, bool thumbs = true}) =>
     StockSheetDocument(
-      title: 'Stock sheet',
+      title: 'Items',
       subtitle: '17/11/2026 10:00',
       rows: [for (var i = 0; i < n; i++) _row(i, oos: i == 1)],
       thumbnails: thumbs ? {for (var i = 0; i < n; i++) 'p$i.jpg': _jpeg(80, 120)} : {},

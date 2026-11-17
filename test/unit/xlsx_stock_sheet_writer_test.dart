@@ -35,7 +35,7 @@ StockSheetDocument _doc({
   bool status = false,
 }) =>
     StockSheetDocument(
-      title: 'Stock sheet',
+      title: 'Items',
       subtitle: '17/11/2026 10:00',
       rows: rows ??
           [
@@ -88,7 +88,7 @@ void main() {
     );
     expect(c.containsKey('G4'), isFalse);
     expect(c.values, isNot(contains('Item Code')));
-    expect(c['A1'], 'Stock sheet');
+    expect(c['A1'], 'Items');
     expect(c['A2'], '17/11/2026 10:00');
   });
 
@@ -190,7 +190,7 @@ void main() {
     expect(sheet, contains('fitToHeight="0"'));
     expect(sheet, contains('paperSize="9"'));
     final wb = _text(a, 'xl/workbook.xml');
-    expect(wb, contains("'Stock sheet'!\$4:\$4"));
+    expect(wb, contains("'Items'!\$4:\$4"));
     expect(wb, contains('_xlnm.Print_Titles'));
   });
 }

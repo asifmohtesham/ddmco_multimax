@@ -287,7 +287,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 �
   - `Future<void> retry()`: reruns from the ERP step using the kept `PhotoScan`s and does **not** decode again.
   - `Future<void> shareAgain()`: calls `shareFiles(files)`.
   - Building writes `Items-<yyyyMMdd-HHmm>.xlsx` / `.pdf` (per format) to the temp directory and then calls `shareFiles` once with all the files.
-  - Title `Stock sheet`. Subtitle `dd/MM/yyyy HH:mm · N photos · M items · K out of stock`.
+  - Title `Items`. Subtitle `dd/MM/yyyy HH:mm · N photos · M items · K out of stock`.
   - `UnsupportedError` from the decoder (iOS Simulator) → `Reading barcodes from photos isn't supported on this device.`
   - `StockAccessDenied` → `You don't have access to stock levels.` Any other exception → `Couldn't reach the ERP. Check the connection and try again.` In both cases `phase = error` and the kept scans stay.
   - `busy` is set at the start and cleared in `finally`. In `onClose` it deletes the temp files it created.

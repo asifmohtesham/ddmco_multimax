@@ -11,7 +11,7 @@ import '../model/stock_sheet_models.dart';
 class XlsxStockSheetWriter {
   XlsxStockSheetWriter._();
 
-  static const _sheetName = 'Stock sheet';
+  static const _sheetName = 'Items';
   static const _firstDataRow = 5;
   static const _headerRow = 4;
   static const _thumbPx = 110;

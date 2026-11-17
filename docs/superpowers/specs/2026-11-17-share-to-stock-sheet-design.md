@@ -213,7 +213,7 @@ known, which is also where Telegram asks it. Dismissing sheet 2 cancels the run;
 
 - **File name:** `Items-YYYYMMDD-HHMM.xlsx` / `.pdf`, written to the temp dir and shared with
   `SharePlus.instance.share(ShareParams(files: [XFile(path, mimeType: …)]))`.
-- **Title / subtitle:** "Stock sheet" / "17/11/2026 14:05 · 23 photos · 21 items · 3 out of stock"
+- **Title / subtitle:** "Items" / "17/11/2026 14:05 · 23 photos · 21 items · 3 out of stock"
   (en-GB date).
 - **Row order:** the photo order as shared, and within a photo the order the codes were found.
 - **Row colours and Stock column:** per the answer to §10 Q1.
