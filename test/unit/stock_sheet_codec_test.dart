@@ -15,6 +15,11 @@ void main() {
   });
   test('batch QR with bad prefix checksum is ignored',
       () => expect(StockSheetCodec.classify('30003331-4CPIWR'), isNull));
+  test('malformed batch suffix is ignored', () {
+    for (final s in ['30003330-', '30003330-A-B', '30003330-ab_c']) {
+      expect(StockSheetCodec.classify(s), isNull, reason: s);
+    }
+  });
   test('EAN-13, Code 128 text and junk are ignored', () {
     for (final s in ['4006381333931', 'SHIPMENT-12', '', 'ABCDEFGH']) {
       expect(StockSheetCodec.classify(s), isNull, reason: s);

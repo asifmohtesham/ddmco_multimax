@@ -5,17 +5,28 @@ import 'package:multimax/app/shared/barcode/ean8.dart';
 class StockSheetCodec {
   const StockSheetCodec._();
 
+  /// `{EAN8}-{BatchID}` with an alphanumeric batch ID.
+  static final RegExp _batchQr = RegExp(r'^(\d{8})-[A-Za-z0-9]+$');
+
   /// Classifies one raw value as a plain EAN-8 or an `{EAN8}-{BatchID}` QR.
   /// Anything else (EAN-13, Code 128 text, a bad checksum) returns null.
   static ClassifiedCode? classify(String raw) {
     final code = raw.trim();
-    final isBatch = code.contains('-');
-    final prefix = isBatch ? code.split('-').first : code;
+    if (!code.contains('-')) {
+      if (!Ean8.isValid(code)) return null;
+      return ClassifiedCode(
+        itemCode: code.substring(0, 7),
+        barcode: code,
+      );
+    }
+    final match = _batchQr.firstMatch(code);
+    if (match == null) return null;
+    final prefix = match.group(1)!;
     if (!Ean8.isValid(prefix)) return null;
     return ClassifiedCode(
       itemCode: prefix.substring(0, 7),
       barcode: prefix,
-      batchNo: isBatch ? code : null,
+      batchNo: code,
     );
   }
 
