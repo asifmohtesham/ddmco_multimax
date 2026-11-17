@@ -317,7 +317,7 @@ class StockSheetController extends GetxController {
           files.add(
             await _store(
               dir,
-              'stock-sheet-$stamp.xlsx',
+              'Items-$stamp.xlsx',
               XlsxStockSheetWriter.write(doc),
               _xlsxMime,
             ),
@@ -327,7 +327,7 @@ class StockSheetController extends GetxController {
           files.add(
             await _store(
               dir,
-              'stock-sheet-$stamp.pdf',
+              'Items-$stamp.pdf',
               await _writePdf(doc),
               _pdfMime,
             ),

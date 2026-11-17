@@ -211,7 +211,7 @@ known, which is also where Telegram asks it. Dismissing sheet 2 cancels the run;
 
 ### 6.4 Output
 
-- **File name:** `stock-sheet-YYYYMMDD-HHMM.xlsx` / `.pdf`, written to the temp dir and shared with
+- **File name:** `Items-YYYYMMDD-HHMM.xlsx` / `.pdf`, written to the temp dir and shared with
   `SharePlus.instance.share(ShareParams(files: [XFile(path, mimeType: …)]))`.
 - **Title / subtitle:** "Stock sheet" / "17/11/2026 14:05 · 23 photos · 21 items · 3 out of stock"
   (en-GB date).

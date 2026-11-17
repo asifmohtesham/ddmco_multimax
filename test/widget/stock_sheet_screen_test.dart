@@ -252,8 +252,8 @@ void main() {
     controller.total.value = 8;
     controller.result.value = _result();
     controller.files.assignAll([
-      XFile('/tmp/stock-sheet-20261117-0905.xlsx'),
-      XFile('/tmp/stock-sheet-20261117-0905.pdf'),
+      XFile('/tmp/Items-20261117-0905.xlsx'),
+      XFile('/tmp/Items-20261117-0905.pdf'),
     ]);
     controller.phase.value = StockSheetPhase.done;
     await tester.pumpAndSettle();

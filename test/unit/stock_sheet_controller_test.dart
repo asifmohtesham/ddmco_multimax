@@ -125,7 +125,7 @@ void main() {
     final c = make(decoder, provider);
     await c.start(['a.jpg'], SheetFormat.excel);
     expect(c.phase.value, StockSheetPhase.done);
-    expect(shared.single.single.name, 'stock-sheet-20261117-0905.xlsx');
+    expect(shared.single.single.name, 'Items-20261117-0905.xlsx');
     expect(
       shared.single.single.mimeType,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -136,8 +136,8 @@ void main() {
 
     await c.start(['a.jpg'], SheetFormat.both);
     expect(shared.last.map((f) => f.name), [
-      'stock-sheet-20261117-0905.xlsx',
-      'stock-sheet-20261117-0905.pdf',
+      'Items-20261117-0905.xlsx',
+      'Items-20261117-0905.pdf',
     ]);
     expect(
       pdfDocs.single.subtitle,
