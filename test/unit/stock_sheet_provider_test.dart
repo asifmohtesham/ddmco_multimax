@@ -7,7 +7,7 @@ import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 
 typedef _Report = ({
   List<Map<String, dynamic>> columns,
-  List<Map<String, dynamic>> rows
+  List<Map<String, dynamic>> rows,
 });
 
 class _FakeApi extends ApiProvider {
@@ -16,6 +16,9 @@ class _FakeApi extends ApiProvider {
   Object? itemError;
   Object? reportError;
   List<Map<String, dynamic>> itemRows = [];
+
+  /// Overrides the whole Item response body when set.
+  Object? itemBody;
   List<Map<String, dynamic>> reportRows = [];
 
   @override
@@ -40,7 +43,7 @@ class _FakeApi extends ApiProvider {
     if (itemError != null) throw itemError!;
     return Response(
       requestOptions: RequestOptions(path: '/api/resource/$doctype'),
-      data: {'data': itemRows},
+      data: itemBody ?? {'data': itemRows},
     );
   }
 
@@ -72,13 +75,13 @@ class _FakeApi extends ApiProvider {
 }
 
 DioException _http(int status) => DioException(
-      requestOptions: RequestOptions(path: '/x'),
-      response: Response(
-        requestOptions: RequestOptions(path: '/x'),
-        statusCode: status,
-      ),
-      type: DioExceptionType.badResponse,
-    );
+  requestOptions: RequestOptions(path: '/x'),
+  response: Response(
+    requestOptions: RequestOptions(path: '/x'),
+    statusCode: status,
+  ),
+  type: DioExceptionType.badResponse,
+);
 
 List<String> _codes(int n) => List.generate(n, (i) => '${2000000 + i}');
 
@@ -91,14 +94,17 @@ void main() {
     // ApiProvider's constructor starts _initDio(), which asks path_provider.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (MethodCall call) async => '/tmp/test_cookies',
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (MethodCall call) async => '/tmp/test_cookies',
+        );
   });
 
   setUp(() {
     api = _FakeApi();
-    provider = StockSheetProvider(api: api, now: () => DateTime(2026, 11, 17, 9, 5));
+    provider = StockSheetProvider(
+      api: api,
+      now: () => DateTime(2026, 11, 17, 9, 5),
+    );
   });
 
   group('fetchItems', () {
@@ -110,15 +116,29 @@ void main() {
           'variant_of': 'Strap',
           'country_of_origin': 'Italy',
         },
-        {'name': '2001142', 'item_name': 'Buckle', 'variant_of': null, 'country_of_origin': ''},
+        {
+          'name': '2001142',
+          'item_name': 'Buckle',
+          'variant_of': null,
+          'country_of_origin': '',
+        },
       ];
       final items = await provider.fetchItems(['2001141', '2001142']);
 
       expect(api.itemCalls.single['doctype'], 'Item');
-      expect(api.itemCalls.single['fields'],
-          ['name', 'item_name', 'variant_of', 'country_of_origin']);
+      expect(api.itemCalls.single['fields'], [
+        'name',
+        'item_name',
+        'variant_of',
+        'country_of_origin',
+      ]);
       expect(api.itemCalls.single['filterTuples'], [
-        ['Item', 'name', 'in', ['2001141', '2001142']],
+        [
+          'Item',
+          'name',
+          'in',
+          ['2001141', '2001142'],
+        ],
       ]);
       expect(api.itemCalls.single['limit'], 0);
       expect(items['2001141']!.variantOf, 'Strap');
@@ -135,13 +155,37 @@ void main() {
       expect(sizes, [100, 50]);
     });
 
+    test('a malformed Item response is an error, not "not in ERP"', () async {
+      for (final body in <Object>[
+        {'data': 'oops'},
+        {'message': 'no data key'},
+        'not a map',
+      ]) {
+        api.itemBody = body;
+        await expectLater(
+          provider.fetchItems(['2001141']),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              'Unexpected Item response',
+            ),
+          ),
+        );
+      }
+    });
+
     test('403 becomes StockAccessDenied; other errors are rethrown', () async {
       api.itemError = _http(403);
-      await expectLater(provider.fetchItems(['2001141']),
-          throwsA(isA<StockAccessDenied>()));
+      await expectLater(
+        provider.fetchItems(['2001141']),
+        throwsA(isA<StockAccessDenied>()),
+      );
       api.itemError = _http(500);
       await expectLater(
-          provider.fetchItems(['2001141']), throwsA(isA<DioException>()));
+        provider.fetchItems(['2001141']),
+        throwsA(isA<DioException>()),
+      );
     });
   });
 
@@ -175,11 +219,15 @@ void main() {
 
     test('403 becomes StockAccessDenied; other errors are rethrown', () async {
       api.reportError = _http(403);
-      await expectLater(provider.fetchFinishedGoodsStock(['2001141']),
-          throwsA(isA<StockAccessDenied>()));
+      await expectLater(
+        provider.fetchFinishedGoodsStock(['2001141']),
+        throwsA(isA<StockAccessDenied>()),
+      );
       api.reportError = _http(500);
-      await expectLater(provider.fetchFinishedGoodsStock(['2001141']),
-          throwsA(isA<DioException>()));
+      await expectLater(
+        provider.fetchFinishedGoodsStock(['2001141']),
+        throwsA(isA<DioException>()),
+      );
     });
   });
 }

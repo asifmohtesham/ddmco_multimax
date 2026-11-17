@@ -7,8 +7,8 @@ import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 /// Item and Finished Goods stock lookups for the stock sheet.
 class StockSheetProvider {
   StockSheetProvider({ApiProvider? api, DateTime Function()? now})
-      : _api = api,
-        _now = now ?? DateTime.now;
+    : _api = api,
+      _now = now ?? DateTime.now;
 
   static const String finishedGoodsWarehouse = 'Finished Goods - KA';
   static const int _chunkSize = 100;
@@ -22,21 +22,26 @@ class StockSheetProvider {
   Future<Map<String, ItemInfo>> fetchItems(List<String> itemCodes) async {
     final result = <String, ItemInfo>{};
     for (final chunk in _chunks(itemCodes)) {
-      final response = await _guard(() => _client.getDocumentList(
-            'Item',
-            fields: const [
-              'name',
-              'item_name',
-              'variant_of',
-              'country_of_origin',
-            ],
-            filterTuples: [
-              ['Item', 'name', 'in', chunk],
-            ],
-            limit: 0,
-          ));
+      final response = await _guard(
+        () => _client.getDocumentList(
+          'Item',
+          fields: const [
+            'name',
+            'item_name',
+            'variant_of',
+            'country_of_origin',
+          ],
+          filterTuples: [
+            ['Item', 'name', 'in', chunk],
+          ],
+          limit: 0,
+        ),
+      );
       final data = response.data is Map ? response.data['data'] : null;
-      if (data is! List) continue;
+      // A body without a data list is not "no such items": treating it so
+      // would list every code as not in the ERP.
+      if (data is! List)
+        throw const FormatException('Unexpected Item response');
       for (final row in data) {
         if (row is! Map) continue;
         final code = row['name']?.toString() ?? '';
@@ -55,21 +60,25 @@ class StockSheetProvider {
   /// Today's Stock Balance rows for [itemCodes] in Finished Goods (child
   /// warehouses included by the report).
   Future<List<Map<String, dynamic>>> fetchFinishedGoodsStock(
-      List<String> itemCodes) async {
+    List<String> itemCodes,
+  ) async {
     final today = DateFormat('yyyy-MM-dd').format(_now());
     final rows = <Map<String, dynamic>>[];
     for (final chunk in _chunks(itemCodes)) {
-      final report = await _guard(() => _client.getStockBalanceReport(
-            fromDate: today,
-            toDate: today,
-            itemCodes: chunk,
-            warehouses: const [finishedGoodsWarehouse],
-          ));
+      final report = await _guard(
+        () => _client.getStockBalanceReport(
+          fromDate: today,
+          toDate: today,
+          itemCodes: chunk,
+          warehouses: const [finishedGoodsWarehouse],
+        ),
+      );
       final wanted = chunk.toSet();
       // v15 before 15.72 ignores the item filter and returns the whole
       // warehouse, so drop anything outside the chunk.
-      rows.addAll(report.rows
-          .where((r) => wanted.contains(r['item_code']?.toString())));
+      rows.addAll(
+        report.rows.where((r) => wanted.contains(r['item_code']?.toString())),
+      );
     }
     return rows;
   }
@@ -77,7 +86,9 @@ class StockSheetProvider {
   Iterable<List<String>> _chunks(List<String> codes) sync* {
     final distinct = codes.toSet().toList();
     for (var i = 0; i < distinct.length; i += _chunkSize) {
-      final end = i + _chunkSize < distinct.length ? i + _chunkSize : distinct.length;
+      final end = i + _chunkSize < distinct.length
+          ? i + _chunkSize
+          : distinct.length;
       yield distinct.sublist(i, end);
     }
   }
