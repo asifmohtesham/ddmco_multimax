@@ -25,6 +25,36 @@ void main() {
     });
   });
 
+  group('StockAggregator.racksByItem', () {
+    test('groups by item then rack, sorted by quantity', () {
+      final stock = StockAggregator.racksByItem([
+        {'item_code': '1002312', 'rack': 'KA-WH-DXB1-21A', 'bal_qty': 300},
+        {'item_code': '1002312', 'rack': 'KA-WH-DXB1-14D', 'bal_qty': 72},
+        {'item_code': '1002312', 'rack': 'KA-WH-DXB1-21A', 'bal_qty': '5'},
+        {'item_code': '1001579', 'rack': null, 'bal_qty': 10},
+        {'item_code': '1001579', 'rack': '', 'bal_qty': 4},
+        {'item_code': '1004765', 'rack': 'X', 'bal_qty': -2},
+        {'item_code': '1004766', 'rack': 'Y', 'bal_qty': 'abc'},
+      ]);
+
+      expect(stock['1002312']!.total, 377);
+      expect(stock['1002312']!.racks, const [
+        RackQty(rack: 'KA-WH-DXB1-21A', qty: 305),
+        RackQty(rack: 'KA-WH-DXB1-14D', qty: 72),
+      ]);
+      expect(stock['1002312']!.outOfStock, isFalse);
+
+      expect(stock['1001579']!.total, 14);
+      expect(stock['1001579']!.racks, const [RackQty(rack: null, qty: 14)]);
+
+      expect(stock['1004765']!.total, -2);
+      expect(stock['1004765']!.outOfStock, isTrue);
+      expect(stock['1004765']!.racks, isEmpty);
+
+      expect(stock.containsKey('1004766'), isFalse);
+    });
+  });
+
   group('StockAggregator.build', () {
     test('an unknown valid EAN-8 is notInErp and does not stop other items', () {
       final result = StockAggregator.build(

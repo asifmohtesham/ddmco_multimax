@@ -59,7 +59,7 @@ class StockSheetProvider {
   }
 
   /// Today's Stock Balance rows for [itemCodes] in Finished Goods (child
-  /// warehouses included by the report).
+  /// warehouses included by the report), one row per rack.
   Future<List<Map<String, dynamic>>> fetchFinishedGoodsStock(
     List<String> itemCodes,
   ) async {
@@ -72,6 +72,7 @@ class StockSheetProvider {
           toDate: today,
           itemCodes: chunk,
           warehouses: const [finishedGoodsWarehouse],
+          showDimensionWise: true,
         ),
       );
       final wanted = chunk.toSet();

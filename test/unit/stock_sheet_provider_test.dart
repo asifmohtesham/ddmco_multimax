@@ -68,6 +68,7 @@ class _FakeApi extends ApiProvider {
       'toDate': toDate,
       'itemCodes': itemCodes,
       'warehouses': warehouses,
+      'showDimensionWise': showDimensionWise,
     });
     if (reportError != null) throw reportError!;
     return (columns: <Map<String, dynamic>>[], rows: reportRows);
@@ -200,6 +201,7 @@ void main() {
       expect(api.reportCalls.single['toDate'], '2026-11-17');
       expect(api.reportCalls.single['warehouses'], ['Finished Goods - KA']);
       expect(api.reportCalls.single['itemCodes'], ['2001141']);
+      expect(api.reportCalls.single['showDimensionWise'], isTrue);
       expect(rows.single['bal_qty'], 3);
     });
 

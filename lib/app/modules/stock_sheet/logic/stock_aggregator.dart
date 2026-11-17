@@ -19,6 +19,39 @@ class StockAggregator {
     return totals;
   }
 
+  /// Rack-wise stock per `item_code` from dimension-wise Stock Balance rows.
+  /// A null or blank `rack` means "No rack". `total` sums every row of the
+  /// item; `racks` keeps only positive quantities, largest first. Rows with
+  /// no `item_code` or an unparsable `bal_qty` are skipped.
+  static Map<String, ItemStock> racksByItem(
+    List<Map<String, dynamic>> rows,
+  ) {
+    final totals = <String, double>{};
+    final perRack = <String, Map<String?, double>>{};
+    for (final row in rows) {
+      final code = row['item_code']?.toString().trim() ?? '';
+      if (code.isEmpty) continue;
+      final raw = row['bal_qty'];
+      final qty = raw is num ? raw.toDouble() : double.tryParse('$raw');
+      if (qty == null) continue;
+      final rackText = row['rack']?.toString().trim();
+      final rack = (rackText == null || rackText.isEmpty) ? null : rackText;
+      totals[code] = (totals[code] ?? 0) + qty;
+      final racks = perRack.putIfAbsent(code, () => <String?, double>{});
+      racks[rack] = (racks[rack] ?? 0) + qty;
+    }
+    return {
+      for (final code in totals.keys)
+        code: ItemStock(
+          total: totals[code]!,
+          racks: [
+            for (final e in perRack[code]!.entries)
+              if (e.value > 0) RackQty(rack: e.key, qty: e.value),
+          ]..sort((a, b) => b.qty.compareTo(a.qty)),
+        ),
+    };
+  }
+
   /// Builds the sheet rows and the unresolved list.
   ///
   /// Rules:

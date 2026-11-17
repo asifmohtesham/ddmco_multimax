@@ -73,6 +73,35 @@ class ItemInfo {
   final String? countryOfOrigin;
 }
 
+/// Balance quantity held in one rack; [rack] is null for "No rack".
+class RackQty {
+  const RackQty({required this.rack, required this.qty});
+
+  final String? rack;
+  final double qty;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RackQty && other.rack == rack && other.qty == qty;
+
+  @override
+  int get hashCode => Object.hash(rack, qty);
+
+  @override
+  String toString() => 'RackQty($rack, $qty)';
+}
+
+/// One item's Finished Goods stock: the [total] over every row and the racks
+/// that hold some, largest first (only racks with a positive quantity).
+class ItemStock {
+  const ItemStock({required this.total, required this.racks});
+
+  final double total;
+  final List<RackQty> racks;
+
+  bool get outOfStock => total <= 0;
+}
+
 /// One sheet row: a single item found in a single photo.
 class StockSheetRow {
   const StockSheetRow({
