@@ -34,7 +34,47 @@ class StockAggregator {
     Map<String, ItemInfo> items,
     Map<String, double> stock,
   ) {
-    // TODO(human): build the rows and the unresolved list — see the doc comment above.
-    throw UnimplementedError('TODO(human)');
+    final rows = <StockSheetRow>[];
+    final unresolved = <UnresolvedEntry>[];
+    for (final scan in scans) {
+      if (scan.decodeFailed) {
+        unresolved.add(UnresolvedEntry(
+          photoIndex: scan.index,
+          photoPath: scan.path,
+          reason: UnresolvedReason.unreadable,
+        ));
+        continue;
+      }
+      if (scan.items.isEmpty) {
+        unresolved.add(UnresolvedEntry(
+          photoIndex: scan.index,
+          photoPath: scan.path,
+          reason: UnresolvedReason.noRecognisedCode,
+        ));
+        continue;
+      }
+      for (final code in scan.items) {
+        final info = items[code.itemCode];
+        if (info == null) {
+          unresolved.add(UnresolvedEntry(
+            photoIndex: scan.index,
+            photoPath: scan.path,
+            reason: UnresolvedReason.notInErp,
+            barcode: code.barcode,
+          ));
+          continue;
+        }
+        rows.add(StockSheetRow(
+          photoIndex: scan.index,
+          photoPath: scan.path,
+          barcode: code.barcode,
+          itemName: info.itemName,
+          variantOf: info.variantOf,
+          countryOfOrigin: info.countryOfOrigin,
+          outOfStock: (stock[code.itemCode] ?? 0) <= 0,
+        ));
+      }
+    }
+    return StockSheetResult(rows: rows, unresolved: unresolved);
   }
 }
