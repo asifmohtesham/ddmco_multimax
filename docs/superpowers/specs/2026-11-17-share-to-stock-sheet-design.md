@@ -4,6 +4,7 @@
 **Feature:** share label photos from the phone's gallery into Multimax and get back an Excel or PDF stock sheet
 **Status:** approved by the user on 17/11/2026: the answers in §10 and the recommended approaches in §5
 (on-device decode and render, `receive_sharing_intent`, a hand-written `.xlsx` via `archive`).
+Revised the same day at the user's direction: stock comes from the `Stock Balance` report, not Bin (§5.4).
 **Reference behaviour:** the Telegram **📋 Stock sheet** feature, built and confirmed working on 17/11/2026
 (n8n workflow `Telegram - Stock Sheet` plus the `stocksheet` sidecar: FastAPI, zxing-cpp, openpyxl, reportlab).
 
@@ -29,9 +30,10 @@ it to Multimax, pick a format, and pass the file on (WhatsApp, e-mail, Drive) wi
 - **Item Code** is the first 7 digits of a checksum-valid EAN-8. Invalid checksums are ignored.
 - A batch QR holds only the Batch No: `^(\d{8})-[A-Za-z0-9]+$`, e.g. `30003330-4CPIWR`. Its 8-digit prefix
   must pass the EAN-8 checksum. The item comes from that prefix, so no Batch lookup is needed.
-- **Stock** is `Bin.actual_qty` summed over warehouses `descendants of (inclusive)` **Finished Goods - KA**
-  (WH-DXB1 + WH-DXB3 today). It is per item, not per batch. A total ≤ 0, or no Bin at all, counts as **out of
-  stock**.
+- **Stock** is the item's balance in **Finished Goods - KA** and the warehouses under it (WH-DXB1 + WH-DXB3
+  today), per item, not per batch. Telegram reads it from `Bin.actual_qty`. **The app reads it from the
+  `Stock Balance` report** (`bal_qty`, summed per item), as the user decided on 17/11/2026, see §5.4. A total
+  ≤ 0, or no row at all, counts as **out of stock**.
 - **One row per (photo, item).** Several labels of the same item in one photo give one row. The same item in two
   photos gives two rows.
 - Columns: **#, Image, Barcode, Variant Of, Country of Origin, Item Name**, plus **Stock** ("In stock" /
@@ -40,26 +42,38 @@ it to Multimax, pick a format, and pass the file on (WhatsApp, e-mail, Drive) wi
 
 ## 3. Server facts (checked on 17/11/2026 against `erp.domain.com`, v16, read-only, API key)
 
-- `GET /api/resource/Bin` with
-  `filters=[["item_code","in",[…]],["warehouse","descendants of (inclusive)","Finished Goods - KA"]]`,
-  `fields=["item_code","warehouse","actual_qty"]`, `limit_page_length=0` returns one row per item × warehouse.
-  Items with no Bin under Finished Goods (1004954, 1004963, 3000333) are simply absent.
-- **v16 rejects aggregates as strings** (`sum(actual_qty) as qty` → `ValidationError: SQL functions are not
-  allowed as strings in SELECT`). The dict syntax is v16-only, so the app sums `actual_qty` per item **on the
-  device**. That works on both v15 and v16.
+- **Stock Balance report** (`frappe.desk.query_report.run`, `report_name=Stock Balance`) with
+  `company=Multimax`, `from_date = to_date = today`, `item_code=[…7 codes…]` (a list) and
+  `warehouse="Finished Goods - KA"` returned one row per item × warehouse with stock: 2001136 → WH-DXB1 60,
+  2001141 → WH-DXB1 65, 2002349 → WH-DXB1 295. It also returned a trailing `["Total", …]` list row.
+  - The group warehouse **includes its child warehouses** (the report filters on `lft/rgt`).
+  - Items with no stock (1004954, 1004963, 3000333) **and** the unknown code 9999999 are simply **absent**. There
+    is no error, so the report alone can't tell "out of stock" from "not in ERP". The Item call below decides
+    that.
+  - Its columns (`item_code, item_name, item_group, warehouse, stock_uom, bal_qty, …`) have **no `variant_of` or
+    `country_of_origin`**, so the Item call is needed either way.
+  - The app already calls the report through `ApiProvider.getStockBalanceReport(itemCodes:, warehouses:, …)`. That
+    method sends `item_code` as a list on ERPNext ≥ 15.72, including every v16. On older v15 it omits the item
+    filter so the caller narrows the rows on the device (the existing `stockBalanceUsesListFilters` check, the one
+    version check `CLAUDE.md` allows). `ApiProvider.parseStockBalanceResponse` keeps only Map rows, so the `Total`
+    row is dropped.
+- For comparison, `GET /api/resource/Bin` with `["warehouse","descendants of (inclusive)","Finished Goods - KA"]`
+  gave the same quantities. v16 rejects `sum(actual_qty)` in `fields` (`SQL functions are not allowed as strings
+  in SELECT`), so either source is summed on the device.
 - `GET /api/resource/Item` with `filters=[["name","in",[…]]]`,
   `fields=["name","item_name","variant_of","country_of_origin"]` returns the known items. Unknown codes are
   absent, which means "not found".
 - The test labels: 2001136 (60), 2002349 (295), 2001141 (65) are in stock. 1004954, 1004963 and 3000333 have no
-  Finished Goods Bin, so they are out of stock.
-- Both calls use standard `frappe.client.get_list`. There is no Server Script and no version branch.
+  Finished Goods stock, so they are out of stock.
+- Both calls are standard (`frappe.desk.query_report.run`, `frappe.client.get_list`). There is no Server Script
+  and no new version branch.
 
 ## 4. Goals, non-goals, anti-goals
 
 **Goals**
 - Share → format → file in one flow, from a cold start or with the app already open.
 - The same decode rules, rows, columns and colours as Telegram, so the two outputs look alike.
-- Two ERP calls per run (Item + Bin), chunked if needed, never one call per photo.
+- Two ERP calls per run (Item list + Stock Balance report), chunked if needed, never one call per photo.
 - Runs under the user's own session and ERP permissions.
 
 **Non-goals**
@@ -115,6 +129,15 @@ last release was in August 2024).
    large dependency. Rejected unless the user prefers it.
 3. Use `excel` without images and put "(no image)" in the column. This fails the agreed column set. Rejected.
 
+### 5.4 Where stock comes from (decided by the user, 17/11/2026)
+
+1. **The `Stock Balance` report**, through the existing `ApiProvider.getStockBalanceReport`. *Chosen.* It reuses
+   the call, filter-version handling and parser that the app's Stock Balance screen already uses and tests. It
+   expands the group warehouse on the server. It needs the report permission the same users already have for that
+   screen, not raw read access to the `Bin` doctype.
+2. A `Bin` list with `descendants of (inclusive)`. This was the first draft. It returns the same numbers, but it is
+   a second way of reading stock in the app and needs Bin read permission.
+
 ## 6. Design
 
 ### 6.1 Flow
@@ -154,8 +177,8 @@ known, which is also where Telegram asks it. Dismissing sheet 2 cancels the run;
 |---|---|---|
 | `ShareIntakeService` (GetxService, permanent) | `lib/app/data/services/share_intake_service.dart` | Registered in `main.dart` next to `ScanService`. Holds `pendingPhotos` (paths). Listens to both streams and stores its `StreamSubscription`, cancelled in `onClose`. When signed in it calls `Get.toNamed(STOCK_SHEET)`. Otherwise it waits for `isAuthenticated` (an `ever` worker kept in a field) and opens the route after `processSuccessfulLogin` has landed on HOME. It calls `ReceiveSharingIntent.reset()` once consumed, so a rotation or relaunch doesn't replay the share. |
 | `StockSheetCodec` (pure) | `lib/app/modules/stock_sheet/stock_sheet_codec.dart` | `ean8IsValid`, `classify(String raw) → ClassifiedCode?` (`itemCode`, `barcode`, `batchNo`), `rowsFor(photo, rawCodes)` with de-dupe per item within a photo. `ScanService._isValidEan8` moves here or to a shared util so there is one checksum. |
-| `StockSheetProvider` | `lib/app/data/providers/stock_sheet_provider.dart` | `fetchItems(codes)` and `fetchFinishedGoodsStock(codes)` through `ApiProvider.getDocumentList` (filter tuples, `limit: 0`). Chunks of 100 codes keep the URL short. |
-| `StockAggregator` (pure) | same module | Sums Bin rows per item code. A missing code gives 0. Builds the final row list with `outOfStock` and `notFound`. |
+| `StockSheetProvider` | `lib/app/data/providers/stock_sheet_provider.dart` | `fetchItems(codes)` through `ApiProvider.getDocumentList` (filter tuples, `limit: 0`). `fetchFinishedGoodsStock(codes)` through `ApiProvider.getStockBalanceReport(fromDate: today, toDate: today, itemCodes: chunk, warehouses: ['Finished Goods - KA'])`, keeping only rows whose `item_code` is in the chunk (this covers v15 < 15.72, where the item filter is omitted and the whole warehouse comes back). Chunks of 100 codes keep the URL short. |
+| `StockAggregator` (pure) | same module | Sums the report's `bal_qty` per `item_code`, ignoring rows without an `item_code`. A missing code gives 0. Builds the final row list with `outOfStock` and `notFound`. |
 | `StockSheetController` / `Binding` / `Screen` | `lib/app/modules/stock_sheet/` | A GetX module. The controller holds `busy` (`RxBool`, re-entrancy guard, cleared in `finally`), a `phase` and `progress`, and the results. |
 | `ThumbnailMaker` | same module | Decodes with `ui.instantiateImageCodec(targetWidth/Height ≈ 480 px long side)`, which honours EXIF orientation natively and is fast. It re-encodes to JPEG q≈82 (`image` package, run in an isolate) so each thumbnail is about 30–60 KB. |
 | `XlsxStockSheetWriter` | same module | Hand-written OOXML via `archive` (§5.3 option 1). |
@@ -229,7 +252,7 @@ Xcode. These are the steps on the Mac:
 
 - **Unit:** `StockSheetCodec`: valid/invalid EAN-8 checksums, batch QR with good and bad prefixes, EAN-13 and
   junk ignored, de-dupe within a photo, two photos giving two rows. `StockAggregator`: sum across warehouses, a
-  missing Bin gives out of stock, a negative total gives out of stock, an unknown item gives not found.
+  an item missing from the report gives out of stock, a negative total gives out of stock, an unknown item gives not found.
   `XlsxStockSheetWriter`: unzip and check the parts exist, the header row, `t="s"`/text format on Barcode, the red
   style on out-of-stock rows, one picture anchor per row. `ShareIntakeService`: pending photos survive the
   sign-in redirect (with fake streams).
@@ -251,8 +274,8 @@ user's OK.
 1. **ML Kit vs zxing-cpp on real labels.** The sidecar retries with greyscale, upscale and autocontrast. ML Kit
    is usually strong on QR and EAN, but small EAN-8s in wide shots may be missed. The on-device tests with the
    five labels decide whether the §6.3 fallback is enough. If it isn't, fall back to approach §5.1-2.
-2. **Bin read permission.** Ordinary roles (Stock User, Sales User, …) can read Bin in stock ERPNext, but a site
-   may have narrowed it. A 403 on Bin must show "You don't have access to stock levels". It must not mark
+2. **Stock Balance report permission.** Users without the report's roles get a 403 (`PermissionError`). That must
+   show "You don't have access to stock levels". It must not mark
    everything out of stock.
 3. **Large shares.** Hundreds of 12 MP photos: process them sequentially, keep only the thumbnails in memory, and
    apply the §10 Q5 limit.
@@ -270,7 +293,7 @@ user's OK.
 5. **Limit: 100 photos per share.** *(My call on enforcement:* a larger share is refused with a message and
    nothing is processed, rather than silently taking the first 100. The iOS `NSExtensionActivationRule` uses
    `NSExtensionActivationSupportsImageWithMaxCount = 100`.)
-6. **Access: any signed-in user.** There is no pre-check. A 403 on Item or Bin shows
+6. **Access: any signed-in user.** There is no pre-check. A 403 on Item or the Stock Balance report shows
    "You don't have access to stock levels" (§9 risk 2).
 
 ## 11. Left to the builder

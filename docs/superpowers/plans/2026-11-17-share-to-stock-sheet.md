@@ -4,7 +4,7 @@
 
 **Goal:** Users share label photos from the gallery into Multimax and get back an Excel and/or PDF stock sheet. They can pass it on through the system share sheet.
 
-**Architecture:** A permanent `ShareIntakeService` receives shared image paths through `receive_sharing_intent`. It keeps them through sign-in, then opens a new `stock_sheet` GetX module. The module decodes each photo on the device with `mobile_scanner.analyzeImage` and classifies the codes with the Telegram rules. It then makes two batched ERP calls (Item, Bin) and builds the file on the device: a hand-written OOXML `.xlsx` through `archive`, and a PDF through `pdf`. Pure units (codec, aggregator, writers) carry most of the tests. Platform pieces are thin.
+**Architecture:** A permanent `ShareIntakeService` receives shared image paths through `receive_sharing_intent`. It keeps them through sign-in, then opens a new `stock_sheet` GetX module. The module decodes each photo on the device with `mobile_scanner.analyzeImage` and classifies the codes with the Telegram rules. It then makes two batched ERP calls (an Item list and the `Stock Balance` report) and builds the file on the device: a hand-written OOXML `.xlsx` through `archive`, and a PDF through `pdf`. Pure units (codec, aggregator, writers) carry most of the tests. Platform pieces are thin.
 
 **Tech Stack:** Flutter 3.50 / Dart, GetX, Dio (`ApiProvider`), `mobile_scanner` 7, `receive_sharing_intent` ^1.9.0 (new), `archive` ^3.6.1, `image` ^4.3.0 (promoted from transitive), `pdf`, `share_plus` ^13.
 
@@ -12,15 +12,15 @@
 
 ## Global Constraints
 
-- The server must be v15 + v16 compatible. Use standard `frappe.client.get_list` only (`ApiProvider.getDocumentList`). Never send `sum(...)` in `fields`; v16 rejects it. Never branch on the server version.
+- The server must be v15 + v16 compatible. Items come from `ApiProvider.getDocumentList('Item', …)`. Stock comes from the existing `ApiProvider.getStockBalanceReport`, whose built-in `stockBalanceUsesListFilters` check is the only version handling allowed; add no other. No Bin queries, no new server methods.
 - Item Code = first 7 digits of a **checksum-valid** EAN-8. Batch QR regex: `^(\d{8})-[A-Za-z0-9]+$`, and the prefix must pass the checksum.
-- Stock = `Bin.actual_qty` summed per item over `["warehouse","descendants of (inclusive)","Finished Goods - KA"]`. A total ≤ 0 or no Bin means out of stock.
+- Stock = the `Stock Balance` report's `bal_qty` summed per `item_code`, with `warehouses: ['Finished Goods - KA']` and `fromDate = toDate = today` (`yyyy-MM-dd`). The report includes the child warehouses. A total ≤ 0 or no row means out of stock.
 - One row per (photo, item). Columns: `#, Image, Barcode, Variant Of, Country of Origin, Item Name`, plus `Stock` only when out-of-stock rows are included. **No Item Code column.**
 - Colours: header fill `305496` with white bold text, out-of-stock fill `FFC7CE` and text `9C0006`, grid `BFBFBF`.
 - The limit is **100 photos** per share. A larger share is refused with `Share up to 100 photos at a time (you shared N).` and nothing is processed.
 - Formats are **Excel / PDF / Both**. The out-of-stock question (`Include, colour red` / `Include, no colour` / `Leave them out`) is asked **only when ≥ 1 item is out of stock**, after the stock check. Dismissing it cancels the run.
 - Unreadable and not-in-ERP photos are listed **on screen only**, never in the file.
-- A 403 on Item or Bin shows `You don't have access to stock levels.` It must never mark everything out of stock.
+- A 403 on Item or the Stock Balance report shows `You don't have access to stock levels.` It must never mark everything out of stock.
 - File names are `stock-sheet-YYYYMMDD-HHMM.xlsx` / `.pdf`. Subtitle date is en-GB, `dd/MM/yyyy HH:mm`.
 - Repo UI rules (`CLAUDE.md`): theme surfaces only (`context.scheme.*`), and `AppColors.red700` / `red300` by brightness for out-of-stock text. `AsyncFilledButton` with an `RxBool busy` guarded and cleared in `finally`. Result lists use `Scrollbar` + a shared controller + nav-bar padding + an "End of list" marker. Workers and subscriptions are stored and cancelled in `onClose`.
 - British English in all copy, comments and commits. Docs use `erp.domain.com`, never the real host.
@@ -30,7 +30,7 @@
 1. **Item text with `&`, `<`, `>` or quotes** (e.g. `STRAPS & BELTS <35mm>`) must appear unchanged in the Excel cell and not corrupt the workbook. The test is in Task 4.
 2. **One photo with a found item and an unknown one** (2001141 + an EAN-8 not in the ERP) gives one row *and* one not-in-ERP entry for the same photo. The test is in Task 2.
 3. **A second share arriving while a run is busy** must not start a parallel run. Show `A stock sheet is already being made.` If the screen is idle (result showing), the new share replaces it. The test is in Task 7.
-4. **A network failure after decoding** (Bin call times out) shows an error with **Retry**, which reruns the ERP calls without decoding again. The test is in Task 6.
+4. **A network failure after decoding** (the Stock Balance call times out) shows an error with **Retry**, which reruns the ERP calls without decoding again. The test is in Task 6.
 5. **A file that isn't a decodable image** (corrupt, or a format the platform can't read) becomes an `unreadable` entry with no thumbnail. It must not crash and must not abort the run. The tests are in Tasks 3 and 6.
 
 ---
@@ -42,7 +42,7 @@ lib/app/shared/barcode/ean8.dart                         # shared checksum (Scan
 lib/app/modules/stock_sheet/
   model/stock_sheet_models.dart                          # value types + enums
   logic/stock_sheet_codec.dart                           # classify / de-dupe (pure)
-  logic/stock_aggregator.dart                            # sum Bins, build rows (pure)
+  logic/stock_aggregator.dart                            # sum report rows, build rows (pure)
   logic/thumbnail_maker.dart                             # downscale → JPEG bytes
   logic/photo_decoder.dart                               # PhotoDecoder + MlKitPhotoDecoder
   output/xlsx_stock_sheet_writer.dart                    # OOXML via archive
@@ -134,26 +134,28 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 �
 - Produces (provider):
   - `StockSheetProvider({ApiProvider? api})`
   - `Future<Map<String, ItemInfo>> fetchItems(List<String> itemCodes)`: `getDocumentList('Item', fields: ['name','item_name','variant_of','country_of_origin'], filterTuples: [['Item','name','in', chunk]], limit: 0)`.
-  - `Future<List<Map<String, dynamic>>> fetchFinishedGoodsBins(List<String> itemCodes)`: `getDocumentList('Bin', fields: ['item_code','warehouse','actual_qty'], filterTuples: [['Bin','item_code','in', chunk], ['Bin','warehouse','descendants of (inclusive)','Finished Goods - KA']], limit: 0)`.
-  - Both use chunks of 100 distinct codes, merge the results, and map a `DioException` with status 403 to `StockAccessDenied`. Other errors are rethrown.
+  - `Future<List<Map<String, dynamic>>> fetchFinishedGoodsStock(List<String> itemCodes)`: per chunk, `getStockBalanceReport(fromDate: today, toDate: today, itemCodes: chunk, warehouses: const ['Finished Goods - KA'])`. Keep `.rows` whose `item_code` is in the chunk; on v15 < 15.72 the report ignores the item filter and returns the whole warehouse. `today` comes from an injected `DateTime Function() now`.
+  - Both use chunks of 100 distinct codes (the 100-photo limit allows several items per photo), merge the results, and map a `DioException` with status 403 to `StockAccessDenied`. Other errors are rethrown.
 - Produces (aggregator):
-  - `static Map<String, double> StockAggregator.sumByItem(List<Map<String, dynamic>> bins)`: `actual_qty` may arrive as int, double or numeric string.
+  - `static Map<String, double> StockAggregator.sumByItem(List<Map<String, dynamic>> reportRows)`: sums `bal_qty` per `item_code`. `bal_qty` may arrive as int, double or numeric string. Rows without an `item_code` are skipped.
   - `static StockSheetResult StockAggregator.build(List<PhotoScan> scans, Map<String, ItemInfo> items, Map<String, double> stock)`: rows in photo order, then code order. A `decodeFailed` scan gives `unreadable`. No classified items gives `noRecognisedCode`. An item missing from `items` gives `notInErp`. Out of stock = `(stock[code] ?? 0) <= 0`.
 
 - [ ] **Step 1: Write the failing aggregator tests**
-  - `sumByItem` over `[{item_code:'2001136',actual_qty:60.0},{item_code:'2001136',actual_qty:0},{item_code:'2002349',actual_qty:'295'}]` → `{'2001136':60.0,'2002349':295.0}`.
+  - `sumByItem` over `[{item_code:'2001136',warehouse:'WH-DXB1 - KA',bal_qty:60.0},{item_code:'2001136',warehouse:'WH-DXB3 - KA',bal_qty:-5},{item_code:'2002349',bal_qty:'295'},{item_code:'',bal_qty:420}]` → `{'2001136':55.0,'2002349':295.0}`.
   - The **Review focus 2** test: one scan with items 2001141 and an unknown valid EAN-8 → `rows.length == 1`, `unresolved.single.reason == notInErp`, and `unresolved.single.barcode` is the unknown EAN-8.
-  - Missing Bin → `outOfStock` true. Negative total (−2) → true. 0.5 → false.
+  - Item absent from the report → `outOfStock` true. Negative total (−2) → true. 0.5 → false.
   - The same item in two scans → two rows, with `photoIndex` 0 and 1.
   - A `decodeFailed` scan → `unreadable`. A scan with `rawValues:['4006381333931']` and no items → `noRecognisedCode`.
 - [ ] **Step 2: Write the failing provider tests** with a fake `ApiProvider` (pattern: `test/unit/bom_stock_customer_code_api_test.dart`). Assert:
-  - the exact `filterTuples` sent;
-  - that 150 codes give 2 calls per doctype;
-  - that a 403 `DioException` throws `StockAccessDenied`.
+  - the exact Item `filterTuples` sent;
+  - the exact `getStockBalanceReport` arguments (`warehouses == ['Finished Goods - KA']`, today's date from the injected clock);
+  - that 150 codes give 2 Item calls and 2 report calls;
+  - that report rows for codes outside the chunk are dropped (the v15 < 15.72 case);
+  - that a 403 `DioException` from either call throws `StockAccessDenied`.
 - [ ] **Step 3: Run `flutter test test/unit/stock_aggregator_test.dart test/unit/stock_sheet_provider_test.dart`.** Expected: FAIL.
 - [ ] **Step 4: Implement the provider, the aggregator and the model additions.**
 - [ ] **Step 5: Run the same command.** Expected: PASS.
-- [ ] **Step 6: Commit** `feat(stock-sheet): batched Item/Bin lookup and stock aggregation`
+- [ ] **Step 6: Commit** `feat(stock-sheet): batched Item lookup and Stock Balance aggregation`
 
 ---
 
@@ -279,7 +281,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 �
     - if busy, it returns (the guard);
     - more than `maxPhotos` → `errorMessage` set to the Global Constraints text, `phase = error`, nothing decoded;
     - otherwise it decodes in sequence, updating `decoded`, and makes the thumbnails;
-    - it then fetches the items and Bins for the distinct item codes and builds the `StockSheetResult`;
+    - it then fetches the items and the Stock Balance rows for the distinct item codes and builds the `StockSheetResult`;
     - if `outOfStockCount > 0`, it sets `phase = awaitingChoice` and returns; otherwise it builds the files at once.
   - `Future<void> chooseOutOfStock(OutOfStockChoice? choice)`: `null` (sheet dismissed) → `phase = idle` and the run is cancelled. Otherwise it filters the rows (`leaveOut` drops out-of-stock rows), sets `highlightOutOfStock = choice == includeRed` and `showStatus = choice != leaveOut`, and builds.
   - `Future<void> retry()`: reruns from the ERP step using the kept `PhotoScan`s and does **not** decode again.
@@ -294,7 +296,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 �
   - 101 paths → error text `Share up to 100 photos at a time (you shared 101).`, and the decoder is never called;
   - all in stock → no `awaitingChoice`, and `shareFiles` gets one `.xlsx` for `excel` and two files for `both`;
   - one out of stock → `awaitingChoice`; `chooseOutOfStock(null)` → `idle` and `shareFiles` is never called; `leaveOut` → the built document has no out-of-stock rows and `showStatus == false`;
-  - **Review focus 4:** the provider throws once on Bins, then succeeds → after `retry()` the decode count is unchanged and the phase reaches `done`;
+  - **Review focus 4:** the provider throws once on the stock call, then succeeds → after `retry()` the decode count is unchanged and the phase reaches `done`;
   - **Review focus 5:** the decoder returns `null` for one path → `unresolved` holds `unreadable` and the run still completes;
   - a 403 → the exact access-denied text;
   - calling `start` while `busy` is a no-op.
