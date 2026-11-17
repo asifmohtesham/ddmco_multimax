@@ -40,8 +40,9 @@ class StockSheetProvider {
       final data = response.data is Map ? response.data['data'] : null;
       // A body without a data list is not "no such items": treating it so
       // would list every code as not in the ERP.
-      if (data is! List)
+      if (data is! List) {
         throw const FormatException('Unexpected Item response');
+      }
       for (final row in data) {
         if (row is! Map) continue;
         final code = row['name']?.toString() ?? '';
