@@ -75,6 +75,15 @@ class StockSheetController extends GetxController {
   final files = <XFile>[].obs;
   final thumbnails = <String, Uint8List>{}.obs;
 
+  /// True while [shareAgain] is handing the files to the share sheet.
+  final sharing = false.obs;
+
+  /// The photos of the share on screen (see [takeShare]).
+  final sharedPaths = <String>[].obs;
+
+  /// Bumped by every [takeShare], so the screen asks for a format again.
+  final shareSerial = 0.obs;
+
   List<PhotoScan> _scans = const [];
   SheetFormat _format = SheetFormat.excel;
   final List<File> _created = [];
@@ -141,8 +150,26 @@ class StockSheetController extends GetxController {
   }
 
   Future<void> shareAgain() async {
-    if (files.isEmpty) return;
-    await _shareFiles(files.toList());
+    if (sharing.value || files.isEmpty) return;
+    sharing.value = true;
+    try {
+      await _shareFiles(files.toList());
+    } finally {
+      sharing.value = false;
+    }
+  }
+
+  /// True when [retry] can rerun the ERP step: the photos were decoded.
+  bool get canRetry => _scans.isNotEmpty;
+
+  /// Takes the photos of a new share and starts over, ready for the format
+  /// question. Refused (returns false, nothing changes) while a run is active.
+  bool takeShare(List<String> paths) {
+    if (busy.value) return false;
+    reset();
+    sharedPaths.assignAll(paths);
+    shareSerial.value++;
+    return true;
   }
 
   /// Back to a blank slate for a new share. Ignored while a run is active.

@@ -24,6 +24,9 @@ dependencies:
   percent_indicator:
   flutter_html:
   share_plus: ^13.3.1
+  # Receives photos shared from the gallery (stock sheet): cold start via
+  # getInitialMedia(), warm app via getMediaStream().
+  receive_sharing_intent: ^1.9.0
   excel: ^4.0.6
   archive: ^3.6.1
   qr_flutter:
