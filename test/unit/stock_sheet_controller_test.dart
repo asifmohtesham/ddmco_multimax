@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -29,9 +30,13 @@ class _FakeDecoder implements PhotoDecoder {
   int calls = 0;
   bool disposed = false;
 
+  /// When set, every decode waits for it.
+  Completer<void>? gate;
+
   @override
   Future<List<String>?> decode(String path) async {
     calls++;
+    await gate?.future;
     if (unsupported) throw UnsupportedError('no');
     if (throwFor.contains(path)) throw Exception('boom');
     return codes[path];
@@ -48,6 +53,9 @@ class _FakeProvider extends StockSheetProvider {
   Object? stockError;
   int stockCalls = 0;
 
+  /// When set, the stock call waits for it.
+  Completer<void>? stockGate;
+
   @override
   Future<Map<String, ItemInfo>> fetchItems(List<String> codes) async => {
     for (final c in codes.where(known.contains))
@@ -59,6 +67,7 @@ class _FakeProvider extends StockSheetProvider {
     List<String> codes,
   ) async {
     stockCalls++;
+    await stockGate?.future;
     final error = stockError;
     if (error != null) {
       stockError = null;
@@ -75,17 +84,22 @@ void main() {
   late List<List<XFile>> shared;
   late List<StockSheetDocument> pdfDocs;
 
+  Future<Uint8List?> Function(String)? thumbOverride;
+
+  /// When set, the PDF writer waits for it.
+  Completer<void>? pdfGate;
+
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('stock_sheet_ctrl');
     shared = [];
     pdfDocs = [];
+    thumbOverride = null;
+    pdfGate = null;
   });
 
   tearDown(() async {
     if (tmp.existsSync()) await tmp.delete(recursive: true);
   });
-
-  Future<Uint8List?> Function(String)? thumbOverride;
 
   StockSheetController make(_FakeDecoder decoder, _FakeProvider provider) =>
       StockSheetController(
@@ -95,6 +109,7 @@ void main() {
         now: () => DateTime(2026, 11, 17, 9, 5),
         tempDir: () async => tmp,
         writePdf: (doc) async {
+          await pdfGate?.future;
           pdfDocs.add(doc);
           return Uint8List.fromList([1, 2, 3]);
         },
@@ -301,5 +316,91 @@ void main() {
     await c.start(['a.jpg'], SheetFormat.excel);
     expect(c.phase.value, StockSheetPhase.done);
     expect(c.thumbnails, isEmpty);
+  });
+
+  group('closing the screen mid-run', () {
+    List<FileSystemEntity> written() => tmp.listSync();
+
+    test('stops decoding, disposes the decoder and shares nothing', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+      })..gate = Completer<void>();
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final c = make(decoder, provider);
+      final run = c.start(['a.jpg', 'b.jpg'], SheetFormat.excel);
+      await pumpEventQueue();
+      expect(decoder.calls, 1);
+
+      c.onClose();
+      decoder.gate!.complete();
+      await run;
+
+      expect(decoder.calls, 1);
+      expect(decoder.disposed, isTrue);
+      expect(provider.stockCalls, 0);
+      expect(shared, isEmpty);
+      expect(written(), isEmpty);
+      expect(c.busy.value, isFalse);
+    });
+
+    test('during the stock check: no share and no files', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+      });
+      final provider = _FakeProvider(stock: {_a: 1})
+        ..stockGate = Completer<void>();
+      final c = make(decoder, provider);
+      final run = c.start(['a.jpg'], SheetFormat.both);
+      await pumpEventQueue();
+      expect(provider.stockCalls, 1);
+
+      c.onClose();
+      provider.stockGate!.complete();
+      await run;
+
+      expect(shared, isEmpty);
+      expect(pdfDocs, isEmpty);
+      expect(written(), isEmpty);
+      expect(c.files, isEmpty);
+    });
+
+    test('while writing: files already written are removed', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+      });
+      pdfGate = Completer<void>();
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+      final run = c.start(['a.jpg'], SheetFormat.both);
+      for (var i = 0; i < 50 && written().isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(written().map((f) => f.uri.pathSegments.last), [
+        'Items-20261117-0905.xlsx',
+      ]);
+
+      c.onClose();
+      pdfGate!.complete();
+      await run;
+
+      expect(shared, isEmpty);
+      expect(written(), isEmpty);
+      expect(c.files, isEmpty);
+    });
+
+    test('an out-of-stock choice after close builds nothing', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider());
+      await c.start(['a.jpg'], SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.awaitingChoice);
+
+      c.onClose();
+      await c.chooseOutOfStock(OutOfStockChoice.includeRed);
+
+      expect(shared, isEmpty);
+      expect(written(), isEmpty);
+    });
   });
 }

@@ -88,8 +88,12 @@ class StockSheetController extends GetxController {
   SheetFormat _format = SheetFormat.excel;
   final List<File> _created = [];
 
+  /// Set by [onClose]. A run still in flight then stops at its next step,
+  /// writes and shares nothing, and removes anything it wrote.
+  bool _closed = false;
+
   Future<void> start(List<String> paths, SheetFormat format) async {
-    if (busy.value) return;
+    if (busy.value || _closed) return;
     busy.value = true;
     try {
       _clear();
@@ -108,6 +112,7 @@ class StockSheetController extends GetxController {
         _fail("Reading barcodes from photos isn't supported on this device.");
         return;
       }
+      if (_closed) return;
       await _checkStock();
     } finally {
       busy.value = false;
@@ -115,7 +120,7 @@ class StockSheetController extends GetxController {
   }
 
   Future<void> retry() async {
-    if (busy.value || _scans.isEmpty) return;
+    if (busy.value || _closed || _scans.isEmpty) return;
     busy.value = true;
     try {
       errorMessage.value = null;
@@ -126,7 +131,8 @@ class StockSheetController extends GetxController {
   }
 
   Future<void> chooseOutOfStock(OutOfStockChoice? choice) async {
-    if (busy.value || phase.value != StockSheetPhase.awaitingChoice) return;
+    if (busy.value || _closed) return;
+    if (phase.value != StockSheetPhase.awaitingChoice) return;
     final current = result.value;
     if (choice == null || current == null) {
       result.value = null;
@@ -150,7 +156,7 @@ class StockSheetController extends GetxController {
   }
 
   Future<void> shareAgain() async {
-    if (sharing.value || files.isEmpty) return;
+    if (sharing.value || _closed || files.isEmpty) return;
     sharing.value = true;
     try {
       await _shareFiles(files.toList());
@@ -183,6 +189,7 @@ class StockSheetController extends GetxController {
 
   @override
   void onClose() {
+    _closed = true;
     _deleteCreatedFiles();
     super.onClose();
   }
@@ -230,6 +237,7 @@ class StockSheetController extends GetxController {
         } catch (e, st) {
           _log('decode failed for $path', e, st);
         }
+        if (_closed) break;
         scans.add(
           raw == null
               ? PhotoScan(index: i, path: path, decodeFailed: true)
@@ -265,9 +273,11 @@ class StockSheetController extends GetxController {
       final items = codes.isEmpty
           ? <String, ItemInfo>{}
           : await _provider.fetchItems(codes);
+      if (_closed) return;
       final stockRows = codes.isEmpty
           ? <Map<String, dynamic>>[]
           : await _provider.fetchFinishedGoodsStock(codes);
+      if (_closed) return;
       final built = StockAggregator.build(
         _scans,
         items,
@@ -314,24 +324,16 @@ class StockSheetController extends GetxController {
         final dir = await _tempDir();
         final stamp = DateFormat('yyyyMMdd-HHmm').format(now);
         if (_format != SheetFormat.pdf) {
-          files.add(
-            await _store(
-              dir,
-              'Items-$stamp.xlsx',
-              XlsxStockSheetWriter.write(doc),
-              _xlsxMime,
-            ),
-          );
+          final bytes = XlsxStockSheetWriter.write(doc);
+          if (_abandonIfClosed()) return;
+          files.add(await _store(dir, 'Items-$stamp.xlsx', bytes, _xlsxMime));
+          if (_abandonIfClosed()) return;
         }
         if (_format != SheetFormat.excel) {
-          files.add(
-            await _store(
-              dir,
-              'Items-$stamp.pdf',
-              await _writePdf(doc),
-              _pdfMime,
-            ),
-          );
+          final bytes = await _writePdf(doc);
+          if (_abandonIfClosed()) return;
+          files.add(await _store(dir, 'Items-$stamp.pdf', bytes, _pdfMime));
+          if (_abandonIfClosed()) return;
         }
         await _shareFiles(files.toList());
       }
@@ -340,6 +342,14 @@ class StockSheetController extends GetxController {
       _log('build failed', e, st);
       _fail("Couldn't build the sheet. Try again.");
     }
+  }
+
+  /// After [onClose], removes what this run wrote and tells it to stop.
+  bool _abandonIfClosed() {
+    if (!_closed) return false;
+    files.clear();
+    _deleteCreatedFiles();
+    return true;
   }
 
   Future<XFile> _store(
