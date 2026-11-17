@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_screen.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/format_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 import 'package:share_plus/share_plus.dart';
 
@@ -28,15 +30,19 @@ class _SpyController extends StockSheetController {
   final starts = <List<String>>[];
   final makes = <SheetFormat>[];
   final choices = <OutOfStockChoice?>[];
+  final added = <List<String>>[];
+  String? addError;
   int retries = 0;
   bool retryable = false;
-  int onSheet = 0;
+
+  /// Overrides the count of photos on the sheet; null counts [review].
+  int? onSheet;
 
   @override
   bool get canRetry => retryable;
 
   @override
-  int get sheetPhotoCount => onSheet;
+  int get sheetPhotoCount => onSheet ?? super.sheetPhotoCount;
 
   @override
   Future<void> start(List<String> paths) async {
@@ -55,8 +61,29 @@ class _SpyController extends StockSheetController {
   }
 
   @override
+  Future<String?> addPhotos(List<String> paths) async {
+    added.add(paths);
+    return addError;
+  }
+
+  @override
   Future<void> retry() async => retries++;
 }
+
+ReviewItem _item(String barcode) => ReviewItem(
+  code: ClassifiedCode(itemCode: barcode.substring(0, 7), barcode: barcode),
+  info: ItemInfo(itemCode: barcode.substring(0, 7), itemName: 'Item $barcode'),
+  stock: const ItemStock(
+    total: 12,
+    racks: [RackQty(rack: 'KA-WH-DXB1-21A', qty: 12)],
+  ),
+);
+
+/// Two photos with one known item each.
+List<ReviewEntry> _twoPhotos() => [
+  ReviewEntry(path: 'a.jpg', items: [_item('12345670')]),
+  ReviewEntry(path: 'b.jpg', items: [_item('76543210')]),
+];
 
 StockSheetResult _result({int rows = 2, int outOfStock = 1}) =>
     StockSheetResult(
@@ -104,6 +131,8 @@ void main() {
     List<String>? paths,
     bool retryable = false,
     SheetFormat remembered = SheetFormat.excel,
+    Future<List<String>> Function()? pickCamera,
+    Future<List<String>> Function()? pickGallery,
   }) async {
     await tester.pumpWidget(
       GetMaterialApp(
@@ -118,7 +147,13 @@ void main() {
               _SpyController(remembered: remembered)..retryable = retryable,
             )
             as _SpyController;
-    Get.to<void>(() => StockSheetScreen(paths: paths ?? const []));
+    Get.to<void>(
+      () => StockSheetScreen(
+        paths: paths ?? const [],
+        pickCamera: pickCamera ?? () async => const [],
+        pickGallery: pickGallery ?? () async => const [],
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -134,7 +169,14 @@ void main() {
     return null;
   }
 
-  testWidgets('a share starts reading at once, with no format question', (
+  /// Puts [entries] on screen in the review phase.
+  Future<void> review(WidgetTester tester, List<ReviewEntry> entries) async {
+    controller.review.assignAll(entries);
+    controller.phase.value = StockSheetPhase.reviewing;
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a share opens into reading, then the review list', (
     tester,
   ) async {
     await open(tester, paths: ['a.jpg', 'b.jpg']);
@@ -143,26 +185,270 @@ void main() {
     expect(controller.starts, [
       ['a.jpg', 'b.jpg'],
     ]);
-    expect(find.byType(StockSheetScreen), findsOneWidget);
+
+    controller.total.value = 2;
+    controller.phase.value = StockSheetPhase.decoding;
+    await tester.pump();
+    expect(find.text('Reading photo 1 of 2'), findsOneWidget);
+    expect(find.text('Stock sheet'), findsOneWidget);
+
+    await review(tester, _twoPhotos());
+    expect(find.text('Make a stock sheet'), findsNothing);
+    expect(find.byType(ReviewList), findsOneWidget);
+    expect(find.text('Item 12345670'), findsOneWidget);
+    expect(find.text('Review photos'), findsOneWidget);
+    expect(find.text('2 photos · 2 on the sheet'), findsOneWidget);
+    expect(find.text('Make sheet · 2 photos'), findsOneWidget);
   });
 
-  testWidgets('format sheet uses the dark themed surface', (tester) async {
+  testWidgets('the format control shows the stored format', (tester) async {
+    await open(tester, remembered: SheetFormat.pdf);
+    await review(tester, _twoPhotos());
+
+    final control = tester.widget<SegmentedButton<SheetFormat>>(
+      find.byType(SegmentedButton<SheetFormat>),
+    );
+    expect(control.selected, {SheetFormat.pdf});
+    expect(find.text('Excel'), findsOneWidget);
+    expect(find.text('PDF'), findsOneWidget);
+    expect(find.text('Both'), findsOneWidget);
+
+    await tester.tap(find.text('Both'));
+    await tester.pumpAndSettle();
+    expect(controller.format.value, SheetFormat.both);
+    await tester.tap(find.text('Make sheet · 2 photos'));
+    await tester.pump();
+    expect(controller.makes, [SheetFormat.both]);
+  });
+
+  testWidgets('Make sheet is disabled once both photos are switched off', (
+    tester,
+  ) async {
     await open(tester);
-    final picked = showFormatSheet(Get.context!, photoCount: 2);
+    await review(tester, _twoPhotos());
+
+    ButtonStyleButton button(String label) => tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    );
+    expect(button('Make sheet · 2 photos').onPressed, isNotNull);
+
+    await tester.tap(find.byType(Switch).at(0));
+    await tester.pumpAndSettle();
+    expect(find.text('Make sheet · 1 photo'), findsOneWidget);
+    await tester.tap(find.byType(Switch).at(1));
     await tester.pumpAndSettle();
 
-    expect(find.text('Make a stock sheet'), findsOneWidget);
-    expect(find.text('2 photos'), findsOneWidget);
-    expect(find.text('Excel and PDF'), findsOneWidget);
+    expect(find.text('2 photos · 0 on the sheet'), findsOneWidget);
+    expect(button('Make sheet · 0 photos').onPressed, isNull);
+    await tester.tap(find.text('Make sheet · 0 photos'));
+    await tester.pump();
+    expect(controller.makes, isEmpty);
+  });
 
-    final surface = surfaceAbove(tester, find.text('Make a stock sheet'));
+  testWidgets('Back while reviewing asks first; Keep reviewing stays', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discard these photos?'), findsOneWidget);
+    await tester.tap(find.text('Keep reviewing'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Discard these photos?'), findsNothing);
+    expect(find.byType(StockSheetScreen), findsOneWidget);
+    expect(find.byType(ReviewList), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard'));
+    await tester.pumpAndSettle();
+    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('Back outside the review leaves at once', (tester) async {
+    await open(tester);
+    controller.phase.value = StockSheetPhase.decoding;
+    await tester.pump();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discard these photos?'), findsNothing);
+    expect(find.byType(StockSheetScreen), findsNothing);
+  });
+
+  testWidgets('a share during the review asks Add, Start again or Cancel', (
+    tester,
+  ) async {
+    await open(tester, paths: ['a.jpg', 'b.jpg']);
+    await review(tester, _twoPhotos());
+
+    expect(
+      controller.offerShare(['n1.jpg', 'n2.jpg', 'n3.jpg']),
+      ShareOffer.pending,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Add these 3 photos to the list, or start again?'),
+      findsOneWidget,
+    );
+    expect(find.text('Add'), findsOneWidget);
+    expect(find.text('Start again'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(controller.added, [
+      ['n1.jpg', 'n2.jpg', 'n3.jpg'],
+    ]);
+    expect(controller.pendingShare, isEmpty);
+    expect(find.byType(ReviewList), findsOneWidget);
+  });
+
+  testWidgets('a share that will not fit offers only Start again', (
+    tester,
+  ) async {
+    await open(tester, paths: ['a.jpg']);
+    await review(tester, [
+      for (var i = 0; i < 99; i++)
+        ReviewEntry(path: 'p$i.jpg', decodeFailed: true),
+    ]);
+
+    controller.offerShare(['n1.jpg', 'n2.jpg', 'n3.jpg']);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Only 1 more photos fit (limit 100).'), findsOneWidget);
+    expect(find.text('Add'), findsNothing);
+    expect(find.text('Start again'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+
+    await tester.tap(find.text('Start again'));
+    await tester.pumpAndSettle();
+    expect(controller.starts.last, ['n1.jpg', 'n2.jpg', 'n3.jpg']);
+    expect(controller.review, isEmpty);
+  });
+
+  testWidgets('Cancel keeps the review and drops the share', (tester) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    controller.offerShare(['n1.jpg']);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(controller.pendingShare, isEmpty);
+    expect(controller.added, isEmpty);
+    expect(controller.review, hasLength(2));
+    expect(find.byType(ReviewList), findsOneWidget);
+  });
+
+  testWidgets('Add during the out-of-stock question closes that sheet', (
+    tester,
+  ) async {
+    await open(tester);
+    controller.review.assignAll(_twoPhotos());
+    controller.result.value = _result();
+    controller.phase.value = StockSheetPhase.awaitingChoice;
+    await tester.pumpAndSettle();
+    expect(find.text('1 item is out of stock'), findsOneWidget);
+
+    controller.offerShare(['n1.jpg']);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 item is out of stock'), findsNothing);
+    expect(controller.phase.value, StockSheetPhase.reviewing);
+    expect(controller.added, [
+      ['n1.jpg'],
+    ]);
+    // The closed sheet's late answer is not taken as a choice.
+    expect(controller.choices, isEmpty);
+  });
+
+  testWidgets('the + menu adds photos from the gallery', (tester) async {
+    await open(
+      tester,
+      pickGallery: () async => ['g1.jpg', 'g2.jpg'],
+      pickCamera: () async => ['c1.jpg'],
+    );
+    await review(tester, _twoPhotos());
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Take a photo'), findsOneWidget);
+    await tester.tap(find.text('Choose from gallery'));
+    await tester.pumpAndSettle();
+    expect(controller.added, [
+      ['g1.jpg', 'g2.jpg'],
+    ]);
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Take a photo'));
+    await tester.pumpAndSettle();
+    expect(controller.added.last, ['c1.jpg']);
+  });
+
+  testWidgets('an add that is refused says why in a snackbar', (tester) async {
+    await open(tester, pickGallery: () async => ['g1.jpg']);
+    controller.addError = 'Only 0 more photos fit (limit 100).';
+    await review(tester, _twoPhotos());
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose from gallery'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Only 0 more photos fit (limit 100).'), findsOneWidget);
+  });
+
+  testWidgets('+ shows a spinner and is disabled while adding', (tester) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    controller.adding.value = true;
+    await tester.pump(const Duration(milliseconds: 200));
+    final spinner = find.descendant(
+      of: find.byType(AppBar),
+      matching: find.byType(CircularProgressIndicator),
+    );
+    expect(spinner, findsOneWidget);
+    // The spinner never settles, so pump a fixed time.
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Take a photo'), findsNothing);
+
+    controller.adding.value = false;
+    await tester.pumpAndSettle();
+    expect(spinner, findsNothing);
+  });
+
+  testWidgets('the out-of-stock sheet uses the dark themed surface', (
+    tester,
+  ) async {
+    await open(tester);
+    final picked = showOutOfStockSheet(Get.context!, count: 2);
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 items are out of stock'), findsOneWidget);
+    final surface = surfaceAbove(tester, find.text('2 items are out of stock'));
     expect(surface, AppScheme.dark.fg);
     expect(surface, darkTheme.colorScheme.surface);
     final sheetColours = [
       for (final e
           in find
               .descendant(
-                of: find.byType(FormatSheet),
+                of: find.byType(OutOfStockSheet),
                 matching: find.byType(Material),
               )
               .evaluate())
@@ -170,7 +456,7 @@ void main() {
       for (final e
           in find
               .descendant(
-                of: find.byType(FormatSheet),
+                of: find.byType(OutOfStockSheet),
                 matching: find.byType(Container),
               )
               .evaluate())
@@ -179,9 +465,9 @@ void main() {
     ];
     expect(sheetColours, isNot(contains(Colors.white)));
 
-    await tester.tap(find.text('PDF'));
+    await tester.tap(find.text('Include, no colour'));
     await tester.pumpAndSettle();
-    expect(await picked, SheetFormat.pdf);
+    expect(await picked, OutOfStockChoice.includePlain);
   });
 
   testWidgets('more than 100 photos goes to start, which refuses them', (
@@ -261,7 +547,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Nothing starts until the user answers (the screen's dialog asks).
+    // Nothing starts until the user answers the screen's question.
+    expect(
+      find.text('Add these 3 photos to the list, or start again?'),
+      findsOneWidget,
+    );
     expect(controller.pendingShare, ['b.jpg', 'c.jpg', 'd.jpg']);
     expect(find.text('1 item is out of stock'), findsOneWidget);
     expect(controller.starts, [
@@ -388,7 +678,9 @@ void main() {
     tester,
   ) async {
     await open(tester);
-    controller.total.value = 8;
+    // The photos on the sheet, not every photo shared.
+    controller.total.value = 11;
+    controller.onSheet = 8;
     controller.result.value = _result(rows: 2, outOfStock: 1);
     controller.files.assignAll([XFile('/tmp/a.xlsx')]);
     controller.phase.value = StockSheetPhase.done;

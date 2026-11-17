@@ -1,65 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 
-/// Asks which file to make for [photoCount] shared photos. Returns null when
-/// dismissed.
-Future<SheetFormat?> showFormatSheet(
-  BuildContext context, {
-  required int photoCount,
-}) {
-  return showModalBottomSheet<SheetFormat>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    builder: (_) => FormatSheet(photoCount: photoCount),
-  );
-}
-
-class FormatSheet extends StatelessWidget {
-  const FormatSheet({super.key, required this.photoCount});
-
-  final int photoCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return StockSheetChoiceSheet(
-      title: 'Make a stock sheet',
-      subtitle: photoCount == 1 ? '1 photo' : '$photoCount photos',
-      options: [
-        _option(
-          context,
-          Icons.table_chart_outlined,
-          'Excel',
-          SheetFormat.excel,
-        ),
-        _option(context, Icons.picture_as_pdf_outlined, 'PDF', SheetFormat.pdf),
-        _option(
-          context,
-          Icons.library_books_outlined,
-          'Excel and PDF',
-          SheetFormat.both,
-        ),
-      ],
-    );
-  }
-
-  Widget _option(
-    BuildContext context,
-    IconData icon,
-    String label,
-    SheetFormat format,
-  ) {
-    final s = context.scheme;
-    return ListTile(
-      leading: Icon(icon, color: s.textMuted),
-      title: Text(label, style: TextStyle(color: s.text)),
-      onTap: () => Navigator.of(context).pop(format),
-    );
-  }
-}
-
-/// The themed bottom-sheet frame shared by the format and out-of-stock
-/// questions: handle, title, muted subtitle, then the options.
+/// The themed bottom-sheet frame for the stock sheet's questions: handle,
+/// title, muted subtitle, then the options.
 class StockSheetChoiceSheet extends StatelessWidget {
   const StockSheetChoiceSheet({
     super.key,
