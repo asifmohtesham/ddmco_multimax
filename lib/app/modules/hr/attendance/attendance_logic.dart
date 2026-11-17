@@ -808,6 +808,53 @@ const _kMon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov'
 bool isStale(DateTime? loadedAt, DateTime now) =>
     loadedAt == null ? false : now.difference(loadedAt).inMinutes > 15;
 
+/// Whether today's live status is still open and so left out of month
+/// counts: Not in yet, or Absent with no Attendance row yet (HRMS has not
+/// marked the day, which is not over). The Dashboard strip and the month
+/// screen's summary both use it, so their counts agree.
+bool isTodayPending(EmployeeDayStatus? today) {
+  final t = today?.status;
+  return t == AttendanceStatus.notInYet ||
+      (t == AttendanceStatus.absent && today?.ledger == null);
+}
+
+/// The month screen's summary, "8 working days · 6 present · 1 absent"
+/// (+ " · 2 no check-out", " · 1 missing punch", " · short 3h 20m"), counted
+/// by day from [first] to [end] inclusive. [skip] (a pending today) is left
+/// out of every count. Late counts as present; a missing punch is present
+/// and flagged.
+String monthSummaryLabel({
+  required DateTime first,
+  required DateTime end,
+  DateTime? skip,
+  required bool Function(DateTime) isHoliday,
+  required AttendanceStatus? Function(DateTime) statusOn,
+  double shortfallHours = 0,
+}) {
+  var working = 0, present = 0, absent = 0, noOut = 0, missing = 0;
+  for (var d = dateOnly(first); !d.isAfter(end); d = DateTime(d.year, d.month, d.day + 1)) {
+    if (skip != null && d == dateOnly(skip)) continue;
+    if (!isHoliday(d)) working++;
+    switch (statusOn(d)) {
+      case AttendanceStatus.present || AttendanceStatus.late:
+        present++;
+      case AttendanceStatus.absent:
+        absent++;
+      case AttendanceStatus.noCheckOut:
+        noOut++;
+      case AttendanceStatus.missingPunch:
+        present++; // came in, a tap short
+        missing++;
+      default:
+        break;
+    }
+  }
+  return '$working working day${working == 1 ? '' : 's'} · $present present · $absent absent'
+      '${noOut > 0 ? ' · $noOut no check-out' : ''}'
+      '${missing > 0 ? ' · $missing missing punch' : ''}'
+      '${shortfallHours > 0.004 ? ' · short ${formatHours(shortfallHours)}' : ''}';
+}
+
 /// One employee's month for the Dashboard dot strip: a status (or null) per
 /// calendar day plus the counts behind the tally line.
 class MonthStrip {
@@ -876,10 +923,7 @@ MonthStrip buildMonthStrip({
     AttendanceStatus? st;
     if (d == todayDate) {
       todayIndex = i;
-      final t = today?.status;
-      final pending = t == AttendanceStatus.notInYet ||
-          (t == AttendanceStatus.absent && today?.ledger == null);
-      st = pending ? null : t;
+      st = isTodayPending(today) ? null : today?.status;
     } else if (d.isAfter(todayDate)) {
       st = null;
     } else if (byDate[key] != null) {

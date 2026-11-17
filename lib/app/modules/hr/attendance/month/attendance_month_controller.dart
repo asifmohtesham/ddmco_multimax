@@ -205,34 +205,24 @@ class AttendanceMonthController extends GetxController {
 
   /// "8 working days · 6 present · 1 absent" (+ " · 2 no check-out",
   /// " · 1 missing punch", " · short 3h 20m") for the elapsed part of the
-  /// month, counted by day. The shortfall total adds the stamped
-  /// `custom_shortfall_hours` of the month's rows (clocked-hours days only).
+  /// month, counted by day. Today counts only once it is settled
+  /// ([isTodayPending]), as on the Dashboard strip. The shortfall total adds
+  /// the stamped `custom_shortfall_hours` of the month's rows (clocked-hours
+  /// days only).
   String get summary {
-    final end = isCurrentMonth ? dateOnly(DateTime.now()) : last;
-    var working = 0, present = 0, absent = 0, noOut = 0, missing = 0;
-    for (var d = first; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
-      if (!isHoliday(d)) working++;
-      switch (statusOn(d)) {
-        case AttendanceStatus.present || AttendanceStatus.late:
-          present++;
-        case AttendanceStatus.absent:
-          absent++;
-        case AttendanceStatus.noCheckOut:
-          noOut++;
-        case AttendanceStatus.missingPunch:
-          present++; // came in, a tap short
-          missing++;
-        default:
-          break;
-      }
-    }
+    final todayDate = dateOnly(DateTime.now());
+    final end = isCurrentMonth ? todayDate : last;
     // Same days as the counts: a row dated after today adds nothing yet.
     final short = records
         .where((r) => !dateOnly(r.date).isAfter(end))
         .fold(0.0, (t, r) => t + (r.isClocked ? r.shortfallHours ?? 0 : 0));
-    return '$working working day${working == 1 ? '' : 's'} · $present present · $absent absent'
-        '${noOut > 0 ? ' · $noOut no check-out' : ''}'
-        '${missing > 0 ? ' · $missing missing punch' : ''}'
-        '${short > 0.004 ? ' · short ${formatHours(short)}' : ''}';
+    return monthSummaryLabel(
+      first: first,
+      end: end,
+      skip: isTodayPending(today) ? todayDate : null,
+      isHoliday: isHoliday,
+      statusOn: statusOn,
+      shortfallHours: short,
+    );
   }
 }
