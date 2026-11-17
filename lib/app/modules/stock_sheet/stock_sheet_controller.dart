@@ -146,12 +146,13 @@ class StockSheetController extends GetxController {
     }
     busy.value = true;
     try {
-      final rows = choice == OutOfStockChoice.leaveOut
+      final leaveOut = choice == OutOfStockChoice.leaveOut;
+      final rows = leaveOut
           ? current.rows.where((r) => !r.outOfStock).toList()
           : current.rows;
       await _build(
         rows,
-        current.outOfStockCount,
+        leaveOut ? null : current.outOfStockCount,
         highlight: choice == OutOfStockChoice.includeRed,
         showStatus: choice != OutOfStockChoice.leaveOut,
       );
@@ -303,19 +304,23 @@ class StockSheetController extends GetxController {
     }
   }
 
+  /// [outOfStockCount] is null when the out-of-stock rows were left out, so
+  /// the subtitle does not count rows the file does not have.
   Future<void> _build(
     List<StockSheetRow> rows,
-    int outOfStockCount, {
+    int? outOfStockCount, {
     required bool highlight,
     required bool showStatus,
   }) async {
     phase.value = StockSheetPhase.building;
     try {
       final now = _now();
-      final subtitle =
-          '${DateFormat('dd/MM/yyyy HH:mm').format(now)}'
-          ' · ${_scans.length} photos · ${rows.length} items'
-          ' · $outOfStockCount out of stock';
+      final subtitle = [
+        DateFormat('dd/MM/yyyy HH:mm').format(now),
+        _count(_scans.length, 'photo'),
+        _count(rows.length, 'item'),
+        if (outOfStockCount != null) '$outOfStockCount out of stock',
+      ].join(' · ');
       final doc = StockSheetDocument(
         title: _title,
         subtitle: subtitle,
@@ -362,6 +367,8 @@ class StockSheetController extends GetxController {
       errorMessage.value = shareFailedMessage;
     }
   }
+
+  static String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
 
   /// After [onClose], removes what this run wrote and tells it to stop.
   bool _abandonIfClosed() {

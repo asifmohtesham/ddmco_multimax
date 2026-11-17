@@ -167,7 +167,7 @@ void main() {
     ]);
     expect(
       pdfDocs.single.subtitle,
-      '17/11/2026 09:05 · 1 photos · 1 items · 0 out of stock',
+      '17/11/2026 09:05 · 1 photo · 1 item · 0 out of stock',
     );
     expect(pdfDocs.single.title, 'Items');
     expect(pdfDocs.single.showStatus, isFalse);
@@ -203,9 +203,21 @@ void main() {
     expect(pdfDocs.single.rows.every((r) => !r.outOfStock), isTrue);
     expect(pdfDocs.single.rows, hasLength(1));
     expect(pdfDocs.single.showStatus, isFalse);
+    // The out-of-stock row is not in the file, so the count is not shown.
+    expect(pdfDocs.single.subtitle, '17/11/2026 09:05 · 2 photos · 1 item');
+  });
+
+  test('plural counts in the subtitle', () async {
+    final decoder = _FakeDecoder({
+      'a.jpg': [_ean(_a), _ean(_b)],
+      'b.jpg': [_ean(_b)],
+    });
+    final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+    await c.start(['a.jpg', 'b.jpg'], SheetFormat.pdf);
+    await c.chooseOutOfStock(OutOfStockChoice.includePlain);
     expect(
-      pdfDocs.single.subtitle.endsWith('1 items · 1 out of stock'),
-      isTrue,
+      pdfDocs.single.subtitle,
+      '17/11/2026 09:05 · 2 photos · 3 items · 2 out of stock',
     );
   });
 
@@ -218,6 +230,10 @@ void main() {
     await c.chooseOutOfStock(OutOfStockChoice.includeRed);
     expect(pdfDocs.single.highlightOutOfStock, isTrue);
     expect(pdfDocs.single.showStatus, isTrue);
+    expect(
+      pdfDocs.single.subtitle,
+      '17/11/2026 09:05 · 1 photo · 1 item · 1 out of stock',
+    );
     await c.start(['a.jpg'], SheetFormat.pdf);
     await c.chooseOutOfStock(OutOfStockChoice.includePlain);
     expect(pdfDocs.last.highlightOutOfStock, isFalse);
