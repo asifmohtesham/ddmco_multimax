@@ -1,4 +1,4 @@
-# Item Image (virtual field) on Stock Entry, Material Request, Purchase Order, Purchase Receipt, Quotation, Sales Order, Delivery Note and Sales Invoice items
+# Item Image (virtual field) on Stock Entry, Material Request, Purchase Order, Purchase Receipt, Purchase Invoice, Quotation, Sales Order, Delivery Note and Sales Invoice items
 
 > **Scope:** This is a **backend (ERPNext Desk) artifact**, not Flutter code. It
 > lives on the Frappe instance (`erp.multimax.cloud`) as one **Custom Field** and
@@ -17,6 +17,7 @@ Adds an **Item Image** column to the **Items** grid of these documents:
 | Sales Order | `Sales Order Item` | `Sales Order Item-custom_item_image` | `Sales Order - Item Image` | `item_name` |
 | Quotation | `Quotation Item` | `Quotation Item-custom_item_image` | `Quotation - Item Image` | `item_name` |
 | Sales Invoice | `Sales Invoice Item` | `Sales Invoice Item-custom_item_image` | `Sales Invoice - Item Image` | `item_name` |
+| Purchase Invoice | `Purchase Invoice Item` | `Purchase Invoice Item-custom_item_image` | `Purchase Invoice - Item Image` | `item_name` |
 
 It is there so users can see the item and so the grid's **Download** (bulk-edit
 CSV export) includes an image link for each row. It is **never stored**:
@@ -28,27 +29,27 @@ CSV export) includes an image link for each row. It is **never stored**:
   taken when the document was made.
 
 Sections 2 and 3 show the **Stock Entry** version, which is the template. The
-Purchase Order, Delivery Note, Purchase Receipt, Material Request, Sales Order, Quotation and Sales Invoice versions are identical except for these substitutions:
+Purchase Order, Delivery Note, Purchase Receipt, Material Request, Sales Order, Quotation, Sales Invoice and Purchase Invoice versions are identical except for these substitutions:
 
-| In the template | Purchase Order | Delivery Note | Purchase Receipt | Material Request | Sales Order | Quotation | Sales Invoice |
-|---|---|---|---|---|---|---|---|
-| `"Stock Entry Detail"` (Custom Field `dt`, `get_docfield`, child `form.on`) | `"Purchase Order Item"` | `"Delivery Note Item"` | `"Purchase Receipt Item"` | `"Material Request Item"` | `"Sales Order Item"` | `"Quotation Item"` | `"Sales Invoice Item"` |
-| `"Stock Entry"` (Client Script `dt`, parent `form.on`) | `"Purchase Order"` | `"Delivery Note"` | `"Purchase Receipt"` | `"Material Request"` | `"Sales Order"` | `"Quotation"` | `"Sales Invoice"` |
-| `se_item_image…` / `SE_ITEM_IMAGE` | `po_item_image…` / `PO_ITEM_IMAGE` | `dn_item_image…` / `DN_ITEM_IMAGE` | `pr_item_image…` / `PR_ITEM_IMAGE` | `mr_item_image…` / `MR_ITEM_IMAGE` | `so_item_image…` / `SO_ITEM_IMAGE` | `qtn_item_image…` / `QTN_ITEM_IMAGE` | `si_item_image…` / `SI_ITEM_IMAGE` |
-| `insert_after` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` |
+| In the template | Purchase Order | Delivery Note | Purchase Receipt | Material Request | Sales Order | Quotation | Sales Invoice | Purchase Invoice |
+|---|---|---|---|---|---|---|---|---|
+| `"Stock Entry Detail"` (Custom Field `dt`, `get_docfield`, child `form.on`) | `"Purchase Order Item"` | `"Delivery Note Item"` | `"Purchase Receipt Item"` | `"Material Request Item"` | `"Sales Order Item"` | `"Quotation Item"` | `"Sales Invoice Item"` | `"Purchase Invoice Item"` |
+| `"Stock Entry"` (Client Script `dt`, parent `form.on`) | `"Purchase Order"` | `"Delivery Note"` | `"Purchase Receipt"` | `"Material Request"` | `"Sales Order"` | `"Quotation"` | `"Sales Invoice"` | `"Purchase Invoice"` |
+| `se_item_image…` / `SE_ITEM_IMAGE` | `po_item_image…` / `PO_ITEM_IMAGE` | `dn_item_image…` / `DN_ITEM_IMAGE` | `pr_item_image…` / `PR_ITEM_IMAGE` | `mr_item_image…` / `MR_ITEM_IMAGE` | `so_item_image…` / `SO_ITEM_IMAGE` | `qtn_item_image…` / `QTN_ITEM_IMAGE` | `si_item_image…` / `SI_ITEM_IMAGE` | `pi_item_image…` / `PI_ITEM_IMAGE` |
+| `insert_after` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` |
 
-> **Standard `image` field:** Purchase Order Item, Delivery Note Item, Purchase Receipt Item, Sales Order Item, Quotation Item and Sales Invoice Item already have
+> **Standard `image` field:** Purchase Order Item, Delivery Note Item, Purchase Receipt Item, Sales Order Item, Quotation Item, Sales Invoice Item and Purchase Invoice Item already have
 > ERPNext's own `image` field: Attach, **stored**, hidden, `fetch_from: item_code.image`.
 > It holds the image as it was when the row was made, as a relative path.
 > `custom_item_image` leaves it untouched. The new field is the visible, always-current,
 > never-stored one, with an absolute URL.
 > Material Request Item has the same stored `image` field (Attach Image, `fetch_from: item_code.image`),
 > but it is **not** hidden there: it shows in the row's detail form, not in the grid.
-> Sales Order Item, Quotation Item and Sales Invoice Item also have ERPNext's `image_view` (Image) field, which previews `image` in the row's detail form.
+> Sales Order Item, Quotation Item, Sales Invoice Item and Purchase Invoice Item also have ERPNext's `image_view` (Image) field, which previews `image` in the row's detail form.
 
 **Applied to `erp.multimax.cloud`** (Frappe 16.56 / ERPNext 16.55) through the REST API,
 as `asif@multimax.cloud`: Stock Entry on 16 November 2026, Purchase Order,
-Delivery Note, Purchase Receipt, Material Request, Sales Order, Quotation and Sales Invoice on 17 November 2026. Not applied on `erp-testing.multimax.cloud`.
+Delivery Note, Purchase Receipt, Material Request, Sales Order, Quotation, Sales Invoice and Purchase Invoice on 17 November 2026. Not applied on `erp-testing.multimax.cloud`.
 
 Works on Frappe **v15 and v16** (checked against the `version-15` and
 `version-16` source of `frappe/model/document.py`, `grid.js`, `formatters.js`
@@ -275,3 +276,6 @@ Check the first Quotation in Desk.
 Invoices on 17 November 2026, so the field was checked only for being live and not stored. Check the first
 Sales Invoice in Desk. The custom `delivery_date` field is also `insert_after: item_name`; the two sit
 next to each other in the row form.
+`Purchase Invoice` has no Client Script apart from `Purchase Invoice - Item Image`. The site had **no**
+Purchase Invoices on 17 November 2026, so the field was checked only for being live and not stored.
+Check the first Purchase Invoice in Desk.
