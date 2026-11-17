@@ -1250,7 +1250,7 @@ void main() {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
 
-      await c.resolvePendingShare(PendingShareChoice.add);
+      expect(await c.resolvePendingShare(PendingShareChoice.add), isNull);
 
       expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'n1.jpg', 'n2.jpg']);
       expect(c.pendingShare, isEmpty);
@@ -1271,6 +1271,19 @@ void main() {
       expect(c.phase.value, StockSheetPhase.reviewing);
       expect(c.result.value, isNull);
       expect(reviewPaths(c), ['a.jpg', 'n1.jpg']);
+    });
+
+    test('Add that will not fit returns why and adds nothing', () async {
+      final c = make(_FakeDecoder({}), _FakeProvider());
+      await c.start(List.generate(99, (i) => 'p$i.jpg'));
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+
+      expect(
+        await c.resolvePendingShare(PendingShareChoice.add),
+        'Only 1 more photos fit (limit 100).',
+      );
+      expect(c.review, hasLength(99));
+      expect(c.pendingShare, isEmpty);
     });
 
     test('Start again replaces the review with the held photos', () async {

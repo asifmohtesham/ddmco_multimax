@@ -480,25 +480,28 @@ class StockSheetController extends GetxController {
   bool get pendingShareFits => review.length + pendingShare.length <= maxPhotos;
 
   /// Acts on the user's answer to [pendingShare]. Ignored while photos are
-  /// being read or the sheet built; the share then stays pending.
-  Future<void> resolvePendingShare(PendingShareChoice choice) async {
-    if (_closed || pendingShare.isEmpty) return;
-    if (busy.value || adding.value) return;
+  /// being read or the sheet built; the share then stays pending. For
+  /// [PendingShareChoice.add], returns why the photos were not added (as
+  /// [addPhotos] does); null otherwise.
+  Future<String?> resolvePendingShare(PendingShareChoice choice) async {
+    if (_closed || pendingShare.isEmpty) return null;
+    if (busy.value || adding.value) return null;
     final paths = pendingShare.toList();
     pendingShare.clear();
     switch (choice) {
       case PendingShareChoice.cancel:
-        return;
+        return null;
       case PendingShareChoice.add:
         if (phase.value == StockSheetPhase.awaitingChoice) {
           result.value = null;
           phase.value = StockSheetPhase.reviewing;
         }
-        await addPhotos(paths);
+        return addPhotos(paths);
       case PendingShareChoice.startAgain:
         reset();
         sharedPaths.assignAll(paths);
         await start(paths);
+        return null;
     }
   }
 

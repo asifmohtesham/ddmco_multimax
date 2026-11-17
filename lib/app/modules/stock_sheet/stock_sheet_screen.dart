@@ -165,7 +165,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       _sheetEpoch++;
       _closeSheetsAbove();
     }
-    await controller.resolvePendingShare(choice);
+    final error = await controller.resolvePendingShare(choice);
+    if (mounted && error != null) AppNotification.warning(error);
   }
 
   /// Back during the review: the photos go only if the user says so. The
@@ -270,6 +271,11 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         // Its own Obx, so the icon → spinner swap repaints while adding.
         Obx(() {
           final adding = controller.adding.value;
+          // This context is above the AppBar, so the AppBar's foreground
+          // is named here: the spinner sits on the maroon bar.
+          final onBar =
+              Theme.of(context).appBarTheme.foregroundColor ??
+              Theme.of(context).colorScheme.onPrimary;
           return PopupMenuButton<_AddSource>(
             tooltip: 'Add photos',
             enabled: !adding,
@@ -280,7 +286,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
                     height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: IconTheme.of(context).color,
+                      color: onBar,
                     ),
                   )
                 : const Icon(Icons.add),
@@ -455,46 +461,51 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 }
 
 /// Asks what to do with [StockSheetController.pendingShare]. Add is offered
-/// only when the photos fit under the limit.
-class _PendingShareDialog extends StatelessWidget {
+/// only when the photos fit under the limit. The counts are taken once, so
+/// the text does not change while the dialog fades out after the answer.
+class _PendingShareDialog extends StatefulWidget {
   const _PendingShareDialog({required this.controller});
 
   final StockSheetController controller;
 
   @override
+  State<_PendingShareDialog> createState() => _PendingShareDialogState();
+}
+
+class _PendingShareDialogState extends State<_PendingShareDialog> {
+  static const _limit = StockSheetController.maxPhotos;
+  late final int _count = widget.controller.pendingShare.length;
+  late final bool _fits = widget.controller.pendingShareFits;
+  late final int _room = math.max(0, _limit - widget.controller.review.length);
+
+  void _answer(PendingShareChoice choice) => Navigator.of(context).pop(choice);
+
+  @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      final n = controller.pendingShare.length;
-      final fits = controller.pendingShareFits;
-      const limit = StockSheetController.maxPhotos;
-      final room = math.max(0, limit - controller.review.length);
-      void answer(PendingShareChoice choice) =>
-          Navigator.of(context).pop(choice);
-      return AlertDialog(
-        content: Text(
-          fits
-              ? n == 1
-                    ? 'Add this photo to the list, or start again?'
-                    : 'Add these $n photos to the list, or start again?'
-              : 'Only $room more photos fit (limit $limit).',
+    return AlertDialog(
+      content: Text(
+        _fits
+            ? _count == 1
+                  ? 'Add this photo to the list, or start again?'
+                  : 'Add these $_count photos to the list, or start again?'
+            : 'Only $_room more photos fit (limit $_limit).',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => _answer(PendingShareChoice.cancel),
+          child: const Text('Cancel'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => answer(PendingShareChoice.cancel),
-            child: const Text('Cancel'),
+        TextButton(
+          onPressed: () => _answer(PendingShareChoice.startAgain),
+          child: const Text('Start again'),
+        ),
+        if (_fits)
+          FilledButton(
+            onPressed: () => _answer(PendingShareChoice.add),
+            child: const Text('Add'),
           ),
-          TextButton(
-            onPressed: () => answer(PendingShareChoice.startAgain),
-            child: const Text('Start again'),
-          ),
-          if (fits)
-            FilledButton(
-              onPressed: () => answer(PendingShareChoice.add),
-              child: const Text('Add'),
-            ),
-        ],
-      );
-    });
+      ],
+    );
   }
 }
 

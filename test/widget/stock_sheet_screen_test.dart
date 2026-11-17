@@ -133,12 +133,16 @@ void main() {
     SheetFormat remembered = SheetFormat.excel,
     Future<List<String>> Function()? pickCamera,
     Future<List<String>> Function()? pickGallery,
+    ThemeData? theme,
   }) async {
+    final t = theme ?? darkTheme;
     await tester.pumpWidget(
       GetMaterialApp(
-        theme: darkTheme,
-        darkTheme: darkTheme,
-        themeMode: ThemeMode.dark,
+        theme: t,
+        darkTheme: t,
+        themeMode: t.brightness == Brightness.dark
+            ? ThemeMode.dark
+            : ThemeMode.light,
         home: const Scaffold(body: Text('home')),
       ),
     );
@@ -408,6 +412,43 @@ void main() {
     await tester.tap(find.text('Choose from gallery'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Only 0 more photos fit (limit 100).'), findsOneWidget);
+  });
+
+  testWidgets('the + spinner is visible on the light-mode app bar', (
+    tester,
+  ) async {
+    final lightTheme = buildAppTheme(AppScheme.light, Brightness.light);
+    await open(tester, theme: lightTheme);
+    await review(tester, _twoPhotos());
+
+    controller.adding.value = true;
+    await tester.pump(const Duration(milliseconds: 200));
+    final spinner = tester.widget<CircularProgressIndicator>(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+    );
+    expect(spinner.color, lightTheme.colorScheme.onPrimary);
+    controller.adding.value = false;
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a refused Add from the share question says why', (tester) async {
+    await open(tester);
+    controller.addError = 'Only 0 more photos fit (limit 100).';
+    await review(tester, _twoPhotos());
+
+    controller.offerShare(['n1.jpg']);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(controller.added, [
+      ['n1.jpg'],
+    ]);
     expect(find.text('Only 0 more photos fit (limit 100).'), findsOneWidget);
   });
 
