@@ -319,6 +319,57 @@ void main() {
       expect(s.tallyLabel, 'September · 0 present · 0 late · 0 absent · 1 leave');
     });
 
+    test('isTodayPending: open until checked in or marked by HRMS', () {
+      EmployeeDayStatus t(AttendanceStatus s, {AttendanceRecord? l}) =>
+          EmployeeDayStatus(employee: tracked, status: s, ledger: l);
+      expect(isTodayPending(t(AttendanceStatus.notInYet)), isTrue);
+      expect(isTodayPending(t(AttendanceStatus.absent)), isTrue); // no row yet
+      expect(isTodayPending(t(AttendanceStatus.absent, l: rec(10, 'Absent'))), isFalse);
+      expect(isTodayPending(t(AttendanceStatus.late)), isFalse);
+      expect(isTodayPending(null), isFalse);
+    });
+
+    test('month summary leaves a pending today out, like the strip', () {
+      // 10 Sep, absent so far with no Attendance row: the strip does not
+      // count today, so the month summary must not either.
+      final today = EmployeeDayStatus(employee: tracked, status: AttendanceStatus.absent);
+      final s = buildMonthStrip(
+        month: sep, ledger: ledger, holidays: hol, today: today,
+        now: DateTime(2026, 9, 10, 16), shift: shift, employee: tracked,
+      );
+      AttendanceStatus? on(DateTime d) =>
+          d == DateTime(2026, 9, 10) ? today.status : s.days[d.day - 1];
+      String label(DateTime? skip) => monthSummaryLabel(
+            first: sep, end: DateTime(2026, 9, 10), skip: skip,
+            isHoliday: (d) => hol.contains(kFrappeDate.format(d)), statusOn: on,
+          );
+      expect(s.absent, 1);
+      expect(label(isTodayPending(today) ? DateTime(2026, 9, 10) : null),
+          '8 working days · 7 present · 1 absent');
+      // Counted early (the old behaviour) it disagreed with the strip.
+      expect(label(null), '9 working days · 7 present · 2 absent');
+    });
+
+    test('month summary: flags and shortfall', () {
+      final st = {
+        1: AttendanceStatus.present, 2: AttendanceStatus.late,
+        3: AttendanceStatus.noCheckOut, 4: AttendanceStatus.missingPunch,
+      };
+      expect(
+        monthSummaryLabel(
+          first: sep, end: DateTime(2026, 9, 4),
+          isHoliday: (_) => false, statusOn: (d) => st[d.day],
+          shortfallHours: 1.5,
+        ),
+        '4 working days · 3 present · 0 absent · 1 no check-out · 1 missing punch · short 1h 30m',
+      );
+      expect(
+        monthSummaryLabel(
+          first: sep, end: sep, isHoliday: (_) => false, statusOn: (_) => null),
+        '1 working day · 0 present · 0 absent',
+      );
+    });
+
     test('a past month has no today', () {
       final s = strip(month: DateTime(2026, 8), l: const [], now: DateTime(2026, 9, 10, 9));
       expect(s.days.length, 31);
