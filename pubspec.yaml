@@ -37,6 +37,7 @@ dependencies:
   # the full DocType name always fits without ellipsis.
   auto_size_text: ^3.0.0
   mobile_scanner: ^7.2.0
+  image: ^4.3.0
   shared_preferences: ^2.5.5
   socket_io_client: ^2.0.3
   image_picker: ^1.1.2
