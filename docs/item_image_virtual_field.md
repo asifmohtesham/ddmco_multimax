@@ -1,4 +1,4 @@
-# Item Image (virtual field) on Stock Entry, Material Request, Purchase Order, Purchase Receipt and Delivery Note items
+# Item Image (virtual field) on Stock Entry, Material Request, Purchase Order, Purchase Receipt, Sales Order and Delivery Note items
 
 > **Scope:** This is a **backend (ERPNext Desk) artifact**, not Flutter code. It
 > lives on the Frappe instance (`erp.multimax.cloud`) as one **Custom Field** and
@@ -14,6 +14,7 @@ Adds an **Item Image** column to the **Items** grid of these documents:
 | Delivery Note | `Delivery Note Item` | `Delivery Note Item-custom_item_image` | `Delivery Note - Item Image` | `item_name` |
 | Purchase Receipt | `Purchase Receipt Item` | `Purchase Receipt Item-custom_item_image` | `Purchase Receipt - Item Image` | `item_name` |
 | Material Request | `Material Request Item` | `Material Request Item-custom_item_image` | `Material Request - Item Image` | `item_name` |
+| Sales Order | `Sales Order Item` | `Sales Order Item-custom_item_image` | `Sales Order - Item Image` | `item_name` |
 
 It is there so users can see the item and so the grid's **Download** (bulk-edit
 CSV export) includes an image link for each row. It is **never stored**:
@@ -25,26 +26,27 @@ CSV export) includes an image link for each row. It is **never stored**:
   taken when the document was made.
 
 Sections 2 and 3 show the **Stock Entry** version, which is the template. The
-Purchase Order, Delivery Note, Purchase Receipt and Material Request versions are identical except for these substitutions:
+Purchase Order, Delivery Note, Purchase Receipt, Material Request and Sales Order versions are identical except for these substitutions:
 
-| In the template | Purchase Order | Delivery Note | Purchase Receipt | Material Request |
-|---|---|---|---|---|
-| `"Stock Entry Detail"` (Custom Field `dt`, `get_docfield`, child `form.on`) | `"Purchase Order Item"` | `"Delivery Note Item"` | `"Purchase Receipt Item"` | `"Material Request Item"` |
-| `"Stock Entry"` (Client Script `dt`, parent `form.on`) | `"Purchase Order"` | `"Delivery Note"` | `"Purchase Receipt"` | `"Material Request"` |
-| `se_item_image…` / `SE_ITEM_IMAGE` | `po_item_image…` / `PO_ITEM_IMAGE` | `dn_item_image…` / `DN_ITEM_IMAGE` | `pr_item_image…` / `PR_ITEM_IMAGE` | `mr_item_image…` / `MR_ITEM_IMAGE` |
-| `insert_after` | `item_name` | `item_name` | `item_name` | `item_name` |
+| In the template | Purchase Order | Delivery Note | Purchase Receipt | Material Request | Sales Order |
+|---|---|---|---|---|---|
+| `"Stock Entry Detail"` (Custom Field `dt`, `get_docfield`, child `form.on`) | `"Purchase Order Item"` | `"Delivery Note Item"` | `"Purchase Receipt Item"` | `"Material Request Item"` | `"Sales Order Item"` |
+| `"Stock Entry"` (Client Script `dt`, parent `form.on`) | `"Purchase Order"` | `"Delivery Note"` | `"Purchase Receipt"` | `"Material Request"` | `"Sales Order"` |
+| `se_item_image…` / `SE_ITEM_IMAGE` | `po_item_image…` / `PO_ITEM_IMAGE` | `dn_item_image…` / `DN_ITEM_IMAGE` | `pr_item_image…` / `PR_ITEM_IMAGE` | `mr_item_image…` / `MR_ITEM_IMAGE` | `so_item_image…` / `SO_ITEM_IMAGE` |
+| `insert_after` | `item_name` | `item_name` | `item_name` | `item_name` | `item_name` |
 
-> **Standard `image` field:** Purchase Order Item, Delivery Note Item and Purchase Receipt Item already have
+> **Standard `image` field:** Purchase Order Item, Delivery Note Item, Purchase Receipt Item and Sales Order Item already have
 > ERPNext's own `image` field: Attach, **stored**, hidden, `fetch_from: item_code.image`.
 > It holds the image as it was when the row was made, as a relative path.
 > `custom_item_image` leaves it untouched. The new field is the visible, always-current,
 > never-stored one, with an absolute URL.
 > Material Request Item has the same stored `image` field (Attach Image, `fetch_from: item_code.image`),
 > but it is **not** hidden there: it shows in the row's detail form, not in the grid.
+> Sales Order Item also has ERPNext's `image_view` (Image) field, which previews `image` in the row's detail form.
 
 **Applied to `erp.multimax.cloud`** (Frappe 16.56 / ERPNext 16.55) through the REST API,
 as `asif@multimax.cloud`: Stock Entry on 16 November 2026, Purchase Order,
-Delivery Note, Purchase Receipt and Material Request on 17 November 2026. Not applied on `erp-testing.multimax.cloud`.
+Delivery Note, Purchase Receipt, Material Request and Sales Order on 17 November 2026. Not applied on `erp-testing.multimax.cloud`.
 
 Works on Frappe **v15 and v16** (checked against the `version-15` and
 `version-16` source of `frappe/model/document.py`, `grid.js`, `formatters.js`
@@ -260,3 +262,7 @@ Material Request "Get Items From" dialog.
 `Material Request` has one other Client Script, `Material Request`. It has its own
 `Material Request Item` `item_code` handler (it updates `custom_total_qty`). Frappe runs both
 handlers, and the two scripts share no function names.
+`Sales Order` has one other Client Script, `Sales Order - Pricing Rule Race Condition Fix`. It wraps only
+the `rate` handler and doesn't touch `item_code`. The site had **no** Sales Orders when the field was added
+on 17 November 2026, so it was checked only for being live and not stored, not against a real order. Check
+the first Sales Order in Desk.
