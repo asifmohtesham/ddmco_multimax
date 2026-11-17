@@ -7,6 +7,7 @@ import 'package:multimax/app/data/models/purchase_order_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/modules/purchase_receipt/widgets/purchase_receipt_po_selection_sheet.dart';
+import 'package:multimax/app/modules/purchase_receipt/purchase_receipt_status_filter.dart';
 
 class PurchaseReceiptController extends GetxController {
   final PurchaseReceiptProvider _provider = Get.find<PurchaseReceiptProvider>();
@@ -99,7 +100,8 @@ class PurchaseReceiptController extends GetxController {
       final response = await _provider.getPurchaseReceipts(
         limit: _limit,
         limitStart: _currentPage * _limit,
-        filters: activeFilters,
+        // The status label becomes docstatus where needed.
+        filters: purchaseReceiptQueryFilters(activeFilters),
         orderBy: orderBy,
       );
 

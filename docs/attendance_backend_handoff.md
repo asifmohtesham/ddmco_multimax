@@ -1,276 +1,216 @@
-# Attendance backend handoff (for the Attendance monitoring screen)
+# Attendance backend handoff (for the Attendance screens)
 
-State of the ERPNext side as of 2026-09-11, written for the attendance screens in this app.
-Section 6 describes how those screens handle two shifts (release 2.17.0).
-Everything below was verified against `https://erp.multimax.cloud`.
-The sync project itself lives in `C:\Users\asifm\biotime-erpnext-sync` (see its PLAN.md).
+How the ERPNext side records attendance, written for the attendance screens in this app.
+From **Monday 2026-11-30** attendance is **daily clocked hours**: one Attendance row per
+employee per day, with the taps paired into hours and checked against the employee's
+expected hours. Days before that keep the two-shift model (Morning / Afternoon, section 7),
+and the app still displays them.
 
-**The working day is two shifts, Morning and Afternoon, each with its own check-in and
-check-out.** This replaces the single 08:00-20:00 "General" shift from 2026-09-12 on.
-Design the screen around (employee, date, shift), not (employee, date).
+Source of truth for the backend design: `C:\Users\asifm\biotime-erpnext-sync\docs\
+CLOCKED-HOURS-DESIGN.md` (sections 3 and 7.4) and the live reference
+`docs\BIOTIME-ERPNEXT-REFERENCE.md` in the same repository. The Server Script that stamps the
+hours is `clocked-hours\attendance-stamp.server-script.py`; its worked examples are in
+`clocked-hours\test-attendance-stamp.py`, and `test/unit/attendance_logic_test.dart` checks the
+app against the same examples.
 
 ## 1. Where the data comes from
 
 ```
-ZKTeco P999 terminal (KA-WH1-BIO1, warehouse entry)
-   -> BioTime 9.5 (KA-IT-SYS6, office LAN)
-   -> sync agent (daemon: every 5 s around shift starts/ends, else every 15 min)
-   -> ERPNext "Employee Checkin" (one row per punch, log_type IN or OUT)
-   -> HRMS scheduler, hourly -> "Attendance" (one row per employee per SHIFT per day)
+ZKTeco P999 terminal (warehouse entry)        every tap is a time stamp; no IN/OUT key
+   -> BioTime 9.5 (KA-IT-SYS6)
+   -> sync agent (Windows service BioTimeErpSync)   forwards each punch, log_type EMPTY
+   -> ERPNext "Employee Checkin" (one row per tap)
+   -> HRMS hourly job, ~22:00-23:00 -> "Attendance" (ONE row per employee per DAY)
+   -> Server Script (Attendance, Before Submit) stamps taps, missing punch, net, expected,
+      shortfall on that row
 ```
 
-- Backend versions: Frappe 15.120 / ERPNext 15.121 / HRMS 15.64.
-- The agent posts each punch through the HRMS endpoint `add_log_based_on_employee_field`,
-  which maps BioTime `emp_code` to `Employee.attendance_device_id` and rejects duplicate
-  employee + timestamp.
-- Time zone is Asia/Dubai. All timestamps are naive local strings, `YYYY-MM-DD HH:mm:ss`.
-- No n8n, no webhooks. The app reads ERPNext only.
+- Backend: ERPNext / HRMS **16.53.2** on `erp.multimax.cloud`. Time zone Asia/Dubai; all
+  timestamps are naive local strings `YYYY-MM-DD HH:mm:ss`.
+- The app reads ERPNext only. It never writes attendance.
 
-## 2. Master data in place
+## 2. Master data
 
-Working pattern: Sat-Thu 08:00-12:15 and 13:30-20:00; Friday 08:00-12:00 and 14:30-20:00;
-Sunday off.
+Days of the week do not vary: Monday to Saturday, Sunday off.
 
-| Shift Type | Start-End | Check-in opens | Check-out closes | Days |
-|---|---|---|---|---|
-| `Morning` | 08:00-12:15 | 06:00 | 13:00 | Mon-Thu, Sat |
-| `Afternoon` | 13:30-20:00 | 13:00 | 22:00 | Mon-Thu, Sat |
-| `Morning (Fri)` | 08:00-12:00 | 06:00 | 13:15 | Fri |
-| `Afternoon (Fri)` | 14:30-20:00 | 13:15 | 22:00 | Fri |
+| Shift Type (pattern) | Who | Start-End | Day window | Midday break Mon-Thu, Sat | Friday break | Expected |
+|---|---|---|---|---|---|---|
+| `Standard` | everyone not named below | 08:00-20:00 | 06:00-22:00 | 12:15-13:30 | 12:00-14:30 | 10 h |
+| `Late Start` | Esa Shabandri (HR-EMP-00025) | 10:00-18:00 | 06:00-22:00 | none | 12:00-14:30 | 8 h |
+| `Early Finish` | Tajammul Ahmed, Mohammed Fatheen VM (HR-EMP-00026/27) | 08:00-19:00 | 06:00-22:00 | 12:15-13:30 | 12:00-14:30 | 8 h |
 
-All four: auto attendance on; Alternating IN/OUT; working hours = first check-in to last
-check-out; late entry and early exit flagged after a 15-minute grace; half-day and absent
-hour thresholds 0; holiday list `Multimax 2026`; Process Attendance After 2026-09-12.
-The check-in/out windows touch but never overlap: every punch from 06:00 to 22:00 belongs to
-exactly one shift, and the day splits at **13:00 (Friday 13:15)**.
+All three: auto attendance on; **Alternating entries as IN and OUT**; working hours =
+**Every Valid Check-in and Check-out** (sum of pairs); late entry after a 15-minute grace;
+early exit off; half-day / absent thresholds 0; **Holiday List empty** (section 4).
 
-| Object | Value |
-|---|---|
-| HR Settings | `allow_multiple_shift_assignments` = 1 (required for two shifts a day) |
-| Shift Schedules (weekly, submitted) | `Morning Sat-Thu`, `Afternoon Sat-Thu`, `Morning Friday`, `Afternoon Friday` |
-| Shift Schedule Assignments | 64: each of the 16 tracked employees on all four schedules. HRMS's hourly job turns them into **Shift Assignments** (one per employee per shift, from 2026-09-12, rolled 90 days ahead). |
-| Tracked employees | 16 with an `attendance_device_id` (`HR-EMP-00001..13`, `00021`, `00022`, `00025`); the 10 others have none and never get attendance rows |
-| `General` shift | Retired on the night of 2026-09-11: auto attendance off, removed as Default Shift. Rows dated up to 2026-09-11 keep `shift = General`. |
-| Holiday List | `Multimax 2026`, every Sunday, company default and on every shift |
-| Company | `Multimax` |
-| Device | one terminal, serial `AYHO225260052`, alias `KA-WH1-BIO1` |
+- **Who is on which pattern: `Employee.default_shift`.** No Shift Schedules, no Shift
+  Assignments. A dated Shift Assignment exists only where someone is on another pattern for a
+  period; while Active it overrides the default.
+- **Custom fields on Shift Type** (the pattern's definition):
 
-## 3. The doctypes to read
+| Field | Type | Meaning |
+|---|---|---|
+| `custom_expected_hours` | Float | minimum hours per working day; empty/0 = not a clocked pattern |
+| `custom_expected_hours_friday` | Float | Friday's figure; empty = same as the other days |
+| `custom_break_start` / `custom_break_end` | Time | weekday break; empty = no break |
+| `custom_break_start_friday` / `custom_break_end_friday` | Time | Friday break; when either is empty Friday uses the weekday break |
 
-### Employee Checkin (raw punches, near real time)
+- **Custom fields on Attendance** (stamped by the Server Script, read-only):
 
-A row from 2026-09-11, exactly as the API returns it (before the change):
+| Field | Type | Meaning |
+|---|---|---|
+| `custom_punch_count` | Int | taps counted for the day |
+| `custom_missing_punch` | Check | odd number of taps |
+| `custom_net_hours` | Float | paired hours less any time inside the break window |
+| `custom_expected_hours` | Float | the pattern's expected hours for that weekday, as they stood that day |
+| `custom_shortfall_hours` | Float | expected − net, never below 0; 0 on Absent |
 
-```json
-{"name":"EMP-CKIN-09-2026-000079","employee_name":"Aslam Gangawali","time":"2026-09-11 07:59:32",
- "log_type":"","shift":"General","shift_start":"2026-09-11 08:00:00","shift_end":"2026-09-11 20:00:00"}
-```
+  The script leaves a row of a Shift Type with no expected hours alone (all five fields stay
+  empty / 0), so the old Morning / Afternoon rows are never stamped.
 
-From 2026-09-12 the same punch arrives with `"log_type":"IN"`, `"shift":"Morning"` and
-`shift_start`/`shift_end` = `08:00:00`/`12:15:00`. (Expected shape; no such row exists yet.)
+## 3. How one day becomes hours (design 3.4)
 
-- **`log_type` is `IN` or `OUT`** for punches the agent sends from 2026-09-11 13:20 on. Earlier
-  rows have `""`. The terminal sends the same "Check In" state for every plain tap, so the
-  agent assigns the direction:
-  - it splits the day at 13:00 (Friday 13:15);
-  - within each half, taps alternate IN, OUT, IN…;
-  - a second tap within 3 minutes of the previous one repeats its direction (double tap);
-  - a state chosen on the terminal (Check-Out, Break, Overtime) wins over the alternation.
-- `shift` names the shift HRMS matched the punch to; `shift_start`/`shift_end` are that
-  shift's times on that date.
-- `attendance` is filled once the scheduler has linked the punch to an Attendance row.
+1. All of an employee's taps between 06:00 and 22:00 belong to that day. A tap outside the
+   window is stored but not counted.
+2. In time order, the 1st and 2nd tap are a pair, the 3rd and 4th, and so on. `log_type` is
+   ignored (it is empty on new punches anyway).
+3. **Net hours** = for each pair, its length less any part inside that day's break window.
+   Break time never counts, tapped or not. Time before the pattern's start or after its end
+   counts. Each pair is rounded to 2 decimals, as HRMS rounds `working_hours`.
+4. An unpaired last tap adds nothing; the day is a **Missing punch**.
+5. **Expected hours are a minimum**: only a shortfall is reported, never overtime.
+   Shortfall applies to Present / Half Day (a late day is Present in HRMS).
+6. Late = first tap after start + 15 min (08:15; Late Start 10:15).
+7. A day with no taps is marked Absent the following night; Sundays are skipped.
 
-### Attendance (one per employee per shift per day, generated hourly)
+| Taps (Standard, Monday) | Net | Against 10 h | Flag |
+|---|---|---|---|
+| 08:00, 12:15, 13:30, 20:00 | 10.75 | met | |
+| 08:00, 20:00 | 10.75 | met | |
+| 08:00, 12:15, 13:30, 18:00 | 8.75 | short 1.25 | |
+| 08:00, 13:30, 20:00 | 4.25 | short 5.75 | Missing punch |
+| Standard Friday 08:00, 20:00 | 9.50 | short 0.50 | |
+| Late Start Friday 10:00, 18:00 | 5.50 | short 2.50 | |
 
-Fields the screen will use: `employee`, `employee_name`, `attendance_date`, **`shift`**,
-`status` (`Present`, `Absent`, `On Leave`, `Half Day`, `Work From Home`), `working_hours`,
-`in_time`, `out_time`, `late_entry` (0/1), `early_exit` (0/1), `leave_type`, `docstatus`
-(1 = submitted, only these count).
+## 4. Holidays
 
-- **A full working day is two rows**, one Morning (or Morning (Fri)) and one Afternoon.
-  Always key and group by `shift`; never assume one row per date.
-- A shift's row appears after that shift's check-out window closes (Morning after 13:00 /
-  13:15, Afternoon after 22:00) and the hourly job has run.
-- **Absent is generated, not observed, and it is per shift**: someone who worked the morning
-  but not the afternoon gets Morning = Present and Afternoon = Absent.
-- **Missing check-out**: a shift with only a check-in is still `Present`, with `in_time` set,
-  `out_time` empty and `working_hours` 0. Show this as "No check-out"; do not treat it as a
-  complete shift.
-- `late_entry` = 1 when the shift's first punch is later than start + 15 min (08:15, 13:45,
-  Friday 14:45). `early_exit` = 1 when the last punch is earlier than end − 15 min.
-- The 23 existing rows (up to 2026-09-11) are single-row days with `shift = General`.
-  Render them as one full-day row.
+The clocked patterns leave **Holiday List empty**. HRMS 16 then resolves the list per date
+from the submitted **Holiday List Assignments**: the latest one starting on or before the
+date, the employee's own first, then the company's. Today: `Multimax 2026` from 2026-01-01
+and `Multimax 2027` from 2027-01-01, company `Multimax`. (Since 2026-11-16 the four old Shift
+Types also have an empty Holiday List.)
 
-### Attendance Sync Status (single doc, health of the pipeline)
+The app (`AttendanceProvider.fetchHolidays`):
 
-```json
-{"terminal_online":1,"terminal_last_seen":"2026-09-11 13:29:57","terminal_alias":"KA-WH1-BIO1",
- "agent_last_run":"2026-09-11 13:30:04","last_upload":"2026-09-11 13:30:04"}
-```
+- a Shift Type that names a list: that Holiday List, as before;
+- no list: the company's Holiday List Assignments for the range (fields `applicable_for` =
+  Company, `assigned_to` = the employees' `company`, `holiday_list`, `from_date`,
+  `docstatus` = 1), each list applying from its `from_date` until the next one starts
+  (`holidayListPeriods`), then those lists' dates. Employee-level assignments are not read:
+  one set of holidays serves the whole list screen;
+- the **Employee role** cannot read Holiday List or Holiday List Assignment (403): both paths
+  fall back to HRMS's own calendar for the logged-in employee,
+  `hrms.api.get_attendance_calendar_events`, for the same range.
 
-The agent updates it every 5 minutes and whenever the terminal goes on- or offline. Use it to
-tell "nobody punched" from "the terminal or agent is down". If `agent_last_run` is more than
-~20 minutes old, or `terminal_online` is 0, show a banner and do not mark people "Not in".
-
-## 4. What "today" should be computed from
-
-Attendance for a shift does not exist until its check-out window closes. The live screen
-derives today from Employee Checkin, **per shift**:
-
-1. Which shifts apply today: the employee's Shift Assignments covering today (one Morning-type
-   and one Afternoon-type on working days, none on Sunday). Take start/end/grace from those
-   Shift Types; don't hardcode times.
-2. Put each of today's checkins into Morning if its time is before the split (13:00; Friday
-   13:15), else Afternoon.
-3. For each (employee, shift):
-
-| Situation | Show |
-|---|---|
-| Holiday (Sunday or Holiday List) | Holiday |
-| Before the shift start + grace, no IN | Not yet in |
-| After the shift start + grace, no IN | Not in (absent so far) |
-| IN, no OUT, shift still running | In since `<first IN>` (late if after start + grace) |
-| IN and OUT | Done `<first IN>`–`<last OUT>`; early exit if the last OUT is before end − grace |
-| IN, no OUT, and the shift has ended | **No check-out** |
-| No `attendance_device_id` | Not tracked (exclude or grey out) |
-
-For past days read Attendance and trust `status`, `in_time`, `out_time`, `late_entry` and
-`early_exit` per `shift`. Rows with an empty `log_type` (before 2026-09-11 13:20) only have
-times: treat the first as IN and the last as OUT.
-
-Freshness: during 07:30-08:45, 11:55-12:45, 13:15-14:45 and 19:45-20:45 a punch is in
-Employee Checkin within about 10 seconds; at other times within 15 minutes.
+Ranges: the list screen reads last year and this year; the Dashboard this year; the month
+screen the month on view.
 
 ## 5. Calls, in this app's terms
 
-The app already logs in with a session cookie (`ApiProvider.loginWithFrappe`) and wraps the
-REST API; use the same wrappers. The logged-in user needs the **HR User** role (or HR Manager)
-to read Employee Checkin, Attendance and Shift Assignment for everyone; an `Employee`-role user
-only sees their own rows. Gate the screen with `DocTypeGuard` on `Attendance`.
-
-Tracked employees (also the row list for the screen):
+The logged-in user needs **HR User** (or HR Manager) to read everyone's Employee Checkin and
+Attendance; the Employee role sees only its own rows. The screen is gated on `Attendance`.
 
 ```
 getDocumentList('Employee',
-  fields: ['name','employee_name','attendance_device_id','status','department','image'],
-  filters: {'status': 'Active', 'attendance_device_id': ['is', 'set']},
-  orderBy: 'employee_name asc', limit: 0)
-```
+  fields: ['name','employee_name','attendance_device_id','default_shift','status',
+           'department','image','company'],
+  filters: {'status': 'Active'}, limit: 0)
 
-Shifts that apply on a date (today, or any day of the history view):
+getDocumentList('Shift Type',            // every employee's default_shift, plus any named by
+  fields: [...standard fields, 'holiday_list',  //  an Attendance row or Shift Assignment
+           'custom_expected_hours','custom_expected_hours_friday',
+           'custom_break_start','custom_break_end',
+           'custom_break_start_friday','custom_break_end_friday'],
+  filters: {'name': ['in', names]})
 
-```
-getDocumentList('Shift Assignment',
-  fields: ['employee','shift_type','start_date','end_date'],
-  filters: [['docstatus','=',1], ['status','=','Active'], ['start_date','<=','2026-09-12'],
-            ['end_date','>=','2026-09-12']],   // plus rows whose end_date is empty
-  limit: 0)
-```
-
-Frappe's list filters are ANDed, so fetch open-ended assignments with a second call
-(`['end_date','is','not set']`) and merge.
-
-Shift settings, fetched once and cached:
-
-```
-getDocumentList('Shift Type',
-  fields: ['name','start_time','end_time','late_entry_grace_period','early_exit_grace_period',
-           'begin_check_in_before_shift_start_time','allow_check_out_after_shift_end_time','color'],
-  filters: {'name': ['in', ['Morning','Afternoon','Morning (Fri)','Afternoon (Fri)']]})
-```
-
-Today's punches (one call, then group by employee and shift client-side):
-
-```
 getDocumentList('Employee Checkin',
   fields: ['name','employee','employee_name','time','log_type','device_id','shift','attendance'],
-  filters: {'time': ['>=', '2026-09-12 00:00:00']},
-  orderBy: 'time asc', limit: 0)
-```
+  filters: {'time': ['between', [day 00:00:00, day 23:59:59]]}, orderBy: 'time asc')
 
-Attendance for a date range (history / calendar view):
-
-```
 getDocumentList('Attendance',
-  fields: ['name','employee','employee_name','attendance_date','shift','status','working_hours',
-           'in_time','out_time','late_entry','early_exit','leave_type'],
-  filters: {'docstatus': 1, 'attendance_date': ['between', ['2026-09-01','2026-09-30']]},
-  orderBy: 'attendance_date desc, employee_name asc, in_time asc', limit: 0)
+  fields: ['name','employee','employee_name','attendance_date','status','working_hours',
+           'in_time','out_time','late_entry','early_exit','shift','leave_type',
+           'custom_punch_count','custom_missing_punch','custom_net_hours',
+           'custom_expected_hours','custom_shortfall_hours'],
+  filters: {'docstatus': 1, 'attendance_date': ['between', [from, to]]})
+
+getDocumentList('Shift Assignment', ...)  // still read: overrides, and the two-shift history
+getDocumentList('Holiday List Assignment', ...)   // section 4
+getDocument('Attendance Sync Status', 'Attendance Sync Status')   // pipeline health
 ```
 
-Pipeline health:
+**A site without the custom fields.** Frappe refuses a list request that names an unknown
+field. `AttendanceProvider._listWithOptional` (and the same helper in
+`AttendanceNotifyService`) retries an error response without the `custom_*` fields; when that
+works the fields are remembered as absent for the session. A connection error is not
+retried. With no fields: every Shift Type has `isClocked == false`, every Attendance row
+`isClocked == false`, and the screens behave exactly as before this change.
 
-```
-getDocument('Attendance Sync Status', 'Attendance Sync Status')
-```
+## 6. What the screens show
 
-Holidays (to label Sundays and any added public holidays):
+`attendance_logic.dart` is the single place the rules live.
 
-```
-getDocument('Holiday List', 'Multimax 2026')   -> data.holidays[] {holiday_date, description, weekly_off}
-```
-
-Monthly summary via the report runner the app already uses
-(`/api/method/frappe.desk.query_report.run`):
-
-```
-report_name: 'Monthly Attendance Sheet'
-filters: {"month": "09", "year": "2026", "company": "Multimax", "summarized_view": 1}
-```
-
-Not yet checked with two shifts: the report counts Attendance rows, so expect a full day to
-count twice from 2026-09-12. Verify against the Attendance list before showing its totals.
-
-Realtime option: `FrappeSocket` can subscribe to the `Employee Checkin` doctype room
-(`doctype_subscribe`) and refresh today's view on `list_update`; a 60-second poll is an
-acceptable first version.
-
-## 6. How the screens handle two shifts
-
-Implemented in `7e5457ed` on branch `claude/attendance-two-shifts`, release 2.17.0. The screens
-were first built against the single General shift (`c6228378`, `9fec58c3`); the table shows
-what changed and where.
-
-| Where | Before | Now |
+| Day | Source | Shown |
 |---|---|---|
-| Shift lookup: `resolveShifts` in `attendance_logic.dart`, used by `attendance_controller.dart`, `home_controller.dart` and `month/attendance_month_controller.dart` | The first employee's `default_shift`, else `General` | Each employee's Shift Assignments covering the date (`AttendanceProvider.fetchShiftAssignments`), with rules read by `fetchShiftTypes` and cached. With no assignment (days before 2026-09-12, or a failed read): the employee's default shift, else `General`. |
-| Punch → shift: `shiftForPunch` | One shift | The shift whose check-in/check-out window holds the punch. Where two windows meet (13:00, Friday 13:15) the later shift wins, as in the sync agent. |
-| IN/OUT: `punchDirections` | By position | The punch's `log_type` when set; alternating for older rows without one. |
-| Status: `deriveDayStatus`, `deriveShiftStatus` | One status per day | One `ShiftDayStatus` per shift, on `EmployeeDayStatus.shifts`. The day takes the most attention-worthy status among the shifts that have started (a ledger row, a punch, or its cut-off passed). A single-shift day still uses the old path, unchanged. |
-| No check-out: `AttendanceStatus.noCheckOut` | Not a state | An IN with no OUT once the shift's window has closed, or a Present ledger row with no `out_time`. Two-shift days only. Yellow pill; counted in `AttendanceCounts.noOut`, a status filter, and the month strip tally. |
-| Ledger join | `{for (r in ledger) r.employee: r}` | Rows grouped per employee and matched to shifts by name. |
-| Month view | One `ShiftRules`, one row per date | Shifts per date from its ledger rows and Shift Assignments; one ledger row per shift, labelled with the shift. Today uses the live row, because the Morning row exists from ~13:00 while the Afternoon is still running. |
-| Employee card, detail sheet | One In/Out; IN/OUT by index | A line per shift (`ShiftInOutLine`); shift context and punch timeline per shift. |
-| Dashboard headline | "Shift starts 08:00", late after 08:15 | `focusShift` / `currentSegment`: the shift in progress, named in the sub-line ("Afternoon · 5 min late"). |
+| Today, clocked pattern, no Attendance row yet | the day's punches, `clockedDay` | Present / Late from the first tap; **net so far** against expected ("Net 4h 15m of 10h"). An odd count is normal while the day runs (the person is in). |
+| Today after the window closes (22:00), no row yet | the punches | as above, plus **Missing punch** on an odd count and the final shortfall |
+| Past day, stamped row (`AttendanceRecord.isClocked`) | the Attendance row | status from HRMS; net, expected, shortfall and missing punch from the custom fields (not recomputed) |
+| Past day, unstamped row (old shift, or no fields) | the Attendance row | as before: status, in/out, `working_hours` |
+| Two-shift day (history, or a two-shift Shift Assignment) | per shift | unchanged two-shift path (section 7) |
 
-Choices worth knowing:
+- **`AttendanceStatus.missingPunch`** ("Missing punch", yellow pill): a clocked day that is
+  over with an odd number of taps, or a stamped row with `custom_missing_punch` = 1 on a
+  Present / Late day. Late minutes stay on the flag line. Counted toward Present and in
+  `AttendanceCounts.missing`; its own status filter; in the month strip tally and the month
+  screen summary.
+- **Cards** (`EmployeeAttendanceCard`): In / Out / "Net 6h 10m of 10h · short 1h 15m".
+- **Detail sheet**: the employee's own pattern (not the screen's focus shift), its break for
+  that day, and a Net / Expected / Shortfall panel (`ClockedHoursPanel`).
+- **Month screen**: each row shows net hours "of" expected, and "Short …" as a flag; the
+  summary adds "· N missing punch" and the month's total shortfall.
+- **Shift catalogue**: every employee's `default_shift` is loaded (`defaultShiftNames`), so
+  Late Start and Early Finish people get their own times and late cut-off today.
+- **Reminders** (`attendance_notify_rules.dart`): with no Shift Assignment or Attendance row
+  naming a shift, the employee's `default_shift` is used (never `General`). Heads-up at
+  cut-off − 10 min, missed check-in at the cut-off, and at end + 10 min an odd number of taps
+  asks for the missing tap ("Tap out before you leave"). The 07:30 recap names "missing
+  punch" and "short 1h 15m" for stamped rows instead of "no check-out".
 
-- A day with the Morning worked and the Afternoon missed shows **Absent**; the per-shift lines
-  show which shift was missed.
-- The Dashboard's four count tiles have no No check-out tile; it shows in the Attendance
-  footer, the status filter and the month tally.
+## 7. Before 2026-11-30: two shifts per day
 
-Tests: two-shift, Friday, double-tap, `log_type`-versus-parity, ledger and month-strip cases in
-`test/unit/attendance_logic_test.dart`; the Shift Assignment and Shift Type queries in
-`test/unit/attendance_provider_test.dart`; the two-shift card in
-`test/widget/attendance_widgets_test.dart`.
+From 2026-09-12 to 2026-11-29 each working day was two shifts, `Morning` (08:00-12:15, window
+06:00-13:00) and `Afternoon` (13:30-20:00, window 13:00-22:00), with Friday variants
+`Morning (Fri)` / `Afternoon (Fri)` split at 13:15. Each Employee Checkin was labelled IN or
+OUT by the agent, and HRMS wrote one Attendance row per shift. Rows before 2026-09-12 are
+single-row days with `shift = General`.
 
-Still to do: an on-device check with a System Manager, an Employee-role user and a user
-without Attendance access. The Employee role reads its own Shift Assignments through HRMS's
-default permissions; confirm that on this site.
+The app keeps that display path for history: `resolveShifts` takes the Shift Assignments (or
+the day's own Attendance-row shift names), `shiftForPunch` puts each punch in the shift whose
+window holds it, `deriveShiftStatus` gives each shift its own status, `No check-out` marks an
+IN with no OUT once a shift's window has closed, and the card / sheet / month view show a line
+per shift. Those rows carry no custom fields, so nothing of section 6 applies to them.
 
-## 7. Known gaps the screen should tolerate
+## 8. Known gaps the screen should tolerate
 
-- **Staff do not check out yet.** On 2026-09-11 all 7 people who checked in had no punch at
-  the 12:00 break, with the terminal online. Until four taps a day are enforced, expect
-  "No check-out" on most shifts. That is real data; don't hide it.
-- The terminal's default key still says Check-In all day. Switching it to Check-Out on a
-  timetable has to be set on the device (Personalize > Punch State Options / Shortcut Key
-  Mappings). The agent's IN/OUT labels work either way.
-- Shift Assignments from 2026-09-12 appear only after HRMS's hourly job runs. Until someone
-  has one for the day, the app uses their default shift, else General (section 6).
-- Five people exist in BioTime but not in ERPNext (Jaffer Potey, Ashal, Hunain, Khalid,
-  Ehtisham); the agent drops their punches as "unmatched". The ten ERPNext employees without a
-  device ID are not on any shift and get no attendance.
-- Tanveer's mapping (BioTime "Tanveer Mulla" to ERPNext "Tanveer Shaikh") is a first-name match.
-- URL-encode spaces in resource paths (`Employee%20Checkin`); Dio does this already, curl does not.
+- **Holiday List Assignment field names** (`applicable_for`, `assigned_to`, `from_date`,
+  `holiday_list`) are taken from HRMS 16's doctype and were not read against the live site
+  from this app. A wrong name fails the request, which falls back to the HRMS calendar
+  (correct for anyone linked to an employee; a System Manager without one sees no holidays).
+- Employee-level Holiday List Assignments are not read (none exist today).
+- A late-arriving punch (terminal offline) can change a day after its row exists; HR cancels
+  that day's Attendance and HRMS re-marks it (design 3.7). The app shows whatever row exists.
+- Today's figures come from the punches the app can see. Taps before 06:00 or after 22:00 are
+  shown in the timeline but not counted, as in HRMS.
+- Expected hours make every Standard and Late Start Friday a shortfall (design 3.2). That is
+  the agreed rule, not a bug.
+- On-device check still to do with a System Manager, an HR User and an Employee-role user.

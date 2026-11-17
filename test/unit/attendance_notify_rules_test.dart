@@ -278,4 +278,74 @@ void main() {
           "The sync status can't be read. Check-ins may not be arriving; staff reminders are paused.");
     });
   });
+
+  // Clocked hours (from 2026-11-30): the pattern is Employee.default_shift,
+  // with no Shift Assignment; taps pair by position.
+  group('clocked hours', () {
+    const standard = ShiftRules(
+        name: 'Standard', start: Duration(hours: 8), end: Duration(hours: 20),
+        graceMinutes: 15, checkInBeforeMinutes: 120, checkOutAfterMinutes: 120,
+        expectedHours: 10,
+        breakStart: Duration(hours: 12, minutes: 15), breakEnd: Duration(hours: 13, minutes: 30));
+    final mon = DateTime(2026, 11, 30);
+    const cat = {...catalog, 'Standard': standard};
+
+    test('reminderShifts falls back to default_shift', () {
+      expect(reminderShifts(employee: 'E1', day: mon, assignments: const [], ledger: const [],
+          catalog: cat, defaultShift: 'Standard').single.name, 'Standard');
+      // An assignment or the day's own row still wins over the default.
+      expect(reminderShifts(employee: 'E1', day: mon,
+          assignments: [ShiftAssignmentRow(employee: 'E1', shiftType: 'Morning', startDate: mon)],
+          ledger: const [], catalog: cat, defaultShift: 'Standard').single.name, 'Morning');
+      // Never the fallback, and never a pattern that is not in the catalogue.
+      expect(reminderShifts(employee: 'E1', day: mon, assignments: const [], ledger: const [],
+          catalog: {...cat, 'General': ShiftRules.fallback}, defaultShift: 'General'), isEmpty);
+      expect(reminderShifts(employee: 'E1', day: mon, assignments: const [], ledger: const [],
+          catalog: cat, defaultShift: 'Late Start'), isEmpty);
+    });
+
+    ReminderOutcome run(DateTime now, List<EmployeeCheckin> punches, {Set<String> handled = const {}}) =>
+        decideReminders(
+          now: now,
+          facts: EmployeeDayFacts(shifts: const [standard], punches: punches, syncedUpTo: now),
+          handled: handled,
+        );
+
+    test('heads-up at 08:05 and missed check-in at 08:15 against the pattern', () {
+      expect(run(at(mon, 8, 5), const []).post.single.title, 'Check in for the Standard shift');
+      expect(run(at(mon, 8, 15), const [], handled: {'Standard|headsUp'}).post.single.title,
+          'No check-in for the Standard shift');
+    });
+
+    test('at 20:10 an odd number of taps asks for the missing tap out', () {
+      const early = {'Standard|headsUp', 'Standard|missedIn'};
+      final three = run(at(mon, 20, 10),
+          [punch(at(mon, 7, 58)), punch(at(mon, 12, 15)), punch(at(mon, 13, 30))], handled: early);
+      expect(three.post.single.title, 'Tap out before you leave');
+      expect(three.post.single.body,
+          '3 taps today, an odd number, so the day shows a missing punch. Punch before 22:00.');
+      // A single tap keeps the plain check-out wording.
+      final one = run(at(mon, 20, 10), [punch(at(mon, 7, 58))], handled: early);
+      expect(one.post.single.body, 'In at 07:58, no check-out yet. Punch before 22:00.');
+      // An even count is a complete day: nothing.
+      final four = run(at(mon, 20, 10), [
+        punch(at(mon, 7, 58)), punch(at(mon, 12, 15)), punch(at(mon, 13, 30)), punch(at(mon, 20, 2)),
+      ], handled: early);
+      expect(four.post, isEmpty);
+    });
+
+    test('recap: a stamped row names the missing punch and the shortfall, not "no check-out"', () {
+      final tue = DateTime(2026, 12, 1);
+      AttendanceRecord stamped({bool missing = false, double short = 0, bool late = false}) =>
+          AttendanceRecord(
+            name: 'a', employee: 'E1', employeeName: 'E', date: mon, status: 'Present',
+            shift: 'Standard', lateEntry: late, inTime: at(mon, 8, 20), outTime: at(mon, 20, 0),
+            missingPunch: missing, netHours: 10 - short, expectedHours: 10, shortfallHours: short,
+          );
+      final o = decideRecap(now: at(tue, 7, 30), catalog: cat,
+          rows: [stamped(missing: true, short: 5.75, late: true)]);
+      expect(o.message!.body, 'Standard: late 5 min, missing punch, short 5h 45m.');
+      expect(decideRecap(now: at(tue, 7, 30), catalog: cat, rows: [stamped()]).message, isNull);
+    });
+  });
 }

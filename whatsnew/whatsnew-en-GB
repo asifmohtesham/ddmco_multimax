@@ -1,1 +1,1 @@
-Lists and reports: a filter chip now updates as soon as you change that filter. Before, picking a different item on a report such as Item Variant Details could leave the chip showing the old item until you scrolled.
+POS Upload: the Status filter no longer offers "Draft" and "Submitted". No upload can have either status, so both always showed an empty list. The same two choices are gone from the status field on the upload form.

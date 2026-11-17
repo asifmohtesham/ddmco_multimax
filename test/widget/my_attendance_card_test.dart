@@ -130,6 +130,23 @@ void main() {
       expect(find.text('Sunday · no attendance expected'), findsOneWidget);
     });
 
+    testWidgets('named holiday heads the card ($mode)', (tester) async {
+      await pump(
+        tester,
+        MyAttendanceCard(
+          row: row(AttendanceStatus.holiday),
+          shift: shift,
+          now: DateTime(2026, 3, 20, 10), // a Friday
+          strip: strip,
+          holidayName: 'Eid al-Fitr',
+        ),
+        brightness,
+      );
+      expect(find.text('Eid al-Fitr'), findsOneWidget);
+      expect(find.text('Holiday'), findsNothing);
+      expect(find.text('Friday · no attendance expected'), findsOneWidget);
+    });
+
     testWidgets('month ledger failed: headline only ($mode)', (tester) async {
       await pump(
         tester,

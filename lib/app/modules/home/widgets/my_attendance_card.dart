@@ -19,7 +19,11 @@ class MyAttendanceCard extends StatelessWidget {
     this.strip,
     this.isLoading = false,
     this.onTap,
+    this.holidayName = '',
   });
+
+  /// Today's holiday name ("Eid al-Fitr"); '' on a weekly off or a working day.
+  final String holidayName;
 
   /// The viewer's own row; null while the first load is in flight.
   final EmployeeDayStatus? row;
@@ -76,7 +80,7 @@ class MyAttendanceCard extends StatelessWidget {
       );
     }
 
-    final (h1, h2) = myAttendanceHeadline(r, shift, now);
+    final (h1, h2) = myAttendanceHeadline(r, shift, now, holidayName: holidayName);
     final st = strip;
     final showMonth = st != null && e.isTracked;
     return Column(

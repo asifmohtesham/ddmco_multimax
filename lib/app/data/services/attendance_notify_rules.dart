@@ -41,14 +41,17 @@ String _short(String shiftName) => shiftName.replaceFirst(RegExp(r'\s*\(.*\)$'),
 
 /// The shifts that may produce reminders for [employee] on [day]: their own
 /// Shift Assignments covering the day, else the shifts their own Attendance
-/// rows name. Never the General / fallback shift; a name missing from
-/// [catalog] is left out (no reminder at unknown times).
+/// rows name, else their [defaultShift] (`Employee.default_shift` — how the
+/// clocked-hours patterns are attached, with no Shift Assignment). Never the
+/// General / fallback shift; a name missing from [catalog] is left out (no
+/// reminder at unknown times).
 List<ShiftRules> reminderShifts({
   required String employee,
   required DateTime day,
   required List<ShiftAssignmentRow> assignments,
   required List<AttendanceRecord> ledger,
   required Map<String, ShiftRules> catalog,
+  String defaultShift = '',
 }) {
   final names = <String>{
     for (final a in assignments)
@@ -62,6 +65,8 @@ List<ShiftRules> reminderShifts({
         .map((r) => r.shift)
         .where((n) => n.trim().isNotEmpty && n != ShiftRules.fallback.name));
   }
+  final d = defaultShift.trim();
+  if (names.isEmpty && d.isNotEmpty && d != ShiftRules.fallback.name) names.add(d);
   return [
     for (final n in names)
       if (catalog[n] != null) catalog[n]!,
@@ -146,6 +151,19 @@ class ReminderOutcome {
     case ReminderKind.checkOut:
       if (!hasIn || st.outTime != null || !now.isBefore(s.windowEndOn(day))) {
         return (msg: null, heldForSync: false);
+      }
+      // A clocked-hours day pairs taps by position: after the pattern's end
+      // an odd count means the last tap out is missing, however many there
+      // were (an IN-only day is the common case).
+      if (s.isClocked && st.punches.length > 1) {
+        return (
+          msg: NotifyMessage(
+              id: id,
+              title: 'Tap out before you leave',
+              body: '${st.punches.length} taps today, an odd number, so the day shows a missing '
+                  'punch. Punch before ${kHHmm.format(s.windowEndOn(day))}.'),
+          heldForSync: false,
+        );
       }
       return (
         msg: NotifyMessage(
@@ -257,13 +275,21 @@ String? _problem(AttendanceRecord r, Map<String, ShiftRules> catalog) {
     issues.add(mins > 0 ? 'late $mins min' : 'late');
   }
   if (r.earlyExit) issues.add('early exit');
-  if (r.outTime == null) issues.add('no check-out');
+  if (r.isClocked) {
+    // A clocked-hours row: HRMS's out time is just the last tap, so the
+    // stamped flag and shortfall say what is wrong.
+    if (r.missingPunch) issues.add('missing punch');
+    if ((r.shortfallHours ?? 0) > 0.004) issues.add('short ${formatHours(r.shortfallHours!)}');
+  } else if (r.outTime == null) {
+    issues.add('no check-out');
+  }
   return issues.isEmpty ? null : '$label: ${issues.join(', ')}';
 }
 
 /// The most recent of the last 3 days after [lastRecapped] that has rows. A
-/// day with an Absent, Late, Early exit or No check-out row gets a message;
-/// either way that day is recapped.
+/// day with an Absent, Late, Early exit or No check-out row (or, on a
+/// clocked-hours row, a missing punch or a shortfall) gets a message; either
+/// way that day is recapped.
 RecapOutcome decideRecap({
   required DateTime now,
   required List<AttendanceRecord> rows,

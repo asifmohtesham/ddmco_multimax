@@ -46,6 +46,9 @@ class EmployeeDetailSheet extends StatelessWidget {
     final e = row.employee;
     final isToday = dateOnly(day) == dateOnly(DateTime.now());
     final bottom = MediaQuery.of(context).padding.bottom;
+    // The employee's own pattern: with several patterns the screen's focus
+    // shift is not necessarily theirs.
+    final own = row.rules ?? shift;
 
     return Container(
       decoration: BoxDecoration(
@@ -116,7 +119,11 @@ class EmployeeDetailSheet extends StatelessWidget {
                   ),
               ]
             else
-              _ShiftContext(shift: shift),
+              _ShiftContext(shift: own, day: day),
+            if (row.shifts.length <= 1 && row.hoursLabel != null) ...[
+              const SizedBox(height: 8),
+              ClockedHoursPanel(row: row, isToday: isToday),
+            ],
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -133,7 +140,7 @@ class EmployeeDetailSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            PunchTimeline(row: row, shift: shift, showGhost: isToday),
+            PunchTimeline(row: row, shift: own, showGhost: isToday),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -147,7 +154,7 @@ class EmployeeDetailSheet extends StatelessWidget {
                     // Only today's own row is "live"; a past day's row must
                     // not be painted onto today's calendar cell.
                     'today': isToday ? row : null,
-                    'shift': shift,
+                    'shift': own,
                   });
                 },
                 icon: const Icon(Icons.calendar_month_outlined, size: 18),
@@ -161,12 +168,67 @@ class EmployeeDetailSheet extends StatelessWidget {
   }
 }
 
-/// "Shift Morning · 08:00–12:15 · late after 08:15", plus that shift's status
-/// pill on a two-shift day.
+/// "Net 6h 10m · Expected 10h · Short 1h 15m" for a clocked-hours day. While
+/// today is running the shortfall is not final, so it reads "so far" and no
+/// shortfall is shown.
+class ClockedHoursPanel extends StatelessWidget {
+  const ClockedHoursPanel({super.key, required this.row, required this.isToday});
+  final EmployeeDayStatus row;
+  final bool isToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final orange = dark ? AppColors.orange300 : AppColors.orange700;
+    final short = row.shortfallHours;
+    Widget cell(String label, String value, {Color? color}) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label.toUpperCase(),
+                  style: TextStyle(
+                      fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: s.textSubtle)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: color ?? s.text,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  )),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: BoxDecoration(
+        color: s.subtle,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: s.border),
+      ),
+      child: Row(
+        children: [
+          cell(short == null ? 'Net so far' : 'Net hours', formatHours(row.netHours ?? 0)),
+          cell('Expected', formatHours(row.expectedHours ?? 0)),
+          cell(
+            'Shortfall',
+            short == null ? '—' : (short > 0.004 ? formatHours(short) : 'None'),
+            color: short != null && short > 0.004 ? orange : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Shift Morning · 08:00–12:15 · late after 08:15" (+ " · break 12:15–13:30"
+/// on a clocked pattern), plus that shift's status pill on a two-shift day.
 class _ShiftContext extends StatelessWidget {
-  const _ShiftContext({required this.shift, this.status});
+  const _ShiftContext({required this.shift, this.status, this.day});
   final ShiftRules shift;
   final AttendanceStatus? status;
+  final DateTime? day;
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +258,11 @@ class _ShiftContext extends StatelessWidget {
                   TextSpan(text: '  ·  ', style: TextStyle(color: s.borderStrong)),
                   const TextSpan(text: 'late after '),
                   TextSpan(text: shift.cutoffLabel, style: bold),
+                  if (day != null && shift.breakLabelOn(day!) != null) ...[
+                    TextSpan(text: '  ·  ', style: TextStyle(color: s.borderStrong)),
+                    const TextSpan(text: 'break '),
+                    TextSpan(text: shift.breakLabelOn(day!), style: bold),
+                  ],
                 ],
               ),
             ),
