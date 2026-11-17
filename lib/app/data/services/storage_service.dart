@@ -58,6 +58,10 @@ class StorageService {
   // (smoke-fix-1, Ruling 9 fallback (b)), per user.
   static const String _soLastPriceListKey = 'so_last_selling_price_list';
 
+  // Stock sheet: the file format of the last Make sheet
+  // ('excel' | 'pdf' | 'both').
+  static const String _stockSheetFormatKey = 'stock_sheet_last_format';
+
   // --- User Data ---
   Future<void> saveUser(User user) async {
     await _box.write(_userKey, user.toJson());
@@ -279,4 +283,11 @@ class StorageService {
 
   String? getSoLastSellingPriceList(String user) =>
       _box.read<String>('$_soLastPriceListKey::$user');
+
+  // --- Stock sheet: last file format ---
+  Future<void> saveStockSheetFormat(String value) async =>
+      _box.write(_stockSheetFormatKey, value);
+
+  /// Null until the first Make sheet.
+  String? getStockSheetFormat() => _box.read<String>(_stockSheetFormatKey);
 }

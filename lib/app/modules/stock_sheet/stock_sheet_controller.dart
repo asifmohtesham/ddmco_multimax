@@ -9,10 +9,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
+import 'package:multimax/app/modules/stock_sheet/logic/review_builder.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_aggregator.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_sheet_codec.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/thumbnail_maker.dart';
+import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/output/pdf_stock_sheet_writer.dart';
 import 'package:multimax/app/modules/stock_sheet/output/xlsx_stock_sheet_writer.dart';
@@ -25,16 +28,41 @@ enum StockSheetPhase {
   idle,
   decoding,
   checkingStock,
+  reviewing,
   awaitingChoice,
   building,
   done,
   error,
 }
 
-/// Runs one "share photos to a stock sheet" job: decode, check stock, ask
-/// about out-of-stock items, write the files and share them.
+/// Remembers the format of the last Make sheet.
+abstract class SheetFormatStore {
+  SheetFormat read();
+  void write(SheetFormat f);
+}
+
+/// [SheetFormatStore] in [StorageService]. A missing or unknown value reads
+/// as Excel.
+class StorageSheetFormatStore implements SheetFormatStore {
+  const StorageSheetFormatStore();
+
+  StorageService get _storage => Get.find<StorageService>();
+
+  @override
+  SheetFormat read() =>
+      SheetFormat.values.asNameMap()[_storage.getStockSheetFormat()] ??
+      SheetFormat.excel;
+
+  @override
+  void write(SheetFormat f) => unawaited(_storage.saveStockSheetFormat(f.name));
+}
+
+/// Runs one "share photos to a stock sheet" job: decode, check stock, let the
+/// user review the photos, ask about out-of-stock items, write the files and
+/// share them.
 class StockSheetController extends GetxController {
   StockSheetController({
+    SheetFormatStore? formatStore,
     PhotoDecoder Function()? decoderFactory,
     StockSheetProvider? provider,
     Future<void> Function(List<XFile>)? shareFiles,
@@ -42,7 +70,8 @@ class StockSheetController extends GetxController {
     Future<Directory> Function()? tempDir,
     Future<Uint8List> Function(StockSheetDocument)? writePdf,
     Future<Uint8List?> Function(String)? makeThumbnail,
-  }) : _decoderFactory = decoderFactory ?? MlKitPhotoDecoder.new,
+  }) : _formatStore = formatStore ?? const StorageSheetFormatStore(),
+       _decoderFactory = decoderFactory ?? MlKitPhotoDecoder.new,
        _provider = provider ?? StockSheetProvider(),
        _shareFiles = shareFiles ?? _defaultShare,
        _now = now ?? DateTime.now,
@@ -62,6 +91,7 @@ class StockSheetController extends GetxController {
     await SharePlus.instance.share(ShareParams(files: files));
   }
 
+  final SheetFormatStore _formatStore;
   final PhotoDecoder Function() _decoderFactory;
   final StockSheetProvider _provider;
   final Future<void> Function(List<XFile>) _shareFiles;
@@ -75,12 +105,20 @@ class StockSheetController extends GetxController {
   final decoded = 0.obs;
   final total = 0.obs;
 
-  /// The error behind [StockSheetPhase.error], or, in
-  /// [StockSheetPhase.done], why the share sheet did not open.
+  /// The error behind [StockSheetPhase.error]; in
+  /// [StockSheetPhase.reviewing], why the last Make sheet failed; in
+  /// [StockSheetPhase.done], why Share files did not open the share sheet.
   final errorMessage = RxnString();
   final result = Rxn<StockSheetResult>();
   final files = <XFile>[].obs;
   final thumbnails = <String, Uint8List>{}.obs;
+
+  /// The photos in sheet order, with what was found in each (see
+  /// [StockSheetPhase.reviewing]).
+  final review = <ReviewEntry>[].obs;
+
+  /// The format offered for Make sheet: the last one used, Excel at first.
+  final format = SheetFormat.excel.obs;
 
   /// True while [shareAgain] is handing the files to the share sheet.
   final sharing = false.obs;
@@ -88,10 +126,12 @@ class StockSheetController extends GetxController {
   /// The photos of the share on screen (see [takeShare]).
   final sharedPaths = <String>[].obs;
 
-  /// Bumped by every [takeShare], so the screen asks for a format again.
+  /// Bumped by every [takeShare], so the screen starts the new share.
   final shareSerial = 0.obs;
 
   List<PhotoScan> _scans = const [];
+
+  /// The format of the Make sheet in progress.
   SheetFormat _format = SheetFormat.excel;
   final List<File> _created = [];
 
@@ -103,13 +143,19 @@ class StockSheetController extends GetxController {
   /// writes and shares nothing, and removes anything it wrote.
   bool _closed = false;
 
-  Future<void> start(List<String> paths, SheetFormat format) async {
+  @override
+  void onInit() {
+    super.onInit();
+    format.value = _formatStore.read();
+  }
+
+  /// Reads [paths], checks their stock and leaves them in [review].
+  Future<void> start(List<String> paths) async {
     if (busy.value || _closed) return;
     busy.value = true;
     try {
       _clear();
       _givenPhotos.addAll(paths);
-      _format = format;
       if (paths.length > maxPhotos) {
         errorMessage.value =
             'Share up to $maxPhotos photos at a time (you shared ${paths.length}).';
@@ -131,8 +177,11 @@ class StockSheetController extends GetxController {
     }
   }
 
+  /// From [StockSheetPhase.error]: checks stock again without reading the
+  /// photos again.
   Future<void> retry() async {
     if (busy.value || _closed || _scans.isEmpty) return;
+    if (phase.value != StockSheetPhase.error) return;
     busy.value = true;
     try {
       errorMessage.value = null;
@@ -142,13 +191,61 @@ class StockSheetController extends GetxController {
     }
   }
 
+  /// Photos with at least one item switched on.
+  int get sheetPhotoCount => ReviewBuilder.sheetPhotoCount(review);
+
+  /// `ReorderableListView` semantics (see [ReviewBuilder.reorder]).
+  void reorder(int oldIndex, int newIndex) {
+    if (!_reviewing) return;
+    review.assignAll(ReviewBuilder.reorder(review, oldIndex, newIndex));
+  }
+
+  /// Switches every item of photo [index] on or off.
+  void setIncluded(int index, bool on) {
+    if (!_reviewing) return;
+    review.assignAll(ReviewBuilder.setIncluded(review, index, on));
+  }
+
+  /// Switches item [itemIndex] of photo [index] on or off.
+  void setItemIncluded(int index, int itemIndex, bool on) {
+    if (!_reviewing) return;
+    review.assignAll(
+      ReviewBuilder.setItemIncluded(review, index, itemIndex, on),
+    );
+  }
+
+  bool get _reviewing => phase.value == StockSheetPhase.reviewing;
+
+  /// Makes the sheet from [review] in [f], asking about out-of-stock items
+  /// first when any switched-on item is out of stock.
+  Future<void> makeSheet(SheetFormat f) async {
+    if (busy.value || _closed || !_reviewing || sheetPhotoCount == 0) return;
+    busy.value = true;
+    try {
+      errorMessage.value = null;
+      _format = f;
+      format.value = f;
+      _formatStore.write(f);
+      final built = ReviewBuilder.toResult(review);
+      result.value = built;
+      if (built.outOfStockCount > 0) {
+        phase.value = StockSheetPhase.awaitingChoice;
+        return;
+      }
+      await _build(built.rows, 0, highlight: false, showStatus: false);
+    } finally {
+      busy.value = false;
+    }
+  }
+
+  /// Null (the question dismissed) goes back to the review.
   Future<void> chooseOutOfStock(OutOfStockChoice? choice) async {
     if (busy.value || _closed) return;
     if (phase.value != StockSheetPhase.awaitingChoice) return;
     final current = result.value;
     if (choice == null || current == null) {
       result.value = null;
-      phase.value = StockSheetPhase.idle;
+      phase.value = StockSheetPhase.reviewing;
       return;
     }
     busy.value = true;
@@ -182,8 +279,9 @@ class StockSheetController extends GetxController {
   /// True when [retry] can rerun the ERP step: the photos were decoded.
   bool get canRetry => _scans.isNotEmpty;
 
-  /// Takes the photos of a new share and starts over, ready for the format
-  /// question. Refused (returns false, nothing changes) while a run is active.
+  /// Takes the photos of a new share and starts over; the screen then calls
+  /// [start] with [sharedPaths]. Refused (returns false, nothing changes)
+  /// while a run is active.
   bool takeShare(List<String> paths) {
     if (busy.value) return false;
     reset();
@@ -216,6 +314,7 @@ class StockSheetController extends GetxController {
     result.value = null;
     files.clear();
     thumbnails.clear();
+    review.clear();
     errorMessage.value = null;
     _scans = const [];
   }
@@ -262,6 +361,15 @@ class StockSheetController extends GetxController {
     phase.value = StockSheetPhase.error;
   }
 
+  /// A failed Make sheet: back to the untouched review, saying why.
+  void _backToReview(String message) {
+    files.clear();
+    _deleteCreatedFiles();
+    result.value = null;
+    errorMessage.value = message;
+    phase.value = StockSheetPhase.reviewing;
+  }
+
   Future<void> _decodeAll(List<String> paths) async {
     final decoder = _decoderFactory();
     final scans = <PhotoScan>[];
@@ -302,7 +410,7 @@ class StockSheetController extends GetxController {
     _scans = scans;
   }
 
-  /// The ERP step: items, stock, then either ask or build.
+  /// The ERP step: items and rack-wise stock, then the review.
   Future<void> _checkStock() async {
     phase.value = StockSheetPhase.checkingStock;
     try {
@@ -318,17 +426,11 @@ class StockSheetController extends GetxController {
           ? <Map<String, dynamic>>[]
           : await _provider.fetchFinishedGoodsStock(codes);
       if (_closed) return;
-      final built = StockAggregator.build(
-        _scans,
-        items,
-        StockAggregator.sumByItem(stockRows),
-      );
-      result.value = built;
-      if (built.outOfStockCount > 0) {
-        phase.value = StockSheetPhase.awaitingChoice;
-        return;
-      }
-      await _build(built.rows, 0, highlight: false, showStatus: false);
+      final stock = StockAggregator.racksByItem(stockRows);
+      review.assignAll([
+        for (final scan in _scans) ReviewBuilder.entryFor(scan, items, stock),
+      ]);
+      phase.value = StockSheetPhase.reviewing;
     } on StockAccessDenied {
       _fail("You don't have access to stock levels.");
     } catch (e, st) {
@@ -338,7 +440,8 @@ class StockSheetController extends GetxController {
   }
 
   /// [outOfStockCount] is null when the out-of-stock rows were left out, so
-  /// the subtitle does not count rows the file does not have.
+  /// the subtitle does not count rows the file does not have. A failure to
+  /// write or share goes back to the review.
   Future<void> _build(
     List<StockSheetRow> rows,
     int? outOfStockCount, {
@@ -350,7 +453,7 @@ class StockSheetController extends GetxController {
       final now = _now();
       final subtitle = [
         DateFormat('dd/MM/yyyy HH:mm').format(now),
-        _count(_scans.length, 'photo'),
+        _count(sheetPhotoCount, 'photo'),
         _count(rows.length, 'item'),
         if (outOfStockCount != null) '$outOfStockCount out of stock',
       ].join(' · ');
@@ -384,22 +487,27 @@ class StockSheetController extends GetxController {
     } catch (e, st) {
       if (_abandonIfClosed()) return;
       _log('build failed', e, st);
-      _fail("Couldn't build the sheet. Try again.");
+      _backToReview("Couldn't build the sheet. Try again.");
       return;
     }
-    if (files.isNotEmpty) await _share();
+    if (files.isNotEmpty && !await _share()) {
+      _backToReview(shareFailedMessage);
+      return;
+    }
     phase.value = StockSheetPhase.done;
   }
 
-  /// Hands [files] to the share sheet. A failure keeps the files, so
-  /// [shareAgain] can try again, and says so through [errorMessage].
-  Future<void> _share() async {
+  /// Hands [files] to the share sheet. A failure keeps the files and says so
+  /// through [errorMessage]; returns false then.
+  Future<bool> _share() async {
     errorMessage.value = null;
     try {
       await _shareFiles(files.toList());
+      return true;
     } catch (e, st) {
       _log('share failed', e, st);
       errorMessage.value = shareFailedMessage;
+      return false;
     }
   }
 

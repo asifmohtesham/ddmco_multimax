@@ -5,15 +5,16 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/format_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_result_list.dart';
 
-/// Shared photos → stock sheet. Asks for the format on open, shows progress,
-/// asks about out-of-stock items when there are any, then shows the result.
+/// Shared photos → stock sheet. Reads the photos on open, shows progress and
+/// the review, asks about out-of-stock items when there are any, then shows
+/// the result.
 ///
-/// Stateful (not a GetView) because it drives the two bottom sheets from
-/// workers on the controller, which need this screen's lifetime and context.
+/// Stateful (not a GetView) because it drives the share and the out-of-stock
+/// sheet from workers on the controller, which need this screen's lifetime
+/// and context.
 class StockSheetScreen extends StatefulWidget {
   const StockSheetScreen({super.key, this.paths});
 
@@ -32,7 +33,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   void initState() {
     super.initState();
     _workers
-      ..add(ever<int>(controller.shareSerial, (_) => _askFormat()))
+      ..add(ever<int>(controller.shareSerial, (_) => _startShare()))
       ..add(
         ever<StockSheetPhase>(controller.phase, (phase) {
           if (phase == StockSheetPhase.awaitingChoice) _askOutOfStock();
@@ -73,24 +74,11 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     if (route != null && route.isCurrent) Navigator.of(context).pop();
   }
 
-  Future<void> _askFormat() async {
+  Future<void> _startShare() async {
     if (!mounted) return;
-    final serial = controller.shareSerial.value;
     _closeSheetsAbove();
-    final paths = controller.sharedPaths.toList();
-    if (paths.length > StockSheetController.maxPhotos) {
-      // The controller refuses it with its message and processes nothing;
-      // the format is irrelevant.
-      await controller.start(paths, SheetFormat.excel);
-      return;
-    }
-    final format = await showFormatSheet(context, photoCount: paths.length);
-    if (!mounted || serial != controller.shareSerial.value) return;
-    if (format == null) {
-      _close();
-      return;
-    }
-    await controller.start(paths, format);
+    // Over the photo limit, the controller refuses it with its message.
+    await controller.start(controller.sharedPaths.toList());
   }
 
   Future<void> _askOutOfStock() async {
@@ -100,8 +88,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     final choice = await showOutOfStockSheet(context, count: count);
     if (!mounted || serial != controller.shareSerial.value) return;
     if (controller.phase.value != StockSheetPhase.awaitingChoice) return;
+    // Dismissed (null), it goes back to the review.
     await controller.chooseOutOfStock(choice);
-    if (choice == null) _close();
   }
 
   @override
@@ -122,6 +110,11 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             );
           case StockSheetPhase.checkingStock:
             return const _Progress(label: 'Checking stock…');
+          case StockSheetPhase.reviewing:
+            return _ReviewPlaceholder(
+              photos: controller.review.length,
+              onSheet: controller.sheetPhotoCount,
+            );
           case StockSheetPhase.building:
             return const _Progress(label: 'Building file…');
           case StockSheetPhase.done:
@@ -140,6 +133,22 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       }),
       bottomNavigationBar: Obx(() {
         switch (controller.phase.value) {
+          case StockSheetPhase.reviewing:
+            final n = controller.sheetPhotoCount;
+            return _ActionBar(
+              message: controller.errorMessage.value,
+              children: [
+                Expanded(
+                  child: AsyncFilledButton(
+                    busy: controller.busy,
+                    onPressed: () =>
+                        controller.makeSheet(controller.format.value),
+                    icon: const Icon(Icons.description_outlined),
+                    label: 'Make sheet · $n photo${n == 1 ? '' : 's'}',
+                  ),
+                ),
+              ],
+            );
           case StockSheetPhase.done:
             return _ActionBar(
               message: controller.errorMessage.value,
@@ -214,6 +223,37 @@ class _Progress extends StatelessWidget {
             Text(label, style: TextStyle(color: s.text)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Stands in for the review list until it is built: the counts only.
+class _ReviewPlaceholder extends StatelessWidget {
+  const _ReviewPlaceholder({required this.photos, required this.onSheet});
+
+  final int photos;
+  final int onSheet;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Review photos',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(color: s.text),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$photos photo${photos == 1 ? '' : 's'} · $onSheet on the sheet',
+            style: TextStyle(color: s.textMuted),
+          ),
+        ],
       ),
     );
   }

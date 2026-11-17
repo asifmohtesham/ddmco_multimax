@@ -11,7 +11,7 @@ class _SpyStockSheetController extends StockSheetController {
   int starts = 0;
 
   @override
-  Future<void> start(List<String> paths, SheetFormat format) async {
+  Future<void> start(List<String> paths) async {
     starts++;
   }
 }
