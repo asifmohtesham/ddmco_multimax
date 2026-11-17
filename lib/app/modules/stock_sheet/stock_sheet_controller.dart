@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -23,6 +24,21 @@ import 'package:multimax/app/modules/stock_sheet/output/xlsx_stock_sheet_writer.
 enum SheetFormat { excel, pdf, both }
 
 enum OutOfStockChoice { includeRed, includePlain, leaveOut }
+
+/// What [StockSheetController.offerShare] did with a new share.
+enum ShareOffer {
+  /// The share replaced whatever was on screen and is starting.
+  started,
+
+  /// Held in [StockSheetController.pendingShare] for the user to decide.
+  pending,
+
+  /// Refused: a run is reading photos or building the sheet.
+  refusedBusy,
+}
+
+/// The user's answer to a share held in [StockSheetController.pendingShare].
+enum PendingShareChoice { add, startAgain, cancel }
 
 enum StockSheetPhase {
   idle,
@@ -86,6 +102,14 @@ class StockSheetController extends GetxController {
   static const String _pdfMime = 'application/pdf';
   static const String shareFailedMessage =
       "Couldn't open the share sheet. Try again.";
+  static const String noAccessMessage =
+      "You don't have access to stock levels.";
+  static const String offlineMessage =
+      "Couldn't reach the ERP. Check the connection and try again.";
+  static const String unsupportedMessage =
+      "Reading barcodes from photos isn't supported on this device.";
+  static const String notACodeMessage = 'Not a barcode or item code';
+  static const String notInErpMessage = 'Not in ERP';
 
   static Future<void> _defaultShare(List<XFile> files) async {
     await SharePlus.instance.share(ShareParams(files: files));
@@ -123,11 +147,25 @@ class StockSheetController extends GetxController {
   /// True while [shareAgain] is handing the files to the share sheet.
   final sharing = false.obs;
 
-  /// The photos of the share on screen (see [takeShare]).
+  /// True while [fixCode] looks a typed code up.
+  final fixing = false.obs;
+
+  /// True while [addPhotos] reads and checks new photos; [decoded] and
+  /// [total] then count the new batch.
+  final adding = false.obs;
+
+  /// True while [retryCheck] checks an added photo again.
+  final rechecking = false.obs;
+
+  /// The photos of the share on screen (see [offerShare]).
   final sharedPaths = <String>[].obs;
 
-  /// Bumped by every [takeShare], so the screen starts the new share.
+  /// Bumped by every share [offerShare] starts, so the screen starts it.
   final shareSerial = 0.obs;
+
+  /// A share that arrived during the review, waiting for
+  /// [resolvePendingShare].
+  final pendingShare = <String>[].obs;
 
   List<PhotoScan> _scans = const [];
 
@@ -142,6 +180,10 @@ class StockSheetController extends GetxController {
   /// Set by [onClose]. A run still in flight then stops at its next step,
   /// writes and shares nothing, and removes anything it wrote.
   bool _closed = false;
+
+  /// Bumped whenever the review is cleared, so a fix, add or retry that
+  /// finishes afterwards does not write into the new review.
+  int _generation = 0;
 
   @override
   void onInit() {
@@ -165,9 +207,9 @@ class StockSheetController extends GetxController {
       total.value = paths.length;
       phase.value = StockSheetPhase.decoding;
       try {
-        await _decodeAll(paths);
+        _scans = await _decode(paths, () => _closed);
       } on UnsupportedError {
-        _fail("Reading barcodes from photos isn't supported on this device.");
+        _fail(unsupportedMessage);
         return;
       }
       if (_closed) return;
@@ -216,10 +258,146 @@ class StockSheetController extends GetxController {
 
   bool get _reviewing => phase.value == StockSheetPhase.reviewing;
 
+  /// True while a fix, an add or a retry is changing the review.
+  bool get _editing => fixing.value || adding.value || rechecking.value;
+
+  /// Looks up [input] (a barcode, a batch QR or a seven-digit item code)
+  /// and puts the item on photo [index]. With [noteBarcode] null the item
+  /// replaces the photo's items; otherwise it fixes that "Also read" note,
+  /// joining the photo's items. Returns null on success, else the error to
+  /// show.
+  Future<String?> fixCode(
+    int index,
+    String input, {
+    String? noteBarcode,
+  }) async {
+    if (_closed || fixing.value || busy.value || !_reviewing) return null;
+    if (index < 0 || index >= review.length) return null;
+    final code = StockSheetCodec.resolveTyped(input);
+    if (code == null) return notACodeMessage;
+    final entry = review[index];
+    final generation = _generation;
+    fixing.value = true;
+    try {
+      final items = await _provider.fetchItems([code.itemCode]);
+      if (_stale(generation)) return null;
+      final info = items[code.itemCode];
+      if (info == null) return notInErpMessage;
+      final rows = await _provider.fetchFinishedGoodsStock([code.itemCode]);
+      if (_stale(generation)) return null;
+      final at = _locate(entry, index);
+      if (at < 0) return null;
+      final current = review[at];
+      final item = ReviewItem(
+        code: code,
+        info: info,
+        stock: StockAggregator.racksByItem(rows)[code.itemCode],
+      );
+      review[at] = noteBarcode == null
+          ? current.copyWith(
+              items: [item],
+              notInErp: const [],
+              typed: true,
+              unchecked: false,
+            )
+          : current.copyWith(
+              items: [
+                ...current.items,
+                if (!current.items.any((i) => i.code.itemCode == code.itemCode))
+                  item,
+              ],
+              notInErp: [
+                for (final b in current.notInErp)
+                  if (b != noteBarcode) b,
+              ],
+              typed: true,
+            );
+      return null;
+    } on StockAccessDenied {
+      return noAccessMessage;
+    } catch (e, st) {
+      _log('code lookup failed', e, st);
+      return offlineMessage;
+    } finally {
+      fixing.value = false;
+    }
+  }
+
+  /// Reads [paths] (taken or picked from the review) and appends them to
+  /// [review], checking stock for their codes only. Returns null when they
+  /// were added, else why none were. If the check fails they are added
+  /// unchecked, for [retryCheck].
+  Future<String?> addPhotos(List<String> paths) async {
+    if (_closed || busy.value || adding.value || !_reviewing) return null;
+    if (paths.isEmpty) return null;
+    if (review.length + paths.length > maxPhotos) {
+      final room = math.max(0, maxPhotos - review.length);
+      return 'Only $room more photos fit (limit $maxPhotos).';
+    }
+    final generation = _generation;
+    _givenPhotos.addAll(paths);
+    adding.value = true;
+    decoded.value = 0;
+    total.value = paths.length;
+    try {
+      final List<PhotoScan> scans;
+      try {
+        scans = await _decode(paths, () => _stale(generation));
+      } on UnsupportedError {
+        return unsupportedMessage;
+      }
+      if (_stale(generation)) return null;
+      final checked = await _checkScans(scans);
+      if (_stale(generation)) return null;
+      review.addAll(
+        checked ??
+            [
+              for (final scan in scans)
+                scan.items.isEmpty
+                    ? ReviewBuilder.entryFor(scan, const {}, const {})
+                    : ReviewEntry(
+                        path: scan.path,
+                        rawValues: scan.rawValues,
+                        unchecked: true,
+                      ),
+            ],
+      );
+      return null;
+    } finally {
+      adding.value = false;
+    }
+  }
+
+  /// Checks the stock of added photo [index] again after a failed check,
+  /// from the codes already read from it.
+  Future<void> retryCheck(int index) async {
+    if (_closed || busy.value || rechecking.value || !_reviewing) return;
+    if (index < 0 || index >= review.length) return;
+    final entry = review[index];
+    if (!entry.unchecked) return;
+    final generation = _generation;
+    rechecking.value = true;
+    try {
+      final scan = PhotoScan(
+        index: index,
+        path: entry.path,
+        rawValues: entry.rawValues,
+        items: StockSheetCodec.itemsInPhoto(entry.rawValues),
+      );
+      final checked = await _checkScans([scan]);
+      if (checked == null || _stale(generation)) return;
+      final at = _locate(entry, index);
+      if (at >= 0) review[at] = checked.single;
+    } finally {
+      rechecking.value = false;
+    }
+  }
+
   /// Makes the sheet from [review] in [f], asking about out-of-stock items
   /// first when any switched-on item is out of stock.
   Future<void> makeSheet(SheetFormat f) async {
-    if (busy.value || _closed || !_reviewing || sheetPhotoCount == 0) return;
+    if (busy.value || _closed || _editing) return;
+    if (!_reviewing || sheetPhotoCount == 0) return;
     busy.value = true;
     try {
       errorMessage.value = null;
@@ -279,21 +457,54 @@ class StockSheetController extends GetxController {
   /// True when [retry] can rerun the ERP step: the photos were decoded.
   bool get canRetry => _scans.isNotEmpty;
 
-  /// Takes the photos of a new share and starts over; the screen then calls
-  /// [start] with [sharedPaths]. Refused (returns false, nothing changes)
-  /// while a run is active.
-  bool takeShare(List<String> paths) {
-    if (busy.value) return false;
-    reset();
+  /// Takes the photos of a new share. During the review (or its
+  /// out-of-stock question) they wait in [pendingShare] for the user;
+  /// otherwise the controller starts over and the screen calls [start] with
+  /// [sharedPaths]. Refused, with nothing changed, while photos are being
+  /// read or the sheet built.
+  ShareOffer offerShare(List<String> paths) {
+    if (busy.value || adding.value) return ShareOffer.refusedBusy;
     _givenPhotos.addAll(paths);
+    if (_reviewing || phase.value == StockSheetPhase.awaitingChoice) {
+      pendingShare.assignAll(paths);
+      return ShareOffer.pending;
+    }
+    reset();
     sharedPaths.assignAll(paths);
     shareSerial.value++;
-    return true;
+    return ShareOffer.started;
+  }
+
+  /// True when [pendingShare] fits beside the review under [maxPhotos], so
+  /// it can be added.
+  bool get pendingShareFits => review.length + pendingShare.length <= maxPhotos;
+
+  /// Acts on the user's answer to [pendingShare]. Ignored while photos are
+  /// being read or the sheet built; the share then stays pending.
+  Future<void> resolvePendingShare(PendingShareChoice choice) async {
+    if (_closed || pendingShare.isEmpty) return;
+    if (busy.value || adding.value) return;
+    final paths = pendingShare.toList();
+    pendingShare.clear();
+    switch (choice) {
+      case PendingShareChoice.cancel:
+        return;
+      case PendingShareChoice.add:
+        if (phase.value == StockSheetPhase.awaitingChoice) {
+          result.value = null;
+          phase.value = StockSheetPhase.reviewing;
+        }
+        await addPhotos(paths);
+      case PendingShareChoice.startAgain:
+        reset();
+        sharedPaths.assignAll(paths);
+        await start(paths);
+    }
   }
 
   /// Back to a blank slate for a new share. Ignored while a run is active.
   void reset() {
-    if (busy.value) return;
+    if (busy.value || adding.value) return;
     _clear();
     decoded.value = 0;
     total.value = 0;
@@ -310,13 +521,30 @@ class StockSheetController extends GetxController {
   }
 
   void _clear() {
+    _generation++;
     _deleteCreatedFiles();
     result.value = null;
     files.clear();
     thumbnails.clear();
     review.clear();
+    pendingShare.clear();
     errorMessage.value = null;
     _scans = const [];
+  }
+
+  /// True once the controller closed or the review was cleared after
+  /// [generation] was taken.
+  bool _stale(int generation) => _closed || generation != _generation;
+
+  /// Where [entry], last seen at [index], is now: the user may have
+  /// reordered or switched rows meanwhile. -1 when it is gone.
+  int _locate(ReviewEntry entry, int index) {
+    final same = review.indexWhere((e) => identical(e, entry));
+    if (same >= 0) return same;
+    if (index < review.length && review[index].path == entry.path) {
+      return index;
+    }
+    return review.indexWhere((e) => e.path == entry.path);
   }
 
   void _deleteCreatedFiles() {
@@ -370,12 +598,17 @@ class StockSheetController extends GetxController {
     phase.value = StockSheetPhase.reviewing;
   }
 
-  Future<void> _decodeAll(List<String> paths) async {
+  /// Reads every photo in [paths] and makes its thumbnail, stopping once
+  /// [abandoned] says so.
+  Future<List<PhotoScan>> _decode(
+    List<String> paths,
+    bool Function() abandoned,
+  ) async {
     final decoder = _decoderFactory();
     final scans = <PhotoScan>[];
     try {
       for (var i = 0; i < paths.length; i++) {
-        if (_closed) break;
+        if (abandoned()) break;
         final path = paths[i];
         List<String>? raw;
         try {
@@ -385,7 +618,7 @@ class StockSheetController extends GetxController {
         } catch (e, st) {
           _log('decode failed for $path', e, st);
         }
-        if (_closed) break;
+        if (abandoned()) break;
         scans.add(
           raw == null
               ? PhotoScan(index: i, path: path, decodeFailed: true)
@@ -398,7 +631,7 @@ class StockSheetController extends GetxController {
         );
         try {
           final thumb = await _makeThumbnail(path);
-          if (thumb != null) thumbnails[path] = thumb;
+          if (thumb != null && !abandoned()) thumbnails[path] = thumb;
         } catch (e, st) {
           _log('thumbnail failed for $path', e, st);
         }
@@ -407,35 +640,53 @@ class StockSheetController extends GetxController {
     } finally {
       await decoder.dispose();
     }
-    _scans = scans;
+    return scans;
   }
 
   /// The ERP step: items and rack-wise stock, then the review.
   Future<void> _checkStock() async {
     phase.value = StockSheetPhase.checkingStock;
     try {
-      final codes = <String>{
-        for (final scan in _scans)
-          for (final item in scan.items) item.itemCode,
-      }.toList();
-      final items = codes.isEmpty
-          ? <String, ItemInfo>{}
-          : await _provider.fetchItems(codes);
+      final entries = await _entriesFor(_scans);
       if (_closed) return;
-      final stockRows = codes.isEmpty
-          ? <Map<String, dynamic>>[]
-          : await _provider.fetchFinishedGoodsStock(codes);
-      if (_closed) return;
-      final stock = StockAggregator.racksByItem(stockRows);
-      review.assignAll([
-        for (final scan in _scans) ReviewBuilder.entryFor(scan, items, stock),
-      ]);
+      review.assignAll(entries);
       phase.value = StockSheetPhase.reviewing;
     } on StockAccessDenied {
-      _fail("You don't have access to stock levels.");
+      _fail(noAccessMessage);
     } catch (e, st) {
       _log('stock check failed', e, st);
-      _fail("Couldn't reach the ERP. Check the connection and try again.");
+      _fail(offlineMessage);
+    }
+  }
+
+  /// Review entries for [scans], from one Item call and one stock call for
+  /// their codes. Throws what the provider throws.
+  Future<List<ReviewEntry>> _entriesFor(List<PhotoScan> scans) async {
+    final codes = <String>{
+      for (final scan in scans)
+        for (final item in scan.items) item.itemCode,
+    }.toList();
+    final items = codes.isEmpty
+        ? <String, ItemInfo>{}
+        : await _provider.fetchItems(codes);
+    if (_closed) return const [];
+    final stockRows = codes.isEmpty
+        ? <Map<String, dynamic>>[]
+        : await _provider.fetchFinishedGoodsStock(codes);
+    final stock = StockAggregator.racksByItem(stockRows);
+    return [
+      for (final scan in scans) ReviewBuilder.entryFor(scan, items, stock),
+    ];
+  }
+
+  /// [_entriesFor] for photos added during the review: null when the check
+  /// failed (403 included), so the caller keeps them unchecked.
+  Future<List<ReviewEntry>?> _checkScans(List<PhotoScan> scans) async {
+    try {
+      return await _entriesFor(scans);
+    } catch (e, st) {
+      _log('stock check of added photos failed', e, st);
+      return null;
     }
   }
 

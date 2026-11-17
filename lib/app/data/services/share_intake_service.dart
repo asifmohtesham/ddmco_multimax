@@ -93,7 +93,10 @@ class ShareIntakeService extends GetxService {
         ? _activeStockSheet()
         : null;
     if (sheet != null) {
-      if (!sheet.takeShare(paths)) _notify(busyMessage);
+      // A share held as pending is the screen's to ask about.
+      if (sheet.offerShare(paths) == ShareOffer.refusedBusy) {
+        _notify(busyMessage);
+      }
       return;
     }
 

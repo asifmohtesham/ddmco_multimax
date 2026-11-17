@@ -70,26 +70,46 @@ class _FakeDecoder implements PhotoDecoder {
 }
 
 class _FakeProvider extends StockSheetProvider {
-  _FakeProvider({this.stock = const {}});
+  _FakeProvider({this.stock = const {}, this.known = const [_a, _b]});
   final Map<String, double> stock;
-  final List<String> known = const [_a, _b];
+  final List<String> known;
   Object? stockError;
   int stockCalls = 0;
+
+  /// Every code list passed to [fetchItems] and [fetchFinishedGoodsStock].
+  final itemRequests = <List<String>>[];
+  final stockRequests = <List<String>>[];
+
+  /// When set, the next Item call throws it.
+  Object? itemsError;
+
+  /// When set, the Item call waits for it.
+  Completer<void>? itemsGate;
 
   /// When set, the stock call waits for it.
   Completer<void>? stockGate;
 
   @override
-  Future<Map<String, ItemInfo>> fetchItems(List<String> codes) async => {
-    for (final c in codes.where(known.contains))
-      c: ItemInfo(itemCode: c, itemName: 'Item $c'),
-  };
+  Future<Map<String, ItemInfo>> fetchItems(List<String> codes) async {
+    itemRequests.add(List.of(codes));
+    await itemsGate?.future;
+    final error = itemsError;
+    if (error != null) {
+      itemsError = null;
+      throw error;
+    }
+    return {
+      for (final c in codes.where(known.contains))
+        c: ItemInfo(itemCode: c, itemName: 'Item $c'),
+    };
+  }
 
   @override
   Future<List<Map<String, dynamic>>> fetchFinishedGoodsStock(
     List<String> codes,
   ) async {
     stockCalls++;
+    stockRequests.add(List.of(codes));
     await stockGate?.future;
     final error = stockError;
     if (error != null) {
@@ -831,8 +851,8 @@ void main() {
       final c = make(_FakeDecoder({}), _FakeProvider());
 
       expect(
-        c.takeShare([cached.path, nested.path, gallery.path, sneaky]),
-        isTrue,
+        c.offerShare([cached.path, nested.path, gallery.path, sneaky]),
+        ShareOffer.started,
       );
       c.onClose();
       await pumpEventQueue();
@@ -849,8 +869,8 @@ void main() {
         second.path: [_ean(_a)],
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
-      c.takeShare([first.path]);
-      c.takeShare([second.path]);
+      c.offerShare([first.path]);
+      c.offerShare([second.path]);
       await c.start([second.path]);
       expect(c.phase.value, StockSheetPhase.reviewing);
       expect(first.existsSync(), isTrue);
@@ -866,10 +886,437 @@ void main() {
     test('a photo already gone does not stop the others', () async {
       final kept = photo(tmp, 'b.jpg');
       final c = make(_FakeDecoder({}), _FakeProvider());
-      c.takeShare(['${tmp.path}/missing.jpg', kept.path]);
+      c.offerShare(['${tmp.path}/missing.jpg', kept.path]);
       c.onClose();
       await pumpEventQueue();
       expect(kept.existsSync(), isFalse);
     });
+  });
+
+  group('fixCode', () {
+    const typed = '2001136';
+    const noteItem = '1004765';
+    const note = '99999995';
+
+    /// a.jpg (A), b.jpg (B), bad.jpg (unreadable), c.jpg (A).
+    Future<StockSheetController> fourPhotos(_FakeProvider provider) async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+        'bad.jpg': null,
+        'c.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, provider);
+      await c.start(['a.jpg', 'b.jpg', 'bad.jpg', 'c.jpg']);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      return c;
+    }
+
+    test('a typed item code resolves the unresolved row in place', () async {
+      final provider = _FakeProvider(
+        stock: {typed: 3},
+        known: const [_a, _b, typed],
+      );
+      final c = await fourPhotos(provider);
+      expect(c.review[2].resolved, isFalse);
+
+      final error = await c.fixCode(2, ' $typed ');
+
+      expect(error, isNull);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'bad.jpg', 'c.jpg']);
+      final entry = c.review[2];
+      expect(entry.typed, isTrue);
+      expect(entry.notInErp, isEmpty);
+      expect(entry.items.single.code.barcode, '20011369');
+      expect(entry.items.single.code.itemCode, typed);
+      expect(entry.items.single.included, isTrue);
+      expect(entry.items.single.stock!.total, 3);
+      expect(entry.items.single.stock!.racks.single.rack, _rack);
+      expect(c.sheetPhotoCount, 4);
+      expect(provider.itemRequests.last, [typed]);
+      expect(provider.stockRequests.last, [typed]);
+      expect(c.fixing.value, isFalse);
+    });
+
+    test('fixing an Also read note appends the item to the row', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a), note],
+      });
+      final provider = _FakeProvider(
+        stock: {_a: 1, noteItem: 2},
+        known: const [_a, noteItem],
+      );
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      expect(c.review.single.items, hasLength(1));
+      expect(c.review.single.notInErp, [note]);
+
+      final error = await c.fixCode(0, noteItem, noteBarcode: note);
+
+      expect(error, isNull);
+      final entry = c.review.single;
+      expect(entry.items.map((i) => i.code.itemCode), [_a, noteItem]);
+      expect(entry.items.every((i) => i.included), isTrue);
+      expect(entry.notInErp, isEmpty);
+      expect(entry.typed, isTrue);
+    });
+
+    test('text that is not a code is refused without asking the ERP', () async {
+      final provider = _FakeProvider();
+      final c = await fourPhotos(provider);
+      final calls = provider.itemRequests.length;
+
+      expect(await c.fixCode(2, 'ABC'), 'Not a barcode or item code');
+      expect(await c.fixCode(2, '12345678'), 'Not a barcode or item code');
+      expect(provider.itemRequests, hasLength(calls));
+      expect(c.review[2].resolved, isFalse);
+    });
+
+    test('a code the ERP does not know says Not in ERP', () async {
+      final provider = _FakeProvider();
+      final c = await fourPhotos(provider);
+
+      expect(await c.fixCode(2, typed), 'Not in ERP');
+      expect(c.review[2].resolved, isFalse);
+      expect(c.review[2].typed, isFalse);
+      expect(c.fixing.value, isFalse);
+    });
+
+    test('a code already on another row still resolves this one', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final c = await fourPhotos(provider);
+
+      expect(await c.fixCode(2, _ean(_a)), isNull);
+
+      expect(c.review[0].items.single.code.itemCode, _a);
+      expect(c.review[2].items.single.code.itemCode, _a);
+      expect(c.review[2].typed, isTrue);
+      expect(c.sheetPhotoCount, 4);
+    });
+
+    test('403 and network errors give the base messages', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final c = await fourPhotos(provider);
+
+      provider.itemsError = const StockAccessDenied();
+      expect(await c.fixCode(2, _a), "You don't have access to stock levels.");
+      provider.stockError = Exception('offline');
+      expect(
+        await c.fixCode(2, _a),
+        "Couldn't reach the ERP. Check the connection and try again.",
+      );
+      expect(c.review[2].resolved, isFalse);
+      expect(c.fixing.value, isFalse);
+    });
+
+    test('closing during the lookup leaves the review alone', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final c = await fourPhotos(provider);
+      provider.itemsGate = Completer<void>();
+
+      final fix = c.fixCode(2, _a);
+      expect(c.fixing.value, isTrue);
+      c.onClose();
+      provider.itemsGate!.complete();
+      await fix;
+
+      expect(c.review[2].resolved, isFalse);
+      expect(c.fixing.value, isFalse);
+    });
+  });
+
+  group('addPhotos', () {
+    test('more than the limit allows adds nothing and says why', () async {
+      final decoder = _FakeDecoder({});
+      final c = make(decoder, _FakeProvider());
+      await c.start(List.generate(98, (i) => 'p$i.jpg'));
+      expect(c.review, hasLength(98));
+      final calls = decoder.calls;
+
+      expect(
+        await c.addPhotos(['x.jpg', 'y.jpg', 'z.jpg']),
+        'Only 2 more photos fit (limit 100).',
+      );
+      expect(c.review, hasLength(98));
+      expect(decoder.calls, calls);
+      expect(c.adding.value, isFalse);
+    });
+
+    test('new photos go after a reorder, checked by their own codes', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+        'bad.jpg': null,
+        'd.jpg': [_ean(_b)],
+        'e.jpg': ['not a code'],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final c = make(decoder, provider);
+      await c.start(['a.jpg', 'b.jpg', 'bad.jpg']);
+      c.reorder(0, 3);
+      expect(reviewPaths(c), ['b.jpg', 'bad.jpg', 'a.jpg']);
+
+      final added = c.addPhotos(['d.jpg', 'e.jpg']);
+      expect(c.adding.value, isTrue);
+      expect(c.total.value, 2);
+      expect(await added, isNull);
+
+      expect(reviewPaths(c), ['b.jpg', 'bad.jpg', 'a.jpg', 'd.jpg', 'e.jpg']);
+      expect(c.review[3].items.single.code.itemCode, _b);
+      expect(c.review[3].items.single.stock!.total, 2);
+      expect(c.review[4].resolved, isFalse);
+      expect(c.review[4].rawValues, ['not a code']);
+      expect(provider.itemRequests.last, [_b]);
+      expect(provider.stockRequests.last, [_b]);
+      expect(c.thumbnails.keys, containsAll(['d.jpg', 'e.jpg']));
+      expect(c.decoded.value, 2);
+      expect(c.adding.value, isFalse);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+    });
+
+    test(
+      'a failed check adds them unchecked; Retry check resolves one',
+      () async {
+        final decoder = _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+          'd.jpg': [_ean(_b)],
+          'e.jpg': [_ean(_a)],
+        });
+        final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+        final c = make(decoder, provider);
+        await c.start(['a.jpg']);
+        provider.stockError = Exception('offline');
+
+        expect(await c.addPhotos(['d.jpg', 'e.jpg']), isNull);
+
+        expect(reviewPaths(c), ['a.jpg', 'd.jpg', 'e.jpg']);
+        for (final entry in c.review.skip(1)) {
+          expect(entry.unchecked, isTrue);
+          expect(entry.items, isEmpty);
+          expect(entry.included, isFalse);
+        }
+        // Never a false out-of-stock row.
+        expect(c.sheetPhotoCount, 1);
+        final decodes = decoder.calls;
+
+        await c.retryCheck(1);
+
+        expect(decoder.calls, decodes);
+        expect(c.review[1].unchecked, isFalse);
+        expect(c.review[1].items.single.code.itemCode, _b);
+        expect(c.review[1].items.single.stock!.total, 2);
+        expect(c.review[2].unchecked, isTrue);
+        expect(provider.stockRequests.last, [_b]);
+        expect(c.sheetPhotoCount, 2);
+        expect(c.rechecking.value, isFalse);
+      },
+    );
+
+    test('a failed Retry check leaves the photo unchecked', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'd.jpg': [_ean(_b)],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      provider.stockError = Exception('offline');
+      await c.addPhotos(['d.jpg']);
+      provider.itemsError = Exception('still offline');
+
+      await c.retryCheck(1);
+
+      expect(c.review[1].unchecked, isTrue);
+      expect(c.review[1].items, isEmpty);
+    });
+
+    test('closing mid-add appends nothing', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'd.jpg': [_ean(_b)],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      provider.stockGate = Completer<void>();
+
+      final added = c.addPhotos(['d.jpg']);
+      await pumpEventQueue();
+      c.onClose();
+      provider.stockGate!.complete();
+      await added;
+
+      expect(reviewPaths(c), ['a.jpg']);
+      expect(c.adding.value, isFalse);
+    });
+
+    test('Make sheet waits for an add in flight', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'd.jpg': [_ean(_b)],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      provider.stockGate = Completer<void>();
+
+      final added = c.addPhotos(['d.jpg']);
+      await pumpEventQueue();
+      await c.makeSheet(SheetFormat.excel);
+      expect(shared, isEmpty);
+      provider.stockGate!.complete();
+      await added;
+
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      await c.makeSheet(SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.done);
+      expect(c.result.value!.rows.map((r) => r.photoPath), ['a.jpg', 'd.jpg']);
+    });
+  });
+
+  group('offerShare', () {
+    Future<StockSheetController> reviewing() async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+        'n1.jpg': [_ean(_b)],
+        'n2.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
+      await c.start(['a.jpg', 'b.jpg']);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      return c;
+    }
+
+    test('from idle it starts the share', () {
+      final c = make(_FakeDecoder({}), _FakeProvider());
+      expect(c.offerShare(['a.jpg']), ShareOffer.started);
+      expect(c.sharedPaths, ['a.jpg']);
+      expect(c.shareSerial.value, 1);
+      expect(c.pendingShare, isEmpty);
+    });
+
+    test('while busy it is refused and nothing changes', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+      })..gate = Completer<void>();
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+      final run = c.start(['a.jpg']);
+
+      expect(c.offerShare(['b.jpg']), ShareOffer.refusedBusy);
+      expect(c.pendingShare, isEmpty);
+      expect(c.shareSerial.value, 0);
+      decoder.gate!.complete();
+      await run;
+    });
+
+    test('while reviewing it is held, with the review untouched', () async {
+      final c = await reviewing();
+      c.setIncluded(1, false);
+
+      expect(c.offerShare(['n1.jpg', 'n2.jpg']), ShareOffer.pending);
+
+      expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
+      expect(c.pendingShareFits, isTrue);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
+      expect(c.review[1].included, isFalse);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      expect(c.shareSerial.value, 0);
+    });
+
+    test('while the out-of-stock question is open it is held', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider());
+      await run(c, ['a.jpg'], SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.awaitingChoice);
+
+      expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
+      expect(c.pendingShare, ['n1.jpg']);
+      expect(c.phase.value, StockSheetPhase.awaitingChoice);
+    });
+
+    test('pendingShareFits follows the 100-photo limit', () async {
+      final c = make(_FakeDecoder({}), _FakeProvider());
+      await c.start(List.generate(99, (i) => 'p$i.jpg'));
+      c.offerShare(['x.jpg']);
+      expect(c.pendingShareFits, isTrue);
+      c.offerShare(['x.jpg', 'y.jpg']);
+      expect(c.pendingShareFits, isFalse);
+    });
+
+    test('Add appends the held photos', () async {
+      final c = await reviewing();
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+
+      await c.resolvePendingShare(PendingShareChoice.add);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'n1.jpg', 'n2.jpg']);
+      expect(c.pendingShare, isEmpty);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+    });
+
+    test('Add from the out-of-stock question returns to the review', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'n1.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider());
+      await run(c, ['a.jpg'], SheetFormat.excel);
+      c.offerShare(['n1.jpg']);
+
+      await c.resolvePendingShare(PendingShareChoice.add);
+
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      expect(c.result.value, isNull);
+      expect(reviewPaths(c), ['a.jpg', 'n1.jpg']);
+    });
+
+    test('Start again replaces the review with the held photos', () async {
+      final c = await reviewing();
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+
+      await c.resolvePendingShare(PendingShareChoice.startAgain);
+
+      expect(reviewPaths(c), ['n1.jpg', 'n2.jpg']);
+      expect(c.pendingShare, isEmpty);
+      expect(c.sharedPaths, ['n1.jpg', 'n2.jpg']);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+    });
+
+    test('Cancel drops the held photos and keeps the review', () async {
+      final c = await reviewing();
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+
+      await c.resolvePendingShare(PendingShareChoice.cancel);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
+      expect(c.pendingShare, isEmpty);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+    });
+  });
+
+  test('added and held photos in the temp folder go on close', () async {
+    final first = File('${tmp.path}/first.jpg')..writeAsBytesSync([1]);
+    final added = File('${tmp.path}/added.jpg')..writeAsBytesSync([1]);
+    final held = File('${tmp.path}/held.jpg')..writeAsBytesSync([1]);
+    final decoder = _FakeDecoder({
+      first.path: [_ean(_a)],
+      added.path: [_ean(_b)],
+    });
+    final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
+    await c.start([first.path]);
+    await c.addPhotos([added.path]);
+    expect(c.offerShare([held.path]), ShareOffer.pending);
+    await c.resolvePendingShare(PendingShareChoice.cancel);
+    expect(added.existsSync(), isTrue);
+
+    c.onClose();
+    await pumpEventQueue();
+
+    expect(first.existsSync(), isFalse);
+    expect(added.existsSync(), isFalse);
+    expect(held.existsSync(), isFalse);
   });
 }

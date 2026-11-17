@@ -42,7 +42,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     final paths = widget.paths ?? _argumentPaths();
     if (paths.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) controller.takeShare(paths);
+        if (mounted) controller.offerShare(paths);
       });
     }
   }

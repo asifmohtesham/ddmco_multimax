@@ -177,6 +177,28 @@ void main() {
     },
   );
 
+  test(
+    'a share while the sheet is reviewing is held for the screen to ask',
+    () async {
+      signedIn.value = true;
+      route = AppRoutes.STOCK_SHEET;
+      final reviewingSheet = _SpyStockSheetController()
+        ..sharedPaths.assignAll(['first.jpg'])
+        ..phase.value = StockSheetPhase.reviewing;
+      sheet = reviewingSheet;
+      await make();
+
+      await share(['second.jpg']);
+
+      expect(notices, isEmpty);
+      expect(opened, isEmpty);
+      expect(reviewingSheet.pendingShare, ['second.jpg']);
+      expect(reviewingSheet.sharedPaths, ['first.jpg']);
+      expect(reviewingSheet.shareSerial.value, 0);
+      expect(reviewingSheet.phase.value, StockSheetPhase.reviewing);
+    },
+  );
+
   test('a share while the sheet screen is idle replaces its photos', () async {
     signedIn.value = true;
     route = AppRoutes.STOCK_SHEET;

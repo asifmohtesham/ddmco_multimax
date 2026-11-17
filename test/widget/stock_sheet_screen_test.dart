@@ -246,7 +246,7 @@ void main() {
     expect(find.text('Review photos'), findsOneWidget);
   });
 
-  testWidgets('a new share closes the open sheet and starts the new photos', (
+  testWidgets('a new share during the out-of-stock question is held', (
     tester,
   ) async {
     await open(tester, paths: ['a.jpg']);
@@ -255,16 +255,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 item is out of stock'), findsOneWidget);
 
-    controller.takeShare(['b.jpg', 'c.jpg', 'd.jpg']);
+    expect(
+      controller.offerShare(['b.jpg', 'c.jpg', 'd.jpg']),
+      ShareOffer.pending,
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('1 item is out of stock'), findsNothing);
-    expect(find.byType(StockSheetScreen), findsOneWidget);
+    // Nothing starts until the user answers (the screen's dialog asks).
+    expect(controller.pendingShare, ['b.jpg', 'c.jpg', 'd.jpg']);
+    expect(find.text('1 item is out of stock'), findsOneWidget);
     expect(controller.starts, [
       ['a.jpg'],
-      ['b.jpg', 'c.jpg', 'd.jpg'],
     ]);
-    // The closed sheet's answer is ignored.
     expect(controller.choices, isEmpty);
   });
 
