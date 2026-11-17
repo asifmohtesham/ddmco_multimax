@@ -305,6 +305,30 @@ void main() {
     expect(find.text('Nothing to put on a sheet.'), findsOneWidget);
   });
 
+  testWidgets('a share failure shows its message above Share files', (
+    tester,
+  ) async {
+    await open(tester);
+    controller.result.value = _result();
+    controller.files.assignAll([XFile('/tmp/a.xlsx')]);
+    controller.errorMessage.value = "Couldn't open the share sheet. Try again.";
+    controller.phase.value = StockSheetPhase.done;
+    await tester.pumpAndSettle();
+
+    final message = find.text("Couldn't open the share sheet. Try again.");
+    expect(message, findsOneWidget);
+    expect(find.text('Share file'), findsOneWidget);
+    expect(tester.widget<Text>(message).style?.color, AppColors.red300);
+    expect(
+      tester.getTopLeft(message).dy,
+      lessThan(tester.getTopLeft(find.text('Share file')).dy),
+    );
+
+    controller.errorMessage.value = null;
+    await tester.pumpAndSettle();
+    expect(message, findsNothing);
+  });
+
   testWidgets('result list: sections, reasons, and it ends with End of list', (
     tester,
   ) async {

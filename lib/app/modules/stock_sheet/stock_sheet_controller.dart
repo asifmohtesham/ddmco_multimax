@@ -53,6 +53,8 @@ class StockSheetController extends GetxController {
   static const String _xlsxMime =
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   static const String _pdfMime = 'application/pdf';
+  static const String shareFailedMessage =
+      "Couldn't open the share sheet. Try again.";
 
   static Future<void> _defaultShare(List<XFile> files) async {
     await SharePlus.instance.share(ShareParams(files: files));
@@ -70,6 +72,9 @@ class StockSheetController extends GetxController {
   final phase = StockSheetPhase.idle.obs;
   final decoded = 0.obs;
   final total = 0.obs;
+
+  /// The error behind [StockSheetPhase.error], or, in
+  /// [StockSheetPhase.done], why the share sheet did not open.
   final errorMessage = RxnString();
   final result = Rxn<StockSheetResult>();
   final files = <XFile>[].obs;
@@ -155,11 +160,12 @@ class StockSheetController extends GetxController {
     }
   }
 
+  /// Shares the files already written; the ERP is not asked again.
   Future<void> shareAgain() async {
     if (sharing.value || _closed || files.isEmpty) return;
     sharing.value = true;
     try {
-      await _shareFiles(files.toList());
+      await _share();
     } finally {
       sharing.value = false;
     }
@@ -335,12 +341,25 @@ class StockSheetController extends GetxController {
           files.add(await _store(dir, 'Items-$stamp.pdf', bytes, _pdfMime));
           if (_abandonIfClosed()) return;
         }
-        await _shareFiles(files.toList());
       }
-      phase.value = StockSheetPhase.done;
     } catch (e, st) {
       _log('build failed', e, st);
       _fail("Couldn't build the sheet. Try again.");
+      return;
+    }
+    if (files.isNotEmpty) await _share();
+    phase.value = StockSheetPhase.done;
+  }
+
+  /// Hands [files] to the share sheet. A failure keeps the files, so
+  /// [shareAgain] can try again, and says so through [errorMessage].
+  Future<void> _share() async {
+    errorMessage.value = null;
+    try {
+      await _shareFiles(files.toList());
+    } catch (e, st) {
+      _log('share failed', e, st);
+      errorMessage.value = shareFailedMessage;
     }
   }
 

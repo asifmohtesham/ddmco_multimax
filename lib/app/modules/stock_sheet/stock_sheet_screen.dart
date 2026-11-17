@@ -142,6 +142,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         switch (controller.phase.value) {
           case StockSheetPhase.done:
             return _ActionBar(
+              message: controller.errorMessage.value,
               children: [
                 if (controller.files.isEmpty)
                   Expanded(
@@ -246,15 +247,19 @@ class _ErrorMessage extends StatelessWidget {
   }
 }
 
-/// Bottom buttons, clear of the system navigation bar.
+/// Bottom buttons, clear of the system navigation bar, with an optional
+/// error line above them.
 class _ActionBar extends StatelessWidget {
-  const _ActionBar({required this.children});
+  const _ActionBar({required this.children, this.message});
 
   final List<Widget> children;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final text = message;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: s.fg,
@@ -264,7 +269,22 @@ class _ActionBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: Row(children: children),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (text != null) ...[
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: isDark ? AppColors.red300 : AppColors.red700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Row(children: children),
+            ],
+          ),
         ),
       ),
     );

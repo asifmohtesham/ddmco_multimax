@@ -89,12 +89,16 @@ void main() {
   /// When set, the PDF writer waits for it.
   Completer<void>? pdfGate;
 
+  /// When set, the next share throws it.
+  Object? shareError;
+
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('stock_sheet_ctrl');
     shared = [];
     pdfDocs = [];
     thumbOverride = null;
     pdfGate = null;
+    shareError = null;
   });
 
   tearDown(() async {
@@ -105,7 +109,14 @@ void main() {
       StockSheetController(
         decoderFactory: () => decoder,
         provider: provider,
-        shareFiles: (f) async => shared.add(f),
+        shareFiles: (f) async {
+          final error = shareError;
+          if (error != null) {
+            shareError = null;
+            throw error;
+          }
+          shared.add(f);
+        },
         now: () => DateTime(2026, 11, 17, 9, 5),
         tempDir: () async => tmp,
         writePdf: (doc) async {
@@ -316,6 +327,35 @@ void main() {
     await c.start(['a.jpg'], SheetFormat.excel);
     expect(c.phase.value, StockSheetPhase.done);
     expect(c.thumbnails, isEmpty);
+  });
+
+  test('a share failure keeps the files and Share files retries it', () async {
+    final decoder = _FakeDecoder({
+      'a.jpg': [_ean(_a)],
+    });
+    final provider = _FakeProvider(stock: {_a: 1});
+    shareError = Exception('no share sheet');
+    final c = make(decoder, provider);
+    await c.start(['a.jpg'], SheetFormat.excel);
+
+    expect(c.phase.value, StockSheetPhase.done);
+    expect(c.errorMessage.value, "Couldn't open the share sheet. Try again.");
+    expect(c.files.single.name, 'Items-20261117-0905.xlsx');
+    expect(File(c.files.single.path).existsSync(), isTrue);
+    expect(shared, isEmpty);
+
+    await c.shareAgain();
+    expect(shared.single.single.name, 'Items-20261117-0905.xlsx');
+    expect(c.errorMessage.value, isNull);
+    expect(c.sharing.value, isFalse);
+    expect(provider.stockCalls, 1);
+    expect(decoder.calls, 1);
+
+    shareError = Exception('again');
+    await c.shareAgain();
+    expect(c.errorMessage.value, "Couldn't open the share sheet. Try again.");
+    expect(c.phase.value, StockSheetPhase.done);
+    expect(c.sharing.value, isFalse);
   });
 
   group('closing the screen mid-run', () {
