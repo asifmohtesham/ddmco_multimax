@@ -71,7 +71,7 @@ class XlsxStockSheetWriter {
       if (pic != null) pictures.add(pic);
 
       sheetRows.write(_row(r, [
-        _text('A$r', '${i + 1}', body),
+        _number('A$r', i + 1, body),
         pic == null ? _text('B$r', '(no image)', body) : _blank('B$r', body),
         _text('C$r', row.barcode, barcodeStyle),
         _text('D$r', row.variantOf ?? '', body),
@@ -133,7 +133,12 @@ class XlsxStockSheetWriter {
 
   static String _col(int zeroBased) => String.fromCharCode(65 + zeroBased);
 
+  /// Characters XML 1.0 does not allow at all, even escaped. Excel refuses
+  /// a workbook that contains one.
+  static final _illegalXml = RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]');
+
   static String _esc(String s) => s
+      .replaceAll(_illegalXml, '')
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')
@@ -142,6 +147,9 @@ class XlsxStockSheetWriter {
 
   static String _text(String ref, String value, int style) =>
       '<c r="$ref" s="$style" t="inlineStr"><is><t xml:space="preserve">${_esc(value)}</t></is></c>';
+
+  static String _number(String ref, int value, int style) =>
+      '<c r="$ref" s="$style"><v>$value</v></c>';
 
   static String _blank(String ref, int style) => '<c r="$ref" s="$style"/>';
 

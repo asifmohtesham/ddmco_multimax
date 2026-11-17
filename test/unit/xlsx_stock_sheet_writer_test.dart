@@ -49,14 +49,23 @@ StockSheetDocument _doc({
       showStatus: status,
     );
 
-/// Cell texts of the sheet, by cell reference.
+/// Cell texts (inline strings) or values (numbers) of the sheet, by cell
+/// reference.
 Map<String, String> _cells(Archive a) {
   final doc = XmlDocument.parse(_text(a, 'xl/worksheets/sheet1.xml'));
   return {
     for (final c in doc.findAllElements('c'))
-      c.getAttribute('r')!: c.findAllElements('t').map((t) => t.innerText).join(),
+      c.getAttribute('r')!: [
+        ...c.findAllElements('t'),
+        ...c.findElements('v'),
+      ].map((t) => t.innerText).join(),
   };
 }
+
+XmlElement _cell(Archive a, String ref) =>
+    XmlDocument.parse(_text(a, 'xl/worksheets/sheet1.xml'))
+        .findAllElements('c')
+        .firstWhere((e) => e.getAttribute('r') == ref);
 
 void main() {
   test('contains every OOXML part', () {
@@ -166,6 +175,29 @@ void main() {
     final a = _open(XlsxStockSheetWriter.write(
         _doc(rows: [_row(0, '01234565', name: name)])));
     expect(_cells(a)['F5'], name);
+  });
+
+  test('XML-illegal control characters are dropped; tab and newline stay', () {
+    const name = 'A\u0000B\u0001C\u0008D\u000BE\u000CF\u000EG\u001FH\tI\nJ\rK';
+    final bytes = XlsxStockSheetWriter.write(
+        _doc(rows: [_row(0, '01234565', name: name)]));
+    final a = _open(bytes);
+    // XmlDocument.parse would throw on any illegal character left behind.
+    expect(_cells(a)['F5'], 'ABCDEFGH\tI\nJ\rK');
+  });
+
+  test('the # column holds numbers in the row style', () {
+    final a = _open(XlsxStockSheetWriter.write(_doc(status: true)));
+    final c = _cells(a);
+    expect([c['A5'], c['A6'], c['A7']], ['1', '2', '3']);
+    final first = _cell(a, 'A5');
+    expect(first.getAttribute('t'), isNull);
+    expect(first.findElements('v').single.innerText, '1');
+    expect(first.findElements('is'), isEmpty);
+    // The same style as the rest of its row, red included.
+    final red = redStyles(a);
+    expect(red.contains(int.parse(_cell(a, 'A6').getAttribute('s')!)), isTrue);
+    expect(_cell(a, 'A5').getAttribute('s'), _cell(a, 'D5').getAttribute('s'));
   });
 
   test('barcode keeps its leading zero as text', () {
