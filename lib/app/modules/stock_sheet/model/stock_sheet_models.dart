@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// A label code recognised in a photo: the item it belongs to, the EAN-8 it
 /// was derived from, and the batch QR text when the label carried one.
 class ClassifiedCode {
@@ -127,4 +129,29 @@ class StockAccessDenied implements Exception {
 
   @override
   String toString() => 'StockAccessDenied';
+}
+
+/// Everything a writer needs to render the sheet.
+class StockSheetDocument {
+  const StockSheetDocument({
+    required this.title,
+    required this.subtitle,
+    required this.rows,
+    required this.thumbnails,
+    this.highlightOutOfStock = true,
+    this.showStatus = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<StockSheetRow> rows;
+
+  /// JPEG thumbnails keyed by [StockSheetRow.photoPath].
+  final Map<String, Uint8List> thumbnails;
+
+  /// Colour out-of-stock rows red.
+  final bool highlightOutOfStock;
+
+  /// Add the trailing `Stock` column.
+  final bool showStatus;
 }
