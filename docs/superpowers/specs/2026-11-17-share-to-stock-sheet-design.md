@@ -137,6 +137,18 @@ last release was in August 2024).
    screen, not raw read access to the `Bin` doctype.
 2. A `Bin` list with `descendants of (inclusive)`. This was the first draft. It returns the same numbers, but it is
    a second way of reading stock in the app and needs Bin read permission.
+3. **`Stock Balance - Custom`** (a Desk Custom Report over Stock Balance). Rejected by the user on 17/11/2026, after
+   a live check that day with `are_default_filters=false` and `ignore_prepared_report=true`:
+   - Its 18 saved columns include **Variant Of** (TRENZA / GRABIN / ALCE were correct) and Image, but **not
+     Country of Origin**.
+   - Like the core report, it leaves out items with no stock and unknown codes, even with
+     `include_zero_stock_items=1`. Out-of-stock rows would still lack their Variant Of, Country of Origin and Item
+     Name, and only the Item call can tell "out of stock" from "not in ERP". So it would not save the Item call.
+   - It has `prepared_report = 1`, and its saved filters are fixed to 24/12/2025–24/01/2026. Those replace the
+     caller's filters unless `are_default_filters=false` is sent, and they change whenever someone re-saves the
+     report on the Desk.
+
+   Stock therefore comes from the **core** report, and item details from the **Item** list.
 
 ## 6. Design
 
