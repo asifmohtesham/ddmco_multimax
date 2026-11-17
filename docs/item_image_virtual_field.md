@@ -1,23 +1,46 @@
-# Stock Entry Detail: Item Image (virtual field)
+# Item Image (virtual field) on Stock Entry, Purchase Order and Delivery Note items
 
 > **Scope:** This is a **backend (ERPNext Desk) artifact**, not Flutter code. It
 > lives on the Frappe instance (`erp.multimax.cloud`) as one **Custom Field** and
-> one **Client Script**. Desk artifacts are not under source control, so this
-> document is the source to rebuild them from.
+> one **Client Script** per document type. Desk artifacts are not under source
+> control, so this document is the source to rebuild them from.
 
-Adds an **Item Image** column to the Stock Entry **Items** grid (`Stock Entry Detail`).
+Adds an **Item Image** column to the **Items** grid of these documents:
+
+| Parent | Child table | Custom Field | Client Script | Insert after |
+|---|---|---|---|---|
+| Stock Entry | `Stock Entry Detail` | `Stock Entry Detail-custom_item_image` | `Stock Entry - Item Image` | `custom_invoice_serial_number` |
+| Purchase Order | `Purchase Order Item` | `Purchase Order Item-custom_item_image` | `Purchase Order - Item Image` | `item_name` |
+| Delivery Note | `Delivery Note Item` | `Delivery Note Item-custom_item_image` | `Delivery Note - Item Image` | `item_name` |
+
 It is there so users can see the item and so the grid's **Download** (bulk-edit
 CSV export) includes an image link for each row. It is **never stored**:
 
 - No database column is created, and nothing is written on save.
-- Opening a Stock Entry does not mark it dirty ("Not Saved"), because the value
+- Opening a document does not mark it dirty ("Not Saved"), because the value
   comes from the server with the document and is never set through `set_value`.
 - The value is always the item's **current** `Item.image`. It is not a snapshot
-  taken when the entry was made.
+  taken when the document was made.
 
-**Applied to `erp.multimax.cloud` on 16 November 2026** (Frappe 16.56 / ERPNext 16.55) through the REST API,
-as `asif@multimax.cloud`. Custom Field `Stock Entry Detail-custom_item_image`, Client Script
-`Stock Entry - Item Image`. Not applied on `erp-testing.multimax.cloud`.
+Sections 2 and 3 show the **Stock Entry** version, which is the template. The
+Purchase Order and Delivery Note versions are identical except for these substitutions:
+
+| In the template | Purchase Order | Delivery Note |
+|---|---|---|
+| `"Stock Entry Detail"` (Custom Field `dt`, `get_docfield`, child `form.on`) | `"Purchase Order Item"` | `"Delivery Note Item"` |
+| `"Stock Entry"` (Client Script `dt`, parent `form.on`) | `"Purchase Order"` | `"Delivery Note"` |
+| `se_item_image…` / `SE_ITEM_IMAGE` | `po_item_image…` / `PO_ITEM_IMAGE` | `dn_item_image…` / `DN_ITEM_IMAGE` |
+| `insert_after` | `item_name` | `item_name` |
+
+> **Standard `image` field:** Purchase Order Item and Delivery Note Item already have
+> ERPNext's own `image` field: Attach, **stored**, hidden, `fetch_from: item_code.image`.
+> It holds the image as it was when the row was made, as a relative path.
+> `custom_item_image` leaves it untouched. The new field is the visible, always-current,
+> never-stored one, with an absolute URL.
+
+**Applied to `erp.multimax.cloud`** (Frappe 16.56 / ERPNext 16.55) through the REST API,
+as `asif@multimax.cloud`: Stock Entry on 16 November 2026, Purchase Order and
+Delivery Note on 17 November 2026. Not applied on `erp-testing.multimax.cloud`.
 
 Works on Frappe **v15 and v16** (checked against the `version-15` and
 `version-16` source of `frappe/model/document.py`, `grid.js`, `formatters.js`
@@ -220,3 +243,12 @@ frm.doc.items.forEach(row => {
     }
 });
 ```
+
+**`Delivery Note-Variant Of` (not changed).** Its `onload` checks the right field
+(`custom_variant_of`), but for an item with no `variant_of` it `set_value`s `''` over
+an empty value. Frappe treats that as a change, so the form opens "Not Saved".
+On 17 November 2026 none of the 6 Delivery Note drafts had such a row, so nothing
+was affected and the script was left as is. If saved drafts start opening
+"Not Saved", apply the section 7 `backfill_variant_of` fix there too.
+`Purchase Order` has no row-level Client Script; its only script changes the
+Material Request "Get Items From" dialog.
