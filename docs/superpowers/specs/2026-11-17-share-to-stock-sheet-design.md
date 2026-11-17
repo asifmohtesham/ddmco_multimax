@@ -5,6 +5,7 @@
 **Status:** approved by the user on 17/11/2026: the answers in §10 and the recommended approaches in §5
 (on-device decode and render, `receive_sharing_intent`, a hand-written `.xlsx` via `archive`).
 Revised the same day at the user's direction: stock comes from the `Stock Balance` report, not Bin (§5.4).
+**Implemented** on 18/11/2026 in v2.41.0+129. Later user decisions: files are named `Items-<yyyyMMdd-HHmm>` and titled **Items** (the worksheet tab too); the screen keeps the heading "Stock sheet". Android was verified on a Samsung XCover7 (debug and release builds): a signed-out share, a cold start, a warm share via `onNewIntent`, the out-of-stock question, the Excel and PDF contents, and the unreadable / no-code lists. **Not verified:** iOS (never built; the Runner App Group is held back until the profile carries it, see `docs/ios_share_extension_setup.md`), and a warm share started from the gallery's own task (`singleTop`).
 **Reference behaviour:** the Telegram **📋 Stock sheet** feature, built and confirmed working on 17/11/2026
 (n8n workflow `Telegram - Stock Sheet` plus the `stocksheet` sidecar: FastAPI, zxing-cpp, openpyxl, reportlab).
 
