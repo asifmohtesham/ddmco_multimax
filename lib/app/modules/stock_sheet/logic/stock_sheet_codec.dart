@@ -8,6 +8,9 @@ class StockSheetCodec {
   /// `{EAN8}-{BatchID}` with an alphanumeric batch ID.
   static final RegExp _batchQr = RegExp(r'^(\d{8})-[A-Za-z0-9]+$');
 
+  /// A bare item code typed without its check digit.
+  static final RegExp _sevenDigits = RegExp(r'^\d{7}$');
+
   /// Classifies one raw value as a plain EAN-8 or an `{EAN8}-{BatchID}` QR.
   /// Anything else (EAN-13, Code 128 text, a bad checksum) returns null.
   static ClassifiedCode? classify(String raw) {
@@ -27,6 +30,21 @@ class StockSheetCodec {
       itemCode: prefix.substring(0, 7),
       barcode: prefix,
       batchNo: code,
+    );
+  }
+
+  /// Resolves text typed by the user. Tries [classify] first; otherwise exactly
+  /// seven digits are an item code, and the EAN-8 is built with its check
+  /// digit. Anything else returns null.
+  static ClassifiedCode? resolveTyped(String input) {
+    final code = input.trim();
+    final classified = classify(code);
+    if (classified != null) return classified;
+    if (!_sevenDigits.hasMatch(code)) return null;
+    return ClassifiedCode(
+      itemCode: code,
+      barcode: Ean8.withCheckDigit(code),
+      batchNo: null,
     );
   }
 
