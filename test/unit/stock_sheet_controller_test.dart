@@ -25,6 +25,7 @@ class _FakeDecoder implements PhotoDecoder {
   _FakeDecoder(this.codes, {this.unsupported = false});
   final Map<String, List<String>?> codes;
   final bool unsupported;
+  final Set<String> throwFor = {};
   int calls = 0;
   bool disposed = false;
 
@@ -32,6 +33,7 @@ class _FakeDecoder implements PhotoDecoder {
   Future<List<String>?> decode(String path) async {
     calls++;
     if (unsupported) throw UnsupportedError('no');
+    if (throwFor.contains(path)) throw Exception('boom');
     return codes[path];
   }
 
@@ -83,6 +85,8 @@ void main() {
     if (tmp.existsSync()) await tmp.delete(recursive: true);
   });
 
+  Future<Uint8List?> Function(String)? thumbOverride;
+
   StockSheetController make(_FakeDecoder decoder, _FakeProvider provider) =>
       StockSheetController(
         decoderFactory: () => decoder,
@@ -94,8 +98,11 @@ void main() {
           pdfDocs.add(doc);
           return Uint8List.fromList([1, 2, 3]);
         },
-        makeThumbnail: (p) async =>
-            Uint8List.fromList(img.encodeJpg(img.Image(width: 4, height: 4))),
+        makeThumbnail:
+            thumbOverride ??
+            (p) async => Uint8List.fromList(
+              img.encodeJpg(img.Image(width: 4, height: 4)),
+            ),
       );
 
   test('more than 100 photos is refused and nothing is decoded', () async {
@@ -269,5 +276,30 @@ void main() {
     expect(c.thumbnails, isEmpty);
     expect(c.decoded.value, 0);
     expect(c.total.value, 0);
+  });
+
+  test('a decoder exception marks only that photo unreadable', () async {
+    final decoder = _FakeDecoder({
+      'a.jpg': [_ean(_a)],
+    })..throwFor.add('bad.jpg');
+    final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+    await c.start(['bad.jpg', 'a.jpg'], SheetFormat.excel);
+    expect(c.phase.value, StockSheetPhase.done);
+    expect(
+      c.result.value!.unresolved.single.reason,
+      UnresolvedReason.unreadable,
+    );
+    expect(decoder.calls, 2);
+  });
+
+  test('a thumbnail exception still completes the run', () async {
+    thumbOverride = (_) async => throw Exception('thumb');
+    final decoder = _FakeDecoder({
+      'a.jpg': [_ean(_a)],
+    });
+    final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+    await c.start(['a.jpg'], SheetFormat.excel);
+    expect(c.phase.value, StockSheetPhase.done);
+    expect(c.thumbnails, isEmpty);
   });
 }

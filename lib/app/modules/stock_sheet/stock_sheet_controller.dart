@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -180,6 +180,10 @@ class StockSheetController extends GetxController {
     _created.clear();
   }
 
+  void _log(String what, Object e, StackTrace st) {
+    if (kDebugMode) debugPrint('StockSheetController: $what: $e\n$st');
+  }
+
   void _fail(String message) {
     errorMessage.value = message;
     phase.value = StockSheetPhase.error;
@@ -191,7 +195,14 @@ class StockSheetController extends GetxController {
     try {
       for (var i = 0; i < paths.length; i++) {
         final path = paths[i];
-        final raw = await decoder.decode(path);
+        List<String>? raw;
+        try {
+          raw = await decoder.decode(path);
+        } on UnsupportedError {
+          rethrow;
+        } catch (e, st) {
+          _log('decode failed for $path', e, st);
+        }
         scans.add(
           raw == null
               ? PhotoScan(index: i, path: path, decodeFailed: true)
@@ -202,8 +213,12 @@ class StockSheetController extends GetxController {
                   items: StockSheetCodec.itemsInPhoto(raw),
                 ),
         );
-        final thumb = await _makeThumbnail(path);
-        if (thumb != null) thumbnails[path] = thumb;
+        try {
+          final thumb = await _makeThumbnail(path);
+          if (thumb != null) thumbnails[path] = thumb;
+        } catch (e, st) {
+          _log('thumbnail failed for $path', e, st);
+        }
         decoded.value = i + 1;
       }
     } finally {
@@ -239,7 +254,8 @@ class StockSheetController extends GetxController {
       await _build(built.rows, 0, highlight: false, showStatus: false);
     } on StockAccessDenied {
       _fail("You don't have access to stock levels.");
-    } catch (_) {
+    } catch (e, st) {
+      _log('stock check failed', e, st);
       _fail("Couldn't reach the ERP. Check the connection and try again.");
     }
   }
@@ -293,7 +309,8 @@ class StockSheetController extends GetxController {
         await _shareFiles(files.toList());
       }
       phase.value = StockSheetPhase.done;
-    } catch (_) {
+    } catch (e, st) {
+      _log('build failed', e, st);
       _fail("Couldn't build the sheet. Try again.");
     }
   }
