@@ -73,4 +73,15 @@ void main() {
     final b = await PdfStockSheetWriter.write(separate);
     expect(a.length, lessThan(b.length));
   });
+
+  test('writeInBackground builds the same document off the UI isolate', () async {
+    final doc = _doc(40, status: true);
+    final here = await PdfStockSheetWriter.write(doc);
+    final there = await PdfStockSheetWriter.writeInBackground(doc);
+    expect(latin1.decode(there.sublist(0, 4)), '%PDF');
+    expect(_pageCount(there), _pageCount(here));
+    expect(_pageCount(there), greaterThan(1));
+    // Same fonts and images embedded: within a few bytes (ids and dates).
+    expect((there.length - here.length).abs(), lessThan(256));
+  });
 }

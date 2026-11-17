@@ -47,7 +47,7 @@ class StockSheetController extends GetxController {
        _shareFiles = shareFiles ?? _defaultShare,
        _now = now ?? DateTime.now,
        _tempDir = tempDir ?? getTemporaryDirectory,
-       _writePdf = writePdf ?? ((doc) => PdfStockSheetWriter.write(doc)),
+       _writePdf = writePdf ?? PdfStockSheetWriter.writeInBackground,
        _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path));
 
   static const int maxPhotos = 100;
@@ -367,7 +367,7 @@ class StockSheetController extends GetxController {
         final dir = await _tempDir();
         final stamp = DateFormat('yyyyMMdd-HHmm').format(now);
         if (_format != SheetFormat.pdf) {
-          final bytes = XlsxStockSheetWriter.write(doc);
+          final bytes = await XlsxStockSheetWriter.writeInBackground(doc);
           if (_abandonIfClosed()) return;
           files.add(await _store(dir, 'Items-$stamp.xlsx', bytes, _xlsxMime));
           if (_abandonIfClosed()) return;

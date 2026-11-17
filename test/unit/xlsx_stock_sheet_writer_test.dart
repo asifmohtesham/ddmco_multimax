@@ -193,4 +193,17 @@ void main() {
     expect(wb, contains("'Items'!\$4:\$4"));
     expect(wb, contains('_xlnm.Print_Titles'));
   });
+
+  test('writeInBackground gives the same workbook as write', () async {
+    final doc = _doc(status: true);
+    final here = _open(XlsxStockSheetWriter.write(doc));
+    final there = _open(await XlsxStockSheetWriter.writeInBackground(doc));
+    expect(
+      there.files.map((f) => f.name).toList(),
+      here.files.map((f) => f.name).toList(),
+    );
+    for (final f in here.files) {
+      expect(there.findFile(f.name)!.content, f.content, reason: f.name);
+    }
+  });
 }

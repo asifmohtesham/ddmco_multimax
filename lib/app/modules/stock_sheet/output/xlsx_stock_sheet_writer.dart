@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -30,6 +31,11 @@ class XlsxStockSheetWriter {
   static const _sBarcode = 5;
   static const _sBodyRed = 6;
   static const _sBarcodeRed = 7;
+
+  /// [write] on a background isolate, so decoding every thumbnail does not
+  /// freeze the UI. The document is plain data and is copied across.
+  static Future<Uint8List> writeInBackground(StockSheetDocument doc) =>
+      Isolate.run(() => write(doc));
 
   static Uint8List write(StockSheetDocument doc) {
     final headers = [

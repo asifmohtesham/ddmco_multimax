@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
@@ -23,6 +24,9 @@ class PdfStockSheetWriter {
   static const _widthsMm = [8.0, 30.0, 22.0, 34.0, 26.0, 66.0];
   static const _widthsStatusMm = [8.0, 30.0, 20.0, 30.0, 24.0, 52.0, 22.0];
 
+  static const _regularFontFile = 'Inter-Regular.ttf';
+  static const _boldFontFile = 'Inter-Medium.ttf';
+
   /// [regular] and [bold] default to the bundled Inter fonts, so characters
   /// outside Latin-1 do not break the built-in Helvetica.
   static Future<Uint8List> write(
@@ -30,8 +34,28 @@ class PdfStockSheetWriter {
     pw.Font? regular,
     pw.Font? bold,
   }) async {
-    final regularFont = regular ?? await _loadFont('Inter-Regular.ttf');
-    final boldFont = bold ?? await _loadFont('Inter-Medium.ttf');
+    final regularFont =
+        regular ?? pw.Font.ttf(await _fontData(_regularFontFile));
+    final boldFont = bold ?? pw.Font.ttf(await _fontData(_boldFontFile));
+    return _render(doc, regularFont, boldFont);
+  }
+
+  /// The same document as [write], laid out on a background isolate so a
+  /// large share does not freeze the UI. The fonts are read here, because
+  /// the asset bundle is only reachable from the UI isolate.
+  static Future<Uint8List> writeInBackground(StockSheetDocument doc) async {
+    final regular = await _fontData(_regularFontFile);
+    final bold = await _fontData(_boldFontFile);
+    return Isolate.run(
+      () => _render(doc, pw.Font.ttf(regular), pw.Font.ttf(bold)),
+    );
+  }
+
+  static Future<Uint8List> _render(
+    StockSheetDocument doc,
+    pw.Font regularFont,
+    pw.Font boldFont,
+  ) async {
 
     final headers = [
       '#',
@@ -173,6 +197,6 @@ class PdfStockSheetWriter {
     return pdf.save();
   }
 
-  static Future<pw.Font> _loadFont(String file) async =>
-      pw.Font.ttf(await rootBundle.load('lib/assets/fonts/$file'));
+  static Future<ByteData> _fontData(String file) =>
+      rootBundle.load('lib/assets/fonts/$file');
 }
