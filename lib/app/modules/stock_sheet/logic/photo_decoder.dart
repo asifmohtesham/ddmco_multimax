@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
@@ -63,30 +64,55 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   bool _anyClassifies(List<String> values) =>
       values.any((raw) => StockSheetCodec.classify(raw) != null);
 
+  /// The pixel size from the image header alone, without decoding the
+  /// pixels; `null` when the bytes are not an image the package reads.
+  @visibleForTesting
+  static ({int width, int height})? headerSize(Uint8List bytes) {
+    try {
+      final info = img.findDecoderForData(bytes)?.startDecode(bytes);
+      if (info == null || info.width <= 0 || info.height <= 0) return null;
+      return (width: info.width, height: info.height);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _worthUpscaling(({int width, int height}) size) =>
+      size.width < _skipUpscaleAt && size.height < _skipUpscaleAt;
+
+  /// A 2x greyscale PNG of [bytes], or `null` when the photo is unreadable
+  /// or already has a side of at least 2000 px. The size is checked from
+  /// the header first, so a large photo is never decoded.
+  @visibleForTesting
+  static Uint8List? upscaledCopy(Uint8List bytes) {
+    final size = headerSize(bytes);
+    if (size == null || !_worthUpscaling(size)) return null;
+    final source = img.decodeImage(bytes);
+    if (source == null) return null;
+    final resized = img.copyResize(
+      img.grayscale(source),
+      width: source.width * 2,
+      height: source.height * 2,
+      interpolation: img.Interpolation.cubic,
+    );
+    return img.encodePng(resized);
+  }
+
   /// One retry on a 2x greyscale copy. Returns `null` when no copy was made.
   Future<List<String>?> _retryUpscaled(String path) async {
     File? copy;
     try {
       final bytes = await File(path).readAsBytes();
+      // Most camera photos are this large: skip them on the header alone,
+      // without starting an isolate.
+      final size = headerSize(bytes);
+      if (size == null || !_worthUpscaling(size)) return null;
+      final png = await Isolate.run(() => upscaledCopy(bytes));
+      if (png == null) return null;
       final dir = await getTemporaryDirectory();
       final target = File(
         '${dir.path}/stock_sheet_retry_${DateTime.now().microsecondsSinceEpoch}.png',
       );
-      final png = await Isolate.run(() {
-        final source = img.decodeImage(bytes);
-        if (source == null) return null;
-        if (source.width >= _skipUpscaleAt || source.height >= _skipUpscaleAt) {
-          return null;
-        }
-        final resized = img.copyResize(
-          img.grayscale(source),
-          width: source.width * 2,
-          height: source.height * 2,
-          interpolation: img.Interpolation.cubic,
-        );
-        return img.encodePng(resized);
-      });
-      if (png == null) return null;
       copy = await target.writeAsBytes(png);
       return await _analyse(copy.path);
     } on UnsupportedError {
