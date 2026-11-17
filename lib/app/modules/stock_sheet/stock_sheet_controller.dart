@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -93,6 +95,10 @@ class StockSheetController extends GetxController {
   SheetFormat _format = SheetFormat.excel;
   final List<File> _created = [];
 
+  /// Every photo path handed to this controller. The share plugin copies
+  /// shared photos into the app's cache; [onClose] deletes those copies.
+  final Set<String> _givenPhotos = {};
+
   /// Set by [onClose]. A run still in flight then stops at its next step,
   /// writes and shares nothing, and removes anything it wrote.
   bool _closed = false;
@@ -102,6 +108,7 @@ class StockSheetController extends GetxController {
     busy.value = true;
     try {
       _clear();
+      _givenPhotos.addAll(paths);
       _format = format;
       if (paths.length > maxPhotos) {
         errorMessage.value =
@@ -180,6 +187,7 @@ class StockSheetController extends GetxController {
   bool takeShare(List<String> paths) {
     if (busy.value) return false;
     reset();
+    _givenPhotos.addAll(paths);
     sharedPaths.assignAll(paths);
     shareSerial.value++;
     return true;
@@ -198,6 +206,8 @@ class StockSheetController extends GetxController {
   void onClose() {
     _closed = true;
     _deleteCreatedFiles();
+    unawaited(_deleteSharedCopies(_givenPhotos.toList()));
+    _givenPhotos.clear();
     super.onClose();
   }
 
@@ -219,6 +229,28 @@ class StockSheetController extends GetxController {
       }
     }
     _created.clear();
+  }
+
+  /// Deletes the photos in [paths] that lie inside the app's temporary
+  /// (cache) folder. Anything outside it, such as the gallery original, is
+  /// never touched.
+  Future<void> _deleteSharedCopies(List<String> paths) async {
+    if (paths.isEmpty) return;
+    try {
+      final root = p.normalize(p.absolute((await _tempDir()).path));
+      for (final path in paths) {
+        final full = p.normalize(p.absolute(path));
+        if (!p.isWithin(root, full)) continue;
+        try {
+          final file = File(full);
+          if (await file.exists()) await file.delete();
+        } catch (e, st) {
+          _log('could not delete $full', e, st);
+        }
+      }
+    } catch (e, st) {
+      _log('shared photo clean-up failed', e, st);
+    }
   }
 
   void _log(String what, Object e, StackTrace st) {

@@ -459,4 +459,73 @@ void main() {
       expect(written(), isEmpty);
     });
   });
+
+  group('shared photo copies', () {
+    late Directory outside;
+
+    setUp(() async {
+      outside = await Directory.systemTemp.createTemp('stock_sheet_gallery');
+    });
+
+    tearDown(() async {
+      if (outside.existsSync()) await outside.delete(recursive: true);
+    });
+
+    File photo(Directory dir, String name) =>
+        File('${dir.path}/$name')..writeAsBytesSync([1, 2, 3]);
+
+    test('on close, photos in the temp folder go; others stay', () async {
+      final cached = photo(tmp, 'shared_1.jpg');
+      final nested = photo(
+        Directory('${tmp.path}/sub')..createSync(),
+        'shared_2.jpg',
+      );
+      final gallery = photo(outside, 'IMG_0001.jpg');
+      // Inside the temp folder by text only: it resolves to the gallery photo.
+      final sneaky =
+          '${tmp.path}/../${outside.path.split('/').last}/IMG_0001.jpg';
+      final c = make(_FakeDecoder({}), _FakeProvider());
+
+      expect(
+        c.takeShare([cached.path, nested.path, gallery.path, sneaky]),
+        isTrue,
+      );
+      c.onClose();
+      await pumpEventQueue();
+
+      expect(cached.existsSync(), isFalse);
+      expect(nested.existsSync(), isFalse);
+      expect(gallery.existsSync(), isTrue);
+    });
+
+    test('photos of a run and of an earlier share are all removed', () async {
+      final first = photo(tmp, 'first.jpg');
+      final second = photo(tmp, 'second.jpg');
+      final decoder = _FakeDecoder({
+        second.path: [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+      c.takeShare([first.path]);
+      c.takeShare([second.path]);
+      await c.start([second.path], SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.done);
+      expect(first.existsSync(), isTrue);
+      expect(second.existsSync(), isTrue);
+
+      c.onClose();
+      await pumpEventQueue();
+
+      expect(first.existsSync(), isFalse);
+      expect(second.existsSync(), isFalse);
+    });
+
+    test('a photo already gone does not stop the others', () async {
+      final kept = photo(tmp, 'b.jpg');
+      final c = make(_FakeDecoder({}), _FakeProvider());
+      c.takeShare(['${tmp.path}/missing.jpg', kept.path]);
+      c.onClose();
+      await pumpEventQueue();
+      expect(kept.existsSync(), isFalse);
+    });
+  });
 }
