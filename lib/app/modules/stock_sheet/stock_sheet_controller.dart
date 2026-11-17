@@ -267,6 +267,7 @@ class StockSheetController extends GetxController {
     final scans = <PhotoScan>[];
     try {
       for (var i = 0; i < paths.length; i++) {
+        if (_closed) break;
         final path = paths[i];
         List<String>? raw;
         try {
@@ -365,6 +366,7 @@ class StockSheetController extends GetxController {
       _deleteCreatedFiles();
       if (rows.isNotEmpty) {
         final dir = await _tempDir();
+        if (_abandonIfClosed()) return;
         final stamp = DateFormat('yyyyMMdd-HHmm').format(now);
         if (_format != SheetFormat.pdf) {
           final bytes = await XlsxStockSheetWriter.writeInBackground(doc);
@@ -380,6 +382,7 @@ class StockSheetController extends GetxController {
         }
       }
     } catch (e, st) {
+      if (_abandonIfClosed()) return;
       _log('build failed', e, st);
       _fail("Couldn't build the sheet. Try again.");
       return;

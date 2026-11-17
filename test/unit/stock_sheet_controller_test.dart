@@ -400,6 +400,32 @@ void main() {
       expect(c.busy.value, isFalse);
     });
 
+    test('during a thumbnail: the next photo is not decoded', () async {
+      final thumbGate = Completer<void>();
+      thumbOverride = (_) async {
+        await thumbGate.future;
+        return null;
+      };
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final c = make(decoder, provider);
+      final run = c.start(['a.jpg', 'b.jpg'], SheetFormat.excel);
+      await pumpEventQueue();
+      expect(decoder.calls, 1);
+
+      c.onClose();
+      thumbGate.complete();
+      await run;
+
+      expect(decoder.calls, 1);
+      expect(decoder.disposed, isTrue);
+      expect(provider.stockCalls, 0);
+      expect(shared, isEmpty);
+    });
+
     test('during the stock check: no share and no files', () async {
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a)],
