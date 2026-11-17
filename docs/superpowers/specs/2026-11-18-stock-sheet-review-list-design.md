@@ -3,7 +3,7 @@
 **Date:** 18 November 2026
 **Extends:** `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` (the "base spec"). Everything there still holds
 unless this addendum says otherwise.
-**Status:** DRAFT. Waiting for the user's approval.
+**Status:** approved by the user on 18/11/2026 (including the calls in §9).
 **Mock-ups:** HTML, shown in the brainstorming companion on 18/11/2026 (`.superpowers/brainstorm/…/review-list-v2.html`,
 git-ignored). The user picked the **list** layout over a grid.
 
