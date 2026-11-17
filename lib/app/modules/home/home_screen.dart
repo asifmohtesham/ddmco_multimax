@@ -317,11 +317,13 @@ class HomeScreen extends GetView<HomeController> {
         padding: const EdgeInsets.only(bottom: 18),
         child: MyAttendanceCard(
           row: me,
-          shift: controller.attendanceShift.value,
+          // The viewer's own pattern: cut-off and hours are theirs, not the focus shift's.
+          shift: me?.rules ?? controller.attendanceShift.value,
           now: DateTime.now(),
           strip: controller.myMonthStrip,
           isLoading: loading,
           onTap: controller.openMyMonth,
+          holidayName: controller.attendanceHolidayName,
         ),
       );
     });
@@ -365,6 +367,7 @@ class HomeScreen extends GetView<HomeController> {
             shift: controller.attendanceShift.value,
             now: now,
             isHoliday: controller.attendanceIsHoliday,
+            holidayName: controller.attendanceHolidayName,
             beforeCutoff: controller.beforeAttendanceCutoff,
             looksOffline: controller.attendanceLooksOffline,
             latestPunch: controller.attendanceLatestPunch.value?.time,

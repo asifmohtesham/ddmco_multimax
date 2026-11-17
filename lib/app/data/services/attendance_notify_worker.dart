@@ -83,6 +83,7 @@ Future<void> runAttendanceTask() async {
           assignments: data.assignments,
           ledger: data.ledgerOn(today),
           catalog: data.catalog,
+          defaultShift: data.defaultShift,
         );
         final out = decideReminders(
           now: now,

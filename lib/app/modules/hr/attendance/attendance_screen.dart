@@ -237,9 +237,14 @@ class AttendanceScreen extends GetView<AttendanceController> {
         _Banner(
           icon: Icons.wb_sunny_outlined,
           calm: false,
-          child: const Text.rich(TextSpan(children: [
-            TextSpan(text: 'Weekly off / holiday. ', style: TextStyle(fontWeight: FontWeight.w600)),
-            TextSpan(text: 'No shift scheduled; nobody is counted late or absent.'),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(
+              text: controller.holidayName.isEmpty
+                  ? 'Weekly off / holiday. '
+                  : '${controller.holidayName}. ',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const TextSpan(text: 'No shift scheduled; nobody is counted late or absent.'),
           ])),
         )
       else if (controller.beforeCutoff)

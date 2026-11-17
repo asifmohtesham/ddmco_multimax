@@ -36,7 +36,8 @@ class AttendanceController extends GetxController {
 
   /// The shift for days without assignments (before 2026-09-12).
   ShiftRules _defaultShift = ShiftRules.fallback;
-  final holidays = <String>{}.obs;
+  /// `yyyy-MM-dd` → the holiday's name ('' for a weekly off).
+  final holidays = <String, String>{}.obs;
   final loadedAt = Rxn<DateTime>();
   final latestPunch = Rxn<EmployeeCheckin>();
   final loadError = RxnString();
@@ -94,7 +95,10 @@ class AttendanceController extends GetxController {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   bool get isToday => selectedDate.value == dateOnly(DateTime.now());
-  bool get isHoliday => holidays.contains(kFrappeDate.format(selectedDate.value));
+  bool get isHoliday => holidays.containsKey(kFrappeDate.format(selectedDate.value));
+
+  /// "Eid al-Fitr" on a named holiday; '' on a weekly off or a working day.
+  String get holidayName => holidays[kFrappeDate.format(selectedDate.value)] ?? '';
   DateTime get now => clock.value;
 
   /// One derived row per active employee, attention-first.
@@ -182,6 +186,11 @@ class AttendanceController extends GetxController {
       (Get.find<AuthenticationController>().currentUser.value?.hasRole('System Manager') ??
           false);
 
+  /// The logged-in user's Employee, for holiday names on the self-service path.
+  String get _viewerEmployee => Get.isRegistered<AuthenticationController>()
+      ? Get.find<AuthenticationController>().currentUser.value?.employeeId ?? ''
+      : '';
+
   /// Active employees with no terminal ID — HRMS marks them Absent every day.
   int get untrackedCount => employees.where((e) => !e.isTracked).length;
 
@@ -217,14 +226,24 @@ class AttendanceController extends GetxController {
   /// Reads holidays from the day's own shifts' `holiday_list` (Morning/
   /// Afternoon), else the default shift's, once per successful read — a
   /// failure retries on the next load instead of sticking for the session
-  /// (unlike [_masterLoaded], which never retries).
+  /// (unlike [_masterLoaded], which never retries). With no list on any shift
+  /// (the clocked-hours patterns leave it empty) the company's dated Holiday
+  /// List Assignments decide, for last year and this one (the range the date
+  /// picker is normally used for).
   Future<void> _ensureHolidays() async {
     if (_holidaysLoaded) return;
     final list = dayShifts
         .map((s) => s.holidayList)
         .firstWhere((h) => h.isNotEmpty, orElse: () => _defaultShift.holidayList);
+    final year = DateTime.now().year;
     try {
-      holidays.assignAll(await _provider.fetchHolidays(list));
+      holidays.assignAll(await _provider.fetchHolidays(
+        list,
+        from: DateTime(year - 1),
+        to: DateTime(year, 12, 31),
+        company: companyOf(employees),
+        employee: _viewerEmployee,
+      ));
       _holidaysLoaded = true;
     } catch (_) {}
   }
@@ -269,9 +288,12 @@ class AttendanceController extends GetxController {
       ]);
       final dayLedger = results[1] as List<AttendanceRecord>;
       final dayAssignments = results[2] as List<ShiftAssignmentRow>;
+      // Every employee's own pattern (default_shift), not only the first
+      // one's: on another pattern they would otherwise get fallback times.
       await _ensureCatalog([
         for (final a in dayAssignments) a.shiftType,
         for (final r in dayLedger) r.shift,
+        ...defaultShiftNames(employees),
       ]);
       assignments.assignAll(dayAssignments);
       checkins.assignAll(results[0] as List<EmployeeCheckin>);

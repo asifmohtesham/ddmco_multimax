@@ -14,6 +14,11 @@ class _FakeService extends AttendanceNotifyService {
   final Map<String, Object> responses = {};
   final List<String> paths = [];
 
+  /// A list request naming a `custom_*` field fails with 417, as on a site
+  /// without the clocked-hours fields.
+  bool rejectCustomFields = false;
+  final List<String> fieldsSent = [];
+
   static DioException err(int? code) => DioException(
         requestOptions: RequestOptions(path: '/x'),
         response: code == null ? null : Response(requestOptions: RequestOptions(path: '/x'), statusCode: code),
@@ -31,6 +36,9 @@ class _FakeService extends AttendanceNotifyService {
     }
     final r = responses[path];
     if (r is DioException) throw r;
+    final fields = '${query['fields'] ?? ''}';
+    if (fields.isNotEmpty) fieldsSent.add('$path $fields');
+    if (rejectCustomFields && fields.contains('custom_')) throw err(417);
     if (path.startsWith('/api/method/')) return _ok({'message': r ?? const {}});
     return _ok({'data': r ?? const []});
   }
@@ -192,5 +200,60 @@ void main() {
     expect(d.tracked, isFalse);
     expect(d.holiday, isTrue);
     expect(d.sync!.terminalOnline, isFalse);
+  });
+
+  group('clocked hours', () {
+    void seedClocked(_FakeService f) {
+      f.responses['/api/resource/Employee/E1'] = {
+        'name': 'E1', 'attendance_device_id': '7', 'default_shift': 'Standard',
+      };
+      f.responses['/api/resource/Shift Type'] = [
+        {'name': 'Standard', 'start_time': '8:00:00', 'end_time': '20:00:00',
+         'late_entry_grace_period': 15, 'custom_expected_hours': 10},
+      ];
+      f.responses['/api/resource/Attendance'] = [
+        {'name': 'A', 'employee': 'E1', 'attendance_date': '2026-11-29', 'status': 'Present',
+         'shift': 'Standard', 'custom_missing_punch': 1, 'custom_expected_hours': 10,
+         'custom_net_hours': 4.25, 'custom_shortfall_hours': 5.75},
+      ];
+    }
+
+    test('no Shift Assignment: the default shift is read into the catalogue', () async {
+      final f = _FakeService();
+      seedClocked(f);
+      final d = (await f.fetch(employee: 'E1', day: DateTime(2026, 11, 30)))!;
+      expect(d.assignments, isEmpty);
+      expect(d.defaultShift, 'Standard');
+      expect(d.catalog['Standard']!.isClocked, isTrue);
+      expect(d.ledger.single.missingPunch, isTrue);
+      expect(f.fieldsSent.where((x) => x.startsWith('/api/resource/Attendance ')).single,
+          contains('custom_shortfall_hours'));
+    });
+
+    test('a site without the custom fields: retried with the old ones', () async {
+      final f = _FakeService()..rejectCustomFields = true;
+      seedClocked(f);
+      final d = (await f.fetch(employee: 'E1', day: DateTime(2026, 11, 30)))!;
+      expect(d.ledger, hasLength(1));
+      expect(d.catalog.containsKey('Standard'), isTrue);
+      expect(f.fieldsSent.where((x) => x.startsWith('/api/resource/Attendance ')), hasLength(2));
+    });
+
+    test('System Manager without an employee: no list on the shifts → company assignment', () async {
+      final f = _FakeService();
+      f.responses['/api/resource/Shift Type'] = [
+        {'name': 'Standard', 'holiday_list': ''},
+      ];
+      f.responses['/api/resource/Holiday List Assignment'] = [
+        {'holiday_list': 'Multimax 2027', 'from_date': '2027-01-01'},
+      ];
+      f.responses['/api/resource/Holiday List/Multimax 2027'] = {
+        'holidays': [
+          {'holiday_date': '2027-01-03'},
+        ],
+      };
+      final d = (await f.fetch(employee: '', day: DateTime(2027, 1, 3)))!;
+      expect(d.holiday, isTrue);
+    });
   });
 }

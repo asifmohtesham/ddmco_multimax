@@ -20,8 +20,9 @@ ImageProvider? employeeImage(String? path) {
 }
 
 /// One employee row: avatar · name / department / In–Out · status pill + flag;
-/// on a two-shift day each shift line carries its own pill instead.
-/// Untracked rows drop the time row and render dimmed.
+/// on a two-shift day each shift line carries its own pill instead. A
+/// clocked-hours day adds its net hours against the expected ones and any
+/// shortfall. Untracked rows drop the time row and render dimmed.
 class EmployeeAttendanceCard extends StatelessWidget {
   const EmployeeAttendanceCard({super.key, required this.row, required this.onTap});
 
@@ -84,6 +85,9 @@ class EmployeeAttendanceCard extends StatelessWidget {
                           children: [
                             InOutStat(label: 'In', time: row.inTime),
                             InOutStat(label: 'Out', time: row.outTime),
+                            if (row.hoursLabel != null)
+                              ClockedHoursStat(
+                                  label: row.hoursLabel!, shortfall: row.shortfallLabel),
                           ],
                         ),
                       ],
@@ -125,6 +129,7 @@ class ShiftInOutLine extends StatelessWidget {
     AttendanceStatus.late,
     AttendanceStatus.absent,
     AttendanceStatus.noCheckOut,
+    AttendanceStatus.missingPunch,
   };
 
   @override
@@ -159,6 +164,45 @@ class ShiftInOutLine extends StatelessWidget {
         const SizedBox(width: 8),
         StatusPill(status: segment.status.label),
       ],
+    );
+  }
+}
+
+/// "Net 6h 10m of 10h", plus "· short 1h 15m" in the attention ink once the
+/// day is over and short of its expected hours.
+class ClockedHoursStat extends StatelessWidget {
+  const ClockedHoursStat({super.key, required this.label, this.shortfall});
+  final String label;
+  final String? shortfall;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.scheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(fontSize: 12, color: s.textMuted),
+        children: [
+          const TextSpan(text: 'Net '),
+          TextSpan(
+            text: label,
+            style: TextStyle(
+              color: s.text,
+              fontWeight: FontWeight.w600,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (shortfall != null)
+            TextSpan(
+              // Non-breaking spaces: "short 5h 54m" wraps as one piece.
+              text: ' · ${shortfall!.toLowerCase().replaceAll(' ', '\u00A0')}',
+              style: TextStyle(
+                color: dark ? AppColors.orange300 : AppColors.orange700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -207,7 +251,11 @@ class AttendanceFlag extends StatelessWidget {
         ? Icons.logout
         : text.contains('Punched')
             ? Icons.login
-            : Icons.schedule;
+            : text.contains('Missing')
+                ? Icons.touch_app_outlined
+                : text.startsWith('Short')
+                    ? Icons.hourglass_bottom
+                    : Icons.schedule;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -220,14 +268,28 @@ class AttendanceFlag extends StatelessWidget {
 }
 
 /// "NOT TRACKED · 10 · NO TERMINAL ID ────────" section divider.
+///
+/// [wrap] is for a sentence that may not fit one line (the month summary):
+/// the text wraps over the full width and the trailing rule is dropped.
 class AttendanceGroupHeader extends StatelessWidget {
-  const AttendanceGroupHeader({super.key, required this.text, this.icon});
+  const AttendanceGroupHeader({super.key, required this.text, this.icon, this.wrap = false});
   final String text;
   final IconData? icon;
+  final bool wrap;
 
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
+    final label = Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+        height: wrap ? 1.5 : null,
+        color: s.textSubtle,
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 6, 2, 0),
       child: Row(
@@ -236,17 +298,13 @@ class AttendanceGroupHeader extends StatelessWidget {
             Icon(icon, size: 14, color: s.textSubtle),
             const SizedBox(width: 8),
           ],
-          Text(
-            text.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-              color: s.textSubtle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(height: 1, color: s.border)),
+          if (wrap)
+            Expanded(child: label)
+          else ...[
+            label,
+            const SizedBox(width: 8),
+            Expanded(child: Divider(height: 1, color: s.border)),
+          ],
         ],
       ),
     );

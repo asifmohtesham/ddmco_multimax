@@ -17,7 +17,8 @@ class AttendanceMonthController extends GetxController {
   final records = <AttendanceRecord>[].obs;
   final assignments = <ShiftAssignmentRow>[].obs;
   final isLoading = true.obs;
-  final holidays = <String>{}.obs;
+  /// `yyyy-MM-dd` → the holiday's name ('' for a weekly off).
+  final holidays = <String, String>{}.obs;
   EmployeeDayStatus? today;
   final scrollController = ScrollController();
 
@@ -27,6 +28,13 @@ class AttendanceMonthController extends GetxController {
   /// path shows Sundays, both shifts and real late minutes.
   ShiftRules shift = ShiftRules.fallback;
   final catalog = <String, ShiftRules>{};
+
+  /// Months whose holidays are known: the one the route's holiday set came
+  /// with, and every month read since.
+  final _holidayMonths = <String>{};
+  String _monthKey(DateTime d) => '${d.year}-${d.month}';
+  bool _holidaysCover(DateTime from, DateTime to) =>
+      _holidayMonths.contains(_monthKey(from)) && _holidayMonths.contains(_monthKey(to));
 
   @override
   void onInit() {
@@ -40,7 +48,15 @@ class AttendanceMonthController extends GetxController {
         ? Get.find<AttendanceController>()
         : null;
     shift = args['shift'] as ShiftRules? ?? list?.shift.value ?? ShiftRules.fallback;
-    holidays.assignAll(args['holidays'] as Set<String>? ?? list?.holidays ?? const <String>{});
+    holidays.assignAll(
+        args['holidays'] as Map<String, String>? ?? list?.holidays ?? const <String, String>{});
+    // A handed-over set is trusted for its own months (one holiday in a
+    // month is enough to know that month was covered: every month has a
+    // Sunday); other months are read in [load].
+    for (final h in holidays.keys) {
+      final d = DateTime.tryParse(h);
+      if (d != null) _holidayMonths.add(_monthKey(d));
+    }
     catalog
       ..addAll(args['catalog'] as Map<String, ShiftRules>? ??
           list?.catalog ??
@@ -68,9 +84,18 @@ class AttendanceMonthController extends GetxController {
   Future<void> load() async {
     isLoading.value = true;
     try {
-      if (holidays.isEmpty && shift.holidayList.isNotEmpty) {
+      if (!_holidaysCover(first, last)) {
+        // The shift's own list, else (empty, as on the clocked-hours patterns)
+        // the company's dated Holiday List Assignments for this month.
         try {
-          holidays.assignAll(await _provider.fetchHolidays(shift.holidayList));
+          holidays.addAll(await _provider.fetchHolidays(
+            shift.holidayList,
+            from: first,
+            to: last,
+            company: employee.company,
+            employee: employee.name,
+          ));
+          _holidayMonths.add(_monthKey(first));
         } catch (_) {} // a month without holiday labels beats no month
       }
       final results = await Future.wait<Object>([
@@ -117,7 +142,15 @@ class AttendanceMonthController extends GetxController {
     load();
   }
 
-  bool isHoliday(DateTime d) => holidays.contains(kFrappeDate.format(d));
+  bool isHoliday(DateTime d) => holidays.containsKey(kFrappeDate.format(d));
+
+  /// The month's named holidays (Eid al-Fitr, not the weekly offs), by date.
+  List<({DateTime date, String name})> get namedHolidays => [
+        for (final e in holidays.entries)
+          if (e.value.isNotEmpty)
+            if (DateTime.tryParse(e.key) case final d?)
+              if (!d.isBefore(first) && !d.isAfter(last)) (date: d, name: e.value),
+      ]..sort((a, b) => a.date.compareTo(b.date));
 
   List<AttendanceRecord> recordsOn(DateTime d) {
     final key = kFrappeDate.format(d);
@@ -170,11 +203,13 @@ class AttendanceMonthController extends GetxController {
         requireCheckOut: shiftsOn(r.date).length > 1,
       );
 
-  /// "8 working days · 6 present · 1 absent" (+ " · 2 no check-out") for the
-  /// elapsed part of the month, counted by day.
+  /// "8 working days · 6 present · 1 absent" (+ " · 2 no check-out",
+  /// " · 1 missing punch", " · short 3h 20m") for the elapsed part of the
+  /// month, counted by day. The shortfall total adds the stamped
+  /// `custom_shortfall_hours` of the month's rows (clocked-hours days only).
   String get summary {
     final end = isCurrentMonth ? dateOnly(DateTime.now()) : last;
-    var working = 0, present = 0, absent = 0, noOut = 0;
+    var working = 0, present = 0, absent = 0, noOut = 0, missing = 0;
     for (var d = first; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
       if (!isHoliday(d)) working++;
       switch (statusOn(d)) {
@@ -184,11 +219,20 @@ class AttendanceMonthController extends GetxController {
           absent++;
         case AttendanceStatus.noCheckOut:
           noOut++;
+        case AttendanceStatus.missingPunch:
+          present++; // came in, a tap short
+          missing++;
         default:
           break;
       }
     }
+    // Same days as the counts: a row dated after today adds nothing yet.
+    final short = records
+        .where((r) => !dateOnly(r.date).isAfter(end))
+        .fold(0.0, (t, r) => t + (r.isClocked ? r.shortfallHours ?? 0 : 0));
     return '$working working day${working == 1 ? '' : 's'} · $present present · $absent absent'
-        '${noOut > 0 ? ' · $noOut no check-out' : ''}';
+        '${noOut > 0 ? ' · $noOut no check-out' : ''}'
+        '${missing > 0 ? ' · $missing missing punch' : ''}'
+        '${short > 0.004 ? ' · short ${formatHours(short)}' : ''}';
   }
 }

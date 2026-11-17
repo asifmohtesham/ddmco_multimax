@@ -13,6 +13,10 @@ import 'package:multimax/app/data/models/attendance_models.dart';
 class AttendanceNotifyData {
   final bool authExpired;
   final bool tracked;
+
+  /// `Employee.default_shift`: the clocked-hours pattern, used for reminders
+  /// when no Shift Assignment or Attendance row names a shift.
+  final String defaultShift;
   final List<ShiftAssignmentRow> assignments;
   final Map<String, ShiftRules> catalog;
   final List<EmployeeCheckin> punches;
@@ -35,6 +39,7 @@ class AttendanceNotifyData {
   const AttendanceNotifyData({
     this.authExpired = false,
     this.tracked = false,
+    this.defaultShift = '',
     this.assignments = const [],
     this.catalog = const {},
     this.punches = const [],
@@ -100,6 +105,25 @@ class AttendanceNotifyService {
         .toList();
   }
 
+  /// [_list] with [optional] fields that may not exist on the site yet (the
+  /// clocked-hours custom fields): Frappe refuses a request naming an unknown
+  /// field, so an error response is retried with [fields] alone. A
+  /// connection error (no response) is not retried.
+  Future<List<Map<String, dynamic>>> _listWithOptional(
+    String doctype, {
+    required List<String> fields,
+    required List<String> optional,
+    List<List<dynamic>> filters = const [],
+    String orderBy = 'modified desc',
+  }) async {
+    try {
+      return await _list(doctype, fields: [...fields, ...optional], filters: filters, orderBy: orderBy);
+    } on DioException catch (e) {
+      if (e.response == null) rethrow;
+      return _list(doctype, fields: fields, filters: filters, orderBy: orderBy);
+    }
+  }
+
   /// One document, or null when it can't be read (403 / 404 / network).
   /// Fully tolerant — for reads the brief marks tolerant on purpose (the
   /// heartbeat, the Holiday List).
@@ -153,6 +177,7 @@ class AttendanceNotifyService {
       final d = kFrappeDate.format(day);
       final from = kFrappeDate.format(dateOnly(day).subtract(const Duration(days: 3)));
       var tracked = false;
+      var defaultShift = '';
       var assignments = <ShiftAssignmentRow>[];
       var ledger = <AttendanceRecord>[];
       var punches = <EmployeeCheckin>[];
@@ -164,6 +189,7 @@ class AttendanceNotifyService {
         // the outer catch below, which turns it into null.
         final emp = await _employeeDoc(employee);
         tracked = '${emp?['attendance_device_id'] ?? ''}'.trim().isNotEmpty;
+        defaultShift = '${emp?['default_shift'] ?? ''}'.trim();
       }
       if (tracked) {
         assignments = (await _list('Shift Assignment',
@@ -181,11 +207,15 @@ class AttendanceNotifyService {
                 orderBy: 'start_date asc'))
             .map(ShiftAssignmentRow.fromJson)
             .toList();
-        ledger = (await _list('Attendance',
+        ledger = (await _listWithOptional('Attendance',
                 fields: [
                   'name', 'employee', 'employee_name', 'attendance_date', 'status',
                   'working_hours', 'in_time', 'out_time', 'late_entry', 'early_exit',
                   'shift', 'leave_type',
+                ],
+                optional: const [
+                  'custom_punch_count', 'custom_missing_punch', 'custom_net_hours',
+                  'custom_expected_hours', 'custom_shortfall_hours',
                 ],
                 filters: [
                   ['Attendance', 'employee', '=', employee],
@@ -211,14 +241,20 @@ class AttendanceNotifyService {
         for (final a in assignments) a.shiftType,
         for (final r in ledger)
           if (r.shift.trim().isNotEmpty) r.shift,
+        if (tracked && defaultShift.isNotEmpty) defaultShift,
       };
       final catalog = <String, ShiftRules>{};
       if (names.isNotEmpty) {
-        final rows = await _list('Shift Type',
+        final rows = await _listWithOptional('Shift Type',
             fields: [
               'name', 'start_time', 'end_time', 'late_entry_grace_period',
               'early_exit_grace_period', 'begin_check_in_before_shift_start_time',
               'allow_check_out_after_shift_end_time', 'holiday_list',
+            ],
+            optional: const [
+              'custom_expected_hours', 'custom_expected_hours_friday',
+              'custom_break_start', 'custom_break_end',
+              'custom_break_start_friday', 'custom_break_end_friday',
             ],
             filters: [
               ['Shift Type', 'name', 'in', names.toList()],
@@ -234,6 +270,7 @@ class AttendanceNotifyService {
       final syncDoc = await _doc('Attendance Sync Status', 'Attendance Sync Status');
       return AttendanceNotifyData(
         tracked: tracked,
+        defaultShift: defaultShift,
         assignments: assignments,
         catalog: catalog,
         punches: punches,
@@ -265,6 +302,25 @@ class AttendanceNotifyService {
     }
   }
 
+  /// The Holiday List of the latest submitted company Holiday List
+  /// Assignment starting on or before [d]; '' when none (or unreadable).
+  Future<String> _assignedHolidayList(String d) async {
+    const dt = 'Holiday List Assignment';
+    try {
+      final rows = await _list(dt,
+          fields: ['holiday_list', 'from_date'],
+          filters: [
+            [dt, 'docstatus', '=', 1],
+            [dt, 'applicable_for', '=', 'Company'],
+            [dt, 'from_date', '<=', d],
+          ],
+          orderBy: 'from_date desc');
+      return rows.isEmpty ? '' : '${rows.first['holiday_list'] ?? ''}'.trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// Employees read HRMS's own calendar (Holiday List is 403 for them); a
   /// System Manager without an employee reads the shifts' Holiday List.
   /// Unreadable ⇒ a working day.
@@ -289,6 +345,9 @@ class AttendanceNotifyService {
           break;
         }
       }
+      // No Shift Type names a list (HRMS 16 then follows the dated Holiday
+      // List Assignments): the company assignment in effect on [d].
+      if (list.isEmpty) list = await _assignedHolidayList(d);
       if (list.isEmpty) return false;
       final doc = await _doc('Holiday List', list);
       final holidays = doc?['holidays'];

@@ -167,7 +167,8 @@ class HomeController extends GetxController {
   final attendanceRows = <EmployeeDayStatus>[].obs; // attention-first
   /// The shift in focus now (in progress, else the day's first).
   final attendanceShift = Rx<ShiftRules>(ShiftRules.fallback);
-  final attendanceHolidays = <String>{}.obs;
+  /// `yyyy-MM-dd` → the holiday's name ('' for a weekly off).
+  final attendanceHolidays = <String, String>{}.obs;
   final attendanceLoadedAt = Rxn<DateTime>();
   final attendanceLatestPunch = Rxn<EmployeeCheckin>();
   List<TrackedEmployee> _attendanceEmployees = const [];
@@ -191,7 +192,11 @@ class HomeController extends GetxController {
       Get.find<PermissionService>().hasAccess('Attendance') == true;
 
   bool get attendanceIsHoliday =>
-      attendanceHolidays.contains(kFrappeDate.format(DateTime.now()));
+      attendanceHolidays.containsKey(kFrappeDate.format(DateTime.now()));
+
+  /// Today's holiday name ("Eid al-Fitr"); '' on a weekly off or a working day.
+  String get attendanceHolidayName =>
+      attendanceHolidays[kFrappeDate.format(DateTime.now())] ?? '';
 
   /// Before the day's first cut-off (the Morning's on a two-shift day).
   bool get beforeAttendanceCutoff => DateTime.now().isBefore(
@@ -239,10 +244,10 @@ class HomeController extends GetxController {
     return buildMonthStrip(
       month: DateTime(now.year, now.month),
       ledger: ledger,
-      holidays: attendanceHolidays,
+      holidays: attendanceHolidays.keys.toSet(),
       today: me,
       now: now,
-      shift: attendanceShift.value,
+      shift: me.rules ?? attendanceShift.value, // the viewer's own pattern
       employee: me.employee,
       catalog: attendanceCatalog,
     );
@@ -259,8 +264,8 @@ class HomeController extends GetxController {
       'employee': me.employee,
       'month': DateTime(now.year, now.month),
       'today': me,
-      'shift': attendanceShift.value,
-      'holidays': attendanceHolidays.toSet(),
+      'shift': me.rules ?? attendanceShift.value,
+      'holidays': Map<String, String>.of(attendanceHolidays),
       'catalog': Map<String, ShiftRules>.of(attendanceCatalog),
     });
   }
@@ -299,7 +304,13 @@ class HomeController extends GetxController {
         .map((s) => s.holidayList)
         .firstWhere((h) => h.isNotEmpty, orElse: () => _attendanceDefaultShift.holidayList);
     try {
-      attendanceHolidays.assignAll(await _attendanceProvider.fetchHolidays(list));
+      // No list on any shift (clocked-hours patterns): the company's dated
+      // Holiday List Assignments for this year decide.
+      attendanceHolidays.assignAll(await _attendanceProvider.fetchHolidays(
+        list,
+        company: companyOf(_attendanceEmployees),
+        employee: _authController.currentUser.value?.employeeId ?? '',
+      ));
       _attendanceHolidaysLoaded = true;
     } catch (_) {}
   }
@@ -360,10 +371,12 @@ class HomeController extends GetxController {
       final ledger = results[1] as List<AttendanceRecord>;
       myMonthLedger.value = results[2] as List<AttendanceRecord>?;
       _attendanceAssignments = results[3] as List<ShiftAssignmentRow>;
+      // Every employee's own pattern (default_shift), not only the first one's.
       await _ensureAttendanceCatalog([
         for (final a in _attendanceAssignments) a.shiftType,
         for (final r in ledger) r.shift,
         for (final r in myMonthLedger.value ?? const <AttendanceRecord>[]) r.shift,
+        ...defaultShiftNames(_attendanceEmployees),
       ]);
       if (checkins.isEmpty) {
         try {

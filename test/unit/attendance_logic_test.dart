@@ -359,6 +359,14 @@ void main() {
     test('holiday names the weekday', () {
       expect(h(AttendanceStatus.holiday), ('Holiday', 'Thursday · no attendance expected'));
     });
+    test('a named holiday heads with its name; other days ignore it', () {
+      final hol = EmployeeDayStatus(employee: tracked, status: AttendanceStatus.holiday);
+      expect(myAttendanceHeadline(hol, shift, now, holidayName: 'Eid al-Fitr'),
+          ('Eid al-Fitr', 'Thursday · no attendance expected'));
+      final absent = EmployeeDayStatus(employee: tracked, status: AttendanceStatus.absent);
+      expect(myAttendanceHeadline(absent, shift, now, holidayName: 'Eid al-Fitr'),
+          ('Absent', 'No check-in recorded'));
+    });
     test('late without minutes never says on time', () {
       expect(h(AttendanceStatus.late, inTime: DateTime(2026, 9, 10, 8, 27)),
           ('In · 08:27', 'After the 08:15 cut-off'));
@@ -366,6 +374,27 @@ void main() {
     test('late with no in-time', () {
       expect(h(AttendanceStatus.late), ('Late', 'After the 08:15 cut-off'));
     });
+  });
+
+  test('withNamedHolidays: each holiday before its own and earlier days', () {
+    AttendanceRecord rec(int d) => AttendanceRecord(
+        name: 'A$d', employee: 'E', employeeName: 'E', date: DateTime(2026, 3, d, 9), status: 'Present');
+    final out = withNamedHolidays(
+      [rec(23), rec(22), rec(19)], // newest first, as the screen sorts them
+      [
+        (date: DateTime(2026, 3, 20), name: 'Eid al-Fitr'),
+        (date: DateTime(2026, 3, 21), name: 'Eid al-Fitr'),
+        (date: DateTime(2026, 3, 2), name: 'Earliest'),
+        (date: DateTime(2026, 3, 30), name: 'Latest'),
+      ],
+    );
+    String key(Object e) => e is AttendanceRecord
+        ? 'r${e.date.day}'
+        : 'h${(e as ({DateTime date, String name})).date.day}';
+    expect(out.map(key), ['h30', 'r23', 'r22', 'h21', 'h20', 'r19', 'h2']);
+    // No holidays: the rows unchanged; no rows: just the holidays.
+    expect(withNamedHolidays([rec(5)], const []).map(key), ['r5']);
+    expect(withNamedHolidays(const [], [(date: DateTime(2026, 3, 20), name: 'x')]).map(key), ['h20']);
   });
 
   test('unenrolledLabel pluralises', () {
@@ -700,6 +729,330 @@ void main() {
         'early_exit_grace_period': 15, 'allow_check_out_after_shift_end_time': 120,
       });
       expect((j.earlyExitGraceMinutes, j.checkOutAfterMinutes), (15, 120));
+    });
+  });
+
+  // The clocked-hours model from 2026-11-30 (design 3.2–3.4). The worked
+  // examples are the same as clocked-hours/test-attendance-stamp.py, which
+  // checks the Server Script that stamps the Attendance rows.
+  group('clocked hours', () {
+    // As the Shift Types come back from Frappe (Time fields as strings,
+    // empty Friday expected hours = same as the other days).
+    final standard = ShiftRules.fromJson({
+      'name': 'Standard', 'start_time': '8:00:00', 'end_time': '20:00:00',
+      'late_entry_grace_period': 15, 'begin_check_in_before_shift_start_time': 120,
+      'allow_check_out_after_shift_end_time': 120, 'holiday_list': '',
+      'custom_expected_hours': 10, 'custom_expected_hours_friday': null,
+      'custom_break_start': '12:15:00', 'custom_break_end': '13:30:00',
+      'custom_break_start_friday': '12:00:00', 'custom_break_end_friday': '14:30:00',
+    });
+    final lateStart = ShiftRules.fromJson({
+      'name': 'Late Start', 'start_time': '10:00:00', 'end_time': '18:00:00',
+      'late_entry_grace_period': 15, 'begin_check_in_before_shift_start_time': 240,
+      'allow_check_out_after_shift_end_time': 240,
+      'custom_expected_hours': 8, 'custom_expected_hours_friday': 0,
+      'custom_break_start': null, 'custom_break_end': '',
+      'custom_break_start_friday': '12:00:00', 'custom_break_end_friday': '14:30:00',
+    });
+    final earlyFinish = ShiftRules.fromJson({
+      'name': 'Early Finish', 'start_time': '08:00:00', 'end_time': '19:00:00',
+      'late_entry_grace_period': 15, 'begin_check_in_before_shift_start_time': 120,
+      'allow_check_out_after_shift_end_time': 180,
+      'custom_expected_hours': 8.0,
+      'custom_break_start': '12:15:00', 'custom_break_end': '13:30:00',
+      'custom_break_start_friday': '12:00:00', 'custom_break_end_friday': '14:30:00',
+    });
+    final mon = DateTime(2026, 11, 30), fri = DateTime(2026, 12, 4);
+
+    List<EmployeeCheckin> taps(DateTime d, List<String> hms) => [
+          for (final t in hms)
+            EmployeeCheckin(
+              name: t,
+              employee: tracked.name,
+              time: d.add(Duration(
+                  hours: int.parse(t.split(':')[0]), minutes: int.parse(t.split(':')[1]))),
+            ),
+        ];
+
+    // pattern, day, taps, net, shortfall, missing punch — design 3.4 tables.
+    final cases = <(ShiftRules, DateTime, List<String>, double, double, bool)>[
+      (standard, mon, ['08:00', '12:15', '13:30', '20:00'], 10.75, 0, false),
+      (standard, mon, ['08:00', '20:00'], 10.75, 0, false),
+      (standard, mon, ['08:00', '12:40', '13:10', '20:00'], 10.75, 0, false),
+      (standard, mon, ['08:20', '12:15', '13:30', '20:00'], 10.42, 0, false),
+      (standard, mon, ['08:00', '12:15', '13:30', '18:00'], 8.75, 1.25, false),
+      (standard, mon, ['08:00', '13:30', '20:00'], 4.25, 5.75, true),
+      (standard, mon, ['08:00'], 0, 10, true),
+      (standard, fri, ['08:00', '12:00', '14:30', '20:00'], 9.5, 0.5, false),
+      (standard, fri, ['08:00', '20:00'], 9.5, 0.5, false),
+      (lateStart, mon, ['10:00', '18:00'], 8, 0, false),
+      (lateStart, mon, ['08:02', '18:02'], 10, 0, false),
+      (lateStart, fri, ['10:00', '18:00'], 5.5, 2.5, false),
+      (lateStart, fri, ['10:00', '12:00', '14:30', '18:00'], 5.5, 2.5, false),
+      (earlyFinish, mon, ['08:00', '12:15', '13:30', '19:00'], 9.75, 0, false),
+      (earlyFinish, fri, ['08:00', '12:00', '14:30', '19:00'], 8.5, 0, false),
+    ];
+
+    for (final (shift, d, hms, net, short, missing) in cases) {
+      test('${shift.name} ${d.weekday == DateTime.friday ? 'Fri' : 'Mon'} ${hms.join(', ')} '
+          '→ net $net, short $short', () {
+        final c = clockedDay(taps(d, hms), shift, d);
+        expect(c.netHours, closeTo(net, 1e-9));
+        expect(c.punchCount, hms.length);
+        expect(c.oddTaps, missing);
+        expect(c.expectedHours, shift.expectedHours);
+
+        // The same day derived the next morning, before HRMS has a row.
+        final r = deriveDayStatus(
+          employee: tracked,
+          day: d,
+          now: d.add(const Duration(days: 1, hours: 7)),
+          shift: shift,
+          isHoliday: false,
+          punches: taps(d, hms).reversed.toList(), // unsorted on purpose
+        );
+        expect(r.isClocked, isTrue);
+        expect(r.netHours, closeTo(net, 1e-9));
+        expect(r.expectedHours, shift.expectedHours);
+        expect(r.shortfallHours, closeTo(short, 1e-9));
+        expect(r.missingPunch, missing);
+        expect(r.status == AttendanceStatus.missingPunch, missing);
+        expect(r.rules, same(shift));
+      });
+    }
+
+    test('Late Start: 10:20 is 5 min late (cut-off 10:15)', () {
+      final r = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 11, 30, 11), shift: lateStart,
+        isHoliday: false, punches: taps(mon, ['10:20']),
+      );
+      expect(r.status, AttendanceStatus.late);
+      expect(r.lateBy, const Duration(minutes: 5));
+    });
+
+    test('today, still running: an odd count is just "in", no shortfall yet', () {
+      final now = DateTime(2026, 11, 30, 15);
+      final r = deriveDayStatus(
+        employee: tracked, day: mon, now: now, shift: standard, isHoliday: false,
+        punches: taps(mon, ['08:00', '12:15', '13:30']),
+      );
+      expect(r.status, AttendanceStatus.present);
+      expect(r.missingPunch, isFalse);
+      expect(r.netHours, closeTo(4.25, 1e-9)); // the open 13:30 tap adds nothing yet
+      expect(r.shortfallHours, isNull);
+      expect(r.hoursLabel, '4h 15m of 10h');
+      expect(r.shortfallLabel, isNull);
+      expect(r.outTime, isNull);
+      expect(myAttendanceHeadline(r, standard, now), ('In · 08:00', 'On time · 4h 15m of 10h'));
+    });
+
+    test('today after the window closes (22:00): odd taps become Missing punch', () {
+      final r = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 11, 30, 22, 1), shift: standard,
+        isHoliday: false, punches: taps(mon, ['08:20', '13:30', '20:00']),
+      );
+      expect(r.status, AttendanceStatus.missingPunch);
+      expect(r.flag, '5 min late'); // the pill says Missing punch; the flag keeps the minutes
+      expect(r.flagIsWarning, isTrue);
+      expect(r.shortfallLabel, 'Short 6h 05m'); // 08:20–13:30 less the 12:15–13:30 break = 3.92 h
+      expect(r.status.severity, AttendanceStatus.noCheckOut.severity);
+    });
+
+    test('taps outside the 06:00–22:00 window are shown but not counted', () {
+      final c = clockedDay(taps(mon, ['05:30', '08:00', '20:00', '22:30']), standard, mon);
+      expect(c.punchCount, 2);
+      expect(c.netHours, closeTo(10.75, 1e-9));
+    });
+
+    test('no taps: Absent with expected hours and no shortfall (design 3.4)', () {
+      final r = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 12, 1, 7), shift: standard,
+        isHoliday: false,
+      );
+      expect(r.status, AttendanceStatus.absent);
+      expect((r.netHours, r.expectedHours, r.shortfallHours), (0.0, 10.0, 0.0));
+    });
+
+    test('Friday: own break when both fields are set, else the weekday break', () {
+      expect(standard.breakLabelOn(fri), '12:00–14:30');
+      expect(standard.breakLabelOn(mon), '12:15–13:30');
+      expect(lateStart.breakOn(mon), isNull);
+      final noFridayBreak = ShiftRules.fromJson({
+        'name': 'X', 'start_time': '08:00:00', 'end_time': '20:00:00',
+        'custom_expected_hours': 10,
+        'custom_break_start': '12:15:00', 'custom_break_end': '13:30:00',
+        'custom_break_start_friday': '12:00:00', // end missing: weekday break applies
+      });
+      expect(noFridayBreak.breakLabelOn(fri), '12:15–13:30');
+    });
+
+    test('Friday expected hours: their own figure when set, else the weekday one', () {
+      expect(standard.expectedHoursOn(fri), 10);
+      final withFriday = ShiftRules.fromJson({
+        'name': 'X', 'start_time': '08:00:00', 'end_time': '20:00:00',
+        'custom_expected_hours': '10', 'custom_expected_hours_friday': '9.5',
+        'custom_break_start_friday': '12:00:00', 'custom_break_end_friday': '14:30:00',
+      });
+      expect(withFriday.expectedHoursOn(fri), 9.5);
+      expect(withFriday.expectedHoursOn(mon), 10);
+      final c = clockedDay(taps(fri, ['08:00', '20:00']), withFriday, fri);
+      expect(c.shortfallFor(AttendanceStatus.present), 0);
+    });
+
+    AttendanceRecord stamped(String status,
+            {bool late = false, bool missing = false, double net = 10.75, double short = 0}) =>
+        AttendanceRecord(
+          name: 'ATT-1', employee: tracked.name, employeeName: '', date: mon, status: status,
+          shift: 'Standard', lateEntry: late, workingHours: 12,
+          inTime: DateTime(2026, 11, 30, 8, 20), outTime: DateTime(2026, 11, 30, 20),
+          punchCount: missing ? 3 : 4, missingPunch: missing, netHours: net,
+          expectedHours: 10, shortfallHours: short,
+        );
+
+    test('past day: net, expected, shortfall and missing punch come from the record', () {
+      final r = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 12, 3), shift: standard,
+        isHoliday: false,
+        // The day's punches disagree on purpose: the stamped row wins.
+        punches: taps(mon, ['08:00', '20:00']),
+        ledger: stamped('Present', late: true, missing: true, net: 4.25, short: 5.75),
+      );
+      expect(r.status, AttendanceStatus.missingPunch);
+      expect(r.flag, '5 min late');
+      expect((r.netHours, r.expectedHours, r.shortfallHours), (4.25, 10.0, 5.75));
+      expect(r.punchCount, 3);
+      expect(r.workingHours, 12); // HRMS's own paired hours stay available
+      expect(r.hoursLabel, '4h 15m of 10h');
+    });
+
+    test('past day, complete: Present with its figures, no flag', () {
+      final r = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 12, 3), shift: standard,
+        isHoliday: false, ledger: stamped('Present'),
+      );
+      expect(r.status, AttendanceStatus.present);
+      expect(r.flag, isNull);
+      expect(r.shortfallLabel, isNull);
+    });
+
+    test('fields absent on the site: rows and shift types read as before', () {
+      // No custom_* keys in the JSON, as when the fields do not exist yet.
+      final rules = ShiftRules.fromJson({
+        'name': 'General', 'start_time': '08:00:00', 'end_time': '20:00:00',
+        'late_entry_grace_period': 15, 'begin_check_in_before_shift_start_time': 120,
+        'allow_check_out_after_shift_end_time': 120,
+      });
+      final rec = AttendanceRecord.fromJson({
+        'name': 'ATT-2', 'employee': tracked.name, 'attendance_date': '2026-11-30',
+        'status': 'Present', 'working_hours': 11.5, 'in_time': '2026-11-30 08:00:00',
+      });
+      expect(rules.isClocked, isFalse);
+      expect(rules.breakOn(mon), isNull);
+      expect(rec.isClocked, isFalse);
+      expect((rec.netHours, rec.expectedHours, rec.missingPunch), (null, null, false));
+
+      final today = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 11, 30, 23), shift: rules,
+        isHoliday: false, punches: taps(mon, ['08:00', '12:00', '13:00']),
+      );
+      expect(today.status, AttendanceStatus.present); // never Missing punch
+      expect(today.isClocked, isFalse);
+      expect(today.hoursLabel, isNull);
+      expect(today.workingHours, 0);
+
+      final past = deriveDayStatus(
+        employee: tracked, day: mon, now: DateTime(2026, 12, 3), shift: rules,
+        isHoliday: false, ledger: rec,
+      );
+      expect(past.status, AttendanceStatus.present);
+      expect(past.isClocked, isFalse);
+      expect(past.workingHours, 11.5);
+    });
+
+    test('an unstamped row (old Shift Type) is not clocked even with the fields present', () {
+      final rec = AttendanceRecord.fromJson({
+        'name': 'ATT-3', 'employee': tracked.name, 'attendance_date': '2026-11-20',
+        'status': 'Present', 'shift': 'Morning', 'custom_punch_count': 0,
+        'custom_missing_punch': 0, 'custom_net_hours': 0, 'custom_expected_hours': 0,
+        'custom_shortfall_hours': 0,
+      });
+      expect(rec.isClocked, isFalse);
+    });
+
+    test('stamped row parsing: Check, Int and Float fields', () {
+      final rec = AttendanceRecord.fromJson({
+        'name': 'ATT-4', 'employee': tracked.name, 'attendance_date': '2026-11-30',
+        'status': 'Present', 'custom_punch_count': 3, 'custom_missing_punch': 1,
+        'custom_net_hours': 4.25, 'custom_expected_hours': 10, 'custom_shortfall_hours': '5.75',
+      });
+      expect(rec.isClocked, isTrue);
+      expect((rec.punchCount, rec.missingPunch, rec.netHours, rec.shortfallHours),
+          (3, true, 4.25, 5.75));
+    });
+
+    test('counts, filters and the month strip know Missing punch', () {
+      EmployeeDayStatus row(String id, AttendanceStatus st) => EmployeeDayStatus(
+          employee: TrackedEmployee(name: id, employeeName: id, deviceId: '1'), status: st);
+      final rows = [
+        row('a', AttendanceStatus.present),
+        row('b', AttendanceStatus.missingPunch),
+        row('c', AttendanceStatus.absent),
+      ];
+      final c = AttendanceCounts.of(rows);
+      expect((c.present, c.missing, c.absent, c.tracked), (2, 1, 1, 3));
+      expect(filterRows(rows, statusKey: 'Missing punch').map((r) => r.employee.name), ['b']);
+      expect(filterRows(rows, statusKey: 'Present').map((r) => r.employee.name), ['a', 'b']);
+
+      final s = buildMonthStrip(
+        month: DateTime(2026, 12),
+        ledger: [
+          AttendanceRecord(
+            name: 'M1', employee: tracked.name, employeeName: '', date: DateTime(2026, 12, 1),
+            status: 'Present', shift: 'Standard', missingPunch: true, netHours: 4,
+            expectedHours: 10, shortfallHours: 6,
+          ),
+          AttendanceRecord(
+            name: 'M2', employee: tracked.name, employeeName: '', date: DateTime(2026, 12, 2),
+            status: 'Present', shift: 'Standard', netHours: 10.75, expectedHours: 10,
+            shortfallHours: 0,
+          ),
+        ],
+        holidays: const {},
+        today: null,
+        now: DateTime(2026, 12, 3, 9),
+        shift: standard,
+        employee: tracked,
+        catalog: {'Standard': standard},
+      );
+      expect(s.days[0], AttendanceStatus.missingPunch);
+      expect(s.days[1], AttendanceStatus.present);
+      expect(s.tallyLabel, 'December · 1 present · 0 late · 0 absent · 1 missing punch');
+    });
+
+    test('formatHours', () {
+      expect(formatHours(10.75), '10h 45m');
+      expect(formatHours(8), '8h');
+      expect(formatHours(0.42), '25m');
+      expect(formatHours(0), '0h');
+      expect(formatHours(10.42), '10h 25m');
+    });
+
+    test('the whole catalogue: every default_shift once; company for holidays', () {
+      const emps = [
+        TrackedEmployee(name: '1', employeeName: 'a', defaultShift: 'Standard'),
+        TrackedEmployee(name: '2', employeeName: 'b', defaultShift: 'Late Start', company: 'Multimax'),
+        TrackedEmployee(name: '3', employeeName: 'c', defaultShift: 'Standard'),
+        TrackedEmployee(name: '4', employeeName: 'd', defaultShift: ' '),
+        TrackedEmployee(name: '5', employeeName: 'e', defaultShift: 'Early Finish'),
+      ];
+      expect(defaultShiftNames(emps), {'Standard', 'Late Start', 'Early Finish'});
+      expect(companyOf(emps), 'Multimax');
+      expect(companyOf(const []), '');
+      // With the whole catalogue loaded, each person gets their own pattern.
+      final cat = {'Standard': standard, 'Late Start': lateStart, 'Early Finish': earlyFinish};
+      expect(
+          resolveShifts(employee: emps[1], day: mon, assignments: const [], catalog: cat).single,
+          same(lateStart));
     });
   });
 }
