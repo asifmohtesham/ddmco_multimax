@@ -249,7 +249,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         child: Scaffold(
           appBar: reviewing
               ? _reviewAppBar()
-              : AppBar(title: const Text('Stock sheet')),
+              : AppBar(title: const Text('Items from photos')),
           body: Obx(_body),
           bottomNavigationBar: Obx(_footer),
         ),
