@@ -1,1 +1,1 @@
-POS Upload: the Status filter no longer offers "Draft" and "Submitted". No upload can have either status, so both always showed an empty list. The same two choices are gone from the status field on the upload form.
+New: turn item photos into a stock sheet. Select photos in your gallery, tap Share and choose Multimax. Each label's barcode is read and stock is checked, then a review list opens: drag to reorder, switch photos off, type or scan a code for an unreadable label, add more photos, and see Balance Qty with rack names. Make an Excel sheet, a PDF or both, ready to send.
