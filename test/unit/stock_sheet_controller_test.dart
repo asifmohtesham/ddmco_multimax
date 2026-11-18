@@ -179,7 +179,9 @@ void main() {
     _FakeProvider provider, {
     SheetFormatStore? store,
     Future<List<String>> Function()? extraRoots,
+    Future<void> Function()? clearPickerFiles,
   }) => StockSheetController(
+    clearPickerFiles: clearPickerFiles ?? () async {},
     formatStore: store ?? _MemoryFormatStore(),
     decoderFactory: () => decoder,
     provider: provider,
@@ -400,33 +402,40 @@ void main() {
     );
   });
 
-  test('review edits and Generate file are ignored outside the review', () async {
-    final store = _MemoryFormatStore();
-    final decoder = _FakeDecoder({
-      'a.jpg': [_ean(_a)],
-      'b.jpg': [_ean(_b)],
-    });
-    final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}), store: store);
+  test(
+    'review edits and Generate file are ignored outside the review',
+    () async {
+      final store = _MemoryFormatStore();
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+      });
+      final c = make(
+        decoder,
+        _FakeProvider(stock: {_a: 1, _b: 1}),
+        store: store,
+      );
 
-    // Idle: nothing to edit, nothing to make.
-    c.reorder(0, 1);
-    c.setIncluded(0, false);
-    c.setItemIncluded(0, 0, false);
-    await c.makeSheet(SheetFormat.pdf);
-    expect(c.phase.value, StockSheetPhase.idle);
-    expect(store.saved, isNull);
+      // Idle: nothing to edit, nothing to make.
+      c.reorder(0, 1);
+      c.setIncluded(0, false);
+      c.setItemIncluded(0, 0, false);
+      await c.makeSheet(SheetFormat.pdf);
+      expect(c.phase.value, StockSheetPhase.idle);
+      expect(store.saved, isNull);
 
-    await run(c, ['a.jpg', 'b.jpg'], SheetFormat.excel);
-    expect(c.phase.value, StockSheetPhase.done);
-    final before = c.review.toList();
-    c.reorder(0, 2);
-    c.setIncluded(0, false);
-    c.setItemIncluded(1, 0, false);
-    expect(c.review, orderedEquals(before));
-    await c.makeSheet(SheetFormat.pdf);
-    expect(shared, hasLength(1));
-    expect(store.saved, SheetFormat.excel);
-  });
+      await run(c, ['a.jpg', 'b.jpg'], SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.done);
+      final before = c.review.toList();
+      c.reorder(0, 2);
+      c.setIncluded(0, false);
+      c.setItemIncluded(1, 0, false);
+      expect(c.review, orderedEquals(before));
+      await c.makeSheet(SheetFormat.pdf);
+      expect(shared, hasLength(1));
+      expect(store.saved, SheetFormat.excel);
+    },
+  );
 
   test('Generate file with every photo switched off does nothing', () async {
     final store = _MemoryFormatStore();
@@ -770,12 +779,15 @@ void main() {
       expect(await c.download(), 'Saved Items-20261117-0905.xlsx.');
     });
 
-    test('cancelling the second dialog keeps the first and returns null', () async {
-      final c = await both();
-      saveAnswers = [true, false];
-      expect(await c.download(), isNull);
-      expect(saveCalls, hasLength(2));
-    });
+    test(
+      'cancelling the second dialog keeps the first and returns null',
+      () async {
+        final c = await both();
+        saveAnswers = [true, false];
+        expect(await c.download(), isNull);
+        expect(saveCalls, hasLength(2));
+      },
+    );
 
     test('a saver error returns saveFailedMessage and stops', () async {
       final c = await both();
@@ -1507,6 +1519,20 @@ void main() {
       expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
     });
 
+    test(
+      'restore skips a photo that was added again under a new path',
+      () async {
+        final c = await three();
+        fingerprints['a2.jpg'] = 'A';
+        final removed = c.removeAt(0)!;
+        expect(await c.addPhotos(['a2.jpg']), isNull);
+
+        c.restore(removed, 0);
+
+        expect(reviewPaths(c), ['b.jpg', 'd.jpg', 'a2.jpg']);
+      },
+    );
+
     test('a removed photo can be added again', () async {
       final c = await three();
       fingerprints['a2.jpg'] = 'A';
@@ -1514,6 +1540,30 @@ void main() {
 
       expect(await c.addPhotos(['a2.jpg']), isNull);
       expect(reviewPaths(c), contains('a2.jpg'));
+    });
+  });
+
+  group('picker copies', () {
+    test('onClose clears the file picker temporary files', () async {
+      var cleared = 0;
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(stock: {}),
+        clearPickerFiles: () async => cleared++,
+      );
+      c.onClose();
+      await pumpEventQueue();
+      expect(cleared, 1);
+    });
+
+    test('onClose ignores an error from the clean-up', () async {
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(stock: {}),
+        clearPickerFiles: () async => throw StateError('no picker'),
+      );
+      c.onClose();
+      await pumpEventQueue();
     });
   });
 

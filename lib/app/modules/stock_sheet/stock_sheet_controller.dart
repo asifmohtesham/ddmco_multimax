@@ -101,6 +101,7 @@ class StockSheetController extends GetxController {
     Future<Uint8List?> Function(String)? makeThumbnail,
     PhotoFingerprinter? fingerprint,
     Future<List<String>> Function()? extraCleanupRoots,
+    Future<void> Function()? clearPickerFiles,
   }) : _formatStore = formatStore ?? const StorageSheetFormatStore(),
        _decoderFactory = decoderFactory ?? MlKitPhotoDecoder.new,
        _provider = provider ?? StockSheetProvider(),
@@ -111,6 +112,7 @@ class StockSheetController extends GetxController {
        _writePdf = writePdf ?? PdfStockSheetWriter.writeInBackground,
        _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path)),
        _fingerprint = fingerprint ?? fingerprintPhotos,
+       _clearPickerFiles = clearPickerFiles ?? FilePicker.clearTemporaryFiles,
        _extraCleanupRoots =
            extraCleanupRoots ?? NativeIntake.instance.sharedFolders;
 
@@ -154,6 +156,10 @@ class StockSheetController extends GetxController {
   }
 
   final FileSaver _saveFile;
+
+  /// Removes the copies the file picker leaves in the temporary folder
+  /// after a save (iOS).
+  final Future<void> Function() _clearPickerFiles;
   final SheetFormatStore _formatStore;
   final PhotoDecoder Function() _decoderFactory;
   final StockSheetProvider _provider;
@@ -341,6 +347,11 @@ class StockSheetController extends GetxController {
   void restore(ReviewEntry entry, int index) {
     if (_closed || !_reviewing) return;
     if (review.any((e) => e.path == entry.path)) return;
+    // The same photo may have been added again under a new path.
+    final print = _fingerprintOf[entry.path];
+    if (print != null && review.any((e) => _fingerprintOf[e.path] == print)) {
+      return;
+    }
     review.insert(index.clamp(0, review.length), entry);
   }
 
@@ -792,7 +803,16 @@ class StockSheetController extends GetxController {
     unawaited(_deleteSharedCopies(_givenPhotos.toList()));
     _givenPhotos.clear();
     _fingerprintOf.clear();
+    unawaited(_clearPickerTemporaryFiles());
     super.onClose();
+  }
+
+  Future<void> _clearPickerTemporaryFiles() async {
+    try {
+      await _clearPickerFiles();
+    } catch (e, st) {
+      _log('clearing the picker copies failed', e, st);
+    }
   }
 
   void _clear() {
