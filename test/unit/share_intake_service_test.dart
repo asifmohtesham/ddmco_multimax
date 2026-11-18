@@ -324,6 +324,18 @@ void main() {
     ]);
   });
 
+  test('a stranded share is picked up at start-up without a resume', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await makeStranded(() async => ['/g/cold.jpg']);
+    expect(opened, isEmpty, reason: 'still inside the delay');
+
+    await Future<void>.delayed(delay * 3);
+    expect(opened, [
+      ['/g/cold.jpg'],
+    ]);
+  });
+
   test('a share delivered by URL is not picked up again on resume', () async {
     signedIn.value = true;
     route = AppRoutes.HOME;

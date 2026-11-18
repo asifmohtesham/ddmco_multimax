@@ -108,6 +108,8 @@ class ShareIntakeService extends GetxService {
     );
     _authWorker = ever<bool>(_signedIn, (_) => _openPending());
     unawaited(_takeInitialShare());
+    // A cold launch whose share URL never arrives leaves the share stranded.
+    _scheduleStrandedCheck();
   }
 
   @override
