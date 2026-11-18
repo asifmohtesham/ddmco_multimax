@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -53,6 +54,10 @@ enum StockSheetPhase {
   error,
 }
 
+/// Saves [bytes] as [fileName] where the user chooses. True when saved, false
+/// when the user cancelled; throws when saving failed.
+typedef FileSaver = Future<bool> Function(String fileName, Uint8List bytes);
+
 /// Remembers the format of the last Make sheet.
 abstract class SheetFormatStore {
   SheetFormat read();
@@ -89,6 +94,7 @@ class StockSheetController extends GetxController {
     PhotoDecoder Function()? decoderFactory,
     StockSheetProvider? provider,
     Future<void> Function(List<XFile>)? shareFiles,
+    FileSaver? saveFile,
     DateTime Function()? now,
     Future<Directory> Function()? tempDir,
     Future<Uint8List> Function(StockSheetDocument)? writePdf,
@@ -99,6 +105,7 @@ class StockSheetController extends GetxController {
        _decoderFactory = decoderFactory ?? MlKitPhotoDecoder.new,
        _provider = provider ?? StockSheetProvider(),
        _shareFiles = shareFiles ?? _defaultShare,
+       _saveFile = saveFile ?? _defaultSave,
        _now = now ?? DateTime.now,
        _tempDir = tempDir ?? getTemporaryDirectory,
        _writePdf = writePdf ?? PdfStockSheetWriter.writeInBackground,
@@ -114,6 +121,7 @@ class StockSheetController extends GetxController {
   static const String _pdfMime = 'application/pdf';
   static const String shareFailedMessage =
       "Couldn't open the share sheet. Try again.";
+  static const String saveFailedMessage = "Couldn't save the file. Try again.";
   static const String noAccessMessage =
       "You don't have access to stock levels.";
   static const String offlineMessage =
@@ -140,6 +148,12 @@ class StockSheetController extends GetxController {
     await SharePlus.instance.share(ShareParams(files: files));
   }
 
+  static Future<bool> _defaultSave(String fileName, Uint8List bytes) async {
+    final saved = await FilePicker.saveFile(fileName: fileName, bytes: bytes);
+    return saved != null;
+  }
+
+  final FileSaver _saveFile;
   final SheetFormatStore _formatStore;
   final PhotoDecoder Function() _decoderFactory;
   final StockSheetProvider _provider;
@@ -173,6 +187,9 @@ class StockSheetController extends GetxController {
 
   /// True while [shareAgain] is handing the files to the share sheet.
   final sharing = false.obs;
+
+  /// True while [download] saves the files.
+  final downloading = false.obs;
 
   /// True while [fixCode] looks a typed code up.
   final fixing = false.obs;
@@ -628,12 +645,39 @@ class StockSheetController extends GetxController {
 
   /// Shares the files already written; the ERP is not asked again.
   Future<void> shareAgain() async {
-    if (sharing.value || _closed || files.isEmpty) return;
+    if (sharing.value || downloading.value || _closed || files.isEmpty) return;
     sharing.value = true;
     try {
       await _share();
     } finally {
       sharing.value = false;
+    }
+  }
+
+  /// Saves each file where the user chooses, one dialog per file. Returns
+  /// the message to show: what was saved, or [saveFailedMessage]. Null when
+  /// the user cancelled (files already saved stay), or when there is nothing
+  /// to do or a share or save is already running.
+  Future<String?> download() async {
+    if (downloading.value || sharing.value || _closed || files.isEmpty) {
+      return null;
+    }
+    downloading.value = true;
+    try {
+      final names = <String>[];
+      for (final file in files.toList()) {
+        final bytes = await file.readAsBytes();
+        if (!await _saveFile(file.name, bytes)) return null;
+        names.add(file.name);
+      }
+      return names.length == 1
+          ? 'Saved ${names.single}.'
+          : 'Saved ${names.length} files.';
+    } catch (e, st) {
+      _log('download failed', e, st);
+      return saveFailedMessage;
+    } finally {
+      downloading.value = false;
     }
   }
 

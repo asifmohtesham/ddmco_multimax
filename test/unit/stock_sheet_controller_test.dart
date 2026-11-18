@@ -150,7 +150,16 @@ void main() {
   /// When set, the PDF writer throws it.
   Object? pdfError;
 
+  late List<(String, Uint8List)> saveCalls;
+  late List<bool> saveAnswers;
+  Object? saveError;
+  Completer<void>? saveGate;
+
   setUp(() async {
+    saveCalls = [];
+    saveAnswers = [];
+    saveError = null;
+    saveGate = null;
     tmp = await Directory.systemTemp.createTemp('stock_sheet_ctrl');
     shared = [];
     pdfDocs = [];
@@ -174,6 +183,14 @@ void main() {
     formatStore: store ?? _MemoryFormatStore(),
     decoderFactory: () => decoder,
     provider: provider,
+    saveFile: (name, bytes) async {
+      saveCalls.add((name, bytes));
+      await saveGate?.future;
+      final error = saveError;
+      if (error != null) throw error;
+      final answers = saveAnswers;
+      return answers.isEmpty ? true : answers.removeAt(0);
+    },
     shareFiles: (f) async {
       final error = shareError;
       if (error != null) {
@@ -718,6 +735,95 @@ void main() {
       expect(c.sharing.value, isFalse);
     },
   );
+
+  group('Download', () {
+    Future<StockSheetController> both() async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1}),
+      );
+      await run(c, ['a.jpg'], SheetFormat.both);
+      return c;
+    }
+
+    test('download saves each file in order with its name', () async {
+      final c = await both();
+      final message = await c.download();
+      expect(saveCalls.map((e) => e.$1).toList(), [
+        'Items-20261117-0905.xlsx',
+        'Items-20261117-0905.pdf',
+      ]);
+      expect(saveCalls.every((e) => e.$2.isNotEmpty), isTrue);
+      expect(message, 'Saved 2 files.');
+    });
+
+    test('one file returns "Saved <name>."', () async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1}),
+      );
+      await run(c, ['a.jpg'], SheetFormat.excel);
+      expect(await c.download(), 'Saved Items-20261117-0905.xlsx.');
+    });
+
+    test('cancelling the second dialog keeps the first and returns null', () async {
+      final c = await both();
+      saveAnswers = [true, false];
+      expect(await c.download(), isNull);
+      expect(saveCalls, hasLength(2));
+    });
+
+    test('a saver error returns saveFailedMessage and stops', () async {
+      final c = await both();
+      saveError = Exception('disk');
+      expect(await c.download(), StockSheetController.saveFailedMessage);
+      expect(saveCalls, hasLength(1));
+      expect(c.downloading.value, isFalse);
+    });
+
+    test('download while running or while sharing does nothing', () async {
+      final c = await both();
+      saveGate = Completer<void>();
+      final first = c.download();
+      await Future<void>.delayed(Duration.zero);
+      expect(await c.download(), isNull);
+      saveGate!.complete();
+      expect(await first, 'Saved 2 files.');
+      expect(saveCalls, hasLength(2));
+
+      saveCalls.clear();
+      c.sharing.value = true;
+      expect(await c.download(), isNull);
+      expect(saveCalls, isEmpty);
+    });
+
+    test('sharing does nothing while downloading', () async {
+      final c = await both();
+      final before = shared.length;
+      saveGate = Completer<void>();
+      final first = c.download();
+      await Future<void>.delayed(Duration.zero);
+      await c.shareAgain();
+      expect(shared, hasLength(before));
+      saveGate!.complete();
+      await first;
+    });
+
+    test('downloading is true during the run and false after', () async {
+      final c = await both();
+      saveGate = Completer<void>();
+      final run1 = c.download();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.downloading.value, isTrue);
+      saveGate!.complete();
+      await run1;
+      expect(c.downloading.value, isFalse);
+    });
+  });
 
   group('remembered format in StorageService', () {
     tearDown(Get.reset);

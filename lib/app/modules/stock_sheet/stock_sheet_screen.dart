@@ -465,6 +465,51 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     }
   }
 
+  /// Saves the files to a folder the user picks. Outlined beside the filled
+  /// Share files; icon-only on a narrow screen so the row fits at 360 dp.
+  Widget _downloadButton(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 400;
+    return Obx(() {
+      final busy = controller.downloading.value;
+      final icon = busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.download_outlined);
+      final VoidCallback? onPressed = busy ? null : _download;
+      if (compact) {
+        return Tooltip(
+          message: 'Download',
+          child: OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              padding: EdgeInsets.zero,
+            ),
+            child: Semantics(label: 'Download', child: icon),
+          ),
+        );
+      }
+      return OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: const Text('Download'),
+      );
+    });
+  }
+
+  Future<void> _download() async {
+    final message = await controller.download();
+    if (!mounted || message == null) return;
+    if (message == StockSheetController.saveFailedMessage) {
+      AppNotification.warning(message);
+    } else {
+      AppNotification.success(message);
+    }
+  }
+
   Widget _footer() {
     switch (controller.phase.value) {
       case StockSheetPhase.reviewing:
@@ -544,6 +589,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
                       : 'Share files',
                 ),
               ),
+            if (controller.files.isNotEmpty) ...[
+              const SizedBox(width: 12),
+              _downloadButton(context),
+            ],
             const SizedBox(width: 12),
             OutlinedButton(onPressed: _close, child: const Text('Done')),
           ],
