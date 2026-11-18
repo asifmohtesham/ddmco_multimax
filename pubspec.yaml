@@ -49,6 +49,7 @@ dependencies:
   shared_preferences: ^2.5.5
   socket_io_client: ^2.0.3
   image_picker: ^1.1.2
+  file_selector: ^1.0.3
   cached_network_image: ^3.4.1
   speech_to_text: ^7.4.0
   # Scheduled draft-document digest notifications (Android-only feature):

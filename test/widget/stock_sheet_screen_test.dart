@@ -156,6 +156,8 @@ void main() {
     SheetFormat remembered = SheetFormat.excel,
     Future<List<String>> Function()? pickCamera,
     Future<List<String>> Function()? pickGallery,
+    Future<List<String>> Function()? pickFiles,
+    bool onMac = false,
     ThemeData? theme,
   }) async {
     final t = theme ?? darkTheme;
@@ -179,6 +181,8 @@ void main() {
         paths: paths ?? const [],
         pickCamera: pickCamera ?? () async => const [],
         pickGallery: pickGallery ?? () async => const [],
+        pickFiles: pickFiles ?? () async => const [],
+        runningOnMac: () async => onMac,
       ),
     );
     await tester.pumpAndSettle();
@@ -541,6 +545,77 @@ void main() {
     ]);
     // The closed sheet's late answer is not taken as a choice.
     expect(controller.choices, isEmpty);
+  });
+
+  testWidgets('opened without photos shows the start panel', (tester) async {
+    await open(tester);
+
+    expect(
+      find.text(
+        'Choose photos of item labels to list their stock as Excel or PDF.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Choose files…'), findsOneWidget);
+    expect(find.text('Choose from gallery'), findsOneWidget);
+    expect(find.text('Take a photo'), findsOneWidget);
+  });
+
+  testWidgets('on a Mac the camera is hidden and the drag hint shows', (
+    tester,
+  ) async {
+    await open(tester, onMac: true);
+
+    expect(find.text('Take a photo'), findsNothing);
+    expect(
+      find.text(
+        'On a Mac you can also drag photos here or share them from Finder.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Choose files… starts a run with the picked files', (
+    tester,
+  ) async {
+    await open(tester, pickFiles: () async => ['/f/a.jpg']);
+
+    await tester.tap(find.text('Choose files…'));
+    await tester.pumpAndSettle();
+    expect(controller.starts, [
+      ['/f/a.jpg'],
+    ]);
+  });
+
+  testWidgets('opened with shared photos shows no start panel', (tester) async {
+    await open(tester, paths: ['a.jpg']);
+
+    expect(find.text('Choose files…'), findsNothing);
+  });
+
+  testWidgets('the + menu offers Choose files… and adds the picked files', (
+    tester,
+  ) async {
+    await open(tester, pickFiles: () async => ['/f/b.jpg']);
+    await review(tester, _twoPhotos());
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose files…'));
+    await tester.pumpAndSettle();
+    expect(controller.added, [
+      ['/f/b.jpg'],
+    ]);
+  });
+
+  testWidgets('the + menu hides Take a photo on a Mac', (tester) async {
+    await open(tester, onMac: true);
+    await review(tester, _twoPhotos());
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose files…'), findsOneWidget);
+    expect(find.text('Take a photo'), findsNothing);
   });
 
   testWidgets('the + menu adds photos from the gallery', (tester) async {
