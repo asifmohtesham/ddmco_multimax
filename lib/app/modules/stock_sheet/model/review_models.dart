@@ -1,8 +1,9 @@
 import 'stock_sheet_models.dart';
 
 /// One resolved item in a review entry: the code read from the photo, its Item
-/// details, its Finished Goods stock (null when unknown) and whether it goes
-/// on the sheet.
+/// details, its Finished Goods stock and whether it goes on the sheet. An item
+/// exists only after a successful stock check, so a null stock means it has
+/// no Stock Balance row: out of stock.
 class ReviewItem {
   const ReviewItem({
     required this.code,

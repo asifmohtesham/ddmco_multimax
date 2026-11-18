@@ -94,6 +94,52 @@ void main() {
     expect(find.byType(Wrap), findsNothing);
   });
 
+  testWidgets('no Stock Balance row (null stock) shows the pill', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(const RackChips(stock: null)));
+    expect(find.text('Out of stock · 0'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _app(
+        _list([
+          ReviewEntry(path: 'a', items: [_item('1234567', null)]),
+        ]),
+      ),
+    );
+    expect(find.text('Out of stock · 0'), findsOneWidget);
+  });
+
+  testWidgets('racks given smallest first show largest first', (tester) async {
+    const stock = ItemStock(
+      total: 10,
+      racks: [
+        RackQty(rack: 'R1', qty: 1),
+        RackQty(rack: 'R2', qty: 2),
+        RackQty(rack: 'R3', qty: 3),
+        RackQty(rack: 'R4', qty: 4),
+      ],
+    );
+    await tester.pumpWidget(_app(const RackChips(stock: stock)));
+    expect(find.text('R1 1'), findsNothing);
+    expect(find.text('+1'), findsOneWidget);
+    final x = [
+      for (final label in ['R4 4', 'R3 3', 'R2 2'])
+        tester.getTopLeft(find.text(label)).dx,
+    ];
+    expect(x[0], lessThan(x[1]));
+    expect(x[1], lessThan(x[2]));
+  });
+
+  test('formatQty rounds to three decimals and drops trailing zeros', () {
+    expect(formatQty(305), '305');
+    expect(formatQty(2.5), '2.5');
+    expect(formatQty(0.1 + 0.2), '0.3');
+    expect(formatQty(1.23456), '1.235');
+    expect(formatQty(-2), '-2');
+    expect(formatQty(4.9999999), '5');
+  });
+
   testWidgets('dragging the handle down one place calls onReorder(0, 2)', (
     tester,
   ) async {
@@ -197,6 +243,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Not in ERP'), findsOneWidget);
       expect(find.text('Use code'), findsOneWidget);
+    });
+
+    testWidgets('typing clears the error; Scan is a button only', (
+      tester,
+    ) async {
+      await open(tester, (_) async => 'Not in ERP');
+      expect(find.byIcon(Icons.qr_code_scanner), findsOneWidget);
+      expect(find.text('Scan'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '1234567');
+      await tester.tap(find.text('Use code'));
+      await tester.pumpAndSettle();
+      expect(find.text('Not in ERP'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '12345678');
+      await tester.pump();
+      expect(find.text('Not in ERP'), findsNothing);
     });
 
     testWidgets('closes when the result is null', (tester) async {

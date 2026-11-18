@@ -53,6 +53,20 @@ void main() {
 
       expect(stock.containsKey('1004766'), isFalse);
     });
+
+    test('racks given smallest first come out largest first', () {
+      final stock = StockAggregator.racksByItem([
+        {'item_code': '1002312', 'rack': 'R1', 'bal_qty': 1},
+        {'item_code': '1002312', 'rack': 'R2', 'bal_qty': 2},
+        {'item_code': '1002312', 'rack': 'R3', 'bal_qty': 30},
+        {'item_code': '1002312', 'rack': 'R4', 'bal_qty': 4},
+      ]);
+
+      expect(
+        stock['1002312']!.racks.map((r) => r.rack),
+        ['R3', 'R4', 'R2', 'R1'],
+      );
+    });
   });
 
   group('StockAggregator.build', () {

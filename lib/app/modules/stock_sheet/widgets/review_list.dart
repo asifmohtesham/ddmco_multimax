@@ -254,10 +254,9 @@ class _ReviewRow extends StatelessWidget {
           sub,
           style: TextStyle(fontFamily: _mono, fontSize: 12, color: s.textMuted),
         ),
-        if (item.stock != null) ...[
-          const SizedBox(height: 4),
-          RackChips(stock: item.stock),
-        ],
+        // A null stock means no Stock Balance row: the pill says out of stock.
+        const SizedBox(height: 4),
+        RackChips(stock: item.stock),
       ],
     );
     return Padding(

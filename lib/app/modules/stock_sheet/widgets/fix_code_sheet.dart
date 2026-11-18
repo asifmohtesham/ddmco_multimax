@@ -101,6 +101,10 @@ class _FixCodeSheetState extends State<_FixCodeSheet> {
                   autofocus: true,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _submit(),
+                  // The error was about the text before this edit.
+                  onChanged: (_) {
+                    if (_error != null) setState(() => _error = null);
+                  },
                   style: TextStyle(color: s.text),
                   decoration: InputDecoration(
                     labelText: 'Barcode or item code',
@@ -113,11 +117,6 @@ class _FixCodeSheetState extends State<_FixCodeSheet> {
                     errorMaxLines: 2,
                     filled: true,
                     fillColor: s.subtle,
-                    suffixIcon: IconButton(
-                      tooltip: 'Scan',
-                      icon: const Icon(Icons.qr_code_scanner),
-                      onPressed: _scan,
-                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
