@@ -11,7 +11,9 @@ Uint8List _jpeg(int w, int h) =>
 
 StockSheetRow _row(int i, {bool oos = false, String? path}) => StockSheetRow(
       photoIndex: i,
-      photoPath: path ?? 'p$i.jpg',
+      photoPath: 'p$i.jpg',
+      // The ERP image's key; rows of one item share it.
+      imageKey: path ?? 'p$i.jpg',
       barcode: '2001${i.toString().padLeft(4, '0')}',
       itemName: 'Item $i – café',
       variantOf: 'Strap',
@@ -56,7 +58,7 @@ void main() {
     expect((await PdfStockSheetWriter.write(_doc(0))).isNotEmpty, isTrue);
   });
 
-  test('a photo shared by several rows is embedded once', () async {
+  test('an image shared by several rows is embedded once', () async {
     final shared = StockSheetDocument(
       title: 't',
       subtitle: 's',

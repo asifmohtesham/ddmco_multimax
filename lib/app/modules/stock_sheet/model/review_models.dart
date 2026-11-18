@@ -25,21 +25,30 @@ class ReviewItem {
       );
 }
 
-/// One photo in the review list.
+/// One row of the review list: one item read from a photo, or a photo (or a
+/// code in it) that resolved to no item. A photo holding several items gives
+/// one row per item, all with the same [path].
 class ReviewEntry {
   ReviewEntry({
     required this.path,
+    String? id,
     this.decodeFailed = false,
     List<String> rawValues = const [],
     List<ReviewItem> items = const [],
     List<String> notInErp = const [],
     this.typed = false,
     this.unchecked = false,
-  })  : rawValues = List.unmodifiable(rawValues),
+  })  : id = id ?? path,
+        rawValues = List.unmodifiable(rawValues),
         items = List.unmodifiable(items),
         notInErp = List.unmodifiable(notInErp);
 
   final String path;
+
+  /// Tells the rows of one photo apart; the [path] when the photo has one.
+  /// Kept by [copyWith].
+  final String id;
+
   final bool decodeFailed;
 
   /// Every string decoded from the photo, recognised or not.
@@ -70,6 +79,7 @@ class ReviewEntry {
   }) =>
       ReviewEntry(
         path: path,
+        id: id,
         decodeFailed: decodeFailed ?? this.decodeFailed,
         rawValues: rawValues ?? this.rawValues,
         items: items ?? this.items,

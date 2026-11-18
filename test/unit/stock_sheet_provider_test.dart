@@ -116,6 +116,7 @@ void main() {
           'item_name': 'Strap A',
           'variant_of': 'Strap',
           'country_of_origin': 'Italy',
+          'image': '/files/strap-a.jpg',
         },
         {
           'name': '2001142',
@@ -132,6 +133,7 @@ void main() {
         'item_name',
         'variant_of',
         'country_of_origin',
+        'image',
       ]);
       expect(api.itemCalls.single['filterTuples'], [
         [
@@ -145,6 +147,8 @@ void main() {
       expect(items['2001141']!.variantOf, 'Strap');
       expect(items['2001142']!.variantOf, isNull);
       expect(items['2001142']!.countryOfOrigin, isNull);
+      expect(items['2001141']!.image, '/files/strap-a.jpg');
+      expect(items['2001142']!.image, isNull);
     });
 
     test('150 codes make 2 calls; duplicates are sent once', () async {

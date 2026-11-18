@@ -72,9 +72,16 @@ class _FakeDecoder implements PhotoDecoder {
 }
 
 class _FakeProvider extends StockSheetProvider {
-  _FakeProvider({this.stock = const {}, this.known = const [_a, _b]});
+  _FakeProvider({
+    this.stock = const {},
+    this.known = const [_a, _b],
+    this.images = const {},
+  });
   final Map<String, double> stock;
   final List<String> known;
+
+  /// Item code → its `image` field.
+  final Map<String, String> images;
   Object? stockError;
   int stockCalls = 0;
 
@@ -108,7 +115,7 @@ class _FakeProvider extends StockSheetProvider {
     }
     return {
       for (final c in codes.where(known.contains))
-        c: ItemInfo(itemCode: c, itemName: 'Item $c'),
+        c: ItemInfo(itemCode: c, itemName: 'Item $c', image: images[c]),
     };
   }
 
@@ -180,7 +187,9 @@ void main() {
     SheetFormatStore? store,
     Future<List<String>> Function()? extraRoots,
     Future<void> Function()? clearPickerFiles,
+    Future<Uint8List?> Function(String url)? itemThumbnail,
   }) => StockSheetController(
+    itemThumbnail: itemThumbnail ?? (url) async => null,
     clearPickerFiles: clearPickerFiles ?? () async {},
     formatStore: store ?? _MemoryFormatStore(),
     decoderFactory: () => decoder,
@@ -363,7 +372,7 @@ void main() {
     expect(reviewPaths(c), ['b.jpg', 'a.jpg']);
     expect(c.review.map((e) => e.included), [true, false]);
 
-    c.setItemIncluded(1, 0, true);
+    c.setIncluded(1, true);
     expect(reviewPaths(c), ['b.jpg', 'a.jpg']);
     expect(c.review.map((e) => e.included), [true, true]);
   });
@@ -419,7 +428,6 @@ void main() {
       // Idle: nothing to edit, nothing to make.
       c.reorder(0, 1);
       c.setIncluded(0, false);
-      c.setItemIncluded(0, 0, false);
       await c.makeSheet(SheetFormat.pdf);
       expect(c.phase.value, StockSheetPhase.idle);
       expect(store.saved, isNull);
@@ -429,7 +437,7 @@ void main() {
       final before = c.review.toList();
       c.reorder(0, 2);
       c.setIncluded(0, false);
-      c.setItemIncluded(1, 0, false);
+      c.setIncluded(1, false);
       expect(c.review, orderedEquals(before));
       await c.makeSheet(SheetFormat.pdf);
       expect(shared, hasLength(1));
@@ -487,8 +495,9 @@ void main() {
     expect(pdfDocs.single.rows.every((r) => !r.outOfStock), isTrue);
     expect(pdfDocs.single.rows, hasLength(1));
     expect(pdfDocs.single.showStatus, isFalse);
-    // The out-of-stock row is not in the file, so the count is not shown.
-    expect(pdfDocs.single.subtitle, '17/11/2026 09:05 · 2 photos · 1 item');
+    // The out-of-stock row is not in the file, so neither its count nor its
+    // photo is.
+    expect(pdfDocs.single.subtitle, '17/11/2026 09:05 · 1 photo · 1 item');
   });
 
   test('leaving out every item goes back to the review and says why', () async {
@@ -1104,7 +1113,7 @@ void main() {
       expect(c.fixing.value, isFalse);
     });
 
-    test('fixing an Also read note appends the item to the row', () async {
+    test('a Not in ERP row of a sheet photo is fixed on its own', () async {
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a), note],
       });
@@ -1114,35 +1123,19 @@ void main() {
       );
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
-      expect(c.review.single.items, hasLength(1));
-      expect(c.review.single.notInErp, [note]);
+      expect(c.review, hasLength(2));
+      expect(c.review[1].notInErp, [note]);
+      final first = c.review[0];
 
-      final error = await c.fixCode(0, noteItem, noteBarcode: note);
+      expect(await c.fixCode(1, noteItem), isNull);
 
-      expect(error, isNull);
-      final entry = c.review.single;
-      expect(entry.items.map((i) => i.code.itemCode), [_a, noteItem]);
-      expect(entry.items.every((i) => i.included), isTrue);
-      expect(entry.notInErp, isEmpty);
-      expect(entry.typed, isTrue);
-    });
-
-    test('fixing a note to an item switched off switches it on', () async {
-      final decoder = _FakeDecoder({
-        'a.jpg': [_ean(_a), _ean(_b), note],
-      });
-      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
-      final c = make(decoder, provider);
-      await c.start(['a.jpg']);
-      c.setItemIncluded(0, 1, false);
-      expect(c.review.single.items[1].included, isFalse);
-
-      expect(await c.fixCode(0, _b, noteBarcode: note), isNull);
-
-      final entry = c.review.single;
-      expect(entry.items.map((i) => i.code.itemCode), [_a, _b]);
-      expect(entry.items.every((i) => i.included), isTrue);
-      expect(entry.notInErp, isEmpty);
+      expect(c.review[0], same(first));
+      expect(c.review[1].items.single.code.itemCode, noteItem);
+      expect(c.review[1].notInErp, isEmpty);
+      expect(c.review[1].typed, isTrue);
+      expect(c.review[1].path, 'a.jpg');
+      expect(c.sheetItemCount, 2);
+      expect(c.photoCount, 1);
     });
 
     test('text that is not a code is refused without asking the ERP', () async {
@@ -1444,6 +1437,180 @@ void main() {
       await c.makeSheet(SheetFormat.excel);
       expect(c.phase.value, StockSheetPhase.done);
       expect(c.result.value!.rows.map((r) => r.photoPath), ['a.jpg', 'd.jpg']);
+    });
+  });
+
+  group('a photo of several items', () {
+    const c3 = '1000003';
+
+    Future<StockSheetController> sheetAndOne([_FakeProvider? provider]) async {
+      final c = make(
+        _FakeDecoder({
+          'sheet.jpg': [_ean(c3), _ean(_a), _ean(_b)],
+          'one.jpg': [_ean(_a)],
+        }),
+        provider ?? _FakeProvider(stock: {_a: 1, _b: 1, c3: 1},
+            known: const [_a, _b, c3]),
+      );
+      fingerprints.addAll({'sheet.jpg': 'S', 'one.jpg': 'O'});
+      await c.start(['sheet.jpg', 'one.jpg']);
+      return c;
+    }
+
+    test('gives one row per item, in the order read', () async {
+      final c = await sheetAndOne();
+      expect(reviewPaths(c), ['sheet.jpg', 'sheet.jpg', 'sheet.jpg', 'one.jpg']);
+      expect(
+        c.review.map((e) => e.items.single.code.itemCode),
+        [c3, _a, _b, _a],
+      );
+      expect(c.review.map((e) => e.id).toSet(), hasLength(4));
+      expect(c.photoCount, 2);
+      expect(c.sheetItemCount, 4);
+      expect(c.sheetPhotoCount, 2);
+      // The limit counts photos, not rows.
+      expect(c.photoRoom, StockSheetController.maxPhotos - 2);
+    });
+
+    test('a row switches off on its own', () async {
+      final c = await sheetAndOne();
+      c.setIncluded(1, false);
+      expect(c.review.map((e) => e.included), [true, false, true, true]);
+      expect(c.sheetItemCount, 3);
+      expect(c.sheetPhotoCount, 2);
+    });
+
+    test('the file has a row per item and counts the photo once', () async {
+      final c = await sheetAndOne();
+      await c.makeSheet(SheetFormat.pdf);
+      final doc = pdfDocs.single;
+      expect(doc.rows.map((r) => r.barcode), [
+        _ean(c3),
+        _ean(_a),
+        _ean(_b),
+        _ean(_a),
+      ]);
+      expect(doc.rows.map((r) => r.photoIndex), [0, 0, 0, 1]);
+      expect(doc.subtitle, '17/11/2026 09:05 · 2 photos · 4 items · 0 out of stock');
+    });
+
+    test('Undo puts back one row although the photo has others', () async {
+      final c = await sheetAndOne();
+      final removed = c.removeAt(1)!;
+      expect(c.review, hasLength(3));
+      expect(c.photoCount, 2);
+
+      c.restore(removed, 1);
+
+      expect(c.review, hasLength(4));
+      expect(c.review[1].items.single.code.itemCode, _a);
+      expect(c.review[1].path, 'sheet.jpg');
+      // Restoring twice adds nothing.
+      c.restore(removed, 1);
+      expect(c.review, hasLength(4));
+    });
+
+    test('removing every row of a photo frees its place', () async {
+      final c = await sheetAndOne();
+      for (var i = 0; i < 3; i++) {
+        c.removeAt(0);
+      }
+      expect(c.photoCount, 1);
+      expect(c.photoRoom, StockSheetController.maxPhotos - 1);
+    });
+
+    test('Retry check turns an unchecked photo into its rows', () async {
+      final provider = _FakeProvider(
+        stock: {_a: 1, _b: 2, c3: 3},
+        known: const [_a, _b, c3],
+      );
+      final c = make(
+        _FakeDecoder({
+          'one.jpg': [_ean(_a)],
+          'sheet.jpg': [_ean(_b), _ean(c3)],
+        }),
+        provider,
+      );
+      await c.start(['one.jpg']);
+      provider.stockError = Exception('offline');
+      expect(await c.addPhotos(['sheet.jpg']), isNull);
+      expect(c.review, hasLength(2));
+      expect(c.review[1].unchecked, isTrue);
+
+      expect(await c.retryCheck(1), isNull);
+
+      expect(reviewPaths(c), ['one.jpg', 'sheet.jpg', 'sheet.jpg']);
+      expect(c.review.skip(1).map((e) => e.items.single.code.itemCode), [
+        _b,
+        c3,
+      ]);
+      expect(c.review.every((e) => !e.unchecked), isTrue);
+    });
+  });
+
+  group('ERP images', () {
+    test('each Item image is fetched once and keys its rows', () async {
+      final fetched = <String>[];
+      final thumb = Uint8List.fromList([9, 9]);
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+          'b.jpg': [_ean(_b)],
+          'c.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1, _b: 1}, images: {_a: '/files/a.jpg'}),
+        itemThumbnail: (url) async {
+          fetched.add(url);
+          return thumb;
+        },
+      );
+      await c.start(['a.jpg', 'b.jpg', 'c.jpg']);
+
+      expect(fetched, ['/files/a.jpg']);
+      expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+      expect(c.thumbnails.containsKey(ItemInfo.thumbnailKey(_b)), isFalse);
+
+      await c.makeSheet(SheetFormat.pdf);
+      final doc = pdfDocs.single;
+      expect(doc.rows.map((r) => r.imageKey), [
+        ItemInfo.thumbnailKey(_a),
+        null,
+        ItemInfo.thumbnailKey(_a),
+      ]);
+      expect(doc.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+    });
+
+    test('an image that fails leaves the cell blank, not the run', () async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1}, images: {_a: '/files/a.jpg'}),
+        itemThumbnail: (url) async => throw Exception('404'),
+      );
+      await c.start(['a.jpg']);
+
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      expect(c.thumbnails.containsKey(ItemInfo.thumbnailKey(_a)), isFalse);
+    });
+
+    test('a typed code brings its Item image', () async {
+      final fetched = <String>[];
+      final c = make(
+        _FakeDecoder({'bad.jpg': null}),
+        _FakeProvider(stock: {_b: 1}, images: {_b: '/files/b.jpg'}),
+        itemThumbnail: (url) async {
+          fetched.add(url);
+          return Uint8List.fromList([1]);
+        },
+      );
+      await c.start(['bad.jpg']);
+      expect(fetched, isEmpty);
+
+      expect(await c.fixCode(0, _b), isNull);
+
+      expect(fetched, ['/files/b.jpg']);
+      expect(c.thumbnails.containsKey(ItemInfo.thumbnailKey(_b)), isTrue);
     });
   });
 

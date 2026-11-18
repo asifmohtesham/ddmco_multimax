@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -30,6 +32,7 @@ class StockSheetProvider {
             'item_name',
             'variant_of',
             'country_of_origin',
+            'image',
           ],
           filterTuples: [
             ['Item', 'name', 'in', chunk],
@@ -52,6 +55,7 @@ class StockSheetProvider {
           itemName: _text(row['item_name']),
           variantOf: _text(row['variant_of']),
           countryOfOrigin: _text(row['country_of_origin']),
+          image: _text(row['image']),
         );
       }
     }
@@ -84,6 +88,9 @@ class StockSheetProvider {
     }
     return rows;
   }
+
+  /// The bytes of an Item's image ([ItemInfo.image]). Throws on failure.
+  Future<Uint8List> fetchImage(String url) => _client.getFileBytes(url);
 
   Iterable<List<String>> _chunks(List<String> codes) sync* {
     final distinct = codes.toSet().toList();

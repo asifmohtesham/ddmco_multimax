@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:image/image.dart' as img;
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
@@ -48,13 +49,13 @@ ReviewList _list(
   void Function(int, int)? onReorder,
   bool Function(int)? onRemove,
   bool removeEnabled = true,
+  Map<String, Uint8List> thumbnails = const {},
 }) => ReviewList(
   entries: entries,
-  thumbnails: const <String, Uint8List>{},
+  thumbnails: thumbnails,
   onReorder: onReorder ?? (_, _) {},
   onToggle: (_, _) {},
-  onToggleItem: (_, _, _) {},
-  onFix: (_, _) {},
+  onFix: (_) {},
   onRetryCheck: (_) {},
   onRemove: onRemove ?? (_) => true,
   removeEnabled: removeEnabled,
@@ -99,7 +100,7 @@ void main() {
     expect(find.text('Item 12345670'), findsOneWidget);
   });
 
-  testWidgets('screen readers get a Remove photo action', (tester) async {
+  testWidgets('screen readers get a Remove item action', (tester) async {
     final handle = tester.ensureSemantics();
     final removed = <int>[];
     final entries = [
@@ -123,8 +124,8 @@ void main() {
     final labels = [
       for (final id in ids) CustomSemanticsAction.getAction(id)?.label,
     ];
-    expect(labels, contains('Remove photo'));
-    final id = ids[labels.indexOf('Remove photo')];
+    expect(labels, contains('Remove item'));
+    final id = ids[labels.indexOf('Remove item')];
     tester.binding.pipelineOwner.semanticsOwner!.performAction(
       node.id,
       SemanticsAction.customAction,
@@ -134,7 +135,25 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('no Remove photo action while removal is disabled', (
+  testWidgets('a row with no item gets a Remove photo action', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _app(_list([ReviewEntry(path: 'a', decodeFailed: true)])),
+    );
+    final data = tester
+        .getSemantics(find.text('Unreadable photo'))
+        .getSemanticsData();
+    final labels = [
+      for (final id in data.customSemanticsActionIds ?? const <int>[])
+        CustomSemanticsAction.getAction(id)?.label,
+    ];
+    expect(labels, contains('Remove photo'));
+    handle.dispose();
+  });
+
+  testWidgets('no Remove action while removal is disabled', (
     tester,
   ) async {
     final handle = tester.ensureSemantics();
@@ -150,6 +169,7 @@ void main() {
       for (final id in data.customSemanticsActionIds ?? const <int>[])
         CustomSemanticsAction.getAction(id)?.label,
     ];
+    expect(labels, isNot(contains('Remove item')));
     expect(labels, isNot(contains('Remove photo')));
     handle.dispose();
   });
@@ -295,21 +315,62 @@ void main() {
     expect(find.text('✎ Type or scan code'), findsOneWidget);
   });
 
-  testWidgets('typed, unchecked and leftover notes', (tester) async {
+  testWidgets('typed and unchecked markers', (tester) async {
     final entries = [
       ReviewEntry(
         path: 'a',
         typed: true,
         unchecked: true,
-        notInErp: const ['9999999'],
         items: [_item('1234567', null)],
       ),
     ];
     await tester.pumpWidget(_app(_list(entries)));
     expect(find.text('Typed'), findsOneWidget);
     expect(find.text('Retry check'), findsOneWidget);
-    expect(find.text('Also read: 9999999 · not in ERP'), findsOneWidget);
     expect(find.text('1234567 · Parent'), findsOneWidget);
+  });
+
+  testWidgets('rows of one photo list side by side', (tester) async {
+    final entries = [
+      ReviewEntry(path: 'a', id: 'a#0', items: [_item('12345670', null)]),
+      ReviewEntry(path: 'a', id: 'a#1', items: [_item('76543210', null)]),
+      ReviewEntry(path: 'a', id: 'a#2', notInErp: const ['99999995']),
+    ];
+    await tester.pumpWidget(_app(_list(entries)));
+    expect(tester.takeException(), isNull);
+    expect(find.text('Item 12345670'), findsOneWidget);
+    expect(find.text('Item 76543210'), findsOneWidget);
+    expect(find.text('Not in ERP: 99999995'), findsOneWidget);
+    expect(find.byType(Switch), findsNWidgets(3));
+  });
+
+  testWidgets('an item shows its ERP image, a row with no item its photo', (
+    tester,
+  ) async {
+    final jpeg = Uint8List.fromList(
+      img.encodeJpg(img.Image(width: 4, height: 4)),
+    );
+    final entries = [
+      // The photo has a thumbnail, the item none: a placeholder.
+      ReviewEntry(path: 'a', items: [_item('12345670', null)]),
+      ReviewEntry(path: 'b', items: [_item('76543210', null)]),
+      ReviewEntry(path: 'c', decodeFailed: true),
+    ];
+    await tester.pumpWidget(
+      _app(
+        _list(
+          entries,
+          thumbnails: {
+            'a': jpeg,
+            ItemInfo.thumbnailKey('7654321'): jpeg,
+            'c': jpeg,
+          },
+        ),
+      ),
+    );
+    final images = tester.widgetList<Image>(find.byType(Image)).toList();
+    expect(images, hasLength(2));
+    expect(find.byIcon(Icons.image_outlined), findsOneWidget);
   });
 
   testWidgets('End of list is present', (tester) async {

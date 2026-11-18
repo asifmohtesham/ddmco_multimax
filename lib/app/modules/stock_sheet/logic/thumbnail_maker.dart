@@ -17,9 +17,23 @@ class ThumbnailMaker {
     int longSide = 480,
     int quality = 82,
   }) async {
+    final Uint8List bytes;
+    try {
+      bytes = await File(path).readAsBytes();
+    } catch (_) {
+      return null;
+    }
+    return fromBytes(bytes, longSide: longSide, quality: quality);
+  }
+
+  /// [make] for an image already in memory, such as an Item's ERP image.
+  static Future<Uint8List?> fromBytes(
+    Uint8List bytes, {
+    int longSide = 480,
+    int quality = 82,
+  }) async {
     ui.Image? decoded;
     try {
-      final bytes = await File(path).readAsBytes();
 
       // First pass reads only the header, to learn which side is the long one.
       final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);

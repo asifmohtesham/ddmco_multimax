@@ -2,7 +2,8 @@
 
 The one document to read before working on **Items from Photos**: what it does, every screen and message, the
 rules behind it, how each platform gets photos in, where the code lives, and what is still open. Written on
-18 November 2026, current as of **2.44.0+132**. The dated specs and plans in `docs/superpowers/` are the history;
+18 November 2026, current as of **2.44.0+132** plus the unreleased sheet-photo changes (one row per item, tiled
+reading, ERP images; see §8). The dated specs and plans in `docs/superpowers/` are the history;
 this file is the summary. Where they disagree, the code and this file win.
 
 Code identifiers keep the old name: module `lib/app/modules/stock_sheet/`, classes `StockSheet*`, route
@@ -69,30 +70,32 @@ time (you shared N)." and nothing is processed.
 
 ### 3.3 Review list
 
-Title **Review photos**; subtitle "N photos · M in the file"; **＋** action (Take a photo / Choose from gallery /
+Title **Review photos**; subtitle "N photos · M items in the file" (N counts each photo once, M the items switched
+on); **＋** action (Take a photo / Choose from gallery /
 Choose files…; a spinner replaces it while photos are being added).
 
-- **One row per photo**, in order: thumbnail, then one block per item found in the photo: item name;
-  `barcode · Variant Of` in mono type; a stock line with **Balance Qty in bold** (sum over Finished Goods) and one
+- **One row per item**, in order: a photo of one label gives one row; a photo holding several items (a sheet of
+  labels) gives one row per item, in the sheet's reading order, then one "Not in ERP: <barcode>" row per code ERP
+  does not know. Each row: the **Item's ERP image** (a placeholder when the Item has none; a row with no item
+  shows its photo), item name; `barcode · Variant Of` in mono type; a stock line with **Balance Qty in bold** (sum over Finished Goods) and one
   **rack chip** per rack with its full name and quantity (e.g. `KA-WH-DXB1-21A 300`), largest first, three shown
   then "+n" (tap or long-press for all, "Stock by rack · <total>"); stock on no rack shows **No rack**; out of stock
   shows the red pill **Out of stock · 0**. Balance Qty and racks are **on screen only, never in the file**.
-- **Switches:** one per photo; a photo with several items also has one per item (row off → all off; all items off →
-  row off; row on → items back on).
+- **Switches:** one per row (one item each).
 - **Unresolved photos** start off with a reason — "Unreadable photo", "No recognised code", "Not in ERP: <barcode>"
   — and **✎ Type or scan code**: a sheet with a text field ("Barcode or item code"), **Scan** (camera overlay) and
   **Use code**. Input → EAN-8 or batch QR via the codec, else exactly 7 digits as the item code, else
   "Not a barcode or item code"; unknown item → "Not in ERP". A resolved code shows a "Typed" marker. If the stock
   check failed, rows show "Stock not checked" with **Retry check**.
 - **Reorder** with the ⋮⋮ handle on the left (no long-press drag on the row).
-- **Swipe to remove:** swipe a row right-to-left (red `AppColors.red700` background, white bin icon) → the photo
-  leaves the list; snackbar "Photo removed." with **Undo** for 5 seconds (it closes when the user leaves the review).
-  Undo puts it back where it was (clamped to the list length) unless the same photo — same content — has been added
-  again meanwhile. Disabled while photos are being added, a code is being fixed, stock is re-checked, a file is being
-  generated, or the out-of-stock question is open. Screen readers get a "Remove photo" action on each row.
+- **Swipe to remove:** swipe a row right-to-left (red `AppColors.red700` background, white bin icon) → the row
+  leaves the list (the photo's other rows stay); snackbar "Item removed." ("Photo removed." for a row with no item)
+  with **Undo** for 5 seconds (it closes when the user leaves the review). Undo puts it back where it was (clamped to
+  the list length) unless the same photo — same content — has been added again meanwhile under another path. Disabled while photos are being added, a code is being fixed, stock is re-checked, a file is being
+  generated, or the out-of-stock question is open. Screen readers get a "Remove item" ("Remove photo") action on each row.
 - **Footer:** segmented **Excel | PDF | Both**, preset to the last choice (first time: Excel; stored under
-  `stock_sheet_last_format` in `StorageService`); **Generate file · N photos** (N = photos with at least one item
-  on), disabled when N = 0 or while the list is changing.
+  `stock_sheet_last_format` in `StorageService`); **Generate file · N items** (N = items switched on), disabled when
+  N = 0 or while the list is changing.
 - List conventions apply: `Scrollbar`, nav-bar padding, "End of list".
 
 ### 3.4 Out-of-stock question
@@ -132,19 +135,31 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
   `^(\d{8})-[A-Za-z0-9]+$` (e.g. `30003330-4CPIWR`); its 8-digit prefix must pass the EAN-8 checksum and gives the
   item. Invalid checksums and other codes (EAN-13, stray Code 128) are ignored for rows.
 - **One row per (photo, item):** several labels of one item in a photo give one row; the same item in two photos gives
-  two rows. Row order = review order; within a photo, the order the codes were found.
+  two rows; a photo of several items gives one review row per item (each switched, reordered and removed on its own).
+  Row order = review order; within a photo, reading order (rows of labels top to bottom, each left to right).
+- **Reading a sheet of labels:** when the whole-photo pass finds two or more items, the photo is read again in nine
+  overlapping tiles (each 60% of the photo's width and height, 20% apart, greyscale, enlarged up to 4x towards a
+  1,200 px side; `logic/sheet_reading.dart`), so codes too small to be found whole are added; any label up to 40% of
+  the photo lies whole in some tile. Codes are ordered by the boxes the platform reports; codes without a box follow
+  in the order found. A photo of one label (an EAN-8 and its batch QR count as one item) is never tiled.
+- **Images:** every row's Image (review list, finished screen, Excel and PDF) is the **Item's `image` from ERP**,
+  downloaded through the signed-in session (four at a time, during "Checking stock…", once per item) and shrunk to a
+  ~480 px JPEG. No ERP image (or one that cannot be fetched) → the cell is **blank**. The shared photo is never the
+  row's image; it is shown only for rows with no item.
 - **Stock** = the item's `bal_qty` in **Finished Goods - KA and its child warehouses** from the core **Stock Balance**
   report (`showDimensionWise` for racks), summed per item. ≤ 0 or no row = **out of stock**. Not in the Item list =
   **not in ERP**. Never Bin, never the `Stock Balance - Custom` report (frozen columns, no Country of Origin).
-- **Limit:** 100 photos per run, across the whole list.
+- **Limit:** 100 photos per run, across the whole list (a photo of several items counts once).
 - **Duplicates:** by content (SHA-256 of the file bytes) as well as by path, across every route.
-- **The file:** title **Items**; subtitle "dd/MM/yyyy HH:mm · N photos · M items · K out of stock"; file names
+- **The file:** title **Items**; subtitle "dd/MM/yyyy HH:mm · N photos · M items · K out of stock" (N = the photos
+  the file's rows came from); file names
   `Items-<yyyyMMdd-HHmm>.xlsx` / `.pdf`; columns **#, Image, Barcode, Variant Of, Country of Origin, Item Name**, plus
   **Stock** ("In stock" / "Out of stock") when out-of-stock rows are included; no Item Code column. Excel is
   hand-written OOXML (`archive`): header fill `305496`, out-of-stock fill `FFC7CE` / text `9C0006`, frozen header,
-  auto-filter, A4 fit to width, embedded thumbnails (~480 px, JPEG). PDF: A4 portrait, repeated header, same colours.
+  auto-filter, A4 fit to width, embedded ERP images (~480 px, JPEG; blank when none). PDF: A4 portrait, repeated header, same colours.
 - **Server calls** (standard methods only, v15 and v16): `frappe.client.get_list` on Item (`name in [...]`, fields
-  `name, item_name, variant_of, country_of_origin`) and `frappe.desk.query_report.run` for Stock Balance
+  `name, item_name, variant_of, country_of_origin, image`), a plain GET of each Item image's file URL
+  (`ApiProvider.getFileBytes`, private files through the session cookie) and `frappe.desk.query_report.run` for Stock Balance
   (`company`, today, `item_code` list, `warehouse: Finished Goods - KA`), in chunks of 100 codes, through
   `ApiProvider.getStockBalanceReport` (which handles v15 < 15.72 by filtering on the device). No access →
   "You don't have access to stock levels."; network → "Couldn't reach the ERP. Check the connection and try again."
@@ -153,6 +168,7 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
 ## 5. Messages (exact copy)
 
 Progress: "Reading photo n of N", "Checking stock…", "Generating the file…".
+Undo snackbar: "Item removed." / "Photo removed.".
 Errors and notices: "Share up to 100 photos at a time (you shared N).", "Only 1 more photo fits (limit 100).",
 "Only n more photos fit (limit 100).", "No more photos fit (limit 100).", "Those photos are already in the list.",
 "Items from Photos is already generating a file.", "Every photo in the file is out of stock.", "Nothing to put in a
@@ -212,7 +228,8 @@ fewer, or download them first."
 | ERP calls | `lib/app/data/providers/stock_sheet_provider.dart` |
 | Controller (phases, review ops, duplicates, add, remove/restore, make, share, download, clean-up) | `lib/app/modules/stock_sheet/stock_sheet_controller.dart` |
 | Screen (start state, review, footer, dialogs, snackbars) | `lib/app/modules/stock_sheet/stock_sheet_screen.dart` |
-| Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`stock_sheet_codec`, `photo_decoder`, `photo_fingerprint`, `review_builder`, `stock_aggregator`, `thumbnail_maker`) |
+| Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`stock_sheet_codec`, `photo_decoder`, `sheet_reading`, `photo_fingerprint`, `review_builder`, `stock_aggregator`,
+`thumbnail_maker`) |
 | Writers | `lib/app/modules/stock_sheet/output/` (`xlsx_stock_sheet_writer`, `pdf_stock_sheet_writer`) |
 | Widgets | `lib/app/modules/stock_sheet/widgets/` (`review_list`, `rack_chips`, `fix_code_sheet`, `out_of_stock_sheet`, `stock_sheet_choice_sheet`, `stock_sheet_result_list`, `stock_sheet_start_panel`, `items_from_photos_button`) |
 | Entry points | `lib/app/modules/item/widgets/item_list_app_bar.dart`, `lib/app/modules/home/home_screen.dart` + `global_widgets/barcode_input_widget.dart` (`trailingActions`) |
@@ -221,7 +238,7 @@ fewer, or download them first."
 
 Phases: `idle → decoding → checkingStock → reviewing → (awaitingChoice) → building → done`, plus `error`.
 Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sheet_photo_decoder`,
-`stock_sheet_provider`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
+`stock_sheet_provider`, `sheet_reading`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
 `pdf_stock_sheet_writer`, `ios_share_extension_contract`; `test/widget/` — `stock_sheet_screen`,
 `stock_sheet_review_list`, `items_from_photos_button`. CI runs no tests; run `flutter test` before merging.
 
@@ -233,6 +250,7 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 | 2.42.0+130 | 18/11/2026 | iOS Share Extension (plugin's controller); heading "Items from photos" | App Store only |
 | 2.43.0+131 | 18/11/2026 | Mac: own share screen, drag and drop, Choose files…, start state, Item list / Dashboard icons, duplicates by content; renamed **Items from Photos**, "Generate file" | Play (`v2.43.0`) + App Store; TestFlight checks passed on Mac and iPhone |
 | 2.44.0+132 | 18/11/2026 | Swipe to remove (Undo), Download | Play (`v2.44.0`) + App Store; Mac and iPhone checks passed |
+| unreleased | 18/11/2026 | A photo of several items: one row per item, tiled reading in sheet order, ERP images everywhere (blank when none); "Also read" notes and per-item switches gone | not yet built |
 
 ## 9. Testing on devices
 
@@ -245,6 +263,11 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
   Xcode 27) covers sharing from Photos, the start state and Choose files, but not reading.
 
 ## 10. Open items and known limits
+
+- **Sheet photos not yet seen on a device:** tiled reading and its order depend on ML Kit / Vision and their corner
+  boxes, which tests cannot run; check a sheet of 30 labels on Android and on the iPhone/Mac.
+- **Telegram twin** still nests a photo's items, reads the photo once and puts the photo in the Image column; mirror
+  these changes there (§11).
 
 - **Android Download** has not been seen on a device yet (the Pixel had only the Play app); check the "Save to"
   picker saves both files.

@@ -65,12 +65,20 @@ class ItemInfo {
     this.itemName,
     this.variantOf,
     this.countryOfOrigin,
+    this.image,
   });
 
   final String itemCode;
   final String? itemName;
   final String? variantOf;
   final String? countryOfOrigin;
+
+  /// The Item's `image` field: a file URL, usually relative ("/files/…").
+  final String? image;
+
+  /// Where the thumbnail of [itemCode]'s ERP image is kept beside the photo
+  /// thumbnails (which are keyed by path, so the two never meet).
+  static String thumbnailKey(String itemCode) => 'item:$itemCode';
 }
 
 /// Balance quantity held in one rack; [rack] is null for "No rack".
@@ -108,6 +116,7 @@ class StockSheetRow {
     required this.photoIndex,
     required this.photoPath,
     required this.barcode,
+    this.imageKey,
     this.itemName,
     this.variantOf,
     this.countryOfOrigin,
@@ -117,6 +126,11 @@ class StockSheetRow {
   final int photoIndex;
   final String photoPath;
   final String barcode;
+
+  /// The key of the Item's ERP image in [StockSheetDocument.thumbnails], or
+  /// null when the Item has none: the Image cell is then left blank. The
+  /// photo itself is never the row's image.
+  final String? imageKey;
   final String? itemName;
   final String? variantOf;
   final String? countryOfOrigin;
@@ -175,7 +189,7 @@ class StockSheetDocument {
   final String subtitle;
   final List<StockSheetRow> rows;
 
-  /// JPEG thumbnails keyed by [StockSheetRow.photoPath].
+  /// JPEG thumbnails keyed by [StockSheetRow.imageKey].
   final Map<String, Uint8List> thumbnails;
 
   /// Colour out-of-stock rows red.
