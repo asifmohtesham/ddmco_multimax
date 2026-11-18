@@ -27,10 +27,10 @@ dependencies:
   share_plus: ^13.3.1
   # Receives photos shared from the gallery (stock sheet): cold start via
   # getInitialMedia(), warm app via getMediaStream().
-  # Pinned: the iOS ShareExtension target links this plugin's Swift package by
-  # a path that names the version (.packages/receive_sharing_intent-1.9.0 in
-  # ios/Runner.xcodeproj/project.pbxproj). Upgrade both together; see
-  # test/unit/ios_share_extension_package_test.dart.
+  # Pinned: our own iOS share screen (ios/ShareExtension/ShareViewController.swift)
+  # writes this version's ShareKey contract by hand for the plugin's app half to
+  # read. Re-check that contract before changing the pin; see
+  # test/unit/ios_share_extension_contract_test.dart.
   receive_sharing_intent: 1.9.0
   excel: ^4.0.6
   archive: ^3.6.1
