@@ -206,7 +206,7 @@ void main() {
     controller.phase.value = StockSheetPhase.decoding;
     await tester.pump();
     expect(find.text('Reading photo 1 of 2'), findsOneWidget);
-    expect(find.text('Stock sheet'), findsOneWidget);
+    expect(find.text('Items from photos'), findsOneWidget);
 
     await review(tester, _twoPhotos());
     expect(find.text('Make a stock sheet'), findsNothing);
