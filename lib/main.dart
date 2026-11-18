@@ -14,6 +14,7 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/hid_wedge_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/share_intake_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -102,6 +103,11 @@ Future<void> main() async {
   Get.put<StorageService>(StorageService(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
+
+  // Photos shared from the gallery. Registered after the auth controller,
+  // whose isAuthenticated it watches; it holds a share through sign-in and
+  // opens the stock sheet once the app reaches HOME.
+  Get.put<ShareIntakeService>(ShareIntakeService(), permanent: true);
 
   Get.put<ThemeController>(ThemeController(), permanent: true);
   await Get.find<ThemeController>().loadPersisted();
@@ -263,6 +269,9 @@ class MultimaxApp extends StatelessWidget {
           if (routing?.current != null &&
               Get.isRegistered<HomeController>()) {
             Get.find<HomeController>().updateActiveScreen(routing!.current);
+          }
+          if (Get.isRegistered<ShareIntakeService>()) {
+            Get.find<ShareIntakeService>().onRouteChanged();
           }
         },
       );

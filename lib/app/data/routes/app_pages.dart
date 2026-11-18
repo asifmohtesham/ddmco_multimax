@@ -111,6 +111,8 @@ import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_bin
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_screen.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_binding.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart';
+import 'package:multimax/app/modules/stock_sheet/stock_sheet_binding.dart';
+import 'package:multimax/app/modules/stock_sheet/stock_sheet_screen.dart';
 
 class AppPages {
   static const INITIAL = AppRoutes.LOGIN;
@@ -421,6 +423,12 @@ class AppPages {
       name:       AppRoutes.STOCK_AGEING,
       page:       () => const StockAgeingScreen(),
       binding:    StockAgeingBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.STOCK_SHEET,
+      page:       () => const StockSheetScreen(),
+      binding:    StockSheetBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

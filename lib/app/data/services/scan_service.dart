@@ -4,6 +4,7 @@ import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/services/scan_constants.dart';
+import 'package:multimax/app/shared/barcode/ean8.dart';
 
 /// Resolves raw barcode strings into typed [ScanResult] values.
 ///
@@ -181,20 +182,7 @@ class ScanService extends GetxService {
 
   // ── EAN-8 checksum validation ─────────────────────────────────────────────
 
-  bool _isValidEan8(String code) {
-    if (code.length != 8) return false;
-    if (!ScanConstants.digitsOnly.hasMatch(code)) return false;
-
-    // EAN-8 weights: 3 1 3 1 3 1 3 (check)
-    int sum = 0;
-    for (int i = 0; i < 7; i++) {
-      final digit = int.parse(code[i]);
-      sum += (i.isEven) ? digit * 3 : digit;
-    }
-
-    final checksum = (10 - (sum % 10)) % 10;
-    return checksum == int.parse(code[7]);
-  }
+  bool _isValidEan8(String code) => Ean8.isValid(code);
 }
 
 // ── Private value type ────────────────────────────────────────────────────────

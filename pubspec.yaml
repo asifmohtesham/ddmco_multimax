@@ -2,7 +2,7 @@ name: multimax
 description: "Manage stock, order, packing and delivery."
 publish_to: 'none'
 
-version: 2.40.1+128
+version: 2.41.0+129
 
 environment:
   sdk: ^3.8.1
@@ -24,6 +24,9 @@ dependencies:
   percent_indicator:
   flutter_html:
   share_plus: ^13.3.1
+  # Receives photos shared from the gallery (stock sheet): cold start via
+  # getInitialMedia(), warm app via getMediaStream().
+  receive_sharing_intent: ^1.9.0
   excel: ^4.0.6
   archive: ^3.6.1
   qr_flutter:
@@ -37,6 +40,7 @@ dependencies:
   # the full DocType name always fits without ellipsis.
   auto_size_text: ^3.0.0
   mobile_scanner: ^7.2.0
+  image: ^4.3.0
   shared_preferences: ^2.5.5
   socket_io_client: ^2.0.3
   image_picker: ^1.1.2
@@ -59,6 +63,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  xml: ^6.5.0
 
 flutter:
   uses-material-design: true
