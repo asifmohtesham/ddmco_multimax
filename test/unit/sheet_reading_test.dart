@@ -104,17 +104,49 @@ void main() {
     setUp(() async => dir = await Directory.systemTemp.createTemp('tiles'));
     tearDown(() async => dir.delete(recursive: true));
 
-    test('writes nine enlarged PNG tiles of the upright photo', () {
+    test('enlarged tiles come smooth and sharp, nine of each', () {
+      // A one-pixel black bar every other column: the thinnest bars a small
+      // image can hold.
+      final source = img.Image(width: 300, height: 200);
+      for (var x = 0; x < 300; x++) {
+        for (var y = 0; y < 200; y++) {
+          final v = x.isEven ? 0 : 255;
+          source.setPixelRgb(x, y, v, v, v);
+        }
+      }
+      final photo = Uint8List.fromList(img.encodePng(source));
+      final tiles = SheetReading.writeTiles(photo, dir.path, 't');
+      expect(tiles, hasLength(18));
+      // 180 x 120 tiles, enlarged 4x (the cap) towards a 1200 px side.
+      expect(tiles.every((t) => t.scale == 4), isTrue);
+      expect(tiles.map((t) => t.path).toSet(), hasLength(18));
+      // Both copies of a tile sit at the same place.
+      expect(tiles.map((t) => (t.x, t.y)).toSet(), hasLength(9));
+      expect(tiles.map((t) => (t.x, t.y)).last, (120, 80));
+
+      img.Image read(SheetTile t) =>
+          img.decodePng(File(t.path).readAsBytesSync())!;
+      final copies = tiles.where((t) => t.x == 0 && t.y == 0).toList();
+      expect(copies, hasLength(2));
+      for (final t in copies) {
+        final tile = read(t);
+        expect((tile.width, tile.height), (720, 480));
+      }
+      // The sharp copy repeats each pixel 4x4: every column is pure black or
+      // white. The smooth copy blends neighbouring bars into greys.
+      bool pure(img.Image t) => [
+        for (var x = 0; x < 40; x++) t.getPixel(x, 10).r.toInt(),
+      ].every((v) => v == 0 || v == 255);
+      expect(copies.where((t) => pure(read(t))), hasLength(1));
+    });
+
+    test('a tile large enough is written once, not enlarged', () {
       final photo = Uint8List.fromList(
-        img.encodePng(img.Image(width: 300, height: 200)),
+        img.encodePng(img.Image(width: 2500, height: 2100)),
       );
       final tiles = SheetReading.writeTiles(photo, dir.path, 't');
       expect(tiles, hasLength(9));
-      // 180 x 120 tiles, enlarged 4x (the cap) towards a 1200 px side.
-      expect(tiles.every((t) => t.scale == 4), isTrue);
-      final first = img.decodePng(File(tiles.first.path).readAsBytesSync())!;
-      expect((first.width, first.height), (720, 480));
-      expect(tiles.map((t) => (t.x, t.y)).last, (120, 80));
+      expect(tiles.every((t) => t.scale == 1), isTrue);
     });
 
     test('bytes that are not an image give no tiles', () {

@@ -139,7 +139,11 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
   Row order = review order; within a photo, reading order (rows of labels top to bottom, each left to right).
 - **Reading a sheet of labels:** when the whole-photo pass finds two or more items, the photo is read again in nine
   overlapping tiles (each 60% of the photo's width and height, 20% apart, greyscale, enlarged up to 4x towards a
-  1,200 px side; `logic/sheet_reading.dart`), so codes too small to be found whole are added; any label up to 40% of
+  1,200 px side; `logic/sheet_reading.dart`), so codes too small to be found whole are added. An enlarged tile is
+  read twice, smoothed (cubic) and sharp (each pixel repeated): on a small sharp image such as a WhatsApp copy of a
+  printed sheet (484 px wide, bars ~1.7 px) smoothing blurred one label of 30 away, the sharp copy reads it. That
+  sheet takes about 1½ minutes to read on the XCover7 (18 tile reads); a full-size camera photo is not enlarged
+  (9 reads); any label up to 40% of
   the photo lies whole in some tile. Codes are ordered by the boxes the platform reports; codes without a box follow
   in the order found. A photo of one label (an EAN-8 and its batch QR count as one item) is never tiled.
 - **Images:** every row's Image (review list, finished screen, Excel and PDF) is the **Item's `image` from ERP**,
@@ -264,8 +268,9 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 
 ## 10. Open items and known limits
 
-- **Sheet photos not yet seen on a device:** tiled reading and its order depend on ML Kit / Vision and their corner
-  boxes, which tests cannot run; check a sheet of 30 labels on Android and on the iPhone/Mac.
+- **Sheet photos on a device:** on Android (XCover7, 18/11/2026) the 30-label sheet gave all 30 items in sheet
+  order, the right ERP images and blanks in the review, Excel and PDF. Not yet seen on the iPhone/Mac (Vision's
+  corner boxes order the rows there).
 - **Telegram twin** still nests a photo's items, reads the photo once and puts the photo in the Image column; mirror
   these changes there (§11).
 
