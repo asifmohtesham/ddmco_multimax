@@ -68,8 +68,8 @@ class PdfStockSheetWriter {
     ];
     final widths = doc.showStatus ? _widthsStatusMm : _widthsMm;
 
-    // One MemoryImage per photo, so a photo shared by several rows is
-    // embedded in the PDF once.
+    // One MemoryImage per image, so an item listed in several rows has its
+    // image embedded in the PDF once.
     final images = <String, pw.MemoryImage>{};
     pw.MemoryImage? imageFor(String path) {
       final cached = images[path];
@@ -79,7 +79,7 @@ class PdfStockSheetWriter {
       try {
         return images[path] = pw.MemoryImage(bytes);
       } catch (_) {
-        return null; // unreadable thumbnail: fall back to "(no image)"
+        return null; // unreadable thumbnail: the cell stays blank
       }
     }
 
@@ -116,7 +116,8 @@ class PdfStockSheetWriter {
       final row = doc.rows[i];
       final red = doc.highlightOutOfStock && row.outOfStock;
       final ink = red ? _redText : null;
-      final image = imageFor(row.photoPath);
+      final key = row.imageKey;
+      final image = key == null ? null : imageFor(key);
 
       bodyRows.add(pw.TableRow(
         verticalAlignment: pw.TableCellVerticalAlignment.middle,
@@ -124,8 +125,9 @@ class PdfStockSheetWriter {
         children: [
           cell(text('${i + 1}', colour: ink)),
           cell(
+            // No ERP image: the cell stays blank.
             image == null
-                ? text('(no image)', colour: ink)
+                ? pw.SizedBox()
                 : pw.Image(
                     image,
                     width: _thumbMm * PdfPageFormat.mm,

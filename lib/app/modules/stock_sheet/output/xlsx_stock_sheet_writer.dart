@@ -67,12 +67,18 @@ class XlsxStockSheetWriter {
       final body = red ? _sBodyRed : _sBody;
       final barcodeStyle = red ? _sBarcodeRed : _sBarcode;
 
-      final pic = _picture(doc.thumbnails[row.photoPath], r - 1, pictures.length + 1);
+      final key = row.imageKey;
+      final pic = _picture(
+        key == null ? null : doc.thumbnails[key],
+        r - 1,
+        pictures.length + 1,
+      );
       if (pic != null) pictures.add(pic);
 
       sheetRows.write(_row(r, [
         _number('A$r', i + 1, body),
-        pic == null ? _text('B$r', '(no image)', body) : _blank('B$r', body),
+        // No ERP image: the cell stays blank.
+        _blank('B$r', body),
         _text('C$r', row.barcode, barcodeStyle),
         _text('D$r', row.variantOf ?? '', body),
         _text('E$r', row.countryOfOrigin ?? '', body),

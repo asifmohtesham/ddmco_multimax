@@ -6,10 +6,12 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/rack_chips.dart';
 
-/// The review list: one row per photo, drag to reorder, a switch to leave the
-/// photo (or one of its items) off the sheet.
+/// The review list: one row per item read from a photo (a photo of several
+/// items gives several rows), and one per photo or code that resolved to no
+/// item. Drag to reorder, a switch to leave the item off the sheet.
 class ReviewList extends StatefulWidget {
   const ReviewList({
     super.key,
@@ -17,7 +19,6 @@ class ReviewList extends StatefulWidget {
     required this.thumbnails,
     required this.onReorder,
     required this.onToggle,
-    required this.onToggleItem,
     required this.onFix,
     required this.onRetryCheck,
     required this.onRemove,
@@ -27,20 +28,25 @@ class ReviewList extends StatefulWidget {
 
   final List<ReviewEntry> entries;
 
-  /// JPEG thumbnails keyed by photo path.
+  /// JPEG thumbnails: photos keyed by path, ERP images by
+  /// [ItemInfo.thumbnailKey]. An item's row shows its ERP image (a
+  /// placeholder when it has none); a row with no item shows its photo.
   final Map<String, Uint8List> thumbnails;
+
+  Uint8List? _thumbnailFor(ReviewEntry entry) => entry.resolved
+      ? thumbnails[ItemInfo.thumbnailKey(entry.items.first.info.itemCode)]
+      : thumbnails[entry.path];
 
   /// Receives the raw `ReorderableListView` indices (not adjusted).
   final void Function(int oldIndex, int newIndex) onReorder;
   final void Function(int index, bool included) onToggle;
-  final void Function(int index, int itemIndex, bool included) onToggleItem;
 
-  /// [noteBarcode] is the leftover "not in ERP" barcode being fixed, or null.
-  final void Function(int index, String? noteBarcode) onFix;
+  /// "Type or scan code" was tapped on an unresolved row.
+  final void Function(int index) onFix;
   final void Function(int index) onRetryCheck;
 
   /// A row was swiped away (end to start), or the screen reader's
-  /// "Remove photo" action was used. The owner removes the photo and returns
+  /// "Remove item" / "Remove photo" action was used. The owner removes the photo and returns
   /// whether it did; a row that was not removed springs back.
   final bool Function(int index) onRemove;
 
@@ -90,9 +96,9 @@ class _ReviewListState extends State<ReviewList> {
         ),
         itemBuilder: (context, i) => KeyedSubtree(
           // The reorderable list keys its children by this outer key.
-          key: ValueKey(entries[i].path),
+          key: ValueKey(entries[i].id),
           child: Dismissible(
-            key: ValueKey('dismiss-${entries[i].path}'),
+            key: ValueKey('dismiss-${entries[i].id}'),
             direction: widget.removeEnabled
                 ? DismissDirection.endToStart
                 : DismissDirection.none,
@@ -105,17 +111,19 @@ class _ReviewListState extends State<ReviewList> {
               // The swipe has no screen-reader equivalent; this is it.
               customSemanticsActions: widget.removeEnabled
                   ? {
-                      const CustomSemanticsAction(label: 'Remove photo'): () =>
-                          widget.onRemove(i),
+                      CustomSemanticsAction(
+                        label: entries[i].resolved
+                            ? 'Remove item'
+                            : 'Remove photo',
+                      ): () => widget.onRemove(i),
                     }
                   : null,
               child: _ReviewRow(
                 index: i,
                 entry: entries[i],
-                thumbnail: widget.thumbnails[entries[i].path],
+                thumbnail: widget._thumbnailFor(entries[i]),
                 recheckBusy: widget.recheckBusy ?? _idle,
                 onToggle: widget.onToggle,
-                onToggleItem: widget.onToggleItem,
                 onFix: widget.onFix,
                 onRetryCheck: widget.onRetryCheck,
               ),
@@ -155,7 +163,6 @@ class _ReviewRow extends StatelessWidget {
     required this.thumbnail,
     required this.recheckBusy,
     required this.onToggle,
-    required this.onToggleItem,
     required this.onFix,
     required this.onRetryCheck,
   });
@@ -165,8 +172,7 @@ class _ReviewRow extends StatelessWidget {
   final Uint8List? thumbnail;
   final RxBool recheckBusy;
   final void Function(int, bool) onToggle;
-  final void Function(int, int, bool) onToggleItem;
-  final void Function(int, String?) onFix;
+  final void Function(int) onFix;
   final void Function(int) onRetryCheck;
 
   static const _mono = 'ShureTechMono';
@@ -183,9 +189,7 @@ class _ReviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final resolved = entry.resolved;
-    final multi = entry.items.length > 1;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -221,8 +225,7 @@ class _ReviewRow extends StatelessWidget {
                 children: [
                   if (entry.typed) _tag(context, 'Typed'),
                   if (resolved)
-                    for (var k = 0; k < entry.items.length; k++)
-                      _item(context, entry.items[k], k, multi)
+                    _item(context, entry.items.single)
                   else ...[
                     Text(
                       _reason,
@@ -233,7 +236,7 @@ class _ReviewRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    _fixPill(context, null),
+                    _fixPill(context),
                   ],
                   if (entry.unchecked) ...[
                     const SizedBox(height: 6),
@@ -250,21 +253,6 @@ class _ReviewRow extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (resolved)
-                    for (final code in entry.notInErp) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'Also read: $code · not in ERP',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark
-                              ? AppColors.orange300
-                              : AppColors.orange700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      _fixPill(context, code),
-                    ],
                 ],
               ),
             ),
@@ -292,14 +280,14 @@ class _ReviewRow extends StatelessWidget {
     );
   }
 
-  Widget _item(BuildContext context, ReviewItem item, int k, bool multi) {
+  Widget _item(BuildContext context, ReviewItem item) {
     final s = context.scheme;
     final variantOf = item.info.variantOf;
     final sub = [
       item.code.barcode,
       if (variantOf != null && variantOf.isNotEmpty) variantOf,
     ].join(' · ');
-    final body = Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -320,27 +308,12 @@ class _ReviewRow extends StatelessWidget {
         RackChips(stock: item.stock),
       ],
     );
-    return Padding(
-      padding: EdgeInsets.only(top: k == 0 ? 0 : 8),
-      child: multi
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: body),
-                Switch(
-                  value: item.included,
-                  onChanged: (v) => onToggleItem(index, k, v),
-                ),
-              ],
-            )
-          : body,
-    );
   }
 
-  Widget _fixPill(BuildContext context, String? noteBarcode) {
+  Widget _fixPill(BuildContext context) {
     final s = context.scheme;
     return OutlinedButton(
-      onPressed: () => onFix(index, noteBarcode),
+      onPressed: () => onFix(index),
       style: OutlinedButton.styleFrom(
         visualDensity: VisualDensity.compact,
         foregroundColor: s.text,

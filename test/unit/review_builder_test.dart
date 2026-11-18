@@ -34,66 +34,89 @@ ReviewEntry unresolved(String path,
     ReviewEntry(path: path, decodeFailed: failed, notInErp: notInErp);
 
 void main() {
-  group('entryFor', () {
-    test('known and unknown code: one item, one notInErp', () {
-      final e = ReviewBuilder.entryFor(
-        scan('a.jpg', [code('1002312'), const ClassifiedCode(itemCode: '9999999', barcode: '99999995')]),
+  group('entriesFor', () {
+    const unknown = ClassifiedCode(itemCode: '9999999', barcode: '99999995');
+
+    test('one item: one row whose id is the path', () {
+      final rows = ReviewBuilder.entriesFor(
+        scan('a.jpg', [code('1002312')]),
         {'1002312': info('1002312')},
         {},
       );
-      expect(e.items.length, 1);
-      expect(e.items.first.included, isTrue);
-      expect(e.notInErp, ['99999995']);
-      expect(e.resolved, isTrue);
+      expect(rows, hasLength(1));
+      expect(rows.single.id, 'a.jpg');
+      expect(rows.single.items.single.included, isTrue);
     });
 
-    test('all unknown: unresolved and not included', () {
-      final e = ReviewBuilder.entryFor(
-        scan('a.jpg', [const ClassifiedCode(itemCode: '9999999', barcode: '99999995')]),
+    test('a sheet of items: one row per item, in the order read', () {
+      final rows = ReviewBuilder.entriesFor(
+        scan('a.jpg', [code('3'), code('1'), code('2')]),
+        {for (final c in ['1', '2', '3']) c: info(c)},
+        {},
+      );
+      expect(rows.map((r) => r.items.single.code.itemCode), ['3', '1', '2']);
+      expect(rows.map((r) => r.path).toSet(), {'a.jpg'});
+      expect(rows.map((r) => r.id).toSet(), hasLength(3));
+      expect(rows.every((r) => r.notInErp.isEmpty), isTrue);
+    });
+
+    test('a known and an unknown code: an item row, then a Not in ERP row', () {
+      final rows = ReviewBuilder.entriesFor(
+        scan('a.jpg', [unknown, code('1002312')]),
+        {'1002312': info('1002312')},
+        {},
+      );
+      expect(rows, hasLength(2));
+      expect(rows[0].items.single.code.itemCode, '1002312');
+      expect(rows[0].notInErp, isEmpty);
+      expect(rows[1].resolved, isFalse);
+      expect(rows[1].notInErp, ['99999995']);
+      expect(rows[0].id, isNot(rows[1].id));
+    });
+
+    test('all unknown: one unresolved row per code', () {
+      final rows = ReviewBuilder.entriesFor(
+        scan('a.jpg', [unknown]),
         {},
         {},
       );
-      expect(e.resolved, isFalse);
-      expect(e.included, isFalse);
-      expect(e.notInErp, ['99999995']);
+      expect(rows.single.resolved, isFalse);
+      expect(rows.single.included, isFalse);
+      expect(rows.single.notInErp, ['99999995']);
     });
 
-    test('decodeFailed is unresolved', () {
-      final e = ReviewBuilder.entryFor(scan('a.jpg', [], failed: true), {}, {});
-      expect(e.decodeFailed, isTrue);
-      expect(e.resolved, isFalse);
-      expect(e.included, isFalse);
+    test('decodeFailed is one unresolved row', () {
+      final rows =
+          ReviewBuilder.entriesFor(scan('a.jpg', [], failed: true), {}, {});
+      expect(rows.single.decodeFailed, isTrue);
+      expect(rows.single.resolved, isFalse);
     });
 
     test('stock is attached by item code', () {
       const s = ItemStock(total: 5, racks: [RackQty(rack: 'R1', qty: 5)]);
-      final e = ReviewBuilder.entryFor(
+      final rows = ReviewBuilder.entriesFor(
           scan('a.jpg', [code('1002312')]),
           {'1002312': info('1002312')},
           {'1002312': s});
-      expect(e.items.first.stock, same(s));
+      expect(rows.single.items.single.stock, same(s));
+    });
+
+    test('copyWith keeps the id', () {
+      final rows = ReviewBuilder.entriesFor(
+        scan('a.jpg', [code('1'), code('2')]),
+        {'1': info('1'), '2': info('2')},
+        {},
+      );
+      expect(rows[1].copyWith(typed: true).id, rows[1].id);
     });
   });
 
   group('switches', () {
-    test('row off clears both items', () {
-      final r = ReviewBuilder.setIncluded([entry('a', ['1', '2'])], 0, false);
-      expect(r[0].items.every((i) => !i.included), isTrue);
-      expect(r[0].included, isFalse);
-    });
-
-    test('item off then the other off: entry not included', () {
-      var l = [entry('a', ['1', '2'])];
-      l = ReviewBuilder.setItemIncluded(l, 0, 0, false);
-      expect(l[0].included, isTrue);
-      l = ReviewBuilder.setItemIncluded(l, 0, 1, false);
+    test('row off, then on', () {
+      var l = ReviewBuilder.setIncluded([entry('a', ['1'])], 0, false);
       expect(l[0].included, isFalse);
-    });
-
-    test('row on sets all on', () {
-      var l = ReviewBuilder.setIncluded([entry('a', ['1', '2'])], 0, false);
       l = ReviewBuilder.setIncluded(l, 0, true);
-      expect(l[0].items.every((i) => i.included), isTrue);
+      expect(l[0].included, isTrue);
     });
 
     test('setIncluded on unresolved entry changes nothing', () {
@@ -123,9 +146,13 @@ void main() {
   });
 
   group('toResult', () {
-    test('rows only for included items, photoIndex is list position', () {
-      final two = entry('a', ['1', '2']);
-      final l = ReviewBuilder.setItemIncluded([two, entry('c', ['3'])], 0, 1, false);
+    test('rows only for included items, photoIndex counts photos', () {
+      // Two rows of photo a, one of photo c; a's second row switched off.
+      final l = ReviewBuilder.setIncluded([
+        entry('a', ['1']),
+        ReviewEntry(path: 'a', id: 'a#1', items: entry('a', ['2']).items),
+        entry('c', ['3']),
+      ], 1, false);
       final r = ReviewBuilder.toResult(l);
       expect(r.rows.map((x) => x.barcode), ['15', '35']);
       expect(r.rows.map((x) => x.photoIndex), [0, 1]);
@@ -134,6 +161,21 @@ void main() {
       expect(r.rows.first.variantOf, 'V1');
       expect(r.rows.first.countryOfOrigin, 'IT');
       expect(r.unresolved, isEmpty);
+    });
+
+    test('imageKey only for an Item with an ERP image', () {
+      ReviewEntry withImage(String c, String? image) => ReviewEntry(
+            path: c,
+            items: [
+              ReviewItem(
+                code: code(c),
+                info: ItemInfo(itemCode: c, image: image),
+              ),
+            ],
+          );
+      final r = ReviewBuilder.toResult(
+          [withImage('1', '/files/1.jpg'), withImage('2', null)]);
+      expect(r.rows.map((x) => x.imageKey), ['item:1', null]);
     });
 
     test('same item in two entries gives two rows', () {
@@ -187,5 +229,20 @@ void main() {
     var l = [entry('a', ['1']), entry('b', ['2']), unresolved('c')];
     l = ReviewBuilder.setIncluded(l, 1, false);
     expect(ReviewBuilder.sheetPhotoCount(l), 1);
+  });
+
+  test('counts: rows of one photo are one photo, each its own item', () {
+    var l = [
+      entry('a', ['1']),
+      ReviewEntry(path: 'a', id: 'a#1', items: entry('a', ['2']).items),
+      ReviewEntry(path: 'a', id: 'a#2', notInErp: const ['99999995']),
+      entry('b', ['3']),
+    ];
+    expect(ReviewBuilder.photoCount(l), 2);
+    expect(ReviewBuilder.sheetPhotoCount(l), 2);
+    expect(ReviewBuilder.sheetItemCount(l), 3);
+    l = ReviewBuilder.setIncluded(l, 3, false);
+    expect(ReviewBuilder.sheetPhotoCount(l), 1);
+    expect(ReviewBuilder.sheetItemCount(l), 2);
   });
 }

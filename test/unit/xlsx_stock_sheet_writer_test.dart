@@ -15,7 +15,9 @@ StockSheetRow _row(int i, String barcode,
         {String? name, bool oos = false, String? path}) =>
     StockSheetRow(
       photoIndex: i,
-      photoPath: path ?? 'p$i.jpg',
+      photoPath: 'p$i.jpg',
+      // The ERP image's key; rows of one item share it.
+      imageKey: path ?? 'p$i.jpg',
       barcode: barcode,
       itemName: name ?? 'Item $i',
       variantOf: 'Strap',
@@ -108,13 +110,13 @@ void main() {
     expect(c['G6'], 'Out of stock');
   });
 
-  test('one picture per row with a thumbnail, (no image) otherwise', () {
+  test('one picture per row with an ERP image, a blank cell otherwise', () {
     final a = _open(XlsxStockSheetWriter.write(_doc()));
     final drawing = _text(a, 'xl/drawings/drawing1.xml');
     expect('<xdr:pic>'.allMatches(drawing).length, 2);
     final c = _cells(a);
     expect(c['B5'], isEmpty);
-    expect(c['B7'], '(no image)');
+    expect(c['B7'], isEmpty);
   });
 
   test('pictures are scaled to a 110 px long side', () {

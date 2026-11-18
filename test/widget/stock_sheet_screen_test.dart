@@ -49,7 +49,8 @@ class _SpyController extends StockSheetController {
   int retries = 0;
   bool retryable = false;
 
-  /// Overrides the count of photos on the sheet; null counts [review].
+  /// Overrides the counts of photos and items on the sheet; null counts
+  /// [review].
   int? onSheet;
 
   @override
@@ -57,6 +58,9 @@ class _SpyController extends StockSheetController {
 
   @override
   int get sheetPhotoCount => onSheet ?? super.sheetPhotoCount;
+
+  @override
+  int get sheetItemCount => onSheet ?? super.sheetItemCount;
 
   @override
   Future<void> start(List<String> paths) async {
@@ -237,8 +241,8 @@ void main() {
     expect(find.byType(ReviewList), findsOneWidget);
     expect(find.text('Item 12345670'), findsOneWidget);
     expect(find.text('Review photos'), findsOneWidget);
-    expect(find.text('2 photos · 2 in the file'), findsOneWidget);
-    expect(find.text('Generate file · 2 photos'), findsOneWidget);
+    expect(find.text('2 photos · 2 items in the file'), findsOneWidget);
+    expect(find.text('Generate file · 2 items'), findsOneWidget);
   });
 
   testWidgets('the format control shows the stored format', (tester) async {
@@ -256,7 +260,7 @@ void main() {
     await tester.tap(find.text('Both'));
     await tester.pumpAndSettle();
     expect(controller.format.value, SheetFormat.both);
-    await tester.tap(find.text('Generate file · 2 photos'));
+    await tester.tap(find.text('Generate file · 2 items'));
     await tester.pump();
     expect(controller.makes, [SheetFormat.both]);
   });
@@ -273,17 +277,17 @@ void main() {
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
-    expect(button('Generate file · 2 photos').onPressed, isNotNull);
+    expect(button('Generate file · 2 items').onPressed, isNotNull);
 
     await tester.tap(find.byType(Switch).at(0));
     await tester.pumpAndSettle();
-    expect(find.text('Generate file · 1 photo'), findsOneWidget);
+    expect(find.text('Generate file · 1 item'), findsOneWidget);
     await tester.tap(find.byType(Switch).at(1));
     await tester.pumpAndSettle();
 
-    expect(find.text('2 photos · 0 in the file'), findsOneWidget);
-    expect(button('Generate file · 0 photos').onPressed, isNull);
-    await tester.tap(find.text('Generate file · 0 photos'));
+    expect(find.text('2 photos · 0 items in the file'), findsOneWidget);
+    expect(button('Generate file · 0 items').onPressed, isNull);
+    await tester.tap(find.text('Generate file · 0 items'));
     await tester.pump();
     expect(controller.makes, isEmpty);
   });
@@ -463,7 +467,7 @@ void main() {
     await review(tester, _twoPhotos());
     ButtonStyleButton button() => tester.widget<ButtonStyleButton>(
       find.ancestor(
-        of: find.text('Generate file · 2 photos'),
+        of: find.text('Generate file · 2 items'),
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
@@ -478,7 +482,7 @@ void main() {
     expect(button().onPressed, isNotNull);
   });
 
-  testWidgets('swipe shows "Photo removed." and Undo restores the row', (
+  testWidgets('swipe shows "Item removed." and Undo restores the row', (
     tester,
   ) async {
     await open(tester);
@@ -489,7 +493,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Item 12345670'), findsNothing);
-    expect(find.text('Photo removed.'), findsOneWidget);
+    expect(find.text('Item removed.'), findsOneWidget);
     expect(controller.review.map((e) => e.path), ['b.jpg']);
 
     await tester.tap(find.text('Undo'));
@@ -499,7 +503,7 @@ void main() {
     expect(tester.getTopLeft(find.text('Item 12345670')), before);
   });
 
-  testWidgets('the "Photo removed." snackbar goes after five seconds', (
+  testWidgets('the "Item removed." snackbar goes after five seconds', (
     tester,
   ) async {
     await open(tester);
@@ -507,14 +511,14 @@ void main() {
 
     await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Photo removed.'), findsOneWidget);
+    expect(find.text('Item removed.'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 6));
     await tester.pumpAndSettle();
-    expect(find.text('Photo removed.'), findsNothing);
+    expect(find.text('Item removed.'), findsNothing);
   });
 
-  testWidgets('the "Photo removed." snackbar goes when the run starts', (
+  testWidgets('the "Item removed." snackbar goes when the run starts', (
     tester,
   ) async {
     await open(tester);
@@ -522,12 +526,12 @@ void main() {
 
     await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Photo removed.'), findsOneWidget);
+    expect(find.text('Item removed.'), findsOneWidget);
 
     controller.phase.value = StockSheetPhase.building;
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Photo removed.'), findsNothing);
+    expect(find.text('Item removed.'), findsNothing);
   });
 
   testWidgets('no swipe while the out-of-stock question is open', (
@@ -845,8 +849,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Review photos'), findsOneWidget);
-    expect(find.text('0 photos · 1 in the file'), findsOneWidget);
-    await tester.tap(find.text('Generate file · 1 photo'));
+    expect(find.text('0 photos · 1 item in the file'), findsOneWidget);
+    await tester.tap(find.text('Generate file · 1 item'));
     await tester.pump();
     expect(controller.makes, [SheetFormat.both]);
 

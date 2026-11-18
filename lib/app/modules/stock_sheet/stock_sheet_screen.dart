@@ -253,16 +253,15 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     _close();
   }
 
-  void _fix(int index, String? noteBarcode) {
+  void _fix(int index) {
     showFixCodeSheet(
       context,
-      onSubmit: (code) =>
-          controller.fixCode(index, code, noteBarcode: noteBarcode),
+      onSubmit: (code) => controller.fixCode(index, code),
     );
   }
 
-  /// Takes the swiped photo off the list and offers to put it back.
-  /// Returns whether the photo was removed.
+  /// Takes the swiped row off the list and offers to put it back.
+  /// Returns whether the row was removed.
   bool _remove(int index) {
     final entry = controller.removeAt(index);
     if (entry == null) return false;
@@ -272,7 +271,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       SnackBar(
         persist: false,
         duration: const Duration(seconds: 5),
-        content: const Text('Photo removed.'),
+        content: Text(entry.resolved ? 'Item removed.' : 'Photo removed.'),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () => controller.restore(entry, index),
@@ -282,7 +281,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     return true;
   }
 
-  /// The "Photo removed." snackbar, while it is showing.
+  /// The "Item removed." / "Photo removed." snackbar, while it is showing.
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoBar;
 
   void _closeUndoBar() {
@@ -362,7 +361,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   PreferredSizeWidget _reviewAppBar() {
     return AppBar(
       title: Obx(() {
-        final photos = controller.review.length;
+        final photos = controller.photoCount;
+        final items = controller.sheetItemCount;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -370,7 +370,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             const Text('Review photos'),
             Text(
               '$photos photo${photos == 1 ? '' : 's'} · '
-              '${controller.sheetPhotoCount} in the file',
+              '$items item${items == 1 ? '' : 's'} in the file',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
             ),
           ],
@@ -459,7 +459,6 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           thumbnails: Map.of(controller.thumbnails),
           onReorder: controller.reorder,
           onToggle: controller.setIncluded,
-          onToggleItem: controller.setItemIncluded,
           onFix: _fix,
           onRetryCheck: _retryCheck,
           onRemove: _remove,
@@ -533,8 +532,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     switch (controller.phase.value) {
       case StockSheetPhase.reviewing:
       case StockSheetPhase.awaitingChoice:
-        final n = controller.sheetPhotoCount;
-        final label = 'Generate file · $n photo${n == 1 ? '' : 's'}';
+        // One row of the file per item switched on.
+        final n = controller.sheetItemCount;
+        final label = 'Generate file · $n item${n == 1 ? '' : 's'}';
         const icon = Icon(Icons.description_outlined);
         // Nothing on the sheet, or the list still changing: makeSheet would
         // refuse, so the button says so by being disabled.

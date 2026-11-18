@@ -18,7 +18,8 @@ class StockSheetResultList extends StatefulWidget {
   final StockSheetResult result;
   final int photoCount;
 
-  /// JPEG thumbnails keyed by photo path.
+  /// JPEG thumbnails: photos keyed by path, ERP images by
+  /// [ItemInfo.thumbnailKey].
   final Map<String, Uint8List> thumbnails;
 
   /// The on-screen text for why a photo produced no row.
@@ -93,7 +94,11 @@ class _StockSheetResultListState extends State<StockSheetResultList> {
             for (final row in outOfStock)
               ListTile(
                 dense: true,
-                leading: _Thumbnail(bytes: widget.thumbnails[row.photoPath]),
+                leading: _Thumbnail(
+                  bytes: row.imageKey == null
+                      ? null
+                      : widget.thumbnails[row.imageKey],
+                ),
                 title: Text(
                   row.itemName ?? row.barcode,
                   style: TextStyle(color: outOfStockInk),

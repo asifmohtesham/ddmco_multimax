@@ -99,6 +99,7 @@ class StockSheetController extends GetxController {
     Future<Directory> Function()? tempDir,
     Future<Uint8List> Function(StockSheetDocument)? writePdf,
     Future<Uint8List?> Function(String)? makeThumbnail,
+    Future<Uint8List?> Function(String url)? itemThumbnail,
     PhotoFingerprinter? fingerprint,
     Future<List<String>> Function()? extraCleanupRoots,
     Future<void> Function()? clearPickerFiles,
@@ -111,6 +112,7 @@ class StockSheetController extends GetxController {
        _tempDir = tempDir ?? getTemporaryDirectory,
        _writePdf = writePdf ?? PdfStockSheetWriter.writeInBackground,
        _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path)),
+       _itemThumbnailOverride = itemThumbnail,
        _fingerprint = fingerprint ?? fingerprintPhotos,
        _clearPickerFiles = clearPickerFiles ?? FilePicker.clearTemporaryFiles,
        _extraCleanupRoots =
@@ -168,6 +170,10 @@ class StockSheetController extends GetxController {
   final Future<Directory> Function() _tempDir;
   final Future<Uint8List> Function(StockSheetDocument) _writePdf;
   final Future<Uint8List?> Function(String) _makeThumbnail;
+
+  /// Downloads an Item's ERP image and makes its thumbnail; null to use
+  /// [_defaultItemThumbnail].
+  final Future<Uint8List?> Function(String url)? _itemThumbnailOverride;
   final PhotoFingerprinter _fingerprint;
   final Future<List<String>> Function() _extraCleanupRoots;
 
@@ -305,24 +311,23 @@ class StockSheetController extends GetxController {
   /// Photos with at least one item switched on.
   int get sheetPhotoCount => ReviewBuilder.sheetPhotoCount(review);
 
+  /// Items switched on: the rows the file will have.
+  int get sheetItemCount => ReviewBuilder.sheetItemCount(review);
+
+  /// Distinct photos in the review (a photo of several items gives several
+  /// rows).
+  int get photoCount => ReviewBuilder.photoCount(review);
+
   /// `ReorderableListView` semantics (see [ReviewBuilder.reorder]).
   void reorder(int oldIndex, int newIndex) {
     if (!_reviewing) return;
     review.assignAll(ReviewBuilder.reorder(review, oldIndex, newIndex));
   }
 
-  /// Switches every item of photo [index] on or off.
+  /// Switches row [index] on or off.
   void setIncluded(int index, bool on) {
     if (!_reviewing) return;
     review.assignAll(ReviewBuilder.setIncluded(review, index, on));
-  }
-
-  /// Switches item [itemIndex] of photo [index] on or off.
-  void setItemIncluded(int index, int itemIndex, bool on) {
-    if (!_reviewing) return;
-    review.assignAll(
-      ReviewBuilder.setItemIncluded(review, index, itemIndex, on),
-    );
   }
 
   bool get _reviewing => phase.value == StockSheetPhase.reviewing;
@@ -342,14 +347,17 @@ class StockSheetController extends GetxController {
     return review.removeAt(index);
   }
 
-  /// Puts a removed [entry] back at [index] (clamped to the list), unless a
-  /// photo with its path is listed again.
+  /// Puts a removed [entry] back at [index] (clamped to the list), unless
+  /// the row is listed again, or its photo was added again under another
+  /// path (the photo's other rows, which share its path, do not count).
   void restore(ReviewEntry entry, int index) {
     if (_closed || !_reviewing) return;
-    if (review.any((e) => e.path == entry.path)) return;
-    // The same photo may have been added again under a new path.
+    if (review.any((e) => e.id == entry.id)) return;
     final print = _fingerprintOf[entry.path];
-    if (print != null && review.any((e) => _fingerprintOf[e.path] == print)) {
+    if (print != null &&
+        review.any(
+          (e) => e.path != entry.path && _fingerprintOf[e.path] == print,
+        )) {
       return;
     }
     review.insert(index.clamp(0, review.length), entry);
@@ -359,15 +367,9 @@ class StockSheetController extends GetxController {
   bool get _editing => fixing.value || adding.value || rechecking.value;
 
   /// Looks up [input] (a barcode, a batch QR or a seven-digit item code)
-  /// and puts the item on photo [index]. With [noteBarcode] null the item
-  /// replaces the photo's items; otherwise it fixes that "Also read" note,
-  /// joining the photo's items (an item already there is switched on).
-  /// Returns null on success, else the error to show.
-  Future<String?> fixCode(
-    int index,
-    String input, {
-    String? noteBarcode,
-  }) async {
+  /// and makes row [index] that item. Returns null on success, else the
+  /// error to show.
+  Future<String?> fixCode(int index, String input) async {
     if (_closed || fixing.value || busy.value || !_reviewing) return null;
     if (index < 0 || index >= review.length) return null;
     final code = StockSheetCodec.resolveTyped(input);
@@ -380,38 +382,23 @@ class StockSheetController extends GetxController {
       if (_stale(generation)) return null;
       final info = items[code.itemCode];
       if (info == null) return notInErpMessage;
+      final images = _loadItemImages([info]);
       final rows = await _provider.fetchFinishedGoodsStock([code.itemCode]);
+      await images;
       if (_stale(generation)) return null;
       final at = _locate(entry, index);
       if (at < 0) return null;
-      final current = review[at];
       final item = ReviewItem(
         code: code,
         info: info,
         stock: StockAggregator.racksByItem(rows)[code.itemCode],
       );
-      review[at] = noteBarcode == null
-          ? current.copyWith(
-              items: [item],
-              notInErp: const [],
-              typed: true,
-              unchecked: false,
-            )
-          : current.copyWith(
-              items: current.items.any((i) => i.code.itemCode == code.itemCode)
-                  ? [
-                      for (final i in current.items)
-                        i.code.itemCode == code.itemCode
-                            ? i.copyWith(included: true)
-                            : i,
-                    ]
-                  : [...current.items, item],
-              notInErp: [
-                for (final b in current.notInErp)
-                  if (b != noteBarcode) b,
-              ],
-              typed: true,
-            );
+      review[at] = review[at].copyWith(
+        items: [item],
+        notInErp: const [],
+        typed: true,
+        unchecked: false,
+      );
       return null;
     } on StockAccessDenied {
       return noAccessMessage;
@@ -427,7 +414,7 @@ class StockSheetController extends GetxController {
   /// run in flight.
   int get photoRoom => math.max(
     0,
-    maxPhotos - review.length - (adding.value ? _addingPaths.length : 0),
+    maxPhotos - photoCount - (adding.value ? _addingPaths.length : 0),
   );
 
   /// [paths] once each, without those already in the review or in the
@@ -538,9 +525,10 @@ class StockSheetController extends GetxController {
         checked ??
             [
               for (final scan in scans)
-                scan.items.isEmpty
-                    ? ReviewBuilder.entryFor(scan, const {}, const {})
-                    : ReviewEntry(
+                if (scan.items.isEmpty)
+                  ...ReviewBuilder.entriesFor(scan, const {}, const {})
+                else
+                  ReviewEntry(
                         path: scan.path,
                         rawValues: scan.rawValues,
                         unchecked: true,
@@ -592,7 +580,10 @@ class StockSheetController extends GetxController {
       if (_stale(generation)) return null;
       final at = _locate(entry, index);
       // A code typed meanwhile has already resolved the photo; keep it.
-      if (at >= 0 && review[at].unchecked) review[at] = checked.single;
+      // Otherwise the photo becomes its rows, one per item.
+      if (at >= 0 && review[at].unchecked) {
+        review.replaceRange(at, at + 1, checked);
+      }
       return null;
     } finally {
       rechecking.value = false;
@@ -837,10 +828,10 @@ class StockSheetController extends GetxController {
   int _locate(ReviewEntry entry, int index) {
     final same = review.indexWhere((e) => identical(e, entry));
     if (same >= 0) return same;
-    if (index < review.length && review[index].path == entry.path) {
+    if (index < review.length && review[index].id == entry.id) {
       return index;
     }
-    return review.indexWhere((e) => e.path == entry.path);
+    return review.indexWhere((e) => e.id == entry.id);
   }
 
   void _deleteCreatedFiles() {
@@ -983,14 +974,57 @@ class StockSheetController extends GetxController {
         ? <String, ItemInfo>{}
         : await _provider.fetchItems(codes);
     if (_closed) return const [];
+    // The ERP images download while the stock is checked.
+    final images = _loadItemImages(items.values);
     final stockRows = codes.isEmpty
         ? <Map<String, dynamic>>[]
         : await _provider.fetchFinishedGoodsStock(codes);
+    await images;
     final stock = StockAggregator.racksByItem(stockRows);
     return [
-      for (final scan in scans) ReviewBuilder.entryFor(scan, items, stock),
+      for (final scan in scans)
+        ...ReviewBuilder.entriesFor(scan, items, stock),
     ];
   }
+
+  /// At most this many ERP images download at once.
+  static const int _imageDownloads = 4;
+
+  /// Puts the thumbnail of each Item's ERP image in [thumbnails] under
+  /// [ItemInfo.thumbnailKey], skipping Items without an image and those
+  /// already there. Never throws: an image that cannot be fetched or read
+  /// leaves the row's image blank.
+  Future<void> _loadItemImages(Iterable<ItemInfo> infos) async {
+    final queue = [
+      for (final info in infos)
+        if (info.image != null &&
+            !thumbnails.containsKey(ItemInfo.thumbnailKey(info.itemCode)))
+          info,
+    ];
+    Future<void> worker() async {
+      while (queue.isNotEmpty && !_closed) {
+        final info = queue.removeLast();
+        try {
+          final thumb = await (_itemThumbnailOverride ?? _defaultItemThumbnail)(
+            info.image!,
+          );
+          if (thumb != null && !_closed) {
+            thumbnails[ItemInfo.thumbnailKey(info.itemCode)] = thumb;
+          }
+        } catch (e, st) {
+          _log('ERP image of ${info.itemCode} failed', e, st);
+        }
+      }
+    }
+
+    await Future.wait([
+      for (var i = 0; i < math.min(_imageDownloads, queue.length); i++)
+        worker(),
+    ]);
+  }
+
+  Future<Uint8List?> _defaultItemThumbnail(String url) async =>
+      ThumbnailMaker.fromBytes(await _provider.fetchImage(url));
 
   /// [_entriesFor] for photos added during the review: null when the check
   /// failed (403 included), so the caller keeps them unchecked.
@@ -1017,7 +1051,8 @@ class StockSheetController extends GetxController {
       final now = _now();
       final subtitle = [
         DateFormat('dd/MM/yyyy HH:mm').format(now),
-        _count(sheetPhotoCount, 'photo'),
+        // The photos the file's rows came from (rows left out not counted).
+        _count({for (final r in rows) r.photoPath}.length, 'photo'),
         _count(rows.length, 'item'),
         if (outOfStockCount != null) '$outOfStockCount out of stock',
       ].join(' · ');

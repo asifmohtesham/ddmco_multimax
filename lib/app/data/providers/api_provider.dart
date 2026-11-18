@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
@@ -1220,6 +1221,20 @@ class ApiProvider {
       throw Exception('Server returned no file_url');
     }
     return fileUrl;
+  }
+
+  /// The bytes of the file at [url] — a site-relative file URL such as
+  /// "/files/foo.jpg" (private files included, through the session cookie)
+  /// or an absolute URL. Throws [DioException] on an HTTP or network error.
+  Future<Uint8List> getFileBytes(String url) async {
+    if (!_dioInitialised) await _initDio();
+    final response = await _dio.get<List<int>>(
+      url,
+      options: Options(responseType: ResponseType.bytes),
+    );
+    final data = response.data;
+    if (data == null) throw const FormatException('Empty file response');
+    return data is Uint8List ? data : Uint8List.fromList(data);
   }
 
   // ---------------------------------------------------------------------------
