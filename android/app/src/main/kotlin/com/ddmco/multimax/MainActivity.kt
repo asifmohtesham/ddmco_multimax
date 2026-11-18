@@ -125,8 +125,14 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Before super: plugins attach (and read the share) inside it.
-        if (savedInstanceState == null) SharedStreamCopier.normalise(this, intent)
+        // Before super: plugins attach (and read the share) inside it. A
+        // restored activity carries the share it was first launched with,
+        // already handled and its copies deleted, so it is dropped instead.
+        if (savedInstanceState == null) {
+            SharedStreamCopier.normalise(this, intent)
+        } else {
+            intent?.let { SharedStreamCopier.dropShare(it) }
+        }
         super.onCreate(savedInstanceState)
 
         // 2. Register Receiver Immediately (Robustness)
