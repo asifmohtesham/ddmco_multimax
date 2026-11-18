@@ -3,7 +3,13 @@
 **Date:** 18 November 2026
 **Extends:** `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` (the "base spec"). Everything there still holds
 unless this addendum says otherwise.
-**Status:** approved by the user on 18/11/2026 (including the calls in §9).
+**Status:** approved by the user on 18/11/2026 (including the calls in §9). Implemented for v2.41.0 on 18/11/2026.
+Verified on a Samsung XCover7 (Android) against the live v16 server: shares added mid-review, Balance Qty with full
+rack chips, drag reorder, switching photos off, a typed fix (`3000299` → `30002999`), ＋ via the system photo picker,
+the remembered format, the out-of-stock question, Back confirmation, and Excel/PDF files in list order with no rack or
+quantity text. Two bugs found there were fixed before release: a share arriving during an add was refused and lost
+(now held and asked about), and an item with no Stock Balance row showed no stock line (now **Out of stock · 0**).
+Not verified: the camera-scan fix, and iOS.
 **Mock-ups:** HTML, shown in the brainstorming companion on 18/11/2026 (`.superpowers/brainstorm/…/review-list-v2.html`,
 git-ignored). The user picked the **list** layout over a grid.
 
