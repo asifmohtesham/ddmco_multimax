@@ -33,7 +33,7 @@ class OutOfStockSheet extends StatelessWidget {
       title: count == 1
           ? '1 item is out of stock'
           : '$count items are out of stock',
-      subtitle: 'How should the sheet show them?',
+      subtitle: 'How should the file show them?',
       options: [
         option('Include, colour red', OutOfStockChoice.includeRed),
         option('Include, no colour', OutOfStockChoice.includePlain),

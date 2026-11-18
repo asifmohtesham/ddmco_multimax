@@ -245,7 +245,7 @@ void main() {
     expect(c.review[1].items.single.stock!.outOfStock, isTrue);
     expect(c.sheetPhotoCount, 2);
     expect(provider.stockCalls, 1);
-    // Nothing is written or shared until Make sheet.
+    // Nothing is written or shared until Generate file.
     expect(shared, isEmpty);
     expect(c.result.value, isNull);
     expect(tmp.listSync(), isEmpty);
@@ -355,7 +355,7 @@ void main() {
     expect(c.result.value!.unresolved, isEmpty);
   });
 
-  test('the subtitle counts only the photos on the sheet', () async {
+  test('the subtitle counts only the photos in the file', () async {
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
       'b.jpg': [_ean(_b)],
@@ -372,7 +372,7 @@ void main() {
     );
   });
 
-  test('review edits and Make sheet are ignored outside the review', () async {
+  test('review edits and Generate file are ignored outside the review', () async {
     final store = _MemoryFormatStore();
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
@@ -400,7 +400,7 @@ void main() {
     expect(store.saved, SheetFormat.excel);
   });
 
-  test('Make sheet with every photo switched off does nothing', () async {
+  test('Generate file with every photo switched off does nothing', () async {
     final store = _MemoryFormatStore();
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
@@ -468,7 +468,7 @@ void main() {
     await c.chooseOutOfStock(OutOfStockChoice.leaveOut);
 
     expect(c.phase.value, StockSheetPhase.reviewing);
-    expect(c.errorMessage.value, 'Every photo on the sheet is out of stock.');
+    expect(c.errorMessage.value, 'Every photo in the file is out of stock.');
     expect(c.result.value, isNull);
     expect(c.files, isEmpty);
     expect(shared, isEmpty);
@@ -648,7 +648,7 @@ void main() {
     expect(shared, isEmpty);
     expect(c.busy.value, isFalse);
 
-    // The next Make sheet clears the message.
+    // The next Generate file clears the message.
     pdfError = null;
     await c.makeSheet(SheetFormat.pdf);
     expect(c.phase.value, StockSheetPhase.done);
@@ -842,7 +842,7 @@ void main() {
       expect(written(), isEmpty);
     });
 
-    test('Make sheet after close writes nothing', () async {
+    test('Generate file after close writes nothing', () async {
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a)],
       });
@@ -1292,7 +1292,7 @@ void main() {
       expect(c.adding.value, isFalse);
     });
 
-    test('Make sheet waits for an add in flight', () async {
+    test('Generate file waits for an add in flight', () async {
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a)],
         'd.jpg': [_ean(_b)],

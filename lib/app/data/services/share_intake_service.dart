@@ -39,7 +39,7 @@ class ShareIntakeService extends GetxService {
            notify ?? ((message) => GlobalSnackbar.warning(message: message));
 
   static const String busyMessage =
-      'Items from Photos is already making a sheet.';
+      'Items from Photos is already generating a file.';
 
   /// Routes that are replaced wholesale once the session is known.
   static const Set<String> _handOverRoutes = {

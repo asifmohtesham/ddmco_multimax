@@ -173,7 +173,7 @@ Progress: "Reading photo 7 of 23…" → "Checking stock…"
 Any item out of stock? ── yes ──► bottom sheet 2 (as Telegram): Include, colour red /
    │ no                              Include, no colour / Leave them out
    ▼                                 ▼
-"Building file…" ◄───────────────────┘
+"Generating the file…" ◄───────────────────┘
    ▼
 Result screen: summary counts · out-of-stock list · not-found/unreadable list (with thumbnails)
                [Share file(s)] [Done]
