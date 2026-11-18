@@ -19,6 +19,8 @@ class ReviewList extends StatefulWidget {
     required this.onToggleItem,
     required this.onFix,
     required this.onRetryCheck,
+    required this.onRemove,
+    this.removeEnabled = true,
     this.recheckBusy,
   });
 
@@ -35,6 +37,12 @@ class ReviewList extends StatefulWidget {
   /// [noteBarcode] is the leftover "not in ERP" barcode being fixed, or null.
   final void Function(int index, String? noteBarcode) onFix;
   final void Function(int index) onRetryCheck;
+
+  /// A row was swiped away (end to start); the owner removes the photo.
+  final void Function(int index) onRemove;
+
+  /// False while the list is changing: rows then do not swipe.
+  final bool removeEnabled;
 
   /// Drives the `Retry check` buttons' spinner (the controller's `rechecking`).
   final RxBool? recheckBusy;
@@ -77,17 +85,50 @@ class _ReviewListState extends State<ReviewList> {
             ),
           ),
         ),
-        itemBuilder: (context, i) => _ReviewRow(
+        itemBuilder: (context, i) => KeyedSubtree(
+          // The reorderable list keys its children by this outer key.
           key: ValueKey(entries[i].path),
-          index: i,
-          entry: entries[i],
-          thumbnail: widget.thumbnails[entries[i].path],
-          recheckBusy: widget.recheckBusy ?? _idle,
-          onToggle: widget.onToggle,
-          onToggleItem: widget.onToggleItem,
-          onFix: widget.onFix,
-          onRetryCheck: widget.onRetryCheck,
+          child: Dismissible(
+            key: ValueKey('dismiss-${entries[i].path}'),
+            direction: widget.removeEnabled
+                ? DismissDirection.endToStart
+                : DismissDirection.none,
+            background: const _RemoveBackground(),
+            secondaryBackground: const _RemoveBackground(),
+            onDismissed: (_) => widget.onRemove(i),
+            child: _ReviewRow(
+              index: i,
+              entry: entries[i],
+              thumbnail: widget.thumbnails[entries[i].path],
+              recheckBusy: widget.recheckBusy ?? _idle,
+              onToggle: widget.onToggle,
+              onToggleItem: widget.onToggleItem,
+              onFix: widget.onFix,
+              onRetryCheck: widget.onRetryCheck,
+            ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// The red strip under a row being swiped away.
+class _RemoveBackground extends StatelessWidget {
+  const _RemoveBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: AppColors.red700,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
       ),
     );
   }
@@ -95,7 +136,6 @@ class _ReviewListState extends State<ReviewList> {
 
 class _ReviewRow extends StatelessWidget {
   const _ReviewRow({
-    super.key,
     required this.index,
     required this.entry,
     required this.thumbnail,

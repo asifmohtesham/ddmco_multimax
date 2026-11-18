@@ -469,6 +469,27 @@ void main() {
     expect(button().onPressed, isNotNull);
   });
 
+  testWidgets('swipe shows "Photo removed." and Undo restores the row', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    final before = tester.getTopLeft(find.text('Item 12345670'));
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Item 12345670'), findsNothing);
+    expect(find.text('Photo removed.'), findsOneWidget);
+    expect(controller.review.map((e) => e.path), ['b.jpg']);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+
+    expect(controller.review.map((e) => e.path), ['a.jpg', 'b.jpg']);
+    expect(tester.getTopLeft(find.text('Item 12345670')), before);
+  });
+
   testWidgets('a failed Retry check says why in a snackbar', (tester) async {
     await open(tester);
     controller.recheckError = StockSheetController.offlineMessage;

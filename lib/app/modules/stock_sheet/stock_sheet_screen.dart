@@ -259,6 +259,23 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     );
   }
 
+  /// Takes the swiped photo off the list and offers to put it back.
+  void _remove(int index) {
+    final entry = controller.removeAt(index);
+    if (entry == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Photo removed.'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => controller.restore(entry, index),
+          ),
+        ),
+      );
+  }
+
   Future<void> _retryCheck(int index) async {
     final error = await controller.retryCheck(index);
     if (mounted && error != null) AppNotification.warning(error);
@@ -426,6 +443,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           onToggleItem: controller.setItemIncluded,
           onFix: _fix,
           onRetryCheck: _retryCheck,
+          onRemove: _remove,
+          removeEnabled: controller.canRemove,
           recheckBusy: controller.rechecking,
         );
       case StockSheetPhase.building:

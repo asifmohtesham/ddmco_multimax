@@ -45,6 +45,8 @@ Widget _app(Widget child, {Brightness brightness = Brightness.light}) {
 ReviewList _list(
   List<ReviewEntry> entries, {
   void Function(int, int)? onReorder,
+  void Function(int)? onRemove,
+  bool removeEnabled = true,
 }) => ReviewList(
   entries: entries,
   thumbnails: const <String, Uint8List>{},
@@ -53,9 +55,43 @@ ReviewList _list(
   onToggleItem: (_, _, _) {},
   onFix: (_, _) {},
   onRetryCheck: (_) {},
+  onRemove: onRemove ?? (_) {},
+  removeEnabled: removeEnabled,
 );
 
 void main() {
+  testWidgets('swiping a row end-to-start calls onRemove with its index', (
+    tester,
+  ) async {
+    final removed = <int>[];
+    final entries = [
+      ReviewEntry(path: 'a', items: [_item('12345670', null)]),
+      ReviewEntry(path: 'b', items: [_item('76543210', null)]),
+    ];
+    await tester.pumpWidget(_app(_list(entries, onRemove: removed.add)));
+
+    await tester.drag(find.text('Item 76543210'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(removed, [1]);
+  });
+
+  testWidgets('no swipe when removeEnabled is false', (tester) async {
+    final removed = <int>[];
+    final entries = [
+      ReviewEntry(path: 'a', items: [_item('12345670', null)]),
+    ];
+    await tester.pumpWidget(
+      _app(_list(entries, onRemove: removed.add, removeEnabled: false)),
+    );
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(removed, isEmpty);
+    expect(find.text('Item 12345670'), findsOneWidget);
+  });
+
   testWidgets('rack chips show the total and full rack names', (tester) async {
     await tester.pumpWidget(_app(const RackChips(stock: _twoRacks)));
     expect(find.text('377'), findsOneWidget);

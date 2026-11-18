@@ -1329,6 +1329,88 @@ void main() {
     });
   });
 
+  group('removeAt and restore', () {
+    Future<StockSheetController> three() async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+          'b.jpg': [_ean(_b)],
+          'd.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1, _b: 1}),
+      );
+      fingerprints.addAll({'a.jpg': 'A', 'b.jpg': 'B', 'd.jpg': 'D'});
+      await c.start(['a.jpg', 'b.jpg', 'd.jpg']);
+      return c;
+    }
+
+    test('removeAt drops the entry and returns it', () async {
+      final c = await three();
+
+      final removed = c.removeAt(1);
+
+      expect(removed?.path, 'b.jpg');
+      expect(reviewPaths(c), ['a.jpg', 'd.jpg']);
+      expect(c.removeAt(5), isNull);
+      expect(c.removeAt(-1), isNull);
+    });
+
+    test('removeAt does nothing while photos are being added', () async {
+      final c = await three();
+      c.adding.value = true;
+
+      expect(c.canRemove, isFalse);
+      expect(c.removeAt(0), isNull);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+
+      c.adding.value = false;
+      for (final flag in [c.rechecking, c.fixing, c.busy]) {
+        flag.value = true;
+        expect(c.canRemove, isFalse);
+        expect(c.removeAt(0), isNull);
+        flag.value = false;
+      }
+      expect(c.canRemove, isTrue);
+    });
+
+    test('restore puts the entry back at its index', () async {
+      final c = await three();
+      final removed = c.removeAt(1)!;
+
+      c.restore(removed, 1);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+    });
+
+    test('restore clamps the index after the list shrank', () async {
+      final c = await three();
+      final removed = c.removeAt(2)!;
+      c.removeAt(1);
+
+      c.restore(removed, 2);
+
+      expect(reviewPaths(c), ['a.jpg', 'd.jpg']);
+    });
+
+    test('restore ignores an entry that is already listed', () async {
+      final c = await three();
+      final removed = c.removeAt(0)!;
+      c.restore(removed, 0);
+      c.restore(removed, 0);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+    });
+
+    test('a removed photo can be added again', () async {
+      final c = await three();
+      fingerprints['a2.jpg'] = 'A';
+      c.removeAt(0);
+
+      expect(await c.addPhotos(['a2.jpg']), isNull);
+      expect(reviewPaths(c), contains('a2.jpg'));
+    });
+  });
+
   group('duplicates by content', () {
     test('start reads two copies of the same photo once', () async {
       fingerprints.addAll({'a.jpg': 'X', 'b.jpg': 'X'});
