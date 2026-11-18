@@ -315,7 +315,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         child: Scaffold(
           appBar: reviewing
               ? _reviewAppBar()
-              : AppBar(title: const Text('Items from photos')),
+              : AppBar(title: const Text('Items from Photos')),
           body: Obx(_body),
           bottomNavigationBar: Obx(_footer),
         ),
@@ -334,7 +334,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             const Text('Review photos'),
             Text(
               '$photos photo${photos == 1 ? '' : 's'} · '
-              '${controller.sheetPhotoCount} on the sheet',
+              '${controller.sheetPhotoCount} in the file',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
             ),
           ],
@@ -429,7 +429,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           recheckBusy: controller.rechecking,
         );
       case StockSheetPhase.building:
-        return const _Progress(label: 'Building file…');
+        return const _Progress(label: 'Generating the file…');
       case StockSheetPhase.done:
         final result = controller.result.value;
         if (result == null) return const SizedBox.shrink();
@@ -451,7 +451,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       case StockSheetPhase.reviewing:
       case StockSheetPhase.awaitingChoice:
         final n = controller.sheetPhotoCount;
-        final label = 'Make sheet · $n photo${n == 1 ? '' : 's'}';
+        final label = 'Generate file · $n photo${n == 1 ? '' : 's'}';
         const icon = Icon(Icons.description_outlined);
         // Nothing on the sheet, or the list still changing: makeSheet would
         // refuse, so the button says so by being disabled.
@@ -510,7 +510,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             if (controller.files.isEmpty)
               Expanded(
                 child: Text(
-                  'Nothing to put on a sheet.',
+                  'Nothing to put in a file.',
                   style: TextStyle(color: context.scheme.textMuted),
                 ),
               )

@@ -124,9 +124,10 @@ class StockSheetController extends GetxController {
   static const String notInErpMessage = 'Not in ERP';
   static const String alreadyListedMessage =
       'Those photos are already in the list.';
-  static const String busyMessage = 'A stock sheet is already being made.';
+  static const String busyMessage =
+      'Items from Photos is already generating a file.';
   static const String allOutOfStockMessage =
-      'Every photo on the sheet is out of stock.';
+      'Every photo in the file is out of stock.';
 
   /// Why photos were refused when only [room] more fit under [maxPhotos].
   static String roomMessage(int room) => switch (room) {

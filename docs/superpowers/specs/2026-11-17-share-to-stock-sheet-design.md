@@ -1,12 +1,12 @@
-# Share Photos → Stock Sheet — Design Spec
+# Share Photos → Items from Photos — Design Spec
 
 **Date:** 17 November 2026
 **Feature:** share label photos from the phone's gallery into Multimax and get back an Excel or PDF stock sheet
 **Status:** approved by the user on 17/11/2026: the answers in §10 and the recommended approaches in §5
 (on-device decode and render, `receive_sharing_intent`, a hand-written `.xlsx` via `archive`).
 Revised the same day at the user's direction: stock comes from the `Stock Balance` report, not Bin (§5.4).
-**Implemented** on 18/11/2026 in v2.41.0+129. Later user decisions: files are named `Items-<yyyyMMdd-HHmm>` and titled **Items** (the worksheet tab too); the screen keeps the heading "Stock sheet". Android was verified on a Samsung XCover7 (debug and release builds): a signed-out share, a cold start, a warm share via `onNewIntent`, the out-of-stock question, the Excel and PDF contents, and the unreadable / no-code lists. **Not verified:** iOS (never built; the Runner App Group is held back until the profile carries it, see `docs/ios_share_extension_setup.md`), and a warm share started from the gallery's own task (`singleTop`).
-**Reference behaviour:** the Telegram **📋 Stock sheet** feature, built and confirmed working on 17/11/2026
+**Implemented** on 18/11/2026 in v2.41.0+129. Later user decisions: files are named `Items-<yyyyMMdd-HHmm>` and titled **Items** (the worksheet tab too); the screen keeps the heading "Stock sheet". **Renamed** on 18/11/2026: the feature is called **Items from Photos** everywhere (the screen heading, the busy notice, and the Telegram bot), while code identifiers (`stock_sheet`, `StockSheet*`, route `STOCK_SHEET`) keep their names. Android was verified on a Samsung XCover7 (debug and release builds): a signed-out share, a cold start, a warm share via `onNewIntent`, the out-of-stock question, the Excel and PDF contents, and the unreadable / no-code lists. **Not verified:** iOS (never built; the Runner App Group is held back until the profile carries it, see `docs/ios_share_extension_setup.md`), and a warm share started from the gallery's own task (`singleTop`).
+**Reference behaviour:** the Telegram **📋 Stock sheet** feature (now **📋 Items from Photos**), built and confirmed working on 17/11/2026
 (n8n workflow `Telegram - Stock Sheet` plus the `stocksheet` sidecar: FastAPI, zxing-cpp, openpyxl, reportlab).
 
 ## 1. Intent
@@ -173,7 +173,7 @@ Progress: "Reading photo 7 of 23…" → "Checking stock…"
 Any item out of stock? ── yes ──► bottom sheet 2 (as Telegram): Include, colour red /
    │ no                              Include, no colour / Leave them out
    ▼                                 ▼
-"Building file…" ◄───────────────────┘
+"Generating the file…" ◄───────────────────┘
    ▼
 Result screen: summary counts · out-of-stock list · not-found/unreadable list (with thumbnails)
                [Share file(s)] [Done]

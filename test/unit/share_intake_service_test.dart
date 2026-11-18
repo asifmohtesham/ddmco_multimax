@@ -195,7 +195,7 @@ void main() {
 
       await share(['second.jpg']);
 
-      expect(notices, ['A stock sheet is already being made.']);
+      expect(notices, ['Items from Photos is already generating a file.']);
       expect(busySheet.starts, 0);
       expect(busySheet.sharedPaths, ['first.jpg']);
       expect(busySheet.shareSerial.value, 0);

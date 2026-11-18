@@ -1,4 +1,4 @@
-# Stock Sheet: Review List — Design Spec (addendum)
+# Items from Photos: Review List — Design Spec (addendum)
 
 **Date:** 18 November 2026
 **Extends:** `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` (the "base spec"). Everything there still holds
@@ -10,6 +10,7 @@ the remembered format, the out-of-stock question, Back confirmation, and Excel/P
 quantity text. Two bugs found there were fixed before release: a share arriving during an add was refused and lost
 (now held and asked about), and an item with no Stock Balance row showed no stock line (now **Out of stock · 0**).
 Not verified: the camera-scan fix, and iOS.
+**Renamed** on 18/11/2026: the button **Make sheet** is now **Generate file** and the progress label "Building file…" is now "Generating the file…", matching the Telegram bot.
 **Mock-ups:** HTML, shown in the brainstorming companion on 18/11/2026 (`.superpowers/brainstorm/…/review-list-v2.html`,
 git-ignored). The user picked the **list** layout over a grid.
 
@@ -98,11 +99,11 @@ REVIEW LIST  ◄──────────────┐
   · drag ⋮⋮ to reorder      │  ＋ Add photos (camera / gallery) → read + check new ones → appended
   · switch photo / item     │  ✎ Type or scan code → resolve → row switches on
   · Excel | PDF | Both      │  (preset to last choice)
-  · Make sheet · N photos ──┘
+  · Generate file · N photos ──┘
   ▼
 Any out-of-stock item switched on?  ── yes → out-of-stock question (unchanged)
   ▼
-Building file…  →  system share sheet  →  result screen (unchanged)
+Generating the file…  →  system share sheet  →  result screen (unchanged)
 ```
 
 ### 6.2 Review list rows (mock-up `review-list-v2`)
@@ -130,10 +131,10 @@ Building file…  →  system share sheet  →  result screen (unchanged)
   - the action **✎ Type or scan code**.
   Their switch is disabled until a code resolves.
 - **Drag:** the ⋮⋮ handle on the left (`ReorderableListView` with drag handles; no long-press drag on the whole row).
-- **Header:** title **Review photos**, subtitle `N photos · M on the sheet`, and a **＋** action.
+- **Header:** title **Review photos**, subtitle `N photos · M in the file`, and a **＋** action.
 - **Footer:**
   - segmented **Excel | PDF | Both**, preset to the last choice (first time: Excel);
-  - `AsyncFilledButton` **Make sheet · N photos**, where N is the photos with at least one item switched on. It is
+  - `AsyncFilledButton` **Generate file · N photos**, where N is the photos with at least one item switched on. It is
     disabled when N = 0.
 - List conventions apply (`Scrollbar` with a shared controller, nav-bar padding, an "End of list" marker). Theme
   surfaces and the AppColors ramps are as in the base spec.
@@ -172,7 +173,7 @@ The resolved code shows a small "typed" marker in the row, so it can be told apa
 
 ### 6.5 Remember the format (suggestion 4)
 
-The last **Make sheet** choice is saved through `StorageService` under the key `stock_sheet_last_format`
+The last **Generate file** choice is saved through `StorageService` under the key `stock_sheet_last_format`
 (`excel`/`pdf`/`both`), and read to preset the segmented control.
 
 ### 6.6 Guarding the user's work
@@ -212,7 +213,7 @@ The last **Make sheet** choice is saved through `StorageService` under the key `
 - **Unit:**
   - `racksByItem`: one rack, two racks sorted by quantity, an empty rack, a negative quantity, several warehouses
     summed.
-  - Review operations: reorder, the row/item switch rules, and N for **Make sheet**.
+  - Review operations: reorder, the row/item switch rules, and N for **Generate file**.
   - Code resolution order in 6.3.
   - The 100 limit with added photos.
   - Format persistence.
@@ -246,7 +247,7 @@ inside 2.41.0 if it lands before that release is tagged. If 2.41.0 ships first, 
    looks exactly like a scanned one in the file. The "typed" marker appears on screen only.
 2. **The result is built from the review model**, not from the original scans:
    - rows are the switched-on items in review order;
-   - "Couldn't use these photos" lists photos still unresolved at **Make sheet**;
+   - "Couldn't use these photos" lists photos still unresolved at **Generate file**;
    - photos the user switched off appear in no list.
    
    A photo with one known item and one not-in-ERP code shows the known item as normal, plus a note line
@@ -255,7 +256,7 @@ inside 2.41.0 if it lands before that release is tagged. If 2.41.0 ships first, 
    The file subtitle counts: N photos = photos with at least one switched-on item; M items = rows in the file;
    K out of stock = switched-on out-of-stock items (left out when the choice is *Leave them out*).
 3. **Dismissing the out-of-stock question returns to the review list** with everything intact, not to idle. A
-   failure while building or sharing also returns to the review list, with the message shown above **Make sheet**.
+   failure while building or sharing also returns to the review list, with the message shown above **Generate file**.
    Nothing the user curated is ever discarded except through *Discard* or *Start again*.
 4. **A failed first stock check** keeps today's behaviour: the error screen with **Retry**, which re-runs the ERP
    calls without reading the photos again. A 403 still blocks with the access message. The per-row **Retry check**

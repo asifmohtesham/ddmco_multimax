@@ -51,7 +51,8 @@ class ShareIntakeService extends GetxService {
        _markShareHandled = markShareHandled,
        _resumes = resumes;
 
-  static const String busyMessage = 'A stock sheet is already being made.';
+  static const String busyMessage =
+      'Items from Photos is already generating a file.';
 
   /// A drop onto the window where no photo could be copied.
   static const String dropFailedMessage = "Couldn't read these photos.";

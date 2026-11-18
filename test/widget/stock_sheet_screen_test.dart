@@ -221,15 +221,15 @@ void main() {
     controller.phase.value = StockSheetPhase.decoding;
     await tester.pump();
     expect(find.text('Reading photo 1 of 2'), findsOneWidget);
-    expect(find.text('Items from photos'), findsOneWidget);
+    expect(find.text('Items from Photos'), findsOneWidget);
 
     await review(tester, _twoPhotos());
     expect(find.text('Make a stock sheet'), findsNothing);
     expect(find.byType(ReviewList), findsOneWidget);
     expect(find.text('Item 12345670'), findsOneWidget);
     expect(find.text('Review photos'), findsOneWidget);
-    expect(find.text('2 photos · 2 on the sheet'), findsOneWidget);
-    expect(find.text('Make sheet · 2 photos'), findsOneWidget);
+    expect(find.text('2 photos · 2 in the file'), findsOneWidget);
+    expect(find.text('Generate file · 2 photos'), findsOneWidget);
   });
 
   testWidgets('the format control shows the stored format', (tester) async {
@@ -247,12 +247,12 @@ void main() {
     await tester.tap(find.text('Both'));
     await tester.pumpAndSettle();
     expect(controller.format.value, SheetFormat.both);
-    await tester.tap(find.text('Make sheet · 2 photos'));
+    await tester.tap(find.text('Generate file · 2 photos'));
     await tester.pump();
     expect(controller.makes, [SheetFormat.both]);
   });
 
-  testWidgets('Make sheet is disabled once both photos are switched off', (
+  testWidgets('Generate file is disabled once both photos are switched off', (
     tester,
   ) async {
     await open(tester);
@@ -264,17 +264,17 @@ void main() {
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
-    expect(button('Make sheet · 2 photos').onPressed, isNotNull);
+    expect(button('Generate file · 2 photos').onPressed, isNotNull);
 
     await tester.tap(find.byType(Switch).at(0));
     await tester.pumpAndSettle();
-    expect(find.text('Make sheet · 1 photo'), findsOneWidget);
+    expect(find.text('Generate file · 1 photo'), findsOneWidget);
     await tester.tap(find.byType(Switch).at(1));
     await tester.pumpAndSettle();
 
-    expect(find.text('2 photos · 0 on the sheet'), findsOneWidget);
-    expect(button('Make sheet · 0 photos').onPressed, isNull);
-    await tester.tap(find.text('Make sheet · 0 photos'));
+    expect(find.text('2 photos · 0 in the file'), findsOneWidget);
+    expect(button('Generate file · 0 photos').onPressed, isNull);
+    await tester.tap(find.text('Generate file · 0 photos'));
     await tester.pump();
     expect(controller.makes, isEmpty);
   });
@@ -447,14 +447,14 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('Make sheet is disabled while a typed code is looked up', (
+  testWidgets('Generate file is disabled while a typed code is looked up', (
     tester,
   ) async {
     await open(tester);
     await review(tester, _twoPhotos());
     ButtonStyleButton button() => tester.widget<ButtonStyleButton>(
       find.ancestor(
-        of: find.text('Make sheet · 2 photos'),
+        of: find.text('Generate file · 2 photos'),
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
@@ -758,7 +758,7 @@ void main() {
     expect(controller.starts.single, hasLength(101));
   });
 
-  testWidgets('review: counts, and Make sheet in the remembered format', (
+  testWidgets('review: counts, and Generate file in the remembered format', (
     tester,
   ) async {
     await open(tester, remembered: SheetFormat.both);
@@ -768,8 +768,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Review photos'), findsOneWidget);
-    expect(find.text('0 photos · 1 on the sheet'), findsOneWidget);
-    await tester.tap(find.text('Make sheet · 1 photo'));
+    expect(find.text('0 photos · 1 in the file'), findsOneWidget);
+    await tester.tap(find.text('Generate file · 1 photo'));
     await tester.pump();
     expect(controller.makes, [SheetFormat.both]);
 
@@ -868,7 +868,7 @@ void main() {
 
     controller.phase.value = StockSheetPhase.building;
     await tester.pump();
-    expect(find.text('Building file…'), findsOneWidget);
+    expect(find.text('Generating the file…'), findsOneWidget);
   });
 
   testWidgets('result: share button swaps for a spinner while sharing', (
@@ -928,7 +928,7 @@ void main() {
     controller.result.value = _result(rows: 0, outOfStock: 0);
     await tester.pumpAndSettle();
     expect(find.text('Share file'), findsNothing);
-    expect(find.text('Nothing to put on a sheet.'), findsOneWidget);
+    expect(find.text('Nothing to put in a file.'), findsOneWidget);
   });
 
   testWidgets('a share failure shows its message above Share files', (
