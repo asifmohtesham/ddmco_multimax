@@ -145,7 +145,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   /// A share arrived during the review: add it, start again, or drop it.
   /// The question shows over whatever is open; Add and Start again close
-  /// that first, so its answer cannot act on the new state.
+  /// that first, so its answer cannot act on the new state. An Add that no
+  /// longer fits once an add in flight lands is held again, and this asks
+  /// again.
   Future<void> _askPendingShare() async {
     if (!mounted || _askingPending) return;
     _askingPending = true;
@@ -206,6 +208,11 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       onSubmit: (code) =>
           controller.fixCode(index, code, noteBarcode: noteBarcode),
     );
+  }
+
+  Future<void> _retryCheck(int index) async {
+    final error = await controller.retryCheck(index);
+    if (mounted && error != null) AppNotification.warning(error);
   }
 
   Future<void> _add(_AddSource source) async {
@@ -335,7 +342,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           onToggle: controller.setIncluded,
           onToggleItem: controller.setItemIncluded,
           onFix: _fix,
-          onRetryCheck: controller.retryCheck,
+          onRetryCheck: _retryCheck,
           recheckBusy: controller.rechecking,
         );
       case StockSheetPhase.building:
@@ -366,7 +373,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         // Nothing on the sheet, or the list still changing: makeSheet would
         // refuse, so the button says so by being disabled.
         final blocked =
-            n == 0 || controller.adding.value || controller.rechecking.value;
+            n == 0 ||
+            controller.adding.value ||
+            controller.rechecking.value ||
+            controller.fixing.value;
         return _ActionBar(
           top: SegmentedButton<SheetFormat>(
             showSelectedIcon: false,
@@ -461,8 +471,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 }
 
 /// Asks what to do with [StockSheetController.pendingShare]. Add is offered
-/// only when the photos fit under the limit. The counts are taken once, so
-/// the text does not change while the dialog fades out after the answer.
+/// only when the photos fit under the limit, counting photos still being
+/// added. The text follows a second share joining the first and an add
+/// landing; once the share is cleared on answering, the last text stays
+/// while the dialog fades out.
 class _PendingShareDialog extends StatefulWidget {
   const _PendingShareDialog({required this.controller});
 
@@ -473,39 +485,44 @@ class _PendingShareDialog extends StatefulWidget {
 }
 
 class _PendingShareDialogState extends State<_PendingShareDialog> {
-  static const _limit = StockSheetController.maxPhotos;
-  late final int _count = widget.controller.pendingShare.length;
-  late final bool _fits = widget.controller.pendingShareFits;
-  late final int _room = math.max(0, _limit - widget.controller.review.length);
+  ({int count, bool fits, int room})? _asked;
 
   void _answer(PendingShareChoice choice) => Navigator.of(context).pop(choice);
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      content: Text(
-        _fits
-            ? _count == 1
-                  ? 'Add this photo to the list, or start again?'
-                  : 'Add these $_count photos to the list, or start again?'
-            : 'Only $_room more photos fit (limit $_limit).',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => _answer(PendingShareChoice.cancel),
-          child: const Text('Cancel'),
+    return Obx(() {
+      final c = widget.controller;
+      final count = c.pendingShare.length;
+      if (count > 0) {
+        _asked = (count: count, fits: c.pendingShareFits, room: c.photoRoom);
+      }
+      final asked = _asked ?? (count: 0, fits: false, room: 0);
+      return AlertDialog(
+        content: Text(
+          asked.fits
+              ? asked.count == 1
+                    ? 'Add this photo to the list, or start again?'
+                    : 'Add these ${asked.count} photos to the list, or start again?'
+              : StockSheetController.roomMessage(asked.room),
         ),
-        TextButton(
-          onPressed: () => _answer(PendingShareChoice.startAgain),
-          child: const Text('Start again'),
-        ),
-        if (_fits)
-          FilledButton(
-            onPressed: () => _answer(PendingShareChoice.add),
-            child: const Text('Add'),
+        actions: [
+          TextButton(
+            onPressed: () => _answer(PendingShareChoice.cancel),
+            child: const Text('Cancel'),
           ),
-      ],
-    );
+          TextButton(
+            onPressed: () => _answer(PendingShareChoice.startAgain),
+            child: const Text('Start again'),
+          ),
+          if (asked.fits)
+            FilledButton(
+              onPressed: () => _answer(PendingShareChoice.add),
+              child: const Text('Add'),
+            ),
+        ],
+      );
+    });
   }
 }
 

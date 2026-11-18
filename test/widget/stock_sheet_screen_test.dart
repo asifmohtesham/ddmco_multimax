@@ -32,6 +32,12 @@ class _SpyController extends StockSheetController {
   final choices = <OutOfStockChoice?>[];
   final added = <List<String>>[];
   String? addError;
+
+  /// When set, answers [addPhotos] instead of [addError].
+  Future<String?> Function(List<String> paths)? onAdd;
+
+  final rechecks = <int>[];
+  String? recheckError;
   int retries = 0;
   bool retryable = false;
 
@@ -63,7 +69,13 @@ class _SpyController extends StockSheetController {
   @override
   Future<String?> addPhotos(List<String> paths) async {
     added.add(paths);
-    return addError;
+    return onAdd != null ? onAdd!(paths) : addError;
+  }
+
+  @override
+  Future<String?> retryCheck(int index) async {
+    rechecks.add(index);
+    return recheckError;
   }
 
   @override
@@ -328,7 +340,7 @@ void main() {
     controller.offerShare(['n1.jpg', 'n2.jpg', 'n3.jpg']);
     await tester.pumpAndSettle();
 
-    expect(find.text('Only 1 more photos fit (limit 100).'), findsOneWidget);
+    expect(find.text('Only 1 more photo fits (limit 100).'), findsOneWidget);
     expect(find.text('Add'), findsNothing);
     expect(find.text('Start again'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
@@ -337,6 +349,129 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.starts.last, ['n1.jpg', 'n2.jpg', 'n3.jpg']);
     expect(controller.review, isEmpty);
+  });
+
+  testWidgets('an Add that no longer fits once an add lands asks again', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, [
+      for (var i = 0; i < 97; i++)
+        ReviewEntry(path: 'p$i.jpg', decodeFailed: true),
+    ]);
+    // Another add lands first and takes two of the three places left.
+    controller.onAdd = (_) async {
+      controller.review.addAll([
+        ReviewEntry(path: 'x1.jpg', decodeFailed: true),
+        ReviewEntry(path: 'x2.jpg', decodeFailed: true),
+      ]);
+      return StockSheetController.roomMessage(1);
+    };
+
+    controller.offerShare(['n1.jpg', 'n2.jpg']);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    expect(controller.pendingShare, ['n1.jpg', 'n2.jpg']);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Only 1 more photo fits (limit 100).'), findsOneWidget);
+    expect(find.text('Add'), findsNothing);
+    expect(find.text('Start again'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(controller.pendingShare, isEmpty);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('a second share joins the open question and its count', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    controller.offerShare(['n1.jpg']);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Add this photo to the list, or start again?'),
+      findsOneWidget,
+    );
+
+    controller.offerShare(['n2.jpg', 'n1.jpg', 'n3.jpg']);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(
+      find.text('Add these 3 photos to the list, or start again?'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    expect(controller.added, [
+      ['n1.jpg', 'n2.jpg', 'n3.jpg'],
+    ]);
+  });
+
+  testWidgets('a share while photos are being added is asked about', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    controller.adding.value = true;
+
+    expect(controller.offerShare(['n1.jpg']), ShareOffer.pending);
+    // The + spinner never settles, so pump a fixed time.
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      find.text('Add this photo to the list, or start again?'),
+      findsOneWidget,
+    );
+
+    controller.adding.value = false;
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Make sheet is disabled while a typed code is looked up', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    ButtonStyleButton button() => tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text('Make sheet · 2 photos'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    );
+    expect(button().onPressed, isNotNull);
+
+    controller.fixing.value = true;
+    await tester.pump();
+    expect(button().onPressed, isNull);
+
+    controller.fixing.value = false;
+    await tester.pump();
+    expect(button().onPressed, isNotNull);
+  });
+
+  testWidgets('a failed Retry check says why in a snackbar', (tester) async {
+    await open(tester);
+    controller.recheckError = StockSheetController.offlineMessage;
+    await review(tester, [
+      ReviewEntry(path: 'a.jpg', items: [_item('12345670')]),
+      ReviewEntry(
+        path: 'd.jpg',
+        rawValues: const ['12345670'],
+        unchecked: true,
+      ),
+    ]);
+
+    await tester.tap(find.text('Retry check'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(controller.rechecks, [1]);
+    expect(find.text(StockSheetController.offlineMessage), findsOneWidget);
   });
 
   testWidgets('Cancel keeps the review and drops the share', (tester) async {

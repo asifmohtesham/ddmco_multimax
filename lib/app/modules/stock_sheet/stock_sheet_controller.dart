@@ -33,7 +33,7 @@ enum ShareOffer {
   /// Held in [StockSheetController.pendingShare] for the user to decide.
   pending,
 
-  /// Refused: a run is reading photos or building the sheet.
+  /// Refused: a share is being read and checked, or the sheet built.
   refusedBusy,
 }
 
@@ -70,7 +70,12 @@ class StorageSheetFormatStore implements SheetFormatStore {
       SheetFormat.excel;
 
   @override
-  void write(SheetFormat f) => unawaited(_storage.saveStockSheetFormat(f.name));
+  void write(SheetFormat f) => unawaited(
+    _storage.saveStockSheetFormat(f.name).catchError((Object e, StackTrace st) {
+      // Only the remembered choice is lost; the sheet is still made.
+      if (kDebugMode) debugPrint('StockSheetFormatStore: save failed: $e\n$st');
+    }),
+  );
 }
 
 /// Runs one "share photos to a stock sheet" job: decode, check stock, let the
@@ -110,6 +115,18 @@ class StockSheetController extends GetxController {
       "Reading barcodes from photos isn't supported on this device.";
   static const String notACodeMessage = 'Not a barcode or item code';
   static const String notInErpMessage = 'Not in ERP';
+  static const String alreadyListedMessage =
+      'Those photos are already in the list.';
+  static const String busyMessage = 'A stock sheet is already being made.';
+  static const String allOutOfStockMessage =
+      'Every photo on the sheet is out of stock.';
+
+  /// Why photos were refused when only [room] more fit under [maxPhotos].
+  static String roomMessage(int room) => switch (room) {
+    <= 0 => 'No more photos fit (limit $maxPhotos).',
+    1 => 'Only 1 more photo fits (limit $maxPhotos).',
+    _ => 'Only $room more photos fit (limit $maxPhotos).',
+  };
 
   static Future<void> _defaultShare(List<XFile> files) async {
     await SharePlus.instance.share(ShareParams(files: files));
@@ -185,6 +202,12 @@ class StockSheetController extends GetxController {
   /// finishes afterwards does not write into the new review.
   int _generation = 0;
 
+  /// Completes when the [addPhotos] run in flight ends; null when none is.
+  Future<void>? _addRun;
+
+  /// The photos the [addPhotos] run in flight is reading and checking.
+  List<String> _addingPaths = const [];
+
   @override
   void onInit() {
     super.onInit();
@@ -192,12 +215,14 @@ class StockSheetController extends GetxController {
   }
 
   /// Reads [paths], checks their stock and leaves them in [review].
-  Future<void> start(List<String> paths) async {
+  /// A photo shared twice is read once.
+  Future<void> start(List<String> shared) async {
+    _givenPhotos.addAll(shared);
     if (busy.value || _closed) return;
+    final paths = shared.toSet().toList();
     busy.value = true;
     try {
       _clear();
-      _givenPhotos.addAll(paths);
       if (paths.length > maxPhotos) {
         errorMessage.value =
             'Share up to $maxPhotos photos at a time (you shared ${paths.length}).';
@@ -264,8 +289,8 @@ class StockSheetController extends GetxController {
   /// Looks up [input] (a barcode, a batch QR or a seven-digit item code)
   /// and puts the item on photo [index]. With [noteBarcode] null the item
   /// replaces the photo's items; otherwise it fixes that "Also read" note,
-  /// joining the photo's items. Returns null on success, else the error to
-  /// show.
+  /// joining the photo's items (an item already there is switched on).
+  /// Returns null on success, else the error to show.
   Future<String?> fixCode(
     int index,
     String input, {
@@ -301,11 +326,14 @@ class StockSheetController extends GetxController {
               unchecked: false,
             )
           : current.copyWith(
-              items: [
-                ...current.items,
-                if (!current.items.any((i) => i.code.itemCode == code.itemCode))
-                  item,
-              ],
+              items: current.items.any((i) => i.code.itemCode == code.itemCode)
+                  ? [
+                      for (final i in current.items)
+                        i.code.itemCode == code.itemCode
+                            ? i.copyWith(included: true)
+                            : i,
+                    ]
+                  : [...current.items, item],
               notInErp: [
                 for (final b in current.notInErp)
                   if (b != noteBarcode) b,
@@ -323,26 +351,48 @@ class StockSheetController extends GetxController {
     }
   }
 
-  /// Reads [paths] (taken or picked from the review) and appends them to
-  /// [review], checking stock for their codes only. Returns null when they
-  /// were added, else why none were. If the check fails they are added
-  /// unchecked, for [retryCheck].
+  /// Free places under [maxPhotos], after the review and the [addPhotos]
+  /// run in flight.
+  int get photoRoom => math.max(
+    0,
+    maxPhotos - review.length - (adding.value ? _addingPaths.length : 0),
+  );
+
+  /// [paths] once each, without those already in the review or in the
+  /// [addPhotos] run in flight. Order kept.
+  List<String> _newPhotos(Iterable<String> paths) {
+    final listed = {for (final e in review) e.path, ..._addingPaths};
+    return [
+      for (final path in paths.toSet())
+        if (!listed.contains(path)) path,
+    ];
+  }
+
+  /// Reads [paths] (taken, picked or shared during the review) and appends
+  /// them to [review], checking stock for their codes only. Photos already
+  /// in the list are skipped. Returns null when they were added, else why
+  /// none were. If the check fails they are added unchecked, for
+  /// [retryCheck].
   Future<String?> addPhotos(List<String> paths) async {
+    // Even refused, the share plugin's copies go on close.
+    _givenPhotos.addAll(paths);
     if (_closed || busy.value || adding.value || !_reviewing) return null;
     if (paths.isEmpty) return null;
-    if (review.length + paths.length > maxPhotos) {
-      final room = math.max(0, maxPhotos - review.length);
-      return 'Only $room more photos fit (limit $maxPhotos).';
-    }
+    final fresh = _newPhotos(paths);
+    if (fresh.isEmpty) return alreadyListedMessage;
+    final room = photoRoom;
+    if (fresh.length > room) return roomMessage(room);
     final generation = _generation;
-    _givenPhotos.addAll(paths);
+    final done = Completer<void>();
+    _addRun = done.future;
+    _addingPaths = fresh;
     adding.value = true;
     decoded.value = 0;
-    total.value = paths.length;
+    total.value = fresh.length;
     try {
       final List<PhotoScan> scans;
       try {
-        scans = await _decode(paths, () => _stale(generation));
+        scans = await _decode(fresh, () => _stale(generation));
       } on UnsupportedError {
         return unsupportedMessage;
       }
@@ -364,17 +414,28 @@ class StockSheetController extends GetxController {
       );
       return null;
     } finally {
+      _addingPaths = const [];
+      _addRun = null;
       adding.value = false;
+      done.complete();
+    }
+  }
+
+  /// Waits until no [addPhotos] run is in flight.
+  Future<void> _addsSettled() async {
+    while (_addRun != null) {
+      await _addRun;
     }
   }
 
   /// Checks the stock of added photo [index] again after a failed check,
-  /// from the codes already read from it.
-  Future<void> retryCheck(int index) async {
-    if (_closed || busy.value || rechecking.value || !_reviewing) return;
-    if (index < 0 || index >= review.length) return;
+  /// from the codes already read from it. Returns null when checked (or
+  /// when there was nothing to do), else why the check failed.
+  Future<String?> retryCheck(int index) async {
+    if (_closed || busy.value || rechecking.value || !_reviewing) return null;
+    if (index < 0 || index >= review.length) return null;
     final entry = review[index];
-    if (!entry.unchecked) return;
+    if (!entry.unchecked) return null;
     final generation = _generation;
     rechecking.value = true;
     try {
@@ -384,10 +445,20 @@ class StockSheetController extends GetxController {
         rawValues: entry.rawValues,
         items: StockSheetCodec.itemsInPhoto(entry.rawValues),
       );
-      final checked = await _checkScans([scan]);
-      if (checked == null || _stale(generation)) return;
+      final List<ReviewEntry> checked;
+      try {
+        checked = await _entriesFor([scan]);
+      } on StockAccessDenied {
+        return _stale(generation) ? null : noAccessMessage;
+      } catch (e, st) {
+        _log('stock check of an added photo failed', e, st);
+        return _stale(generation) ? null : offlineMessage;
+      }
+      if (_stale(generation)) return null;
       final at = _locate(entry, index);
-      if (at >= 0) review[at] = checked.single;
+      // A code typed meanwhile has already resolved the photo; keep it.
+      if (at >= 0 && review[at].unchecked) review[at] = checked.single;
+      return null;
     } finally {
       rechecking.value = false;
     }
@@ -416,7 +487,8 @@ class StockSheetController extends GetxController {
     }
   }
 
-  /// Null (the question dismissed) goes back to the review.
+  /// Null (the question dismissed) goes back to the review, as does
+  /// leaving out the out-of-stock items when nothing else is switched on.
   Future<void> chooseOutOfStock(OutOfStockChoice? choice) async {
     if (busy.value || _closed) return;
     if (phase.value != StockSheetPhase.awaitingChoice) return;
@@ -426,12 +498,16 @@ class StockSheetController extends GetxController {
       phase.value = StockSheetPhase.reviewing;
       return;
     }
+    final leaveOut = choice == OutOfStockChoice.leaveOut;
+    final rows = leaveOut
+        ? current.rows.where((r) => !r.outOfStock).toList()
+        : current.rows;
+    if (rows.isEmpty) {
+      _backToReview(allOutOfStockMessage);
+      return;
+    }
     busy.value = true;
     try {
-      final leaveOut = choice == OutOfStockChoice.leaveOut;
-      final rows = leaveOut
-          ? current.rows.where((r) => !r.outOfStock).toList()
-          : current.rows;
       await _build(
         rows,
         leaveOut ? null : current.outOfStockCount,
@@ -458,15 +534,17 @@ class StockSheetController extends GetxController {
   bool get canRetry => _scans.isNotEmpty;
 
   /// Takes the photos of a new share. During the review (or its
-  /// out-of-stock question) they wait in [pendingShare] for the user;
+  /// out-of-stock question), photos being added included, they wait in
+  /// [pendingShare] for the user, joining any share already waiting;
   /// otherwise the controller starts over and the screen calls [start] with
-  /// [sharedPaths]. Refused, with nothing changed, while photos are being
-  /// read or the sheet built.
+  /// [sharedPaths]. Refused, with nothing changed, while a share is being
+  /// read and checked or the sheet built.
   ShareOffer offerShare(List<String> paths) {
-    if (busy.value || adding.value) return ShareOffer.refusedBusy;
+    // Even refused or held, the share plugin's copies go on close.
     _givenPhotos.addAll(paths);
+    if (busy.value) return ShareOffer.refusedBusy;
     if (_reviewing || phase.value == StockSheetPhase.awaitingChoice) {
-      pendingShare.assignAll(paths);
+      _hold(paths);
       return ShareOffer.pending;
     }
     reset();
@@ -475,17 +553,23 @@ class StockSheetController extends GetxController {
     return ShareOffer.started;
   }
 
-  /// True when [pendingShare] fits beside the review under [maxPhotos], so
-  /// it can be added.
-  bool get pendingShareFits => review.length + pendingShare.length <= maxPhotos;
+  /// Adds [paths] to [pendingShare], each photo once, order kept. Always
+  /// notifies, so the screen asks (again) even when nothing changed.
+  void _hold(List<String> paths) =>
+      pendingShare.assignAll({...pendingShare, ...paths}.toList());
 
-  /// Acts on the user's answer to [pendingShare]. Ignored while photos are
-  /// being read or the sheet built; the share then stays pending. For
-  /// [PendingShareChoice.add], returns why the photos were not added (as
-  /// [addPhotos] does); null otherwise.
+  /// True when the new photos of [pendingShare] fit under [maxPhotos]
+  /// beside the review and the photos being added, so it can be added.
+  bool get pendingShareFits => _newPhotos(pendingShare).length <= photoRoom;
+
+  /// Acts on the user's answer to [pendingShare]. Ignored while a share is
+  /// being read or the sheet built; the share then stays pending. Add and
+  /// Start again first wait for photos being added. An Add that no longer
+  /// fits once they land is held again, so the user is asked again; for
+  /// [PendingShareChoice.add] it otherwise returns why the photos were not
+  /// added (as [addPhotos] does); null otherwise.
   Future<String?> resolvePendingShare(PendingShareChoice choice) async {
-    if (_closed || pendingShare.isEmpty) return null;
-    if (busy.value || adding.value) return null;
+    if (_closed || pendingShare.isEmpty || busy.value) return null;
     final paths = pendingShare.toList();
     pendingShare.clear();
     switch (choice) {
@@ -496,8 +580,26 @@ class StockSheetController extends GetxController {
           result.value = null;
           phase.value = StockSheetPhase.reviewing;
         }
-        return addPhotos(paths);
+        await _addsSettled();
+        if (_closed) return null;
+        // Another share was started meanwhile.
+        if (!_reviewing) return busyMessage;
+        final error = await addPhotos(paths);
+        if (error != null &&
+            !_closed &&
+            _reviewing &&
+            _newPhotos(paths).length > photoRoom) {
+          _hold(paths);
+          return null;
+        }
+        return error;
       case PendingShareChoice.startAgain:
+        // The add in flight then stops at its next step, adding nothing.
+        _generation++;
+        await _addsSettled();
+        if (_closed) return null;
+        // Another share was started meanwhile.
+        if (busy.value) return busyMessage;
         reset();
         sharedPaths.assignAll(paths);
         await start(paths);

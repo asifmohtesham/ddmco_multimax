@@ -86,6 +86,9 @@ class _FakeProvider extends StockSheetProvider {
   /// When set, the Item call waits for it.
   Completer<void>? itemsGate;
 
+  /// When set, only the next Item call waits for it.
+  Completer<void>? itemsGateOnce;
+
   /// When set, the stock call waits for it.
   Completer<void>? stockGate;
 
@@ -93,6 +96,9 @@ class _FakeProvider extends StockSheetProvider {
   Future<Map<String, ItemInfo>> fetchItems(List<String> codes) async {
     itemRequests.add(List.of(codes));
     await itemsGate?.future;
+    final once = itemsGateOnce;
+    itemsGateOnce = null;
+    await once?.future;
     final error = itemsError;
     if (error != null) {
       itemsError = null;
@@ -196,6 +202,13 @@ void main() {
 
   List<String> reviewPaths(StockSheetController c) =>
       c.review.map((e) => e.path).toList();
+
+  /// Waits for the clean-up after onClose, which deletes files for real.
+  Future<void> untilGone(List<File> files) async {
+    for (var i = 0; i < 200 && files.any((f) => f.existsSync()); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+  }
 
   test('more than 100 photos is refused and nothing is decoded', () async {
     final decoder = _FakeDecoder({});
@@ -439,6 +452,28 @@ void main() {
     expect(pdfDocs.single.showStatus, isFalse);
     // The out-of-stock row is not in the file, so the count is not shown.
     expect(pdfDocs.single.subtitle, '17/11/2026 09:05 · 2 photos · 1 item');
+  });
+
+  test('leaving out every item goes back to the review and says why', () async {
+    final decoder = _FakeDecoder({
+      'a.jpg': [_ean(_a)],
+      'b.jpg': [_ean(_b)],
+    });
+    final c = make(decoder, _FakeProvider(stock: {_b: 2}));
+    await c.start(['a.jpg', 'b.jpg']);
+    c.setIncluded(1, false);
+    await c.makeSheet(SheetFormat.excel);
+    expect(c.phase.value, StockSheetPhase.awaitingChoice);
+
+    await c.chooseOutOfStock(OutOfStockChoice.leaveOut);
+
+    expect(c.phase.value, StockSheetPhase.reviewing);
+    expect(c.errorMessage.value, 'Every photo on the sheet is out of stock.');
+    expect(c.result.value, isNull);
+    expect(c.files, isEmpty);
+    expect(shared, isEmpty);
+    expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
+    expect(c.busy.value, isFalse);
   });
 
   test('plural counts in the subtitle', () async {
@@ -961,6 +996,24 @@ void main() {
       expect(entry.typed, isTrue);
     });
 
+    test('fixing a note to an item switched off switches it on', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a), _ean(_b), note],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      c.setItemIncluded(0, 1, false);
+      expect(c.review.single.items[1].included, isFalse);
+
+      expect(await c.fixCode(0, _b, noteBarcode: note), isNull);
+
+      final entry = c.review.single;
+      expect(entry.items.map((i) => i.code.itemCode), [_a, _b]);
+      expect(entry.items.every((i) => i.included), isTrue);
+      expect(entry.notInErp, isEmpty);
+    });
+
     test('text that is not a code is refused without asking the ERP', () async {
       final provider = _FakeProvider();
       final c = await fourPhotos(provider);
@@ -1040,6 +1093,57 @@ void main() {
       expect(c.review, hasLength(98));
       expect(decoder.calls, calls);
       expect(c.adding.value, isFalse);
+    });
+
+    test('one place left, then none, say so in the singular', () async {
+      final c = make(_FakeDecoder({}), _FakeProvider());
+      await c.start(List.generate(99, (i) => 'p$i.jpg'));
+
+      expect(
+        await c.addPhotos(['x.jpg', 'y.jpg']),
+        'Only 1 more photo fits (limit 100).',
+      );
+      expect(await c.addPhotos(['x.jpg']), isNull);
+      expect(c.review, hasLength(100));
+      expect(await c.addPhotos(['y.jpg']), 'No more photos fit (limit 100).');
+      expect(
+        StockSheetController.roomMessage(3),
+        'Only 3 more photos fit (limit 100).',
+      );
+    });
+
+    test('photos already in the list are skipped', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+        'd.jpg': [_ean(_b)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
+      await c.start(['a.jpg', 'b.jpg']);
+
+      expect(await c.addPhotos(['b.jpg', 'd.jpg', 'd.jpg']), isNull);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+      final calls = decoder.calls;
+
+      expect(
+        await c.addPhotos(['a.jpg', 'd.jpg']),
+        'Those photos are already in the list.',
+      );
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+      expect(decoder.calls, calls);
+    });
+
+    test('a photo shared twice is read and listed once', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
+
+      await c.start(['a.jpg', 'b.jpg', 'a.jpg']);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
+      expect(decoder.calls, 2);
     });
 
     test('new photos go after a reorder, checked by their own codes', () async {
@@ -1124,10 +1228,48 @@ void main() {
       await c.addPhotos(['d.jpg']);
       provider.itemsError = Exception('still offline');
 
-      await c.retryCheck(1);
-
+      expect(
+        await c.retryCheck(1),
+        "Couldn't reach the ERP. Check the connection and try again.",
+      );
       expect(c.review[1].unchecked, isTrue);
       expect(c.review[1].items, isEmpty);
+
+      provider.itemsError = const StockAccessDenied();
+      expect(await c.retryCheck(1), "You don't have access to stock levels.");
+      expect(c.review[1].unchecked, isTrue);
+      expect(c.rechecking.value, isFalse);
+    });
+
+    test('a code typed during Retry check is not overwritten', () async {
+      const typed = '2001136';
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'd.jpg': [_ean(_b)],
+      });
+      final provider = _FakeProvider(
+        stock: {_a: 1, _b: 2, typed: 3},
+        known: const [_a, _b, typed],
+      );
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      provider.stockError = Exception('offline');
+      await c.addPhotos(['d.jpg']);
+      expect(c.review[1].unchecked, isTrue);
+      final gate = provider.itemsGateOnce = Completer<void>();
+
+      final retry = c.retryCheck(1);
+      await pumpEventQueue();
+      // The gate was taken by the retry's Item call.
+      expect(provider.itemsGateOnce, isNull);
+      expect(await c.fixCode(1, typed), isNull);
+      expect(c.review[1].items.single.code.itemCode, typed);
+      gate.complete();
+
+      expect(await retry, isNull);
+      expect(c.review[1].typed, isTrue);
+      expect(c.review[1].unchecked, isFalse);
+      expect(c.review[1].items.single.code.itemCode, typed);
     });
 
     test('closing mid-add appends nothing', () async {
@@ -1273,16 +1415,27 @@ void main() {
       expect(reviewPaths(c), ['a.jpg', 'n1.jpg']);
     });
 
-    test('Add that will not fit returns why and adds nothing', () async {
+    test('Add that will not fit adds nothing and is held again', () async {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
       c.offerShare(['n1.jpg', 'n2.jpg']);
 
+      expect(await c.resolvePendingShare(PendingShareChoice.add), isNull);
+      expect(c.review, hasLength(99));
+      // The screen asks again, offering only Start again.
+      expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
+      expect(c.pendingShareFits, isFalse);
+    });
+
+    test('Add of photos already in the list says so', () async {
+      final c = await reviewing();
+      c.offerShare(['b.jpg']);
+
       expect(
         await c.resolvePendingShare(PendingShareChoice.add),
-        'Only 1 more photos fit (limit 100).',
+        'Those photos are already in the list.',
       );
-      expect(c.review, hasLength(99));
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
       expect(c.pendingShare, isEmpty);
     });
 
@@ -1326,10 +1479,169 @@ void main() {
     expect(added.existsSync(), isTrue);
 
     c.onClose();
-    await pumpEventQueue();
+    await untilGone([first, added, held]);
 
     expect(first.existsSync(), isFalse);
     expect(added.existsSync(), isFalse);
     expect(held.existsSync(), isFalse);
+  });
+
+  test('refused and held photos in the temp folder go on close', () async {
+    File photo(String name) => File('${tmp.path}/$name')..writeAsBytesSync([1]);
+    final refused = photo('refused.jpg');
+    final full1 = photo('full1.jpg');
+    final full2 = photo('full2.jpg');
+    final held = photo('held.jpg');
+    final decoder = _FakeDecoder({})..gate = Completer<void>();
+    final c = make(decoder, _FakeProvider());
+    final run = c.start(List.generate(99, (i) => 'p$i.jpg'));
+    expect(c.offerShare([refused.path]), ShareOffer.refusedBusy);
+    decoder.gate!.complete();
+    await run;
+    expect(
+      await c.addPhotos([full1.path, full2.path]),
+      'Only 1 more photo fits (limit 100).',
+    );
+    expect(c.offerShare([held.path]), ShareOffer.pending);
+
+    c.onClose();
+    await untilGone([refused, full1, full2, held]);
+
+    expect(refused.existsSync(), isFalse);
+    expect(full1.existsSync(), isFalse);
+    expect(full2.existsSync(), isFalse);
+    expect(held.existsSync(), isFalse);
+  });
+
+  group('a share during an add', () {
+    /// a.jpg and b.jpg in the review, d.jpg being added (its stock check
+    /// waits for [_FakeProvider.stockGate]).
+    Future<(StockSheetController, Future<String?>)> addingOne(
+      _FakeProvider provider,
+    ) async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+        'd.jpg': [_ean(_b)],
+        'n1.jpg': [_ean(_a)],
+        'n2.jpg': [_ean(_b)],
+      });
+      final c = make(decoder, provider);
+      await c.start(['a.jpg', 'b.jpg']);
+      provider.stockGate = Completer<void>();
+      final add = c.addPhotos(['d.jpg']);
+      await pumpEventQueue();
+      expect(c.adding.value, isTrue);
+      return (c, add);
+    }
+
+    test('it is held, not refused', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final (c, add) = await addingOne(provider);
+
+      expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
+      expect(c.pendingShare, ['n1.jpg']);
+      expect(c.pendingShareFits, isTrue);
+
+      provider.stockGate!.complete();
+      await add;
+    });
+
+    test('Add waits for the add, then appends both in order', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final (c, add) = await addingOne(provider);
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+
+      final resolved = c.resolvePendingShare(PendingShareChoice.add);
+      await pumpEventQueue();
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
+      provider.stockGate!.complete();
+
+      expect(await add, isNull);
+      expect(await resolved, isNull);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg', 'n1.jpg', 'n2.jpg']);
+      expect(c.pendingShare, isEmpty);
+      expect(c.adding.value, isFalse);
+    });
+
+    test('Start again appends nothing from the add in flight', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final (c, add) = await addingOne(provider);
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+
+      final resolved = c.resolvePendingShare(PendingShareChoice.startAgain);
+      await pumpEventQueue();
+      provider.stockGate!.complete();
+      await add;
+      expect(await resolved, isNull);
+
+      expect(reviewPaths(c), ['n1.jpg', 'n2.jpg']);
+      expect(c.sharedPaths, ['n1.jpg', 'n2.jpg']);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+    });
+
+    test('the photos being added count against the limit', () async {
+      final decoder = _FakeDecoder({});
+      final c = make(decoder, _FakeProvider());
+      await c.start(List.generate(97, (i) => 'p$i.jpg'));
+      decoder.gate = Completer<void>();
+      final add = c.addPhotos(['x1.jpg', 'x2.jpg']);
+      expect(c.photoRoom, 1);
+
+      c.offerShare(['n1.jpg', 'n2.jpg']);
+      expect(c.pendingShareFits, isFalse);
+      // A photo already being added is not counted twice.
+      c.pendingShare.assignAll(['x1.jpg', 'n1.jpg']);
+      expect(c.pendingShareFits, isTrue);
+
+      decoder.gate!.complete();
+      await add;
+      expect(c.photoRoom, 1);
+    });
+
+    test(
+      'an Add that no longer fits once the adds land is held again',
+      () async {
+        final decoder = _FakeDecoder({});
+        final c = make(decoder, _FakeProvider());
+        await c.start(List.generate(96, (i) => 'p$i.jpg'));
+        decoder.gate = Completer<void>();
+        final add = c.addPhotos(['x1.jpg', 'x2.jpg']);
+
+        // Each fits beside the review and the add, but not both.
+        c.offerShare(['n1.jpg', 'n2.jpg']);
+        expect(c.pendingShareFits, isTrue);
+        final first = c.resolvePendingShare(PendingShareChoice.add);
+        c.offerShare(['m1.jpg', 'm2.jpg']);
+        expect(c.pendingShareFits, isTrue);
+        final second = c.resolvePendingShare(PendingShareChoice.add);
+        decoder.gate!.complete();
+
+        await add;
+        expect(await first, isNull);
+        expect(await second, isNull);
+        expect(c.review, hasLength(100));
+        expect(reviewPaths(c).skip(96), [
+          'x1.jpg',
+          'x2.jpg',
+          'n1.jpg',
+          'n2.jpg',
+        ]);
+        expect(c.pendingShare, ['m1.jpg', 'm2.jpg']);
+        expect(c.pendingShareFits, isFalse);
+      },
+    );
+
+    test('a second share joins the one waiting, each photo once', () async {
+      final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+      final (c, add) = await addingOne(provider);
+
+      c.offerShare(['n1.jpg']);
+      expect(c.offerShare(['n2.jpg', 'n1.jpg']), ShareOffer.pending);
+      expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
+
+      provider.stockGate!.complete();
+      await add;
+    });
   });
 }
