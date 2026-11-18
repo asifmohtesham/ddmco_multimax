@@ -10,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_button.dart';
 import 'package:multimax/app/data/models/user_model.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/home/widgets/performance_timeline_card.dart';
@@ -45,6 +46,7 @@ class HomeScreen extends GetView<HomeController> {
             isLoading: controller.isScanning.value,
             hintText: 'Scan Item / Batch / Rack',
             activeRoute: AppRoutes.HOME,
+            trailingActions: const [ItemsFromPhotosButton()],
           )),
         ),
       ),

@@ -32,6 +32,10 @@ class BarcodeInputWidget extends StatefulWidget {
   final String? activeRoute;
   final bool isEmbedded;
 
+  /// Extra controls shown before the camera and send buttons, on every
+  /// platform.
+  final List<Widget> trailingActions;
+
   const BarcodeInputWidget({
     super.key,
     required this.onScan,
@@ -42,6 +46,7 @@ class BarcodeInputWidget extends StatefulWidget {
     this.hintText = 'Scan or enter barcode',
     this.activeRoute,
     this.isEmbedded = false,
+    this.trailingActions = const [],
   });
 
   @override
@@ -68,6 +73,15 @@ class _BarcodeInputWidgetState extends State<BarcodeInputWidget> {
   }
 
   Widget _buildSuffixIcon(BuildContext context, Color primaryColor) {
+    final status = _buildStatusSuffix(context, primaryColor);
+    if (widget.trailingActions.isEmpty) return status;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [...widget.trailingActions, status],
+    );
+  }
+
+  Widget _buildStatusSuffix(BuildContext context, Color primaryColor) {
     if (widget.isLoading) {
       return const Padding(
         padding: EdgeInsets.all(12.0),

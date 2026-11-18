@@ -6,6 +6,7 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 import 'package:multimax/app/modules/item/item_controller.dart';
 import 'package:multimax/app/modules/item/widgets/item_filter_bottom_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_button.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 class ItemListAppBar extends StatelessWidget {
@@ -72,6 +73,7 @@ class ItemListAppBar extends StatelessWidget {
       },
 
       extraActions: [
+        const ItemsFromPhotosButton(),
         // Fix #13: standalone image-toggle icon button in AppBar.
         // Clearly separated from the filter badge so users always know
         // the current state without opening the filter sheet.
