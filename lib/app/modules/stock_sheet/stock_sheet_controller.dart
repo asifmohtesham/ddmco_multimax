@@ -304,15 +304,17 @@ class StockSheetController extends GetxController {
 
   bool get _reviewing => phase.value == StockSheetPhase.reviewing;
 
-  /// False while a fix, an add, a retry or a run is changing the list.
+  /// False while a fix, an add, a retry or a run is changing the list, and
+  /// outside the review (e.g. while the out-of-stock question is open).
   bool get canRemove =>
+      _reviewing &&
       !(adding.value || rechecking.value || fixing.value || busy.value);
 
   /// Takes photo [index] off the list and returns it, or null when [index]
   /// is out of range or the list is changing. The copy stays on disk, so
   /// [restore] can bring it back; the clean-up at close removes it.
   ReviewEntry? removeAt(int index) {
-    if (_closed || !_reviewing || !canRemove) return null;
+    if (_closed || !canRemove) return null;
     if (index < 0 || index >= review.length) return null;
     return review.removeAt(index);
   }

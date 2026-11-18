@@ -490,6 +490,22 @@ void main() {
     expect(tester.getTopLeft(find.text('Item 12345670')), before);
   });
 
+  testWidgets('no swipe while the out-of-stock question is open', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    controller.phase.value = StockSheetPhase.awaitingChoice;
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(controller.canRemove, isFalse);
+    expect(find.text('Item 12345670'), findsOneWidget);
+    expect(controller.review, hasLength(2));
+  });
+
   testWidgets('a failed Retry check says why in a snackbar', (tester) async {
     await open(tester);
     controller.recheckError = StockSheetController.offlineMessage;
