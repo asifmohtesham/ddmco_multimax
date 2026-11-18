@@ -1,20 +1,36 @@
 # iOS Share Extension (share photos to "Items from Photos")
 
-Set up and verified on 18 November 2026 (release 2.42.0+130). Spec:
-`docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` section 6.6.
+Set up on 18 November 2026 (release 2.42.0+130); share screen rewritten for the Mac the same day
+(release 2.43.0). Specs: `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` section 6.6 and
+`docs/superpowers/specs/2026-11-18-items-from-photos-on-mac-design.md`.
 
-The user selects photos in Photos, taps Share and chooses Multimax. The `ShareExtension` target
-(`RSIShareViewController` from `receive_sharing_intent` 1.9.0) copies the images into the App Group
-container, opens the app through the URL scheme `ShareMedia-com.ddmco.multimax`, and the plugin hands the
-paths to `ShareIntakeService`, which opens the "Items from Photos" screen (route `STOCK_SHEET`).
+The user selects photos in Photos (or in Finder on a Mac, where Multimax runs as its iPad app), taps Share
+and chooses Multimax. Our own `ShareViewController` loads each photo as a file, copies it into the App Group
+container, writes the `receive_sharing_intent` hand-over record and opens the app through the URL scheme
+`ShareMedia-com.ddmco.multimax`; the plugin's app half hands the paths to `ShareIntakeService`, which opens
+"Items from Photos" (route `STOCK_SHEET`). The Runner's `IntakeBridge` also takes photos dragged onto the
+window and shares whose URL never brought the app forward.
 
 ## What is in the repository
 
-- `ios/ShareExtension/`: `ShareViewController.swift` (subclass of `RSIShareViewController`, no overrides),
+- `ios/ShareExtension/`: `ShareViewController.swift` (our own `UIViewController`; no plugin code):
+  a visible card "Sending N photos to Multimax…" with Cancel; `loadFileRepresentation` per image (retried
+  once as `public.image`), copies named `<UUID>.<ext>` in the App Group root; writes `ShareKey` (JSON array
+  of `{path, mimeType, type: "image"}`, the plugin's `SharedMediaFile`) and `MultimaxShareId` (UUID), then
+  opens the app; nothing copied → "Couldn't read these photos."; 120 s time-out with its own message;
+  `isModalInPresentation` so a swipe-down can't skip clean-up. Also
   `Info.plist` (share-services extension, images only, at most 100; `AppGroupId = $(CUSTOM_GROUP_ID)`;
   version keys `$(FLUTTER_BUILD_NAME)` / `$(FLUTTER_BUILD_NUMBER)`), `ShareExtension.entitlements`
   (App Group `$(CUSTOM_GROUP_ID)`), `Base.lproj/MainInterface.storyboard`.
   The storyboard route (`NSExtensionMainStoryboard`) is used; do not add `NSExtensionPrincipalClass`.
+- `ios/Runner/IntakeBridge.swift` (registered in `AppDelegate.didInitializeImplicitFlutterEngine`), channel
+  `com.ddmco.multimax/intake` (Dart: `lib/app/data/services/native_intake.dart`): `isRunningOnMac`,
+  `sharedFolders` (App Group root and `NSTemporaryDirectory()`; Dart deletes only the copies it was given
+  inside them), `takeStrandedShare` / `markShareHandled` (`MultimaxShareId` against
+  `MultimaxHandledShareId` in the app's own defaults; entries missing or older than 24 h are dropped), drag
+  and drop (`UIDropInteraction` on the Flutter view → `tmp/dropped/` → `dropped`, or `dropFailed` when
+  nothing could be copied), and a start-up sweep of image files older than 24 h in the App Group root,
+  `tmp/dropped/` and `tmp/<bundle id>-Inbox/` (never recursive, never `Library/`).
 - `ios/Runner/Runner.entitlements`: App Group `$(CUSTOM_GROUP_ID)` beside the time-sensitive notifications key.
 - `ios/Runner/Info.plist`: `AppGroupId = $(CUSTOM_GROUP_ID)` and the URL scheme
   `ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)`.
@@ -24,8 +40,7 @@ paths to `ShareIntakeService`, which opens the "Items from Photos" screen (route
     `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER` resolve and the extension's version always equals the app's
     (App Store validation requires it);
   - `LD_RUNPATH_SEARCH_PATHS` includes `@executable_path/../../Frameworks`; `SKIP_INSTALL = YES`;
-  - links the Swift package product `receive-sharing-intent` through an `XCLocalSwiftPackageReference` to
-    `Flutter/ephemeral/Packages/.packages/receive_sharing_intent-1.9.0` (see "Plugin upgrades");
+  - links no package (until 18/11/2026 it linked `receive-sharing-intent`; see "Plugin upgrades");
   - `CUSTOM_GROUP_ID = group.com.ddmco.multimax` in all configurations of Runner and ShareExtension;
   - Runner depends on ShareExtension and embeds it in an "Embed Foundation Extensions" copy phase placed
     **before** "Thin Binary" (after it, Xcode reports a dependency cycle).
@@ -37,12 +52,12 @@ The extension binary is about 300 KB and does not load Flutter (the linker strip
 
 ## Plugin upgrades
 
-Flutter links each plugin's Swift package under `ios/Flutter/ephemeral/Packages/.packages/<name>-<version>`
-(the version is in the folder name so Xcode re-reads the manifest after an upgrade). The extension's package
-reference therefore names the version. `receive_sharing_intent` is pinned to `1.9.0` in `pubspec.yaml`, and
-`test/unit/ios_share_extension_package_test.dart` fails when `pubspec.lock` and the Xcode project disagree.
-To upgrade: change the pin, run `flutter pub get`, edit the `relativePath` of
-`XCLocalSwiftPackageReference "receive_sharing_intent"` in `project.pbxproj`, and rebuild on the Mac.
+The extension writes the plugin's hand-over record by hand, so `receive_sharing_intent` stays pinned to
+exactly `1.9.0` in `pubspec.yaml` (its app half force-unwraps a record it cannot decode).
+`test/unit/ios_share_extension_contract_test.dart` checks the pin, the keys and field names the Swift code
+writes, and that the extension no longer links the plugin. To upgrade: read the new version's
+`SharedMediaFile` and URL handling, adjust `ShareViewController.swift` and `IntakeBridge.swift` if they
+changed, then move the pin and rebuild on the Mac.
 
 ## Apple side (team 9SMYC6R3PR), done 18 November 2026
 
@@ -73,6 +88,10 @@ profiles. Backups of both files: `*.bak-20261118-shareext`.
   Photos opened Multimax on the screen (user's own test through RustDesk), and the images were in the App
   Group container.
 - Signed export with both profiles: see the release log of 2.42.0+130.
+- 2.43.0 work (18/11/2026), iOS 26.5 Simulator: share from Photos through the new share screen, the Item list
+  and Dashboard entry points, the start state and "Choose files…" (user's check through RustDesk). Finder
+  Share, drag and drop, OneDrive placeholders and barcode reading on the Mac are checked on the TestFlight
+  build (plan Task 9).
 
 Not verifiable on the Simulator: reading barcodes from the photos. `mobile_scanner` refuses `analyzeImage` on
 the iOS Simulator (Vision needs the GPU), so the screen shows "Reading barcodes from photos isn't supported on
