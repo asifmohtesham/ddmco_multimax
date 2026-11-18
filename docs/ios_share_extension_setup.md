@@ -89,13 +89,17 @@ profiles. Backups of both files: `*.bak-20261118-shareext`.
   Group container.
 - Signed export with both profiles: see the release log of 2.42.0+130.
 - 2.43.0 work (18/11/2026), iOS 26.5 Simulator: share from Photos through the new share screen, the Item list
-  and Dashboard entry points, the start state and "Choose files…" (user's check through RustDesk). Finder
-  Share, drag and drop, OneDrive placeholders and barcode reading on the Mac are checked on the TestFlight
-  build (plan Task 9).
+  and Dashboard entry points, the start state and "Choose files…" (user's check through RustDesk).
+- 2.43.0 (131) from TestFlight, all passed (user, 18/11/2026):
+  - Mac (iPad app on Apple silicon): Finder Share with local files and OneDrive placeholders; a second share
+    while the list is open asks add-or-start-again and appends; a re-shared photo says "Those photos are
+    already in the list."; drag and drop from Finder; "Choose files…" from a OneDrive folder (start state and
+    "+"); the Item list and Dashboard icons; Excel and PDF.
+  - iPhone: share from Photos including a Live Photo, codes read; the share card cannot be swiped away.
 
 Not verifiable on the Simulator: reading barcodes from the photos. `mobile_scanner` refuses `analyzeImage` on
 the iOS Simulator (Vision needs the GPU), so the screen shows "Reading barcodes from photos isn't supported on
-this device." there. Check it on a real iPhone (TestFlight) before submitting for review.
+this device." there. It works on a real iPhone and on the Mac.
 
 ## Mac quirks seen on 18 November 2026
 
