@@ -890,7 +890,7 @@ void main() {
         ShareOffer.started,
       );
       c.onClose();
-      await pumpEventQueue();
+      await untilGone([cached, nested]);
 
       expect(cached.existsSync(), isFalse);
       expect(nested.existsSync(), isFalse);
@@ -912,7 +912,7 @@ void main() {
       expect(second.existsSync(), isTrue);
 
       c.onClose();
-      await pumpEventQueue();
+      await untilGone([first, second]);
 
       expect(first.existsSync(), isFalse);
       expect(second.existsSync(), isFalse);
