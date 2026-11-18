@@ -1,99 +1,96 @@
-**Unverified: not built or run.** This machine has no Xcode. The files below were written from the
-`receive_sharing_intent` 1.9.0 README and its `example/ios` project, and have only been checked as well-formed
-plists. Treat the first Mac build as the real test.
+# iOS Share Extension (share photos to "Items from photos")
 
-# iOS Share Extension setup (share photos to the stock sheet)
+Set up and verified on 18 November 2026 (release 2.42.0+130). Spec:
+`docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` section 6.6.
 
-Spec: `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` section 6.6.
+The user selects photos in Photos, taps Share and chooses Multimax. The `ShareExtension` target
+(`RSIShareViewController` from `receive_sharing_intent` 1.9.0) copies the images into the App Group
+container, opens the app through the URL scheme `ShareMedia-com.ddmco.multimax`, and the plugin hands the
+paths to `ShareIntakeService`, which opens the "Items from photos" screen (route `STOCK_SHEET`).
 
-## What is already in the repository
+## What is in the repository
 
-- `ios/ShareExtension/ShareViewController.swift`: subclass of `RSIShareViewController`.
-- `ios/ShareExtension/Info.plist`: share-services extension; activation rule
-  `NSExtensionActivationSupportsImageWithMaxCount = 100` (images only); `AppGroupId = $(CUSTOM_GROUP_ID)`.
-- `ios/ShareExtension/ShareExtension.entitlements`: App Group `$(CUSTOM_GROUP_ID)`.
-- `ios/ShareExtension/Base.lproj/MainInterface.storyboard`: copied from the plugin example; the extension's
-  `Info.plist` names it (`NSExtensionMainStoryboard`) and its view controller class is `ShareViewController`.
-- `ios/Runner/Info.plist`: the URL scheme `ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)` only. It has no signing
-  impact. Every existing key is kept.
+- `ios/ShareExtension/`: `ShareViewController.swift` (subclass of `RSIShareViewController`, no overrides),
+  `Info.plist` (share-services extension, images only, at most 100; `AppGroupId = $(CUSTOM_GROUP_ID)`;
+  version keys `$(FLUTTER_BUILD_NAME)` / `$(FLUTTER_BUILD_NUMBER)`), `ShareExtension.entitlements`
+  (App Group `$(CUSTOM_GROUP_ID)`), `Base.lproj/MainInterface.storyboard`.
+  The storyboard route (`NSExtensionMainStoryboard`) is used; do not add `NSExtensionPrincipalClass`.
+- `ios/Runner/Runner.entitlements`: App Group `$(CUSTOM_GROUP_ID)` beside the time-sensitive notifications key.
+- `ios/Runner/Info.plist`: `AppGroupId = $(CUSTOM_GROUP_ID)` and the URL scheme
+  `ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)`.
+- `ios/Runner.xcodeproj/project.pbxproj` (made with the `xcodeproj` Ruby gem 1.28.1, not in Xcode):
+  - target `ShareExtension` (app extension, bundle id `com.ddmco.multimax.ShareExtension`, iOS 15.0, team
+    `9SMYC6R3PR`, Debug / Release / Profile), its configurations based on `Flutter/Generated.xcconfig` so
+    `FLUTTER_BUILD_NAME` / `FLUTTER_BUILD_NUMBER` resolve and the extension's version always equals the app's
+    (App Store validation requires it);
+  - `LD_RUNPATH_SEARCH_PATHS` includes `@executable_path/../../Frameworks`; `SKIP_INSTALL = YES`;
+  - links the Swift package product `receive-sharing-intent` through an `XCLocalSwiftPackageReference` to
+    `Flutter/ephemeral/Packages/.packages/receive_sharing_intent-1.9.0` (see "Plugin upgrades");
+  - `CUSTOM_GROUP_ID = group.com.ddmco.multimax` in all configurations of Runner and ShareExtension;
+  - Runner depends on ShareExtension and embeds it in an "Embed Foundation Extensions" copy phase placed
+    **before** "Thin Binary" (after it, Xcode reports a dependency cycle).
+- No CocoaPods change: the plugin is a Swift package only, and Swift Package Manager is enabled in the Mac's
+  Flutter (`flutter config --enable-swift-package-manager`). The Podfile holds only the Flutter pod.
 
-`project.pbxproj` is deliberately untouched: the target is created in Xcode (step 1).
+The extension binary is about 300 KB and does not load Flutter (the linker strips it), so the appex has no
+`Frameworks` folder (Apple rejects one).
 
-**Not yet in the repository, on purpose:** the Runner's App Group entitlement and its `AppGroupId` key. Both
-need `CUSTOM_GROUP_ID` defined and a Runner provisioning profile that carries the App Group. Neither exists
-yet, so committing them would break the next App Store export. They are added on the Mac in step 2, in the
-same sitting as the new profile (step 5).
+## Plugin upgrades
 
-## Naming
+Flutter links each plugin's Swift package under `ios/Flutter/ephemeral/Packages/.packages/<name>-<version>`
+(the version is in the folder name so Xcode re-reads the manifest after an upgrade). The extension's package
+reference therefore names the version. `receive_sharing_intent` is pinned to `1.9.0` in `pubspec.yaml`, and
+`test/unit/ios_share_extension_package_test.dart` fails when `pubspec.lock` and the Xcode project disagree.
+To upgrade: change the pin, run `flutter pub get`, edit the `relativePath` of
+`XCLocalSwiftPackageReference "receive_sharing_intent"` in `project.pbxproj`, and rebuild on the Mac.
 
-- Runner bundle id: `com.ddmco.multimax`.
-- Extension bundle id: `com.ddmco.multimax.ShareExtension`.
-- App Group: `group.com.ddmco.multimax`. The 1.9.0 README uses a user-defined build setting `CUSTOM_GROUP_ID`
-  (the full group id) in both targets, rather than deriving the id from the bundle id; the files above follow it.
+## Apple side (team 9SMYC6R3PR), done 18 November 2026
 
-## Podfile: no change
+| Object | Id | How |
+|---|---|---|
+| App Group `group.com.ddmco.multimax` ("Multimax") | | developer.apple.com (the App Store Connect API has no App Group resource) |
+| App ID `com.ddmco.multimax.ShareExtension` ("Multimax Share Extension") | `2DNFTB28X8` | API |
+| App Groups capability on `com.ddmco.multimax` (`KV439YAX6F`) and on the extension | | API; group ticked on both in the portal |
+| Profile "Multimax App Store Headless v2" (Runner) | `5488JJUF52` | API, certificate `84CG79D48X` |
+| Profile "Multimax ShareExtension App Store Headless" | `LVA8D4T2H2` | API, certificate `84CG79D48X` |
 
-The 1.9.0 README says the plugin is distributed as a Swift Package only ("there is no CocoaPods podspec"; the
-package has no `.podspec`). A `target 'ShareExtension'` block in `ios/Podfile` would therefore add nothing, and
-before the Xcode target exists it would make `pod install` fail. The Podfile is left unchanged. If the first
-build reports "no such module 'receive_sharing_intent'", follow step 3 and the README note on build-phase order
-instead. The spec's wording ("add the pod to the extension target") is superseded by this.
+Both profiles carry `group.com.ddmco.multimax` and expire on **14 November 2027**, with the certificate. Adding
+the capability made the old profile "Multimax App Store Headless" (`F4CPRQK2VP`) INVALID; it is no longer used.
 
-## Checklist on the Mac
+## Headless release (on the Mac, `~/multimax-ios-release/`, not in this repository)
 
-1. **Xcode target.** File, New, Target, Share Extension, named `ShareExtension`. Bundle id
-   `com.ddmco.multimax.ShareExtension`, deployment target 15.0 (same as Runner). When Xcode offers to create a
-   scheme, accept. Delete the files Xcode generates (`ShareViewController.swift`, `Info.plist`,
-   `MainInterface.storyboard`) and add the ones from `ios/ShareExtension/` instead; set the target's
-   *Info.plist File* and *Code Signing Entitlements* build settings to them.
-2. **App Group, both targets.** Do this together with step 5: the Runner change below needs the new
-   profile, and a release exported in between will fail to sign.
-   - Signing & Capabilities: add *App Groups* to Runner and ShareExtension, with `group.com.ddmco.multimax`.
-   - Build Settings of **both** targets: add the user-defined setting
-     `CUSTOM_GROUP_ID = group.com.ddmco.multimax`.
-   - `ios/Runner/Runner.entitlements`: Xcode adds the key when the capability is added; check that it reads
-     exactly as below, beside the existing `com.apple.developer.usernotifications.time-sensitive`:
+`release-headless.sh` signs both targets: for the build only, it adds manual signing after the line
+`PRODUCT_BUNDLE_IDENTIFIER = <exact bundle id>;` of each target, with that target's own profile, checks that
+each profile landed in all three configurations, and restores the project file afterwards. It still refuses to
+run if the project file has local changes. `ExportOptionsHeadless.plist` maps both bundle ids to their
+profiles. Backups of both files: `*.bak-20261118-shareext`.
 
-     ```xml
-     <key>com.apple.security.application-groups</key>
-     <array>
-     	<string>$(CUSTOM_GROUP_ID)</string>
-     </array>
-     ```
+## Verified
 
-   - `ios/Runner/Info.plist`: add the key the plugin reads to find the shared container:
+- Unsigned device build (`flutter build ios --release --no-codesign`): `Runner.app/PlugIns/ShareExtension.appex`
+  present, version and build equal to the app's, `AppGroupId` resolved, no `Frameworks` folder.
+- iOS 26.5 Simulator (iPhone 17 Pro), Debug build from `xcodebuild -destination id=<udid>`: photos shared from
+  Photos opened Multimax on the screen (user's own test through RustDesk), and the images were in the App
+  Group container.
+- Signed export with both profiles: see the release log of 2.42.0+130.
 
-     ```xml
-     <key>AppGroupId</key>
-     <string>$(CUSTOM_GROUP_ID)</string>
-     ```
+Not verifiable on the Simulator: reading barcodes from the photos. `mobile_scanner` refuses `analyzeImage` on
+the iOS Simulator (Vision needs the GPU), so the screen shows "Reading barcodes from photos isn't supported on
+this device." there. Check it on a real iPhone (TestFlight) before submitting for review.
 
-   - Commit both Runner files with the profile change, not before.
-   - The extension uses the storyboard route (`NSExtensionMainStoryboard = MainInterface`). Do **not** add
-     `NSExtensionPrincipalClass` to `ios/ShareExtension/Info.plist`, even if Xcode or a guide suggests it:
-     the two keys are alternative ways to create the view controller, and only the storyboard one is set.
-3. **Plugin for the extension.** Enable SPM (`flutter config --enable-swift-package-manager`), then
-   ShareExtension, General, Frameworks and Libraries, add `receive-sharing-intent` from the
-   `receive_sharing_intent` Swift package. Move Runner's *Embed Foundation Extensions* phase above
-   *Thin Binary*.
-4. **Developer portal.** Register the App Group `group.com.ddmco.multimax`; add it to the App ID
-   `com.ddmco.multimax`. Create the App ID `com.ddmco.multimax.ShareExtension` with the App Groups capability and
-   the same group.
-5. **Provisioning profiles.** Regenerate the Runner distribution profile (it must carry the App Group before
-   the Runner entitlement from step 2 is committed) and
-   create an App Store profile for `com.ddmco.multimax.ShareExtension`. Current certificate and profiles expire on
-   14/11/2027; the new profile will have its own expiry, so note it.
-6. **Headless release.** `~/multimax-ios-release/release-headless.sh` (on the Mac, not in this repository) now
-   signs and exports two targets. Its `ExportOptions.plist` must list a profile for each bundle id under
-   `provisioningProfiles`:
-   `com.ddmco.multimax` and `com.ddmco.multimax.ShareExtension`. Install both profiles on the Mac before running.
+## Mac quirks seen on 18 November 2026
 
-## Smoke test
+- Xcode 27.2 needed its first-launch components (`sudo xcodebuild -runFirstLaunch`, admin password) before
+  the Simulator or devices worked ("CoreSimulator is out of date").
+- Xcode 27 has no Simulator.app; the Simulator window is in **DeviceHub**
+  (`/Applications/Xcode.app/Contents/Applications/DeviceHub.app`).
+- `flutter build ios --simulator` (Flutter 3.45 pre-release) failed with "Could not compute dependency
+  graph"; `xcodebuild -workspace Runner.xcworkspace -scheme Runner -destination id=<udid> build` works.
 
-1. Build and install on a device (Simulator can share, but use a device for the release path).
-2. Open Photos, select several photos of barcode labels, Share, choose Multimax. The app opens on the format
-   sheet.
-3. Share 101 photos: the share sheet should not offer Multimax (activation rule limit).
-4. Share a non-image (a PDF or a link): Multimax should not be offered.
-5. Share while signed out: the app asks for sign-in, then continues with the same photos.
-6. Run the headless release and confirm the archive contains `Multimax.app/PlugIns/ShareExtension.appex`.
+## Smoke test on a device
+
+1. Install from TestFlight. In Photos select several photos of item labels, Share, Multimax: the app opens on
+   "Items from photos" and reads the codes.
+2. Share while Multimax is already open (warm start): same result.
+3. Share while signed out: the app asks for sign-in, then continues with the same photos.
+4. Select 101 photos, or a PDF or link: Multimax is not offered.
