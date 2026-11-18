@@ -46,7 +46,7 @@ void main() {
         ],
       );
 
-  testWidgets('shows the icon with the Items from photos tooltip when allowed',
+  testWidgets('shows the icon with the Items from Photos tooltip when allowed',
       (tester) async {
     final perms = Get.put<PermissionService>(_StubPermissionService(true))
         as _StubPermissionService;
@@ -54,7 +54,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.photo_library_outlined), findsOneWidget);
-    expect(find.byTooltip('Items from photos'), findsOneWidget);
+    expect(find.byTooltip('Items from Photos'), findsOneWidget);
     expect(perms.lastDoctype, 'Stock Entry');
     expect(perms.lastPermType, 'report');
   });

@@ -1,8 +1,8 @@
-# Items from photos on the Mac: Implementation Plan
+# Items from Photos on the Mac: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let office staff feed photos from Finder (Share, drag and drop, Choose files…) into "Items from photos" on the Mac, open the screen without a share, and skip photos already in the list by content.
+**Goal:** Let office staff feed photos from Finder (Share, drag and drop, Choose files…) into "Items from Photos" on the Mac, open the screen without a share, and skip photos already in the list by content.
 
 **Architecture:** The iPhone/iPad app runs on the Mac. A rewritten Swift share screen (no plugin code) hands photos to the app through the `receive_sharing_intent` App Group contract. A new Runner bridge (`IntakeBridge`, method channel `com.ddmco.multimax/intake`) delivers drops, stranded shares and Mac detection to Dart. Every route ends in `ShareIntakeService.deliver` or the controller's existing `offerShare` / `addPhotos`.
 
@@ -17,7 +17,7 @@
 - App Group `group.com.ddmco.multimax`; Info.plist key `AppGroupId`.
 - At most 100 photos (`StockSheetController.maxPhotos`); images only.
 - Share screen time-out: 120 seconds.
-- Copy, verbatim: "Items from photos", "Choose files…", "Choose from gallery", "Take a photo", "Choose photos of item labels to list their stock as Excel or PDF.", "On a Mac you can also drag photos here or share them from Finder.", "Sending N photos to Multimax…", "Couldn't read these photos.", "Multimax couldn't get these photos in time. Try fewer, or download them first.", "Switch to Multimax to continue.", existing "Those photos are already in the list."
+- Copy, verbatim: "Items from Photos", "Choose files…", "Choose from gallery", "Take a photo", "Choose photos of item labels to list their stock as Excel or PDF.", "On a Mac you can also drag photos here or share them from Finder.", "Sending N photos to Multimax…", "Couldn't read these photos.", "Multimax couldn't get these photos in time. Try fewer, or download them first.", "Switch to Multimax to continue.", existing "Those photos are already in the list."
 - British English in copy, comments and commit messages; Conventional Commits; end commits with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Never hardcode surface/ink colours (CLAUDE.md "Contrast / colour usage"); async controls give immediate feedback (CLAUDE.md "Async feedback").
 - Read `docs/ios_share_extension_setup.md` before touching `ios/`; the Mac's Xcode 27 quirks are listed there (DeviceHub, `xcodebuild -destination id=<udid>` instead of `flutter build ios --simulator`).
@@ -188,7 +188,7 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 
 - [ ] **Step 1: Write the bridge and register it.** No Swift unit tests in this project; Dart Task 2 tests pin the channel contract.
 - [ ] **Step 2: Build on the Mac (Simulator)**: bundle the branch to the Mac (as in `docs/ios_share_extension_setup.md`), `flutter pub get`, then `xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination id=<iOS 26.5 iPhone udid> build`. Expected: `** BUILD SUCCEEDED **`.
-- [ ] **Step 3: Check the channel on the Simulator**: install, launch, open "Items from photos" from the Item list (after Task 8) or via a debug route; expect the camera button shown (not a Mac) and no errors in `xcrun simctl spawn <udid> log stream --predicate 'process == "Runner"'`.
+- [ ] **Step 3: Check the channel on the Simulator**: install, launch, open "Items from Photos" from the Item list (after Task 8) or via a debug route; expect the camera button shown (not a Mac) and no errors in `xcrun simctl spawn <udid> log stream --predicate 'process == "Runner"'`.
 - [ ] **Step 4: Commit** — `feat(ios): intake bridge for drops, stranded shares and Mac detection`.
 
 ### Task 7: Our own share screen (ShareExtension)
@@ -208,7 +208,7 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 - [ ] **Step 2: Run, expect FAIL** (old Swift, old pbxproj).
 - [ ] **Step 3: Rewrite `ShareViewController`** per the spec §1: visible card "Sending N photos to Multimax…" with spinner and Cancel (system colours: `.systemBackground`, `.label`); `loadFileRepresentation` for each `public.image` attachment, copy into the App Group with `<UUID>.<ext>`, order kept, via a `DispatchGroup`; all failed → alert "Couldn't read these photos." then `cancelRequest`; some copied → write `ShareKey` + `MultimaxShareId`, open the app (responder chain to `UIApplication`; `open(_:options:completionHandler:)` on iOS 18+, `openURL:` selector before), wait up to 3 seconds for the host to come forward; if the extension is still visible, change the card text to "Switch to Multimax to continue." and complete after 2 seconds; time-out 120 s → alert "Multimax couldn't get these photos in time. Try fewer, or download them first." then `cancelRequest`.
 - [ ] **Step 4: Edit the pbxproj** (Ruby `xcodeproj`): remove the extension's package product dependency, its `PBXBuildFile` and the local package reference; run the contract test, expect PASS.
-- [ ] **Step 5: Simulator regression on the Mac**: build as in Task 6 Step 2, install on the iOS 26.5 iPhone Simulator, `xcrun simctl addmedia` two photos, then ask the user (through RustDesk) to share them from Photos to Multimax. Expected: the card shows briefly, Multimax opens on "Items from photos" with 2 photos; the App Group folder (`xcrun simctl get_app_container <udid> com.ddmco.multimax groups`) held the copies.
+- [ ] **Step 5: Simulator regression on the Mac**: build as in Task 6 Step 2, install on the iOS 26.5 iPhone Simulator, `xcrun simctl addmedia` two photos, then ask the user (through RustDesk) to share them from Photos to Multimax. Expected: the card shows briefly, Multimax opens on "Items from Photos" with 2 photos; the App Group folder (`xcrun simctl get_app_container <udid> com.ddmco.multimax groups`) held the copies.
 - [ ] **Step 6: Commit** — `fix(ios): own share screen that never hangs, for Finder on the Mac`.
 
 ### Task 8: Entry points (Item list and Dashboard)
@@ -221,13 +221,13 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 - Test: `test/widget/items_from_photos_button_test.dart`
 
 **Interfaces:**
-- Produces: `ItemsFromPhotosButton({super.key, Color? color})` — an `IconButton` (`Icons.photo_library_outlined`, tooltip "Items from photos") wrapped in `DocTypeGuard(doctype: 'Stock Entry', permType: 'report', child: …)`, `onPressed: () => Get.toNamed(AppRoutes.STOCK_SHEET)` (no arguments → start state).
+- Produces: `ItemsFromPhotosButton({super.key, Color? color})` — an `IconButton` (`Icons.photo_library_outlined`, tooltip "Items from Photos") wrapped in `DocTypeGuard(doctype: 'Stock Entry', permType: 'report', child: …)`, `onPressed: () => Get.toNamed(AppRoutes.STOCK_SHEET)` (no arguments → start state).
 
-- [ ] **Step 1: Failing widget tests**: `shows the icon with the Items from photos tooltip when allowed`; `hidden without Stock Entry report permission` (use the guard's existing test seam, as in other `DocTypeGuard` tests); `tapping opens the screen with no photos` (GetX test route, expect `Get.currentRoute == AppRoutes.STOCK_SHEET` and `Get.arguments == null`); `BarcodeInputWidget renders trailingActions`.
+- [ ] **Step 1: Failing widget tests**: `shows the icon with the Items from Photos tooltip when allowed`; `hidden without Stock Entry report permission` (use the guard's existing test seam, as in other `DocTypeGuard` tests); `tapping opens the screen with no photos` (GetX test route, expect `Get.currentRoute == AppRoutes.STOCK_SHEET` and `Get.arguments == null`); `BarcodeInputWidget renders trailingActions`.
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** the button, the `trailingActions` slot, and use it in `ItemListAppBar.extraActions` (first in the list) and in `home_screen.dart`'s `BarcodeInputWidget(trailingActions: const [ItemsFromPhotosButton()])`.
 - [ ] **Step 4: Run, expect PASS**; `flutter test` (whole suite) and `flutter analyze` with no new errors or warnings.
-- [ ] **Step 5: Commit** — `feat(stock-sheet): open Items from photos from the Item list and the Dashboard`.
+- [ ] **Step 5: Commit** — `feat(stock-sheet): open Items from Photos from the Item list and the Dashboard`.
 
 ### Task 9: TestFlight build, Mac and iPhone checks, release
 
@@ -239,7 +239,7 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 - [ ] **Step 1:** Merge into `release/play-store` with `--no-ff` (re-fetch; clean; no `MERGE_HEAD`; expected tip), bump (MINOR), refresh `whatsnew`. **No tag yet.** Ask the user before pushing.
 - [ ] **Step 2:** After the push, on the Mac: check `git status`, run `release-headless.sh` (header shows the new version), wait for `RESULT: OK uploaded …`.
 - [ ] **Step 3: User checklist on the Mac (TestFlight build)**, each with its expected result:
-  1. Finder: two local photos and two OneDrive placeholders → Share → Multimax: the card shows, Multimax opens on "Items from photos" with 4 photos, codes read.
+  1. Finder: two local photos and two OneDrive placeholders → Share → Multimax: the card shows, Multimax opens on "Items from Photos" with 4 photos, codes read.
   2. List open; share two photos from another folder: "Add these 2 photos to the list, or start again?"; Add appends. Share one of them again: "Those photos are already in the list."
   3. Drag three photos from Finder onto the Multimax window: same as a share.
   4. "Choose files…" from a OneDrive folder, from the start state and from "+".

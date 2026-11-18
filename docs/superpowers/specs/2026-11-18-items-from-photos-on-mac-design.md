@@ -1,4 +1,4 @@
-# Items from photos on the Mac: design
+# Items from Photos on the Mac: design
 
 Date: 18 November 2026. Status: for the user's approval.
 Builds on: `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` (the screen, its review
@@ -34,7 +34,7 @@ TestFlight); there is no native macOS build, and this design does not add one.
 2. **Choose files…**: pick photos from any folder the system file dialog reaches (OneDrive included), both
    to start a list and to add to an open one.
 3. **Drag and drop**: photos dragged from Finder onto the Multimax window go into the list.
-4. **Open the screen without a share**: a start state on "Items from photos", reachable from the **Item**
+4. **Open the screen without a share**: a start state on "Items from Photos", reachable from the **Item**
    list screen and from the **Dashboard** without adding clutter.
 5. Appending keeps today's behaviour: while a list is open, new photos (from any of these routes) bring up
    "Add these N photos to the list, or start again?"; Add appends within the 100-photo limit.
@@ -131,7 +131,7 @@ TestFlight); there is no native macOS build, and this design does not add one.
 - On drop: load each as a file, copy into `NSTemporaryDirectory()/dropped/` with unique names, then call
   Dart over `MethodChannel('com.ddmco.multimax/drop')` with the list of paths.
 - Dart: `ShareIntakeService` listens and calls its existing `deliver(paths)`, so a drop behaves exactly like
-  a share: it opens "Items from photos" (after sign-in if needed), or asks add-or-start-again on an open
+  a share: it opens "Items from Photos" (after sign-in if needed), or asks add-or-start-again on an open
   list, or shows the busy message.
 
 ### Clean-up of copied photos (my call)
@@ -147,7 +147,7 @@ also sweep files older than a day in both on app start, for copies left by a cra
 
 - Opens the system file dialog for images, multiple selection. On the Mac that is the Finder-style dialog
   (OneDrive in the sidebar); on iPhone/iPad the Files app; on Android the system picker.
-- Offered in two places on "Items from photos":
+- Offered in two places on "Items from Photos":
   - the **start state** (below);
   - the existing "+" menu in the review list's app bar, as a third item **Choose files…** after "Take a photo"
     and "Choose from gallery". It goes through the same `addPhotos(paths)` path as the gallery.
@@ -161,13 +161,13 @@ same-path photo is skipped today; the path check stays. The add-or-start-again q
 genuinely new photos, and if none are new the existing "Those photos are already in the list." message is
 shown. Applies on every platform.
 
-### 4. Start state of "Items from photos"
+### 4. Start state of "Items from Photos"
 
 Today the screen opened without photos shows nothing (`StockSheetPhase.idle` renders an empty box). It
 becomes a start state:
 
 ```
-┌ Items from photos ─────────────────────┐
+┌ Items from Photos ─────────────────────┐
 │                                        │
 │   [photo-stack icon]                   │
 │   Choose photos of item labels to      │
@@ -190,14 +190,14 @@ becomes a start state:
 
 ### 5. Entry points
 
-- **Item list screen** (`ItemListAppBar`): an action icon (photo-stack, tooltip "Items from photos") that opens
+- **Item list screen** (`ItemListAppBar`): an action icon (photo-stack, tooltip "Items from Photos") that opens
   the screen with no photos.
 - **Who sees the icons** (my call): the screen has no up-front permission check today; it says "You don't
   have access to stock levels." only after the stock check is refused. The icons use the guard the side
   menu already uses for the Stock Balance report (`_rep('Stock Entry')` in `workspace_menu.dart`), since the
   screen's stock figures come from that report. No new permission rule.
 - **Dashboard**: no new card. A small icon button **in the existing scan bar** at the bottom of the Dashboard
-  (`BarcodeInputWidget`, beside the camera), tooltip "Items from photos". It shows wherever the bar shows,
+  (`BarcodeInputWidget`, beside the camera), tooltip "Items from Photos". It shows wherever the bar shows,
   including the Mac, where the camera button is irrelevant but present today. My call; the alternative is a
   second icon on the "Scan to start" card.
 - Route stays `AppRoutes.STOCK_SHEET`; opening it with no arguments shows the start state.
@@ -211,7 +211,7 @@ becomes a start state:
   Choose files from the Files app; the start state.
 - Mac, one TestFlight build:
   1. Finder: select two local photos and two OneDrive placeholders, Share, Multimax: the card shows, the
-     app opens on "Items from photos", the codes are read.
+     app opens on "Items from Photos", the codes are read.
   2. While the list is open, share from another folder: add-or-start-again appears; Add appends.
   3. Drag photos from Finder onto the window: same as a share.
   4. Choose files… from a OneDrive folder, from the start state and from "+".
