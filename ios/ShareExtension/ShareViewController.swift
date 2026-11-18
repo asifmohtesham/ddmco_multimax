@@ -74,6 +74,9 @@ final class ShareViewController: UIViewController {
     super.viewDidLoad()
     view.backgroundColor = .systemBackground
     preferredContentSize = CGSize(width: 340, height: 180)
+    // No swipe-down dismissal: the card must end through completeRequest or
+    // cancelRequest, after its copies are handed over or deleted.
+    isModalInPresentation = true
 
     spinner.color = .secondaryLabel
     spinner.hidesWhenStopped = true
@@ -145,11 +148,7 @@ final class ShareViewController: UIViewController {
     for (index, provider) in providers.enumerated() {
       group.enter()
       let typeId = Self.imageTypeIdentifier(of: provider)
-      let progress = provider.loadFileRepresentation(forTypeIdentifier: typeId) { url, _ in
-        // The file is deleted when this handler returns, so copy it here.
-        let copy = url.flatMap {
-          Self.copyIntoGroup($0, typeId: typeId, provider: provider, container: container)
-        }
+      let progress = loadCopy(of: provider, typeId: typeId, container: container) { copy in
         copies.store(copy, at: index)
         group.leave()
       }
@@ -161,6 +160,43 @@ final class ShareViewController: UIViewController {
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.loadTimeout, execute: timeout)
 
     group.notify(queue: .main) { [weak self] in self?.loadFinished() }
+  }
+
+  /// Loads [provider] as [typeId] and copies it into the group; when that
+  /// type gives no file (a Live Photo's own type on iPhone), tries once more
+  /// as `public.image`. Calls [done] exactly once, on the provider's queue.
+  private func loadCopy(
+    of provider: NSItemProvider, typeId: String, container: URL,
+    done: @escaping (ShareEntry?) -> Void
+  ) -> Progress {
+    provider.loadFileRepresentation(forTypeIdentifier: typeId) { [weak self] url, _ in
+      // The file is deleted when this handler returns, so copy it here.
+      if let url {
+        done(Self.copyIntoGroup(url, typeId: typeId, provider: provider, container: container))
+        return
+      }
+      let imageType = UTType.image.identifier
+      guard typeId != imageType else {
+        done(nil)
+        return
+      }
+      let retry = provider.loadFileRepresentation(forTypeIdentifier: imageType) { url, _ in
+        done(
+          url.flatMap {
+            Self.copyIntoGroup($0, typeId: imageType, provider: provider, container: container)
+          })
+      }
+      DispatchQueue.main.async { self?.track(retry) }
+    }
+  }
+
+  /// Keeps a retry's progress so Cancel and the time-out stop it too.
+  private func track(_ progress: Progress) {
+    if phase == .loading {
+      loadProgress.append(progress)
+    } else {
+      progress.cancel()
+    }
   }
 
   private func loadFinished() {
@@ -261,6 +297,14 @@ final class ShareViewController: UIViewController {
     let path: String
     let mimeType: String?
     let type: String
+
+    /// The plugin's JSON field names, spelt out so a Swift rename cannot
+    /// change them (pinned by test/unit/ios_share_extension_contract_test.dart).
+    enum CodingKeys: String, CodingKey {
+      case path = "path"
+      case mimeType = "mimeType"
+      case type = "type"
+    }
   }
 
   /// Writes `ShareKey` and `MultimaxShareId` together; `false` if it cannot.

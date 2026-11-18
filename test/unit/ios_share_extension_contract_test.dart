@@ -30,6 +30,19 @@ void main() {
     expect(swift, contains('"ShareMedia-'));
   });
 
+  test("the share entries use the plugin's JSON field names", () {
+    // receive_sharing_intent 1.9.0 decodes SharedMediaFile from these keys;
+    // explicit CodingKeys keep a Swift rename from changing the JSON.
+    final swift = File(swiftPath).readAsStringSync();
+    expect(swift, contains('case path = "path"'));
+    expect(swift, contains('case mimeType = "mimeType"'));
+    expect(swift, contains('case type = "type"'));
+    expect(swift, contains('type: "image"'));
+    // The app reads the same field back for a stranded share.
+    final bridge = File('ios/Runner/IntakeBridge.swift').readAsStringSync();
+    expect(bridge, contains('["path"]'));
+  });
+
   test('the share screen shows the agreed copy', () {
     final swift = File(swiftPath).readAsStringSync();
     for (final copy in [
