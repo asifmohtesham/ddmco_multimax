@@ -1,4 +1,4 @@
-# iOS Share Extension (share photos to "Items from photos")
+# iOS Share Extension (share photos to "Items from Photos")
 
 Set up and verified on 18 November 2026 (release 2.42.0+130). Spec:
 `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` section 6.6.
@@ -6,7 +6,7 @@ Set up and verified on 18 November 2026 (release 2.42.0+130). Spec:
 The user selects photos in Photos, taps Share and chooses Multimax. The `ShareExtension` target
 (`RSIShareViewController` from `receive_sharing_intent` 1.9.0) copies the images into the App Group
 container, opens the app through the URL scheme `ShareMedia-com.ddmco.multimax`, and the plugin hands the
-paths to `ShareIntakeService`, which opens the "Items from photos" screen (route `STOCK_SHEET`).
+paths to `ShareIntakeService`, which opens the "Items from Photos" screen (route `STOCK_SHEET`).
 
 ## What is in the repository
 
@@ -90,7 +90,7 @@ this device." there. Check it on a real iPhone (TestFlight) before submitting fo
 ## Smoke test on a device
 
 1. Install from TestFlight. In Photos select several photos of item labels, Share, Multimax: the app opens on
-   "Items from photos" and reads the codes.
+   "Items from Photos" and reads the codes.
 2. Share while Multimax is already open (warm start): same result.
 3. Share while signed out: the app asks for sign-in, then continues with the same photos.
 4. Select 101 photos, or a PDF or link: Multimax is not offered.

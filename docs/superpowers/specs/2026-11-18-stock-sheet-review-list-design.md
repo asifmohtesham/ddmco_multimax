@@ -1,4 +1,4 @@
-# Stock Sheet: Review List — Design Spec (addendum)
+# Items from Photos: Review List — Design Spec (addendum)
 
 **Date:** 18 November 2026
 **Extends:** `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` (the "base spec"). Everything there still holds

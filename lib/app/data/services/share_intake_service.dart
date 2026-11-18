@@ -38,7 +38,8 @@ class ShareIntakeService extends GetxService {
        _notify =
            notify ?? ((message) => GlobalSnackbar.warning(message: message));
 
-  static const String busyMessage = 'A stock sheet is already being made.';
+  static const String busyMessage =
+      'Items from Photos is already making a sheet.';
 
   /// Routes that are replaced wholesale once the session is known.
   static const Set<String> _handOverRoutes = {
