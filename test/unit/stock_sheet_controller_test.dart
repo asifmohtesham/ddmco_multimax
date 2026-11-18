@@ -1621,6 +1621,23 @@ void main() {
       },
     );
 
+    test('empty, relative and root folders are not clean-up roots', () async {
+      final y = File('${elsewhere.path}/y.jpg')..writeAsBytesSync([1]);
+      final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(),
+        extraRoots: () async => ['', '/', 'relative'],
+      );
+      await c.start([y.path, t.path]);
+
+      c.onClose();
+      await untilGone([t]);
+
+      expect(t.existsSync(), isFalse);
+      expect(y.existsSync(), isTrue);
+    });
+
     test('a failing extra-folder lookup still cleans the temp folder', () async {
       final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
       final c = make(

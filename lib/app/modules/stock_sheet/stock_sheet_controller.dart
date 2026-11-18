@@ -780,6 +780,13 @@ class StockSheetController extends GetxController {
     }
     try {
       for (final folder in await _extraCleanupRoots()) {
+        // Native input is not trusted: an empty, relative or filesystem-root
+        // folder would make every given path deletable.
+        if (folder.isEmpty ||
+            !p.isAbsolute(folder) ||
+            p.normalize(folder) == p.rootPrefix(folder)) {
+          continue;
+        }
         roots.add(p.normalize(p.absolute(folder)));
       }
     } catch (e, st) {
