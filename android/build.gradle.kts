@@ -23,6 +23,12 @@ subprojects {
     }
 }
 
+// Evaluate the app first: android_file_picker reads Flutter's `flutter`
+// extension while it is configured, and the app is what adds it.
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

@@ -88,6 +88,15 @@ class _SpyController extends StockSheetController {
 
   @override
   Future<void> retry() async => retries++;
+
+  int downloads = 0;
+  String? downloadMessage;
+
+  @override
+  Future<String?> download() async {
+    downloads++;
+    return downloadMessage;
+  }
 }
 
 ReviewItem _item(String barcode) => ReviewItem(
@@ -467,6 +476,74 @@ void main() {
     controller.fixing.value = false;
     await tester.pump();
     expect(button().onPressed, isNotNull);
+  });
+
+  testWidgets('swipe shows "Photo removed." and Undo restores the row', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    final before = tester.getTopLeft(find.text('Item 12345670'));
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Item 12345670'), findsNothing);
+    expect(find.text('Photo removed.'), findsOneWidget);
+    expect(controller.review.map((e) => e.path), ['b.jpg']);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+
+    expect(controller.review.map((e) => e.path), ['a.jpg', 'b.jpg']);
+    expect(tester.getTopLeft(find.text('Item 12345670')), before);
+  });
+
+  testWidgets('the "Photo removed." snackbar goes after five seconds', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsNothing);
+  });
+
+  testWidgets('the "Photo removed." snackbar goes when the run starts', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsOneWidget);
+
+    controller.phase.value = StockSheetPhase.building;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Photo removed.'), findsNothing);
+  });
+
+  testWidgets('no swipe while the out-of-stock question is open', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+    controller.phase.value = StockSheetPhase.awaitingChoice;
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(controller.canRemove, isFalse);
+    expect(find.text('Item 12345670'), findsOneWidget);
+    expect(controller.review, hasLength(2));
   });
 
   testWidgets('a failed Retry check says why in a snackbar', (tester) async {
@@ -912,6 +989,69 @@ void main() {
     controller.sharing.value = false;
     await tester.pumpAndSettle();
     expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('finished state shows Download beside Share files', (
+    tester,
+  ) async {
+    await open(tester);
+    controller.result.value = _result();
+    controller.files.assignAll([XFile('/tmp/a.xlsx'), XFile('/tmp/a.pdf')]);
+    controller.phase.value = StockSheetPhase.done;
+    await tester.pumpAndSettle();
+
+    expect(find.text('Download'), findsOneWidget);
+    expect(find.text('Share files'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+
+    controller.downloading.value = true;
+    await tester.pump(const Duration(milliseconds: 200));
+    final button = find.ancestor(
+      of: find.text('Download'),
+      matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+    );
+    expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
+    expect(
+      find.descendant(
+        of: button,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    controller.downloading.value = false;
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('tapping Download shows the returned message', (tester) async {
+    await open(tester);
+    controller.result.value = _result();
+    controller.files.assignAll([XFile('/tmp/a.xlsx')]);
+    controller.phase.value = StockSheetPhase.done;
+    controller.downloadMessage = 'Saved a.xlsx.';
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(controller.downloads, 1);
+    expect(find.text('Saved a.xlsx.'), findsOneWidget);
+    await tester.pumpAndSettle(const Duration(seconds: 6));
+  });
+
+  testWidgets('footer fits at 360 dp', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 800 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await open(tester);
+    controller.result.value = _result();
+    controller.files.assignAll([XFile('/tmp/a.xlsx'), XFile('/tmp/a.pdf')]);
+    controller.phase.value = StockSheetPhase.done;
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Share files'), findsOneWidget);
+    expect(find.byIcon(Icons.download_outlined), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
   });
 
   testWidgets('one file says "Share file"; no rows says nothing to share', (

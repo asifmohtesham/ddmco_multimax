@@ -150,7 +150,16 @@ void main() {
   /// When set, the PDF writer throws it.
   Object? pdfError;
 
+  late List<(String, Uint8List)> saveCalls;
+  late List<bool> saveAnswers;
+  Object? saveError;
+  Completer<void>? saveGate;
+
   setUp(() async {
+    saveCalls = [];
+    saveAnswers = [];
+    saveError = null;
+    saveGate = null;
     tmp = await Directory.systemTemp.createTemp('stock_sheet_ctrl');
     shared = [];
     pdfDocs = [];
@@ -170,10 +179,20 @@ void main() {
     _FakeProvider provider, {
     SheetFormatStore? store,
     Future<List<String>> Function()? extraRoots,
+    Future<void> Function()? clearPickerFiles,
   }) => StockSheetController(
+    clearPickerFiles: clearPickerFiles ?? () async {},
     formatStore: store ?? _MemoryFormatStore(),
     decoderFactory: () => decoder,
     provider: provider,
+    saveFile: (name, bytes) async {
+      saveCalls.add((name, bytes));
+      await saveGate?.future;
+      final error = saveError;
+      if (error != null) throw error;
+      final answers = saveAnswers;
+      return answers.isEmpty ? true : answers.removeAt(0);
+    },
     shareFiles: (f) async {
       final error = shareError;
       if (error != null) {
@@ -383,33 +402,40 @@ void main() {
     );
   });
 
-  test('review edits and Generate file are ignored outside the review', () async {
-    final store = _MemoryFormatStore();
-    final decoder = _FakeDecoder({
-      'a.jpg': [_ean(_a)],
-      'b.jpg': [_ean(_b)],
-    });
-    final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}), store: store);
+  test(
+    'review edits and Generate file are ignored outside the review',
+    () async {
+      final store = _MemoryFormatStore();
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_b)],
+      });
+      final c = make(
+        decoder,
+        _FakeProvider(stock: {_a: 1, _b: 1}),
+        store: store,
+      );
 
-    // Idle: nothing to edit, nothing to make.
-    c.reorder(0, 1);
-    c.setIncluded(0, false);
-    c.setItemIncluded(0, 0, false);
-    await c.makeSheet(SheetFormat.pdf);
-    expect(c.phase.value, StockSheetPhase.idle);
-    expect(store.saved, isNull);
+      // Idle: nothing to edit, nothing to make.
+      c.reorder(0, 1);
+      c.setIncluded(0, false);
+      c.setItemIncluded(0, 0, false);
+      await c.makeSheet(SheetFormat.pdf);
+      expect(c.phase.value, StockSheetPhase.idle);
+      expect(store.saved, isNull);
 
-    await run(c, ['a.jpg', 'b.jpg'], SheetFormat.excel);
-    expect(c.phase.value, StockSheetPhase.done);
-    final before = c.review.toList();
-    c.reorder(0, 2);
-    c.setIncluded(0, false);
-    c.setItemIncluded(1, 0, false);
-    expect(c.review, orderedEquals(before));
-    await c.makeSheet(SheetFormat.pdf);
-    expect(shared, hasLength(1));
-    expect(store.saved, SheetFormat.excel);
-  });
+      await run(c, ['a.jpg', 'b.jpg'], SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.done);
+      final before = c.review.toList();
+      c.reorder(0, 2);
+      c.setIncluded(0, false);
+      c.setItemIncluded(1, 0, false);
+      expect(c.review, orderedEquals(before));
+      await c.makeSheet(SheetFormat.pdf);
+      expect(shared, hasLength(1));
+      expect(store.saved, SheetFormat.excel);
+    },
+  );
 
   test('Generate file with every photo switched off does nothing', () async {
     final store = _MemoryFormatStore();
@@ -718,6 +744,98 @@ void main() {
       expect(c.sharing.value, isFalse);
     },
   );
+
+  group('Download', () {
+    Future<StockSheetController> both() async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1}),
+      );
+      await run(c, ['a.jpg'], SheetFormat.both);
+      return c;
+    }
+
+    test('download saves each file in order with its name', () async {
+      final c = await both();
+      final message = await c.download();
+      expect(saveCalls.map((e) => e.$1).toList(), [
+        'Items-20261117-0905.xlsx',
+        'Items-20261117-0905.pdf',
+      ]);
+      expect(saveCalls.every((e) => e.$2.isNotEmpty), isTrue);
+      expect(message, 'Saved 2 files.');
+    });
+
+    test('one file returns "Saved <name>."', () async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1}),
+      );
+      await run(c, ['a.jpg'], SheetFormat.excel);
+      expect(await c.download(), 'Saved Items-20261117-0905.xlsx.');
+    });
+
+    test(
+      'cancelling the second dialog keeps the first and returns null',
+      () async {
+        final c = await both();
+        saveAnswers = [true, false];
+        expect(await c.download(), isNull);
+        expect(saveCalls, hasLength(2));
+      },
+    );
+
+    test('a saver error returns saveFailedMessage and stops', () async {
+      final c = await both();
+      saveError = Exception('disk');
+      expect(await c.download(), StockSheetController.saveFailedMessage);
+      expect(saveCalls, hasLength(1));
+      expect(c.downloading.value, isFalse);
+    });
+
+    test('download while running or while sharing does nothing', () async {
+      final c = await both();
+      saveGate = Completer<void>();
+      final first = c.download();
+      await Future<void>.delayed(Duration.zero);
+      expect(await c.download(), isNull);
+      saveGate!.complete();
+      expect(await first, 'Saved 2 files.');
+      expect(saveCalls, hasLength(2));
+
+      saveCalls.clear();
+      c.sharing.value = true;
+      expect(await c.download(), isNull);
+      expect(saveCalls, isEmpty);
+    });
+
+    test('sharing does nothing while downloading', () async {
+      final c = await both();
+      final before = shared.length;
+      saveGate = Completer<void>();
+      final first = c.download();
+      await Future<void>.delayed(Duration.zero);
+      await c.shareAgain();
+      expect(shared, hasLength(before));
+      saveGate!.complete();
+      await first;
+    });
+
+    test('downloading is true during the run and false after', () async {
+      final c = await both();
+      saveGate = Completer<void>();
+      final run1 = c.download();
+      await Future<void>.delayed(Duration.zero);
+      expect(c.downloading.value, isTrue);
+      saveGate!.complete();
+      await run1;
+      expect(c.downloading.value, isFalse);
+    });
+  });
 
   group('remembered format in StorageService', () {
     tearDown(Get.reset);
@@ -1326,6 +1444,126 @@ void main() {
       await c.makeSheet(SheetFormat.excel);
       expect(c.phase.value, StockSheetPhase.done);
       expect(c.result.value!.rows.map((r) => r.photoPath), ['a.jpg', 'd.jpg']);
+    });
+  });
+
+  group('removeAt and restore', () {
+    Future<StockSheetController> three() async {
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+          'b.jpg': [_ean(_b)],
+          'd.jpg': [_ean(_a)],
+        }),
+        _FakeProvider(stock: {_a: 1, _b: 1}),
+      );
+      fingerprints.addAll({'a.jpg': 'A', 'b.jpg': 'B', 'd.jpg': 'D'});
+      await c.start(['a.jpg', 'b.jpg', 'd.jpg']);
+      return c;
+    }
+
+    test('removeAt drops the entry and returns it', () async {
+      final c = await three();
+
+      final removed = c.removeAt(1);
+
+      expect(removed?.path, 'b.jpg');
+      expect(reviewPaths(c), ['a.jpg', 'd.jpg']);
+      expect(c.removeAt(5), isNull);
+      expect(c.removeAt(-1), isNull);
+    });
+
+    test('removeAt does nothing while photos are being added', () async {
+      final c = await three();
+      c.adding.value = true;
+
+      expect(c.canRemove, isFalse);
+      expect(c.removeAt(0), isNull);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+
+      c.adding.value = false;
+      for (final flag in [c.rechecking, c.fixing, c.busy]) {
+        flag.value = true;
+        expect(c.canRemove, isFalse);
+        expect(c.removeAt(0), isNull);
+        flag.value = false;
+      }
+      expect(c.canRemove, isTrue);
+    });
+
+    test('restore puts the entry back at its index', () async {
+      final c = await three();
+      final removed = c.removeAt(1)!;
+
+      c.restore(removed, 1);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+    });
+
+    test('restore clamps the index after the list shrank', () async {
+      final c = await three();
+      final removed = c.removeAt(2)!;
+      c.removeAt(1);
+
+      c.restore(removed, 2);
+
+      expect(reviewPaths(c), ['a.jpg', 'd.jpg']);
+    });
+
+    test('restore ignores an entry that is already listed', () async {
+      final c = await three();
+      final removed = c.removeAt(0)!;
+      c.restore(removed, 0);
+      c.restore(removed, 0);
+
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+    });
+
+    test(
+      'restore skips a photo that was added again under a new path',
+      () async {
+        final c = await three();
+        fingerprints['a2.jpg'] = 'A';
+        final removed = c.removeAt(0)!;
+        expect(await c.addPhotos(['a2.jpg']), isNull);
+
+        c.restore(removed, 0);
+
+        expect(reviewPaths(c), ['b.jpg', 'd.jpg', 'a2.jpg']);
+      },
+    );
+
+    test('a removed photo can be added again', () async {
+      final c = await three();
+      fingerprints['a2.jpg'] = 'A';
+      c.removeAt(0);
+
+      expect(await c.addPhotos(['a2.jpg']), isNull);
+      expect(reviewPaths(c), contains('a2.jpg'));
+    });
+  });
+
+  group('picker copies', () {
+    test('onClose clears the file picker temporary files', () async {
+      var cleared = 0;
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(stock: {}),
+        clearPickerFiles: () async => cleared++,
+      );
+      c.onClose();
+      await pumpEventQueue();
+      expect(cleared, 1);
+    });
+
+    test('onClose ignores an error from the clean-up', () async {
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(stock: {}),
+        clearPickerFiles: () async => throw StateError('no picker'),
+      );
+      c.onClose();
+      await pumpEventQueue();
     });
   });
 

@@ -115,6 +115,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       ..add(ever<int>(controller.shareSerial, (_) => _startShare()))
       ..add(
         ever<StockSheetPhase>(controller.phase, (phase) {
+          if (phase != StockSheetPhase.reviewing) _closeUndoBar();
           if (phase == StockSheetPhase.awaitingChoice) _askOutOfStock();
         }),
       )
@@ -142,6 +143,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   @override
   void dispose() {
+    _closeUndoBar();
     for (final worker in _workers) {
       worker.dispose();
     }
@@ -257,6 +259,40 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       onSubmit: (code) =>
           controller.fixCode(index, code, noteBarcode: noteBarcode),
     );
+  }
+
+  /// Takes the swiped photo off the list and offers to put it back.
+  /// Returns whether the photo was removed.
+  bool _remove(int index) {
+    final entry = controller.removeAt(index);
+    if (entry == null) return false;
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    // A snackbar with an action persists by default; this one must not.
+    _undoBar = messenger.showSnackBar(
+      SnackBar(
+        persist: false,
+        duration: const Duration(seconds: 5),
+        content: const Text('Photo removed.'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => controller.restore(entry, index),
+        ),
+      ),
+    );
+    return true;
+  }
+
+  /// The "Photo removed." snackbar, while it is showing.
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoBar;
+
+  void _closeUndoBar() {
+    final bar = _undoBar;
+    _undoBar = null;
+    try {
+      bar?.close();
+    } catch (_) {
+      // The messenger has gone with the screen.
+    }
   }
 
   Future<void> _retryCheck(int index) async {
@@ -426,6 +462,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           onToggleItem: controller.setItemIncluded,
           onFix: _fix,
           onRetryCheck: _retryCheck,
+          onRemove: _remove,
+          removeEnabled: controller.canRemove,
           recheckBusy: controller.rechecking,
         );
       case StockSheetPhase.building:
@@ -443,6 +481,51 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         return _ErrorMessage(
           message: controller.errorMessage.value ?? 'Something went wrong.',
         );
+    }
+  }
+
+  /// Saves the files to a folder the user picks. Outlined beside the filled
+  /// Share files; icon-only on a narrow screen so the row fits at 360 dp.
+  Widget _downloadButton(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 400;
+    return Obx(() {
+      final busy = controller.downloading.value;
+      final icon = busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.download_outlined);
+      final VoidCallback? onPressed = busy ? null : _download;
+      if (compact) {
+        return Tooltip(
+          message: 'Download',
+          child: OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              padding: EdgeInsets.zero,
+            ),
+            child: icon,
+          ),
+        );
+      }
+      return OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: const Text('Download'),
+      );
+    });
+  }
+
+  Future<void> _download() async {
+    final message = await controller.download();
+    if (!mounted || message == null) return;
+    if (message == StockSheetController.saveFailedMessage) {
+      AppNotification.warning(message);
+    } else {
+      AppNotification.success(message);
     }
   }
 
@@ -525,6 +608,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
                       : 'Share files',
                 ),
               ),
+            if (controller.files.isNotEmpty) ...[
+              const SizedBox(width: 12),
+              _downloadButton(context),
+            ],
             const SizedBox(width: 12),
             OutlinedButton(onPressed: _close, child: const Text('Done')),
           ],
