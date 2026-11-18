@@ -169,6 +169,7 @@ void main() {
     _FakeDecoder decoder,
     _FakeProvider provider, {
     SheetFormatStore? store,
+    Future<List<String>> Function()? extraRoots,
   }) => StockSheetController(
     formatStore: store ?? _MemoryFormatStore(),
     decoderFactory: () => decoder,
@@ -186,6 +187,7 @@ void main() {
       for (final path in paths) path: fingerprints[path] ?? 'fp:$path',
     },
     tempDir: () async => tmp,
+    extraCleanupRoots: extraRoots ?? () async => const [],
     writePdf: (doc) async {
       await pdfGate?.future;
       final error = pdfError;
@@ -1584,6 +1586,55 @@ void main() {
     expect(full1.existsSync(), isFalse);
     expect(full2.existsSync(), isFalse);
     expect(held.existsSync(), isFalse);
+  });
+
+  group('clean-up in extra intake folders', () {
+    late Directory group;
+    late Directory elsewhere;
+    setUp(() {
+      group = Directory('${tmp.path}_group')..createSync();
+      elsewhere = Directory('${tmp.path}_elsewhere')..createSync();
+    });
+    tearDown(() {
+      for (final d in [group, elsewhere]) {
+        if (d.existsSync()) d.deleteSync(recursive: true);
+      }
+    });
+
+    test(
+      'onClose deletes given photos in an extra intake folder but not elsewhere',
+      () async {
+        final x = File('${group.path}/x.jpg')..writeAsBytesSync([1]);
+        final y = File('${elsewhere.path}/y.jpg')..writeAsBytesSync([1]);
+        final c = make(
+          _FakeDecoder({}),
+          _FakeProvider(),
+          extraRoots: () async => [group.path],
+        );
+        await c.start([x.path, y.path]);
+
+        c.onClose();
+        await untilGone([x]);
+
+        expect(x.existsSync(), isFalse);
+        expect(y.existsSync(), isTrue);
+      },
+    );
+
+    test('a failing extra-folder lookup still cleans the temp folder', () async {
+      final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(),
+        extraRoots: () async => throw Exception('no channel'),
+      );
+      await c.start([t.path]);
+
+      c.onClose();
+      await untilGone([t]);
+
+      expect(t.existsSync(), isFalse);
+    });
   });
 
   group('a share during an add', () {

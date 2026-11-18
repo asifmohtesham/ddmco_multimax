@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
+import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_fingerprint.dart';
@@ -93,6 +94,7 @@ class StockSheetController extends GetxController {
     Future<Uint8List> Function(StockSheetDocument)? writePdf,
     Future<Uint8List?> Function(String)? makeThumbnail,
     PhotoFingerprinter? fingerprint,
+    Future<List<String>> Function()? extraCleanupRoots,
   }) : _formatStore = formatStore ?? const StorageSheetFormatStore(),
        _decoderFactory = decoderFactory ?? MlKitPhotoDecoder.new,
        _provider = provider ?? StockSheetProvider(),
@@ -101,7 +103,9 @@ class StockSheetController extends GetxController {
        _tempDir = tempDir ?? getTemporaryDirectory,
        _writePdf = writePdf ?? PdfStockSheetWriter.writeInBackground,
        _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path)),
-       _fingerprint = fingerprint ?? fingerprintPhotos;
+       _fingerprint = fingerprint ?? fingerprintPhotos,
+       _extraCleanupRoots =
+           extraCleanupRoots ?? NativeIntake.instance.sharedFolders;
 
   static const int maxPhotos = 100;
   static const String _title = 'Items';
@@ -144,6 +148,7 @@ class StockSheetController extends GetxController {
   final Future<Uint8List> Function(StockSheetDocument) _writePdf;
   final Future<Uint8List?> Function(String) _makeThumbnail;
   final PhotoFingerprinter _fingerprint;
+  final Future<List<String>> Function() _extraCleanupRoots;
 
   final busy = false.obs;
   final phase = StockSheetPhase.idle.obs;
@@ -762,24 +767,33 @@ class StockSheetController extends GetxController {
   }
 
   /// Deletes the photos in [paths] that lie inside the app's temporary
-  /// (cache) folder. Anything outside it, such as the gallery original, is
-  /// never touched.
+  /// (cache) folder or one of the native intake folders (the App Group copy
+  /// of a Finder share). Anything outside them, such as the gallery original,
+  /// is never touched.
   Future<void> _deleteSharedCopies(List<String> paths) async {
     if (paths.isEmpty) return;
+    final roots = <String>[];
     try {
-      final root = p.normalize(p.absolute((await _tempDir()).path));
-      for (final path in paths) {
-        final full = p.normalize(p.absolute(path));
-        if (!p.isWithin(root, full)) continue;
-        try {
-          final file = File(full);
-          if (await file.exists()) await file.delete();
-        } catch (e, st) {
-          _log('could not delete $full', e, st);
-        }
+      roots.add(p.normalize(p.absolute((await _tempDir()).path)));
+    } catch (e, st) {
+      _log('temporary folder lookup failed', e, st);
+    }
+    try {
+      for (final folder in await _extraCleanupRoots()) {
+        roots.add(p.normalize(p.absolute(folder)));
       }
     } catch (e, st) {
-      _log('shared photo clean-up failed', e, st);
+      _log('intake folder lookup failed', e, st);
+    }
+    for (final path in paths) {
+      final full = p.normalize(p.absolute(path));
+      if (!roots.any((root) => p.isWithin(root, full))) continue;
+      try {
+        final file = File(full);
+        if (await file.exists()) await file.delete();
+      } catch (e, st) {
+        _log('could not delete $full', e, st);
+      }
     }
   }
 
