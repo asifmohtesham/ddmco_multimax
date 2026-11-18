@@ -8,6 +8,11 @@ import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 
 /// Records [start] instead of running a job.
 class _SpyStockSheetController extends StockSheetController {
+  _SpyStockSheetController()
+    : super(
+        fingerprint: (paths) async => {for (final p in paths) p: 'fp:$p'},
+      );
+
   int starts = 0;
 
   @override
@@ -189,6 +194,7 @@ void main() {
       await make();
 
       await share(['second.jpg']);
+      await pumpEventQueue();
 
       expect(notices, isEmpty);
       expect(opened, isEmpty);

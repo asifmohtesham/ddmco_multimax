@@ -51,6 +51,7 @@ class _FakeDecoder implements PhotoDecoder {
   final bool unsupported;
   final Set<String> throwFor = {};
   int calls = 0;
+  final decoded = <String>[];
   bool disposed = false;
 
   /// When set, every decode waits for it.
@@ -59,6 +60,7 @@ class _FakeDecoder implements PhotoDecoder {
   @override
   Future<List<String>?> decode(String path) async {
     calls++;
+    decoded.add(path);
     await gate?.future;
     if (unsupported) throw UnsupportedError('no');
     if (throwFor.contains(path)) throw Exception('boom');
@@ -134,6 +136,9 @@ void main() {
   late List<List<XFile>> shared;
   late List<StockSheetDocument> pdfDocs;
 
+  /// Fixed fingerprints by path; any other path is its own content.
+  late Map<String, String> fingerprints;
+
   Future<Uint8List?> Function(String)? thumbOverride;
 
   /// When set, the PDF writer waits for it.
@@ -149,6 +154,7 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('stock_sheet_ctrl');
     shared = [];
     pdfDocs = [];
+    fingerprints = {};
     thumbOverride = null;
     pdfGate = null;
     shareError = null;
@@ -176,6 +182,9 @@ void main() {
       shared.add(f);
     },
     now: () => DateTime(2026, 11, 17, 9, 5),
+    fingerprint: (paths) async => {
+      for (final path in paths) path: fingerprints[path] ?? 'fp:$path',
+    },
     tempDir: () async => tmp,
     writePdf: (doc) async {
       await pdfGate?.future;
@@ -905,6 +914,7 @@ void main() {
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
       c.offerShare([first.path]);
+      await pumpEventQueue();
       c.offerShare([second.path]);
       await c.start([second.path]);
       expect(c.phase.value, StockSheetPhase.reviewing);
@@ -922,6 +932,7 @@ void main() {
       final kept = photo(tmp, 'b.jpg');
       final c = make(_FakeDecoder({}), _FakeProvider());
       c.offerShare(['${tmp.path}/missing.jpg', kept.path]);
+      await pumpEventQueue();
       c.onClose();
       await pumpEventQueue();
       expect(kept.existsSync(), isFalse);
@@ -1316,6 +1327,40 @@ void main() {
     });
   });
 
+  group('duplicates by content', () {
+    test('start reads two copies of the same photo once', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'b.jpg': 'X'});
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+
+      await c.start(['a.jpg', 'b.jpg']);
+
+      expect(decoder.decoded, ['a.jpg']);
+      expect(c.review.map((e) => e.path), ['a.jpg']);
+    });
+
+    test('addPhotos skips a photo already listed by content', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'c.jpg': 'X'});
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'c.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+      await c.start(['a.jpg']);
+      final calls = decoder.calls;
+
+      expect(
+        await c.addPhotos(['c.jpg']),
+        StockSheetController.alreadyListedMessage,
+      );
+      expect(decoder.calls, calls);
+      expect(c.review.length, 1);
+    });
+  });
+
   group('offerShare', () {
     Future<StockSheetController> reviewing() async {
       final decoder = _FakeDecoder({
@@ -1357,6 +1402,7 @@ void main() {
       c.setIncluded(1, false);
 
       expect(c.offerShare(['n1.jpg', 'n2.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
 
       expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
       expect(c.pendingShareFits, isTrue);
@@ -1375,6 +1421,7 @@ void main() {
       expect(c.phase.value, StockSheetPhase.awaitingChoice);
 
       expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg']);
       expect(c.phase.value, StockSheetPhase.awaitingChoice);
     });
@@ -1383,14 +1430,38 @@ void main() {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
       c.offerShare(['x.jpg']);
+      await pumpEventQueue();
       expect(c.pendingShareFits, isTrue);
       c.offerShare(['x.jpg', 'y.jpg']);
+      await pumpEventQueue();
       expect(c.pendingShareFits, isFalse);
+    });
+
+    test('a held share counts only new photos', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'c.jpg': 'X'});
+      final c = await reviewing();
+
+      c.offerShare(['c.jpg', 'd.jpg']);
+      await pumpEventQueue();
+
+      expect(c.pendingShare, ['d.jpg']);
+    });
+
+    test('a held share of only duplicates is not asked', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'c.jpg': 'X'});
+      final c = await reviewing();
+
+      c.offerShare(['c.jpg']);
+      await pumpEventQueue();
+
+      expect(c.pendingShare, isEmpty);
+      expect(c.alreadyListed.value, 1);
     });
 
     test('Add appends the held photos', () async {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       expect(await c.resolvePendingShare(PendingShareChoice.add), isNull);
 
@@ -1407,6 +1478,7 @@ void main() {
       final c = make(decoder, _FakeProvider());
       await run(c, ['a.jpg'], SheetFormat.excel);
       c.offerShare(['n1.jpg']);
+      await pumpEventQueue();
 
       await c.resolvePendingShare(PendingShareChoice.add);
 
@@ -1419,6 +1491,7 @@ void main() {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       expect(await c.resolvePendingShare(PendingShareChoice.add), isNull);
       expect(c.review, hasLength(99));
@@ -1427,21 +1500,20 @@ void main() {
       expect(c.pendingShareFits, isFalse);
     });
 
-    test('Add of photos already in the list says so', () async {
+    test('a share of photos already in the list says so, not asks', () async {
       final c = await reviewing();
       c.offerShare(['b.jpg']);
+      await pumpEventQueue();
 
-      expect(
-        await c.resolvePendingShare(PendingShareChoice.add),
-        'Those photos are already in the list.',
-      );
-      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
       expect(c.pendingShare, isEmpty);
+      expect(c.alreadyListed.value, 1);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
     });
 
     test('Start again replaces the review with the held photos', () async {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       await c.resolvePendingShare(PendingShareChoice.startAgain);
 
@@ -1454,6 +1526,7 @@ void main() {
     test('Cancel drops the held photos and keeps the review', () async {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       await c.resolvePendingShare(PendingShareChoice.cancel);
 
@@ -1540,6 +1613,7 @@ void main() {
       final (c, add) = await addingOne(provider);
 
       expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg']);
       expect(c.pendingShareFits, isTrue);
 
@@ -1551,6 +1625,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
       final (c, add) = await addingOne(provider);
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       final resolved = c.resolvePendingShare(PendingShareChoice.add);
       await pumpEventQueue();
@@ -1568,6 +1643,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
       final (c, add) = await addingOne(provider);
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       final resolved = c.resolvePendingShare(PendingShareChoice.startAgain);
       await pumpEventQueue();
@@ -1589,6 +1665,7 @@ void main() {
       expect(c.photoRoom, 1);
 
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
       expect(c.pendingShareFits, isFalse);
       // A photo already being added is not counted twice.
       c.pendingShare.assignAll(['x1.jpg', 'n1.jpg']);
@@ -1610,9 +1687,11 @@ void main() {
 
         // Each fits beside the review and the add, but not both.
         c.offerShare(['n1.jpg', 'n2.jpg']);
+        await pumpEventQueue();
         expect(c.pendingShareFits, isTrue);
         final first = c.resolvePendingShare(PendingShareChoice.add);
         c.offerShare(['m1.jpg', 'm2.jpg']);
+        await pumpEventQueue();
         expect(c.pendingShareFits, isTrue);
         final second = c.resolvePendingShare(PendingShareChoice.add);
         decoder.gate!.complete();
@@ -1637,7 +1716,10 @@ void main() {
       final (c, add) = await addingOne(provider);
 
       c.offerShare(['n1.jpg']);
+
+      await pumpEventQueue();
       expect(c.offerShare(['n2.jpg', 'n1.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
 
       provider.stockGate!.complete();

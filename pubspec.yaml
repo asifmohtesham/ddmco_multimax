@@ -20,6 +20,7 @@ dependencies:
   get_storage:
   collection:
   uuid:
+  crypto: ^3.0.7
   intl: ^0.19.0
   percent_indicator:
   flutter_html:

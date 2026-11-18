@@ -79,6 +79,14 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         }),
       )
       ..add(
+        ever<int>(
+          controller.alreadyListed,
+          (_) => AppNotification.warning(
+            StockSheetController.alreadyListedMessage,
+          ),
+        ),
+      )
+      ..add(
         ever<List<String>>(controller.pendingShare, (paths) {
           if (paths.isNotEmpty) _askPendingShare();
         }),

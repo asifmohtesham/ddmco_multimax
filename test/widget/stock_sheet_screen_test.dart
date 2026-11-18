@@ -25,7 +25,15 @@ class _MemoryFormatStore implements SheetFormatStore {
 /// Records the calls the screen makes instead of running a job.
 class _SpyController extends StockSheetController {
   _SpyController({SheetFormat remembered = SheetFormat.excel})
-    : super(formatStore: _MemoryFormatStore(remembered));
+    : super(
+        formatStore: _MemoryFormatStore(remembered),
+        fingerprint: (paths) async => {
+          for (final path in paths) path: _fingerprints[path] ?? 'fp:$path',
+        },
+      );
+
+  /// Fixed fingerprints by path; any other path is its own content.
+  static final _fingerprints = <String, String>{};
 
   final starts = <List<String>>[];
   final makes = <SheetFormat>[];
@@ -133,7 +141,10 @@ void main() {
   final darkTheme = buildAppTheme(AppScheme.dark, Brightness.dark);
   late _SpyController controller;
 
-  tearDown(Get.reset);
+  tearDown(() {
+    _SpyController._fingerprints.clear();
+    Get.reset();
+  });
 
   /// Opens the screen on top of a blank home, so closing it is observable.
   /// The controller is registered once the home route exists, so GetX ties
@@ -473,6 +484,25 @@ void main() {
     expect(controller.rechecks, [1]);
     expect(find.text(StockSheetController.offlineMessage), findsOneWidget);
   });
+
+  testWidgets(
+    'a re-shared duplicate shows "Those photos are already in the list."',
+    (tester) async {
+      await open(tester);
+      _SpyController._fingerprints.addAll({'a.jpg': 'X', 'copy.jpg': 'X'});
+      await review(tester, _twoPhotos());
+
+      controller.offerShare(['copy.jpg']);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(
+        find.text(StockSheetController.alreadyListedMessage),
+        findsOneWidget,
+      );
+      expect(controller.pendingShare, isEmpty);
+    },
+  );
 
   testWidgets('Cancel keeps the review and drops the share', (tester) async {
     await open(tester);
