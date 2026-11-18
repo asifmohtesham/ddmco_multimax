@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -45,7 +46,7 @@ Widget _app(Widget child, {Brightness brightness = Brightness.light}) {
 ReviewList _list(
   List<ReviewEntry> entries, {
   void Function(int, int)? onReorder,
-  void Function(int)? onRemove,
+  bool Function(int)? onRemove,
   bool removeEnabled = true,
 }) => ReviewList(
   entries: entries,
@@ -55,7 +56,7 @@ ReviewList _list(
   onToggleItem: (_, _, _) {},
   onFix: (_, _) {},
   onRetryCheck: (_) {},
-  onRemove: onRemove ?? (_) {},
+  onRemove: onRemove ?? (_) => true,
   removeEnabled: removeEnabled,
 );
 
@@ -68,12 +69,89 @@ void main() {
       ReviewEntry(path: 'a', items: [_item('12345670', null)]),
       ReviewEntry(path: 'b', items: [_item('76543210', null)]),
     ];
-    await tester.pumpWidget(_app(_list(entries, onRemove: removed.add)));
+    await tester.pumpWidget(
+      _app(
+        _list(
+          entries,
+          onRemove: (i) {
+            removed.add(i);
+            return true;
+          },
+        ),
+      ),
+    );
 
     await tester.drag(find.text('Item 76543210'), const Offset(-600, 0));
     await tester.pumpAndSettle();
 
     expect(removed, [1]);
+  });
+
+  testWidgets('a refused removal keeps the row', (tester) async {
+    final entries = [
+      ReviewEntry(path: 'a', items: [_item('12345670', null)]),
+    ];
+    await tester.pumpWidget(_app(_list(entries, onRemove: (_) => false)));
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Item 12345670'), findsOneWidget);
+  });
+
+  testWidgets('screen readers get a Remove photo action', (tester) async {
+    final handle = tester.ensureSemantics();
+    final removed = <int>[];
+    final entries = [
+      ReviewEntry(path: 'a', items: [_item('12345670', null)]),
+    ];
+    await tester.pumpWidget(
+      _app(
+        _list(
+          entries,
+          onRemove: (i) {
+            removed.add(i);
+            return true;
+          },
+        ),
+      ),
+    );
+
+    final node = tester.getSemantics(find.text('Item 12345670'));
+    final data = node.getSemanticsData();
+    final ids = data.customSemanticsActionIds ?? const <int>[];
+    final labels = [
+      for (final id in ids) CustomSemanticsAction.getAction(id)?.label,
+    ];
+    expect(labels, contains('Remove photo'));
+    final id = ids[labels.indexOf('Remove photo')];
+    tester.binding.pipelineOwner.semanticsOwner!.performAction(
+      node.id,
+      SemanticsAction.customAction,
+      id,
+    );
+    expect(removed, [0]);
+    handle.dispose();
+  });
+
+  testWidgets('no Remove photo action while removal is disabled', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    final entries = [
+      ReviewEntry(path: 'a', items: [_item('12345670', null)]),
+    ];
+    await tester.pumpWidget(_app(_list(entries, removeEnabled: false)));
+
+    final data = tester
+        .getSemantics(find.text('Item 12345670'))
+        .getSemanticsData();
+    final labels = [
+      for (final id in data.customSemanticsActionIds ?? const <int>[])
+        CustomSemanticsAction.getAction(id)?.label,
+    ];
+    expect(labels, isNot(contains('Remove photo')));
+    handle.dispose();
   });
 
   testWidgets('no swipe when removeEnabled is false', (tester) async {
@@ -82,7 +160,16 @@ void main() {
       ReviewEntry(path: 'a', items: [_item('12345670', null)]),
     ];
     await tester.pumpWidget(
-      _app(_list(entries, onRemove: removed.add, removeEnabled: false)),
+      _app(
+        _list(
+          entries,
+          onRemove: (i) {
+            removed.add(i);
+            return true;
+          },
+          removeEnabled: false,
+        ),
+      ),
     );
 
     await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));

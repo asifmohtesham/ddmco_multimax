@@ -499,6 +499,37 @@ void main() {
     expect(tester.getTopLeft(find.text('Item 12345670')), before);
   });
 
+  testWidgets('the "Photo removed." snackbar goes after five seconds', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsNothing);
+  });
+
+  testWidgets('the "Photo removed." snackbar goes when the run starts', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _twoPhotos());
+
+    await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsOneWidget);
+
+    controller.phase.value = StockSheetPhase.building;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Photo removed.'), findsNothing);
+  });
+
   testWidgets('no swipe while the out-of-stock question is open', (
     tester,
   ) async {

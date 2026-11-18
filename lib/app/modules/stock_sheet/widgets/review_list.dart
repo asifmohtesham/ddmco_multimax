@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
@@ -38,8 +39,10 @@ class ReviewList extends StatefulWidget {
   final void Function(int index, String? noteBarcode) onFix;
   final void Function(int index) onRetryCheck;
 
-  /// A row was swiped away (end to start); the owner removes the photo.
-  final void Function(int index) onRemove;
+  /// A row was swiped away (end to start), or the screen reader's
+  /// "Remove photo" action was used. The owner removes the photo and returns
+  /// whether it did; a row that was not removed springs back.
+  final bool Function(int index) onRemove;
 
   /// False while the list is changing: rows then do not swipe.
   final bool removeEnabled;
@@ -95,16 +98,27 @@ class _ReviewListState extends State<ReviewList> {
                 : DismissDirection.none,
             background: const _RemoveBackground(),
             secondaryBackground: const _RemoveBackground(),
-            onDismissed: (_) => widget.onRemove(i),
-            child: _ReviewRow(
-              index: i,
-              entry: entries[i],
-              thumbnail: widget.thumbnails[entries[i].path],
-              recheckBusy: widget.recheckBusy ?? _idle,
-              onToggle: widget.onToggle,
-              onToggleItem: widget.onToggleItem,
-              onFix: widget.onFix,
-              onRetryCheck: widget.onRetryCheck,
+            // Removing here (not in onDismissed, ~300 ms later) means a
+            // refusal keeps the row on the sheet.
+            confirmDismiss: (_) async => widget.onRemove(i),
+            child: Semantics(
+              // The swipe has no screen-reader equivalent; this is it.
+              customSemanticsActions: widget.removeEnabled
+                  ? {
+                      const CustomSemanticsAction(label: 'Remove photo'): () =>
+                          widget.onRemove(i),
+                    }
+                  : null,
+              child: _ReviewRow(
+                index: i,
+                entry: entries[i],
+                thumbnail: widget.thumbnails[entries[i].path],
+                recheckBusy: widget.recheckBusy ?? _idle,
+                onToggle: widget.onToggle,
+                onToggleItem: widget.onToggleItem,
+                onFix: widget.onFix,
+                onRetryCheck: widget.onRetryCheck,
+              ),
             ),
           ),
         ),
@@ -188,8 +202,15 @@ class _ReviewRow extends StatelessWidget {
             ReorderableDragStartListener(
               index: index,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
-                child: Icon(Icons.drag_indicator, size: 20, color: s.textSubtle),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 14,
+                ),
+                child: Icon(
+                  Icons.drag_indicator,
+                  size: 20,
+                  color: s.textSubtle,
+                ),
               ),
             ),
             _Thumb(bytes: thumbnail),

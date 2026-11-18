@@ -115,6 +115,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       ..add(ever<int>(controller.shareSerial, (_) => _startShare()))
       ..add(
         ever<StockSheetPhase>(controller.phase, (phase) {
+          if (phase != StockSheetPhase.reviewing) _closeUndoBar();
           if (phase == StockSheetPhase.awaitingChoice) _askOutOfStock();
         }),
       )
@@ -142,6 +143,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   @override
   void dispose() {
+    _closeUndoBar();
     for (final worker in _workers) {
       worker.dispose();
     }
@@ -260,20 +262,37 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   }
 
   /// Takes the swiped photo off the list and offers to put it back.
-  void _remove(int index) {
+  /// Returns whether the photo was removed.
+  bool _remove(int index) {
     final entry = controller.removeAt(index);
-    if (entry == null) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text('Photo removed.'),
-          action: SnackBarAction(
-            label: 'Undo',
-            onPressed: () => controller.restore(entry, index),
-          ),
+    if (entry == null) return false;
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    // A snackbar with an action persists by default; this one must not.
+    _undoBar = messenger.showSnackBar(
+      SnackBar(
+        persist: false,
+        duration: const Duration(seconds: 5),
+        content: const Text('Photo removed.'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => controller.restore(entry, index),
         ),
-      );
+      ),
+    );
+    return true;
+  }
+
+  /// The "Photo removed." snackbar, while it is showing.
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _undoBar;
+
+  void _closeUndoBar() {
+    final bar = _undoBar;
+    _undoBar = null;
+    try {
+      bar?.close();
+    } catch (_) {
+      // The messenger has gone with the screen.
+    }
   }
 
   Future<void> _retryCheck(int index) async {
@@ -488,7 +507,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
               minimumSize: const Size(48, 48),
               padding: EdgeInsets.zero,
             ),
-            child: Semantics(label: 'Download', child: icon),
+            child: icon,
           ),
         );
       }
