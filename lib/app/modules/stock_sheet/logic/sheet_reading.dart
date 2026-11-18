@@ -68,7 +68,8 @@ class SheetReading {
   }
 
   /// Decodes [bytes] upright and greyscale, cuts the tiles and writes each to
-  /// [dir] as a PNG. Returns none when the bytes are not an image. Runs in a
+  /// [dir] as a PNG; an enlarged tile twice, smooth and sharp (see below).
+  /// Returns none when the bytes are not an image. Runs in a
   /// background isolate: decoding a camera photo takes a second or more.
   static List<SheetTile> writeTiles(Uint8List bytes, String dir, String stem) {
     img.Image? decoded;
@@ -91,17 +92,36 @@ class SheetReading {
         height: r.height,
       );
       final scale = scaleFor(math.max(r.width, r.height));
-      if (scale > 1) {
-        tile = img.copyResize(
-          tile,
-          width: (r.width * scale).round(),
-          height: (r.height * scale).round(),
-          interpolation: img.Interpolation.cubic,
+      void write(img.Image copy, String suffix) {
+        final path = '$dir/${stem}_$i$suffix.png';
+        File(path).writeAsBytesSync(img.encodePng(copy, level: 1));
+        tiles.add((path: path, x: r.x, y: r.y, scale: scale));
+      }
+
+      if (scale == 1) {
+        write(tile, '');
+        continue;
+      }
+      // An enlarged tile is written twice. Smoothing (cubic) helps a blurred
+      // camera photo; on a small sharp image, such as a WhatsApp copy of a
+      // printed sheet, it blends bars only one or two pixels wide into grey
+      // and a code is lost, while repeating each pixel (nearest, exact for
+      // the whole-number scale) keeps every bar edge. Each copy finds codes
+      // the other misses; the caller keeps what either finds.
+      for (final (interpolation, suffix) in [
+        (img.Interpolation.cubic, 's'),
+        (img.Interpolation.nearest, 'n'),
+      ]) {
+        write(
+          img.copyResize(
+            tile,
+            width: (r.width * scale).round(),
+            height: (r.height * scale).round(),
+            interpolation: interpolation,
+          ),
+          suffix,
         );
       }
-      final path = '$dir/${stem}_$i.png';
-      File(path).writeAsBytesSync(img.encodePng(tile, level: 1));
-      tiles.add((path: path, x: r.x, y: r.y, scale: scale));
     }
     return tiles;
   }
