@@ -51,6 +51,7 @@ class _FakeDecoder implements PhotoDecoder {
   final bool unsupported;
   final Set<String> throwFor = {};
   int calls = 0;
+  final decoded = <String>[];
   bool disposed = false;
 
   /// When set, every decode waits for it.
@@ -59,6 +60,7 @@ class _FakeDecoder implements PhotoDecoder {
   @override
   Future<List<String>?> decode(String path) async {
     calls++;
+    decoded.add(path);
     await gate?.future;
     if (unsupported) throw UnsupportedError('no');
     if (throwFor.contains(path)) throw Exception('boom');
@@ -134,6 +136,9 @@ void main() {
   late List<List<XFile>> shared;
   late List<StockSheetDocument> pdfDocs;
 
+  /// Fixed fingerprints by path; any other path is its own content.
+  late Map<String, String> fingerprints;
+
   Future<Uint8List?> Function(String)? thumbOverride;
 
   /// When set, the PDF writer waits for it.
@@ -149,6 +154,7 @@ void main() {
     tmp = await Directory.systemTemp.createTemp('stock_sheet_ctrl');
     shared = [];
     pdfDocs = [];
+    fingerprints = {};
     thumbOverride = null;
     pdfGate = null;
     shareError = null;
@@ -163,6 +169,7 @@ void main() {
     _FakeDecoder decoder,
     _FakeProvider provider, {
     SheetFormatStore? store,
+    Future<List<String>> Function()? extraRoots,
   }) => StockSheetController(
     formatStore: store ?? _MemoryFormatStore(),
     decoderFactory: () => decoder,
@@ -176,7 +183,11 @@ void main() {
       shared.add(f);
     },
     now: () => DateTime(2026, 11, 17, 9, 5),
+    fingerprint: (paths) async => {
+      for (final path in paths) path: fingerprints[path] ?? 'fp:$path',
+    },
     tempDir: () async => tmp,
+    extraCleanupRoots: extraRoots ?? () async => const [],
     writePdf: (doc) async {
       await pdfGate?.future;
       final error = pdfError;
@@ -245,7 +256,7 @@ void main() {
     expect(c.review[1].items.single.stock!.outOfStock, isTrue);
     expect(c.sheetPhotoCount, 2);
     expect(provider.stockCalls, 1);
-    // Nothing is written or shared until Make sheet.
+    // Nothing is written or shared until Generate file.
     expect(shared, isEmpty);
     expect(c.result.value, isNull);
     expect(tmp.listSync(), isEmpty);
@@ -355,7 +366,7 @@ void main() {
     expect(c.result.value!.unresolved, isEmpty);
   });
 
-  test('the subtitle counts only the photos on the sheet', () async {
+  test('the subtitle counts only the photos in the file', () async {
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
       'b.jpg': [_ean(_b)],
@@ -372,7 +383,7 @@ void main() {
     );
   });
 
-  test('review edits and Make sheet are ignored outside the review', () async {
+  test('review edits and Generate file are ignored outside the review', () async {
     final store = _MemoryFormatStore();
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
@@ -400,7 +411,7 @@ void main() {
     expect(store.saved, SheetFormat.excel);
   });
 
-  test('Make sheet with every photo switched off does nothing', () async {
+  test('Generate file with every photo switched off does nothing', () async {
     final store = _MemoryFormatStore();
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
@@ -468,7 +479,7 @@ void main() {
     await c.chooseOutOfStock(OutOfStockChoice.leaveOut);
 
     expect(c.phase.value, StockSheetPhase.reviewing);
-    expect(c.errorMessage.value, 'Every photo on the sheet is out of stock.');
+    expect(c.errorMessage.value, 'Every photo in the file is out of stock.');
     expect(c.result.value, isNull);
     expect(c.files, isEmpty);
     expect(shared, isEmpty);
@@ -648,7 +659,7 @@ void main() {
     expect(shared, isEmpty);
     expect(c.busy.value, isFalse);
 
-    // The next Make sheet clears the message.
+    // The next Generate file clears the message.
     pdfError = null;
     await c.makeSheet(SheetFormat.pdf);
     expect(c.phase.value, StockSheetPhase.done);
@@ -842,7 +853,7 @@ void main() {
       expect(written(), isEmpty);
     });
 
-    test('Make sheet after close writes nothing', () async {
+    test('Generate file after close writes nothing', () async {
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a)],
       });
@@ -905,6 +916,7 @@ void main() {
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
       c.offerShare([first.path]);
+      await pumpEventQueue();
       c.offerShare([second.path]);
       await c.start([second.path]);
       expect(c.phase.value, StockSheetPhase.reviewing);
@@ -922,6 +934,7 @@ void main() {
       final kept = photo(tmp, 'b.jpg');
       final c = make(_FakeDecoder({}), _FakeProvider());
       c.offerShare(['${tmp.path}/missing.jpg', kept.path]);
+      await pumpEventQueue();
       c.onClose();
       await pumpEventQueue();
       expect(kept.existsSync(), isFalse);
@@ -1292,7 +1305,7 @@ void main() {
       expect(c.adding.value, isFalse);
     });
 
-    test('Make sheet waits for an add in flight', () async {
+    test('Generate file waits for an add in flight', () async {
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a)],
         'd.jpg': [_ean(_b)],
@@ -1313,6 +1326,40 @@ void main() {
       await c.makeSheet(SheetFormat.excel);
       expect(c.phase.value, StockSheetPhase.done);
       expect(c.result.value!.rows.map((r) => r.photoPath), ['a.jpg', 'd.jpg']);
+    });
+  });
+
+  group('duplicates by content', () {
+    test('start reads two copies of the same photo once', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'b.jpg': 'X'});
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'b.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+
+      await c.start(['a.jpg', 'b.jpg']);
+
+      expect(decoder.decoded, ['a.jpg']);
+      expect(c.review.map((e) => e.path), ['a.jpg']);
+    });
+
+    test('addPhotos skips a photo already listed by content', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'c.jpg': 'X'});
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'c.jpg': [_ean(_a)],
+      });
+      final c = make(decoder, _FakeProvider(stock: {_a: 1}));
+      await c.start(['a.jpg']);
+      final calls = decoder.calls;
+
+      expect(
+        await c.addPhotos(['c.jpg']),
+        StockSheetController.alreadyListedMessage,
+      );
+      expect(decoder.calls, calls);
+      expect(c.review.length, 1);
     });
   });
 
@@ -1357,6 +1404,7 @@ void main() {
       c.setIncluded(1, false);
 
       expect(c.offerShare(['n1.jpg', 'n2.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
 
       expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
       expect(c.pendingShareFits, isTrue);
@@ -1375,6 +1423,7 @@ void main() {
       expect(c.phase.value, StockSheetPhase.awaitingChoice);
 
       expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg']);
       expect(c.phase.value, StockSheetPhase.awaitingChoice);
     });
@@ -1383,14 +1432,38 @@ void main() {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
       c.offerShare(['x.jpg']);
+      await pumpEventQueue();
       expect(c.pendingShareFits, isTrue);
       c.offerShare(['x.jpg', 'y.jpg']);
+      await pumpEventQueue();
       expect(c.pendingShareFits, isFalse);
+    });
+
+    test('a held share counts only new photos', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'c.jpg': 'X'});
+      final c = await reviewing();
+
+      c.offerShare(['c.jpg', 'd.jpg']);
+      await pumpEventQueue();
+
+      expect(c.pendingShare, ['d.jpg']);
+    });
+
+    test('a held share of only duplicates is not asked', () async {
+      fingerprints.addAll({'a.jpg': 'X', 'c.jpg': 'X'});
+      final c = await reviewing();
+
+      c.offerShare(['c.jpg']);
+      await pumpEventQueue();
+
+      expect(c.pendingShare, isEmpty);
+      expect(c.alreadyListed.value, 1);
     });
 
     test('Add appends the held photos', () async {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       expect(await c.resolvePendingShare(PendingShareChoice.add), isNull);
 
@@ -1407,6 +1480,7 @@ void main() {
       final c = make(decoder, _FakeProvider());
       await run(c, ['a.jpg'], SheetFormat.excel);
       c.offerShare(['n1.jpg']);
+      await pumpEventQueue();
 
       await c.resolvePendingShare(PendingShareChoice.add);
 
@@ -1419,6 +1493,7 @@ void main() {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       expect(await c.resolvePendingShare(PendingShareChoice.add), isNull);
       expect(c.review, hasLength(99));
@@ -1427,21 +1502,20 @@ void main() {
       expect(c.pendingShareFits, isFalse);
     });
 
-    test('Add of photos already in the list says so', () async {
+    test('a share of photos already in the list says so, not asks', () async {
       final c = await reviewing();
       c.offerShare(['b.jpg']);
+      await pumpEventQueue();
 
-      expect(
-        await c.resolvePendingShare(PendingShareChoice.add),
-        'Those photos are already in the list.',
-      );
-      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
       expect(c.pendingShare, isEmpty);
+      expect(c.alreadyListed.value, 1);
+      expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
     });
 
     test('Start again replaces the review with the held photos', () async {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       await c.resolvePendingShare(PendingShareChoice.startAgain);
 
@@ -1454,6 +1528,7 @@ void main() {
     test('Cancel drops the held photos and keeps the review', () async {
       final c = await reviewing();
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       await c.resolvePendingShare(PendingShareChoice.cancel);
 
@@ -1513,6 +1588,102 @@ void main() {
     expect(held.existsSync(), isFalse);
   });
 
+  group('clean-up in extra intake folders', () {
+    late Directory group;
+    late Directory elsewhere;
+    setUp(() {
+      group = Directory('${tmp.path}_group')..createSync();
+      elsewhere = Directory('${tmp.path}_elsewhere')..createSync();
+    });
+    tearDown(() {
+      for (final d in [group, elsewhere]) {
+        if (d.existsSync()) d.deleteSync(recursive: true);
+      }
+    });
+
+    test(
+      'onClose deletes given photos in an extra intake folder but not elsewhere',
+      () async {
+        final x = File('${group.path}/x.jpg')..writeAsBytesSync([1]);
+        final y = File('${elsewhere.path}/y.jpg')..writeAsBytesSync([1]);
+        final c = make(
+          _FakeDecoder({}),
+          _FakeProvider(),
+          extraRoots: () async => [group.path],
+        );
+        await c.start([x.path, y.path]);
+
+        c.onClose();
+        await untilGone([x]);
+
+        expect(x.existsSync(), isFalse);
+        expect(y.existsSync(), isTrue);
+      },
+    );
+
+    test('copies in sub-folders of the native temporary folder are deleted, '
+        'the folders kept', () async {
+      // sharedFolders returns NSTemporaryDirectory() itself: "Choose files…"
+      // copies land in its <bundle id>-Inbox/, drops in its dropped/.
+      final inbox = Directory('${group.path}/com.ddmco.multimax-Inbox')
+        ..createSync();
+      final dropped = Directory('${group.path}/dropped')..createSync();
+      final picked = File('${inbox.path}/picked.jpg')..writeAsBytesSync([1]);
+      final drop = File('${dropped.path}/drop.png')..writeAsBytesSync([1]);
+      final kept = File('${inbox.path}/not-given.jpg')..writeAsBytesSync([1]);
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(),
+        extraRoots: () async => [group.path],
+      );
+      await c.start([picked.path, drop.path]);
+
+      c.onClose();
+      await untilGone([picked, drop]);
+
+      expect(picked.existsSync(), isFalse);
+      expect(drop.existsSync(), isFalse);
+      expect(kept.existsSync(), isTrue, reason: 'only given paths go');
+      expect(inbox.existsSync(), isTrue);
+      expect(dropped.existsSync(), isTrue);
+    });
+
+    test('empty, relative and root folders are not clean-up roots', () async {
+      final y = File('${elsewhere.path}/y.jpg')..writeAsBytesSync([1]);
+      final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(),
+        extraRoots: () async => ['', '/', 'relative'],
+      );
+      await c.start([y.path, t.path]);
+
+      c.onClose();
+      await untilGone([t]);
+
+      expect(t.existsSync(), isFalse);
+      expect(y.existsSync(), isTrue);
+    });
+
+    test(
+      'a failing extra-folder lookup still cleans the temp folder',
+      () async {
+        final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
+        final c = make(
+          _FakeDecoder({}),
+          _FakeProvider(),
+          extraRoots: () async => throw Exception('no channel'),
+        );
+        await c.start([t.path]);
+
+        c.onClose();
+        await untilGone([t]);
+
+        expect(t.existsSync(), isFalse);
+      },
+    );
+  });
+
   group('a share during an add', () {
     /// a.jpg and b.jpg in the review, d.jpg being added (its stock check
     /// waits for [_FakeProvider.stockGate]).
@@ -1540,6 +1711,7 @@ void main() {
       final (c, add) = await addingOne(provider);
 
       expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg']);
       expect(c.pendingShareFits, isTrue);
 
@@ -1551,6 +1723,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
       final (c, add) = await addingOne(provider);
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       final resolved = c.resolvePendingShare(PendingShareChoice.add);
       await pumpEventQueue();
@@ -1568,6 +1741,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
       final (c, add) = await addingOne(provider);
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
 
       final resolved = c.resolvePendingShare(PendingShareChoice.startAgain);
       await pumpEventQueue();
@@ -1589,6 +1763,7 @@ void main() {
       expect(c.photoRoom, 1);
 
       c.offerShare(['n1.jpg', 'n2.jpg']);
+      await pumpEventQueue();
       expect(c.pendingShareFits, isFalse);
       // A photo already being added is not counted twice.
       c.pendingShare.assignAll(['x1.jpg', 'n1.jpg']);
@@ -1610,9 +1785,11 @@ void main() {
 
         // Each fits beside the review and the add, but not both.
         c.offerShare(['n1.jpg', 'n2.jpg']);
+        await pumpEventQueue();
         expect(c.pendingShareFits, isTrue);
         final first = c.resolvePendingShare(PendingShareChoice.add);
         c.offerShare(['m1.jpg', 'm2.jpg']);
+        await pumpEventQueue();
         expect(c.pendingShareFits, isTrue);
         final second = c.resolvePendingShare(PendingShareChoice.add);
         decoder.gate!.complete();
@@ -1637,7 +1814,10 @@ void main() {
       final (c, add) = await addingOne(provider);
 
       c.offerShare(['n1.jpg']);
+
+      await pumpEventQueue();
       expect(c.offerShare(['n2.jpg', 'n1.jpg']), ShareOffer.pending);
+      await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
 
       provider.stockGate!.complete();

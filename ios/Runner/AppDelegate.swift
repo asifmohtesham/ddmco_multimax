@@ -17,5 +17,9 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Drops, stranded shares and Mac detection (channel com.ddmco.multimax/intake).
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IntakeBridge") {
+      IntakeBridge.register(with: registrar)
+    }
   }
 }

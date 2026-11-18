@@ -1,17 +1,20 @@
 import 'dart:math' as math;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_result_list.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_start_panel.dart';
 
 /// Returns the paths of the photos taken or picked; empty when cancelled.
 typedef PhotoPicker = Future<List<String>> Function();
@@ -26,7 +29,25 @@ Future<List<String>> _chooseFromGallery() async {
   return [for (final photo in photos) photo.path];
 }
 
-enum _AddSource { camera, gallery }
+/// The system file dialog (on a Mac it reaches OneDrive). On iOS the picker
+/// copies the files into the app, so cloud placeholders arrive downloaded.
+Future<List<String>> _chooseFiles() async {
+  final files = await openFiles(
+    acceptedTypeGroups: const [
+      XTypeGroup(
+        label: 'Images',
+        extensions: ['jpg', 'jpeg', 'png', 'heic'],
+        mimeTypes: ['image/*'],
+        uniformTypeIdentifiers: ['public.image'],
+      ),
+    ],
+  );
+  return [for (final file in files) file.path];
+}
+
+Future<bool> _runningOnMac() => NativeIntake.instance.isRunningOnMac();
+
+enum _AddSource { camera, gallery, files }
 
 /// Shared photos → stock sheet. Reads the photos on open, shows progress,
 /// then the review list (reorder, switch off, fix codes, add photos, pick
@@ -42,6 +63,8 @@ class StockSheetScreen extends StatefulWidget {
     this.paths,
     this.pickCamera = _takePhoto,
     this.pickGallery = _chooseFromGallery,
+    this.pickFiles = _chooseFiles,
+    this.runningOnMac = _runningOnMac,
   });
 
   /// The shared photo paths; null takes them from the route arguments.
@@ -52,6 +75,12 @@ class StockSheetScreen extends StatefulWidget {
 
   /// ＋ → Choose from gallery.
   final PhotoPicker pickGallery;
+
+  /// Choose files… (start panel and ＋).
+  final PhotoPicker pickFiles;
+
+  /// Whether the iPhone/iPad app is running on a Mac (no camera, drag hint).
+  final Future<bool> Function() runningOnMac;
 
   @override
   State<StockSheetScreen> createState() => _StockSheetScreenState();
@@ -68,9 +97,20 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   bool _askingPending = false;
   bool _askingDiscard = false;
 
+  /// Opened with no photos, so the start panel shows while idle.
+  bool _openedEmpty = false;
+
+  bool _onMac = false;
+
+  /// A picker is open; a second one is not started.
+  final RxBool _picking = false.obs;
+
   @override
   void initState() {
     super.initState();
+    widget.runningOnMac().then<void>((onMac) {
+      if (mounted && onMac != _onMac) setState(() => _onMac = onMac);
+    }, onError: (Object _) {});
     _workers
       ..add(ever<int>(controller.shareSerial, (_) => _startShare()))
       ..add(
@@ -79,11 +119,20 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         }),
       )
       ..add(
+        ever<int>(
+          controller.alreadyListed,
+          (_) => AppNotification.warning(
+            StockSheetController.alreadyListedMessage,
+          ),
+        ),
+      )
+      ..add(
         ever<List<String>>(controller.pendingShare, (paths) {
           if (paths.isNotEmpty) _askPendingShare();
         }),
       );
     final paths = widget.paths ?? _argumentPaths();
+    _openedEmpty = paths.isEmpty;
     if (paths.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) controller.offerShare(paths);
@@ -215,26 +264,43 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     if (mounted && error != null) AppNotification.warning(error);
   }
 
-  Future<void> _add(_AddSource source) async {
-    if (controller.adding.value) return;
-    final pick = source == _AddSource.camera
-        ? widget.pickCamera
-        : widget.pickGallery;
-    final List<String> paths;
+  /// Runs the picker for [source]; null when it failed (said in a warning),
+  /// empty when cancelled, or when one is already open.
+  Future<List<String>?> _pick(_AddSource source) async {
+    if (_picking.value) return null;
+    _picking.value = true;
     try {
-      paths = await pick();
+      return await switch (source) {
+        _AddSource.camera => widget.pickCamera(),
+        _AddSource.gallery => widget.pickGallery(),
+        _AddSource.files => widget.pickFiles(),
+      };
     } catch (e, st) {
       if (kDebugMode) debugPrint('StockSheetScreen: pick failed: $e\n$st');
-      AppNotification.warning(
-        source == _AddSource.camera
-            ? "Couldn't open the camera."
-            : "Couldn't open the gallery.",
-      );
-      return;
+      AppNotification.warning(switch (source) {
+        _AddSource.camera => "Couldn't open the camera.",
+        _AddSource.gallery => "Couldn't open the gallery.",
+        _AddSource.files => "Couldn't open the file dialog.",
+      });
+      return null;
+    } finally {
+      _picking.value = false;
     }
-    if (!mounted || paths.isEmpty) return;
+  }
+
+  Future<void> _add(_AddSource source) async {
+    if (controller.adding.value) return;
+    final paths = await _pick(source);
+    if (!mounted || paths == null || paths.isEmpty) return;
     final error = await controller.addPhotos(paths);
     if (mounted && error != null) AppNotification.warning(error);
+  }
+
+  /// From the start panel: the picked photos start a run as a share would.
+  Future<void> _startFrom(_AddSource source) async {
+    final paths = await _pick(source);
+    if (!mounted || paths == null || paths.isEmpty) return;
+    controller.offerShare(paths);
   }
 
   @override
@@ -249,7 +315,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         child: Scaffold(
           appBar: reviewing
               ? _reviewAppBar()
-              : AppBar(title: const Text('Items from photos')),
+              : AppBar(title: const Text('Items from Photos')),
           body: Obx(_body),
           bottomNavigationBar: Obx(_footer),
         ),
@@ -268,7 +334,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             const Text('Review photos'),
             Text(
               '$photos photo${photos == 1 ? '' : 's'} · '
-              '${controller.sheetPhotoCount} on the sheet',
+              '${controller.sheetPhotoCount} in the file',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
             ),
           ],
@@ -297,19 +363,27 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
                     ),
                   )
                 : const Icon(Icons.add),
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: _AddSource.camera,
-                child: ListTile(
-                  leading: Icon(Icons.photo_camera_outlined),
-                  title: Text('Take a photo'),
+            itemBuilder: (_) => [
+              if (!_onMac)
+                const PopupMenuItem(
+                  value: _AddSource.camera,
+                  child: ListTile(
+                    leading: Icon(Icons.photo_camera_outlined),
+                    title: Text('Take a photo'),
+                  ),
                 ),
-              ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: _AddSource.gallery,
                 child: ListTile(
                   leading: Icon(Icons.photo_library_outlined),
                   title: Text('Choose from gallery'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: _AddSource.files,
+                child: ListTile(
+                  leading: Icon(Icons.folder_open_outlined),
+                  title: Text('Choose files…'),
                 ),
               ),
             ],
@@ -322,7 +396,16 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   Widget _body() {
     switch (controller.phase.value) {
       case StockSheetPhase.idle:
-        return const SizedBox.shrink();
+        if (!_openedEmpty) return const SizedBox.shrink();
+        return Obx(
+          () => StockSheetStartPanel(
+            onMac: _onMac,
+            busy: _picking.value,
+            onChooseFiles: () => _startFrom(_AddSource.files),
+            onChooseGallery: () => _startFrom(_AddSource.gallery),
+            onTakePhoto: _onMac ? null : () => _startFrom(_AddSource.camera),
+          ),
+        );
       case StockSheetPhase.decoding:
         final total = controller.total.value;
         final decoded = controller.decoded.value;
@@ -346,7 +429,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           recheckBusy: controller.rechecking,
         );
       case StockSheetPhase.building:
-        return const _Progress(label: 'Building file…');
+        return const _Progress(label: 'Generating the file…');
       case StockSheetPhase.done:
         final result = controller.result.value;
         if (result == null) return const SizedBox.shrink();
@@ -368,7 +451,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       case StockSheetPhase.reviewing:
       case StockSheetPhase.awaitingChoice:
         final n = controller.sheetPhotoCount;
-        final label = 'Make sheet · $n photo${n == 1 ? '' : 's'}';
+        final label = 'Generate file · $n photo${n == 1 ? '' : 's'}';
         const icon = Icon(Icons.description_outlined);
         // Nothing on the sheet, or the list still changing: makeSheet would
         // refuse, so the button says so by being disabled.
@@ -427,7 +510,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             if (controller.files.isEmpty)
               Expanded(
                 child: Text(
-                  'Nothing to put on a sheet.',
+                  'Nothing to put in a file.',
                   style: TextStyle(color: context.scheme.textMuted),
                 ),
               )

@@ -25,7 +25,15 @@ class _MemoryFormatStore implements SheetFormatStore {
 /// Records the calls the screen makes instead of running a job.
 class _SpyController extends StockSheetController {
   _SpyController({SheetFormat remembered = SheetFormat.excel})
-    : super(formatStore: _MemoryFormatStore(remembered));
+    : super(
+        formatStore: _MemoryFormatStore(remembered),
+        fingerprint: (paths) async => {
+          for (final path in paths) path: _fingerprints[path] ?? 'fp:$path',
+        },
+      );
+
+  /// Fixed fingerprints by path; any other path is its own content.
+  static final _fingerprints = <String, String>{};
 
   final starts = <List<String>>[];
   final makes = <SheetFormat>[];
@@ -133,7 +141,10 @@ void main() {
   final darkTheme = buildAppTheme(AppScheme.dark, Brightness.dark);
   late _SpyController controller;
 
-  tearDown(Get.reset);
+  tearDown(() {
+    _SpyController._fingerprints.clear();
+    Get.reset();
+  });
 
   /// Opens the screen on top of a blank home, so closing it is observable.
   /// The controller is registered once the home route exists, so GetX ties
@@ -145,6 +156,8 @@ void main() {
     SheetFormat remembered = SheetFormat.excel,
     Future<List<String>> Function()? pickCamera,
     Future<List<String>> Function()? pickGallery,
+    Future<List<String>> Function()? pickFiles,
+    bool onMac = false,
     ThemeData? theme,
   }) async {
     final t = theme ?? darkTheme;
@@ -168,6 +181,8 @@ void main() {
         paths: paths ?? const [],
         pickCamera: pickCamera ?? () async => const [],
         pickGallery: pickGallery ?? () async => const [],
+        pickFiles: pickFiles ?? () async => const [],
+        runningOnMac: () async => onMac,
       ),
     );
     await tester.pumpAndSettle();
@@ -206,15 +221,15 @@ void main() {
     controller.phase.value = StockSheetPhase.decoding;
     await tester.pump();
     expect(find.text('Reading photo 1 of 2'), findsOneWidget);
-    expect(find.text('Items from photos'), findsOneWidget);
+    expect(find.text('Items from Photos'), findsOneWidget);
 
     await review(tester, _twoPhotos());
     expect(find.text('Make a stock sheet'), findsNothing);
     expect(find.byType(ReviewList), findsOneWidget);
     expect(find.text('Item 12345670'), findsOneWidget);
     expect(find.text('Review photos'), findsOneWidget);
-    expect(find.text('2 photos · 2 on the sheet'), findsOneWidget);
-    expect(find.text('Make sheet · 2 photos'), findsOneWidget);
+    expect(find.text('2 photos · 2 in the file'), findsOneWidget);
+    expect(find.text('Generate file · 2 photos'), findsOneWidget);
   });
 
   testWidgets('the format control shows the stored format', (tester) async {
@@ -232,12 +247,12 @@ void main() {
     await tester.tap(find.text('Both'));
     await tester.pumpAndSettle();
     expect(controller.format.value, SheetFormat.both);
-    await tester.tap(find.text('Make sheet · 2 photos'));
+    await tester.tap(find.text('Generate file · 2 photos'));
     await tester.pump();
     expect(controller.makes, [SheetFormat.both]);
   });
 
-  testWidgets('Make sheet is disabled once both photos are switched off', (
+  testWidgets('Generate file is disabled once both photos are switched off', (
     tester,
   ) async {
     await open(tester);
@@ -249,17 +264,17 @@ void main() {
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
-    expect(button('Make sheet · 2 photos').onPressed, isNotNull);
+    expect(button('Generate file · 2 photos').onPressed, isNotNull);
 
     await tester.tap(find.byType(Switch).at(0));
     await tester.pumpAndSettle();
-    expect(find.text('Make sheet · 1 photo'), findsOneWidget);
+    expect(find.text('Generate file · 1 photo'), findsOneWidget);
     await tester.tap(find.byType(Switch).at(1));
     await tester.pumpAndSettle();
 
-    expect(find.text('2 photos · 0 on the sheet'), findsOneWidget);
-    expect(button('Make sheet · 0 photos').onPressed, isNull);
-    await tester.tap(find.text('Make sheet · 0 photos'));
+    expect(find.text('2 photos · 0 in the file'), findsOneWidget);
+    expect(button('Generate file · 0 photos').onPressed, isNull);
+    await tester.tap(find.text('Generate file · 0 photos'));
     await tester.pump();
     expect(controller.makes, isEmpty);
   });
@@ -432,14 +447,14 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('Make sheet is disabled while a typed code is looked up', (
+  testWidgets('Generate file is disabled while a typed code is looked up', (
     tester,
   ) async {
     await open(tester);
     await review(tester, _twoPhotos());
     ButtonStyleButton button() => tester.widget<ButtonStyleButton>(
       find.ancestor(
-        of: find.text('Make sheet · 2 photos'),
+        of: find.text('Generate file · 2 photos'),
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
@@ -473,6 +488,25 @@ void main() {
     expect(controller.rechecks, [1]);
     expect(find.text(StockSheetController.offlineMessage), findsOneWidget);
   });
+
+  testWidgets(
+    'a re-shared duplicate shows "Those photos are already in the list."',
+    (tester) async {
+      await open(tester);
+      _SpyController._fingerprints.addAll({'a.jpg': 'X', 'copy.jpg': 'X'});
+      await review(tester, _twoPhotos());
+
+      controller.offerShare(['copy.jpg']);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(
+        find.text(StockSheetController.alreadyListedMessage),
+        findsOneWidget,
+      );
+      expect(controller.pendingShare, isEmpty);
+    },
+  );
 
   testWidgets('Cancel keeps the review and drops the share', (tester) async {
     await open(tester);
@@ -511,6 +545,77 @@ void main() {
     ]);
     // The closed sheet's late answer is not taken as a choice.
     expect(controller.choices, isEmpty);
+  });
+
+  testWidgets('opened without photos shows the start panel', (tester) async {
+    await open(tester);
+
+    expect(
+      find.text(
+        'Choose photos of item labels to list their stock as Excel or PDF.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Choose files…'), findsOneWidget);
+    expect(find.text('Choose from gallery'), findsOneWidget);
+    expect(find.text('Take a photo'), findsOneWidget);
+  });
+
+  testWidgets('on a Mac the camera is hidden and the drag hint shows', (
+    tester,
+  ) async {
+    await open(tester, onMac: true);
+
+    expect(find.text('Take a photo'), findsNothing);
+    expect(
+      find.text(
+        'On a Mac you can also drag photos here or share them from Finder.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Choose files… starts a run with the picked files', (
+    tester,
+  ) async {
+    await open(tester, pickFiles: () async => ['/f/a.jpg']);
+
+    await tester.tap(find.text('Choose files…'));
+    await tester.pumpAndSettle();
+    expect(controller.starts, [
+      ['/f/a.jpg'],
+    ]);
+  });
+
+  testWidgets('opened with shared photos shows no start panel', (tester) async {
+    await open(tester, paths: ['a.jpg']);
+
+    expect(find.text('Choose files…'), findsNothing);
+  });
+
+  testWidgets('the + menu offers Choose files… and adds the picked files', (
+    tester,
+  ) async {
+    await open(tester, pickFiles: () async => ['/f/b.jpg']);
+    await review(tester, _twoPhotos());
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose files…'));
+    await tester.pumpAndSettle();
+    expect(controller.added, [
+      ['/f/b.jpg'],
+    ]);
+  });
+
+  testWidgets('the + menu hides Take a photo on a Mac', (tester) async {
+    await open(tester, onMac: true);
+    await review(tester, _twoPhotos());
+
+    await tester.tap(find.byTooltip('Add photos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose files…'), findsOneWidget);
+    expect(find.text('Take a photo'), findsNothing);
   });
 
   testWidgets('the + menu adds photos from the gallery', (tester) async {
@@ -653,7 +758,7 @@ void main() {
     expect(controller.starts.single, hasLength(101));
   });
 
-  testWidgets('review: counts, and Make sheet in the remembered format', (
+  testWidgets('review: counts, and Generate file in the remembered format', (
     tester,
   ) async {
     await open(tester, remembered: SheetFormat.both);
@@ -663,8 +768,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Review photos'), findsOneWidget);
-    expect(find.text('0 photos · 1 on the sheet'), findsOneWidget);
-    await tester.tap(find.text('Make sheet · 1 photo'));
+    expect(find.text('0 photos · 1 in the file'), findsOneWidget);
+    await tester.tap(find.text('Generate file · 1 photo'));
     await tester.pump();
     expect(controller.makes, [SheetFormat.both]);
 
@@ -763,7 +868,7 @@ void main() {
 
     controller.phase.value = StockSheetPhase.building;
     await tester.pump();
-    expect(find.text('Building file…'), findsOneWidget);
+    expect(find.text('Generating the file…'), findsOneWidget);
   });
 
   testWidgets('result: share button swaps for a spinner while sharing', (
@@ -823,7 +928,7 @@ void main() {
     controller.result.value = _result(rows: 0, outOfStock: 0);
     await tester.pumpAndSettle();
     expect(find.text('Share file'), findsNothing);
-    expect(find.text('Nothing to put on a sheet.'), findsOneWidget);
+    expect(find.text('Nothing to put in a file.'), findsOneWidget);
   });
 
   testWidgets('a share failure shows its message above Share files', (

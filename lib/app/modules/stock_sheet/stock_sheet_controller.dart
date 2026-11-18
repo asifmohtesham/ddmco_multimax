@@ -10,8 +10,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
+import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
+import 'package:multimax/app/modules/stock_sheet/logic/photo_fingerprint.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/review_builder.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_aggregator.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_sheet_codec.dart';
@@ -91,6 +93,8 @@ class StockSheetController extends GetxController {
     Future<Directory> Function()? tempDir,
     Future<Uint8List> Function(StockSheetDocument)? writePdf,
     Future<Uint8List?> Function(String)? makeThumbnail,
+    PhotoFingerprinter? fingerprint,
+    Future<List<String>> Function()? extraCleanupRoots,
   }) : _formatStore = formatStore ?? const StorageSheetFormatStore(),
        _decoderFactory = decoderFactory ?? MlKitPhotoDecoder.new,
        _provider = provider ?? StockSheetProvider(),
@@ -98,7 +102,10 @@ class StockSheetController extends GetxController {
        _now = now ?? DateTime.now,
        _tempDir = tempDir ?? getTemporaryDirectory,
        _writePdf = writePdf ?? PdfStockSheetWriter.writeInBackground,
-       _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path));
+       _makeThumbnail = makeThumbnail ?? ((path) => ThumbnailMaker.make(path)),
+       _fingerprint = fingerprint ?? fingerprintPhotos,
+       _extraCleanupRoots =
+           extraCleanupRoots ?? NativeIntake.instance.sharedFolders;
 
   static const int maxPhotos = 100;
   static const String _title = 'Items';
@@ -117,9 +124,10 @@ class StockSheetController extends GetxController {
   static const String notInErpMessage = 'Not in ERP';
   static const String alreadyListedMessage =
       'Those photos are already in the list.';
-  static const String busyMessage = 'A stock sheet is already being made.';
+  static const String busyMessage =
+      'Items from Photos is already generating a file.';
   static const String allOutOfStockMessage =
-      'Every photo on the sheet is out of stock.';
+      'Every photo in the file is out of stock.';
 
   /// Why photos were refused when only [room] more fit under [maxPhotos].
   static String roomMessage(int room) => switch (room) {
@@ -140,6 +148,8 @@ class StockSheetController extends GetxController {
   final Future<Directory> Function() _tempDir;
   final Future<Uint8List> Function(StockSheetDocument) _writePdf;
   final Future<Uint8List?> Function(String) _makeThumbnail;
+  final PhotoFingerprinter _fingerprint;
+  final Future<List<String>> Function() _extraCleanupRoots;
 
   final busy = false.obs;
   final phase = StockSheetPhase.idle.obs;
@@ -184,7 +194,15 @@ class StockSheetController extends GetxController {
   /// [resolvePendingShare].
   final pendingShare = <String>[].obs;
 
+  /// Bumped when a share held during the review turns out to hold only
+  /// photos already in the list, so the screen says so.
+  final alreadyListed = 0.obs;
+
   List<PhotoScan> _scans = const [];
+
+  /// The content fingerprint of every photo that entered the run (review,
+  /// being added or held), so a copy under another name is recognised.
+  final Map<String, String> _fingerprintOf = {};
 
   /// The format of the Make sheet in progress.
   SheetFormat _format = SheetFormat.excel;
@@ -231,8 +249,11 @@ class StockSheetController extends GetxController {
       }
       total.value = paths.length;
       phase.value = StockSheetPhase.decoding;
+      final unique = await _firstOfEachContent(paths);
+      if (_closed) return;
+      total.value = unique.length;
       try {
-        _scans = await _decode(paths, () => _closed);
+        _scans = await _decode(unique, () => _closed);
       } on UnsupportedError {
         _fail(unsupportedMessage);
         return;
@@ -368,6 +389,46 @@ class StockSheetController extends GetxController {
     ];
   }
 
+  /// Fingerprints [paths] that are not yet known and remembers them.
+  Future<void> _fingerprintNew(List<String> paths) async {
+    final missing = [
+      for (final path in paths)
+        if (!_fingerprintOf.containsKey(path)) path,
+    ];
+    if (missing.isEmpty) return;
+    _fingerprintOf.addAll(await _fingerprint(missing));
+  }
+
+  /// [paths] without the later copies of a photo whose bytes repeat.
+  Future<List<String>> _firstOfEachContent(List<String> paths) async {
+    await _fingerprintNew(paths);
+    final seen = <String>{};
+    return [
+      for (final path in paths)
+        if (seen.add(_fingerprintOf[path] ?? 'unreadable:$path')) path,
+    ];
+  }
+
+  /// [paths] whose content is neither in the review, nor being added, nor
+  /// held in [pendingShare], nor repeated within [paths]. Order kept.
+  Future<List<String>> _newByContent(List<String> paths) async {
+    final listed = [
+      for (final e in review) e.path,
+      ..._addingPaths,
+      ...pendingShare,
+    ];
+    await _fingerprintNew([...paths, ...listed]);
+    final checking = paths.toSet();
+    final known = <String>{
+      for (final path in listed)
+        if (!checking.contains(path)) ?_fingerprintOf[path],
+    };
+    return [
+      for (final path in paths)
+        if (known.add(_fingerprintOf[path] ?? 'unreadable:$path')) path,
+    ];
+  }
+
   /// Reads [paths] (taken, picked or shared during the review) and appends
   /// them to [review], checking stock for their codes only. Photos already
   /// in the list are skipped. Returns null when they were added, else why
@@ -378,15 +439,38 @@ class StockSheetController extends GetxController {
     _givenPhotos.addAll(paths);
     if (_closed || busy.value || adding.value || !_reviewing) return null;
     if (paths.isEmpty) return null;
-    final fresh = _newPhotos(paths);
-    if (fresh.isEmpty) return alreadyListedMessage;
-    final room = photoRoom;
-    if (fresh.length > room) return roomMessage(room);
     final generation = _generation;
+    final byPath = _newPhotos(paths);
+    if (byPath.isEmpty) return alreadyListedMessage;
+    // Claim the run before the first await, so nothing else starts an add.
     final done = Completer<void>();
     _addRun = done.future;
-    _addingPaths = fresh;
+    // Until the content is known, every photo by path counts as in flight.
+    _addingPaths = byPath;
     adding.value = true;
+    decoded.value = 0;
+    total.value = byPath.length;
+    List<String> fresh;
+    var failed = false;
+    try {
+      fresh = await _newByContent(byPath);
+    } catch (e, st) {
+      _log('fingerprinting failed', e, st);
+      fresh = const [];
+      failed = true;
+    }
+    // Room beside the review, not counting this run's provisional paths.
+    _addingPaths = const [];
+    final room = photoRoom;
+    if (failed || _stale(generation) || fresh.isEmpty || fresh.length > room) {
+      _addRun = null;
+      adding.value = false;
+      done.complete();
+      if (_stale(generation)) return null;
+      if (failed) return offlineMessage;
+      return fresh.isEmpty ? alreadyListedMessage : roomMessage(room);
+    }
+    _addingPaths = fresh;
     decoded.value = 0;
     total.value = fresh.length;
     try {
@@ -544,13 +628,31 @@ class StockSheetController extends GetxController {
     _givenPhotos.addAll(paths);
     if (busy.value) return ShareOffer.refusedBusy;
     if (_reviewing || phase.value == StockSheetPhase.awaitingChoice) {
-      _hold(paths);
+      unawaited(_holdNew(paths));
       return ShareOffer.pending;
     }
     reset();
     sharedPaths.assignAll(paths);
     shareSerial.value++;
     return ShareOffer.started;
+  }
+
+  /// [_hold]s the photos of [paths] whose content is new. When there are
+  /// none, bumps [alreadyListed] instead and holds nothing.
+  Future<void> _holdNew(List<String> paths) async {
+    final generation = _generation;
+    try {
+      final fresh = await _newByContent(_newPhotos(paths));
+      if (_stale(generation)) return;
+      if (fresh.isEmpty) {
+        alreadyListed.value++;
+      } else {
+        _hold(fresh);
+      }
+    } catch (e, st) {
+      _log('fingerprinting a held share failed', e, st);
+      if (!_stale(generation)) _hold(paths);
+    }
   }
 
   /// Adds [paths] to [pendingShare], each photo once, order kept. Always
@@ -622,6 +724,7 @@ class StockSheetController extends GetxController {
     _deleteCreatedFiles();
     unawaited(_deleteSharedCopies(_givenPhotos.toList()));
     _givenPhotos.clear();
+    _fingerprintOf.clear();
     super.onClose();
   }
 
@@ -633,6 +736,7 @@ class StockSheetController extends GetxController {
     thumbnails.clear();
     review.clear();
     pendingShare.clear();
+    _fingerprintOf.clear();
     errorMessage.value = null;
     _scans = const [];
   }
@@ -664,24 +768,41 @@ class StockSheetController extends GetxController {
   }
 
   /// Deletes the photos in [paths] that lie inside the app's temporary
-  /// (cache) folder. Anything outside it, such as the gallery original, is
-  /// never touched.
+  /// (cache) folder or one of the native intake folders (on iOS the App Group,
+  /// for a share, and `NSTemporaryDirectory()`, for drops, "Choose files…"
+  /// and gallery copies). Anything outside them, such as the gallery original,
+  /// is never touched.
   Future<void> _deleteSharedCopies(List<String> paths) async {
     if (paths.isEmpty) return;
+    final roots = <String>[];
     try {
-      final root = p.normalize(p.absolute((await _tempDir()).path));
-      for (final path in paths) {
-        final full = p.normalize(p.absolute(path));
-        if (!p.isWithin(root, full)) continue;
-        try {
-          final file = File(full);
-          if (await file.exists()) await file.delete();
-        } catch (e, st) {
-          _log('could not delete $full', e, st);
+      roots.add(p.normalize(p.absolute((await _tempDir()).path)));
+    } catch (e, st) {
+      _log('temporary folder lookup failed', e, st);
+    }
+    try {
+      for (final folder in await _extraCleanupRoots()) {
+        // Native input is not trusted: an empty, relative or filesystem-root
+        // folder would make every given path deletable.
+        if (folder.isEmpty ||
+            !p.isAbsolute(folder) ||
+            p.normalize(folder) == p.rootPrefix(folder)) {
+          continue;
         }
+        roots.add(p.normalize(p.absolute(folder)));
       }
     } catch (e, st) {
-      _log('shared photo clean-up failed', e, st);
+      _log('intake folder lookup failed', e, st);
+    }
+    for (final path in paths) {
+      final full = p.normalize(p.absolute(path));
+      if (!roots.any((root) => p.isWithin(root, full))) continue;
+      try {
+        final file = File(full);
+        if (await file.exists()) await file.delete();
+      } catch (e, st) {
+        _log('could not delete $full', e, st);
+      }
     }
   }
 

@@ -8,6 +8,9 @@ import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 
 /// Records [start] instead of running a job.
 class _SpyStockSheetController extends StockSheetController {
+  _SpyStockSheetController()
+    : super(fingerprint: (paths) async => {for (final p in paths) p: 'fp:$p'});
+
   int starts = 0;
 
   @override
@@ -24,6 +27,11 @@ void main() {
   late String route;
   late List<List<String>> opened;
   late List<String> notices;
+  late StreamController<List<String>> drops;
+  late StreamController<int> dropFailures;
+  late StreamController<void> resumes;
+  late List<String> stranded;
+  late int handled;
   _SpyStockSheetController? sheet;
 
   setUp(() {
@@ -35,11 +43,19 @@ void main() {
     opened = [];
     notices = [];
     sheet = null;
+    drops = StreamController<List<String>>.broadcast();
+    dropFailures = StreamController<int>.broadcast();
+    resumes = StreamController<void>.broadcast();
+    stranded = [];
+    handled = 0;
   });
 
   tearDown(() async {
     Get.reset();
     await warm.close();
+    await drops.close();
+    await dropFailures.close();
+    await resumes.close();
   });
 
   Future<ShareIntakeService> make() async {
@@ -53,6 +69,18 @@ void main() {
         openStockSheet: opened.add,
         activeStockSheet: () => sheet,
         notify: notices.add,
+        drops: drops.stream,
+        dropFailures: dropFailures.stream,
+        resumes: resumes.stream,
+        strandedShare: () async {
+          final taken = stranded;
+          stranded = [];
+          return taken;
+        },
+        markShareHandled: () async {
+          handled++;
+          stranded = [];
+        },
       ),
     );
     // Let the initial-share future and stream listeners settle.
@@ -167,7 +195,7 @@ void main() {
 
       await share(['second.jpg']);
 
-      expect(notices, ['A stock sheet is already being made.']);
+      expect(notices, ['Items from Photos is already generating a file.']);
       expect(busySheet.starts, 0);
       expect(busySheet.sharedPaths, ['first.jpg']);
       expect(busySheet.shareSerial.value, 0);
@@ -189,6 +217,7 @@ void main() {
       await make();
 
       await share(['second.jpg']);
+      await pumpEventQueue();
 
       expect(notices, isEmpty);
       expect(opened, isEmpty);
@@ -217,6 +246,134 @@ void main() {
     expect(idleSheet.phase.value, StockSheetPhase.idle);
   });
 
+  test('a drop is delivered like a share', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await make();
+
+    drops.add(['/d/a.jpg']);
+    await pumpEventQueue();
+
+    expect(opened, [
+      ['/d/a.jpg'],
+    ]);
+  });
+
+  test('a drop while a sheet is being made shows the busy message', () async {
+    signedIn.value = true;
+    route = AppRoutes.STOCK_SHEET;
+    sheet = _SpyStockSheetController()
+      ..sharedPaths.assignAll(['first.jpg'])
+      ..busy.value = true;
+    await make();
+
+    drops.add(['/d/b.jpg']);
+    await pumpEventQueue();
+
+    expect(notices, [ShareIntakeService.busyMessage]);
+    expect(opened, isEmpty);
+  });
+
+  test('a drop with no readable photo says so and opens nothing', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await make();
+
+    dropFailures.add(2);
+    await pumpEventQueue();
+
+    expect(notices, ["Couldn't read these photos."]);
+    expect(ShareIntakeService.dropFailedMessage, "Couldn't read these photos.");
+    expect(opened, isEmpty);
+  });
+
+  test('a warm share marks the share handled', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await make();
+
+    await share(['w.jpg']);
+
+    expect(handled, 1);
+  });
+
+  const delay = Duration(milliseconds: 20);
+
+  Future<ShareIntakeService> makeStranded(
+    Future<List<String>> Function() strandedShare, {
+    Future<void> Function()? markHandled,
+  }) async {
+    final service = Get.put(
+      ShareIntakeService(
+        warmShares: warm.stream,
+        initialShare: () async => [],
+        resetShare: () => resets++,
+        isAuthenticated: signedIn,
+        currentRoute: () => route,
+        openStockSheet: opened.add,
+        activeStockSheet: () => sheet,
+        notify: notices.add,
+        drops: drops.stream,
+        dropFailures: dropFailures.stream,
+        resumes: resumes.stream,
+        strandedShare: strandedShare,
+        markShareHandled: markHandled ?? () async => handled++,
+        strandedDelay: delay,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    return service;
+  }
+
+  test('a stranded share is picked up after resume', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await makeStranded(() async => ['/g/a.jpg']);
+
+    resumes.add(null);
+    await Future<void>.delayed(Duration.zero);
+    expect(opened, isEmpty, reason: 'still inside the delay');
+
+    await Future<void>.delayed(delay * 3);
+    expect(opened, [
+      ['/g/a.jpg'],
+    ]);
+  });
+
+  test('a stranded share is picked up at start-up without a resume', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await makeStranded(() async => ['/g/cold.jpg']);
+    expect(opened, isEmpty, reason: 'still inside the delay');
+
+    await Future<void>.delayed(delay * 3);
+    expect(opened, [
+      ['/g/cold.jpg'],
+    ]);
+  });
+
+  test('a share delivered by URL is not picked up again on resume', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    var strandedLeft = ['/g/a.jpg'];
+    await makeStranded(
+      () async => strandedLeft,
+      markHandled: () async {
+        handled++;
+        strandedLeft = [];
+      },
+    );
+
+    await share(['/g/a.jpg']);
+    resumes.add(null);
+    await Future<void>.delayed(delay * 3);
+
+    expect(opened, [
+      ['/g/a.jpg'],
+    ]);
+    expect(handled, 1);
+  });
+
   test('closing the service stops listening', () async {
     signedIn.value = true;
     route = AppRoutes.HOME;
@@ -225,6 +382,9 @@ void main() {
 
     await Get.delete<ShareIntakeService>(force: true);
     expect(warm.hasListener, isFalse);
+    expect(drops.hasListener, isFalse);
+    expect(dropFailures.hasListener, isFalse);
+    expect(resumes.hasListener, isFalse);
 
     signedIn.value = false;
     signedIn.value = true;

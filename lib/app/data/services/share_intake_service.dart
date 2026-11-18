@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
@@ -28,6 +30,12 @@ class ShareIntakeService extends GetxService {
     void Function(List<String> paths)? openStockSheet,
     StockSheetController? Function()? activeStockSheet,
     void Function(String message)? notify,
+    Stream<List<String>>? drops,
+    Stream<int>? dropFailures,
+    Future<List<String>> Function()? strandedShare,
+    Future<void> Function()? markShareHandled,
+    Stream<void>? resumes,
+    this.strandedDelay = const Duration(milliseconds: 1500),
   }) : _warmShares = warmShares ?? _pluginWarmShares(),
        _initialShare = initialShare ?? _pluginInitialShare,
        _resetShare = resetShare ?? _pluginReset,
@@ -36,9 +44,18 @@ class ShareIntakeService extends GetxService {
        _openStockSheet = openStockSheet ?? _defaultOpen,
        _activeStockSheet = activeStockSheet ?? _defaultActiveStockSheet,
        _notify =
-           notify ?? ((message) => GlobalSnackbar.warning(message: message));
+           notify ?? ((message) => GlobalSnackbar.warning(message: message)),
+       _drops = drops,
+       _dropFailures = dropFailures,
+       _strandedShare = strandedShare,
+       _markShareHandled = markShareHandled,
+       _resumes = resumes;
 
-  static const String busyMessage = 'A stock sheet is already being made.';
+  static const String busyMessage =
+      'Items from Photos is already generating a file.';
+
+  /// A drop onto the window where no photo could be copied.
+  static const String dropFailedMessage = "Couldn't read these photos.";
 
   /// Routes that are replaced wholesale once the session is known.
   static const Set<String> _handOverRoutes = {
@@ -56,11 +73,27 @@ class ShareIntakeService extends GetxService {
   final void Function(List<String> paths) _openStockSheet;
   final StockSheetController? Function() _activeStockSheet;
   final void Function(String message) _notify;
+  final Stream<List<String>>? _drops;
+  final Stream<int>? _dropFailures;
+  final Future<List<String>> Function()? _strandedShare;
+  final Future<void> Function()? _markShareHandled;
+  final Stream<void>? _resumes;
+
+  /// How long after the app resumes to wait for a share's URL to arrive
+  /// before looking for a stranded share. A URL-delivered share marks itself
+  /// handled in that time, so it is not delivered twice.
+  final Duration strandedDelay;
 
   /// Shared photos waiting for sign-in or for the app to reach HOME.
   final pendingPhotos = <String>[].obs;
 
   StreamSubscription<List<String>>? _warmSubscription;
+  StreamSubscription<List<String>>? _dropSubscription;
+  StreamSubscription<int>? _dropFailureSubscription;
+  StreamSubscription<void>? _resumeSubscription;
+  StreamController<void>? _lifecycleResumes;
+  AppLifecycleListener? _lifecycleListener;
+  Timer? _strandedTimer;
   Worker? _authWorker;
 
   RxBool get _signedIn =>
@@ -70,16 +103,38 @@ class ShareIntakeService extends GetxService {
   void onInit() {
     super.onInit();
     _warmSubscription = _warmShares.listen(
-      deliver,
+      _deliverShared,
       onError: (Object e, StackTrace st) => _log('share stream failed', e, st),
+    );
+    // The drops stream is broadcast, so it must be listened to from the start.
+    _dropSubscription = (_drops ?? NativeIntake.instance.drops).listen(
+      deliver,
+      onError: (Object e, StackTrace st) => _log('drop stream failed', e, st),
+    );
+    _dropFailureSubscription =
+        (_dropFailures ?? NativeIntake.instance.dropFailures).listen(
+          (_) => _notify(dropFailedMessage),
+          onError: (Object e, StackTrace st) =>
+              _log('drop failure stream failed', e, st),
+        );
+    _resumeSubscription = (_resumes ?? _lifecycleResumeStream()).listen(
+      (_) => _scheduleStrandedCheck(),
     );
     _authWorker = ever<bool>(_signedIn, (_) => _openPending());
     unawaited(_takeInitialShare());
+    // A cold launch whose share URL never arrives leaves the share stranded.
+    _scheduleStrandedCheck();
   }
 
   @override
   void onClose() {
     _warmSubscription?.cancel();
+    _dropSubscription?.cancel();
+    _dropFailureSubscription?.cancel();
+    _resumeSubscription?.cancel();
+    _strandedTimer?.cancel();
+    _lifecycleListener?.dispose();
+    _lifecycleResumes?.close();
     _authWorker?.dispose();
     super.onClose();
   }
@@ -104,6 +159,44 @@ class ShareIntakeService extends GetxService {
     _openPending();
   }
 
+  /// A share that arrived by URL: deliver it, then tell the native side so the
+  /// copy it saved is not offered again as stranded.
+  void _deliverShared(List<String> paths) {
+    deliver(paths);
+    if (paths.isNotEmpty) unawaited(_markHandled());
+  }
+
+  Future<void> _markHandled() async {
+    try {
+      await (_markShareHandled ?? NativeIntake.instance.markShareHandled)();
+    } catch (e, st) {
+      _log('marking the share handled failed', e, st);
+    }
+  }
+
+  Stream<void> _lifecycleResumeStream() {
+    final controller = _lifecycleResumes = StreamController<void>.broadcast();
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () => controller.add(null),
+    );
+    return controller.stream;
+  }
+
+  void _scheduleStrandedCheck() {
+    _strandedTimer?.cancel();
+    _strandedTimer = Timer(strandedDelay, () => unawaited(_takeStranded()));
+  }
+
+  Future<void> _takeStranded() async {
+    try {
+      deliver(
+        await (_strandedShare ?? NativeIntake.instance.takeStrandedShare)(),
+      );
+    } catch (e, st) {
+      _log('stranded share failed', e, st);
+    }
+  }
+
   /// Called on every route change; opens the sheet once the app reaches a
   /// signed-in screen.
   void onRouteChanged() => _openPending();
@@ -118,7 +211,7 @@ class ShareIntakeService extends GetxService {
 
   Future<void> _takeInitialShare() async {
     try {
-      deliver(await _initialShare());
+      _deliverShared(await _initialShare());
     } catch (e, st) {
       _log('initial share failed', e, st);
     }
