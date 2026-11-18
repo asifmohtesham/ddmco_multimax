@@ -767,8 +767,9 @@ class StockSheetController extends GetxController {
   }
 
   /// Deletes the photos in [paths] that lie inside the app's temporary
-  /// (cache) folder or one of the native intake folders (the App Group copy
-  /// of a Finder share). Anything outside them, such as the gallery original,
+  /// (cache) folder or one of the native intake folders (on iOS the App Group,
+  /// for a share, and `NSTemporaryDirectory()`, for drops, "Choose files…"
+  /// and gallery copies). Anything outside them, such as the gallery original,
   /// is never touched.
   Future<void> _deleteSharedCopies(List<String> paths) async {
     if (paths.isEmpty) return;

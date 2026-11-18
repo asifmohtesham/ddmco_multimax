@@ -1621,6 +1621,33 @@ void main() {
       },
     );
 
+    test('copies in sub-folders of the native temporary folder are deleted, '
+        'the folders kept', () async {
+      // sharedFolders returns NSTemporaryDirectory() itself: "Choose files…"
+      // copies land in its <bundle id>-Inbox/, drops in its dropped/.
+      final inbox = Directory('${group.path}/com.ddmco.multimax-Inbox')
+        ..createSync();
+      final dropped = Directory('${group.path}/dropped')..createSync();
+      final picked = File('${inbox.path}/picked.jpg')..writeAsBytesSync([1]);
+      final drop = File('${dropped.path}/drop.png')..writeAsBytesSync([1]);
+      final kept = File('${inbox.path}/not-given.jpg')..writeAsBytesSync([1]);
+      final c = make(
+        _FakeDecoder({}),
+        _FakeProvider(),
+        extraRoots: () async => [group.path],
+      );
+      await c.start([picked.path, drop.path]);
+
+      c.onClose();
+      await untilGone([picked, drop]);
+
+      expect(picked.existsSync(), isFalse);
+      expect(drop.existsSync(), isFalse);
+      expect(kept.existsSync(), isTrue, reason: 'only given paths go');
+      expect(inbox.existsSync(), isTrue);
+      expect(dropped.existsSync(), isTrue);
+    });
+
     test('empty, relative and root folders are not clean-up roots', () async {
       final y = File('${elsewhere.path}/y.jpg')..writeAsBytesSync([1]);
       final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
@@ -1638,20 +1665,23 @@ void main() {
       expect(y.existsSync(), isTrue);
     });
 
-    test('a failing extra-folder lookup still cleans the temp folder', () async {
-      final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
-      final c = make(
-        _FakeDecoder({}),
-        _FakeProvider(),
-        extraRoots: () async => throw Exception('no channel'),
-      );
-      await c.start([t.path]);
+    test(
+      'a failing extra-folder lookup still cleans the temp folder',
+      () async {
+        final t = File('${tmp.path}/t.jpg')..writeAsBytesSync([1]);
+        final c = make(
+          _FakeDecoder({}),
+          _FakeProvider(),
+          extraRoots: () async => throw Exception('no channel'),
+        );
+        await c.start([t.path]);
 
-      c.onClose();
-      await untilGone([t]);
+        c.onClose();
+        await untilGone([t]);
 
-      expect(t.existsSync(), isFalse);
-    });
+        expect(t.existsSync(), isFalse);
+      },
+    );
   });
 
   group('a share during an add', () {

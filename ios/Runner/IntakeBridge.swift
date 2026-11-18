@@ -7,18 +7,22 @@ import UniformTypeIdentifiers
 ///
 /// - `isRunningOnMac` → `Bool`: whether this iPhone/iPad app runs on a Mac.
 /// - `sharedFolders` → `[String]`: the App Group container and
-///   `NSTemporaryDirectory()/dropped`, the only folders whose photo copies
-///   the app may delete.
+///   `NSTemporaryDirectory()`, the only folders (besides the cache) whose
+///   photo copies the app may delete. The temporary folder holds the drops
+///   (`dropped/`), the copies "Choose files…" makes (the document picker's
+///   `<bundle id>-Inbox/`) and image_picker's gallery copies.
 /// - `takeStrandedShare` → `[String]`: the paths of a share the extension
-///   left in the App Group without opening the app, once per share id.
+///   left in the App Group without opening the app, once per share id; only
+///   the copies still there and less than a day old.
 /// - `markShareHandled`: records the current share id as handled.
 /// - native → Dart `dropped` with `[String]`: photos dropped onto the window,
 ///   copied into `NSTemporaryDirectory()/dropped`.
 /// - native → Dart `dropFailed` with `Int`: a drop of that many photos none
 ///   of which could be copied.
 ///
-/// On registration it also deletes photo copies older than a day left in
-/// those two folders (by a crash, or a share that was never opened).
+/// On registration it also deletes photo copies older than a day left
+/// directly in the App Group, `dropped/` and the picker's `-Inbox/` (by a
+/// crash, or a share that was never opened).
 final class IntakeBridge: NSObject, FlutterPlugin, UIDropInteractionDelegate {
   static let channelName = "com.ddmco.multimax/intake"
 
@@ -95,10 +99,28 @@ final class IntakeBridge: NSObject, FlutterPlugin, UIDropInteractionDelegate {
     }
   }
 
-  /// Exactly the two folders, never a parent: the Dart side deletes the photos
-  /// it is given only when they lie within these.
+  private static var temporaryFolderURL: URL {
+    URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+  }
+
+  /// Where the document picker (opened `asCopy`, as file_selector does) puts
+  /// its copies: `NSTemporaryDirectory()/<bundle id>-Inbox`. Not created here.
+  private static var pickerInboxURL: URL? {
+    guard let bundleId = Bundle.main.bundleIdentifier else { return nil }
+    return temporaryFolderURL.appendingPathComponent("\(bundleId)-Inbox", isDirectory: true)
+  }
+
+  /// The App Group and the app's own temporary folder, never a parent of
+  /// either: the Dart side deletes only the photos it was given, and only
+  /// when they lie within these.
   private static func sharedFolderURLs() -> [URL] {
-    [groupContainerURL, droppedFolderURL()].compactMap { $0 }
+    [groupContainerURL, temporaryFolderURL].compactMap { $0 }
+  }
+
+  /// The folders the start-up sweep empties of old photo copies, each read
+  /// without recursing.
+  private static func sweptFolderURLs() -> [URL] {
+    [groupContainerURL, droppedFolderURL(), pickerInboxURL].compactMap { $0 }
   }
 
   // MARK: - Stranded shares
@@ -112,8 +134,16 @@ final class IntakeBridge: NSObject, FlutterPlugin, UIDropInteractionDelegate {
       let data = defaults.data(forKey: shareKey),
       let entries = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
     else { return [] }
+    // Handled whatever is left: an old share is not offered again.
     UserDefaults.standard.set(shareId, forKey: handledShareIdKey)
+    // The start-up sweep may have deleted (or be about to delete) the copies
+    // of a share older than a day; those would only come back unreadable.
+    let cutoff = Date().addingTimeInterval(-sweepAge)
     return entries.compactMap { $0["path"] as? String }.map(filePath(from:))
+      .filter { path in
+        guard let arrived = arrivalDate(of: URL(fileURLWithPath: path)) else { return false }
+        return arrived >= cutoff
+      }
   }
 
   private static func markShareHandled() {
@@ -134,31 +164,37 @@ final class IntakeBridge: NSObject, FlutterPlugin, UIDropInteractionDelegate {
 
   // MARK: - Sweep
 
-  /// Deletes photo copies older than a day directly in the App Group root and
-  /// in `dropped/`. It never recurses, so `Library/` and the group's
-  /// preferences are left alone.
+  private static let dateKeys: [URLResourceKey] = [
+    .isRegularFileKey, .contentModificationDateKey, .attributeModificationDateKey,
+    .creationDateKey,
+  ]
+
+  /// When a copy arrived: a copy keeps its original's dates, but the
+  /// attribute (inode) date is the copy's own, so the newest of the three.
+  /// `nil` when the file is missing or not a regular file.
+  private static func arrivalDate(of file: URL) -> Date? {
+    guard let values = try? file.resourceValues(forKeys: Set(dateKeys)),
+      values.isRegularFile == true
+    else { return nil }
+    return [
+      values.contentModificationDate, values.attributeModificationDate, values.creationDate,
+    ].compactMap { $0 }.max()
+  }
+
+  /// Deletes photo copies older than a day directly in the App Group root,
+  /// `dropped/` and the picker's `-Inbox/`. It never recurses, so `Library/`
+  /// and the group's preferences are left alone, and it never touches the
+  /// temporary folder's own root.
   private static func sweepOldCopies() {
-    let keys: [URLResourceKey] = [
-      .isRegularFileKey, .contentModificationDateKey, .attributeModificationDateKey,
-      .creationDateKey,
-    ]
     let cutoff = Date().addingTimeInterval(-sweepAge)
     let fileManager = FileManager.default
-    for folder in sharedFolderURLs() {
+    for folder in sweptFolderURLs() {
       guard
         let files = try? fileManager.contentsOfDirectory(
-          at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
+          at: folder, includingPropertiesForKeys: dateKeys, options: [.skipsHiddenFiles])
       else { continue }
       for file in files where sweptExtensions.contains(file.pathExtension.lowercased()) {
-        guard let values = try? file.resourceValues(forKeys: Set(keys)),
-          values.isRegularFile == true
-        else { continue }
-        // A copy keeps its original's dates; the attribute (inode) date is the
-        // copy's own, so the newest of the three is when it arrived here.
-        let newest = [
-          values.contentModificationDate, values.attributeModificationDate, values.creationDate,
-        ].compactMap { $0 }.max()
-        guard let newest, newest < cutoff else { continue }
+        guard let arrived = arrivalDate(of: file), arrived < cutoff else { continue }
         try? fileManager.removeItem(at: file)
       }
     }
