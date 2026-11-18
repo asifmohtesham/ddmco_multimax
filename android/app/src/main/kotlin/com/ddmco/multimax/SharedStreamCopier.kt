@@ -26,50 +26,97 @@ import java.io.File
  * are left alone: the plugin already copies those into the cache. The copies
  * made here also live in the cache, so the stock sheet deletes them when it
  * closes, as it does the plugin's.
+ *
+ * A document URI that cannot be copied is dropped, never passed on, because
+ * the plugin would throw on it. Copying runs on the main thread, as the
+ * plugin's own copying does, because it must finish before the plugin reads
+ * the intent.
  */
 object SharedStreamCopier {
     private const val TAG = "SharedStreamCopier"
 
+    /** Rewrites a share intent in place. Never throws. */
     fun normalise(context: Context, intent: Intent?) {
         if (intent == null) return
-        when (intent.action) {
-            Intent.ACTION_SEND -> {
-                val uri = stream(intent) ?: return
-                val copied = copyIfDocument(context, uri, 0) ?: return
-                intent.putExtra(Intent.EXTRA_STREAM, copied)
-                intent.clipData = null
-            }
-            Intent.ACTION_SEND_MULTIPLE -> {
-                val uris = streams(intent) ?: return
-                var changed = false
-                val out = ArrayList<Uri>(uris.size)
-                uris.forEachIndexed { i, uri ->
-                    val copied = copyIfDocument(context, uri, i)
-                    if (copied != null) changed = true
-                    out.add(copied ?: uri)
+        try {
+            when (intent.action) {
+                Intent.ACTION_SEND -> {
+                    val uri = stream(intent) ?: return
+                    when (val r = copyIfDocument(context, uri, 0)) {
+                        is Result.Copied -> {
+                            intent.putExtra(Intent.EXTRA_STREAM, r.uri)
+                            // The original URI is no longer read; the read
+                            // grant belongs to the activity, not this field.
+                            intent.clipData = null
+                        }
+                        Result.Failed -> dropShare(intent)
+                        Result.NotDocument -> Unit
+                    }
                 }
-                if (changed) {
-                    intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, out)
-                    intent.clipData = null
+                Intent.ACTION_SEND_MULTIPLE -> {
+                    val uris = streams(intent) ?: return
+                    var changed = false
+                    val out = ArrayList<Uri>(uris.size)
+                    uris.forEachIndexed { i, uri ->
+                        when (val r = copyIfDocument(context, uri, i)) {
+                            is Result.Copied -> { out.add(r.uri); changed = true }
+                            Result.Failed -> changed = true
+                            Result.NotDocument -> out.add(uri)
+                        }
+                    }
+                    if (!changed) return
+                    if (out.isEmpty()) {
+                        dropShare(intent)
+                    } else {
+                        intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, out)
+                        intent.clipData = null
+                    }
                 }
             }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Could not prepare the shared photos; ignoring the share", t)
+            dropShare(intent)
         }
     }
 
-    private fun copyIfDocument(context: Context, uri: Uri, index: Int): Uri? {
-        if (uri.scheme != "content") return null
-        if (!DocumentsContract.isDocumentUri(context, uri)) return null
+    /**
+     * Turns a share into a plain launch, so receive_sharing_intent reports no
+     * share. Used for a share that cannot be read, and for the stale share an
+     * activity is restored with after the process was killed (its copies are
+     * gone by then).
+     */
+    fun dropShare(intent: Intent) {
+        if (intent.action != Intent.ACTION_SEND &&
+            intent.action != Intent.ACTION_SEND_MULTIPLE) return
+        intent.action = Intent.ACTION_MAIN
+        intent.removeExtra(Intent.EXTRA_STREAM)
+        intent.clipData = null
+    }
+
+    private sealed class Result {
+        data class Copied(val uri: Uri) : Result()
+        object Failed : Result()
+        object NotDocument : Result()
+    }
+
+    private fun copyIfDocument(context: Context, uri: Uri?, index: Int): Result {
+        if (uri == null) return Result.NotDocument
+        if (uri.scheme != "content") return Result.NotDocument
+        if (!DocumentsContract.isDocumentUri(context, uri)) return Result.NotDocument
+        var target: File? = null
         return try {
-            val name = displayName(context, uri) ?: "photo.jpg"
+            val name = (displayName(context, uri) ?: "photo.jpg").takeLast(120)
             val dir = File(context.cacheDir, "shared").apply { mkdirs() }
-            val target = File(dir, "${System.currentTimeMillis()}_${index}_$name")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                target.outputStream().use { input.copyTo(it) }
-            } ?: return null
-            Uri.fromFile(target)
+            val file = File(dir, "${System.currentTimeMillis()}_${index}_$name")
+            target = file
+            val input = context.contentResolver.openInputStream(uri)
+                ?: return Result.Failed
+            input.use { i -> file.outputStream().use { i.copyTo(it) } }
+            Result.Copied(Uri.fromFile(file))
         } catch (e: Exception) {
             Log.w(TAG, "Could not copy shared document $uri", e)
-            null
+            target?.delete()
+            Result.Failed
         }
     }
 
