@@ -118,7 +118,15 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        // Before super: receive_sharing_intent reads the intent there.
+        SharedStreamCopier.normalise(this, intent)
+        super.onNewIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super: plugins attach (and read the share) inside it.
+        if (savedInstanceState == null) SharedStreamCopier.normalise(this, intent)
         super.onCreate(savedInstanceState)
 
         // 2. Register Receiver Immediately (Robustness)
