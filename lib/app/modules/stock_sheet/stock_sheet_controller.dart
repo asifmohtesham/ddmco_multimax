@@ -883,7 +883,7 @@ class StockSheetController extends GetxController {
     Uint8List bytes,
     String mime,
   ) async {
-    final file = File('${dir.path}/$name');
+    final file = File(p.join(dir.path, name));
     await file.writeAsBytes(bytes, flush: true);
     _created.add(file);
     return XFile(file.path, mimeType: mime, name: name);
