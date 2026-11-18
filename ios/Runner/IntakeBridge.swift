@@ -14,6 +14,8 @@ import UniformTypeIdentifiers
 /// - `markShareHandled`: records the current share id as handled.
 /// - native → Dart `dropped` with `[String]`: photos dropped onto the window,
 ///   copied into `NSTemporaryDirectory()/dropped`.
+/// - native → Dart `dropFailed` with `Int`: a drop of that many photos none
+///   of which could be copied.
 ///
 /// On registration it also deletes photo copies older than a day left in
 /// those two folders (by a crash, or a share that was never opened).
@@ -218,7 +220,11 @@ final class IntakeBridge: NSObject, FlutterPlugin, UIDropInteractionDelegate {
   func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
     let providers = session.items.map { $0.itemProvider }
       .filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
-    guard !providers.isEmpty, let folder = Self.droppedFolderURL() else { return }
+    guard !providers.isEmpty else { return }
+    guard let folder = Self.droppedFolderURL() else {
+      channel.invokeMethod("dropFailed", arguments: providers.count)
+      return
+    }
 
     let copies = DropCopies(count: providers.count)
     let group = DispatchGroup()
@@ -232,9 +238,14 @@ final class IntakeBridge: NSObject, FlutterPlugin, UIDropInteractionDelegate {
       }
     }
     group.notify(queue: .main) { [weak self] in
+      guard let self else { return }
       let paths = copies.paths()
-      guard let self, !paths.isEmpty else { return }
-      self.channel.invokeMethod("dropped", arguments: paths)
+      if paths.isEmpty {
+        // Say so rather than leave the drop doing nothing.
+        self.channel.invokeMethod("dropFailed", arguments: providers.count)
+      } else {
+        self.channel.invokeMethod("dropped", arguments: paths)
+      }
     }
   }
 

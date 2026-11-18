@@ -9,9 +9,7 @@ import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 /// Records [start] instead of running a job.
 class _SpyStockSheetController extends StockSheetController {
   _SpyStockSheetController()
-    : super(
-        fingerprint: (paths) async => {for (final p in paths) p: 'fp:$p'},
-      );
+    : super(fingerprint: (paths) async => {for (final p in paths) p: 'fp:$p'});
 
   int starts = 0;
 
@@ -30,6 +28,7 @@ void main() {
   late List<List<String>> opened;
   late List<String> notices;
   late StreamController<List<String>> drops;
+  late StreamController<int> dropFailures;
   late StreamController<void> resumes;
   late List<String> stranded;
   late int handled;
@@ -45,6 +44,7 @@ void main() {
     notices = [];
     sheet = null;
     drops = StreamController<List<String>>.broadcast();
+    dropFailures = StreamController<int>.broadcast();
     resumes = StreamController<void>.broadcast();
     stranded = [];
     handled = 0;
@@ -54,6 +54,7 @@ void main() {
     Get.reset();
     await warm.close();
     await drops.close();
+    await dropFailures.close();
     await resumes.close();
   });
 
@@ -69,6 +70,7 @@ void main() {
         activeStockSheet: () => sheet,
         notify: notices.add,
         drops: drops.stream,
+        dropFailures: dropFailures.stream,
         resumes: resumes.stream,
         strandedShare: () async {
           final taken = stranded;
@@ -272,6 +274,19 @@ void main() {
     expect(opened, isEmpty);
   });
 
+  test('a drop with no readable photo says so and opens nothing', () async {
+    signedIn.value = true;
+    route = AppRoutes.HOME;
+    await make();
+
+    dropFailures.add(2);
+    await pumpEventQueue();
+
+    expect(notices, ["Couldn't read these photos."]);
+    expect(ShareIntakeService.dropFailedMessage, "Couldn't read these photos.");
+    expect(opened, isEmpty);
+  });
+
   test('a warm share marks the share handled', () async {
     signedIn.value = true;
     route = AppRoutes.HOME;
@@ -299,6 +314,7 @@ void main() {
         activeStockSheet: () => sheet,
         notify: notices.add,
         drops: drops.stream,
+        dropFailures: dropFailures.stream,
         resumes: resumes.stream,
         strandedShare: strandedShare,
         markShareHandled: markHandled ?? () async => handled++,
@@ -367,6 +383,7 @@ void main() {
     await Get.delete<ShareIntakeService>(force: true);
     expect(warm.hasListener, isFalse);
     expect(drops.hasListener, isFalse);
+    expect(dropFailures.hasListener, isFalse);
     expect(resumes.hasListener, isFalse);
 
     signedIn.value = false;

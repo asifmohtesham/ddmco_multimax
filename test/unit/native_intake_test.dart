@@ -91,4 +91,30 @@ void main() {
     );
     expect(await first, ['/t/a.jpg']);
   });
+
+  test('a dropFailed call is emitted on dropFailures with its count', () async {
+    final intake = make();
+    final first = intake.dropFailures.first;
+    await messenger.handlePlatformMessage(
+      _channel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('dropFailed', 3),
+      ),
+      (_) {},
+    );
+    expect(await first, 3);
+  });
+
+  test('a dropFailed call without a count still reports one photo', () async {
+    final intake = make();
+    final first = intake.dropFailures.first;
+    await messenger.handlePlatformMessage(
+      _channel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        const MethodCall('dropFailed'),
+      ),
+      (_) {},
+    );
+    expect(await first, 1);
+  });
 }

@@ -31,6 +31,7 @@ class ShareIntakeService extends GetxService {
     StockSheetController? Function()? activeStockSheet,
     void Function(String message)? notify,
     Stream<List<String>>? drops,
+    Stream<int>? dropFailures,
     Future<List<String>> Function()? strandedShare,
     Future<void> Function()? markShareHandled,
     Stream<void>? resumes,
@@ -45,11 +46,15 @@ class ShareIntakeService extends GetxService {
        _notify =
            notify ?? ((message) => GlobalSnackbar.warning(message: message)),
        _drops = drops,
+       _dropFailures = dropFailures,
        _strandedShare = strandedShare,
        _markShareHandled = markShareHandled,
        _resumes = resumes;
 
   static const String busyMessage = 'A stock sheet is already being made.';
+
+  /// A drop onto the window where no photo could be copied.
+  static const String dropFailedMessage = "Couldn't read these photos.";
 
   /// Routes that are replaced wholesale once the session is known.
   static const Set<String> _handOverRoutes = {
@@ -68,6 +73,7 @@ class ShareIntakeService extends GetxService {
   final StockSheetController? Function() _activeStockSheet;
   final void Function(String message) _notify;
   final Stream<List<String>>? _drops;
+  final Stream<int>? _dropFailures;
   final Future<List<String>> Function()? _strandedShare;
   final Future<void> Function()? _markShareHandled;
   final Stream<void>? _resumes;
@@ -82,6 +88,7 @@ class ShareIntakeService extends GetxService {
 
   StreamSubscription<List<String>>? _warmSubscription;
   StreamSubscription<List<String>>? _dropSubscription;
+  StreamSubscription<int>? _dropFailureSubscription;
   StreamSubscription<void>? _resumeSubscription;
   StreamController<void>? _lifecycleResumes;
   AppLifecycleListener? _lifecycleListener;
@@ -103,6 +110,12 @@ class ShareIntakeService extends GetxService {
       deliver,
       onError: (Object e, StackTrace st) => _log('drop stream failed', e, st),
     );
+    _dropFailureSubscription =
+        (_dropFailures ?? NativeIntake.instance.dropFailures).listen(
+          (_) => _notify(dropFailedMessage),
+          onError: (Object e, StackTrace st) =>
+              _log('drop failure stream failed', e, st),
+        );
     _resumeSubscription = (_resumes ?? _lifecycleResumeStream()).listen(
       (_) => _scheduleStrandedCheck(),
     );
@@ -116,6 +129,7 @@ class ShareIntakeService extends GetxService {
   void onClose() {
     _warmSubscription?.cancel();
     _dropSubscription?.cancel();
+    _dropFailureSubscription?.cancel();
     _resumeSubscription?.cancel();
     _strandedTimer?.cancel();
     _lifecycleListener?.dispose();

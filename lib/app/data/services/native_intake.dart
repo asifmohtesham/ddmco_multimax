@@ -7,8 +7,9 @@ import 'package:flutter/services.dart';
 /// The app-side end of the iOS intake channel.
 ///
 /// The native side reports whether the iPhone/iPad app is running on a Mac,
-/// hands over photos dropped onto the window and shares stranded by the share
-/// extension, and lists the folders whose copies must be cleaned up.
+/// hands over photos dropped onto the window (or says a drop could not be
+/// read) and shares stranded by the share extension, and lists the folders
+/// whose copies must be cleaned up.
 ///
 /// Every call is guarded to iOS and reads a channel error as "nothing", so
 /// callers never need their own platform checks or error handling.
@@ -30,16 +31,25 @@ class NativeIntake {
   final bool Function() _isIOS;
   final StreamController<List<String>> _drops =
       StreamController<List<String>>.broadcast();
+  final StreamController<int> _dropFailures = StreamController<int>.broadcast();
 
   bool? _onMac;
 
   /// Paths of photos dropped onto the window (Mac only).
   Stream<List<String>> get drops => _drops.stream;
 
+  /// A drop of photos none of which could be copied, with how many there
+  /// were (Mac only).
+  Stream<int> get dropFailures => _dropFailures.stream;
+
   Future<dynamic> _onCall(MethodCall call) async {
-    if (call.method == 'dropped') {
-      final paths = _paths(call.arguments);
-      if (paths.isNotEmpty) _drops.add(paths);
+    switch (call.method) {
+      case 'dropped':
+        final paths = _paths(call.arguments);
+        if (paths.isNotEmpty) _drops.add(paths);
+      case 'dropFailed':
+        final count = call.arguments;
+        _dropFailures.add(count is int && count > 0 ? count : 1);
     }
     return null;
   }
