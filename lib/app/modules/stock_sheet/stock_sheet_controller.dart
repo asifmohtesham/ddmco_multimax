@@ -269,6 +269,10 @@ class StockSheetController extends GetxController {
   /// flight.
   final Set<String> _askingCodes = {};
 
+  /// Bumped by every [_clear], which empties [_askingCodes]: a batch asked
+  /// before it leaves the new review's codes alone.
+  int _clears = 0;
+
   /// The content fingerprint of every photo that entered the run (review,
   /// being added or held), so a copy under another name is recognised.
   final Map<String, String> _fingerprintOf = {};
@@ -994,6 +998,7 @@ class StockSheetController extends GetxController {
     _stockByCode.clear();
     // A batch of the old review still in flight writes nothing into these.
     _askingCodes.clear();
+    _clears++;
   }
 
   /// True once the controller closed or the review was cleared after
@@ -1261,6 +1266,7 @@ class StockSheetController extends GetxController {
     }.toList();
     if (codes.isEmpty) return;
     final generation = _generation;
+    final clears = _clears;
     _askingCodes.addAll(codes);
     Object? failure;
     try {
@@ -1270,7 +1276,7 @@ class StockSheetController extends GetxController {
       failure = e;
     } finally {
       // After a clear, the codes in flight are the new review's.
-      if (!_stale(generation)) _askingCodes.removeAll(codes);
+      if (clears == _clears) _askingCodes.removeAll(codes);
     }
     if (_closed) return;
     if (_stale(generation)) {
