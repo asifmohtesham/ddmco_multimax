@@ -215,8 +215,8 @@ class StockSheetController extends GetxController {
   /// True while [fixCode] looks a typed code up.
   final fixing = false.obs;
 
-  /// True while [addPhotos] reads and checks new photos; [decoded] and
-  /// [total] then count the new batch.
+  /// True while [addPhotos] fingerprints new photos; they are then listed
+  /// and read with the others.
   final adding = false.obs;
 
   /// True while [retryCheck] checks an added photo again.
@@ -245,6 +245,9 @@ class StockSheetController extends GetxController {
 
   /// True while [_pump] runs, so it never runs twice at once.
   bool _pumping = false;
+
+  /// The zoom the reading loop has in hand, if any.
+  _ZoomAttempt? _zoomInHand;
 
   /// Item codes whose Item and stock have been asked for and answered, for
   /// the life of the screen; [_itemsByCode] and [_stockByCode] hold the
@@ -279,7 +282,7 @@ class StockSheetController extends GetxController {
   /// Completes when the [addPhotos] run in flight ends; null when none is.
   Future<void>? _addRun;
 
-  /// The photos the [addPhotos] run in flight is reading and checking.
+  /// The photos the [addPhotos] run in flight is fingerprinting.
   List<String> _addingPaths = const [];
 
   @override
@@ -360,24 +363,33 @@ class StockSheetController extends GetxController {
 
   bool get _reviewing => phase.value == StockSheetPhase.reviewing;
 
-  /// False while a fix, an add, a retry or a run is changing the list, and
-  /// outside the review (e.g. while the out-of-stock question is open).
+  /// False while a fix, a retry or a run is changing the list, and outside
+  /// the review (e.g. while the out-of-stock question is open). Photos being
+  /// read or added do not block it.
   bool get canRemove =>
-      _reviewing &&
-      !(adding.value || rechecking.value || fixing.value || busy.value);
+      _reviewing && !(rechecking.value || fixing.value || busy.value);
 
   /// Takes photo [index] off the list and returns it, or null when [index]
-  /// is out of range or the list is changing. The copy stays on disk, so
-  /// [restore] can bring it back; the clean-up at close removes it.
+  /// is out of range or the list is changing. A photo not yet read is not
+  /// read; the zoom of a photo being zoomed in on is stopped. The copy stays
+  /// on disk, so [restore] can bring it back; the clean-up at close removes
+  /// it.
   ReviewEntry? removeAt(int index) {
     if (_closed || !canRemove) return null;
     if (index < 0 || index >= review.length) return null;
-    return review.removeAt(index);
+    final removed = review.removeAt(index);
+    final zoom = _zoomInHand;
+    if (removed.stage == ReadStage.zooming && zoom?.path == removed.path) {
+      zoom!.stopped = true;
+    }
+    return removed;
   }
 
   /// Puts a removed [entry] back at [index] (clamped to the list), unless
   /// the row is listed again, or its photo was added again under another
-  /// path (the photo's other rows, which share its path, do not count).
+  /// path (the photo's other rows, which share its path, do not count). A
+  /// photo whose read was cut short waits to be read afresh: "Not read yet"
+  /// before its quick pass, "Waiting to zoom in" after it.
   void restore(ReviewEntry entry, int index) {
     if (_closed || !_reviewing) return;
     if (review.any((e) => e.id == entry.id)) return;
@@ -388,7 +400,14 @@ class StockSheetController extends GetxController {
         )) {
       return;
     }
-    review.insert(index.clamp(0, review.length), entry);
+    final back = switch (entry.stage) {
+      ReadStage.reading => entry.copyWith(stage: ReadStage.notRead),
+      ReadStage.zooming => entry.copyWith(stage: ReadStage.waiting),
+      _ => entry,
+    };
+    review.insert(index.clamp(0, review.length), back);
+    unawaited(_pump(_generation));
+    unawaited(_requestStock());
   }
 
   /// True while a fix, an add or a retry is changing the review.
@@ -495,11 +514,10 @@ class StockSheetController extends GetxController {
     ];
   }
 
-  /// Reads [paths] (taken, picked or shared during the review) and appends
-  /// them to [review], checking stock for their codes only. Photos already
-  /// in the list are skipped. Returns null when they were added, else why
-  /// none were. If the check fails they are added unchecked, for
-  /// [retryCheck].
+  /// Appends [paths] (taken, picked or shared during the review) to
+  /// [review] as "Not read yet" rows, which join the reading (see [_pump]).
+  /// Photos already in the list are skipped. Returns null once they are
+  /// listed, without waiting for them to be read, else why none were.
   Future<String?> addPhotos(List<String> paths) async {
     // Even refused, the share plugin's copies go on close.
     _givenPhotos.addAll(paths);
@@ -514,55 +532,30 @@ class StockSheetController extends GetxController {
     // Until the content is known, every photo by path counts as in flight.
     _addingPaths = byPath;
     adding.value = true;
-    decoded.value = 0;
-    total.value = byPath.length;
-    List<String> fresh;
-    var failed = false;
     try {
-      fresh = await _newByContent(byPath);
-    } catch (e, st) {
-      _log('fingerprinting failed', e, st);
-      fresh = const [];
-      failed = true;
-    }
-    // Room beside the review, not counting this run's provisional paths.
-    _addingPaths = const [];
-    final room = photoRoom;
-    if (failed || _stale(generation) || fresh.isEmpty || fresh.length > room) {
-      _addRun = null;
-      adding.value = false;
-      done.complete();
-      if (_stale(generation)) return null;
-      if (failed) return offlineMessage;
-      return fresh.isEmpty ? alreadyListedMessage : roomMessage(room);
-    }
-    _addingPaths = fresh;
-    decoded.value = 0;
-    total.value = fresh.length;
-    try {
-      final List<PhotoScan> scans;
+      final List<String> fresh;
       try {
-        scans = await _decode(fresh, () => _stale(generation));
-      } on UnsupportedError {
-        return unsupportedMessage;
+        fresh = await _newByContent(byPath);
+      } catch (e, st) {
+        _log('fingerprinting failed', e, st);
+        return _stale(generation) ? null : offlineMessage;
       }
       if (_stale(generation)) return null;
-      final checked = await _checkScans(scans);
-      if (_stale(generation)) return null;
-      review.addAll(
-        checked ??
-            [
-              for (final scan in scans)
-                if (scan.items.isEmpty)
-                  ...ReviewBuilder.entriesFor(scan, const {}, const {})
-                else
-                  ReviewEntry(
-                        path: scan.path,
-                        rawValues: scan.rawValues,
-                        unchecked: true,
-                      ),
-            ],
-      );
+      if (fresh.isEmpty) return alreadyListedMessage;
+      // Room beside the review, not counting this run's provisional paths.
+      _addingPaths = const [];
+      final room = photoRoom;
+      if (fresh.length > room) return roomMessage(room);
+      final first = _nextNumber();
+      review.addAll([
+        for (var i = 0; i < fresh.length; i++)
+          ReviewEntry(
+            path: fresh[i],
+            number: first + i,
+            stage: ReadStage.notRead,
+          ),
+      ]);
+      unawaited(_pump(generation));
       return null;
     } finally {
       _addingPaths = const [];
@@ -619,9 +612,10 @@ class StockSheetController extends GetxController {
   }
 
   /// Makes the sheet from [review] in [f], asking about out-of-stock items
-  /// first when any switched-on item is out of stock.
+  /// first when any switched-on item is out of stock. Does nothing while
+  /// photos are being read.
   Future<void> makeSheet(SheetFormat f) async {
-    if (busy.value || _closed || _editing) return;
+    if (busy.value || _closed || _editing || reading.value) return;
     if (!_reviewing || sheetPhotoCount == 0) return;
     busy.value = true;
     try {
@@ -818,6 +812,7 @@ class StockSheetController extends GetxController {
   @override
   void onClose() {
     _closed = true;
+    _generation++;
     unawaited(_readingWatch.cancel());
     // A read in flight finishes first; the reading loop then disposes it.
     if (!_pumping) unawaited(_disposeDecoder());
@@ -942,42 +937,6 @@ class StockSheetController extends GetxController {
     phase.value = StockSheetPhase.reviewing;
   }
 
-  /// Reads every photo in [paths] whole, then zoomed in on when needed, and
-  /// makes its thumbnail, stopping once [abandoned] says so. For
-  /// [addPhotos] only; [start] reads through [_pump].
-  Future<List<PhotoScan>> _decode(
-    List<String> paths,
-    bool Function() abandoned,
-  ) async {
-    final scans = <PhotoScan>[];
-    for (var i = 0; i < paths.length; i++) {
-      if (abandoned()) break;
-      final path = paths[i];
-      List<String>? raw;
-      try {
-        raw = await _decoder.decode(path);
-      } on UnsupportedError {
-        rethrow;
-      } catch (e, st) {
-        _log('decode failed for $path', e, st);
-      }
-      if (abandoned()) break;
-      scans.add(
-        raw == null
-            ? PhotoScan(index: i, path: path, decodeFailed: true)
-            : PhotoScan(
-                index: i,
-                path: path,
-                rawValues: raw,
-                items: StockSheetCodec.itemsInPhoto(raw),
-              ),
-      );
-      await _thumbnail(path, abandoned);
-      decoded.value = i + 1;
-    }
-    return scans;
-  }
-
   /// Puts the thumbnail of photo [path] in [thumbnails], unless [abandoned]
   /// says so by then. Never throws.
   Future<void> _thumbnail(String path, bool Function() abandoned) async {
@@ -1067,20 +1026,25 @@ class StockSheetController extends GetxController {
   Future<bool> _zoomIn(int generation, ReviewEntry entry) async {
     final path = entry.path;
     _replaceRow(entry, [entry.copyWith(stage: ReadStage.zooming)]);
+    final attempt = _zoomInHand = _ZoomAttempt(path);
     List<String>? zoomed;
     try {
       zoomed = await _decoder.zoomIn(
         path,
         whole: entry.rawValues,
-        stopped: () => _stale(generation),
+        stopped: () => attempt.stopped || _stale(generation),
       );
     } on UnsupportedError {
       if (!_closed) _fail(unsupportedMessage);
       return false;
     } catch (e, st) {
       _log('zooming in failed for $path', e, st);
+    } finally {
+      if (identical(_zoomInHand, attempt)) _zoomInHand = null;
     }
-    if (_stale(generation)) return true;
+    // A stopped zoom's answer is thrown away; the photo, if put back, is
+    // read afresh.
+    if (attempt.stopped || _stale(generation)) return true;
     final row = _rowBeing(path, ReadStage.zooming);
     if (row != null) {
       // Nothing more from the tiles: what the whole photo gave stands.
@@ -1318,17 +1282,6 @@ class StockSheetController extends GetxController {
   Future<Uint8List?> _defaultItemThumbnail(String url) async =>
       ThumbnailMaker.fromBytes(await _provider.fetchImage(url));
 
-  /// [_entriesFor] for photos added during the review: null when the check
-  /// failed (403 included), so the caller keeps them unchecked.
-  Future<List<ReviewEntry>?> _checkScans(List<PhotoScan> scans) async {
-    try {
-      return await _entriesFor(scans);
-    } catch (e, st) {
-      _log('stock check of added photos failed', e, st);
-      return null;
-    }
-  }
-
   /// [outOfStockCount] is null when the out-of-stock rows were left out, so
   /// the subtitle does not count rows the file does not have. A failure to
   /// write or share goes back to the review.
@@ -1423,4 +1376,13 @@ class StockSheetController extends GetxController {
     _created.add(file);
     return XFile(file.path, mimeType: mime, name: name);
   }
+}
+
+/// One zoom by the reading loop. [stopped] is set when its row is removed;
+/// it stays with this attempt, so a row put back is zoomed in on afresh.
+class _ZoomAttempt {
+  _ZoomAttempt(this.path);
+
+  final String path;
+  bool stopped = false;
 }

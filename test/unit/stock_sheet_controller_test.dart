@@ -67,6 +67,9 @@ class _FakeDecoder extends PhotoDecoder {
   /// When set, every zoom waits for it.
   Completer<void>? zoomGate;
 
+  /// Every zoom told to stop, in order.
+  final stops = <String>[];
+
   /// Every read, in order: `whole:<path>` or `zoom:<path>`.
   final log = <String>[];
 
@@ -90,7 +93,10 @@ class _FakeDecoder extends PhotoDecoder {
     zooms.add(path);
     log.add('zoom:$path');
     await zoomGate?.future;
-    if (stopped?.call() == true) return null;
+    if (stopped?.call() == true) {
+      stops.add(path);
+      return null;
+    }
     return zoomed[path] ?? whole;
   }
 
@@ -181,6 +187,9 @@ void main() {
   /// When set, the next share throws it.
   Object? shareError;
 
+  /// When set, only the next fingerprinting waits for it.
+  Completer<void>? fingerprintGateOnce;
+
   /// When set, the PDF writer throws it.
   Object? pdfError;
 
@@ -202,6 +211,7 @@ void main() {
     pdfGate = null;
     shareError = null;
     pdfError = null;
+    fingerprintGateOnce = null;
   });
 
   tearDown(() async {
@@ -238,8 +248,11 @@ void main() {
       shared.add(f);
     },
     now: () => DateTime(2026, 11, 17, 9, 5),
-    fingerprint: (paths) async => {
-      for (final path in paths) path: fingerprints[path] ?? 'fp:$path',
+    fingerprint: (paths) async {
+      final once = fingerprintGateOnce;
+      fingerprintGateOnce = null;
+      await once?.future;
+      return {for (final path in paths) path: fingerprints[path] ?? 'fp:$path'};
     },
     tempDir: () async => tmp,
     extraCleanupRoots: extraRoots ?? () async => const [],
@@ -487,6 +500,245 @@ void main() {
       await settled(c);
       expect(c.phase.value, StockSheetPhase.error);
       expect(c.errorMessage.value, StockSheetController.noAccessMessage);
+    });
+  });
+
+  group('rows stay live while reading', () {
+    final eanA = _ean(_a);
+    final eanB = _ean(_b);
+
+    test(
+      'removing the photo being zoomed in on stops it and starts the next',
+      () async {
+        final decoder = _FakeDecoder({'p1': const [], 'p2': const []})
+          ..zoomGate = Completer<void>()
+          ..zoomed.addAll({
+            'p1': [eanA],
+            'p2': [eanB],
+          });
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2']);
+        await pumpEventQueue();
+        expect(c.review.first.stage, ReadStage.zooming);
+        final removed = c.removeAt(0)!;
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(decoder.zooms, ['p1', 'p2']);
+        expect(decoder.stops, ['p1']);
+        expect(c.review.single.path, 'p2');
+        expect(c.review.single.items.single.info.itemCode, _b);
+        expect(removed.path, 'p1');
+      },
+    );
+
+    test(
+      'Undo puts the photo back to wait its turn by its place in the list',
+      () async {
+        final decoder = _FakeDecoder({'p1': const [], 'p2': const []})
+          ..zoomGate = Completer<void>();
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2']);
+        await pumpEventQueue();
+        final removed = c.removeAt(0)!;
+        c.restore(removed, 0);
+        expect(c.review.first.stage, ReadStage.waiting);
+        decoder.zoomGate!.complete();
+        await settled(c);
+        // Stopped, then read afresh before p2: it is first in the list.
+        expect(decoder.zooms, ['p1', 'p1', 'p2']);
+        // The stop belonged to the first attempt only.
+        expect(decoder.stops, ['p1']);
+        expect(c.review.map((e) => e.path), ['p1', 'p2']);
+      },
+    );
+
+    test(
+      'Undo of a photo in its quick pass puts it back as not read yet',
+      () async {
+        final decoder = _FakeDecoder({
+          'p1': [eanA],
+          'p2': [eanB],
+        })..gate = Completer<void>();
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2']);
+        await pumpEventQueue();
+        expect(c.review.first.stage, ReadStage.reading);
+        final removed = c.removeAt(0)!;
+        c.restore(removed, 0);
+        expect(c.review.first.stage, ReadStage.notRead);
+        decoder.gate!.complete();
+        await settled(c);
+        // The read in hand is dropped; the photo is read afresh, in its place.
+        expect(decoder.log, ['whole:p1', 'whole:p1', 'whole:p2']);
+        expect(c.review.map((e) => e.path), ['p1', 'p2']);
+        expect(c.review.map((e) => e.items.single.info.itemCode), [_a, _b]);
+        expect(c.reading.value, isFalse);
+      },
+    );
+
+    test('a photo removed before its turn is never read', () async {
+      final decoder = _FakeDecoder({'p1': const [], 'p2': const []})
+        ..zoomGate = Completer<void>();
+      final c = make(decoder, _FakeProvider());
+      await c.start(['p1', 'p2']);
+      await pumpEventQueue();
+      c.removeAt(1);
+      decoder.zoomGate!.complete();
+      await settled(c);
+      expect(decoder.zooms, ['p1']);
+    });
+
+    test(
+      'a row dragged up is zoomed in on sooner; the photo in hand finishes first',
+      () async {
+        final decoder = _FakeDecoder({
+          'p1': const [],
+          'p2': const [],
+          'p3': const [],
+        })..zoomGate = Completer<void>();
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2', 'p3']);
+        await pumpEventQueue();
+        c.reorder(2, 0); // p3 to the top while p1 is being zoomed in on
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(decoder.zooms, ['p1', 'p3', 'p2']);
+      },
+    );
+
+    test(
+      'a row moved while it is zoomed in on gets its answer at its new place',
+      () async {
+        final decoder =
+            _FakeDecoder({
+                'p1': const [],
+                'p2': [eanB],
+                'p3': [eanB],
+              })
+              ..zoomGate = Completer<void>()
+              ..zoomed['p1'] = [eanA];
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2', 'p3']);
+        await pumpEventQueue();
+        expect(c.review.first.stage, ReadStage.zooming);
+        c.reorder(0, 3); // p1 to the end: p2, p3, p1
+        c.removeAt(0); // p2 goes: p3, p1
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(c.review.map((e) => e.path), ['p3', 'p1']);
+        expect(c.review.map((e) => e.items.single.info.itemCode), [_b, _a]);
+      },
+    );
+
+    test(
+      'a row removed while its stock is being checked settles when put back',
+      () async {
+        final provider = _FakeProvider()..stockGate = Completer<void>();
+        final c = make(
+          _FakeDecoder({
+            'p1': [eanA],
+          }),
+          provider,
+        );
+        await c.start(['p1']);
+        await pumpEventQueue();
+        expect(c.review.single.stage, ReadStage.checkingStock);
+        final removed = c.removeAt(0)!;
+        provider.stockGate!.complete();
+        await pumpEventQueue();
+        c.restore(removed, 0);
+        await settled(c);
+        expect(c.review.single.resolved, isTrue);
+        expect(provider.itemRequests, hasLength(1));
+      },
+    );
+
+    test(
+      'starting again in the middle of a zoom writes nothing into the new review',
+      () async {
+        final decoder =
+            _FakeDecoder({
+                'p1': const [],
+                'q1': [eanB],
+              })
+              ..zoomGate = Completer<void>()
+              ..zoomed['p1'] = [eanA];
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1']);
+        await pumpEventQueue();
+        unawaited(c.start(['q1']));
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(c.review.map((e) => e.path), ['q1']);
+      },
+    );
+
+    test('every photo removed while reading ends the reading', () async {
+      final decoder = _FakeDecoder({'p1': const []})
+        ..zoomGate = Completer<void>();
+      final c = make(decoder, _FakeProvider());
+      await c.start(['p1']);
+      await pumpEventQueue();
+      c.removeAt(0);
+      decoder.zoomGate!.complete();
+      await settled(c);
+      expect(c.review, isEmpty);
+      expect(c.reading.value, isFalse);
+      expect(c.sheetItemCount, 0);
+    });
+
+    test(
+      'photos added during reading join the list and get their quick pass before the next zoom',
+      () async {
+        final decoder = _FakeDecoder({
+          'p1': const [],
+          'p2': const [],
+          'n1': [eanA],
+        })..zoomGate = Completer<void>();
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2']);
+        await pumpEventQueue();
+        expect(await c.addPhotos(['n1']), isNull);
+        expect(c.review.last.number, 3);
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(decoder.log, [
+          'whole:p1',
+          'whole:p2',
+          'zoom:p1',
+          'whole:n1',
+          'zoom:p2',
+        ]);
+      },
+    );
+
+    test('Generate file does nothing until every photo is read', () async {
+      final decoder =
+          _FakeDecoder({
+              'p1': [eanA],
+              'p2': const [],
+            })
+            ..zoomGate = Completer<void>()
+            ..zoomed['p2'] = [eanB];
+      final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
+      await c.start(['p1', 'p2']);
+      await pumpEventQueue();
+      expect(c.review.first.resolved, isTrue);
+      expect(c.review.last.stage, ReadStage.zooming);
+      expect(c.sheetItemCount, 1);
+
+      await c.makeSheet(SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.reviewing);
+      expect(c.result.value, isNull);
+      expect(c.files, isEmpty);
+      expect(shared, isEmpty);
+
+      decoder.zoomGate!.complete();
+      await settled(c);
+      await c.makeSheet(SheetFormat.excel);
+      expect(c.phase.value, StockSheetPhase.done);
+      expect(c.result.value!.rows.map((r) => r.photoPath), ['p1', 'p2']);
+      expect(shared.single, hasLength(1));
     });
   });
 
@@ -1551,14 +1803,18 @@ void main() {
     });
 
     test('new photos go after a reorder, checked by their own codes', () async {
+      const c3 = '1000003';
       final decoder = _FakeDecoder({
         'a.jpg': [_ean(_a)],
         'b.jpg': [_ean(_b)],
         'bad.jpg': null,
-        'd.jpg': [_ean(_b)],
+        'd.jpg': [_ean(c3)],
         'e.jpg': ['not a code'],
       });
-      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final provider = _FakeProvider(
+        stock: {_a: 1, _b: 1, c3: 2},
+        known: const [_a, _b, c3],
+      );
       final c = make(decoder, provider);
       await c.start(['a.jpg', 'b.jpg', 'bad.jpg']);
       await settled(c);
@@ -1567,37 +1823,44 @@ void main() {
 
       final added = c.addPhotos(['d.jpg', 'e.jpg']);
       expect(c.adding.value, isTrue);
-      expect(c.total.value, 2);
       expect(await added, isNull);
+      // Listed at once, not yet read.
+      expect(c.adding.value, isFalse);
+      expect(reviewPaths(c), ['b.jpg', 'bad.jpg', 'a.jpg', 'd.jpg', 'e.jpg']);
+      expect(c.review.map((e) => e.number), [2, 3, 1, 4, 5]);
+      await settled(c);
 
       expect(reviewPaths(c), ['b.jpg', 'bad.jpg', 'a.jpg', 'd.jpg', 'e.jpg']);
-      expect(c.review[3].items.single.code.itemCode, _b);
+      expect(c.review[3].items.single.code.itemCode, c3);
       expect(c.review[3].items.single.stock!.total, 2);
       expect(c.review[4].resolved, isFalse);
       expect(c.review[4].rawValues, ['not a code']);
-      expect(provider.itemRequests.last, [_b]);
-      expect(provider.stockRequests.last, [_b]);
+      expect(provider.itemRequests.last, [c3]);
+      expect(provider.stockRequests.last, [c3]);
       expect(c.thumbnails.keys, containsAll(['d.jpg', 'e.jpg']));
-      expect(c.decoded.value, 2);
-      expect(c.adding.value, isFalse);
       expect(c.phase.value, StockSheetPhase.reviewing);
     });
 
     test(
       'a failed check adds them unchecked; Retry check resolves one',
       () async {
+        const c3 = '1000003';
         final decoder = _FakeDecoder({
           'a.jpg': [_ean(_a)],
           'd.jpg': [_ean(_b)],
-          'e.jpg': [_ean(_a)],
+          'e.jpg': [_ean(c3)],
         });
-        final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+        final provider = _FakeProvider(
+          stock: {_a: 1, _b: 2, c3: 1},
+          known: const [_a, _b, c3],
+        );
         final c = make(decoder, provider);
         await c.start(['a.jpg']);
         await settled(c);
         provider.stockError = Exception('offline');
 
         expect(await c.addPhotos(['d.jpg', 'e.jpg']), isNull);
+        await settled(c);
 
         expect(reviewPaths(c), ['a.jpg', 'd.jpg', 'e.jpg']);
         for (final entry in c.review.skip(1)) {
@@ -1633,6 +1896,7 @@ void main() {
       await settled(c);
       provider.stockError = Exception('offline');
       await c.addPhotos(['d.jpg']);
+      await settled(c);
       provider.itemsError = Exception('still offline');
 
       expect(
@@ -1663,6 +1927,7 @@ void main() {
       await settled(c);
       provider.stockError = Exception('offline');
       await c.addPhotos(['d.jpg']);
+      await settled(c);
       expect(c.review[1].unchecked, isTrue);
       final gate = provider.itemsGateOnce = Completer<void>();
 
@@ -1689,16 +1954,41 @@ void main() {
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
       await settled(c);
-      provider.stockGate = Completer<void>();
+      final gate = fingerprintGateOnce = Completer<void>();
 
       final added = c.addPhotos(['d.jpg']);
       await pumpEventQueue();
+      expect(c.adding.value, isTrue);
       c.onClose();
-      provider.stockGate!.complete();
-      await added;
+      gate.complete();
+      expect(await added, isNull);
 
       expect(reviewPaths(c), ['a.jpg']);
       expect(c.adding.value, isFalse);
+      expect(decoder.decoded, ['a.jpg']);
+    });
+
+    test('closing while an added photo is checked writes nothing', () async {
+      final decoder = _FakeDecoder({
+        'a.jpg': [_ean(_a)],
+        'd.jpg': [_ean(_b)],
+      });
+      final provider = _FakeProvider(stock: {_a: 1, _b: 2});
+      final c = make(decoder, provider);
+      await c.start(['a.jpg']);
+      await settled(c);
+      provider.stockGate = Completer<void>();
+
+      expect(await c.addPhotos(['d.jpg']), isNull);
+      await pumpEventQueue();
+      expect(c.review.last.stage, ReadStage.checkingStock);
+      c.onClose();
+      provider.stockGate!.complete();
+      await pumpEventQueue();
+
+      expect(reviewPaths(c), ['a.jpg', 'd.jpg']);
+      expect(c.review.last.items, isEmpty);
+      expect(shared, isEmpty);
     });
 
     test('Generate file waits for an add in flight', () async {
@@ -1718,6 +2008,7 @@ void main() {
       expect(shared, isEmpty);
       provider.stockGate!.complete();
       await added;
+      await settled(c);
 
       expect(c.phase.value, StockSheetPhase.reviewing);
       await c.makeSheet(SheetFormat.excel);
@@ -1822,6 +2113,7 @@ void main() {
       await settled(c);
       provider.stockError = Exception('offline');
       expect(await c.addPhotos(['sheet.jpg']), isNull);
+      await settled(c);
       expect(c.review, hasLength(2));
       expect(c.review[1].unchecked, isTrue);
 
@@ -1969,13 +2261,13 @@ void main() {
       expect(c.removeAt(-1), isNull);
     });
 
-    test('removeAt does nothing while photos are being added', () async {
+    test('removeAt works while photos are added, not while fixing', () async {
       final c = await three();
       c.adding.value = true;
 
-      expect(c.canRemove, isFalse);
-      expect(c.removeAt(0), isNull);
-      expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+      expect(c.canRemove, isTrue);
+      expect(c.removeAt(0)?.path, 'a.jpg');
+      expect(reviewPaths(c), ['b.jpg', 'd.jpg']);
 
       c.adding.value = false;
       for (final flag in [c.rechecking, c.fixing, c.busy]) {
@@ -2429,9 +2721,9 @@ void main() {
   });
 
   group('a share during an add', () {
-    /// a.jpg and b.jpg in the review, d.jpg being added (its stock check
-    /// waits for [_FakeProvider.stockGate]).
-    Future<(StockSheetController, Future<String?>)> addingOne(
+    /// a.jpg and b.jpg in the review, d.jpg being added: its fingerprinting
+    /// waits for the gate returned.
+    Future<(StockSheetController, Future<String?>, Completer<void>)> addingOne(
       _FakeProvider provider,
     ) async {
       final decoder = _FakeDecoder({
@@ -2444,36 +2736,36 @@ void main() {
       final c = make(decoder, provider);
       await c.start(['a.jpg', 'b.jpg']);
       await settled(c);
-      provider.stockGate = Completer<void>();
+      final gate = fingerprintGateOnce = Completer<void>();
       final add = c.addPhotos(['d.jpg']);
       await pumpEventQueue();
       expect(c.adding.value, isTrue);
-      return (c, add);
+      return (c, add, gate);
     }
 
     test('it is held, not refused', () async {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
-      final (c, add) = await addingOne(provider);
+      final (c, add, gate) = await addingOne(provider);
 
       expect(c.offerShare(['n1.jpg']), ShareOffer.pending);
       await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg']);
       expect(c.pendingShareFits, isTrue);
 
-      provider.stockGate!.complete();
+      gate.complete();
       await add;
     });
 
     test('Add waits for the add, then appends both in order', () async {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
-      final (c, add) = await addingOne(provider);
+      final (c, add, gate) = await addingOne(provider);
       c.offerShare(['n1.jpg', 'n2.jpg']);
       await pumpEventQueue();
 
       final resolved = c.resolvePendingShare(PendingShareChoice.add);
       await pumpEventQueue();
       expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
-      provider.stockGate!.complete();
+      gate.complete();
 
       expect(await add, isNull);
       expect(await resolved, isNull);
@@ -2484,13 +2776,13 @@ void main() {
 
     test('Start again appends nothing from the add in flight', () async {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
-      final (c, add) = await addingOne(provider);
+      final (c, add, gate) = await addingOne(provider);
       c.offerShare(['n1.jpg', 'n2.jpg']);
       await pumpEventQueue();
 
       final resolved = c.resolvePendingShare(PendingShareChoice.startAgain);
       await pumpEventQueue();
-      provider.stockGate!.complete();
+      gate.complete();
       await add;
       expect(await resolved, isNull);
 
@@ -2504,7 +2796,7 @@ void main() {
       final c = make(decoder, _FakeProvider());
       await c.start(List.generate(97, (i) => 'p$i.jpg'));
       await settled(c);
-      decoder.gate = Completer<void>();
+      final gate = fingerprintGateOnce = Completer<void>();
       final add = c.addPhotos(['x1.jpg', 'x2.jpg']);
       expect(c.photoRoom, 1);
 
@@ -2515,7 +2807,7 @@ void main() {
       c.pendingShare.assignAll(['x1.jpg', 'n1.jpg']);
       expect(c.pendingShareFits, isTrue);
 
-      decoder.gate!.complete();
+      gate.complete();
       await add;
       expect(c.photoRoom, 1);
     });
@@ -2527,7 +2819,7 @@ void main() {
         final c = make(decoder, _FakeProvider());
         await c.start(List.generate(96, (i) => 'p$i.jpg'));
         await settled(c);
-        decoder.gate = Completer<void>();
+        final gate = fingerprintGateOnce = Completer<void>();
         final add = c.addPhotos(['x1.jpg', 'x2.jpg']);
 
         // Each fits beside the review and the add, but not both.
@@ -2539,7 +2831,7 @@ void main() {
         await pumpEventQueue();
         expect(c.pendingShareFits, isTrue);
         final second = c.resolvePendingShare(PendingShareChoice.add);
-        decoder.gate!.complete();
+        gate.complete();
 
         await add;
         expect(await first, isNull);
@@ -2558,7 +2850,7 @@ void main() {
 
     test('a second share joins the one waiting, each photo once', () async {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
-      final (c, add) = await addingOne(provider);
+      final (c, add, gate) = await addingOne(provider);
 
       c.offerShare(['n1.jpg']);
 
@@ -2567,7 +2859,7 @@ void main() {
       await pumpEventQueue();
       expect(c.pendingShare, ['n1.jpg', 'n2.jpg']);
 
-      provider.stockGate!.complete();
+      gate.complete();
       await add;
     });
   });
