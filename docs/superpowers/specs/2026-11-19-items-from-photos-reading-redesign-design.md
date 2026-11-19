@@ -45,6 +45,7 @@ stock within 8 s; everything done no later than today.
 6. A photo removed while it is being read in tiles stops at once.
 7. The wording for the tile pass is **Zooming in…**, in the app and in the Telegram bot.
 8. A sheet of labels stays one row until it is zoomed in on, then becomes its item rows.
+9. Zooming in follows the list from the top, so a row dragged up is read sooner.
 
 ## Design
 
@@ -85,7 +86,8 @@ Screen readers hear the strip's line when it changes (a polite live region), not
    as now); ERP images load alongside.
 4. **Round two:** the waiting photos, one at a time: tiles, then (small photo, still nothing) the 2x copy.
    The next photo to zoom in on is the **first waiting row in the list's current order**, so dragging a row
-   up brings it forward. When a photo is read, its codes that are not already known get their own Item and
+   up brings it forward (decision 9); the photo already being zoomed in on is finished first. A photo put
+   back with Undo waits its turn again by its place in the list. When a photo is read, its codes that are not already known get their own Item and
    stock calls while the next photo is zoomed in on. Item and stock results are kept by item code for the
    life of the screen, so an item seen twice is asked for once.
 5. **A sheet of labels** (two or more items in the quick pass) stays one row, "Photo n · k items so far",
@@ -179,7 +181,6 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
 
 ## Open points for the user
 
-- **Zoom order follows the list**, so a row dragged up is read sooner. The mock-up reads in the order given.
 - **Stock Ageing columns:** quantity columns only, as listed. The report also returns **Value (…)**
   columns; they are left out, as Items from Photos shows quantities only.
 

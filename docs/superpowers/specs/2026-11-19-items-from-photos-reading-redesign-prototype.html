@@ -250,7 +250,7 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
         <li><strong>Two rounds.</strong> Every photo gets the quick whole-photo pass first (about half a second each). Photos with no code wait in the list for the app to zoom in on them, instead of holding up the ones behind them.</li>
         <li><strong>Rows fill in.</strong> All ten photos have their rows from the start, greyed until read, so the list never grows under the finger. A row gets its barcode as soon as it is read. Name, stock and rack follow when the ERP answers; stock is asked for in batches while reading goes on.</li>
         <li><strong>Short rows, details on a tap.</strong> A read row says only In stock or Out of stock. A tap opens the card to Rack-Wise Stock Balance and Stock Ageing, with the reports' own column titles; another tap closes it. The rack balance is there at once. Stock Ageing is fetched the first time a card is opened and kept after that.</li>
-        <li><strong>Nothing is locked.</strong> While reading goes on, a row can be dragged to a new place or swiped away (with Undo), and switched off once it has its barcode. A removed photo is not read: one the app is zooming in on stops at once and the next one starts, so the run ends sooner. Undo puts it back at the end of the queue. Only "Generate file" waits for the last photo.</li>
+        <li><strong>Nothing is locked.</strong> While reading goes on, a row can be dragged to a new place or swiped away (with Undo), and switched off once it has its barcode. A removed photo is not read: one the app is zooming in on stops at once and the next one starts, so the run ends sooner. Undo puts it back in its place, to wait its turn again. The app zooms in on the waiting rows from the top of the list down, so dragging a row up gets it read sooner. Only "Generate file" waits for the last photo.</li>
         <li><strong>The wait is explained.</strong> The strip under the title says which photo the app is zooming in on and keeps a tally of what is read and what is left.</li>
       </ol>
     </div>
@@ -272,6 +272,8 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
         <li>A read row shows only In stock or Out of stock; a tap opens the card.</li>
         <li>Stock Ageing is fetched the first time a card is opened.</li>
         <li>A photo removed while the app is zooming in on it stops at once.</li>
+        <li>Zooming in follows the list from the top; a row dragged up is read sooner.</li>
+        <li>A sheet of labels stays one row until it is zoomed in on (not shown here).</li>
         <li>The wording is "Zooming in…", here and in the Telegram bot.</li>
       </ul>
     </div>
@@ -312,8 +314,15 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
   PHOTOS.forEach(function (p) { t += p.first + OVERHEAD; p.seen = t; });
   var ROUND1 = t;
   // Round two: the closer look, one missed photo at a time. A photo that has been removed is not read,
-  // and one being looked at stops at once. Undo puts it back at the end of the queue, to be looked at afresh.
+  // and one being zoomed in on stops at once. Undo puts it back in its place, to wait its turn and start afresh.
   var gone = PHOTOS.map(function () { return []; });   // per photo: when it was removed and put back, {from, to}
+  // The list's order over time: zooming in takes the first waiting row, so a row dragged up is read sooner.
+  var moves = [{ at: 0, order: PHOTOS.map(function (_, i) { return i; }) }];
+  function orderAt(t) {
+    var found = moves[0];
+    moves.forEach(function (m) { if (m.at <= t && m.at >= found.at) found = m; });
+    return found.order;
+  }
   var removed = {}, NEW_DONE, END;
   function replan() {
     var queue = [];
@@ -323,7 +332,8 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
     });
     var t = ROUND1, guard = 0;
     while (queue.length && guard++ < 500) {
-      var k = -1;
+      var k = -1, list = orderAt(t);
+      queue.sort(function (a, b) { return list.indexOf(a.i) - list.indexOf(b.i); });
       for (var j = 0; j < queue.length; j++) { if (queue[j].from <= t) { k = j; break; } }
       if (k < 0) { t = Math.min.apply(null, queue.map(function (q) { return q.from; })); continue; }
       var job = queue.splice(k, 1)[0], p = PHOTOS[job.i], end = t + p.write + p.read, hit = null;
@@ -334,7 +344,7 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
       });
       if (!hit) { p.tries.push({ start: t, end: end }); p.readAt = end; p.fullAt = end + STOCK_ONE; t = end; continue; }
       if (hit.from > t) { p.tries.push({ start: t, end: hit.from }); t = hit.from; }   // stopped at once
-      if (hit.to !== undefined) queue.push({ i: job.i, from: hit.to });               // Undo: back of the queue
+      if (hit.to !== undefined) queue.push({ i: job.i, from: hit.to });               // Undo: it waits its turn again
     }
     var ends = PHOTOS.filter(function (p, i) { return !removed[i]; }).map(function (p) { return p.fullAt; }).filter(isFinite);
     NEW_DONE = ends.length ? Math.max.apply(null, ends) : ROUND1;
@@ -425,6 +435,7 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
     order = PHOTOS.map(function (_, i) { return i; });
     off = {}; removed = {}; open = {}; aged = {}; undo = null; run++;
     gone = PHOTOS.map(function () { return []; });
+    moves = [{ at: 0, order: order.slice() }];
     replan();
     clearTimeout(undoTimer);
   }
@@ -599,6 +610,8 @@ button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1
     });
     order.splice(order.indexOf(i), 1);
     if (before === null) order.push(i); else order.splice(order.indexOf(before), 0, i);
+    moves.push({ at: now, order: order.slice() });
+    replan();
   }
   elNew.addEventListener('pointerdown', function (e) {
     var el = e.target.closest('.slot');
