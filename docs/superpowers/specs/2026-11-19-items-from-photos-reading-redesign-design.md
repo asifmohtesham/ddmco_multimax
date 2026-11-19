@@ -1,6 +1,6 @@
 # Items from Photos: reading that shows its work (design)
 
-Date: 19 November 2026. Size: a feature (MINOR bump). Status: for the user's approval.
+Date: 19 November 2026. Size: a feature (MINOR bump). Status: approved by the user on 19 November 2026; plan in `docs/superpowers/plans/2026-11-19-items-from-photos-reading-redesign.md`.
 Builds on the fix for one small label (`1b1c755f`, `d0dc77b4` on `claude/reverent-wozniak-04950e`, not yet
 merged): the tile fallback, `logic/grey_plane.dart` and the decoder's injectable analyser are assumed.
 Mock-up: `2026-11-19-items-from-photos-reading-redesign-prototype.html` beside this file (open it in a
