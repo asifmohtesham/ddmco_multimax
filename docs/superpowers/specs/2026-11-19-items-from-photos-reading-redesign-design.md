@@ -207,14 +207,36 @@ building. Nothing of this has been seen on a device yet.
    zoomed in on returns to "Waiting to zoom in" and is read afresh.
 5. On a device that cannot read barcodes, adding photos ends in the same error state as starting, instead of a
    message from the add.
-6. ERP images of items already known are loaded again when a second run in the same screen settles rows from the
-   cache.
+6. Item and stock answers are kept by item code for the life of one review, not of the screen: each new run
+   asks afresh (within one review an item is still asked for once), and a late answer from an earlier review is
+   dropped. A fresh answer brings its ERP images before its rows settle; rows settled from answers already in
+   hand load any image still missing (one that failed earlier in the review) without waiting for it.
 7. Tapping a ready row opens its card with no ripple (the row's filled background would hide it); the arrow button
    is the labelled control.
 8. `PhotoDecoder.decode` and the controller's `decoded` counter are removed; the decoder tests run both rounds
    through a small test helper.
-9. Known and left as is: Undo does not check the 100-photo limit (remove one, add until full, Undo gives 101); the
-   strip's own `Obx` does not isolate rebuilds because the body already rebuilds with the list.
+9. Known and left as is: Undo does not check the 100-photo limit (remove one, add until full, Undo gives 101). The
+   strip has no `Obx` of its own: the review body's `Obx` already rebuilds it with the list, from the same rows.
+10. Row ids: a photo's placeholder, and a photo that gives one row, have the photo's path as id; the rows of a
+    photo that gives several have `<path>#<k>` (k = 0, 1, … in reading order), not the `<photo>:<item>` /
+    `<photo>!<barcode>` named under Code above.
+11. **Retry check** on any "Stock not checked" row re-checks every such row at once: one Item call and one stock
+    call for all their codes, through the same answers the reading uses; each becomes its item rows in place, and
+    one spinner state covers them all. A failure leaves them all unchecked.
+12. A row not read yet shows a placeholder tile; its photo appears once its quick pass is done (the table under
+    Row states says "photo" for "Not read yet").
+13. The four Stock Ageing figures (Available Qty, Average Age, Earliest, Latest) are labelled from the report's
+    columns (`qty`, `average_age`, `earliest`, `latest`), with those titles when a column is missing; the
+    buckets are titled from the range, as before.
+14. A code typed to fix a row always lands on that row, even if the list changed while it was typed (the row is
+    named by its id, not its place); only a settled row with no item can be fixed. Undo puts a row back after
+    the row that was above it, else before the one below it, never inside another photo's rows.
+15. In the strip, "of N" is the highest photo number given in the review, so after removals it can exceed the
+    photos still listed. Besides the three lines above, the strip says **Zooming in…** (unnumbered) when the
+    only photos left are waiting to be zoomed in on.
+16. Back while the photos given are fingerprinted asks "Discard these photos?" as in the review; a late "no
+    access to stock levels" for rows no longer listed is dropped rather than shown; `zoomIn` asks `stopped`
+    once more before the 2x copy.
 
 Left to the builder, answered in part: Stock Ageing for one item was probed on 19 November 2026 against the live
 v16 server with an API user only (not on v15, not as an ordinary user): about 1.4 s, one row for the item and no

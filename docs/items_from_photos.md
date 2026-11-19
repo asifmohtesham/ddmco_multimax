@@ -2,9 +2,10 @@
 
 The one document to read before working on **Items from Photos**: what it does, every screen and message, the
 rules behind it, how each platform gets photos in, where the code lives, and what is still open. Written on
-18 November 2026, current as of **2.45.0+133** plus two unreleased changes of 19 November 2026: the fix for a photo
-of one small label and the reading redesign (reading in two rounds, live rows, the card; see §3, §4 and §8). The dated specs and plans in `docs/superpowers/` are the history;
-this file is the summary. Where they disagree, the code and this file win.
+18 November 2026, current as of **2.45.0+133** plus two unreleased changes of 19 November 2026: the fix for a
+photo of one small label and the reading redesign (reading in two rounds, live rows, the card; see §3, §4 and
+§8). The dated specs and plans in `docs/superpowers/` are the history; this file is the summary. Where they
+disagree, the code and this file win.
 
 Code identifiers keep the old name: module `lib/app/modules/stock_sheet/`, classes `StockSheet*`, route
 `AppRoutes.STOCK_SHEET`. User-facing text always says **Items from Photos** (capital P).
@@ -75,12 +76,16 @@ review list opens with a row for every photo. Over 100 photos: "Share up to 100 
 and nothing is processed.
 
 Under the title, a **reading strip** (hidden once every row is settled) shows a determinate bar of photos read and
-one of three lines of text with a tally. It is a polite live region, so a screen reader hears the line and the tally
-when they change, not every row. It has its own `Obx`, because it changes several times a second in round one.
+one of four lines of text with a tally. It is a polite live region, so a screen reader hears the line and the tally
+when they change, not every row. It is built from the same rows as the list and rebuilds with it (the review body's
+`Obx`); it has no `Obx` of its own.
 
 - Round one: **Reading photo n of N** · "k read"
 - Round two: **Zooming in on photo n of N…** · "k read · m to go"
+- Round two, between two zooms (the only photos left are waiting): **Zooming in…** (unnumbered) · "k read · m to go"
 - Reading done, stock outstanding: **Checking stock…** · "k read"
+
+N is the highest photo number given in the review, so after removals "of N" can exceed the photos still listed.
 
 ### 3.3 Review list
 
@@ -94,8 +99,8 @@ renumber.
 
 | Stage | The row shows |
 |---|---|
-| Not read yet | photo, "Photo n", **Not read yet**; dashed outline, no fill |
-| Reading | the same, with a spinner and **Reading…** |
+| Not read yet | placeholder tile, "Photo n", **Not read yet**; dashed outline, no fill |
+| Reading | the same, with a spinner and **Reading…**; the photo appears once its quick pass is done |
 | Waiting to zoom in | photo, "Photo n", **Waiting to zoom in** (the quick pass found no item, or two or more) |
 | Zooming in | photo, "Photo n", orange pill with spinner **Zooming in…** |
 | Checking stock | ERP image placeholder, barcode in mono, **Checking stock…** |
@@ -117,23 +122,29 @@ renumber.
     one line per rack, largest first; stock on no rack is **No rack**; more than one line adds a total. Out of stock:
     "No stock in Finished Goods - KA."
   - **Stock Ageing**, fetched the first time the card is opened and kept by item code: "Fetching Stock Ageing…"
-    with a spinner; then **Available Qty**, **Average Age**, **Earliest**, **Latest** and the age buckets titled from
-    the report's range (**Age (0 - 90)** … **Age (721 - Above)**), each with its quantity and a bar scaled to the
+    with a spinner; then the four figures, labelled as the report's columns title them (`qty`, `average_age`,
+    `earliest`, `latest`; today **Available Qty**, **Average Age**, **Earliest**, **Latest**, which are also the
+    labels used when a column is missing), and the age buckets titled from the report's range (**Age (0 - 90)** … **Age (721 - Above)**), each with its quantity and a bar scaled to the
     largest bucket. The report's Value columns are not shown. Other states: "Not in the Stock Ageing report.",
     "Not in the Stock Ageing report: nothing in stock." (an out-of-stock item is not fetched), "Couldn't load Stock
     Ageing." with **Retry**, "You don't have access to Stock Ageing." (the rest of the card still works).
 - **Unresolved photos** start off with a reason — "Unreadable photo", "No recognised code", "Not in ERP: <barcode>"
   — and **✎ Type or scan code**: a sheet with a text field ("Barcode or item code"), **Scan** (camera overlay) and
   **Use code**. Input → EAN-8 or batch QR via the codec, else exactly 7 digits as the item code, else
-  "Not a barcode or item code"; unknown item → "Not in ERP". A resolved code shows a "Typed" marker. If a stock
-  check failed, rows show "Stock not checked" with **Retry check**.
+  "Not a barcode or item code"; unknown item → "Not in ERP". A resolved code shows a "Typed" marker. The code
+  always lands on the row it was typed for, even if the list changed meanwhile (a photo above becoming several
+  rows): the row is named by its id, not its place. Only a settled row with no item can be fixed. If a stock check
+  failed, rows show "Stock not checked" with **Retry check**: a tap on any of them re-checks every such row at
+  once (one Item call and one stock call for all their codes), each becoming its item rows in place; one spinner
+  state covers them all, and a failure leaves them all unchecked and says why.
 - **Reorder** with the ⋮⋮ handle on the left (no long-press drag on the row), in every stage. Dragging a row up
   brings it forward in round two (§4).
 - **Swipe to remove:** swipe a row right-to-left (red `AppColors.red700` background, white bin icon) in any stage →
   the row leaves the list (the photo's other rows stay); snackbar "Item removed." ("Photo removed." for a row with no
-  item) with **Undo** for 5 seconds (it closes when the user leaves the review). Undo puts it back where it was
-  (clamped to the list length) unless the same photo — same content — has been added again meanwhile under another
-  path. A photo removed before its turn is never read; one being zoomed in on stops (§4). Removing is disabled while
+  item) with **Undo** for 5 seconds (it closes when the user leaves the review). Undo puts it back after the row
+  that was above it (else before the row that was below it; each found by its id, else by its photo; else at its
+  old place, clamped to the list length), never in the middle of another photo's rows, unless the same photo —
+  same content — has been added again meanwhile under another path. A photo removed before its turn is never read; one being zoomed in on stops (§4). Removing is disabled while
   a code is being fixed, stock is re-checked, a file is being generated, or the out-of-stock question is open; reading
   and adding do not disable it. Screen readers get a "Remove item" ("Remove photo") action on each row.
 - **Footer:** segmented **Excel | PDF | Both**, preset to the last choice (first time: Excel; stored under
@@ -164,7 +175,8 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
 
 ### 3.6 Guarding the user's work
 
-- **Back** on the review list: "Discard these photos?" — **Keep reviewing** / **Discard**.
+- **Back** on the review list, or while the photos given are fingerprinted ("Reading photo 1 of N"): "Discard
+  these photos?" — **Keep reviewing** / **Discard**. From the start state (no photos) Back leaves at once.
 - **New photos while reviewing** (share, drop, stranded share): "Add these N photos to the list, or start again?"
   (or "Add this photo …") — **Add** / **Start again** / **Cancel**. Add appends within the limit:
   "Only n more photos fit (limit 100)." / "No more photos fit (limit 100)."
@@ -186,8 +198,10 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
   images load alongside. Round two takes the photos that need it one at a time; the next is the **first waiting row
   in the list's current order**, so a row dragged up is read sooner (the one in hand is finished first). When a photo
   is read, its codes not already known get their own Item and stock calls while the next photo is zoomed in on. Item
-  and stock answers are kept by item code for the life of the screen, so an item seen twice is asked for once. ERP
-  images of items already known are loaded again when a second run in the same screen settles rows from the cache.
+  and stock answers are kept by item code for the life of one review, so an item seen twice in it is asked for once;
+  each new run (a new share, Start again) asks afresh, and a late answer from an earlier review is dropped. A fresh
+  answer brings its ERP images before its rows settle; rows settled from answers already in hand load any image
+  still missing (one that failed earlier in the review) without waiting for it.
 - **Removing and Undo:** a photo removed before its turn is not read. One removed while being zoomed in on stops: no
   further tile is read, its tile files are deleted and the next photo starts; one ML Kit read cannot be
   interrupted, so this happens after the tile in hand (0.1–0.25 s) or, if the tiles are still being written, after
@@ -218,7 +232,8 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
   given did not change. Do not swap in another resize or PNG layout without re-checking both sheets and cards on a
   device. Tiles are read one at a time: `mobile_scanner`'s Android side keeps a single pending result, so two
   `analyzeImage` calls at once would lose one.
-- **Timings (XCover7, release build, 19/11/2026):** a photo the first pass reads takes 0.2–0.5 s. A 1,280 px photo
+- **Timings (XCover7, release build, 19/11/2026), measured before the reading redesign**, when the review list
+  opened only after every photo had been read: a photo the first pass reads takes 0.2–0.5 s. A 1,280 px photo
   it misses takes about 7 s more: 4.2 s to write the 18 tiles and 2–4 s to read them. Ten wallet cards, five of them
   missed by the first pass: 39 s of reading, 44 s from choosing the photos to the review list (2.45.0: 4 min 12 s,
   with four of the ten unread). Not measured: a full-size camera photo with no readable code, which now costs nine
@@ -247,14 +262,17 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
   the card goes through the existing `ApiProvider.runStockAgeingCustom` (`Stock Ageing - Custom` via
   `frappe.desk.query_report.run`) with `company`, `to_date` today, `warehouse: Finished Goods - KA`,
   `range: "90, 180, 360, 720"`, `item_code` and `show_warehouse_wise_stock: 0`; sending filters makes the app send
-  `are_default_filters=false`, as the Stock Ageing screen does. No access →
-  "You don't have access to stock levels."; network → "Couldn't reach the ERP. Check the connection and try again."
+  `are_default_filters=false`, as the Stock Ageing screen does; one item took about 1.4 s (v16, probed 19/11/2026,
+  §10). The card's figure labels and bucket titles come from the run's `message.columns`. No access →
+  "You don't have access to stock levels." (from a batch no listed row waits for any more, it is dropped); network
+  → "Couldn't reach the ERP. Check the connection and try again."
 - Nothing is saved to the ERP.
 
 ## 5. Messages (exact copy)
 
 Progress: "Reading photo 1 of N" (fingerprinting), "Generating the file…".
-Strip: "Reading photo n of N", "Zooming in on photo n of N…", "Checking stock…", "k read", "k read · m to go".
+Strip: "Reading photo n of N", "Zooming in on photo n of N…", "Zooming in…", "Checking stock…", "k read",
+"k read · m to go".
 Subtitle: "N photos · M items so far", "N photos · M items in the file". Footer: "Generate file · M items".
 Row stages: "Not read yet", "Reading…", "Waiting to zoom in", "Zooming in…", "Checking stock…", "In stock",
 "Out of stock", "Photo n", "Photo n · k items so far", "Stock not checked".
@@ -386,8 +404,8 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 - **Telegram twin** has the sheet-photo changes of 2.45.0 (deployed 18/11/2026) but neither the tile fallback nor the
   redesign. Its sidecar has the tile fallback in its repository but it is not deployed, so the same wallet cards will
   fail there; the bot does not have the wording "Zooming in…" or anything else of the redesign (§11).
-- **Known and left as is:** Undo does not check the 100-photo limit (§4); the reading strip's own `Obx` does not
-  isolate rebuilds, because the body already rebuilds with the list.
+- **Known and left as is:** Undo does not check the 100-photo limit (§4); the reading strip rebuilds with the
+  list (§3.2).
 
 - **Android Download** has not been seen on a device yet (the Pixel had only the Play app); check the "Save to"
   picker saves both files.
