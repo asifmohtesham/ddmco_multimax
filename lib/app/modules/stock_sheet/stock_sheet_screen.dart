@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +10,7 @@ import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_result_list.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_start_panel.dart';
@@ -363,6 +362,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       title: Obx(() {
         final photos = controller.photoCount;
         final items = controller.sheetItemCount;
+        final reading = controller.reading.value;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -370,7 +370,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             const Text('Review photos'),
             Text(
               '$photos photo${photos == 1 ? '' : 's'} · '
-              '$items item${items == 1 ? '' : 's'} in the file',
+              '$items item${items == 1 ? '' : 's'} '
+              '${reading ? 'so far' : 'in the file'}',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
             ),
           ],
@@ -443,29 +444,21 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           ),
         );
       case StockSheetPhase.decoding:
-        final total = controller.total.value;
-        final decoded = controller.decoded.value;
+        // Only the moment the photos are fingerprinted; the reading itself
+        // shows in the review's strip.
         return _Progress(
-          value: total == 0 ? null : decoded / total,
-          label: 'Reading photo ${math.min(decoded + 1, total)} of $total',
+          label: 'Reading photo 1 of ${controller.total.value}',
         );
       case StockSheetPhase.reviewing:
       case StockSheetPhase.awaitingChoice:
         // The list stays behind the out-of-stock question.
-        return ReviewList(
-          entries: controller.review.toList(),
-          thumbnails: Map.of(controller.thumbnails),
-          onReorder: controller.reorder,
-          onToggle: controller.setIncluded,
-          onFix: _fix,
-          onRetryCheck: _retryCheck,
-          onRemove: _remove,
-          removeEnabled: controller.canRemove,
-          recheckBusy: controller.rechecking,
-          openCards: controller.openCards.toSet(),
-          ageing: Map.of(controller.ageing),
-          onToggleCard: controller.toggleCard,
-          onRetryAgeing: controller.retryAgeing,
+        return Column(
+          children: [
+            // Its own Obx: it changes several times a second while reading,
+            // and must not rebuild the rest of the screen.
+            Obx(() => ReadingStrip(entries: controller.review.toList())),
+            Expanded(child: _reviewList()),
+          ],
         );
       case StockSheetPhase.building:
         return const _Progress(label: 'Generating the file…');
@@ -483,6 +476,24 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           message: controller.errorMessage.value ?? 'Something went wrong.',
         );
     }
+  }
+
+  Widget _reviewList() {
+    return ReviewList(
+      entries: controller.review.toList(),
+      thumbnails: Map.of(controller.thumbnails),
+      onReorder: controller.reorder,
+      onToggle: controller.setIncluded,
+      onFix: _fix,
+      onRetryCheck: _retryCheck,
+      onRemove: _remove,
+      removeEnabled: controller.canRemove,
+      recheckBusy: controller.rechecking,
+      openCards: controller.openCards.toSet(),
+      ageing: Map.of(controller.ageing),
+      onToggleCard: controller.toggleCard,
+      onRetryAgeing: controller.retryAgeing,
+    );
   }
 
   /// Saves the files to a folder the user picks. Outlined beside the filled
@@ -538,10 +549,12 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         final n = controller.sheetItemCount;
         final label = 'Generate file · $n item${n == 1 ? '' : 's'}';
         const icon = Icon(Icons.description_outlined);
-        // Nothing on the sheet, or the list still changing: makeSheet would
-        // refuse, so the button says so by being disabled.
+        // Nothing on the sheet, or the list still changing (photos being read
+        // included): makeSheet would refuse, so the button says so by being
+        // disabled.
         final blocked =
             n == 0 ||
+            controller.reading.value ||
             controller.adding.value ||
             controller.rechecking.value ||
             controller.fixing.value;
@@ -699,12 +712,9 @@ class _PendingShareDialogState extends State<_PendingShareDialog> {
 }
 
 class _Progress extends StatelessWidget {
-  const _Progress({required this.label, this.value});
+  const _Progress({required this.label});
 
   final String label;
-
-  /// Null for an indeterminate bar.
-  final double? value;
 
   @override
   Widget build(BuildContext context) {
@@ -715,7 +725,7 @@ class _Progress extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            LinearProgressIndicator(value: value, backgroundColor: s.subtle),
+            LinearProgressIndicator(backgroundColor: s.subtle),
             const SizedBox(height: 12),
             Text(label, style: TextStyle(color: s.text)),
           ],
