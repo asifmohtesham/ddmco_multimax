@@ -191,3 +191,32 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
 - Keep the review list's header rebuild guards in mind: the strip changes several times a second in round
   one; give it its own `Obx`.
 - Update `docs/items_from_photos.md` (§3.2, §3.3, §4, §5, §7) and mirror the wording into the Telegram bot.
+
+## As built
+
+Written 19 November 2026, after the nine tasks. The design above stands except for the following rulings made while
+building. Nothing of this has been seen on a device yet.
+
+1. The `decoding` phase is kept, only for the moment photos are fingerprinted before the list opens;
+   `checkingStock` is gone.
+2. Photo numbers come from a counter that only goes up within one review, so a number is never reused; a row put
+   back with Undo keeps its number.
+3. The controller itself refuses to generate a file while any row is still being read or checked, not only the
+   button.
+4. A row removed during its quick first pass and put back with Undo is read once more; one removed while being
+   zoomed in on returns to "Waiting to zoom in" and is read afresh.
+5. On a device that cannot read barcodes, adding photos ends in the same error state as starting, instead of a
+   message from the add.
+6. ERP images of items already known are loaded again when a second run in the same screen settles rows from the
+   cache.
+7. Tapping a ready row opens its card with no ripple (the row's filled background would hide it); the arrow button
+   is the labelled control.
+8. `PhotoDecoder.decode` and the controller's `decoded` counter are removed; the decoder tests run both rounds
+   through a small test helper.
+9. Known and left as is: Undo does not check the 100-photo limit (remove one, add until full, Undo gives 101); the
+   strip's own `Obx` does not isolate rebuilds because the body already rebuilds with the list.
+
+Left to the builder, answered in part: Stock Ageing for one item was probed on 19 November 2026 against the live
+v16 server with an API user only (not on v15, not as an ordinary user): about 1.4 s, one row for the item and no
+warehouse column with `show_warehouse_wise_stock: 0`. Whether the report needs a permission the stock check does
+not is still open. The Telegram bot takes none of this yet.
