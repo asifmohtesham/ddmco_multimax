@@ -1869,6 +1869,43 @@ void main() {
       expect(doc.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
     });
 
+    test('a second run brings the images of items already known', () async {
+      final fetched = <String>[];
+      final thumb = Uint8List.fromList([9, 9]);
+      final provider = _FakeProvider(
+        stock: {_a: 1},
+        images: {_a: '/files/a.jpg'},
+      );
+      final c = make(
+        _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+        }),
+        provider,
+        itemThumbnail: (url) async {
+          fetched.add(url);
+          return thumb;
+        },
+      );
+      await c.start(['a.jpg']);
+      await settled(c);
+      expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+
+      await c.start(['a.jpg']);
+      await settled(c);
+      await pumpEventQueue();
+
+      expect(c.review.single.items.single.info.itemCode, _a);
+      expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+      expect(fetched, ['/files/a.jpg', '/files/a.jpg']);
+      // The Item and its stock come from what the first run learnt.
+      expect(provider.itemRequests, [
+        [_a],
+      ]);
+      expect(provider.stockRequests, [
+        [_a],
+      ]);
+    });
+
     test('an image that fails leaves the cell blank, not the run', () async {
       final c = make(
         _FakeDecoder({

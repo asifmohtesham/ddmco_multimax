@@ -1184,25 +1184,33 @@ class StockSheetController extends GetxController {
   }
 
   /// Replaces every row checking stock whose codes are all known with its
-  /// item rows, in place.
+  /// item rows, in place, and loads the ERP images of those items that have
+  /// none yet (a review cleared since, or a download that failed).
   void _settleKnown() {
     var changed = false;
     final out = <ReviewEntry>[];
+    final infos = <ItemInfo>[];
     for (final e in review) {
       if (e.stage == ReadStage.checkingStock &&
           e.codes.every((c) => _knownCodes.contains(c.itemCode))) {
-        out.addAll(
-          _numbered(
-            ReviewBuilder.entriesFor(_scanOf(e), _itemsByCode, _stockByCode),
-            e.number,
-          ),
+        final rows = _numbered(
+          ReviewBuilder.entriesFor(_scanOf(e), _itemsByCode, _stockByCode),
+          e.number,
         );
+        out.addAll(rows);
+        for (final row in rows) {
+          for (final item in row.items) {
+            infos.add(item.info);
+          }
+        }
         changed = true;
       } else {
         out.add(e);
       }
     }
-    if (changed) review.assignAll(out);
+    if (!changed) return;
+    review.assignAll(out);
+    unawaited(_loadItemImages(infos, generation: _generation));
   }
 
   /// The rows checking stock for any of [codes], after their batch failed:
@@ -1272,8 +1280,13 @@ class StockSheetController extends GetxController {
   /// Puts the thumbnail of each Item's ERP image in [thumbnails] under
   /// [ItemInfo.thumbnailKey], skipping Items without an image and those
   /// already there. Never throws: an image that cannot be fetched or read
-  /// leaves the row's image blank.
-  Future<void> _loadItemImages(Iterable<ItemInfo> infos) async {
+  /// leaves the row's image blank. With [generation], nothing is written
+  /// once the review has been cleared since.
+  Future<void> _loadItemImages(
+    Iterable<ItemInfo> infos, {
+    int? generation,
+  }) async {
+    bool abandoned() => generation == null ? _closed : _stale(generation);
     final queue = [
       for (final info in infos)
         if (info.image != null &&
@@ -1281,13 +1294,13 @@ class StockSheetController extends GetxController {
           info,
     ];
     Future<void> worker() async {
-      while (queue.isNotEmpty && !_closed) {
+      while (queue.isNotEmpty && !abandoned()) {
         final info = queue.removeLast();
         try {
           final thumb = await (_itemThumbnailOverride ?? _defaultItemThumbnail)(
             info.image!,
           );
-          if (thumb != null && !_closed) {
+          if (thumb != null && !abandoned()) {
             thumbnails[ItemInfo.thumbnailKey(info.itemCode)] = thumb;
           }
         } catch (e, st) {
