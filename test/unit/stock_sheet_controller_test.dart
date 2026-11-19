@@ -2338,42 +2338,93 @@ void main() {
       expect(doc.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
     });
 
-    test('a second run brings the images of items already known', () async {
-      final fetched = <String>[];
-      final thumb = Uint8List.fromList([9, 9]);
-      final provider = _FakeProvider(
-        stock: {_a: 1},
-        images: {_a: '/files/a.jpg'},
-      );
-      final c = make(
-        _FakeDecoder({
-          'a.jpg': [_ean(_a)],
-        }),
-        provider,
-        itemThumbnail: (url) async {
-          fetched.add(url);
-          return thumb;
-        },
-      );
-      await c.start(['a.jpg']);
-      await settled(c);
-      expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+    test(
+      'a second run asks for the Item and stock afresh, its image in hand',
+      () async {
+        final fetched = <String>[];
+        final thumb = Uint8List.fromList([9, 9]);
+        final provider = _FakeProvider(
+          stock: {_a: 1},
+          images: {_a: '/files/a.jpg'},
+        );
+        final c = make(
+          _FakeDecoder({
+            'a.jpg': [_ean(_a)],
+          }),
+          provider,
+          itemThumbnail: (url) async {
+            fetched.add(url);
+            return thumb;
+          },
+        );
+        await c.start(['a.jpg']);
+        await settled(c);
+        expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+        expect(c.review.single.items.single.stock!.total, 1);
 
-      await c.start(['a.jpg']);
-      await settled(c);
-      await pumpEventQueue();
+        // Sold out between the two runs.
+        provider.stock.remove(_a);
+        await c.start(['a.jpg']);
+        await settled(c);
 
-      expect(c.review.single.items.single.info.itemCode, _a);
-      expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
-      expect(fetched, ['/files/a.jpg', '/files/a.jpg']);
-      // The Item and its stock come from what the first run learnt.
-      expect(provider.itemRequests, [
-        [_a],
-      ]);
-      expect(provider.stockRequests, [
-        [_a],
-      ]);
-    });
+        expect(c.review.single.items.single.info.itemCode, _a);
+        // The second run's answer, not the first's.
+        expect(c.review.single.items.single.stock?.total ?? 0, 0);
+        // The image came with the rows, before they settled.
+        expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
+        expect(fetched, ['/files/a.jpg', '/files/a.jpg']);
+        expect(provider.itemRequests, [
+          [_a],
+          [_a],
+        ]);
+        expect(provider.stockRequests, [
+          [_a],
+          [_a],
+        ]);
+      },
+    );
+
+    test(
+      'a late answer from the last review fills nothing in the new one',
+      () async {
+        final provider = _FakeProvider(stock: {_a: 1, _b: 1})
+          ..stockGate = Completer<void>();
+        final c = make(
+          _FakeDecoder({
+            'p1': [_ean(_a)],
+            'p2': [_ean(_b)],
+            'q1': [_ean(_a)],
+            'q2': [_ean(_b)],
+          }),
+          provider,
+        );
+        await c.start(['p1', 'p2']);
+        await pumpEventQueue();
+        expect(provider.stockRequests, [
+          [_a, _b],
+        ]);
+
+        await c.start(['q1']);
+        await pumpEventQueue();
+        // The new review asks for itself, though the old batch is in flight.
+        expect(provider.stockRequests, [
+          [_a, _b],
+          [_a],
+        ]);
+        provider.stockGate!.complete();
+        await settled(c);
+        expect(c.review.single.items.single.info.itemCode, _a);
+        expect(c.phase.value, StockSheetPhase.reviewing);
+
+        // _b was only in the old review's answer: it is asked for again.
+        provider.stockGate = null;
+        expect(await c.addPhotos(['q2']), isNull);
+        await settled(c);
+        expect(provider.itemRequests.last, [_b]);
+        expect(provider.stockRequests.last, [_b]);
+        expect(c.review.last.items.single.info.itemCode, _b);
+      },
+    );
 
     test('an image that fails leaves the cell blank, not the run', () async {
       final c = make(

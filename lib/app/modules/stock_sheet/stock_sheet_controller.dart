@@ -258,13 +258,15 @@ class StockSheetController extends GetxController {
   _ZoomAttempt? _zoomInHand;
 
   /// Item codes whose Item and stock have been asked for and answered, for
-  /// the life of the screen; [_itemsByCode] and [_stockByCode] hold the
-  /// answers (a code the ERP does not know, or with no stock, has none).
+  /// the life of one review (cleared by [_clear], so each review asks
+  /// afresh); [_itemsByCode] and [_stockByCode] hold the answers (a code the
+  /// ERP does not know, or with no stock, has none).
   final Set<String> _knownCodes = {};
   final Map<String, ItemInfo> _itemsByCode = {};
   final Map<String, ItemStock> _stockByCode = {};
 
-  /// Item codes asked for by a [_requestStock] still in flight.
+  /// Item codes asked for by a [_requestStock] of this review still in
+  /// flight.
   final Set<String> _askingCodes = {};
 
   /// The content fingerprint of every photo that entered the run (review,
@@ -968,6 +970,11 @@ class StockSheetController extends GetxController {
     errorMessage.value = null;
     openCards.clear();
     ageing.clear();
+    _knownCodes.clear();
+    _itemsByCode.clear();
+    _stockByCode.clear();
+    // A batch of the old review still in flight writes nothing into these.
+    _askingCodes.clear();
   }
 
   /// True once the controller closed or the review was cleared after
@@ -1247,16 +1254,18 @@ class StockSheetController extends GetxController {
     _askingCodes.addAll(codes);
     Object? failure;
     try {
-      await _fetchIntoCache(codes);
+      await _fetchIntoCache(codes, generation);
     } catch (e, st) {
       _log('stock check failed', e, st);
       failure = e;
     } finally {
-      _askingCodes.removeAll(codes);
+      // After a clear, the codes in flight are the new review's.
+      if (!_stale(generation)) _askingCodes.removeAll(codes);
     }
     if (_closed) return;
-    if (failure != null && _stale(generation)) {
-      // A batch of an earlier review: the rows now listed ask for themselves.
+    if (_stale(generation)) {
+      // A batch of an earlier review, answered or not, wrote nothing: the
+      // rows now listed ask for themselves.
       await _requestStock();
       return;
     }
@@ -1324,15 +1333,17 @@ class StockSheetController extends GetxController {
   }
 
   /// Asks the ERP for the Item and stock of [codes] and keeps the answers
-  /// by item code. Throws what the provider throws.
-  Future<void> _fetchIntoCache(List<String> codes) async {
+  /// by item code, with the items' ERP images, unless the review of
+  /// [generation] has been cleared by then. Throws what the provider throws.
+  Future<void> _fetchIntoCache(List<String> codes, int generation) async {
     if (codes.isEmpty) return;
     final items = await _provider.fetchItems(codes);
-    if (_closed) return;
+    if (_stale(generation)) return;
     // The ERP images download while the stock is checked.
-    final images = _loadItemImages(items.values);
+    final images = _loadItemImages(items.values, generation: generation);
     final stockRows = await _provider.fetchFinishedGoodsStock(codes);
     await images;
+    if (_stale(generation)) return;
     final stock = StockAggregator.racksByItem(stockRows);
     for (final code in codes) {
       _itemsByCode.remove(code);
@@ -1351,7 +1362,7 @@ class StockSheetController extends GetxController {
       for (final scan in scans)
         for (final item in scan.items) item.itemCode,
     }.toList();
-    await _fetchIntoCache(codes);
+    await _fetchIntoCache(codes, _generation);
     if (_closed) return const [];
     return [
       for (final scan in scans)
