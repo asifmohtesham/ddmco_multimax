@@ -260,28 +260,31 @@ class _ReviewRow extends StatelessWidget {
       ],
     );
 
+    final box = Container(
+      padding: const EdgeInsets.fromLTRB(4, 10, 8, 10),
+      // A row not read yet has a dashed outline and no fill.
+      decoration: _dashed
+          ? null
+          : BoxDecoration(
+              color: s.fg,
+              border: Border.all(color: s.border),
+              borderRadius: radius,
+            ),
+      child: content,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(4, 10, 8, 10),
-        // A row not read yet has a dashed outline and no fill.
-        decoration: _dashed
-            ? null
-            : BoxDecoration(
-                color: s.fg,
-                border: Border.all(color: s.border),
-                borderRadius: radius,
+      // The painter wraps the padded box, so the outline sits at the row's
+      // edge, where a solid row's border is.
+      child: _dashed
+          ? CustomPaint(
+              foregroundPainter: _DashedOutline(
+                color: s.borderStrong,
+                radius: AppRadius.lg,
               ),
-        child: _dashed
-            ? CustomPaint(
-                foregroundPainter: _DashedOutline(
-                  color: s.borderStrong,
-                  radius: AppRadius.lg,
-                ),
-                child: content,
-              )
-            : content,
-      ),
+              child: box,
+            )
+          : box,
     );
   }
 

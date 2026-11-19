@@ -163,6 +163,68 @@ void main() {
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 
+  testWidgets('the dashed outline covers the whole row, like a solid border', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        _list([
+          ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+          _inStockEntry,
+        ]),
+      ),
+    );
+    final outline = find.byWidgetPredicate(
+      (w) =>
+          w is CustomPaint &&
+          w.foregroundPainter.runtimeType.toString() == '_DashedOutline',
+    );
+    expect(outline, findsOneWidget);
+    final dismissibles = find.byType(Dismissible);
+    final dashedRow = tester.getRect(dismissibles.at(0));
+    final solidRow = tester.getRect(dismissibles.at(1));
+    final outlineRect = tester.getRect(outline);
+    // The row's outer box is the Dismissible less its 8 px bottom margin.
+    expect(outlineRect.left, dashedRow.left);
+    expect(outlineRect.top, dashedRow.top);
+    expect(outlineRect.width, dashedRow.width);
+    expect(outlineRect.height, dashedRow.height - 8);
+    // The same width as a settled row's bordered box.
+    final solidBox = find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration as BoxDecoration).borderRadius ==
+              BorderRadius.circular(AppRadius.lg),
+    );
+    expect(tester.getSize(solidBox).width, outlineRect.width);
+    expect(solidRow.width, dashedRow.width);
+  });
+
+  testWidgets('the strip is one live region that reads label then tally', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _app(
+        ReadingStrip(
+          entries: [
+            ReviewEntry(path: 'p1', number: 1),
+            ReviewEntry(path: 'p2', number: 2, stage: ReadStage.zooming),
+          ],
+        ),
+      ),
+    );
+    final live = find.byWidgetPredicate(
+      (w) => w is Semantics && w.properties.liveRegion == true,
+    );
+    final data = tester.getSemantics(live.first).getSemanticsData();
+    expect(data.flagsCollection.isLiveRegion, isTrue);
+    expect(data.label, contains('Zooming in on photo 2 of 2…'));
+    expect(data.label, contains('1 read · 1 to go'));
+    handle.dispose();
+  });
+
   testWidgets('a zooming row has a spinner, a not-read row none', (
     tester,
   ) async {
