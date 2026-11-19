@@ -219,7 +219,7 @@ class StockSheetController extends GetxController {
   /// and read with the others.
   final adding = false.obs;
 
-  /// True while [retryCheck] checks an added photo again.
+  /// True while [retryCheck] checks the "Stock not checked" rows again.
   final rechecking = false.obs;
 
   /// The photos of the share on screen (see [offerShare]).
@@ -687,43 +687,62 @@ class StockSheetController extends GetxController {
     }
   }
 
-  /// Checks the stock of added photo [index] again after a failed check,
-  /// from the codes already read from it. Returns null when checked (or
-  /// when there was nothing to do), else why the check failed.
-  Future<String?> retryCheck(int index) async {
+  /// Checks the stock of every "Stock not checked" row again, from the
+  /// codes already read from their photos: one Item call and one stock call
+  /// for all of them. Each row still unchecked once they answer becomes its
+  /// item rows, in place; a row fixed by a typed code meanwhile keeps it.
+  /// [rechecking] covers the whole check. Returns null when checked (or
+  /// when there was nothing to do), else why the check failed; the rows
+  /// then stay unchecked.
+  Future<String?> retryCheck() async {
     if (_closed || busy.value || rechecking.value || !_reviewing) return null;
-    if (index < 0 || index >= review.length) return null;
-    final entry = review[index];
-    if (!entry.unchecked) return null;
+    if (!review.any((e) => e.unchecked)) return null;
+    final codes = <String>{
+      for (final e in review)
+        if (e.unchecked)
+          for (final code in StockSheetCodec.itemsInPhoto(e.rawValues))
+            code.itemCode,
+    }.toList();
     final generation = _generation;
     rechecking.value = true;
     try {
-      final scan = PhotoScan(
-        index: index,
-        path: entry.path,
-        rawValues: entry.rawValues,
-        items: StockSheetCodec.itemsInPhoto(entry.rawValues),
-      );
-      final List<ReviewEntry> checked;
       try {
-        checked = await _entriesFor([scan]);
+        await _fetchIntoCache(codes, generation);
       } on StockAccessDenied {
         return _stale(generation) ? null : noAccessMessage;
       } catch (e, st) {
-        _log('stock check of an added photo failed', e, st);
+        _log('Retry check failed', e, st);
         return _stale(generation) ? null : offlineMessage;
       }
       if (_stale(generation)) return null;
-      final at = _locate(entry, index);
-      // A code typed meanwhile has already resolved the photo; keep it.
-      // Otherwise the photo becomes its rows, one per item.
-      if (at >= 0 && review[at].unchecked) {
-        review.replaceRange(at, at + 1, _numbered(checked, review[at].number));
-      }
+      _settleUnchecked();
       return null;
     } finally {
       rechecking.value = false;
     }
+  }
+
+  /// Replaces every "Stock not checked" row whose codes are all known with
+  /// its item rows, in place.
+  void _settleUnchecked() {
+    var changed = false;
+    final out = <ReviewEntry>[];
+    for (final e in review) {
+      final scan = _scanOf(e, rawValues: e.rawValues);
+      if (e.unchecked &&
+          scan.items.every((c) => _knownCodes.contains(c.itemCode))) {
+        out.addAll(
+          _numbered(
+            ReviewBuilder.entriesFor(scan, _itemsByCode, _stockByCode),
+            e.number,
+          ),
+        );
+        changed = true;
+      } else {
+        out.add(e);
+      }
+    }
+    if (changed) review.assignAll(out);
   }
 
   /// Makes the sheet from [review] in [f], asking about out-of-stock items
@@ -980,17 +999,6 @@ class StockSheetController extends GetxController {
   /// True once the controller closed or the review was cleared after
   /// [generation] was taken.
   bool _stale(int generation) => _closed || generation != _generation;
-
-  /// Where [entry], last seen at [index], is now: the user may have
-  /// reordered or switched rows meanwhile. -1 when it is gone.
-  int _locate(ReviewEntry entry, int index) {
-    final same = review.indexWhere((e) => identical(e, entry));
-    if (same >= 0) return same;
-    if (index < review.length && review[index].id == entry.id) {
-      return index;
-    }
-    return review.indexWhere((e) => e.id == entry.id);
-  }
 
   void _deleteCreatedFiles() {
     for (final file in _created) {
@@ -1352,22 +1360,6 @@ class StockSheetController extends GetxController {
     _itemsByCode.addAll(items);
     _stockByCode.addAll(stock);
     _knownCodes.addAll(codes);
-  }
-
-  /// Review entries for [scans], from one Item call and one stock call for
-  /// their codes, which are kept by item code too. Throws what the provider
-  /// throws.
-  Future<List<ReviewEntry>> _entriesFor(List<PhotoScan> scans) async {
-    final codes = <String>{
-      for (final scan in scans)
-        for (final item in scan.items) item.itemCode,
-    }.toList();
-    await _fetchIntoCache(codes, _generation);
-    if (_closed) return const [];
-    return [
-      for (final scan in scans)
-        ...ReviewBuilder.entriesFor(scan, _itemsByCode, _stockByCode),
-    ];
   }
 
   /// At most this many ERP images download at once.

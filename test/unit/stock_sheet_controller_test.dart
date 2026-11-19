@@ -482,7 +482,7 @@ void main() {
         expect(c.review.first.unchecked, isTrue);
         expect(decoder.zooms, ['p2']);
         provider.stockError = null;
-        expect(await c.retryCheck(0), isNull);
+        expect(await c.retryCheck(), isNull);
         expect(c.review.first.resolved, isTrue);
       },
     );
@@ -2019,7 +2019,64 @@ void main() {
     });
 
     test(
-      'a failed check adds them unchecked; Retry check resolves one',
+      'three unchecked photos: one Retry check checks them all in one batch',
+      () async {
+        const c3 = '1000003';
+        final decoder = _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+          'b.jpg': [_ean(_b)],
+          'd.jpg': [_ean(c3)],
+        });
+        final provider = _FakeProvider(
+          stock: {_a: 1, _b: 2, c3: 3},
+          known: const [_a, _b, c3],
+        )..stockError = Exception('offline');
+        final c = make(decoder, provider);
+        await c.start(['a.jpg', 'b.jpg', 'd.jpg']);
+        await settled(c);
+        expect(c.review.map((e) => e.unchecked), [true, true, true]);
+        final items = provider.itemRequests.length;
+        final stock = provider.stockRequests.length;
+
+        expect(await c.retryCheck(), isNull);
+
+        expect(provider.itemRequests, hasLength(items + 1));
+        expect(provider.stockRequests, hasLength(stock + 1));
+        expect(provider.itemRequests.last, unorderedEquals([_a, _b, c3]));
+        expect(provider.stockRequests.last, unorderedEquals([_a, _b, c3]));
+        expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
+        expect(c.review.map((e) => e.unchecked), [false, false, false]);
+        expect(c.review.map((e) => e.items.single.stock!.total), [1, 2, 3]);
+        expect(c.review.map((e) => e.number), [1, 2, 3]);
+        expect(c.rechecking.value, isFalse);
+      },
+    );
+
+    test(
+      'a failed Retry check leaves every unchecked photo unchecked',
+      () async {
+        final decoder = _FakeDecoder({
+          'a.jpg': [_ean(_a)],
+          'b.jpg': [_ean(_b)],
+          'd.jpg': [_ean(_a)],
+        });
+        final provider = _FakeProvider(stock: {_a: 1, _b: 2})
+          ..stockError = Exception('offline');
+        final c = make(decoder, provider);
+        await c.start(['a.jpg', 'b.jpg', 'd.jpg']);
+        await settled(c);
+        expect(c.review.map((e) => e.unchecked), [true, true, true]);
+
+        provider.stockError = Exception('still offline');
+        expect(await c.retryCheck(), StockSheetController.offlineMessage);
+        expect(c.review.map((e) => e.unchecked), [true, true, true]);
+        expect(c.review.every((e) => e.items.isEmpty), isTrue);
+        expect(c.rechecking.value, isFalse);
+      },
+    );
+
+    test(
+      'a failed check adds them unchecked; Retry check resolves both',
       () async {
         const c3 = '1000003';
         final decoder = _FakeDecoder({
@@ -2049,15 +2106,16 @@ void main() {
         expect(c.sheetPhotoCount, 1);
         final decodes = decoder.calls;
 
-        await c.retryCheck(1);
+        await c.retryCheck();
 
         expect(decoder.calls, decodes);
         expect(c.review[1].unchecked, isFalse);
         expect(c.review[1].items.single.code.itemCode, _b);
         expect(c.review[1].items.single.stock!.total, 2);
-        expect(c.review[2].unchecked, isTrue);
-        expect(provider.stockRequests.last, [_b]);
-        expect(c.sheetPhotoCount, 2);
+        expect(c.review[2].unchecked, isFalse);
+        expect(c.review[2].items.single.code.itemCode, c3);
+        expect(provider.stockRequests.last, [_b, c3]);
+        expect(c.sheetPhotoCount, 3);
         expect(c.rechecking.value, isFalse);
       },
     );
@@ -2077,14 +2135,14 @@ void main() {
       provider.itemsError = Exception('still offline');
 
       expect(
-        await c.retryCheck(1),
+        await c.retryCheck(),
         "Couldn't reach the ERP. Check the connection and try again.",
       );
       expect(c.review[1].unchecked, isTrue);
       expect(c.review[1].items, isEmpty);
 
       provider.itemsError = const StockAccessDenied();
-      expect(await c.retryCheck(1), "You don't have access to stock levels.");
+      expect(await c.retryCheck(), "You don't have access to stock levels.");
       expect(c.review[1].unchecked, isTrue);
       expect(c.rechecking.value, isFalse);
     });
@@ -2108,7 +2166,7 @@ void main() {
       expect(c.review[1].unchecked, isTrue);
       final gate = provider.itemsGateOnce = Completer<void>();
 
-      final retry = c.retryCheck(1);
+      final retry = c.retryCheck();
       await pumpEventQueue();
       // The gate was taken by the retry's Item call.
       expect(provider.itemsGateOnce, isNull);
@@ -2294,7 +2352,7 @@ void main() {
       expect(c.review, hasLength(2));
       expect(c.review[1].unchecked, isTrue);
 
-      expect(await c.retryCheck(1), isNull);
+      expect(await c.retryCheck(), isNull);
 
       expect(reviewPaths(c), ['one.jpg', 'sheet.jpg', 'sheet.jpg']);
       expect(c.review.skip(1).map((e) => e.items.single.code.itemCode), [

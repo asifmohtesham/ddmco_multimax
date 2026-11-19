@@ -297,8 +297,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     }
   }
 
-  Future<void> _retryCheck(int index) async {
-    final error = await controller.retryCheck(index);
+  /// "Retry check" on any row checks every "Stock not checked" row.
+  Future<void> _retryCheck(int _) async {
+    final error = await controller.retryCheck();
     if (mounted && error != null) AppNotification.warning(error);
   }
 

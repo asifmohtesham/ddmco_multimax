@@ -45,7 +45,7 @@ class _SpyController extends StockSheetController {
   /// When set, answers [addPhotos] instead of [addError].
   Future<String?> Function(List<String> paths)? onAdd;
 
-  final rechecks = <int>[];
+  int rechecks = 0;
   String? recheckError;
   int retries = 0;
   bool retryable = false;
@@ -95,8 +95,8 @@ class _SpyController extends StockSheetController {
   }
 
   @override
-  Future<String?> retryCheck(int index) async {
-    rechecks.add(index);
+  Future<String?> retryCheck() async {
+    rechecks++;
     return recheckError;
   }
 
@@ -613,7 +613,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(controller.rechecks, [1]);
+    expect(controller.rechecks, 1);
     expect(find.text(StockSheetController.offlineMessage), findsOneWidget);
   });
 
