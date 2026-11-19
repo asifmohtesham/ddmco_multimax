@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -8,12 +9,15 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_checker.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/batch_picker_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/qty_cap_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/qty_field_with_plus_minus_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_field_with_browse_delegate.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/older_stock_sheet.dart';
 
 /// Drives the visual state of the animated Save button in the item sheet.
 enum SaveButtonState { idle, loading, success, error }
@@ -609,6 +613,7 @@ abstract class ItemSheetControllerBase extends GetxController
     batchError.value       = '';
     batchInfoTooltip.value = null;
     batchBalance.value     = 0.0;
+    _clearBatchAgeRefusal();
     resetRack();
   }
 
@@ -617,7 +622,164 @@ abstract class ItemSheetControllerBase extends GetxController
     isBatchReadOnly.value  = false;
     batchError.value       = '';
     batchInfoTooltip.value = null;
+    _clearBatchAgeRefusal();
     softResetRack();
+  }
+
+  // ── Oldest stock first ───────────────────────────────────────────────────────
+  //
+  // A batch is refused while an older batch of the item still has stock.
+  // Rule: batch_age_rule.dart · lookups: batch_age_checker.dart ·
+  // design: docs/batch_age_validation.md.
+
+  /// Whether this sheet refuses a batch while older stock of the item
+  /// remains. Off by default; outbound sheets (Delivery Note, Stock Entry
+  /// issues) opt in.
+  bool get enforcesBatchAge => false;
+
+  /// The warehouse the row is picked from. The rule only covers `WH-`
+  /// warehouses; null (not known yet) skips the check until it resolves —
+  /// see [recheckBatchAge].
+  String? get batchAgePickWarehouse => resolvedWarehouse;
+
+  /// The open document's in-memory lines for this item, without the row being
+  /// edited. Their quantity is taken off the older batches' balance.
+  List<BatchDraftLine> get batchAgeOwnLines => const [];
+
+  /// The open document as saved on the server, so its saved rows are replaced
+  /// by [batchAgeOwnLines] rather than counted twice.
+  String? get batchAgeOwnDoctype => null;
+  String? get batchAgeOwnDocName => null;
+
+  /// The item's name for the refusal sheet's heading. Sheets that keep the
+  /// name somewhere other than [itemName] override this.
+  String get batchAgeItemName => itemName.value;
+
+  /// The batch the edited row was saved with. Re-opening a row never refuses
+  /// the batch it already carries (a supervisor may have entered it in Desk).
+  String? get batchAgeExemptBatch => null;
+
+  /// The older batches behind the current refusal, oldest first. Empty when
+  /// the batch was not refused.
+  final RxList<OlderBatch> olderBatches = <OlderBatch>[].obs;
+
+  String? _batchAgeScope;
+  String? _batchAgeRefusedWarehouse;
+
+  /// `batch|warehouse` of the last check, so a warehouse that resolves later
+  /// (rack scan) triggers exactly one re-check.
+  String _batchAgeCheckedKey = '';
+
+  String _batchAgeKey(String batch, String? warehouse) =>
+      '${batch.trim()}|${warehouse?.trim() ?? ''}';
+
+  void _clearBatchAgeRefusal() {
+    if (olderBatches.isNotEmpty) olderBatches.clear();
+    _batchAgeScope = null;
+    _batchAgeRefusedWarehouse = null;
+    _batchAgeCheckedKey = '';
+  }
+
+  /// True when [batch] may be used. On refusal writes [batchError], fills
+  /// [olderBatches] and opens the explanation sheet. A lookup that fails
+  /// refuses too: a hard rule must not vanish with the connection.
+  ///
+  /// Returns false silently when the field moved on while the lookup ran.
+  Future<bool> _passesBatchAge(String batch) async {
+    if (!enforcesBatchAge) return true;
+    final scanned   = batch.trim();
+    final warehouse = batchAgePickWarehouse;
+    _batchAgeCheckedKey = _batchAgeKey(scanned, warehouse);
+
+    final exempt = batchAgeExemptBatch?.trim() ?? '';
+    if (exempt.isNotEmpty && exempt == scanned) return true;
+    if (!batchAgeRuleApplies(warehouse)) return true;
+
+    bool superseded() => isClosed || batchController.text.trim() != scanned;
+
+    final BatchAgeVerdict verdict;
+    try {
+      verdict = await BatchAgeChecker.create().check(
+        itemCode:      itemCode.value,
+        pickWarehouse: warehouse,
+        batchNo:       scanned,
+        ownLines:      batchAgeOwnLines,
+        ownDoctype:    batchAgeOwnDoctype,
+        ownDocName:    batchAgeOwnDocName,
+      );
+    } catch (e) {
+      log('[ItemSheet] batch age check failed: $e', name: 'ItemSheet');
+      if (superseded()) return false;
+      batchError.value = 'Could not check for older stock. '
+          'Check the connection and scan the batch again.';
+      return false;
+    }
+    if (superseded()) return false;
+    if (!verdict.isRefused) return true;
+
+    olderBatches.assignAll(verdict.older);
+    _batchAgeScope            = verdict.scopeWarehouse;
+    _batchAgeRefusedWarehouse = warehouse;
+    batchError.value          = kOlderStockMessage;
+    showOlderStock();
+    return false;
+  }
+
+  /// Runs the age check again when the pick warehouse resolves or changes
+  /// after the batch was validated (batch scanned before the rack).
+  Future<void> recheckBatchAge() async {
+    if (!enforcesBatchAge || isClosed) return;
+    final batch = batchController.text.trim();
+    if (batch.isEmpty || !isBatchValid.value || isValidatingBatch.value) return;
+    if (_batchAgeKey(batch, batchAgePickWarehouse) == _batchAgeCheckedKey) {
+      return;
+    }
+
+    isValidatingBatch.value = true;
+    try {
+      final allowed = await _passesBatchAge(batch);
+      if (!allowed && !isClosed && batchController.text.trim() == batch) {
+        isBatchValid.value = false;
+      }
+    } finally {
+      if (!isClosed) {
+        isValidatingBatch.value = false;
+        validateSheet();
+      }
+    }
+  }
+
+  /// Opens the sheet that explains the current refusal: the older batches
+  /// that must ship first and the racks the item is kept in.
+  void showOlderStock() {
+    if (olderBatches.isEmpty) return;
+    // No overlay to draw on (controller driven outside a running app).
+    final ctx = Get.key.currentContext;
+    if (ctx == null) return;
+    final refused   = batchController.text.trim();
+    final warehouse = _batchAgeRefusedWarehouse;
+    final scope     = _batchAgeScope;
+    final code      = itemCode.value;
+
+    showOlderStockSheet(
+      ctx,
+      itemLabel: [code, batchAgeItemName]
+          .where((s) => s.trim().isNotEmpty)
+          .toSet() // a name that only repeats the code is shown once
+          .join(' · '),
+      refusedBatch: refused,
+      older:        olderBatches.toList(),
+      loadRacks: () => BatchAgeChecker.create().racks(
+        itemCode:      code,
+        pickWarehouse: warehouse ?? '',
+        scope:         scope,
+      ),
+    ).then((scanOlder) {
+      if (scanOlder != true || isClosed) return;
+      // Clear the refused batch so the next scan is read as a batch.
+      batchController.clear();
+      resetBatch();
+    });
   }
 
   // ── Fetch helpers ──────────────────────────────────────────────────────────────
@@ -674,6 +836,7 @@ abstract class ItemSheetControllerBase extends GetxController
       itemCode:    itemCode.value,
       warehouse:   resolvedWarehouse,
       accentColor: accentColor,
+      oldestFirst: enforcesBatchAge,
     );
     if (selected == null || selected.isEmpty) return;
     batchController.text = selected;
@@ -687,6 +850,7 @@ abstract class ItemSheetControllerBase extends GetxController
     batchError.value        = '';
     batchInfoTooltip.value  = null;
     isBatchValid.value      = false;
+    _clearBatchAgeRefusal();
 
     try {
       // Try strict lookup first (batch name + item). Falls back to name-only
@@ -743,12 +907,19 @@ abstract class ItemSheetControllerBase extends GetxController
       }
       if (parts.isNotEmpty) batchInfoTooltip.value = parts.join('  \u2022  ');
 
+      // Oldest stock first: a hard stop, checked last so "not found" and
+      // "expired" are reported ahead of it.
+      if (!await _passesBatchAge(batch)) return;
+
       isBatchValid.value = true;
       await fetchBatchBalance();
     } catch (e) {
       batchError.value = 'Error validating batch: $e';
     } finally {
       isValidatingBatch.value = false;
+      // A rack scanned while this was in flight may have changed the pick
+      // warehouse after the age check read it. No-op when it did not.
+      if (isBatchValid.value) unawaited(recheckBatchAge());
     }
   }
 

@@ -7,6 +7,7 @@ import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
 
 // Shared base + mixins
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
@@ -19,6 +20,7 @@ import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
 
 // Data layer
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
 // Domain model
 import 'package:multimax/app/data/models/delivery_note_model.dart';
@@ -158,6 +160,42 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   bool get isAddMode => !isExistingItem.value;
 
+  // ── Oldest stock first (docs/batch_age_validation.md) ─────────────────────
+  /// A Delivery Note ships stock out, so a batch is refused while an older
+  /// batch of the item is still available.
+  @override
+  bool get enforcesBatchAge => true;
+
+  /// The Delivery Note sheet keeps the item name in [itemNameRx].
+  @override
+  String get batchAgeItemName => itemNameRx.value;
+
+  @override
+  String? get batchAgeOwnDoctype => 'Delivery Note';
+
+  @override
+  String? get batchAgeOwnDocName => _parent.batchAgeDocName;
+
+  /// The batch this row was opened with; never refused on re-open.
+  String? _savedBatch;
+
+  @override
+  String? get batchAgeExemptBatch => isExistingItem.value ? _savedBatch : null;
+
+  /// This note's other rows for the item (the row being edited is left out).
+  @override
+  List<BatchDraftLine> get batchAgeOwnLines {
+    final rows = _parent.items;
+    final skip = isExistingItem.value ? editingIndex.value : -1;
+    return _parent.batchAgeLines(
+      itemCode.value,
+      rows: [
+        for (var i = 0; i < rows.length; i++)
+          if (i != skip) rows[i],
+      ],
+    );
+  }
+
   // ── qtyInfoText / qtyInfoTooltip ───────────────────────────────────────────
   @override
   String? get qtyInfoText {
@@ -283,14 +321,37 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   void deleteCurrentItem() {
     if (!isExistingItem.value || editingIndex.value < 0) return;
-    _parent.deliveryNote.value?.items.removeAt(editingIndex.value);
+    final items = _parent.deliveryNote.value?.items;
+    if (items == null || editingIndex.value >= items.length) return;
+    // The sheet closes (and this controller is deleted) right after this
+    // call, so the parent is captured and the removal completes on it.
+    unawaited(_removeRow(_parent, items[editingIndex.value]));
+  }
+
+  /// Removes [row] from [parent] unless that would free older stock while a
+  /// newer batch of the item stays on the note (oldest stock first).
+  static Future<void> _removeRow(
+      DeliveryNoteFormController parent, DeliveryNoteItem row) async {
+    final items = parent.deliveryNote.value?.items;
+    if (items == null) return;
+    final reason = await parent.batchOrderBreak(
+      itemCode:     row.itemCode,
+      rowWarehouse: row.warehouse,
+      after:        [for (final r in items) if (!identical(r, row)) r],
+    );
+    if (parent.isClosed) return;
+    if (reason != null) {
+      GlobalSnackbar.error(message: reason);
+      return;
+    }
+    items.removeWhere((r) => identical(r, row));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_parent.isClosed) return;
-      _parent.deliveryNote.refresh();
-      _parent.checkForChanges();           // Mark document dirty
-      if (_parent.mode == 'edit') {
-        _parent.saveDocument();        // Execute PUT request
+      if (parent.isClosed) return;
+      parent.deliveryNote.refresh();
+      parent.checkForChanges();           // Mark document dirty
+      if (parent.mode == 'edit') {
+        parent.saveDocument();        // Execute PUT request
       }
     });
   }
@@ -560,6 +621,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = false;
     editingIndex.value    = -1;
     editingItemName.value = null;
+    _savedBatch           = null;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
     allowFullSerials.value = false;
   }
@@ -660,6 +722,7 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isExistingItem.value  = true;
     editingIndex.value    = index;
     editingItemName.value = item.name;
+    _savedBatch           = item.batchNo;
     docStatus.value       = _parent.deliveryNote.value?.docstatus ?? 0;
     allowFullSerials.value = false;
   }
@@ -773,6 +836,14 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// within the effective ceiling, then write [isQtyValid] and [qtyError]
   /// with an appropriate message for each failure case.
   void _evaluateQtyValidity({required double? qty, required double ceil}) {
+    // Batch refused because older stock must ship first: the batch field
+    // carries the reason, so no "no available stock" message here.
+    if (olderBatches.isNotEmpty) {
+      isQtyValid.value = false;
+      qtyError.value   = '';
+      return;
+    }
+
     // Gate on batch balance first — mirrors _rackBalanceOk pattern.
     if (!_batchBalanceOk) {
       isQtyValid.value = false;
@@ -833,8 +904,34 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   Future<void> submit() async {
     final qty = _assertSubmitPreconditions();
     final item = _buildItem(qty: qty);
+    await _assertBatchOrderKept(item);
     _commitToParent(item: item);
     _scheduleParentRefresh();
+  }
+
+  /// Oldest stock first: an edit that reduces an older-batch row (or moves it
+  /// to another batch) frees that stock again. Refused while a newer batch of
+  /// the item is on the note. Throws the reason for the sheet to show.
+  Future<void> _assertBatchOrderKept(DeliveryNoteItem edited) async {
+    if (!isExistingItem.value || editingIndex.value < 0) return;
+    final rows = _parent.items;
+    if (editingIndex.value >= rows.length) return;
+
+    final saved = rows[editingIndex.value];
+    final freesStock = edited.qty < saved.qty ||
+        (edited.batchNo ?? '') != (saved.batchNo ?? '') ||
+        (edited.warehouse ?? '') != (saved.warehouse ?? '');
+    if (!freesStock) return;
+
+    final reason = await _parent.batchOrderBreak(
+      itemCode:     saved.itemCode,
+      rowWarehouse: saved.warehouse,
+      after: [
+        for (var i = 0; i < rows.length; i++)
+          i == editingIndex.value ? edited : rows[i],
+      ],
+    );
+    if (reason != null) throw Exception(reason);
   }
 
   // ── SRP helpers ────────────────────────────────────────────────────────────
@@ -1017,6 +1114,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     } finally {
       isValidatingRack.value = false;
       validateSheet();
+      // A rack scan can resolve or change the pick warehouse after the batch
+      // was validated; the oldest-stock-first check depends on it.
+      unawaited(recheckBatchAge());
     }
   }
 
