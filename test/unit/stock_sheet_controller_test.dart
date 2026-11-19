@@ -606,6 +606,51 @@ void main() {
       },
     );
 
+    test(
+      'Undo puts a row back beside its neighbour, never inside another photo\'s rows',
+      () async {
+        final decoder = _FakeDecoder({
+          'sheet': [eanA, eanB],
+          'bad': null,
+          'p3': [eanA],
+        })..zoomGate = Completer<void>();
+        final c = make(decoder, _FakeProvider());
+        await c.start(['sheet', 'bad', 'p3']);
+        await pumpEventQueue();
+        expect(c.review.first.stage, ReadStage.zooming);
+        final removed = c.removeAt(1)!;
+        expect(removed.path, 'bad');
+
+        // Meanwhile the sheet photo above becomes its two rows.
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(reviewPaths(c), ['sheet', 'sheet', 'p3']);
+
+        c.restore(removed, 1);
+        expect(reviewPaths(c), ['sheet', 'sheet', 'bad', 'p3']);
+      },
+    );
+
+    test('Undo of one row of a photo puts it back in its place', () async {
+      final c = make(
+        _FakeDecoder({
+          'sheet': [eanA, eanB],
+          'p2': [eanA],
+        }),
+        _FakeProvider(),
+      );
+      await c.start(['sheet', 'p2']);
+      await settled(c);
+      final ids = c.review.map((e) => e.id).toList();
+      final removed = c.removeAt(0)!;
+      c.restore(removed, 0);
+      expect(c.review.map((e) => e.id), ids);
+      final second = c.removeAt(1)!;
+      c.reorder(1, 0); // p2 to the top: p2, sheet#0
+      c.restore(second, 1);
+      expect(c.review.map((e) => e.id), [ids[2], ids[0], ids[1]]);
+    });
+
     test('a photo removed before its turn is never read', () async {
       final decoder = _FakeDecoder({'p1': const [], 'p2': const []})
         ..zoomGate = Completer<void>();
@@ -1673,7 +1718,7 @@ void main() {
       final c = await fourPhotos(provider);
       expect(c.review[2].resolved, isFalse);
 
-      final error = await c.fixCode(2, ' $typed ');
+      final error = await c.fixCode(c.review[2].id, ' $typed ');
 
       expect(error, isNull);
       expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'bad.jpg', 'c.jpg']);
@@ -1706,7 +1751,7 @@ void main() {
       expect(c.review[1].notInErp, [note]);
       final first = c.review[0];
 
-      expect(await c.fixCode(1, noteItem), isNull);
+      expect(await c.fixCode(c.review[1].id, noteItem), isNull);
 
       expect(c.review[0], same(first));
       expect(c.review[1].items.single.code.itemCode, noteItem);
@@ -1722,8 +1767,9 @@ void main() {
       final c = await fourPhotos(provider);
       final calls = provider.itemRequests.length;
 
-      expect(await c.fixCode(2, 'ABC'), 'Not a barcode or item code');
-      expect(await c.fixCode(2, '12345678'), 'Not a barcode or item code');
+      final bad = c.review[2].id;
+      expect(await c.fixCode(bad, 'ABC'), 'Not a barcode or item code');
+      expect(await c.fixCode(bad, '12345678'), 'Not a barcode or item code');
       expect(provider.itemRequests, hasLength(calls));
       expect(c.review[2].resolved, isFalse);
     });
@@ -1732,7 +1778,7 @@ void main() {
       final provider = _FakeProvider();
       final c = await fourPhotos(provider);
 
-      expect(await c.fixCode(2, typed), 'Not in ERP');
+      expect(await c.fixCode(c.review[2].id, typed), 'Not in ERP');
       expect(c.review[2].resolved, isFalse);
       expect(c.review[2].typed, isFalse);
       expect(c.fixing.value, isFalse);
@@ -1742,7 +1788,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
       final c = await fourPhotos(provider);
 
-      expect(await c.fixCode(2, _ean(_a)), isNull);
+      expect(await c.fixCode(c.review[2].id, _ean(_a)), isNull);
 
       expect(c.review[0].items.single.code.itemCode, _a);
       expect(c.review[2].items.single.code.itemCode, _a);
@@ -1755,22 +1801,102 @@ void main() {
       final c = await fourPhotos(provider);
 
       provider.itemsError = const StockAccessDenied();
-      expect(await c.fixCode(2, _a), "You don't have access to stock levels.");
+      expect(
+        await c.fixCode(c.review[2].id, _a),
+        "You don't have access to stock levels.",
+      );
       provider.stockError = Exception('offline');
       expect(
-        await c.fixCode(2, _a),
+        await c.fixCode(c.review[2].id, _a),
         "Couldn't reach the ERP. Check the connection and try again.",
       );
       expect(c.review[2].resolved, isFalse);
       expect(c.fixing.value, isFalse);
     });
 
+    test(
+      'a row with an item, or still being read, is never overwritten',
+      () async {
+        final decoder = _FakeDecoder({
+          'sheet': [_ean(_a), _ean(_b)],
+          'bad': null,
+        })..zoomGate = Completer<void>();
+        final provider = _FakeProvider(
+          stock: {_a: 1, _b: 1, typed: 3},
+          known: const [_a, _b, typed],
+        );
+        final c = make(decoder, provider);
+        await c.start(['sheet', 'bad']);
+        await pumpEventQueue();
+        expect(c.review.first.stage, ReadStage.zooming);
+        final requests = provider.itemRequests.length;
+
+        // Still being read: nothing to fix.
+        expect(await c.fixCode(c.review[0].id, typed), isNull);
+        expect(c.review.first.stage, ReadStage.zooming);
+        expect(c.review.first.typed, isFalse);
+
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(reviewPaths(c), ['sheet', 'sheet', 'bad']);
+        final before = c.review.toList();
+
+        // The sheet's second row has an item: nothing to fix either.
+        expect(await c.fixCode(c.review[1].id, typed), isNull);
+        expect(c.review[1], same(before[1]));
+        expect(c.review[1].typed, isFalse);
+        expect(c.review[2].resolved, isFalse);
+        // Refused without asking the ERP.
+        expect(provider.itemRequests, hasLength(requests));
+      },
+    );
+
+    test(
+      'a code typed while a photo above becomes its rows lands on its own row',
+      () async {
+        final decoder = _FakeDecoder({
+          'sheet': [_ean(_a), _ean(_b)],
+          'bad': null, // "Unreadable photo": settled in round one
+        })..zoomGate = Completer<void>();
+        final provider = _FakeProvider(
+          stock: {_a: 1, _b: 1, typed: 3},
+          known: const [_a, _b, typed],
+        );
+        final c = make(decoder, provider);
+        await c.start(['sheet', 'bad']);
+        await pumpEventQueue();
+        expect(c.review.map((e) => e.stage), [
+          ReadStage.zooming,
+          ReadStage.settled,
+        ]);
+        expect(c.review[1].decodeFailed, isTrue);
+        // What the screen takes when "Type or scan code" is tapped on it.
+        final tapped = c.review[1].id;
+
+        // While the code is typed, the sheet photo above becomes its rows.
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(reviewPaths(c), ['sheet', 'sheet', 'bad']);
+        final sheetRows = c.review.take(2).toList();
+
+        expect(await c.fixCode(tapped, typed), isNull);
+
+        expect(c.review[0], same(sheetRows[0]));
+        expect(c.review[1], same(sheetRows[1]));
+        expect(c.review[1].items.single.info.itemCode, _b);
+        expect(c.review[1].typed, isFalse);
+        expect(c.review[2].path, 'bad');
+        expect(c.review[2].typed, isTrue);
+        expect(c.review[2].items.single.info.itemCode, typed);
+      },
+    );
+
     test('closing during the lookup leaves the review alone', () async {
       final provider = _FakeProvider(stock: {_a: 1, _b: 1});
       final c = await fourPhotos(provider);
       provider.itemsGate = Completer<void>();
 
-      final fix = c.fixCode(2, _a);
+      final fix = c.fixCode(c.review[2].id, _a);
       expect(c.fixing.value, isTrue);
       c.onClose();
       provider.itemsGate!.complete();
@@ -1986,7 +2112,7 @@ void main() {
       await pumpEventQueue();
       // The gate was taken by the retry's Item call.
       expect(provider.itemsGateOnce, isNull);
-      expect(await c.fixCode(1, typed), isNull);
+      expect(await c.fixCode(c.review[1].id, typed), isNull);
       expect(c.review[1].items.single.code.itemCode, typed);
       gate.complete();
 
@@ -2278,7 +2404,7 @@ void main() {
       await settled(c);
       expect(fetched, isEmpty);
 
-      expect(await c.fixCode(0, _b), isNull);
+      expect(await c.fixCode(c.review[0].id, _b), isNull);
 
       expect(fetched, ['/files/b.jpg']);
       expect(c.thumbnails.containsKey(ItemInfo.thumbnailKey(_b)), isTrue);

@@ -85,6 +85,15 @@ class _SpyController extends StockSheetController {
     return onAdd != null ? onAdd!(paths) : addError;
   }
 
+  /// Every [fixCode] call, as (row id, code).
+  final fixes = <(String, String)>[];
+
+  @override
+  Future<String?> fixCode(String rowId, String input) async {
+    fixes.add((rowId, input));
+    return null;
+  }
+
   @override
   Future<String?> retryCheck(int index) async {
     rechecks.add(index);
@@ -562,6 +571,31 @@ void main() {
     expect(find.text('Item 12345670'), findsOneWidget);
     expect(controller.review, hasLength(2));
   });
+
+  testWidgets(
+    'a code typed goes to the row tapped, though rows above became several',
+    (tester) async {
+      await open(tester);
+      await review(tester, [
+        ReviewEntry(path: 'a.jpg', items: [_item('12345670')]),
+        ReviewEntry(path: 'bad.jpg', decodeFailed: true),
+      ]);
+
+      await tester.tap(find.text('✎ Type or scan code'));
+      await tester.pumpAndSettle();
+      // While the sheet is open, the photo above becomes two rows.
+      controller.review.replaceRange(0, 1, [
+        ReviewEntry(path: 'a.jpg', id: 'a.jpg#0', items: [_item('12345670')]),
+        ReviewEntry(path: 'a.jpg', id: 'a.jpg#1', items: [_item('76543210')]),
+      ]);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), '1234567');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(controller.fixes, [('bad.jpg', '1234567')]);
+    },
+  );
 
   testWidgets('a failed Retry check says why in a snackbar', (tester) async {
     await open(tester);

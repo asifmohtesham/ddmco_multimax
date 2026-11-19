@@ -389,6 +389,10 @@ class StockSheetController extends GetxController {
     if (_closed || !canRemove) return null;
     if (index < 0 || index >= review.length) return null;
     final removed = review.removeAt(index);
+    _removedBeside[removed.id] = (
+      before: index > 0 ? review[index - 1] : null,
+      after: index < review.length ? review[index] : null,
+    );
     final zoom = _zoomInHand;
     if (removed.stage == ReadStage.zooming && zoom?.path == removed.path) {
       zoom!.stopped = true;
@@ -396,11 +400,15 @@ class StockSheetController extends GetxController {
     return removed;
   }
 
-  /// Puts a removed [entry] back at [index] (clamped to the list), unless
-  /// the row is listed again, or its photo was added again under another
-  /// path (the photo's other rows, which share its path, do not count). A
-  /// photo whose read was cut short waits to be read afresh: "Not read yet"
-  /// before its quick pass, "Waiting to zoom in" after it.
+  /// Puts a removed [entry] back where it was, unless the row is listed
+  /// again, or its photo was added again under another path (the photo's
+  /// other rows, which share its path, do not count). The list may have
+  /// changed since [removeAt]: the row goes back after the row that was
+  /// above it, else before the row that was below it (each found by its id,
+  /// else by its photo), else at [index] (clamped to the list); never in
+  /// the middle of another photo's rows. A photo whose read was cut short
+  /// waits to be read afresh: "Not read yet" before its quick pass,
+  /// "Waiting to zoom in" after it.
   void restore(ReviewEntry entry, int index) {
     if (_closed || !_reviewing) return;
     if (review.any((e) => e.id == entry.id)) return;
@@ -416,9 +424,46 @@ class StockSheetController extends GetxController {
       ReadStage.zooming => entry.copyWith(stage: ReadStage.waiting),
       _ => entry,
     };
-    review.insert(index.clamp(0, review.length), back);
+    review.insert(_placeFor(entry, index), back);
     unawaited(_pump(_generation));
     unawaited(_requestStock());
+  }
+
+  /// The rows above and below each row taken off by [removeAt], by its id,
+  /// for [restore].
+  final Map<String, ({ReviewEntry? before, ReviewEntry? after})>
+  _removedBeside = {};
+
+  /// Where [restore] puts [entry] back (see there).
+  int _placeFor(ReviewEntry entry, int index) {
+    final beside = _removedBeside.remove(entry.id);
+    final before = beside?.before;
+    final after = beside?.after;
+    int at;
+    int i;
+    if (before != null &&
+        (i = review.indexWhere((e) => e.id == before.id)) >= 0) {
+      at = i + 1;
+    } else if (before != null &&
+        (i = review.lastIndexWhere((e) => e.path == before.path)) >= 0) {
+      at = i + 1;
+    } else if (after != null &&
+        (i = review.indexWhere((e) => e.id == after.id)) >= 0) {
+      at = i;
+    } else if (after != null &&
+        (i = review.indexWhere((e) => e.path == after.path)) >= 0) {
+      at = i;
+    } else {
+      at = index.clamp(0, review.length);
+    }
+    // Not between two rows of another photo: after them instead.
+    while (at > 0 &&
+        at < review.length &&
+        review[at - 1].path == review[at].path &&
+        review[at].path != entry.path) {
+      at++;
+    }
+    return at;
   }
 
   /// Opens or closes the card of the row [entryId]. Only a settled row with
@@ -470,14 +515,16 @@ class StockSheetController extends GetxController {
   bool get _editing => fixing.value || adding.value || rechecking.value;
 
   /// Looks up [input] (a barcode, a batch QR or a seven-digit item code)
-  /// and makes row [index] that item. Returns null on success, else the
-  /// error to show.
-  Future<String?> fixCode(int index, String input) async {
+  /// and makes the row [rowId] (its [ReviewEntry.id], taken when the user
+  /// chose it) that item, wherever the row is by then. Returns null on
+  /// success, else the error to show. Only a settled row without an item
+  /// can be fixed; for any other row, or one no longer listed, it does
+  /// nothing and returns null.
+  Future<String?> fixCode(String rowId, String input) async {
     if (_closed || fixing.value || busy.value || !_reviewing) return null;
-    if (index < 0 || index >= review.length) return null;
+    if (_fixableAt(rowId) < 0) return null;
     final code = StockSheetCodec.resolveTyped(input);
     if (code == null) return notACodeMessage;
-    final entry = review[index];
     final generation = _generation;
     fixing.value = true;
     try {
@@ -489,7 +536,8 @@ class StockSheetController extends GetxController {
       final rows = await _provider.fetchFinishedGoodsStock([code.itemCode]);
       await images;
       if (_stale(generation)) return null;
-      final at = _locate(entry, index);
+      // Read, checked or fixed meanwhile: what it holds now stands.
+      final at = _fixableAt(rowId);
       if (at < 0) return null;
       final item = ReviewItem(
         code: code,
@@ -511,6 +559,15 @@ class StockSheetController extends GetxController {
     } finally {
       fixing.value = false;
     }
+  }
+
+  /// Where the row [rowId] is, when it is settled without an item (the
+  /// rows [fixCode] fixes); -1 otherwise, or when it is gone.
+  int _fixableAt(String rowId) {
+    final at = review.indexWhere((e) => e.id == rowId);
+    if (at < 0) return -1;
+    final row = review[at];
+    return row.settled && !row.resolved ? at : -1;
   }
 
   /// Free places under [maxPhotos], after the review and the [addPhotos]
@@ -904,6 +961,7 @@ class StockSheetController extends GetxController {
     files.clear();
     thumbnails.clear();
     review.clear();
+    _removedBeside.clear();
     _lastNumber = 0;
     pendingShare.clear();
     _fingerprintOf.clear();

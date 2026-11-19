@@ -252,10 +252,14 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     _close();
   }
 
+  /// The row is named by its id, taken now: while the code is typed, rows
+  /// above it can become several, so its index may change.
   void _fix(int index) {
+    if (index < 0 || index >= controller.review.length) return;
+    final rowId = controller.review[index].id;
     showFixCodeSheet(
       context,
-      onSubmit: (code) => controller.fixCode(index, code),
+      onSubmit: (code) => controller.fixCode(rowId, code),
     );
   }
 
