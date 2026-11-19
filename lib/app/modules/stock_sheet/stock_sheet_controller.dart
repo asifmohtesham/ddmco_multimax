@@ -279,6 +279,9 @@ class StockSheetController extends GetxController {
   /// finishes afterwards does not write into the new review.
   int _generation = 0;
 
+  /// The highest photo number given in this review (see [_takeNumbers]).
+  int _lastNumber = 0;
+
   /// Completes when the [addPhotos] run in flight ends; null when none is.
   Future<void>? _addRun;
 
@@ -313,7 +316,7 @@ class StockSheetController extends GetxController {
       final unique = await _firstOfEachContent(paths);
       if (_closed) return;
       total.value = unique.length;
-      final first = _nextNumber();
+      final first = _takeNumbers(unique.length);
       review.assignAll([
         for (var i = 0; i < unique.length; i++)
           ReviewEntry(
@@ -546,7 +549,7 @@ class StockSheetController extends GetxController {
       _addingPaths = const [];
       final room = photoRoom;
       if (fresh.length > room) return roomMessage(room);
-      final first = _nextNumber();
+      final first = _takeNumbers(fresh.length);
       review.addAll([
         for (var i = 0; i < fresh.length; i++)
           ReviewEntry(
@@ -849,6 +852,7 @@ class StockSheetController extends GetxController {
     files.clear();
     thumbnails.clear();
     review.clear();
+    _lastNumber = 0;
     pendingShare.clear();
     _fingerprintOf.clear();
     errorMessage.value = null;
@@ -948,9 +952,14 @@ class StockSheetController extends GetxController {
     }
   }
 
-  /// The number the next photo listed gets: one more than the highest.
-  int _nextNumber() =>
-      review.fold(0, (highest, e) => math.max(highest, e.number)) + 1;
+  /// Takes [count] photo numbers and returns the first: numbers only go up
+  /// within a review, so a photo removed and put back never shares its
+  /// number with one added meanwhile.
+  int _takeNumbers(int count) {
+    final first = _lastNumber + 1;
+    _lastNumber += count;
+    return first;
+  }
 
   /// The reading loop, and the only one: one photo at a time, never two
   /// reads at once. Each turn takes the first "Not read yet" row in list

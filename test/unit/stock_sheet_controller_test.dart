@@ -712,6 +712,28 @@ void main() {
       },
     );
 
+    test('photo numbers never repeat within a review', () async {
+      final c = make(_FakeDecoder({}), _FakeProvider());
+      await c.start(['p1', 'p2']);
+      await settled(c);
+      expect(c.review.map((e) => e.number), [1, 2]);
+
+      final removed = c.removeAt(1)!;
+      expect(removed.number, 2);
+      expect(await c.addPhotos(['p3']), isNull);
+      c.restore(removed, 1);
+      await settled(c);
+
+      final numbers = c.review.map((e) => e.number).toList();
+      expect(numbers.toSet(), hasLength(3));
+      expect(numbers.toSet(), {1, 2, 3});
+      expect(c.review.singleWhere((e) => e.path == 'p2').number, 2);
+      expect(c.review.singleWhere((e) => e.path == 'p3').number, 3);
+
+      await c.start(['q1']);
+      expect(c.review.single.number, 1);
+    });
+
     test('Generate file does nothing until every photo is read', () async {
       final decoder =
           _FakeDecoder({
