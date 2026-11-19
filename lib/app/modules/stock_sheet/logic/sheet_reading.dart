@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:image/image.dart' as img;
+import 'grey_plane.dart';
 
 /// Where a code sits in the photo, in the upright photo's pixels.
 typedef CodeBox = ({double left, double top, double width, double height});
@@ -72,29 +72,17 @@ class SheetReading {
   /// Returns none when the bytes are not an image. Runs in a
   /// background isolate: decoding a camera photo takes a second or more.
   static List<SheetTile> writeTiles(Uint8List bytes, String dir, String stem) {
-    img.Image? decoded;
-    try {
-      decoded = img.decodeImage(bytes);
-    } catch (_) {
-      // The package throws on some corrupt data instead of returning null.
-    }
-    if (decoded == null) return const [];
-    final upright = img.grayscale(img.bakeOrientation(decoded));
+    final upright = GreyPlane.decode(bytes);
+    if (upright == null) return const [];
     final tiles = <SheetTile>[];
     final rects = tileRects(upright.width, upright.height);
     for (var i = 0; i < rects.length; i++) {
       final r = rects[i];
-      var tile = img.copyCrop(
-        upright,
-        x: r.x,
-        y: r.y,
-        width: r.width,
-        height: r.height,
-      );
+      final tile = upright.crop(r.x, r.y, r.width, r.height);
       final scale = scaleFor(math.max(r.width, r.height));
-      void write(img.Image copy, String suffix) {
+      void write(GreyPlane copy, String suffix) {
         final path = '$dir/${stem}_$i$suffix.png';
-        File(path).writeAsBytesSync(img.encodePng(copy, level: 1));
+        File(path).writeAsBytesSync(copy.toPng());
         tiles.add((path: path, x: r.x, y: r.y, scale: scale));
       }
 
@@ -108,20 +96,10 @@ class SheetReading {
       // and a code is lost, while repeating each pixel (nearest, exact for
       // the whole-number scale) keeps every bar edge. Each copy finds codes
       // the other misses; the caller keeps what either finds.
-      for (final (interpolation, suffix) in [
-        (img.Interpolation.cubic, 's'),
-        (img.Interpolation.nearest, 'n'),
-      ]) {
-        write(
-          img.copyResize(
-            tile,
-            width: (r.width * scale).round(),
-            height: (r.height * scale).round(),
-            interpolation: interpolation,
-          ),
-          suffix,
-        );
-      }
+      final width = (r.width * scale).round();
+      final height = (r.height * scale).round();
+      write(tile.enlargedSmooth(width, height), 's');
+      write(tile.enlargedSharp(width, height), 'n');
     }
     return tiles;
   }
