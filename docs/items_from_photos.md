@@ -324,6 +324,8 @@ reference and mirror user-facing changes into the bot.
 - Specs: `docs/superpowers/specs/2026-11-17-share-to-stock-sheet-design.md` (base),
   `…/2026-11-18-stock-sheet-review-list-design.md` (review list),
   `…/2026-11-18-items-from-photos-on-mac-design.md` (Mac routes),
-  `…/2026-11-18-items-from-photos-swipe-and-download-design.md` (swipe, Download).
+  `…/2026-11-18-items-from-photos-swipe-and-download-design.md` (swipe, Download),
+  `…/2026-11-19-items-from-photos-reading-redesign-design.md` (reading in two rounds, live rows, the card with
+  rack-wise balance and stock ageing; **for approval, not built**; its HTML mock-up sits beside it).
 - Plans: the same names under `docs/superpowers/plans/`.
 - iOS set-up and Apple side: `docs/ios_share_extension_setup.md`.

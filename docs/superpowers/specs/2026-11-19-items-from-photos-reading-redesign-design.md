@@ -1,0 +1,195 @@
+# Items from Photos: reading that shows its work (design)
+
+Date: 19 November 2026. Size: a feature (MINOR bump). Status: for the user's approval.
+Builds on the fix for one small label (`1b1c755f`, `d0dc77b4` on `claude/reverent-wozniak-04950e`, not yet
+merged): the tile fallback, `logic/grey_plane.dart` and the decoder's injectable analyser are assumed.
+Mock-up: `2026-11-19-items-from-photos-reading-redesign-prototype.html` beside this file (open it in a
+browser; Play, or drag the slider). Feature context: `docs/items_from_photos.md`.
+
+## Why
+
+Today the screen shows one bar, "Reading photo n of N", then "Checking stock…", and only then the review
+list. On the XCover7 ten wallet product cards took 44 s before a single row appeared, because five of them
+needed the tiles (about 7 s each). Nothing says why the bar has stopped, nothing can be checked meanwhile, and
+Back drops the run without asking.
+
+The total time is set by ML Kit and cannot be parallelised (`mobile_scanner`'s Android side keeps one pending
+result). What can change is the order of the work and what the screen shows while it happens.
+
+## Goals
+
+- The review list opens at once, with a row for every photo.
+- Every photo gets the quick whole-photo pass before any photo is read in tiles.
+- A row fills in as its photo is read: barcode first, then name and stock.
+- The screen says what it is doing and what is left.
+- Rows can be switched, reordered and removed while reading goes on.
+- A row says only **In stock** or **Out of stock**; a tap opens it to the rack-wise balance and stock ageing.
+
+Targets, same ten cards on the XCover7: first barcode on screen within 1 s (today 44 s); five rows with their
+stock within 8 s; everything done no later than today.
+
+## Non-goals
+
+- Reading faster. Tile geometry, the copies and the codec rules are untouched.
+- The file. Balance Qty, racks and ageing stay on screen only; columns and layout do not change.
+- The finished screen, Download, sharing, the out-of-stock question.
+- The Telegram bot (it takes the wording below in its own change).
+
+## Decisions (the user's, 19 November 2026)
+
+1. All photos have rows from the start, greyed until read, so the list never grows under the finger.
+2. Rows may be switched off, reordered and swiped away while others are still being read.
+3. The main list shows only **In stock** (or **Out of stock**); no quantity, no rack chips.
+4. A tap on a row opens the card to **Rack-Wise Stock Balance** and **Stock Ageing**.
+5. Stock Ageing is fetched the first time a card is opened, not with the stock check.
+6. A photo removed while it is being read in tiles stops at once.
+7. The wording for the tile pass is **Zooming in…**, in the app and in the Telegram bot.
+
+## Design
+
+### Row states and wording (exact copy)
+
+| State | Row shows | When |
+|---|---|---|
+| Not read yet | photo, "Photo n", **Not read yet**; dashed outline, no fill | before its quick pass |
+| Reading | the same, with a spinner and **Reading…** | during its quick pass |
+| Waiting to zoom in | photo, "Photo n", **Waiting to zoom in** | quick pass found no item, or two or more (see below) |
+| Zooming in | photo, "Photo n", orange pill with spinner **Zooming in…** | its tiles are being written and read |
+| Checking stock | ERP image placeholder, barcode in mono, **Checking stock…** | read; Item and stock not back yet |
+| Ready | item name, `barcode · Variant Of`, pill **In stock** or **Out of stock**, an arrow | Item and stock known |
+| Unresolved | as today: "Unreadable photo", "No recognised code", "Not in ERP: <barcode>", **✎ Type or scan code** | nothing found after zooming in |
+
+"Photo n" is the photo's number in the order it was given, and does not change when rows are dragged.
+The switch is disabled until the row has an item. Pills follow the StatusPill convention (x500 at 13% fill, 35%
+border, x700 ink in light and x300 in dark): green for In stock, red for Out of stock, orange for Zooming in.
+
+Strip under the title (hidden when everything is settled), with a determinate bar of photos read:
+
+- round one: **Reading photo n of N** · "k read"
+- round two: **Zooming in on photo n of N…** · "k read · m to go"
+- reading done, stock outstanding: **Checking stock…** · "k read"
+
+Title **Review photos**; subtitle "N photos · M items so far" while anything is outstanding, then
+"N photos · M items in the file" as today. **Generate file · M items** counts switched-on items that are
+ready and stays disabled until every row is settled (as it is today "while the list is changing").
+Screen readers hear the strip's line when it changes (a polite live region), not every row.
+
+### Reading in two rounds
+
+1. Duplicates by content and the 100-photo limit are settled first, as now; then the list opens with one
+   row per photo.
+2. **Round one:** each photo's whole-photo pass, in list order. One item → the row goes to Checking stock.
+   No item, or two or more → Waiting to zoom in.
+3. When round one ends, one Item call and one Stock Balance call cover every code read so far (chunks of 100,
+   as now); ERP images load alongside.
+4. **Round two:** the waiting photos, one at a time: tiles, then (small photo, still nothing) the 2x copy.
+   The next photo to zoom in on is the **first waiting row in the list's current order**, so dragging a row
+   up brings it forward. When a photo is read, its codes that are not already known get their own Item and
+   stock calls while the next photo is zoomed in on. Item and stock results are kept by item code for the
+   life of the screen, so an item seen twice is asked for once.
+5. **A sheet of labels** (two or more items in the quick pass) stays one row, "Photo n · k items so far",
+   until its tiles are read, and is then replaced in place by its item rows in reading order. Reading order
+   comes from the tiles' boxes, so the rows cannot be placed sooner. *(Not in the mock-up; see Open points.)*
+
+**＋ Add photos** and a share that arrives during the review use the same path: the new photos appear as
+"Not read yet" rows at the end and join the rounds. The "Add / Start again / Cancel" question is unchanged.
+
+### Removing, Undo, reordering, switching
+
+- Swipe and the screen reader's remove action work in every row state. A photo removed before its turn is
+  not read. A photo being zoomed in on stops: no further tile is read, its tile files are deleted, and the
+  next waiting photo starts. One ML Kit read cannot be interrupted, so "at once" means after the tile in
+  hand (0.1–0.25 s), or after the tiles are written if that is still running (up to about 4 s; the result
+  is thrown away).
+- Snackbar "Photo removed." (no item yet) or "Item removed." with **Undo** for 5 seconds, as now. Undo puts
+  the row back where it was; a photo that had not finished goes back to Waiting to zoom in and is read
+  afresh.
+- Reordering by the handle works in every state. Switching works once the row has an item.
+- Still blocked, as today: removing while a code is being fixed, a file is being generated, or the
+  out-of-stock question is open.
+- **Back** asks "Discard these photos?" from the first frame, because the review is on screen from the
+  first frame.
+
+### The card
+
+Collapsed, a ready row shows the ERP image (placeholder when none), item name, `barcode · Variant Of` and
+one pill. A tap anywhere on the row except the handle and the switch opens it; the arrow at the right of
+the pill line is the same control for keyboards and screen readers ("Rack-Wise Stock Balance and Stock
+Ageing", expanded or collapsed). Several cards may be open at once. A swipe or a drag is not a tap.
+
+**Rack-Wise Stock Balance** (from the stock check already made; shown at once): a two-column table,
+**Rack** and **Balance Qty**, one line per rack, largest first; stock on no rack is the line **No rack**;
+more than one line adds a total. Out of stock: "No stock in Finished Goods - KA." This replaces the rack
+chips on the row and the "Stock by rack · <total>" sheet, which go.
+
+**Stock Ageing** (fetched on the first opening, kept by item code afterwards):
+
+- Run through the existing `ApiProvider.runStockAgeingCustom` (`Stock Ageing - Custom` via the standard
+  `frappe.desk.query_report.run`, already checked on v15 and v16) with the report's saved filter values and
+  `item_code` set: `company`, `to_date` today, `warehouse: Finished Goods - KA`, `range: "90, 180, 360, 720"`,
+  `show_warehouse_wise_stock: 0`. Sending filters makes the app send `are_default_filters=false`, as the
+  Stock Ageing screen does once a filter is changed.
+- Parsed with `StockAgeingLogic`, so column titles are the report's own and the buckets are titled from the
+  range in effect: **Available Qty**, **Average Age**, **Earliest**, **Latest**, **Age (0 - 90)** …
+  **Age (721 - Above)**, each bucket with its quantity and a bar scaled to the largest bucket.
+- States: "Fetching Stock Ageing…" with a spinner; the figures; "Not in the Stock Ageing report." when the
+  run returns no row; "Couldn't load Stock Ageing." with **Retry** when it fails. An out-of-stock item is
+  not fetched: "Not in the Stock Ageing report: nothing in stock."
+- On screen only; never in the file.
+
+### Code
+
+- **`PhotoDecoder`** (`logic/photo_decoder.dart`): `decode` splits into `readWhole(path)` (round one) and
+  `zoomIn(path, {required whole, bool Function()? stopped})` (tiles, then the 2x copy; `stopped` is asked
+  after the tiles are written and before each tile read; a stopped zoom returns null and deletes its
+  files). The rule "one item needs no zoom" stays in one place.
+- **`ReviewEntry`** (`model/review_models.dart`): a `stage` (not read, reading, waiting, zooming, checking
+  stock, settled). A placeholder entry exists for each photo from the start and is replaced in place by its
+  item rows; ids stay as documented (`<photo>:<item>`, `<photo>!<barcode>`, the photo's path).
+- **`StockSheetController`**: `start` and `addPhotos` share one reading queue; phase `reviewing` is entered
+  as soon as the photos are fingerprinted, and `decoding` / `checkingStock` go. `canRemove` no longer
+  depends on reading. New: the item-and-stock cache by item code, `openCard` / per-item ageing state, and a
+  `reading` flag for the footer. Failures keep today's messages: no access to stock levels and an
+  unsupported device still end in the error state; a failed stock batch leaves its rows "Stock not checked"
+  with **Retry check**.
+- **`StockSheetProvider`**: `fetchStockAgeing(itemCode)` wrapping the report run.
+- **`ReviewList`** (`widgets/review_list.dart`): the row states above, the strip, the expandable card; rows
+  keyed so a row that changes state is updated in place, not re-inserted. `RackChips` and its sheet are
+  removed.
+- Contrast rules apply: no hard-coded surfaces or inks; the dark-mode widget tests cover every row state
+  and the open card.
+
+## Verification
+
+- Unit: the controller with a staged fake decoder: round one before any zoom; zoom order follows the list;
+  removing the photo being zoomed in on stops it and starts the next; Undo re-queues it; a removed photo is
+  never read; stock is asked once per item code; a sheet photo becomes its item rows in reading order;
+  adds join the queue; the footer count and its disabled state.
+- Unit: `MlKitPhotoDecoder.zoomIn` stops between tiles and leaves no temporary file; `readWhole` plus
+  `zoomIn` give what `decode` gave (the existing decoder tests, re-pointed).
+- Unit: `fetchStockAgeing` builds the filters above; the card's ageing states.
+- Widget: every row state in light and dark; tap opens and closes; swipe and drag do not open; the strip's
+  three lines; `flutter analyze`.
+- Device (XCover7, release `.dev` build, the ten wallet cards kept outside the repo): the three targets
+  above; remove and Undo during a zoom; open a card during reading; the 30-label sheet still gives 30 rows
+  in order.
+
+## Open points for the user
+
+- **Sheet photos** stay one row until zoomed in on, then become their item rows (round two, item 5). The
+  alternative is to show the quick pass's items straight away and re-order them when the tiles are read,
+  which makes rows jump.
+- **Zoom order follows the list**, so a row dragged up is read sooner. The mock-up reads in the order given.
+- **Stock Ageing columns:** quantity columns only, as listed. The report also returns **Value (…)**
+  columns; they are left out, as Items from Photos shows quantities only.
+
+## Left to the builder
+
+- Time a `Stock Ageing - Custom` run filtered to one item, on v15 and v16, as an ordinary user (the
+  mock-up assumes 1.5 s), and check that `show_warehouse_wise_stock: 0` with the group warehouse gives one
+  row per item; if it gives one per warehouse, show them as the report does rather than adding them up.
+- Whether the report run needs a permission the stock check does not; without it the section says
+  "You don't have access to Stock Ageing." and the rest of the card works.
+- Keep the review list's header rebuild guards in mind: the strip changes several times a second in round
+  one; give it its own `Obx`.
+- Update `docs/items_from_photos.md` (§3.2, §3.3, §4, §5, §7) and mirror the wording into the Telegram bot.
