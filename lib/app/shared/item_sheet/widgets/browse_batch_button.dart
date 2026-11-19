@@ -81,7 +81,12 @@ class BrowseBatchButton extends StatelessWidget {
     required this.batchController,
     required this.onBatchSelected,
     this.warehouse,
+    this.oldestFirst = false,
   });
+
+  /// Lists the batches oldest first — set by sheets that hold picks to
+  /// oldest-stock-first. See [BatchPickerController.oldestFirst].
+  final bool oldestFirst;
 
   @override
   Widget build(BuildContext context) {
@@ -97,6 +102,7 @@ class BrowseBatchButton extends StatelessWidget {
             itemCode:    itemCode,
             warehouse:   warehouse,
             accentColor: accentColor,
+            oldestFirst: oldestFirst,
           );
           if (selected != null && selected.isNotEmpty) {
             batchController.text = selected;

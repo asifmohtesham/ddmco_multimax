@@ -28,6 +28,8 @@ import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
 // ── Shared sheet layer ─────────────────────────────────────────────────────────────────────────────
 
+import 'package:multimax/app/shared/item_sheet/batch_age_checker.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
@@ -1186,14 +1188,94 @@ class StockEntryFormController extends GetxController
     GlobalDialog.showConfirmation(
       title:   'Remove Item?',
       message: 'Are you sure you want to remove ${item.itemCode} from this entry?',
-      onConfirm: () {
+      onConfirm: () async {
         final items = stockEntry.value?.items.toList() ?? [];
         items.removeWhere((i) => i.name == item.name);
+        final reason = await batchOrderBreak(
+          itemCode:     item.itemCode,
+          rowWarehouse: item.sWarehouse,
+          after:        items,
+        );
+        if (isClosed) return;
+        if (reason != null) {
+          GlobalSnackbar.error(message: reason);
+          return;
+        }
         stockEntry.update((val) => val?.items.assignAll(items));
         isDirty.value = true;
         GlobalSnackbar.success(message: 'Item removed');
       },
     );
+  }
+
+  // ── Oldest stock first (docs/batch_age_validation.md) ─────────────────────
+
+  /// Stock Entry types that take stock out for good or for production. A
+  /// plain Material Transfer only relocates stock and Material Receipt brings
+  /// it in, so neither is held to oldest-stock-first.
+  static const batchAgeStockEntryTypes = {
+    'Material Issue',
+    'Material Transfer for Manufacture',
+  };
+
+  bool get enforcesBatchAge =>
+      batchAgeStockEntryTypes.contains(stockEntryType.value);
+
+  /// The saved document's name, once it exists on the server.
+  String? get batchAgeDocName => mode == 'new' ? null : stockEntry.value?.name;
+
+  /// [rows] (default: this entry's rows) for [itemCode] that take stock out,
+  /// as the quantities the oldest-stock-first rule takes off the balances.
+  List<BatchDraftLine> batchAgeLines(
+    String itemCode, {
+    Iterable<StockEntryItem>? rows,
+    String? excludeRowName,
+  }) {
+    final code   = itemCode.trim().toLowerCase();
+    final header = fromWarehouse.value ?? '';
+    return [
+      for (final r in rows ?? stockEntry.value?.items ?? const <StockEntryItem>[])
+        if (r.itemCode.trim().toLowerCase() == code &&
+            r.isFinishedItem != 1 &&
+            (excludeRowName == null || r.name != excludeRowName) &&
+            (r.batchNo ?? '').trim().isNotEmpty)
+          BatchDraftLine(
+            batchNo:   r.batchNo!.trim(),
+            warehouse: (r.sWarehouse ?? '').trim().isNotEmpty
+                ? r.sWarehouse!.trim()
+                : header,
+            qty: r.qty,
+          ),
+    ];
+  }
+
+  /// Why this entry's rows may not become [after], or null when they may.
+  /// See [DeliveryNoteFormController.batchOrderBreak] — same rule.
+  Future<String?> batchOrderBreak({
+    required String itemCode,
+    required String? rowWarehouse,
+    required List<StockEntryItem> after,
+  }) async {
+    if (!enforcesBatchAge) return null;
+    final before = batchAgeLines(itemCode);
+    if ({for (final l in before) l.batchNo}.length < 2) return null;
+
+    final pickWarehouse = (rowWarehouse ?? '').trim().isNotEmpty
+        ? rowWarehouse
+        : fromWarehouse.value;
+    try {
+      return await BatchAgeChecker.create().orderBreakReason(
+        itemCode:      itemCode,
+        pickWarehouse: pickWarehouse,
+        linesBefore:   before,
+        linesAfter:    batchAgeLines(itemCode, rows: after),
+        ownDoctype:    'Stock Entry',
+        ownDocName:    batchAgeDocName,
+      );
+    } catch (_) {
+      return 'Could not check for older stock. '
+          'Check the connection and try again.';
+    }
   }
 
   // ── Sheet lifecycle ─────────────────────────────────────────────────────────────────────────────────

@@ -154,3 +154,4 @@ The `docs/` folder contains important design and architecture notes:
 - `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact
 - `docs/item_image_virtual_field.md` — Desk-only virtual `Item Image` column on Stock Entry / Material Request / Purchase Order / Purchase Receipt / Purchase Invoice / Quotation / Sales Order / Delivery Note / Sales Invoice items (Custom Field + Client Script): shown and exported, never saved, never dirties the form
 - `docs/sales_order_delivery_flow.md` — Dashboard Sales Order → scan-to-pick Delivery Note (SO line binding, caps, resume, v16 CSRF)
+- `docs/batch_age_validation.md` — Oldest stock first: a batch is refused while an older batch of the item has stock (age = earliest Purchase Receipt, `WH-` warehouses under the pick warehouse's parent, drafts netted, no in-app override)

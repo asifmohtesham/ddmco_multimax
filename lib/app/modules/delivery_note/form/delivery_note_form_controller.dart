@@ -25,6 +25,8 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/controller_feedback_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/modules/global_widgets/save_icon_button.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_checker.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
@@ -916,10 +918,82 @@ class DeliveryNoteFormController extends GetxController
       icon:         Icons.delete_outline,
     );
     if (confirmed != true) return;
+    final remaining = items.where((i) => i.name != item.name).toList();
+    final reason = await batchOrderBreak(
+      itemCode:     item.itemCode,
+      rowWarehouse: item.warehouse,
+      after:        remaining,
+    );
+    if (reason != null) {
+      GlobalSnackbar.error(message: reason);
+      return;
+    }
     deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
     deliveryNote.refresh();
     checkForChanges();
     if (mode == 'edit') await saveDocument();
+  }
+
+  // ── Oldest stock first (docs/batch_age_validation.md) ─────────────────────
+
+  /// The saved document's name, once it exists on the server. Its saved rows
+  /// are then left out of the draft lookup in favour of the rows in memory.
+  String? get batchAgeDocName =>
+      mode == 'new' ? null : deliveryNote.value?.name;
+
+  /// [rows] (default: this note's rows) for [itemCode], as the quantities the
+  /// oldest-stock-first rule takes off the batch balances.
+  List<BatchDraftLine> batchAgeLines(
+    String itemCode, {
+    Iterable<DeliveryNoteItem>? rows,
+  }) {
+    final code   = itemCode.trim().toLowerCase();
+    final header = setWarehouse.value ?? '';
+    return [
+      for (final r in rows ?? items)
+        if (r.itemCode.trim().toLowerCase() == code &&
+            (r.batchNo ?? '').trim().isNotEmpty)
+          BatchDraftLine(
+            batchNo:   r.batchNo!.trim(),
+            warehouse: (r.warehouse ?? '').trim().isNotEmpty
+                ? r.warehouse!.trim()
+                : header,
+            qty: r.qty *
+                ((r.conversionFactor ?? 0) > 0 ? r.conversionFactor! : 1),
+          ),
+    ];
+  }
+
+  /// Why this note's rows may not become [after], or null when they may.
+  ///
+  /// Reducing or removing an older-batch row frees that stock again, which
+  /// would leave a newer batch of the same item on the note out of order.
+  /// Skipped (no network) unless the note holds two batches of [itemCode].
+  Future<String?> batchOrderBreak({
+    required String itemCode,
+    required String? rowWarehouse,
+    required List<DeliveryNoteItem> after,
+  }) async {
+    final before = batchAgeLines(itemCode);
+    if ({for (final l in before) l.batchNo}.length < 2) return null;
+
+    final header = setWarehouse.value;
+    final pickWarehouse =
+        (rowWarehouse ?? '').trim().isNotEmpty ? rowWarehouse : header;
+    try {
+      return await BatchAgeChecker.create().orderBreakReason(
+        itemCode:      itemCode,
+        pickWarehouse: pickWarehouse,
+        linesBefore:   before,
+        linesAfter:    batchAgeLines(itemCode, rows: after),
+        ownDoctype:    'Delivery Note',
+        ownDocName:    batchAgeDocName,
+      );
+    } catch (e) {
+      log('[DN] batch order check failed: $e', name: 'DN');
+      return 'Could not check for older stock. '
+          'Check the connection and try again.';
+    }
   }
 
   Future<void> editItem(DeliveryNoteItem item) async {

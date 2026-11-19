@@ -2,6 +2,8 @@ import 'dart:developer';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_checker.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 
 /// Drives [BatchPickerSheet].
 ///
@@ -52,11 +54,46 @@ class BatchPickerController extends GetxController {
   /// invariant and [_fetch] for the network-path enforcement point.
   final List<BatchWiseBalanceRow> preloadedRows;
 
+  /// When true the list is ordered by batch age, oldest first, instead of by
+  /// balance — used by sheets that hold picks to oldest-stock-first, so the
+  /// batch the rule will accept is at the top.
+  final bool oldestFirst;
+
   BatchPickerController({
     required this.itemCode,
     this.warehouse,
     this.preloadedRows = const [],
+    this.oldestFirst = false,
   });
+
+  /// Batch → age, filled when [oldestFirst] is on and the lookup succeeded.
+  final ages = <String, BatchAge>{}.obs;
+
+  /// Orders [_allRows] oldest first. Ordering is a convenience: if the age
+  /// lookup fails the list keeps its balance order and the scan-time check
+  /// still decides what may be picked.
+  Future<void> _applyAgeOrder() async {
+    if (!oldestFirst || _allRows.isEmpty) return;
+    try {
+      final found = await BatchAgeChecker.create()
+          .ages(_allRows.map((r) => r.batchNo).toList());
+      if (isClosed) return;
+      ages.assignAll(found);
+      final sorted = _allRows.toList()
+        ..sort((a, b) {
+          final ageA = found[a.batchNo]?.date;
+          final ageB = found[b.batchNo]?.date;
+          if (ageA == null && ageB == null) return 0;
+          if (ageA == null) return 1; // unknown age goes last
+          if (ageB == null) return -1;
+          final byAge = ageA.compareTo(ageB);
+          return byAge != 0 ? byAge : a.batchNo.compareTo(b.batchNo);
+        });
+      _allRows.assignAll(sorted);
+    } catch (e) {
+      log('[BatchPicker] age order unavailable: $e', name: 'BatchPicker');
+    }
+  }
 
   // ── State ────────────────────────────────────────────────────────────────────────
   final isLoading    = true.obs;
@@ -86,6 +123,7 @@ class BatchPickerController extends GetxController {
       // See [BatchNoBrowseDelegate] for the canonical discard invariant.
       _allRows.assignAll(preloadedRows);
       isLoading.value = false;
+      _applyAgeOrder();
       log('[BatchPicker] seeded ${preloadedRows.length} pre-fetched rows '
           'for $itemCode @ ${warehouse ?? "any"}',
           name: 'BatchPicker');
@@ -107,6 +145,7 @@ class BatchPickerController extends GetxController {
         warehouse: showAllWarehouses.value ? null : warehouse,
       );
       _allRows.assignAll(rows);
+      await _applyAgeOrder();
     } catch (e) {
       errorMessage.value = 'Failed to load batches. Tap to retry.';
       log('[BatchPicker] fetch error: $e', name: 'BatchPicker');

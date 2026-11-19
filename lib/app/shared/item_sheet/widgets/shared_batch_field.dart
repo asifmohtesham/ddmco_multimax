@@ -5,7 +5,9 @@ import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/batch_no_field_with_browse_delegate.dart';
+import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/browse_batch_button.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/older_stock_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/validated_batch_field.dart';
 
 /// A reusable Batch No input field driven by any
@@ -175,6 +177,20 @@ class SharedBatchField extends StatelessWidget {
   }
 }
 
+/// The "View older stock" link, present only while the batch stands refused
+/// by the oldest-stock-first rule. Must be built inside an [Obx] so it
+/// follows [ItemSheetControllerBase.olderBatches].
+Widget _olderStockLink(BatchNoFieldWithBrowseDelegate c) {
+  if (c is! ItemSheetControllerBase || c.olderBatches.isEmpty) {
+    return const SizedBox.shrink();
+  }
+  return OlderStockLink(onTap: c.showOlderStock);
+}
+
+/// Whether the batch picker should list oldest first for this sheet.
+bool _oldestFirst(BatchNoFieldWithBrowseDelegate c) =>
+    c is ItemSheetControllerBase && c.enforcesBatchAge;
+
 // ── Picker suffix icon button (shared helper, _SimpleField only) ─────────────
 Widget _pickerSuffixBtn(Color color, VoidCallback onTap) => IconButton(
       icon:      Icon(Icons.shelves, color: color, size: 20),
@@ -329,6 +345,7 @@ class _SimpleField extends StatelessWidget {
               ),
             ),
           ),
+          _olderStockLink(c),
           // BrowseBatchButton guards showBrowseBatches internally;
           // no Obx needed at this level for that flag.
           Obx(() => BrowseBatchButton(
@@ -341,6 +358,7 @@ class _SimpleField extends StatelessWidget {
             accentColor:       effectiveColor,
             batchController:   c.batchController,
             onBatchSelected:   c.validateBatch,
+            oldestFirst:       _oldestFirst(c),
           )),
           BalanceChip(
             balance:   chipBalance,
@@ -416,6 +434,7 @@ class _EditModeField extends StatelessWidget {
               tooltipMessage: c.batchInfoTooltip.value,
             ),
           ),
+          _olderStockLink(c),
           BrowseBatchButton(
             showBrowseBatches: w.showBrowseBatches,
             isValid:           isValid,
@@ -426,6 +445,7 @@ class _EditModeField extends StatelessWidget {
             accentColor:       effectiveColor,
             batchController:   c.batchController,
             onBatchSelected:   c.validateBatch,
+            oldestFirst:       _oldestFirst(c),
           ),
         ],
       );
