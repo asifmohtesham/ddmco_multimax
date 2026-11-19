@@ -44,6 +44,7 @@ stock within 8 s; everything done no later than today.
 5. Stock Ageing is fetched the first time a card is opened, not with the stock check.
 6. A photo removed while it is being read in tiles stops at once.
 7. The wording for the tile pass is **Zooming in…**, in the app and in the Telegram bot.
+8. A sheet of labels stays one row until it is zoomed in on, then becomes its item rows.
 
 ## Design
 
@@ -89,7 +90,9 @@ Screen readers hear the strip's line when it changes (a polite live region), not
    life of the screen, so an item seen twice is asked for once.
 5. **A sheet of labels** (two or more items in the quick pass) stays one row, "Photo n · k items so far",
    until its tiles are read, and is then replaced in place by its item rows in reading order. Reading order
-   comes from the tiles' boxes, so the rows cannot be placed sooner. *(Not in the mock-up; see Open points.)*
+   comes from the tiles' boxes, so the rows cannot be placed sooner. Until then the row has no switch; it
+   can be dragged and removed like any other, and its item rows take its place in the list. *(Decision 8;
+   the mock-up has no sheet photo.)*
 
 **＋ Add photos** and a share that arrives during the review use the same path: the new photos appear as
 "Not read yet" rows at the end and join the rounds. The "Add / Start again / Cancel" question is unchanged.
@@ -176,9 +179,6 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
 
 ## Open points for the user
 
-- **Sheet photos** stay one row until zoomed in on, then become their item rows (round two, item 5). The
-  alternative is to show the quick pass's items straight away and re-order them when the tiles are read,
-  which makes rows jump.
 - **Zoom order follows the list**, so a row dragged up is read sooner. The mock-up reads in the order given.
 - **Stock Ageing columns:** quantity columns only, as listed. The report also returns **Value (…)**
   columns; they are left out, as Items from Photos shows quantities only.
