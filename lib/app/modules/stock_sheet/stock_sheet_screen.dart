@@ -449,8 +449,6 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           value: total == 0 ? null : decoded / total,
           label: 'Reading photo ${math.min(decoded + 1, total)} of $total',
         );
-      case StockSheetPhase.checkingStock:
-        return const _Progress(label: 'Checking stock…');
       case StockSheetPhase.reviewing:
       case StockSheetPhase.awaitingChoice:
         // The list stays behind the out-of-stock question.

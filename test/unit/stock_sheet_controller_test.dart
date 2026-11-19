@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
+import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 import 'package:share_plus/share_plus.dart';
@@ -54,27 +55,43 @@ class _FakeDecoder extends PhotoDecoder {
   final decoded = <String>[];
   bool disposed = false;
 
-  /// When set, every decode waits for it.
+  /// When set, every whole-photo read waits for it.
   Completer<void>? gate;
 
+  /// What zooming in on a photo gives; what the quick pass gave when absent.
+  final Map<String, List<String>?> zoomed = {};
+
+  /// Every photo zoomed in on, in order.
+  final zooms = <String>[];
+
+  /// When set, every zoom waits for it.
+  Completer<void>? zoomGate;
+
+  /// Every read, in order: `whole:<path>` or `zoom:<path>`.
+  final log = <String>[];
+
   @override
-  Future<List<String>?> readWhole(String path) => decode(path);
+  Future<List<String>?> readWhole(String path) async {
+    calls++;
+    decoded.add(path);
+    log.add('whole:$path');
+    await gate?.future;
+    if (unsupported) throw UnsupportedError('no');
+    if (throwFor.contains(path)) throw Exception('boom');
+    return codes[path];
+  }
 
   @override
   Future<List<String>?> zoomIn(
     String path, {
     required List<String> whole,
     bool Function()? stopped,
-  }) async => whole;
-
-  @override
-  Future<List<String>?> decode(String path) async {
-    calls++;
-    decoded.add(path);
-    await gate?.future;
-    if (unsupported) throw UnsupportedError('no');
-    if (throwFor.contains(path)) throw Exception('boom');
-    return codes[path];
+  }) async {
+    zooms.add(path);
+    log.add('zoom:$path');
+    await zoomGate?.future;
+    if (stopped?.call() == true) return null;
+    return zoomed[path] ?? whole;
   }
 
   @override
@@ -239,6 +256,14 @@ void main() {
             Uint8List.fromList(img.encodeJpg(img.Image(width: 4, height: 4))),
   );
 
+  /// Lets the reading loop run until every row is settled (or it can go no
+  /// further, e.g. stuck behind an error).
+  Future<void> settled(StockSheetController c) async {
+    for (var i = 0; i < 50 && c.reading.value; i++) {
+      await pumpEventQueue();
+    }
+  }
+
   /// Reads [paths], then makes the sheet in [format] from the review as is.
   Future<void> run(
     StockSheetController c,
@@ -246,6 +271,7 @@ void main() {
     SheetFormat format,
   ) async {
     await c.start(paths);
+    await settled(c);
     await c.makeSheet(format);
   }
 
@@ -259,10 +285,216 @@ void main() {
     }
   }
 
+  group('reading in two rounds', () {
+    final eanA = _ean(_a);
+    final eanB = _ean(_b);
+
+    test(
+      'the list opens with a row per photo before anything is read',
+      () async {
+        final decoder = _FakeDecoder({
+          'p1': [eanA],
+          'p2': [eanB],
+        })..gate = Completer<void>();
+        final c = make(decoder, _FakeProvider());
+        unawaited(c.start(['p1', 'p2']));
+        await pumpEventQueue();
+        expect(c.phase.value, StockSheetPhase.reviewing);
+        expect(c.review.map((e) => e.number), [1, 2]);
+        expect(c.review.map((e) => e.stage), [
+          ReadStage.reading,
+          ReadStage.notRead,
+        ]);
+        expect(c.reading.value, isTrue);
+        decoder.gate!.complete();
+      },
+    );
+
+    test(
+      'every photo gets the quick pass before any is zoomed in on',
+      () async {
+        final decoder =
+            _FakeDecoder({
+                'p1': const [],
+                'p2': [eanA],
+                'p3': const [],
+              })
+              ..zoomed.addAll({
+                'p1': [eanB],
+                'p3': const [],
+              });
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2', 'p3']);
+        await settled(c);
+        expect(decoder.log, [
+          'whole:p1',
+          'whole:p2',
+          'whole:p3',
+          'zoom:p1',
+          'zoom:p3',
+        ]);
+        expect(c.review.map((e) => e.resolved), [
+          true,
+          true,
+          false,
+        ]); // p3: "No recognised code"
+        expect(c.review.every((e) => e.settled), isTrue);
+        expect(c.reading.value, isFalse);
+      },
+    );
+
+    test(
+      'round one\'s items are asked for in one batch, a zoomed photo\'s on its own',
+      () async {
+        final provider = _FakeProvider();
+        final decoder = _FakeDecoder({
+          'p1': [eanA],
+          'p2': const [],
+        })..zoomed['p2'] = [eanB];
+        final c = make(decoder, provider);
+        await c.start(['p1', 'p2']);
+        await settled(c);
+        expect(provider.itemRequests, [
+          [_a],
+          [_b],
+        ]);
+        expect(provider.stockRequests, [
+          [_a],
+          [_b],
+        ]);
+      },
+    );
+
+    test(
+      'the same item in two photos is asked for once and both rows settle',
+      () async {
+        final provider = _FakeProvider();
+        final c = make(
+          _FakeDecoder({
+            'p1': [eanA],
+            'p2': const [],
+          })..zoomed['p2'] = [eanA],
+          provider,
+        );
+        await c.start(['p1', 'p2']);
+        await settled(c);
+        expect(provider.itemRequests, [
+          [_a],
+        ]);
+        expect(c.review.map((e) => e.items.single.info.itemCode), [_a, _a]);
+      },
+    );
+
+    test(
+      'a sheet of labels stays one row until zoomed in on, then becomes its rows in place',
+      () async {
+        final decoder =
+            _FakeDecoder({
+                'p1': [eanA, eanB],
+                'p2': [eanA],
+              })
+              ..zoomGate = Completer<void>()
+              ..zoomed['p1'] = [eanB, eanA];
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1', 'p2']);
+        await pumpEventQueue();
+        expect(c.review, hasLength(2));
+        expect(c.review.first.stage, ReadStage.zooming);
+        expect(
+          c.review.first.codes,
+          hasLength(2),
+        ); // "Photo 1 · 2 items so far"
+        decoder.zoomGate!.complete();
+        await settled(c);
+        expect(c.review.map((e) => e.items.single.info.itemCode), [
+          _b,
+          _a,
+          _a,
+        ]); // p1's rows first, in reading order
+        expect(c.review.take(2).every((e) => e.path == 'p1'), isTrue);
+      },
+    );
+
+    test('an unreadable photo is settled without a zoom', () async {
+      final decoder = _FakeDecoder({'p1': null});
+      final c = make(decoder, _FakeProvider());
+      await c.start(['p1']);
+      await settled(c);
+      expect(c.review.single.decodeFailed, isTrue);
+      expect(decoder.zooms, isEmpty);
+    });
+
+    test(
+      'a stock batch that cannot reach the ERP leaves its rows unchecked and reading goes on',
+      () async {
+        final provider = _FakeProvider()..stockError = Exception('offline');
+        final decoder = _FakeDecoder({
+          'p1': [eanA],
+          'p2': const [],
+        })..zoomed['p2'] = const [];
+        final c = make(decoder, provider);
+        await c.start(['p1', 'p2']);
+        await settled(c);
+        expect(c.phase.value, StockSheetPhase.reviewing);
+        expect(c.review.first.unchecked, isTrue);
+        expect(decoder.zooms, ['p2']);
+        provider.stockError = null;
+        expect(await c.retryCheck(0), isNull);
+        expect(c.review.first.resolved, isTrue);
+      },
+    );
+
+    test(
+      'a new start during a read waits for it and drops its answer',
+      () async {
+        final decoder = _FakeDecoder({
+          'p1': [eanA],
+          'q1': [eanB],
+        })..gate = Completer<void>();
+        final provider = _FakeProvider();
+        final c = make(decoder, provider);
+        await c.start(['p1']);
+        await pumpEventQueue();
+        expect(c.review.single.stage, ReadStage.reading);
+
+        await c.start(['q1']);
+        await pumpEventQueue();
+        // q1 waits for the read in hand: never two reads at once.
+        expect(decoder.log, ['whole:p1']);
+        expect(c.review.single.path, 'q1');
+        expect(c.review.single.stage, ReadStage.notRead);
+
+        decoder.gate!.complete();
+        await settled(c);
+        expect(decoder.log, ['whole:p1', 'whole:q1']);
+        expect(c.review.single.items.single.info.itemCode, _b);
+        expect(c.thumbnails.keys, ['q1']);
+        expect(provider.itemRequests, [
+          [_b],
+        ]);
+      },
+    );
+
+    test('no access to stock levels still ends in the error state', () async {
+      final provider = _FakeProvider()..stockError = const StockAccessDenied();
+      final c = make(
+        _FakeDecoder({
+          'p1': [eanA],
+        }),
+        provider,
+      );
+      await c.start(['p1']);
+      await settled(c);
+      expect(c.phase.value, StockSheetPhase.error);
+      expect(c.errorMessage.value, StockSheetController.noAccessMessage);
+    });
+  });
+
   test('more than 100 photos is refused and nothing is decoded', () async {
     final decoder = _FakeDecoder({});
     final c = make(decoder, _FakeProvider());
     await c.start(List.generate(101, (i) => 'p$i.jpg'));
+    await settled(c);
     expect(c.phase.value, StockSheetPhase.error);
     expect(
       c.errorMessage.value,
@@ -281,6 +513,7 @@ void main() {
     final provider = _FakeProvider(stock: {_a: 4});
     final c = make(decoder, provider);
     await c.start(['known.jpg', 'out.jpg', 'bad.jpg']);
+    await settled(c);
 
     expect(c.phase.value, StockSheetPhase.reviewing);
     expect(c.busy.value, isFalse);
@@ -314,7 +547,8 @@ void main() {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     expect(File(shared.single.single.path).existsSync(), isTrue);
-    expect(c.decoded.value, 1);
+    expect(c.review.single.stage, ReadStage.settled);
+    expect(c.reading.value, isFalse);
     expect(c.busy.value, isFalse);
 
     await run(c, ['a.jpg'], SheetFormat.both);
@@ -362,6 +596,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
     await c.start(['a.jpg', 'b.jpg']);
+    await settled(c);
     c.reorder(0, 2);
     expect(reviewPaths(c), ['b.jpg', 'a.jpg']);
 
@@ -377,6 +612,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
     await c.start(['a.jpg', 'b.jpg']);
+    await settled(c);
     c.reorder(0, 2);
     c.setIncluded(1, false);
     expect(reviewPaths(c), ['b.jpg', 'a.jpg']);
@@ -394,6 +630,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_a: 1}));
     await c.start(['a.jpg', 'b.jpg']);
+    await settled(c);
     c.setIncluded(1, false);
 
     await c.makeSheet(SheetFormat.pdf);
@@ -411,6 +648,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
     await c.start(['a.jpg', 'b.jpg']);
+    await settled(c);
     c.setIncluded(0, false);
     expect(c.sheetPhotoCount, 1);
 
@@ -463,6 +701,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_a: 1}), store: store);
     await c.start(['a.jpg', 'bad.jpg']);
+    await settled(c);
     c.setIncluded(0, false);
     expect(c.sheetPhotoCount, 0);
 
@@ -479,6 +718,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider());
     await c.start(['a.jpg']);
+    await settled(c);
     final before = c.review.toList();
     await c.makeSheet(SheetFormat.excel);
     expect(c.phase.value, StockSheetPhase.awaitingChoice);
@@ -517,6 +757,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_b: 2}));
     await c.start(['a.jpg', 'b.jpg']);
+    await settled(c);
     c.setIncluded(1, false);
     await c.makeSheet(SheetFormat.excel);
     expect(c.phase.value, StockSheetPhase.awaitingChoice);
@@ -569,14 +810,14 @@ void main() {
     final decoder = _FakeDecoder({
       'a.jpg': [_ean(_a)],
     });
-    final provider = _FakeProvider(stock: {_a: 2})..stockError = Exception('x');
+    final provider = _FakeProvider(stock: {_a: 2})
+      ..stockError = const StockAccessDenied();
     final c = make(decoder, provider);
     await c.start(['a.jpg']);
+    await settled(c);
     expect(c.phase.value, StockSheetPhase.error);
-    expect(
-      c.errorMessage.value,
-      "Couldn't reach the ERP. Check the connection and try again.",
-    );
+    expect(c.errorMessage.value, "You don't have access to stock levels.");
+    expect(c.canRetry, isTrue);
     expect(decoder.calls, 1);
     await c.retry();
     expect(decoder.calls, 1);
@@ -584,6 +825,9 @@ void main() {
     expect(c.phase.value, StockSheetPhase.reviewing);
     expect(c.errorMessage.value, isNull);
     expect(reviewPaths(c), ['a.jpg']);
+    expect(c.review.single.items.single.stock!.total, 2);
+    expect(c.reading.value, isFalse);
+    expect(c.canRetry, isFalse);
 
     // Retry belongs to the error screen only.
     await c.retry();
@@ -616,21 +860,31 @@ void main() {
     final provider = _FakeProvider()..stockError = const StockAccessDenied();
     final c = make(decoder, provider);
     await c.start(['a.jpg']);
+    await settled(c);
     expect(c.phase.value, StockSheetPhase.error);
     expect(c.errorMessage.value, "You don't have access to stock levels.");
     expect(c.result.value, isNull);
-    expect(c.review, isEmpty);
+    // The row waits for its stock; nothing reaches the review unchecked.
+    expect(c.review.single.stage, ReadStage.checkingStock);
+    expect(c.review.single.items, isEmpty);
   });
 
   test('UnsupportedError from the decoder gives the device message', () async {
     final decoder = _FakeDecoder({}, unsupported: true);
     final c = make(decoder, _FakeProvider());
     await c.start(['a.jpg']);
+    await settled(c);
     expect(c.phase.value, StockSheetPhase.error);
     expect(
       c.errorMessage.value,
       "Reading barcodes from photos isn't supported on this device.",
     );
+    expect(decoder.calls, 1);
+    expect(c.canRetry, isFalse);
+    // One decoder for the controller's life, disposed with it.
+    expect(decoder.disposed, isFalse);
+    c.onClose();
+    await pumpEventQueue();
     expect(decoder.disposed, isTrue);
   });
 
@@ -643,6 +897,7 @@ void main() {
     expect(c.busy.value, isTrue);
     await c.start(['a.jpg']);
     await first;
+    await settled(c);
     expect(decoder.calls, 1);
     await c.makeSheet(SheetFormat.excel);
     expect(shared, hasLength(1));
@@ -663,6 +918,7 @@ void main() {
     })..throwFor.add('bad.jpg');
     final c = make(decoder, _FakeProvider(stock: {_a: 1}));
     await c.start(['bad.jpg', 'a.jpg']);
+    await settled(c);
     expect(c.phase.value, StockSheetPhase.reviewing);
     expect(c.review.map((e) => e.decodeFailed), [true, false]);
     await c.makeSheet(SheetFormat.excel);
@@ -692,6 +948,7 @@ void main() {
     pdfError = Exception('no pdf');
     final c = make(decoder, _FakeProvider(stock: {_a: 1}));
     await c.start(['a.jpg']);
+    await settled(c);
     final before = c.review.toList();
     await c.makeSheet(SheetFormat.both);
 
@@ -892,6 +1149,7 @@ void main() {
       c.onClose();
       decoder.gate!.complete();
       await run;
+      await pumpEventQueue();
 
       expect(decoder.calls, 1);
       expect(decoder.disposed, isTrue);
@@ -920,6 +1178,7 @@ void main() {
       c.onClose();
       thumbGate.complete();
       await run;
+      await pumpEventQueue();
 
       expect(decoder.calls, 1);
       expect(decoder.disposed, isTrue);
@@ -941,9 +1200,11 @@ void main() {
       c.onClose();
       provider.stockGate!.complete();
       await run;
+      await pumpEventQueue();
 
-      expect(c.review, isEmpty);
-      expect(c.phase.value, isNot(StockSheetPhase.reviewing));
+      // The answer that came back after close is not written.
+      expect(c.review.single.stage, ReadStage.checkingStock);
+      expect(c.review.single.items, isEmpty);
       await c.makeSheet(SheetFormat.both);
       expect(shared, isEmpty);
       expect(pdfDocs, isEmpty);
@@ -958,6 +1219,7 @@ void main() {
       pdfGate = Completer<void>();
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
       await c.start(['a.jpg']);
+      await settled(c);
       final run = c.makeSheet(SheetFormat.both);
       for (var i = 0; i < 50 && written().isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -996,6 +1258,7 @@ void main() {
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
       await c.start(['a.jpg']);
+      await settled(c);
       expect(c.phase.value, StockSheetPhase.reviewing);
 
       c.onClose();
@@ -1056,6 +1319,7 @@ void main() {
       await pumpEventQueue();
       c.offerShare([second.path]);
       await c.start([second.path]);
+      await settled(c);
       expect(c.phase.value, StockSheetPhase.reviewing);
       expect(first.existsSync(), isTrue);
       expect(second.existsSync(), isTrue);
@@ -1093,6 +1357,7 @@ void main() {
       });
       final c = make(decoder, provider);
       await c.start(['a.jpg', 'b.jpg', 'bad.jpg', 'c.jpg']);
+      await settled(c);
       expect(c.phase.value, StockSheetPhase.reviewing);
       return c;
     }
@@ -1133,6 +1398,7 @@ void main() {
       );
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
+      await settled(c);
       expect(c.review, hasLength(2));
       expect(c.review[1].notInErp, [note]);
       final first = c.review[0];
@@ -1217,6 +1483,7 @@ void main() {
       final decoder = _FakeDecoder({});
       final c = make(decoder, _FakeProvider());
       await c.start(List.generate(98, (i) => 'p$i.jpg'));
+      await settled(c);
       expect(c.review, hasLength(98));
       final calls = decoder.calls;
 
@@ -1232,6 +1499,7 @@ void main() {
     test('one place left, then none, say so in the singular', () async {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
+      await settled(c);
 
       expect(
         await c.addPhotos(['x.jpg', 'y.jpg']),
@@ -1254,6 +1522,7 @@ void main() {
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
       await c.start(['a.jpg', 'b.jpg']);
+      await settled(c);
 
       expect(await c.addPhotos(['b.jpg', 'd.jpg', 'd.jpg']), isNull);
       expect(reviewPaths(c), ['a.jpg', 'b.jpg', 'd.jpg']);
@@ -1275,6 +1544,7 @@ void main() {
       final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
 
       await c.start(['a.jpg', 'b.jpg', 'a.jpg']);
+      await settled(c);
 
       expect(reviewPaths(c), ['a.jpg', 'b.jpg']);
       expect(decoder.calls, 2);
@@ -1291,6 +1561,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 2});
       final c = make(decoder, provider);
       await c.start(['a.jpg', 'b.jpg', 'bad.jpg']);
+      await settled(c);
       c.reorder(0, 3);
       expect(reviewPaths(c), ['b.jpg', 'bad.jpg', 'a.jpg']);
 
@@ -1323,6 +1594,7 @@ void main() {
         final provider = _FakeProvider(stock: {_a: 1, _b: 2});
         final c = make(decoder, provider);
         await c.start(['a.jpg']);
+        await settled(c);
         provider.stockError = Exception('offline');
 
         expect(await c.addPhotos(['d.jpg', 'e.jpg']), isNull);
@@ -1358,6 +1630,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 2});
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
+      await settled(c);
       provider.stockError = Exception('offline');
       await c.addPhotos(['d.jpg']);
       provider.itemsError = Exception('still offline');
@@ -1387,6 +1660,7 @@ void main() {
       );
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
+      await settled(c);
       provider.stockError = Exception('offline');
       await c.addPhotos(['d.jpg']);
       expect(c.review[1].unchecked, isTrue);
@@ -1414,6 +1688,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 2});
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
+      await settled(c);
       provider.stockGate = Completer<void>();
 
       final added = c.addPhotos(['d.jpg']);
@@ -1434,6 +1709,7 @@ void main() {
       final provider = _FakeProvider(stock: {_a: 1, _b: 2});
       final c = make(decoder, provider);
       await c.start(['a.jpg']);
+      await settled(c);
       provider.stockGate = Completer<void>();
 
       final added = c.addPhotos(['d.jpg']);
@@ -1464,6 +1740,7 @@ void main() {
       );
       fingerprints.addAll({'sheet.jpg': 'S', 'one.jpg': 'O'});
       await c.start(['sheet.jpg', 'one.jpg']);
+      await settled(c);
       return c;
     }
 
@@ -1542,6 +1819,7 @@ void main() {
         provider,
       );
       await c.start(['one.jpg']);
+      await settled(c);
       provider.stockError = Exception('offline');
       expect(await c.addPhotos(['sheet.jpg']), isNull);
       expect(c.review, hasLength(2));
@@ -1575,6 +1853,7 @@ void main() {
         },
       );
       await c.start(['a.jpg', 'b.jpg', 'c.jpg']);
+      await settled(c);
 
       expect(fetched, ['/files/a.jpg']);
       expect(c.thumbnails[ItemInfo.thumbnailKey(_a)], thumb);
@@ -1599,6 +1878,7 @@ void main() {
         itemThumbnail: (url) async => throw Exception('404'),
       );
       await c.start(['a.jpg']);
+      await settled(c);
 
       expect(c.phase.value, StockSheetPhase.reviewing);
       expect(c.thumbnails.containsKey(ItemInfo.thumbnailKey(_a)), isFalse);
@@ -1615,6 +1895,7 @@ void main() {
         },
       );
       await c.start(['bad.jpg']);
+      await settled(c);
       expect(fetched, isEmpty);
 
       expect(await c.fixCode(0, _b), isNull);
@@ -1636,6 +1917,7 @@ void main() {
       );
       fingerprints.addAll({'a.jpg': 'A', 'b.jpg': 'B', 'd.jpg': 'D'});
       await c.start(['a.jpg', 'b.jpg', 'd.jpg']);
+      await settled(c);
       return c;
     }
 
@@ -1754,6 +2036,7 @@ void main() {
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
 
       await c.start(['a.jpg', 'b.jpg']);
+      await settled(c);
 
       expect(decoder.decoded, ['a.jpg']);
       expect(c.review.map((e) => e.path), ['a.jpg']);
@@ -1767,6 +2050,7 @@ void main() {
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1}));
       await c.start(['a.jpg']);
+      await settled(c);
       final calls = decoder.calls;
 
       expect(
@@ -1788,6 +2072,7 @@ void main() {
       });
       final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
       await c.start(['a.jpg', 'b.jpg']);
+      await settled(c);
       expect(c.phase.value, StockSheetPhase.reviewing);
       return c;
     }
@@ -1846,6 +2131,7 @@ void main() {
     test('pendingShareFits follows the 100-photo limit', () async {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
+      await settled(c);
       c.offerShare(['x.jpg']);
       await pumpEventQueue();
       expect(c.pendingShareFits, isTrue);
@@ -1907,6 +2193,7 @@ void main() {
     test('Add that will not fit adds nothing and is held again', () async {
       final c = make(_FakeDecoder({}), _FakeProvider());
       await c.start(List.generate(99, (i) => 'p$i.jpg'));
+      await settled(c);
       c.offerShare(['n1.jpg', 'n2.jpg']);
       await pumpEventQueue();
 
@@ -1963,6 +2250,7 @@ void main() {
     });
     final c = make(decoder, _FakeProvider(stock: {_a: 1, _b: 1}));
     await c.start([first.path]);
+    await settled(c);
     await c.addPhotos([added.path]);
     expect(c.offerShare([held.path]), ShareOffer.pending);
     await c.resolvePendingShare(PendingShareChoice.cancel);
@@ -2027,6 +2315,7 @@ void main() {
           extraRoots: () async => [group.path],
         );
         await c.start([x.path, y.path]);
+        await settled(c);
 
         c.onClose();
         await untilGone([x]);
@@ -2052,6 +2341,7 @@ void main() {
         extraRoots: () async => [group.path],
       );
       await c.start([picked.path, drop.path]);
+      await settled(c);
 
       c.onClose();
       await untilGone([picked, drop]);
@@ -2072,6 +2362,7 @@ void main() {
         extraRoots: () async => ['', '/', 'relative'],
       );
       await c.start([y.path, t.path]);
+      await settled(c);
 
       c.onClose();
       await untilGone([t]);
@@ -2090,6 +2381,7 @@ void main() {
           extraRoots: () async => throw Exception('no channel'),
         );
         await c.start([t.path]);
+        await settled(c);
 
         c.onClose();
         await untilGone([t]);
@@ -2114,6 +2406,7 @@ void main() {
       });
       final c = make(decoder, provider);
       await c.start(['a.jpg', 'b.jpg']);
+      await settled(c);
       provider.stockGate = Completer<void>();
       final add = c.addPhotos(['d.jpg']);
       await pumpEventQueue();
@@ -2173,6 +2466,7 @@ void main() {
       final decoder = _FakeDecoder({});
       final c = make(decoder, _FakeProvider());
       await c.start(List.generate(97, (i) => 'p$i.jpg'));
+      await settled(c);
       decoder.gate = Completer<void>();
       final add = c.addPhotos(['x1.jpg', 'x2.jpg']);
       expect(c.photoRoom, 1);
@@ -2195,6 +2489,7 @@ void main() {
         final decoder = _FakeDecoder({});
         final c = make(decoder, _FakeProvider());
         await c.start(List.generate(96, (i) => 'p$i.jpg'));
+        await settled(c);
         decoder.gate = Completer<void>();
         final add = c.addPhotos(['x1.jpg', 'x2.jpg']);
 
