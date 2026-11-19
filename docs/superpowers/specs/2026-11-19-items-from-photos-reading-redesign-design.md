@@ -46,6 +46,7 @@ stock within 8 s; everything done no later than today.
 7. The wording for the tile pass is **Zooming in…**, in the app and in the Telegram bot.
 8. A sheet of labels stays one row until it is zoomed in on, then becomes its item rows.
 9. Zooming in follows the list from the top, so a row dragged up is read sooner.
+10. The Stock Ageing section shows quantity columns only; the report's Value columns are left out.
 
 ## Design
 
@@ -136,7 +137,8 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
   Stock Ageing screen does once a filter is changed.
 - Parsed with `StockAgeingLogic`, so column titles are the report's own and the buckets are titled from the
   range in effect: **Available Qty**, **Average Age**, **Earliest**, **Latest**, **Age (0 - 90)** …
-  **Age (721 - Above)**, each bucket with its quantity and a bar scaled to the largest bucket.
+  **Age (721 - Above)**, each bucket with its quantity and a bar scaled to the largest bucket. The
+  report's **Value (…)** columns are not shown (decision 10): Items from Photos shows quantities only.
 - States: "Fetching Stock Ageing…" with a spinner; the figures; "Not in the Stock Ageing report." when the
   run returns no row; "Couldn't load Stock Ageing." with **Retry** when it fails. An out-of-stock item is
   not fetched: "Not in the Stock Ageing report: nothing in stock."
@@ -178,11 +180,6 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
 - Device (XCover7, release `.dev` build, the ten wallet cards kept outside the repo): the three targets
   above; remove and Undo during a zoom; open a card during reading; the 30-label sheet still gives 30 rows
   in order.
-
-## Open points for the user
-
-- **Stock Ageing columns:** quantity columns only, as listed. The report also returns **Value (…)**
-  columns; they are left out, as Items from Photos shows quantities only.
 
 ## Left to the builder
 
