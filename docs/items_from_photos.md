@@ -381,11 +381,26 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 
 ## 10. Open items and known limits
 
-- **The reading redesign has not been seen on a device.** Not checked on Android, iPhone or Mac. Its targets are
-  unmeasured: first barcode on screen within 1 s of choosing the photos, five rows with stock within 8 s, all ten
-  wallet cards read no later than 44 s (the time before the redesign). Also unseen: remove and Undo during "Zooming
-  in…", a card opened during reading, a sheet of labels becoming its rows in order, and a generated Excel with no
-  rack, quantity or ageing columns.
+- **The reading redesign on a device (Pixel 7, release build with a side-by-side package name, 19/11/2026).**
+  Ten 1,280 px wallet cards through Choose files…: the review was on screen about half a second after the photos
+  were confirmed, the first barcode within 1 s, five rows with their stock in about 5 s, and all ten rows complete
+  in about 21 s (round one 3.8 s; the five photos the quick pass missed took 3.1–3.6 s each to zoom in on). The
+  targets were set for the XCover7, which is slower (44 s before the redesign); **the XCover7, the iPhone and the
+  Mac have not been checked.** Also seen on the Pixel:
+  - a photo swiped away while "Zooming in…" stopped 1.7 s into its zoom, the next photo started at once, and
+    after Undo it was read afresh in its place in the list;
+  - a card opened to the rack table at once and Stock Ageing after its fetch (about 3 to 5 s on the phone,
+    against 1.4 s for the bare call), two cards open together;
+  - a sheet of ten labels (a 900 x 1,360 px test image made from the cards) stayed one row, "Photo n · 8 items
+    so far", then became ten rows in sheet order;
+  - a code typed for an unreadable file below that sheet, with the fix sheet opened before the sheet's rows
+    appeared and submitted after, landed on the unreadable row;
+  - Back asked "Discard these photos?"; photos added with ＋ joined the list;
+  - Excel: eleven rows in list order, columns #, Image, Barcode, Variant Of, Country of Origin, Item Name,
+    Stock; no rack, quantity or ageing column;
+  - dark mode: every row state, the strip and an open card.
+  Not tried on a device: Retry check after a failed stock check, a drag during a sheet's expansion, Scan in the
+  fix sheet while zooming, a share of many photos, a full-size camera photo.
 - **Stock Ageing for one item, probed 19/11/2026** against the live v16 server with an API user only (not on v15, not
   as an ordinary user, so a permission the report needs but the stock check does not is unconfirmed; the card then
   says "You don't have access to Stock Ageing."): `Stock Ageing - Custom` through `frappe.desk.query_report.run` with
@@ -407,8 +422,8 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 - **Known and left as is:** Undo does not check the 100-photo limit (§4); the reading strip rebuilds with the
   list (§3.2).
 
-- **Android Download** has not been seen on a device yet (the Pixel had only the Play app); check the "Save to"
-  picker saves both files.
+- **Android Download** was seen on the Pixel 7 on 19/11/2026 for one file (Excel, the system "Save to" picker);
+  saving both files in turn has not been seen.
 - After the Undo snackbar expires, a later close could dismiss a different snackbar (parked, low impact).
 - Swiped rows disappear without the collapse animation (removal happens in `confirmDismiss`).
 - A share whose files were swept (older than 24 h) is dropped; a removed photo's copy is deleted only when the screen

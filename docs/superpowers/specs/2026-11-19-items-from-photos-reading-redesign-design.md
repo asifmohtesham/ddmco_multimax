@@ -195,7 +195,9 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
 ## As built
 
 Written 19 November 2026, after the nine tasks. The design above stands except for the following rulings made while
-building. Nothing of this has been seen on a device yet.
+building. It was then checked on a Pixel 7 on 19 November 2026 (results in `docs/items_from_photos.md` §10): the
+review on screen in about half a second, the first barcode within 1 s, five rows with stock in about 5 s, all ten
+cards in about 21 s. The XCover7 the targets were set for, the iPhone and the Mac have not been checked.
 
 1. The `decoding` phase is kept, only for the moment photos are fingerprinted before the list opens;
    `checkingStock` is gone.
