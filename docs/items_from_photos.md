@@ -2,8 +2,8 @@
 
 The one document to read before working on **Items from Photos**: what it does, every screen and message, the
 rules behind it, how each platform gets photos in, where the code lives, and what is still open. Written on
-18 November 2026, current as of **2.44.0+132** plus the unreleased sheet-photo changes (one row per item, tiled
-reading, ERP images; see §8). The dated specs and plans in `docs/superpowers/` are the history;
+18 November 2026, current as of **2.45.0+133** plus the unreleased fix for a photo of one small label (19 November
+2026; see §4 and §8). The dated specs and plans in `docs/superpowers/` are the history;
 this file is the summary. Where they disagree, the code and this file win.
 
 Code identifiers keep the old name: module `lib/app/modules/stock_sheet/`, classes `StockSheet*`, route
@@ -137,15 +137,33 @@ photos** (with reasons and thumbnails). With no problems the list is just "End o
 - **One row per (photo, item):** several labels of one item in a photo give one row; the same item in two photos gives
   two rows; a photo of several items gives one review row per item (each switched, reordered and removed on its own).
   Row order = review order; within a photo, reading order (rows of labels top to bottom, each left to right).
-- **Reading a sheet of labels:** when the whole-photo pass finds two or more items, the photo is read again in nine
-  overlapping tiles (each 60% of the photo's width and height, 20% apart, greyscale, enlarged up to 4x towards a
-  1,200 px side; `logic/sheet_reading.dart`), so codes too small to be found whole are added. An enlarged tile is
-  read twice, smoothed (cubic) and sharp (each pixel repeated): on a small sharp image such as a WhatsApp copy of a
-  printed sheet (484 px wide, bars ~1.7 px) smoothing blurred one label of 30 away, the sharp copy reads it. That
-  sheet takes about 1½ minutes to read on the XCover7 (18 tile reads); a full-size camera photo is not enlarged
-  (9 reads); any label up to 40% of
-  the photo lies whole in some tile. Codes are ordered by the boxes the platform reports; codes without a box follow
-  in the order found. A photo of one label (an EAN-8 and its batch QR count as one item) is never tiled.
+- **Reading a photo again in tiles:** the whole photo is read first. **One item** found (an EAN-8 and its batch QR
+  count as one item) is the answer and nothing is read again. **Two or more items** (a sheet of labels) or **no
+  item at all** (most often one label too small to be found in the whole photo, such as a 1,280 px product card
+  whose EAN-8 has bars about 2 px wide) send the photo to nine overlapping tiles (each 60% of the photo's width and
+  height, 20% apart, greyscale, enlarged up to 4x towards a 1,200 px side; `logic/sheet_reading.dart`), so codes
+  too small to be found whole are added; any label up to 40% of the photo lies whole in some tile. An enlarged
+  tile is read twice, smoothed (cubic) and sharp (each pixel repeated): on a small sharp image such as a WhatsApp
+  copy of a printed sheet (484 px wide, bars ~1.7 px) smoothing blurred one label of 30 away, the sharp copy reads
+  it. A full-size camera photo's tiles are not enlarged (9 reads instead of 18). Every tile is read, even after one
+  gives a code: a photo may hold more. Codes come once each, ordered by the boxes the platform reports; codes
+  without a box follow in the order found.
+- **Last resort for a small photo:** when the first pass and the tiles find no item and the photo's sides are both
+  under 2,000 px, a 2x smoothed copy of the whole photo is read (one label larger than a tile that only reads
+  enlarged). It runs after the tiles, never before: on the ten wallet cards it read one of the five photos the
+  first pass missed, the tiles all five.
+- **How the copies are made:** `logic/grey_plane.dart` cuts, enlarges and writes the tiles and the 2x copy (in a
+  background isolate). It replaces the `image` package's resize, which takes seconds for each enlarged megapixel
+  (one 1,280 px card's 18 tiles: 43 s on a desktop, now 1.6 s there and about 4.2 s on the XCover7), and gives **exactly the package's pixels** (`test/unit/grey_plane_test.dart` compares them), so what ML Kit is
+  given did not change. Do not swap in another resize or PNG layout without re-checking both sheets and cards on a
+  device. Tiles are read one at a time: `mobile_scanner`'s Android side keeps a single pending result, so two
+  `analyzeImage` calls at once would lose one.
+- **Timings (XCover7, release build, 19/11/2026):** a photo the first pass reads takes 0.2–0.5 s. A 1,280 px photo
+  it misses takes about 7 s more: 4.2 s to write the 18 tiles and 2–4 s to read them. Ten wallet cards, five of them
+  missed by the first pass: 39 s of reading, 44 s from choosing the photos to the review list (2.45.0: 4 min 12 s,
+  with four of the ten unread). Not measured: a full-size camera photo with no readable code, which now costs nine
+  tile reads where it used to cost none (writing its tiles takes about 2.6 s on a desktop, most of it decoding the
+  JPEG), and the 30-label sheet, which took about 1½ minutes before the faster copies.
 - **Images:** every row's Image (review list, finished screen, Excel and PDF) is the **Item's `image` from ERP**,
   downloaded through the signed-in session (four at a time, during "Checking stock…", once per item) and shrunk to a
   ~480 px JPEG. No ERP image (or one that cannot be fetched) → the cell is **blank**. The shared photo is never the
@@ -232,7 +250,7 @@ fewer, or download them first."
 | ERP calls | `lib/app/data/providers/stock_sheet_provider.dart` |
 | Controller (phases, review ops, duplicates, add, remove/restore, make, share, download, clean-up) | `lib/app/modules/stock_sheet/stock_sheet_controller.dart` |
 | Screen (start state, review, footer, dialogs, snackbars) | `lib/app/modules/stock_sheet/stock_sheet_screen.dart` |
-| Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`stock_sheet_codec`, `photo_decoder`, `sheet_reading`, `photo_fingerprint`, `review_builder`, `stock_aggregator`,
+| Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`stock_sheet_codec`, `photo_decoder`, `sheet_reading`, `grey_plane`, `photo_fingerprint`, `review_builder`, `stock_aggregator`,
 `thumbnail_maker`) |
 | Writers | `lib/app/modules/stock_sheet/output/` (`xlsx_stock_sheet_writer`, `pdf_stock_sheet_writer`) |
 | Widgets | `lib/app/modules/stock_sheet/widgets/` (`review_list`, `rack_chips`, `fix_code_sheet`, `out_of_stock_sheet`, `stock_sheet_choice_sheet`, `stock_sheet_result_list`, `stock_sheet_start_panel`, `items_from_photos_button`) |
@@ -242,7 +260,7 @@ fewer, or download them first."
 
 Phases: `idle → decoding → checkingStock → reviewing → (awaitingChoice) → building → done`, plus `error`.
 Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sheet_photo_decoder`,
-`stock_sheet_provider`, `sheet_reading`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
+`stock_sheet_provider`, `sheet_reading`, `grey_plane`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
 `pdf_stock_sheet_writer`, `ios_share_extension_contract`; `test/widget/` — `stock_sheet_screen`,
 `stock_sheet_review_list`, `items_from_photos_button`. CI runs no tests; run `flutter test` before merging.
 
@@ -254,7 +272,8 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 | 2.42.0+130 | 18/11/2026 | iOS Share Extension (plugin's controller); heading "Items from photos" | App Store only |
 | 2.43.0+131 | 18/11/2026 | Mac: own share screen, drag and drop, Choose files…, start state, Item list / Dashboard icons, duplicates by content; renamed **Items from Photos**, "Generate file" | Play (`v2.43.0`) + App Store; TestFlight checks passed on Mac and iPhone |
 | 2.44.0+132 | 18/11/2026 | Swipe to remove (Undo), Download | Play (`v2.44.0`) + App Store; Mac and iPhone checks passed |
-| unreleased | 18/11/2026 | A photo of several items: one row per item, tiled reading in sheet order, ERP images everywhere (blank when none); "Also read" notes and per-item switches gone | not yet built |
+| 2.45.0+133 | 18/11/2026 | A photo of several items: one row per item, tiled reading in sheet order (smooth and sharp copies), ERP images everywhere (blank when none); "Also read" notes and per-item switches gone | Play (`v2.45.0`) + App Store |
+| unreleased | 19/11/2026 | A photo of one small label is read in tiles when the first pass finds nothing (it gave "No recognised code"); tiles and the 2x copy made by `GreyPlane` (same pixels, far faster) | on `claude/reverent-wozniak-04950e`, not merged |
 
 ## 9. Testing on devices
 
@@ -271,8 +290,13 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
 - **Sheet photos on a device:** on Android (XCover7, 18/11/2026) the 30-label sheet gave all 30 items in sheet
   order, the right ERP images and blanks in the review, Excel and PDF. Not yet seen on the iPhone/Mac (Vision's
   corner boxes order the rows there).
-- **Telegram twin** still nests a photo's items, reads the photo once and puts the photo in the Image column; mirror
-  these changes there (§11).
+- **A photo of one small label (19/11/2026):** ten 1,280 px wallet product cards, one EAN-8 each (about 140 x 60 px),
+  gave 6 of 10 on 2.45.0 and **10 of 10, ten rows, in 44 s** with the tile fallback (XCover7, release build; the
+  photos are kept outside the repo). Not yet seen on the iPhone or the Mac.
+- **A second, smaller label beside a readable one is still missed:** a first pass that finds exactly one item is
+  never tiled, so a photo of two labels of which only one reads whole gives one row and no warning.
+- **Telegram twin** has the sheet-photo changes of 2.45.0 (deployed 18/11/2026) but not this fallback: its sidecar's
+  `decode_photo` tiles only on two or more items, so the same wallet cards will fail there (§11).
 
 - **Android Download** has not been seen on a device yet (the Pixel had only the Play app); check the "Save to"
   picker saves both files.
