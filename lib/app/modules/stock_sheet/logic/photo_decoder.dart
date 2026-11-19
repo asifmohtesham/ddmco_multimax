@@ -6,21 +6,60 @@ import 'package:image/image.dart' as img;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'grey_plane.dart';
 import 'sheet_reading.dart';
 import 'stock_sheet_codec.dart';
 
-/// Reads the barcodes in one photo.
+/// One code the platform found in an image file: its text, and its corners
+/// in that image's pixels (none when the platform gives none).
+typedef AnalysedCode = ({String value, List<({double x, double y})> corners});
+
+/// Reads the codes in the image file at a path: ML Kit in the app, a fake in
+/// tests.
+typedef PhotoAnalyser = Future<List<AnalysedCode>> Function(String path);
+
+/// Reads the barcodes in one photo, in two rounds: the whole photo, then,
+/// when that did not settle it, tiles of it.
 abstract class PhotoDecoder {
-  /// Returns the raw barcode values found in the photo: an empty list when
-  /// there are none, `null` when the image cannot be read.
-  Future<List<String>?> decode(String path);
+  /// Round one: the whole photo. The raw barcode values found: an empty list
+  /// when there are none, `null` when the photo cannot be read.
+  Future<List<String>?> readWhole(String path);
+
+  /// Round two: tiles, then the 2x copy for a small photo that still has no
+  /// item. [whole] is what [readWhole] gave. `null` when [stopped] said so
+  /// (it is asked before each read, the 2x copy's included) or when the
+  /// photo cannot be read.
+  Future<List<String>?> zoomIn(
+    String path, {
+    required List<String> whole,
+    bool Function()? stopped,
+  });
+
+  /// True unless [whole] holds exactly one item: one label (an EAN-8 and its
+  /// batch QR count as one item) is read in full by round one.
+  static bool needsZoom(List<String> whole) =>
+      StockSheetCodec.itemsInPhoto(whole).length != 1;
 
   Future<void> dispose();
 }
 
 /// On-device decoding with ML Kit, through `mobile_scanner`.
-class MlKitPhotoDecoder implements PhotoDecoder {
-  MlKitPhotoDecoder() : _scanner = MobileScannerController(autoStart: false);
+class MlKitPhotoDecoder extends PhotoDecoder {
+  /// [analyser] and [temporaryPath] are for tests; the app leaves both out
+  /// and gets ML Kit and the system's temporary folder.
+  MlKitPhotoDecoder({
+    PhotoAnalyser? analyser,
+    Future<String> Function()? temporaryPath,
+  }) : _temporaryPath = temporaryPath ?? _systemTemporaryPath {
+    if (analyser != null) {
+      _scanner = null;
+      _analyser = analyser;
+    } else {
+      final scanner = MobileScannerController(autoStart: false);
+      _scanner = scanner;
+      _analyser = (path) => _analyseWithMlKit(scanner, path);
+    }
+  }
 
   static const _formats = [
     BarcodeFormat.ean8,
@@ -33,28 +72,71 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   /// Photos at least this wide or tall are not worth upscaling.
   static const _skipUpscaleAt = 2000;
 
-  final MobileScannerController _scanner;
+  late final MobileScannerController? _scanner;
+  late final PhotoAnalyser _analyser;
+  final Future<String> Function() _temporaryPath;
+
+  static Future<String> _systemTemporaryPath() async =>
+      (await getTemporaryDirectory()).path;
+
+  static Future<List<AnalysedCode>> _analyseWithMlKit(
+    MobileScannerController scanner,
+    String path,
+  ) async {
+    final capture = await scanner.analyzeImage(path, formats: _formats);
+    if (capture == null) return const [];
+    return [
+      for (final barcode in capture.barcodes)
+        (
+          value: barcode.rawValue ?? '',
+          corners: [for (final c in barcode.corners) (x: c.dx, y: c.dy)],
+        ),
+    ];
+  }
 
   @override
-  Future<List<String>?> decode(String path) async {
+  Future<List<String>?> readWhole(String path) async {
     try {
-      final first = await _analyse(path);
-      if (!_anyClassifies(first)) {
-        final retry = await _retryUpscaled(path);
-        return retry != null && _anyClassifies(retry) ? retry : first;
-      }
-      // One label (an EAN-8 and its batch QR count as one item) is read in
-      // full by the first pass. Two or more items mean a sheet of labels:
-      // read it again in tiles for the codes too small to be found whole.
-      if (StockSheetCodec.itemsInPhoto(first).length < 2) return first;
-      final tiled = await _readTiles(path);
-      if (tiled == null) return first;
-      return SheetReading.inReadingOrder([
-        ...tiled,
-        for (final value in first) FoundCode(value),
-      ]);
+      return await _analyse(path);
     } on UnsupportedError {
       // Simulators have no ML Kit; the controller shows a clear message.
+      rethrow;
+    } on MobileScannerBarcodeException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<List<String>?> zoomIn(
+    String path, {
+    required List<String> whole,
+    bool Function()? stopped,
+  }) async {
+    try {
+      final items = StockSheetCodec.itemsInPhoto(whole).length;
+      // Two or more items mean a sheet of labels; no item at all is most
+      // often a label too small to be found in the whole photo (a product
+      // card with one small EAN-8). Both are read again in tiles.
+      final tiles = await _readTiles(path, stopped);
+      if (tiles.stopped) return null;
+      final tiled = tiles.found;
+      if (tiled != null) {
+        final all = SheetReading.inReadingOrder([
+          ...tiled,
+          for (final value in whole) FoundCode(value),
+        ]);
+        if (items >= 2 || _anyClassifies(all)) return all;
+      }
+      if (items >= 2) return whole;
+      // Asked once more before the 2x copy is made and read.
+      if (stopped?.call() ?? false) return null;
+      // Last resort for a small photo: one label larger than a tile (over
+      // 40% of the photo) that only reads enlarged.
+      final retry = await _retryUpscaled(path);
+      return retry != null && _anyClassifies(retry) ? retry : whole;
+    } on UnsupportedError {
       rethrow;
     } on MobileScannerBarcodeException {
       return null;
@@ -73,36 +155,36 @@ class MlKitPhotoDecoder implements PhotoDecoder {
     String path, [
     ({int x, int y, double scale}) tile = (x: 0, y: 0, scale: 1),
   ]) async {
-    final capture = await _scanner.analyzeImage(path, formats: _formats);
-    if (capture == null) return const [];
     return [
-      for (final barcode in capture.barcodes)
-        if ((barcode.rawValue ?? '').isNotEmpty)
-          FoundCode(
-            barcode.rawValue!,
-            SheetReading.boxInPhoto([
-              for (final c in barcode.corners) (x: c.dx, y: c.dy),
-            ], tile),
-          ),
+      for (final code in await _analyser(path))
+        if (code.value.isNotEmpty)
+          FoundCode(code.value, SheetReading.boxInPhoto(code.corners, tile)),
     ];
   }
 
   /// Reads the photo again in overlapping, enlarged tiles (see
   /// [SheetReading]). Returns what the tiles held, with boxes in the upright
   /// photo, or null when no tile could be made. A tile that cannot be read
-  /// is skipped.
-  Future<List<FoundCode>?> _readTiles(String path) async {
+  /// is skipped. [stopped] is asked once the tiles are written and before
+  /// each read; when it says so, the result is `stopped` and the tile files
+  /// are still deleted.
+  Future<({List<FoundCode>? found, bool stopped})> _readTiles(
+    String path,
+    bool Function()? stopped,
+  ) async {
     var tiles = const <SheetTile>[];
     try {
       final bytes = await File(path).readAsBytes();
-      final dir = (await getTemporaryDirectory()).path;
+      final dir = await _temporaryPath();
       final stem = 'stock_sheet_tile_${DateTime.now().microsecondsSinceEpoch}';
       tiles = await Isolate.run(
         () => SheetReading.writeTiles(bytes, dir, stem),
       );
-      if (tiles.isEmpty) return null;
+      if (stopped?.call() ?? false) return (found: null, stopped: true);
+      if (tiles.isEmpty) return (found: null, stopped: false);
       final found = <FoundCode>[];
       for (final tile in tiles) {
+        if (stopped?.call() ?? false) return (found: null, stopped: true);
         try {
           found.addAll(
             await _analyseFound(tile.path, (
@@ -117,11 +199,11 @@ class MlKitPhotoDecoder implements PhotoDecoder {
           // One unreadable tile leaves the others' codes.
         }
       }
-      return found;
+      return (found: found, stopped: false);
     } on UnsupportedError {
       rethrow;
     } catch (_) {
-      return null;
+      return (found: null, stopped: false);
     } finally {
       for (final tile in tiles) {
         try {
@@ -157,15 +239,9 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   static Uint8List? upscaledCopy(Uint8List bytes) {
     final size = headerSize(bytes);
     if (size == null || !_worthUpscaling(size)) return null;
-    final source = img.decodeImage(bytes);
+    final source = GreyPlane.decode(bytes);
     if (source == null) return null;
-    final resized = img.copyResize(
-      img.grayscale(source),
-      width: source.width * 2,
-      height: source.height * 2,
-      interpolation: img.Interpolation.cubic,
-    );
-    return img.encodePng(resized);
+    return source.enlargedSmooth(source.width * 2, source.height * 2).toPng();
   }
 
   /// One retry on a 2x greyscale copy. Returns `null` when no copy was made.
@@ -179,9 +255,9 @@ class MlKitPhotoDecoder implements PhotoDecoder {
       if (size == null || !_worthUpscaling(size)) return null;
       final png = await Isolate.run(() => upscaledCopy(bytes));
       if (png == null) return null;
-      final dir = await getTemporaryDirectory();
+      final dir = await _temporaryPath();
       final target = File(
-        '${dir.path}/stock_sheet_retry_${DateTime.now().microsecondsSinceEpoch}.png',
+        '$dir/stock_sheet_retry_${DateTime.now().microsecondsSinceEpoch}.png',
       );
       copy = await target.writeAsBytes(png);
       return await _analyse(copy.path);
@@ -197,5 +273,5 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   }
 
   @override
-  Future<void> dispose() => _scanner.dispose();
+  Future<void> dispose() async => _scanner?.dispose();
 }

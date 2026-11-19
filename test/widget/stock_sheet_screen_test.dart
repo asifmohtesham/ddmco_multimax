@@ -7,6 +7,7 @@ import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_screen.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 import 'package:share_plus/share_plus.dart';
@@ -44,7 +45,7 @@ class _SpyController extends StockSheetController {
   /// When set, answers [addPhotos] instead of [addError].
   Future<String?> Function(List<String> paths)? onAdd;
 
-  final rechecks = <int>[];
+  int rechecks = 0;
   String? recheckError;
   int retries = 0;
   bool retryable = false;
@@ -84,9 +85,18 @@ class _SpyController extends StockSheetController {
     return onAdd != null ? onAdd!(paths) : addError;
   }
 
+  /// Every [fixCode] call, as (row id, code).
+  final fixes = <(String, String)>[];
+
   @override
-  Future<String?> retryCheck(int index) async {
-    rechecks.add(index);
+  Future<String?> fixCode(String rowId, String input) async {
+    fixes.add((rowId, input));
+    return null;
+  }
+
+  @override
+  Future<String?> retryCheck() async {
+    rechecks++;
     return recheckError;
   }
 
@@ -149,6 +159,18 @@ StockSheetResult _result({int rows = 2, int outOfStock = 1}) =>
         ),
       ],
     );
+
+/// [count] photos still to be read; the photo at the 1-based place [reading]
+/// is in its quick pass (0 for none). A "Reading…" row has a spinner that
+/// never settles, so tests that use it pump instead of settling.
+List<ReviewEntry> _readingPhotos(int count, {required int reading}) => [
+  for (var i = 1; i <= count; i++)
+    ReviewEntry(
+      path: 'p$i.jpg',
+      number: i,
+      stage: i == reading ? ReadStage.reading : ReadStage.notRead,
+    ),
+];
 
 void main() {
   final darkTheme = buildAppTheme(AppScheme.dark, Brightness.dark);
@@ -316,10 +338,38 @@ void main() {
     expect(find.text('home'), findsOneWidget);
   });
 
-  testWidgets('Back outside the review leaves at once', (tester) async {
-    await open(tester);
+  testWidgets('Back while the photos are fingerprinted asks first', (
+    tester,
+  ) async {
+    await open(tester, paths: ['a.jpg']);
+    controller.total.value = 1;
     controller.phase.value = StockSheetPhase.decoding;
     await tester.pump();
+    // The progress spinner never settles, so pump a fixed time.
+    Future<void> settle() => tester.pump(const Duration(milliseconds: 500));
+
+    await tester.pageBack();
+    await settle();
+    expect(find.text('Discard these photos?'), findsOneWidget);
+    await tester.tap(find.text('Keep reviewing'));
+    await settle();
+    expect(find.text('Discard these photos?'), findsNothing);
+    expect(find.byType(StockSheetScreen), findsOneWidget);
+
+    await tester.pageBack();
+    await settle();
+    await tester.tap(find.text('Discard'));
+    await settle();
+    await settle();
+    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('Back from the start, with no photos, leaves at once', (
+    tester,
+  ) async {
+    await open(tester);
+    expect(controller.phase.value, StockSheetPhase.idle);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -550,6 +600,31 @@ void main() {
     expect(controller.review, hasLength(2));
   });
 
+  testWidgets(
+    'a code typed goes to the row tapped, though rows above became several',
+    (tester) async {
+      await open(tester);
+      await review(tester, [
+        ReviewEntry(path: 'a.jpg', items: [_item('12345670')]),
+        ReviewEntry(path: 'bad.jpg', decodeFailed: true),
+      ]);
+
+      await tester.tap(find.text('✎ Type or scan code'));
+      await tester.pumpAndSettle();
+      // While the sheet is open, the photo above becomes two rows.
+      controller.review.replaceRange(0, 1, [
+        ReviewEntry(path: 'a.jpg', id: 'a.jpg#0', items: [_item('12345670')]),
+        ReviewEntry(path: 'a.jpg', id: 'a.jpg#1', items: [_item('76543210')]),
+      ]);
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), '1234567');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(controller.fixes, [('bad.jpg', '1234567')]);
+    },
+  );
+
   testWidgets('a failed Retry check says why in a snackbar', (tester) async {
     await open(tester);
     controller.recheckError = StockSheetController.offlineMessage;
@@ -566,7 +641,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(controller.rechecks, [1]);
+    expect(controller.rechecks, 1);
     expect(find.text(StockSheetController.offlineMessage), findsOneWidget);
   });
 
@@ -922,24 +997,16 @@ void main() {
     expect(controller.choices, isEmpty);
   });
 
-  testWidgets('progress shows the photo count, then the ERP steps', (
+  testWidgets('progress shows the photo count, then the reading strip', (
     tester,
   ) async {
     await open(tester);
     controller.total.value = 23;
-    controller.decoded.value = 6;
     controller.phase.value = StockSheetPhase.decoding;
     await tester.pump();
 
-    expect(find.text('Reading photo 7 of 23'), findsOneWidget);
-    final bar = tester.widget<LinearProgressIndicator>(
-      find.byType(LinearProgressIndicator),
-    );
-    expect(bar.value, closeTo(6 / 23, 1e-9));
-
-    controller.phase.value = StockSheetPhase.checkingStock;
-    await tester.pump();
-    expect(find.text('Checking stock…'), findsOneWidget);
+    // Fingerprinting: indeterminate, and not tied to a stale count.
+    expect(find.text('Reading photo 1 of 23'), findsOneWidget);
     expect(
       tester
           .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
@@ -947,9 +1014,120 @@ void main() {
       isNull,
     );
 
+    // Then the review, with the strip and one row per photo.
+    await review(tester, _readingPhotos(23, reading: 0));
+    expect(find.text('Review photos'), findsOneWidget);
+    expect(find.text('Reading photo 1 of 23'), findsOneWidget);
+    expect(find.text('0 read'), findsOneWidget);
+    expect(find.text('Checking stock…'), findsNothing);
+
     controller.phase.value = StockSheetPhase.building;
     await tester.pump();
     expect(find.text('Generating the file…'), findsOneWidget);
+  });
+
+  testWidgets('the review is on screen while photos are still being read', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _readingPhotos(2, reading: 0));
+
+    expect(find.text('Review photos'), findsOneWidget);
+    expect(find.text('2 photos · 0 items so far'), findsOneWidget);
+    expect(find.text('Reading photo 1 of 2'), findsOneWidget);
+    expect(find.text('Not read yet'), findsNWidgets(2));
+    final generate = tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text('Generate file · 0 items'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    );
+    expect(generate.onPressed, isNull);
+  });
+
+  testWidgets('Generate file waits for the reading, even with items on it', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, [
+      ReviewEntry(path: 'a.jpg', items: [_item('12345670')], number: 1),
+      ReviewEntry(path: 'b.jpg', stage: ReadStage.notRead, number: 2),
+    ]);
+
+    expect(find.text('2 photos · 1 item so far'), findsOneWidget);
+    ButtonStyleButton button() => tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text('Generate file · 1 item'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    );
+    expect(button().onPressed, isNull);
+
+    controller.review[1] = ReviewEntry(
+      path: 'b.jpg',
+      items: [_item('76543210')],
+      number: 2,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2 photos · 2 items in the file'), findsOneWidget);
+    expect(find.text('Generate file · 2 items'), findsOneWidget);
+    expect(
+      tester
+          .widget<ButtonStyleButton>(
+            find.ancestor(
+              of: find.text('Generate file · 2 items'),
+              matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+            ),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('when everything is settled the strip goes', (tester) async {
+    await open(tester);
+    await review(tester, _readingPhotos(2, reading: 0));
+    expect(find.text('Reading photo 1 of 2'), findsOneWidget);
+
+    controller.review.assignAll(_twoPhotos());
+    await tester.pumpAndSettle();
+    expect(find.byType(ReadingStrip), findsOneWidget); // renders nothing
+    expect(find.textContaining('Reading photo'), findsNothing);
+    expect(find.text('2 photos · 2 items in the file'), findsOneWidget);
+  });
+
+  testWidgets('Back during reading asks before discarding', (tester) async {
+    await open(tester);
+    await review(tester, _readingPhotos(1, reading: 0));
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discard these photos?'), findsOneWidget);
+  });
+
+  testWidgets('a row swiped away during reading shows Undo', (tester) async {
+    await open(tester);
+    await review(tester, _readingPhotos(2, reading: 0));
+
+    await tester.drag(find.text('Not read yet').last, const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Photo removed.'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+  });
+
+  testWidgets('the add action spins only while photos are fingerprinted', (
+    tester,
+  ) async {
+    await open(tester);
+    await review(tester, _readingPhotos(2, reading: 0));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    controller.adding.value = true;
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    controller.adding.value = false;
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('result: share button swaps for a spinner while sharing', (

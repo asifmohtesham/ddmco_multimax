@@ -109,6 +109,33 @@ void main() {
       );
       expect(rows[1].copyWith(typed: true).id, rows[1].id);
     });
+
+    test('a default entry is settled', () {
+      final e = ReviewEntry(path: 'a');
+      expect(e.stage, ReadStage.settled);
+      expect(e.settled, isTrue);
+      expect(e.number, 0);
+      expect(e.codes, isEmpty);
+    });
+
+    test('copyWith keeps stage, number and codes, and takes new ones', () {
+      final e = ReviewEntry(
+        path: 'a',
+        stage: ReadStage.zooming,
+        number: 4,
+        codes: [code('1')],
+      );
+      final kept = e.copyWith(typed: true);
+      expect(kept.stage, ReadStage.zooming);
+      expect(kept.number, 4);
+      expect(kept.codes.single.itemCode, '1');
+      expect(kept.settled, isFalse);
+      final moved = e.copyWith(
+          stage: ReadStage.settled, number: 5, codes: [code('2'), code('3')]);
+      expect(moved.stage, ReadStage.settled);
+      expect(moved.number, 5);
+      expect(moved.codes, hasLength(2));
+    });
   });
 
   group('switches', () {

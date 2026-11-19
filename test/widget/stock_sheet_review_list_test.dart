@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -6,11 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:image/image.dart' as img;
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/rack_chips.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/stock_card_details.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
 ReviewItem _item(String barcode, ItemStock? stock) => ReviewItem(
@@ -50,6 +53,10 @@ ReviewList _list(
   bool Function(int)? onRemove,
   bool removeEnabled = true,
   Map<String, Uint8List> thumbnails = const {},
+  Set<String> openCards = const {},
+  Map<String, AgeingState> ageing = const {},
+  void Function(String)? onToggleCard,
+  void Function(String)? onRetryAgeing,
 }) => ReviewList(
   entries: entries,
   thumbnails: thumbnails,
@@ -59,9 +66,257 @@ ReviewList _list(
   onRetryCheck: (_) {},
   onRemove: onRemove ?? (_) => true,
   removeEnabled: removeEnabled,
+  openCards: openCards,
+  ageing: ageing,
+  onToggleCard: onToggleCard ?? (_) {},
+  onRetryAgeing: onRetryAgeing ?? (_) {},
 );
 
+/// The item code of [_twoRackEntry] (see [_item]).
+const _a = '1234567';
+
+/// Racks KA-WH-DXB1-20D 300 and stock on no rack 84: 384 in all.
+const _inStock = ItemStock(
+  total: 384,
+  racks: [
+    RackQty(rack: 'KA-WH-DXB1-20D', qty: 300),
+    RackQty(rack: null, qty: 84),
+  ],
+);
+
+final _twoRackEntry = ReviewEntry(
+  path: 'two',
+  items: [_item('12345670', _inStock)],
+);
+
+const _ageingA = ItemAgeing(
+  availableQty: 384,
+  averageAge: 120.5,
+  earliest: 400,
+  latest: 3,
+  buckets: [
+    (label: '0 - 90', qty: 200),
+    (label: '91 - 180', qty: 0),
+    (label: '181 - 360', qty: 50),
+    (label: '361 - 720', qty: 50),
+    (label: '721 - Above', qty: 84),
+  ],
+);
+
+const _codeA = ClassifiedCode(itemCode: '1111111', barcode: '11111115');
+const _codeB = ClassifiedCode(itemCode: '2222222', barcode: '22222225');
+
+final _inStockEntry = ReviewEntry(
+  path: 'in',
+  items: [_item('12345670', _twoRacks)],
+);
+final _outOfStockEntry = ReviewEntry(
+  path: 'out',
+  items: [_item('76543210', const ItemStock(total: 0, racks: []))],
+);
+
+List<ReviewEntry> _sixStages() => [
+  ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+  ReviewEntry(path: 'p2', number: 2, stage: ReadStage.reading),
+  ReviewEntry(path: 'p3', number: 3, stage: ReadStage.waiting),
+  ReviewEntry(path: 'p4', number: 4, stage: ReadStage.zooming),
+  ReviewEntry(
+    path: 'p5',
+    number: 5,
+    stage: ReadStage.checkingStock,
+    codes: const [_codeA],
+  ),
+  ReviewEntry(
+    path: 'p6',
+    number: 6,
+    stage: ReadStage.waiting,
+    codes: const [_codeA, _codeB],
+  ),
+];
+
 void main() {
+  testWidgets('each stage shows its line', (tester) async {
+    await tester.pumpWidget(_app(_list(_sixStages())));
+    expect(find.text('Not read yet'), findsOneWidget);
+    expect(find.text('Reading…'), findsOneWidget);
+    expect(find.text('Waiting to zoom in'), findsNWidgets(2));
+    expect(find.text('Zooming in…'), findsOneWidget);
+    expect(find.text('Checking stock…'), findsOneWidget);
+    expect(find.text(_codeA.barcode), findsOneWidget);
+    expect(find.text('Photo 6 · 2 items so far'), findsOneWidget);
+    expect(
+      tester.widgetList<Switch>(find.byType(Switch)).every(
+        (s) => s.onChanged == null,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('a ready row shows one pill and no quantity or rack', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(_list([_inStockEntry, _outOfStockEntry])));
+    expect(find.text('In stock'), findsOneWidget);
+    expect(find.text('Out of stock'), findsOneWidget);
+    expect(find.textContaining('KA-WH-'), findsNothing);
+    expect(find.textContaining('Out of stock · 0'), findsNothing);
+    expect(find.text('377'), findsNothing);
+    expect(find.text('Rack-Wise Stock Balance'), findsNothing);
+  });
+
+  testWidgets('a row that is not read yet can be swiped away', (tester) async {
+    var removed = -1;
+    await tester.pumpWidget(
+      _app(
+        _list(
+          [ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead)],
+          onRemove: (i) {
+            removed = i;
+            return true;
+          },
+        ),
+      ),
+    );
+    await tester.drag(find.text('Not read yet'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(removed, 0);
+  });
+
+  testWidgets('the strip follows the list and goes when all is settled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        ReadingStrip(
+          entries: [
+            ReviewEntry(path: 'p1', number: 1),
+            ReviewEntry(path: 'p2', number: 2, stage: ReadStage.zooming),
+          ],
+        ),
+      ),
+    );
+    expect(find.text('Zooming in on photo 2 of 2…'), findsOneWidget);
+    expect(find.text('1 read · 1 to go'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.pumpWidget(
+      _app(ReadingStrip(entries: [ReviewEntry(path: 'p1', number: 1)])),
+    );
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
+  testWidgets('the dashed outline covers the whole row, like a solid border', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        _list([
+          ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+          _inStockEntry,
+        ]),
+      ),
+    );
+    final outline = find.byWidgetPredicate(
+      (w) =>
+          w is CustomPaint &&
+          w.foregroundPainter.runtimeType.toString() == '_DashedOutline',
+    );
+    expect(outline, findsOneWidget);
+    final dismissibles = find.byType(Dismissible);
+    final dashedRow = tester.getRect(dismissibles.at(0));
+    final solidRow = tester.getRect(dismissibles.at(1));
+    final outlineRect = tester.getRect(outline);
+    // The row's outer box is the Dismissible less its 8 px bottom margin.
+    expect(outlineRect.left, dashedRow.left);
+    expect(outlineRect.top, dashedRow.top);
+    expect(outlineRect.width, dashedRow.width);
+    expect(outlineRect.height, dashedRow.height - 8);
+    // The same width as a settled row's bordered box.
+    final solidBox = find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration as BoxDecoration).borderRadius ==
+              BorderRadius.circular(AppRadius.lg),
+    );
+    expect(tester.getSize(solidBox).width, outlineRect.width);
+    expect(solidRow.width, dashedRow.width);
+  });
+
+  testWidgets('the strip is one live region that reads label then tally', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _app(
+        ReadingStrip(
+          entries: [
+            ReviewEntry(path: 'p1', number: 1),
+            ReviewEntry(path: 'p2', number: 2, stage: ReadStage.zooming),
+          ],
+        ),
+      ),
+    );
+    final live = find.byWidgetPredicate(
+      (w) => w is Semantics && w.properties.liveRegion == true,
+    );
+    final data = tester.getSemantics(live.first).getSemanticsData();
+    expect(data.flagsCollection.isLiveRegion, isTrue);
+    expect(data.label, contains('Zooming in on photo 2 of 2…'));
+    expect(data.label, contains('1 read · 1 to go'));
+    handle.dispose();
+  });
+
+  testWidgets('a zooming row has a spinner, a not-read row none', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        _list([
+          ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+          ReviewEntry(path: 'p2', number: 2, stage: ReadStage.zooming),
+        ]),
+      ),
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('dark mode: stage rows and pills keep text at 4.5:1 or more', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        _list([..._sixStages(), _inStockEntry, _outOfStockEntry]),
+        brightness: Brightness.dark,
+      ),
+    );
+    final ctx = tester.element(find.byType(ReviewList));
+    final surface = ctx.scheme.fg;
+    // The page behind the dashed (unfilled) rows is the scaffold.
+    final page = Theme.of(ctx).scaffoldBackgroundColor;
+    var checked = 0;
+    for (final t in tester.widgetList<Text>(find.byType(Text))) {
+      final style = t.style;
+      final data = t.data;
+      if (style?.color == null || data == null) continue;
+      if (data == 'End of list') continue;
+      final ink = style!.color!;
+      final bg = (data == 'In stock' || data == 'Out of stock' ||
+              data == 'Zooming in…')
+          ? Color.alphaBlend(ink.withValues(alpha: 0.13), surface)
+          : surface;
+      for (final b in [bg, page]) {
+        final over = Color.alphaBlend(ink, b);
+        final l1 = over.computeLuminance();
+        final l2 = b.computeLuminance();
+        final ratio = (l1 > l2 ? l1 + 0.05 : l2 + 0.05) /
+            (l1 > l2 ? l2 + 0.05 : l1 + 0.05);
+        expect(ratio, greaterThanOrEqualTo(4.5), reason: '"$data" on $b');
+      }
+      checked++;
+    }
+    expect(checked, greaterThan(10));
+  });
+
   testWidgets('swiping a row end-to-start calls onRemove with its index', (
     tester,
   ) async {
@@ -199,50 +454,9 @@ void main() {
     expect(find.text('Item 12345670'), findsOneWidget);
   });
 
-  testWidgets('rack chips show the total and full rack names', (tester) async {
-    await tester.pumpWidget(_app(const RackChips(stock: _twoRacks)));
-    expect(find.text('377'), findsOneWidget);
-    expect(find.text('KA-WH-DXB1-21A 305'), findsOneWidget);
-    expect(find.text('KA-WH-DXB1-14D 72'), findsOneWidget);
-  });
-
-  testWidgets('five racks show three chips and +2', (tester) async {
-    const stock = ItemStock(
-      total: 15,
-      racks: [
-        RackQty(rack: 'R1', qty: 5),
-        RackQty(rack: 'R2', qty: 4),
-        RackQty(rack: 'R3', qty: 3),
-        RackQty(rack: 'R4', qty: 2),
-        RackQty(rack: null, qty: 1),
-      ],
-    );
-    await tester.pumpWidget(_app(const RackChips(stock: stock)));
-    expect(find.text('R1 5'), findsOneWidget);
-    expect(find.text('R3 3'), findsOneWidget);
-    expect(find.text('R4 2'), findsNothing);
-    expect(find.text('+2'), findsOneWidget);
-
-    await tester.tap(find.text('+2'));
-    await tester.pumpAndSettle();
-    expect(find.text('R4'), findsOneWidget);
-    expect(find.text('No rack'), findsOneWidget);
-  });
-
-  testWidgets('out of stock shows the pill and no chips', (tester) async {
-    await tester.pumpWidget(
-      _app(const RackChips(stock: ItemStock(total: 0, racks: []))),
-    );
-    expect(find.text('Out of stock · 0'), findsOneWidget);
-    expect(find.byType(Wrap), findsNothing);
-  });
-
-  testWidgets('no Stock Balance row (null stock) shows the pill', (
+  testWidgets('a null stock (no Stock Balance row) shows Out of stock', (
     tester,
   ) async {
-    await tester.pumpWidget(_app(const RackChips(stock: null)));
-    expect(find.text('Out of stock · 0'), findsOneWidget);
-
     await tester.pumpWidget(
       _app(
         _list([
@@ -250,28 +464,8 @@ void main() {
         ]),
       ),
     );
-    expect(find.text('Out of stock · 0'), findsOneWidget);
-  });
-
-  testWidgets('racks given smallest first show largest first', (tester) async {
-    const stock = ItemStock(
-      total: 10,
-      racks: [
-        RackQty(rack: 'R1', qty: 1),
-        RackQty(rack: 'R2', qty: 2),
-        RackQty(rack: 'R3', qty: 3),
-        RackQty(rack: 'R4', qty: 4),
-      ],
-    );
-    await tester.pumpWidget(_app(const RackChips(stock: stock)));
-    expect(find.text('R1 1'), findsNothing);
-    expect(find.text('+1'), findsOneWidget);
-    final x = [
-      for (final label in ['R4 4', 'R3 3', 'R2 2'])
-        tester.getTopLeft(find.text(label)).dx,
-    ];
-    expect(x[0], lessThan(x[1]));
-    expect(x[1], lessThan(x[2]));
+    expect(find.text('Out of stock'), findsOneWidget);
+    expect(find.text('Out of stock · 0'), findsNothing);
   });
 
   test('formatQty rounds to three decimals and drops trailing zeros', () {
@@ -397,6 +591,344 @@ void main() {
     expect(colours, isNot(contains(Colors.white)));
   });
 
+  group('the card', () {
+    testWidgets(
+      'a tap opens the card to the rack table at once and the ageing when it arrives',
+      (tester) async {
+        String? toggled;
+        Widget list(Set<String> open, Map<String, AgeingState> ageing) => _app(
+          _list(
+            [_twoRackEntry],
+            openCards: open,
+            ageing: ageing,
+            onToggleCard: (id) => toggled = id,
+          ),
+        );
+        await tester.pumpWidget(list(const {}, const {}));
+        expect(find.text('Rack-Wise Stock Balance'), findsNothing);
+        await tester.tap(find.text('In stock'));
+        expect(toggled, _twoRackEntry.id);
+
+        await tester.pumpWidget(
+          list(
+            {_twoRackEntry.id},
+            {_a: const AgeingState(AgeingStatus.loading)},
+          ),
+        );
+        expect(find.text('Rack-Wise Stock Balance'), findsOneWidget);
+        expect(find.text('Rack'), findsOneWidget);
+        expect(find.text('Balance Qty'), findsOneWidget);
+        expect(find.text('KA-WH-DXB1-20D'), findsOneWidget);
+        expect(find.text('No rack'), findsOneWidget);
+        expect(find.text('384'), findsOneWidget); // the total: two lines
+        expect(find.text('Fetching Stock Ageing…'), findsOneWidget);
+
+        await tester.pumpWidget(
+          list(
+            {_twoRackEntry.id},
+            {
+              _a: const AgeingState(AgeingStatus.ready, [_ageingA]),
+            },
+          ),
+        );
+        for (final label in [
+          'Stock Ageing',
+          'Available Qty',
+          'Average Age',
+          'Earliest',
+          'Latest',
+          'Age (0 - 90)',
+          'Age (721 - Above)',
+        ]) {
+          expect(find.text(label), findsOneWidget, reason: label);
+        }
+        expect(find.text('120.5'), findsOneWidget);
+        expect(find.text('400'), findsOneWidget);
+        expect(find.textContaining('Value'), findsNothing);
+
+        // A tap on the open card closes it.
+        toggled = null;
+        await tester.tap(find.text('In stock'));
+        expect(toggled, _twoRackEntry.id);
+      },
+    );
+
+    testWidgets('a single rack has no total line, largest rack first', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          const StockCardDetails(
+            stock: ItemStock(total: 7, racks: [RackQty(rack: 'R1', qty: 7)]),
+            ageing: null,
+            onRetry: _noop,
+          ),
+        ),
+      );
+      expect(find.text('7'), findsOneWidget);
+
+      await tester.pumpWidget(
+        _app(
+          const StockCardDetails(stock: _inStock, ageing: null, onRetry: _noop),
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text('KA-WH-DXB1-20D')).dy,
+        lessThan(tester.getTopLeft(find.text('No rack')).dy),
+      );
+    });
+
+    testWidgets('the four figures carry the labels the report gave', (
+      tester,
+    ) async {
+      const titled = ItemAgeing(
+        availableQty: 384,
+        averageAge: 120.5,
+        earliest: 400,
+        latest: 3,
+        availableQtyLabel: 'Qty on Hand',
+        averageAgeLabel: 'Avg Age',
+        earliestLabel: 'Oldest',
+        latestLabel: 'Newest',
+        buckets: [(label: '0 - 90', qty: 384)],
+      );
+      await tester.pumpWidget(
+        _app(
+          const StockCardDetails(
+            stock: _inStock,
+            ageing: AgeingState(AgeingStatus.ready, [titled]),
+            onRetry: _noop,
+          ),
+        ),
+      );
+      for (final label in ['Qty on Hand', 'Avg Age', 'Oldest', 'Newest']) {
+        expect(find.text(label), findsOneWidget, reason: label);
+      }
+      for (final label in ['Available Qty', 'Average Age', 'Earliest']) {
+        expect(find.text(label), findsNothing, reason: label);
+      }
+    });
+
+    testWidgets('the other ageing states say what they are', (tester) async {
+      for (final (state, text) in [
+        (
+          const AgeingState(AgeingStatus.missing),
+          'Not in the Stock Ageing report.',
+        ),
+        (const AgeingState(AgeingStatus.failed), "Couldn't load Stock Ageing."),
+        (
+          const AgeingState(AgeingStatus.denied),
+          "You don't have access to Stock Ageing.",
+        ),
+      ]) {
+        await tester.pumpWidget(
+          _app(
+            StockCardDetails(stock: _inStock, ageing: state, onRetry: () {}),
+          ),
+        );
+        expect(find.text(text), findsOneWidget);
+      }
+      expect(find.text('Retry'), findsNothing); // denied: no retry
+      await tester.pumpWidget(
+        _app(const StockCardDetails(stock: null, ageing: null, onRetry: _noop)),
+      );
+      expect(find.text('No stock in Finished Goods - KA.'), findsOneWidget);
+      expect(
+        find.text('Not in the Stock Ageing report: nothing in stock.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Retry on a failure asks again', (tester) async {
+      var retries = 0;
+      await tester.pumpWidget(
+        _app(
+          StockCardDetails(
+            stock: _inStock,
+            ageing: const AgeingState(AgeingStatus.failed),
+            onRetry: () => retries++,
+          ),
+        ),
+      );
+      await tester.tap(find.text('Retry'));
+      expect(retries, 1);
+    });
+
+    testWidgets('several warehouses each show under their name', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          SingleChildScrollView(
+            child: StockCardDetails(
+              stock: _inStock,
+              ageing: const AgeingState(AgeingStatus.ready, [
+                ItemAgeing(
+                  warehouse: 'Rack A - KA',
+                  availableQty: 1,
+                  averageAge: 1,
+                  earliest: 1,
+                  latest: 1,
+                  buckets: [(label: '0 - 90', qty: 1)],
+                ),
+                ItemAgeing(
+                  warehouse: 'Rack B - KA',
+                  availableQty: 2,
+                  averageAge: 2,
+                  earliest: 2,
+                  latest: 2,
+                  buckets: [(label: '0 - 90', qty: 2)],
+                ),
+              ]),
+              onRetry: _noop,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Rack A - KA'), findsOneWidget);
+      expect(find.text('Rack B - KA'), findsOneWidget);
+      expect(find.text('Available Qty'), findsNWidgets(2));
+    });
+
+    testWidgets('a swipe or a drag by the handle does not open the card', (
+      tester,
+    ) async {
+      var toggles = 0;
+      await tester.pumpWidget(
+        _app(
+          _list(
+            [_inStockEntry, _outOfStockEntry],
+            onToggleCard: (_) => toggles++,
+            onRemove: (_) => false,
+          ),
+        ),
+      );
+      await tester.drag(find.text('In stock'), const Offset(-300, 0));
+      await tester.pumpAndSettle();
+      expect(toggles, 0);
+
+      final handle = find.byIcon(Icons.drag_indicator).first;
+      await tester.tap(handle);
+      await tester.pumpAndSettle();
+      expect(toggles, 0);
+
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      await tester.pump(const Duration(milliseconds: 50));
+      for (var i = 0; i < 6; i++) {
+        await gesture.moveBy(const Offset(0, 20));
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(toggles, 0);
+    });
+
+    testWidgets('only a settled row with an item opens', (tester) async {
+      var toggles = 0;
+      await tester.pumpWidget(
+        _app(
+          _list([
+            ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+            ReviewEntry(path: 'b', decodeFailed: true),
+          ], onToggleCard: (_) => toggles++),
+        ),
+      );
+      await tester.tap(find.text('Not read yet'));
+      await tester.tap(find.text('Unreadable photo'));
+      expect(toggles, 0);
+      expect(find.byIcon(Icons.expand_more), findsNothing);
+    });
+
+    testWidgets(
+      'the arrow is a button for Rack-Wise Stock Balance and Stock Ageing',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        String? toggled;
+        Widget list(Set<String> open) => _app(
+          _list(
+            [_twoRackEntry],
+            openCards: open,
+            onToggleCard: (id) => toggled = id,
+          ),
+        );
+        const label = 'Rack-Wise Stock Balance and Stock Ageing';
+        await tester.pumpWidget(list(const {}));
+        final arrow = find.bySemanticsLabel(label);
+        expect(arrow, findsOneWidget);
+        var data = tester.getSemantics(arrow).getSemanticsData();
+        expect(data.flagsCollection.isButton, isTrue);
+        expect(data.flagsCollection.isExpanded, Tristate.isFalse);
+        expect(data.hasAction(SemanticsAction.tap), isTrue);
+
+        await tester.pumpWidget(list({_twoRackEntry.id}));
+        data = tester.getSemantics(arrow).getSemanticsData();
+        expect(data.flagsCollection.isExpanded, Tristate.isTrue);
+
+        tester.semantics.tap(find.semantics.byLabel(label));
+        expect(toggled, _twoRackEntry.id);
+        handle.dispose();
+      },
+    );
+
+    testWidgets('dark mode: the open card keeps text at 4.5:1 or more', (
+      tester,
+    ) async {
+      final entries = [
+        _twoRackEntry,
+        ReviewEntry(path: 'f', items: [_item('76543210', _inStock)]),
+        ReviewEntry(path: 'o', items: [_item('55555550', null)]),
+      ];
+      // Tall enough for all three open cards to be built.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        _app(
+          _list(
+            entries,
+            openCards: {for (final e in entries) e.id},
+            ageing: {
+              _a: const AgeingState(AgeingStatus.ready, [_ageingA]),
+              '7654321': const AgeingState(AgeingStatus.failed),
+            },
+          ),
+          brightness: Brightness.dark,
+        ),
+      );
+      expect(find.text('Age (0 - 90)'), findsOneWidget);
+      expect(find.text("Couldn't load Stock Ageing."), findsOneWidget);
+      expect(find.text('No stock in Finished Goods - KA.'), findsOneWidget);
+      final ctx = tester.element(find.byType(ReviewList));
+      final surface = ctx.scheme.fg;
+      final colours = <Color>[];
+      for (final c in tester.widgetList<Container>(find.byType(Container))) {
+        final d = c.decoration;
+        if (d is BoxDecoration && d.color != null) colours.add(d.color!);
+      }
+      expect(colours, isNot(contains(Colors.white)));
+      var checked = 0;
+      for (final t in tester.widgetList<Text>(find.byType(Text))) {
+        final style = t.style;
+        final data = t.data;
+        if (style?.color == null || data == null) continue;
+        if (data == 'End of list') continue;
+        final ink = style!.color!;
+        final bg = (data == 'In stock' || data == 'Out of stock')
+            ? Color.alphaBlend(ink.withValues(alpha: 0.13), surface)
+            : surface;
+        final over = Color.alphaBlend(ink, bg);
+        final l1 = over.computeLuminance();
+        final l2 = bg.computeLuminance();
+        final ratio =
+            (l1 > l2 ? l1 + 0.05 : l2 + 0.05) /
+            (l1 > l2 ? l2 + 0.05 : l1 + 0.05);
+        expect(ratio, greaterThanOrEqualTo(4.5), reason: '"$data" on $bg');
+        checked++;
+      }
+      expect(checked, greaterThan(20));
+    });
+  });
+
   group('fix code sheet', () {
     Future<void> open(
       WidgetTester tester,
@@ -455,3 +987,5 @@ void main() {
     });
   });
 }
+
+void _noop() {}

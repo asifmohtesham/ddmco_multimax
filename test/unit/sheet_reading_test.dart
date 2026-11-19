@@ -140,6 +140,32 @@ void main() {
       expect(copies.where((t) => pure(read(t))), hasLength(1));
     });
 
+    test('each copy holds exactly the pixels the image package gives for '
+        'the same crop and enlargement', () {
+      // Bars and noise in colour, so the greyscale step counts too.
+      final source = img.Image(width: 150, height: 100);
+      for (final p in source) {
+        final v = (p.x * 7 + p.y * 13) % 5 < 2 ? 0 : (p.x * 31 + p.y) % 256;
+        p.setRgb(v, 255 - v, (v * 3) % 256);
+      }
+      final photo = Uint8List.fromList(img.encodePng(source));
+      final tiles = SheetReading.writeTiles(photo, dir.path, 't');
+      final grey = img.grayscale(img.decodePng(photo)!);
+      for (final t in tiles) {
+        final crop = img.copyCrop(grey, x: t.x, y: t.y, width: 90, height: 60);
+        final expected = img.copyResize(
+          crop,
+          width: 360,
+          height: 240,
+          interpolation: t.path.endsWith('s.png')
+              ? img.Interpolation.cubic
+              : img.Interpolation.nearest,
+        );
+        final written = img.decodePng(File(t.path).readAsBytesSync())!;
+        expect(written.toUint8List(), expected.toUint8List(), reason: t.path);
+      }
+    });
+
     test('a tile large enough is written once, not enlarged', () {
       final photo = Uint8List.fromList(
         img.encodePng(img.Image(width: 2500, height: 2100)),
