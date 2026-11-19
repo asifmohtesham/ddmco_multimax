@@ -39,14 +39,6 @@ abstract class PhotoDecoder {
   static bool needsZoom(List<String> whole) =>
       StockSheetCodec.itemsInPhoto(whole).length != 1;
 
-  /// [readWhole], then [zoomIn] when needed; what round one gave when round
-  /// two gives nothing. Removed once the controller drives the two rounds.
-  Future<List<String>?> decode(String path) async {
-    final whole = await readWhole(path);
-    if (whole == null || !needsZoom(whole)) return whole;
-    return await zoomIn(path, whole: whole) ?? whole;
-  }
-
   Future<void> dispose();
 }
 

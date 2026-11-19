@@ -1212,7 +1212,6 @@ void main() {
     expect(c.review, isEmpty);
     expect(c.files, isEmpty);
     expect(c.thumbnails, isEmpty);
-    expect(c.decoded.value, 0);
     expect(c.total.value, 0);
   });
 

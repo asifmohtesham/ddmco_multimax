@@ -14,6 +14,14 @@ const _d = '10039915';
 const _aBatch = '10039991-4CPIWR';
 const _ean13 = '4006381333931';
 
+/// Both rounds as the controller runs them: round one, then round two when
+/// needed; what round one gave when round two gives nothing.
+Future<List<String>?> _decode(PhotoDecoder decoder, String path) async {
+  final whole = await decoder.readWhole(path);
+  if (whole == null || !PhotoDecoder.needsZoom(whole)) return whole;
+  return await decoder.zoomIn(path, whole: whole) ?? whole;
+}
+
 /// Stands in for ML Kit: answers by the file's name and keeps the calls.
 class _FakeAnalyser {
   final calls = <String>[];
@@ -203,7 +211,7 @@ void main() {
       expect(PhotoDecoder.needsZoom(const [_a, _b]), isTrue);
     });
 
-    test('zoomIn gives what decode gave for the same photo', () async {
+    test('zoomIn gives the item the tiles hold', () async {
       analyser.holds.add((_tile(8, 'n'), [_at(_a, 150, 85, 80, 40)]));
       final path = photo();
       expect(await decoder.zoomIn(path, whole: const []), [_a]);
@@ -227,14 +235,17 @@ void main() {
       },
     );
 
-    test('zoomIn stopped while the tiles were being written reads none', () async {
-      expect(
-        await decoder.zoomIn(photo(), whole: const [], stopped: () => true),
-        isNull,
-      );
-      expect(analyser.tiles, isEmpty);
-      expect(temp.listSync(), isEmpty);
-    });
+    test(
+      'zoomIn stopped while the tiles were being written reads none',
+      () async {
+        expect(
+          await decoder.zoomIn(photo(), whole: const [], stopped: () => true),
+          isNull,
+        );
+        expect(analyser.tiles, isEmpty);
+        expect(temp.listSync(), isEmpty);
+      },
+    );
 
     test('a first pass that finds nothing is followed by the tiles: one '
         'small label is read from the tile that holds it', () async {
@@ -242,7 +253,7 @@ void main() {
       // whole photo, readable in the last tile.
       analyser.holds.add((_tile(8, 'n'), [_at(_a, 150, 85, 80, 40)]));
 
-      expect(await decoder.decode(photo()), [_a]);
+      expect(await _decode(decoder, photo()), [_a]);
       expect(analyser.names.first, 'photo.png');
       expect(analyser.tiles, hasLength(18));
       // The tiles answered: the 2x copy of the whole photo is not made.
@@ -261,7 +272,7 @@ void main() {
         (_tile(8, 'n'), [_at(_b, 150, 85, 80, 40)]),
       ]);
 
-      expect(await decoder.decode(photo()), [_a, _c, _d, _b]);
+      expect(await _decode(decoder, photo()), [_a, _c, _d, _b]);
     });
 
     test('another kind of code in the first pass still leads to the tiles, '
@@ -271,7 +282,7 @@ void main() {
         (_tile(4, 's'), [_at(_a, 90, 40, 40, 20)]),
       ]);
 
-      expect(await decoder.decode(photo()), [_a, _ean13]);
+      expect(await _decode(decoder, photo()), [_a, _ean13]);
       expect(analyser.retries, isEmpty);
     });
 
@@ -283,7 +294,7 @@ void main() {
           [_plain(_a)],
         ));
 
-        expect(await decoder.decode(photo()), [_a]);
+        expect(await _decode(decoder, photo()), [_a]);
         expect(analyser.tiles, hasLength(18));
         expect(analyser.retries, hasLength(1));
         expect(analyser.names.last, startsWith('stock_sheet_retry_'));
@@ -293,7 +304,7 @@ void main() {
 
     test('a photo of 2000 px or more gets tiles but no 2x copy', () async {
       // 1200 x 24 tiles: large enough, so written once and not enlarged.
-      expect(await decoder.decode(photo(width: 2000, height: 40)), isEmpty);
+      expect(await _decode(decoder, photo(width: 2000, height: 40)), isEmpty);
       expect(analyser.tiles, hasLength(9));
       expect(analyser.retries, isEmpty);
       expect(temp.listSync(), isEmpty);
@@ -302,7 +313,7 @@ void main() {
     test('nothing found anywhere gives what the first pass gave', () async {
       analyser.holds.add((_named('photo.png'), [_plain(_ean13)]));
 
-      expect(await decoder.decode(photo()), [_ean13]);
+      expect(await _decode(decoder, photo()), [_ean13]);
       expect(analyser.tiles, hasLength(18));
       expect(analyser.retries, hasLength(1));
       expect(temp.listSync(), isEmpty);
@@ -316,7 +327,7 @@ void main() {
           [_plain(_a), _plain(_aBatch)],
         ));
 
-        expect(await decoder.decode(photo()), [_a, _aBatch]);
+        expect(await _decode(decoder, photo()), [_a, _aBatch]);
         expect(analyser.calls, hasLength(1));
         expect(temp.listSync(), isEmpty);
       },
@@ -330,7 +341,7 @@ void main() {
       ]);
 
       // Placed codes in reading order, then the one only the first pass saw.
-      expect(await decoder.decode(photo()), [_a, _c, _b]);
+      expect(await _decode(decoder, photo()), [_a, _c, _b]);
       expect(analyser.tiles, hasLength(18));
       expect(analyser.retries, isEmpty);
     });
@@ -341,7 +352,7 @@ void main() {
       File(path).writeAsBytesSync([1, 2, 3]);
       analyser.holds.add((_named('photo.png'), [_plain(_b), _plain(_a)]));
 
-      expect(await decoder.decode(path), [_b, _a]);
+      expect(await _decode(decoder, path), [_b, _a]);
       expect(analyser.calls, hasLength(1));
     });
 
@@ -351,7 +362,7 @@ void main() {
         final path = '${photos.path}/photo.png';
         File(path).writeAsBytesSync([1, 2, 3]);
 
-        expect(await decoder.decode(path), isEmpty);
+        expect(await _decode(decoder, path), isEmpty);
         expect(analyser.calls, hasLength(1));
       },
     );
@@ -360,7 +371,7 @@ void main() {
       analyser.throws.add((_tile(3, 's'), Exception('unreadable')));
       analyser.holds.add((_tile(8, 's'), [_at(_a, 150, 85, 80, 40)]));
 
-      expect(await decoder.decode(photo()), [_a]);
+      expect(await _decode(decoder, photo()), [_a]);
       expect(analyser.tiles, hasLength(18));
       expect(temp.listSync(), isEmpty);
     });
@@ -368,20 +379,20 @@ void main() {
     test('a photo the platform cannot read is null', () async {
       analyser.throws.add((_named('photo.png'), Exception('unreadable')));
 
-      expect(await decoder.decode(photo()), isNull);
+      expect(await _decode(decoder, photo()), isNull);
       expect(analyser.calls, hasLength(1));
     });
 
     test('a platform without barcode reading says so, from the first pass '
         'or from a tile', () async {
       analyser.throws.add((_tile(0, 's'), UnsupportedError('no ML Kit')));
-      await expectLater(decoder.decode(photo()), throwsUnsupportedError);
+      await expectLater(_decode(decoder, photo()), throwsUnsupportedError);
       expect(temp.listSync(), isEmpty);
 
       analyser.throws
         ..clear()
         ..add((_named('photo.png'), UnsupportedError('no ML Kit')));
-      await expectLater(decoder.decode(photo()), throwsUnsupportedError);
+      await expectLater(_decode(decoder, photo()), throwsUnsupportedError);
     });
   });
 }

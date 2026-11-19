@@ -189,7 +189,6 @@ class StockSheetController extends GetxController {
   /// True while any row of [review] is not settled.
   final reading = false.obs;
   final phase = StockSheetPhase.idle.obs;
-  final decoded = 0.obs;
   final total = 0.obs;
 
   /// The error behind [StockSheetPhase.error]; in
@@ -861,7 +860,6 @@ class StockSheetController extends GetxController {
   void reset() {
     if (busy.value || adding.value) return;
     _clear();
-    decoded.value = 0;
     total.value = 0;
     phase.value = StockSheetPhase.idle;
   }
