@@ -462,6 +462,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           onRemove: _remove,
           removeEnabled: controller.canRemove,
           recheckBusy: controller.rechecking,
+          openCards: controller.openCards.toSet(),
+          ageing: Map.of(controller.ageing),
+          onToggleCard: controller.toggleCard,
+          onRetryAgeing: controller.retryAgeing,
         );
       case StockSheetPhase.building:
         return const _Progress(label: 'Generating the file…');

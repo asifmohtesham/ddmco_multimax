@@ -6,12 +6,15 @@ import 'package:flutter/semantics.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/stock_card_details.dart';
 
 /// The review list: one row per item read from a photo (a photo of several
 /// items gives several rows), and one per photo or code that resolved to no
-/// item. Drag to reorder, a switch to leave the item off the sheet.
+/// item. Drag to reorder, a switch to leave the item off the sheet, a tap on
+/// a ready row to open its card (see [StockCardDetails]).
 class ReviewList extends StatefulWidget {
   const ReviewList({
     super.key,
@@ -22,6 +25,10 @@ class ReviewList extends StatefulWidget {
     required this.onFix,
     required this.onRetryCheck,
     required this.onRemove,
+    required this.openCards,
+    required this.ageing,
+    required this.onToggleCard,
+    required this.onRetryAgeing,
     this.removeEnabled = true,
     this.recheckBusy,
   });
@@ -59,6 +66,18 @@ class ReviewList extends StatefulWidget {
 
   /// Drives the `Retry check` buttons' spinner (the controller's `rechecking`).
   final RxBool? recheckBusy;
+
+  /// The [ReviewEntry.id] of every row whose card is open.
+  final Set<String> openCards;
+
+  /// Stock Ageing by item code (see [StockCardDetails.ageing]).
+  final Map<String, AgeingState> ageing;
+
+  /// A ready row, or its arrow, was tapped: open or close its card.
+  final void Function(String entryId) onToggleCard;
+
+  /// Retry was tapped on a card whose Stock Ageing failed.
+  final void Function(String itemCode) onRetryAgeing;
 
   @override
   State<ReviewList> createState() => _ReviewListState();
@@ -127,9 +146,15 @@ class _ReviewListState extends State<ReviewList> {
                 entry: entries[i],
                 thumbnail: widget._thumbnailFor(entries[i]),
                 recheckBusy: widget.recheckBusy ?? _idle,
+                open: widget.openCards.contains(entries[i].id),
+                ageing: entries[i].resolved
+                    ? widget.ageing[entries[i].items.first.info.itemCode]
+                    : null,
                 onToggle: widget.onToggle,
                 onFix: widget.onFix,
                 onRetryCheck: widget.onRetryCheck,
+                onToggleCard: widget.onToggleCard,
+                onRetryAgeing: widget.onRetryAgeing,
               ),
             ),
           ),
@@ -166,20 +191,35 @@ class _ReviewRow extends StatelessWidget {
     required this.entry,
     required this.thumbnail,
     required this.recheckBusy,
+    required this.open,
+    required this.ageing,
     required this.onToggle,
     required this.onFix,
     required this.onRetryCheck,
+    required this.onToggleCard,
+    required this.onRetryAgeing,
   });
 
   final int index;
   final ReviewEntry entry;
   final Uint8List? thumbnail;
   final RxBool recheckBusy;
+
+  /// True when the row's card is open (only a ready row's card shows).
+  final bool open;
+  final AgeingState? ageing;
   final void Function(int, bool) onToggle;
   final void Function(int) onFix;
   final void Function(int) onRetryCheck;
+  final void Function(String) onToggleCard;
+  final void Function(String) onRetryAgeing;
 
   static const _mono = 'ShureTechMono';
+
+  static const _cardLabel = 'Rack-Wise Stock Balance and Stock Ageing';
+
+  /// Only a settled row with an item has a card.
+  bool get _openable => entry.settled && entry.resolved;
 
   String get _reason {
     if (entry.decodeFailed) return 'Unreadable photo';
@@ -203,11 +243,17 @@ class _ReviewRow extends StatelessWidget {
     final content = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ReorderableDragStartListener(
-          index: index,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
-            child: Icon(Icons.drag_indicator, size: 20, color: s.textSubtle),
+        // A tap on the handle does not open the card.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          onTap: _openable ? () {} : null,
+          child: ReorderableDragStartListener(
+            index: index,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
+              child: Icon(Icons.drag_indicator, size: 20, color: s.textSubtle),
+            ),
           ),
         ),
         _Thumb(bytes: thumbnail),
@@ -260,6 +306,7 @@ class _ReviewRow extends StatelessWidget {
       ],
     );
 
+    final item = _openable ? entry.items.first : null;
     final box = Container(
       padding: const EdgeInsets.fromLTRB(4, 10, 8, 10),
       // A row not read yet has a dashed outline and no fill.
@@ -270,8 +317,31 @@ class _ReviewRow extends StatelessWidget {
               border: Border.all(color: s.border),
               borderRadius: radius,
             ),
-      child: content,
+      child: item == null
+          ? content
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                content,
+                if (open)
+                  StockCardDetails(
+                    stock: item.stock,
+                    ageing: ageing,
+                    onRetry: () => onRetryAgeing(item.info.itemCode),
+                  ),
+              ],
+            ),
     );
+    // A tap anywhere on a ready row, except the handle and the switch, opens
+    // or closes its card; a swipe or a drag is not a tap.
+    final tappable = item == null
+        ? box
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: () => onToggleCard(entry.id),
+            child: box,
+          );
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       // The painter wraps the padded box, so the outline sits at the row's
@@ -282,9 +352,9 @@ class _ReviewRow extends StatelessWidget {
                 color: s.borderStrong,
                 radius: AppRadius.lg,
               ),
-              child: box,
+              child: tappable,
             )
-          : box,
+          : tappable,
     );
   }
 
@@ -426,13 +496,38 @@ class _ReviewRow extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         // A null stock means no Stock Balance row: out of stock. Quantities
-        // and racks are not shown here; they are on the item's own screen.
-        _StatusPill(
-          text: inStock ? 'In stock' : 'Out of stock',
-          base: inStock ? AppColors.green500 : AppColors.red500,
-          ink: inStock
-              ? (isDark ? AppColors.green300 : AppColors.green700)
-              : (isDark ? AppColors.red300 : AppColors.red700),
+        // and racks are in the card.
+        Row(
+          children: [
+            _StatusPill(
+              text: inStock ? 'In stock' : 'Out of stock',
+              base: inStock ? AppColors.green500 : AppColors.red500,
+              ink: inStock
+                  ? (isDark ? AppColors.green300 : AppColors.green700)
+                  : (isDark ? AppColors.red300 : AppColors.red700),
+            ),
+            const Spacer(),
+            // The same control as the tap on the row, for keyboards and
+            // screen readers.
+            Semantics(
+              container: true,
+              button: true,
+              expanded: open,
+              label: _cardLabel,
+              onTap: () => onToggleCard(entry.id),
+              excludeSemantics: true,
+              child: IconButton(
+                onPressed: () => onToggleCard(entry.id),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Icon(
+                  open ? Icons.expand_less : Icons.expand_more,
+                  color: s.textMuted,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );

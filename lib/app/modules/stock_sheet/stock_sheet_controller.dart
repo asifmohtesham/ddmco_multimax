@@ -19,6 +19,7 @@ import 'package:multimax/app/modules/stock_sheet/logic/review_builder.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_aggregator.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_sheet_codec.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/thumbnail_maker.dart';
+import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/output/pdf_stock_sheet_writer.dart';
@@ -236,6 +237,14 @@ class StockSheetController extends GetxController {
   /// photos already in the list, so the screen says so.
   final alreadyListed = 0.obs;
 
+  /// The [ReviewEntry.id] of every row whose card is open (see
+  /// [toggleCard]). A row taken off and put back keeps its card open.
+  final openCards = <String>{}.obs;
+
+  /// Each item's Stock Ageing, by item code, for the life of the review:
+  /// two rows of one item share one fetch and one state.
+  final ageing = <String, AgeingState>{}.obs;
+
   /// Keeps [reading] in step with [review].
   late final StreamSubscription<List<ReviewEntry>> _readingWatch;
 
@@ -411,6 +420,51 @@ class StockSheetController extends GetxController {
     review.insert(index.clamp(0, review.length), back);
     unawaited(_pump(_generation));
     unawaited(_requestStock());
+  }
+
+  /// Opens or closes the card of the row [entryId]. Only a settled row with
+  /// an item opens. The first opening of an in-stock item fetches its Stock
+  /// Ageing; an out-of-stock item is never fetched.
+  void toggleCard(String entryId) {
+    if (_closed) return;
+    if (openCards.remove(entryId)) return;
+    final entry = review.firstWhereOrNull((e) => e.id == entryId);
+    if (entry == null || !entry.settled || !entry.resolved) return;
+    openCards.add(entryId);
+    final item = entry.items.first;
+    final stock = item.stock;
+    if (stock == null || stock.outOfStock) return;
+    if (ageing.containsKey(item.info.itemCode)) return;
+    unawaited(_fetchAgeing(item.info.itemCode));
+  }
+
+  /// Asks for [itemCode]'s Stock Ageing again after it failed.
+  Future<void> retryAgeing(String itemCode) async {
+    if (_closed) return;
+    if (ageing[itemCode]?.status == AgeingStatus.loading) return;
+    await _fetchAgeing(itemCode);
+  }
+
+  /// Fetches [itemCode]'s Stock Ageing into [ageing]: no row is
+  /// [AgeingStatus.missing], a 403 [AgeingStatus.denied], any other failure
+  /// [AgeingStatus.failed]. An answer for a cleared review is dropped.
+  Future<void> _fetchAgeing(String itemCode) async {
+    final generation = _generation;
+    ageing[itemCode] = const AgeingState(AgeingStatus.loading);
+    AgeingState state;
+    try {
+      final rows = await _provider.fetchStockAgeing(itemCode);
+      state = rows.isEmpty
+          ? const AgeingState(AgeingStatus.missing)
+          : AgeingState(AgeingStatus.ready, rows);
+    } on StockAccessDenied {
+      state = const AgeingState(AgeingStatus.denied);
+    } catch (e, st) {
+      _log('Stock Ageing for $itemCode failed', e, st);
+      state = const AgeingState(AgeingStatus.failed);
+    }
+    if (_stale(generation)) return;
+    ageing[itemCode] = state;
   }
 
   /// True while a fix, an add or a retry is changing the review.
@@ -856,6 +910,8 @@ class StockSheetController extends GetxController {
     pendingShare.clear();
     _fingerprintOf.clear();
     errorMessage.value = null;
+    openCards.clear();
+    ageing.clear();
   }
 
   /// True once the controller closed or the review was cleared after

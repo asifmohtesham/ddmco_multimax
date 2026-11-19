@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
+import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
@@ -25,6 +26,14 @@ String _ean(String seven) {
 const _a = '1000001';
 const _b = '1000002';
 const _rack = 'KA-WH-DXB1-21A';
+
+const _ageingA = ItemAgeing(
+  availableQty: 384,
+  averageAge: 120.5,
+  earliest: 400,
+  latest: 3,
+  buckets: [(label: '0 - 90', qty: 300), (label: '721 - Above', qty: 84)],
+);
 
 /// Remembers the format in memory, like the StorageService-backed store.
 class _MemoryFormatStore implements SheetFormatStore {
@@ -133,6 +142,27 @@ class _FakeProvider extends StockSheetProvider {
 
   /// When set, the stock call waits for it.
   Completer<void>? stockGate;
+
+  /// Item code → its Stock Ageing rows; an item not here has none.
+  final ageing = <String, List<ItemAgeing>>{};
+
+  /// Every item code passed to [fetchStockAgeing], in order.
+  final ageingRequests = <String>[];
+
+  /// When set, every Stock Ageing call throws it.
+  Object? ageingError;
+
+  /// When set, the Stock Ageing call waits for it.
+  Completer<void>? ageingGate;
+
+  @override
+  Future<List<ItemAgeing>> fetchStockAgeing(String itemCode) async {
+    ageingRequests.add(itemCode);
+    await ageingGate?.future;
+    final error = ageingError;
+    if (error != null) throw error;
+    return ageing[itemCode] ?? const [];
+  }
 
   @override
   Future<Map<String, ItemInfo>> fetchItems(List<String> codes) async {
@@ -2883,6 +2913,181 @@ void main() {
 
       gate.complete();
       await add;
+    });
+  });
+
+  group('the card', () {
+    final eanA = _ean(_a);
+
+    test(
+      'the first opening of an in-stock card fetches its Stock Ageing once',
+      () async {
+        final provider = _FakeProvider(stock: {_a: 384})
+          ..ageing[_a] = [_ageingA];
+        final c = make(
+          _FakeDecoder({
+            'p1': [eanA],
+          }),
+          provider,
+        );
+        await c.start(['p1']);
+        await settled(c);
+        final id = c.review.single.id;
+        c.toggleCard(id);
+        expect(c.openCards, {id});
+        expect(c.ageing[_a]!.status, AgeingStatus.loading);
+        await pumpEventQueue();
+        expect(c.ageing[_a]!.status, AgeingStatus.ready);
+        expect(c.ageing[_a]!.rows, [_ageingA]);
+        c.toggleCard(id);
+        expect(c.openCards, isEmpty);
+        c.toggleCard(id);
+        await pumpEventQueue();
+        expect(provider.ageingRequests, [_a]);
+      },
+    );
+
+    test('an out-of-stock card opens without a fetch', () async {
+      final provider = _FakeProvider(); // no stock: out of stock
+      final c = make(
+        _FakeDecoder({
+          'p1': [eanA],
+        }),
+        provider,
+      );
+      await c.start(['p1']);
+      await settled(c);
+      c.toggleCard(c.review.single.id);
+      await pumpEventQueue();
+      expect(c.openCards, {c.review.single.id});
+      expect(c.ageing, isEmpty);
+      expect(provider.ageingRequests, isEmpty);
+    });
+
+    test(
+      'no row, a failure and no access each have their state; Retry asks again',
+      () async {
+        final provider = _FakeProvider(stock: {_a: 5});
+        final c = make(
+          _FakeDecoder({
+            'p1': [eanA],
+          }),
+          provider,
+        );
+        await c.start(['p1']);
+        await settled(c);
+        c.toggleCard(c.review.single.id);
+        await pumpEventQueue();
+        expect(c.ageing[_a]!.status, AgeingStatus.missing);
+        provider.ageingError = Exception('offline');
+        await c.retryAgeing(_a);
+        expect(c.ageing[_a]!.status, AgeingStatus.failed);
+        provider.ageingError = const StockAccessDenied();
+        await c.retryAgeing(_a);
+        expect(c.ageing[_a]!.status, AgeingStatus.denied);
+        expect(provider.ageingRequests, [_a, _a, _a]);
+      },
+    );
+
+    test('Retry shows the fetch in flight and is not run twice', () async {
+      final provider = _FakeProvider(stock: {_a: 5})
+        ..ageingError = Exception('offline');
+      final c = make(
+        _FakeDecoder({
+          'p1': [eanA],
+        }),
+        provider,
+      );
+      await c.start(['p1']);
+      await settled(c);
+      c.toggleCard(c.review.single.id);
+      await pumpEventQueue();
+      expect(c.ageing[_a]!.status, AgeingStatus.failed);
+
+      provider
+        ..ageingError = null
+        ..ageing[_a] = [_ageingA]
+        ..ageingGate = Completer<void>();
+      final retry = c.retryAgeing(_a);
+      expect(c.ageing[_a]!.status, AgeingStatus.loading);
+      await c.retryAgeing(_a); // in flight: ignored
+      provider.ageingGate!.complete();
+      await retry;
+      expect(c.ageing[_a]!.status, AgeingStatus.ready);
+      expect(provider.ageingRequests, [_a, _a]);
+    });
+
+    test('a card that is not ready does not open', () async {
+      final decoder = _FakeDecoder({
+        'p1': [eanA],
+      })..gate = Completer<void>();
+      final c = make(decoder, _FakeProvider());
+      unawaited(c.start(['p1']));
+      await pumpEventQueue();
+      c.toggleCard(c.review.single.id);
+      expect(c.openCards, isEmpty);
+      decoder.gate!.complete();
+    });
+
+    test('two rows of one item share one fetch and one state', () async {
+      final provider = _FakeProvider(stock: {_a: 384})..ageing[_a] = [_ageingA];
+      final c = make(
+        _FakeDecoder({
+          'p1': [eanA],
+          'p2': [eanA],
+        }),
+        provider,
+      );
+      await c.start(['p1', 'p2']);
+      await settled(c);
+      expect(c.review, hasLength(2));
+      c.toggleCard(c.review[0].id);
+      c.toggleCard(c.review[1].id);
+      await pumpEventQueue();
+      expect(c.openCards, {c.review[0].id, c.review[1].id});
+      expect(provider.ageingRequests, [_a]);
+      expect(c.ageing.keys, [_a]);
+    });
+
+    test('an answer after the review was cleared is dropped', () async {
+      final provider = _FakeProvider(stock: {_a: 384})
+        ..ageing[_a] = [_ageingA]
+        ..ageingGate = Completer<void>();
+      final c = make(
+        _FakeDecoder({
+          'p1': [eanA],
+          'p2': [eanA],
+        }),
+        provider,
+      );
+      await c.start(['p1']);
+      await settled(c);
+      c.toggleCard(c.review.single.id);
+      expect(c.ageing, isNotEmpty);
+
+      await c.start(['p2']);
+      expect(c.openCards, isEmpty);
+      expect(c.ageing, isEmpty);
+      provider.ageingGate!.complete();
+      await pumpEventQueue();
+      expect(c.ageing, isEmpty);
+    });
+
+    test('a removed row with an open card comes back open', () async {
+      final provider = _FakeProvider(stock: {_a: 384})..ageing[_a] = [_ageingA];
+      final c = make(
+        _FakeDecoder({
+          'p1': [eanA],
+        }),
+        provider,
+      );
+      await c.start(['p1']);
+      await settled(c);
+      final id = c.review.single.id;
+      c.toggleCard(id);
+      final removed = c.removeAt(0)!;
+      c.restore(removed, 0);
+      expect(c.openCards, {id});
     });
   });
 }
