@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,7 +8,6 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/rack_chips.dart';
 
 /// The review list: one row per item read from a photo (a photo of several
 /// items gives several rows), and one per photo or code that resolved to no
@@ -33,9 +33,13 @@ class ReviewList extends StatefulWidget {
   /// placeholder when it has none); a row with no item shows its photo.
   final Map<String, Uint8List> thumbnails;
 
-  Uint8List? _thumbnailFor(ReviewEntry entry) => entry.resolved
-      ? thumbnails[ItemInfo.thumbnailKey(entry.items.first.info.itemCode)]
-      : thumbnails[entry.path];
+  Uint8List? _thumbnailFor(ReviewEntry entry) {
+    // Checking stock: the ERP image is not there yet, so a placeholder.
+    if (entry.stage == ReadStage.checkingStock) return null;
+    return entry.resolved
+        ? thumbnails[ItemInfo.thumbnailKey(entry.items.first.info.itemCode)]
+        : thumbnails[entry.path];
+  }
 
   /// Receives the raw `ReorderableListView` indices (not adjusted).
   final void Function(int oldIndex, int newIndex) onReorder;
@@ -186,84 +190,195 @@ class _ReviewRow extends StatelessWidget {
     return 'No recognised code';
   }
 
+  bool get _dashed =>
+      entry.stage == ReadStage.notRead || entry.stage == ReadStage.reading;
+
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
+    final settled = entry.settled;
     final resolved = entry.resolved;
+    final radius = BorderRadius.circular(AppRadius.lg);
+
+    final content = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ReorderableDragStartListener(
+          index: index,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
+            child: Icon(Icons.drag_indicator, size: 20, color: s.textSubtle),
+          ),
+        ),
+        _Thumb(bytes: thumbnail),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!settled)
+                _stageLines(context)
+              else ...[
+                if (entry.typed) _tag(context, 'Typed'),
+                if (resolved)
+                  _item(context, entry.items.single)
+                else ...[
+                  Text(
+                    _reason,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: s.text,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  _fixPill(context),
+                ],
+                if (entry.unchecked) ...[
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: AsyncFilledButton(
+                      busy: recheckBusy,
+                      onPressed: () => onRetryCheck(index),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: 'Retry check',
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+        Switch(
+          value: settled && resolved && entry.included,
+          onChanged: settled && resolved ? (v) => onToggle(index, v) : null,
+        ),
+      ],
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
         padding: const EdgeInsets.fromLTRB(4, 10, 8, 10),
-        decoration: BoxDecoration(
-          color: s.fg,
-          border: Border.all(color: s.border),
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ReorderableDragStartListener(
-              index: index,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 14,
-                ),
-                child: Icon(
-                  Icons.drag_indicator,
-                  size: 20,
-                  color: s.textSubtle,
-                ),
+        // A row not read yet has a dashed outline and no fill.
+        decoration: _dashed
+            ? null
+            : BoxDecoration(
+                color: s.fg,
+                border: Border.all(color: s.border),
+                borderRadius: radius,
               ),
-            ),
-            _Thumb(bytes: thumbnail),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (entry.typed) _tag(context, 'Typed'),
-                  if (resolved)
-                    _item(context, entry.items.single)
-                  else ...[
-                    Text(
-                      _reason,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: s.text,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _fixPill(context),
-                  ],
-                  if (entry.unchecked) ...[
-                    const SizedBox(height: 6),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: AsyncFilledButton(
-                        busy: recheckBusy,
-                        onPressed: () => onRetryCheck(index),
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: 'Retry check',
-                        style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Switch(
-              value: resolved && entry.included,
-              onChanged: resolved ? (v) => onToggle(index, v) : null,
-            ),
-          ],
-        ),
+        child: _dashed
+            ? CustomPaint(
+                foregroundPainter: _DashedOutline(
+                  color: s.borderStrong,
+                  radius: AppRadius.lg,
+                ),
+                child: content,
+              )
+            : content,
       ),
     );
+  }
+
+  /// "Photo n", or "Photo n · k items so far" once two or more are known.
+  String _photoName({required String suffix}) {
+    final photo = entry.number > 0 ? 'Photo ${entry.number}' : 'Photo';
+    final k = entry.codes.length;
+    return k >= 2 ? '$photo · $k items$suffix' : photo;
+  }
+
+  Widget _stageLines(BuildContext context) {
+    final s = context.scheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = TextStyle(fontSize: 12, color: s.textMuted);
+    final nameStyle = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      color: entry.stage == ReadStage.notRead ||
+              entry.stage == ReadStage.reading
+          ? s.textMuted
+          : s.text,
+    );
+    Widget name(String text) => Text(text, style: nameStyle);
+    const gap = SizedBox(height: 4);
+
+    switch (entry.stage) {
+      case ReadStage.notRead:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            name(_photoName(suffix: ' so far')),
+            gap,
+            Text('Not read yet', style: muted),
+          ],
+        );
+      case ReadStage.reading:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            name(_photoName(suffix: ' so far')),
+            gap,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Spinner(color: s.textMuted),
+                const SizedBox(width: 6),
+                Text('Reading…', style: muted),
+              ],
+            ),
+          ],
+        );
+      case ReadStage.waiting:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            name(_photoName(suffix: ' so far')),
+            gap,
+            Text('Waiting to zoom in', style: muted),
+          ],
+        );
+      case ReadStage.zooming:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            name(_photoName(suffix: ' so far')),
+            gap,
+            _StatusPill(
+              text: 'Zooming in…',
+              base: AppColors.orange500,
+              ink: isDark ? AppColors.orange300 : AppColors.orange700,
+              spinner: true,
+            ),
+          ],
+        );
+      case ReadStage.checkingStock:
+        final single = entry.codes.length == 1;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            single
+                ? Text(
+                    entry.codes.single.barcode,
+                    style: TextStyle(
+                      fontFamily: _mono,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: s.text,
+                    ),
+                  )
+                : name(_photoName(suffix: '')),
+            gap,
+            Text('Checking stock…', style: muted),
+          ],
+        );
+      case ReadStage.settled:
+        return const SizedBox.shrink();
+    }
   }
 
   Widget _tag(BuildContext context, String text) {
@@ -282,6 +397,9 @@ class _ReviewRow extends StatelessWidget {
 
   Widget _item(BuildContext context, ReviewItem item) {
     final s = context.scheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final stock = item.stock;
+    final inStock = stock != null && !stock.outOfStock;
     final variantOf = item.info.variantOf;
     final sub = [
       item.code.barcode,
@@ -303,9 +421,16 @@ class _ReviewRow extends StatelessWidget {
           sub,
           style: TextStyle(fontFamily: _mono, fontSize: 12, color: s.textMuted),
         ),
-        // A null stock means no Stock Balance row: the pill says out of stock.
         const SizedBox(height: 4),
-        RackChips(stock: item.stock),
+        // A null stock means no Stock Balance row: out of stock. Quantities
+        // and racks are not shown here; they are on the item's own screen.
+        _StatusPill(
+          text: inStock ? 'In stock' : 'Out of stock',
+          base: inStock ? AppColors.green500 : AppColors.red500,
+          ink: inStock
+              ? (isDark ? AppColors.green300 : AppColors.green700)
+              : (isDark ? AppColors.red300 : AppColors.red700),
+        ),
       ],
     );
   }
@@ -355,4 +480,98 @@ class _Thumb extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A status pill in the StatusPill convention: the ramp's 500 at 13% fill and
+/// 35% border, its 700 (light) or 300 (dark) as ink; [ink] is chosen by the
+/// caller. A spinner takes the ink colour.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.text,
+    required this.base,
+    required this.ink,
+    this.spinner = false,
+  });
+
+  final String text;
+  final Color base;
+  final Color ink;
+  final bool spinner;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: base.withValues(alpha: 0.13),
+        border: Border.all(color: base.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(AppRadius.full),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (spinner) ...[_Spinner(color: ink), const SizedBox(width: 6)],
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Spinner extends StatelessWidget {
+  const _Spinner({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 12,
+    height: 12,
+    child: CircularProgressIndicator(strokeWidth: 2, color: color),
+  );
+}
+
+/// A 1 px dashed rounded outline, for a row that has not been read yet.
+class _DashedOutline extends CustomPainter {
+  const _DashedOutline({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  static const _dash = 5.0;
+  static const _gap = 4.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          (Offset.zero & size).deflate(0.5),
+          Radius.circular(radius),
+        ),
+      );
+    for (final metric in path.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += _dash + _gap) {
+        canvas.drawPath(
+          metric.extractPath(d, math.min(d + _dash, metric.length)),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedOutline old) =>
+      old.color != color || old.radius != radius;
 }

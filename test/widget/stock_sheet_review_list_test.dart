@@ -9,6 +9,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/rack_chips.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
@@ -61,7 +62,158 @@ ReviewList _list(
   removeEnabled: removeEnabled,
 );
 
+const _codeA = ClassifiedCode(itemCode: '1111111', barcode: '11111115');
+const _codeB = ClassifiedCode(itemCode: '2222222', barcode: '22222225');
+
+final _inStockEntry = ReviewEntry(
+  path: 'in',
+  items: [_item('12345670', _twoRacks)],
+);
+final _outOfStockEntry = ReviewEntry(
+  path: 'out',
+  items: [_item('76543210', const ItemStock(total: 0, racks: []))],
+);
+
+List<ReviewEntry> _sixStages() => [
+  ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+  ReviewEntry(path: 'p2', number: 2, stage: ReadStage.reading),
+  ReviewEntry(path: 'p3', number: 3, stage: ReadStage.waiting),
+  ReviewEntry(path: 'p4', number: 4, stage: ReadStage.zooming),
+  ReviewEntry(
+    path: 'p5',
+    number: 5,
+    stage: ReadStage.checkingStock,
+    codes: const [_codeA],
+  ),
+  ReviewEntry(
+    path: 'p6',
+    number: 6,
+    stage: ReadStage.waiting,
+    codes: const [_codeA, _codeB],
+  ),
+];
+
 void main() {
+  testWidgets('each stage shows its line', (tester) async {
+    await tester.pumpWidget(_app(_list(_sixStages())));
+    expect(find.text('Not read yet'), findsOneWidget);
+    expect(find.text('Reading…'), findsOneWidget);
+    expect(find.text('Waiting to zoom in'), findsNWidgets(2));
+    expect(find.text('Zooming in…'), findsOneWidget);
+    expect(find.text('Checking stock…'), findsOneWidget);
+    expect(find.text(_codeA.barcode), findsOneWidget);
+    expect(find.text('Photo 6 · 2 items so far'), findsOneWidget);
+    expect(
+      tester.widgetList<Switch>(find.byType(Switch)).every(
+        (s) => s.onChanged == null,
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('a ready row shows one pill and no quantity or rack', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(_list([_inStockEntry, _outOfStockEntry])));
+    expect(find.text('In stock'), findsOneWidget);
+    expect(find.text('Out of stock'), findsOneWidget);
+    expect(find.textContaining('KA-WH-'), findsNothing);
+    expect(find.textContaining('Out of stock · 0'), findsNothing);
+    expect(find.text('377'), findsNothing);
+    expect(find.byType(RackChips), findsNothing);
+  });
+
+  testWidgets('a row that is not read yet can be swiped away', (tester) async {
+    var removed = -1;
+    await tester.pumpWidget(
+      _app(
+        _list(
+          [ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead)],
+          onRemove: (i) {
+            removed = i;
+            return true;
+          },
+        ),
+      ),
+    );
+    await tester.drag(find.text('Not read yet'), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(removed, 0);
+  });
+
+  testWidgets('the strip follows the list and goes when all is settled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        ReadingStrip(
+          entries: [
+            ReviewEntry(path: 'p1', number: 1),
+            ReviewEntry(path: 'p2', number: 2, stage: ReadStage.zooming),
+          ],
+        ),
+      ),
+    );
+    expect(find.text('Zooming in on photo 2 of 2…'), findsOneWidget);
+    expect(find.text('1 read · 1 to go'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.pumpWidget(
+      _app(ReadingStrip(entries: [ReviewEntry(path: 'p1', number: 1)])),
+    );
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
+  testWidgets('a zooming row has a spinner, a not-read row none', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        _list([
+          ReviewEntry(path: 'p1', number: 1, stage: ReadStage.notRead),
+          ReviewEntry(path: 'p2', number: 2, stage: ReadStage.zooming),
+        ]),
+      ),
+    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('dark mode: stage rows and pills keep text at 4.5:1 or more', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        _list([..._sixStages(), _inStockEntry, _outOfStockEntry]),
+        brightness: Brightness.dark,
+      ),
+    );
+    final ctx = tester.element(find.byType(ReviewList));
+    final surface = ctx.scheme.fg;
+    // The page behind the dashed (unfilled) rows is the scaffold.
+    final page = Theme.of(ctx).scaffoldBackgroundColor;
+    var checked = 0;
+    for (final t in tester.widgetList<Text>(find.byType(Text))) {
+      final style = t.style;
+      final data = t.data;
+      if (style?.color == null || data == null) continue;
+      if (data == 'End of list') continue;
+      final ink = style!.color!;
+      final bg = (data == 'In stock' || data == 'Out of stock' ||
+              data == 'Zooming in…')
+          ? Color.alphaBlend(ink.withValues(alpha: 0.13), surface)
+          : surface;
+      for (final b in [bg, page]) {
+        final over = Color.alphaBlend(ink, b);
+        final l1 = over.computeLuminance();
+        final l2 = b.computeLuminance();
+        final ratio = (l1 > l2 ? l1 + 0.05 : l2 + 0.05) /
+            (l1 > l2 ? l2 + 0.05 : l1 + 0.05);
+        expect(ratio, greaterThanOrEqualTo(4.5), reason: '"$data" on $b');
+      }
+      checked++;
+    }
+    expect(checked, greaterThan(10));
+  });
+
   testWidgets('swiping a row end-to-start calls onRemove with its index', (
     tester,
   ) async {
@@ -250,7 +402,8 @@ void main() {
         ]),
       ),
     );
-    expect(find.text('Out of stock · 0'), findsOneWidget);
+    expect(find.text('Out of stock'), findsOneWidget);
+    expect(find.text('Out of stock · 0'), findsNothing);
   });
 
   testWidgets('racks given smallest first show largest first', (tester) async {
