@@ -18,17 +18,40 @@ typedef AnalysedCode = ({String value, List<({double x, double y})> corners});
 /// tests.
 typedef PhotoAnalyser = Future<List<AnalysedCode>> Function(String path);
 
-/// Reads the barcodes in one photo.
+/// Reads the barcodes in one photo, in two rounds: the whole photo, then,
+/// when that did not settle it, tiles of it.
 abstract class PhotoDecoder {
-  /// Returns the raw barcode values found in the photo: an empty list when
-  /// there are none, `null` when the image cannot be read.
-  Future<List<String>?> decode(String path);
+  /// Round one: the whole photo. The raw barcode values found: an empty list
+  /// when there are none, `null` when the photo cannot be read.
+  Future<List<String>?> readWhole(String path);
+
+  /// Round two: tiles, then the 2x copy for a small photo that still has no
+  /// item. [whole] is what [readWhole] gave. `null` when [stopped] said so
+  /// (it is asked before each read) or when the photo cannot be read.
+  Future<List<String>?> zoomIn(
+    String path, {
+    required List<String> whole,
+    bool Function()? stopped,
+  });
+
+  /// True unless [whole] holds exactly one item: one label (an EAN-8 and its
+  /// batch QR count as one item) is read in full by round one.
+  static bool needsZoom(List<String> whole) =>
+      StockSheetCodec.itemsInPhoto(whole).length != 1;
+
+  /// [readWhole], then [zoomIn] when needed; what round one gave when round
+  /// two gives nothing. Removed once the controller drives the two rounds.
+  Future<List<String>?> decode(String path) async {
+    final whole = await readWhole(path);
+    if (whole == null || !needsZoom(whole)) return whole;
+    return await zoomIn(path, whole: whole) ?? whole;
+  }
 
   Future<void> dispose();
 }
 
 /// On-device decoding with ML Kit, through `mobile_scanner`.
-class MlKitPhotoDecoder implements PhotoDecoder {
+class MlKitPhotoDecoder extends PhotoDecoder {
   /// [analyser] and [temporaryPath] are for tests; the app leaves both out
   /// and gets ML Kit and the system's temporary folder.
   MlKitPhotoDecoder({
@@ -79,31 +102,46 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   }
 
   @override
-  Future<List<String>?> decode(String path) async {
+  Future<List<String>?> readWhole(String path) async {
     try {
-      final first = await _analyse(path);
-      final items = StockSheetCodec.itemsInPhoto(first).length;
-      // One label (an EAN-8 and its batch QR count as one item) is read in
-      // full by the first pass.
-      if (items == 1) return first;
+      return await _analyse(path);
+    } on UnsupportedError {
+      // Simulators have no ML Kit; the controller shows a clear message.
+      rethrow;
+    } on MobileScannerBarcodeException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<List<String>?> zoomIn(
+    String path, {
+    required List<String> whole,
+    bool Function()? stopped,
+  }) async {
+    try {
+      final items = StockSheetCodec.itemsInPhoto(whole).length;
       // Two or more items mean a sheet of labels; no item at all is most
       // often a label too small to be found in the whole photo (a product
       // card with one small EAN-8). Both are read again in tiles.
-      final tiled = await _readTiles(path);
+      final tiles = await _readTiles(path, stopped);
+      if (tiles.stopped) return null;
+      final tiled = tiles.found;
       if (tiled != null) {
         final all = SheetReading.inReadingOrder([
           ...tiled,
-          for (final value in first) FoundCode(value),
+          for (final value in whole) FoundCode(value),
         ]);
         if (items >= 2 || _anyClassifies(all)) return all;
       }
-      if (items >= 2) return first;
+      if (items >= 2) return whole;
       // Last resort for a small photo: one label larger than a tile (over
       // 40% of the photo) that only reads enlarged.
       final retry = await _retryUpscaled(path);
-      return retry != null && _anyClassifies(retry) ? retry : first;
+      return retry != null && _anyClassifies(retry) ? retry : whole;
     } on UnsupportedError {
-      // Simulators have no ML Kit; the controller shows a clear message.
       rethrow;
     } on MobileScannerBarcodeException {
       return null;
@@ -132,8 +170,13 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   /// Reads the photo again in overlapping, enlarged tiles (see
   /// [SheetReading]). Returns what the tiles held, with boxes in the upright
   /// photo, or null when no tile could be made. A tile that cannot be read
-  /// is skipped.
-  Future<List<FoundCode>?> _readTiles(String path) async {
+  /// is skipped. [stopped] is asked once the tiles are written and before
+  /// each read; when it says so, the result is `stopped` and the tile files
+  /// are still deleted.
+  Future<({List<FoundCode>? found, bool stopped})> _readTiles(
+    String path,
+    bool Function()? stopped,
+  ) async {
     var tiles = const <SheetTile>[];
     try {
       final bytes = await File(path).readAsBytes();
@@ -142,9 +185,11 @@ class MlKitPhotoDecoder implements PhotoDecoder {
       tiles = await Isolate.run(
         () => SheetReading.writeTiles(bytes, dir, stem),
       );
-      if (tiles.isEmpty) return null;
+      if (stopped?.call() ?? false) return (found: null, stopped: true);
+      if (tiles.isEmpty) return (found: null, stopped: false);
       final found = <FoundCode>[];
       for (final tile in tiles) {
+        if (stopped?.call() ?? false) return (found: null, stopped: true);
         try {
           found.addAll(
             await _analyseFound(tile.path, (
@@ -159,11 +204,11 @@ class MlKitPhotoDecoder implements PhotoDecoder {
           // One unreadable tile leaves the others' codes.
         }
       }
-      return found;
+      return (found: found, stopped: false);
     } on UnsupportedError {
       rethrow;
     } catch (_) {
-      return null;
+      return (found: null, stopped: false);
     } finally {
       for (final tile in tiles) {
         try {

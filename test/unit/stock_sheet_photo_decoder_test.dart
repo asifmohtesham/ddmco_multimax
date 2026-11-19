@@ -190,6 +190,52 @@ void main() {
       return file.path;
     }
 
+    test('readWhole reads the photo once and nothing else', () async {
+      analyser.holds.add((_named('photo.png'), [_plain(_a)]));
+      expect(await decoder.readWhole(photo()), [_a]);
+      expect(analyser.calls, hasLength(1));
+    });
+
+    test('needsZoom: no item or several, never exactly one', () {
+      expect(PhotoDecoder.needsZoom(const []), isTrue);
+      expect(PhotoDecoder.needsZoom(const [_ean13]), isTrue);
+      expect(PhotoDecoder.needsZoom(const [_a, _aBatch]), isFalse);
+      expect(PhotoDecoder.needsZoom(const [_a, _b]), isTrue);
+    });
+
+    test('zoomIn gives what decode gave for the same photo', () async {
+      analyser.holds.add((_tile(8, 'n'), [_at(_a, 150, 85, 80, 40)]));
+      final path = photo();
+      expect(await decoder.zoomIn(path, whole: const []), [_a]);
+      expect(analyser.tiles, hasLength(18));
+    });
+
+    test(
+      'zoomIn stops before the next tile, gives null and leaves no file',
+      () async {
+        var reads = 0;
+        final result = await decoder.zoomIn(
+          photo(),
+          whole: const [],
+          // Asked once after writing, then before each read.
+          stopped: () => ++reads > 3,
+        );
+        expect(result, isNull);
+        expect(analyser.tiles.length, lessThan(18));
+        expect(analyser.retries, isEmpty);
+        expect(temp.listSync(), isEmpty);
+      },
+    );
+
+    test('zoomIn stopped while the tiles were being written reads none', () async {
+      expect(
+        await decoder.zoomIn(photo(), whole: const [], stopped: () => true),
+        isNull,
+      );
+      expect(analyser.tiles, isEmpty);
+      expect(temp.listSync(), isEmpty);
+    });
+
     test('a first pass that finds nothing is followed by the tiles: one '
         'small label is read from the tile that holds it', () async {
       // The wallet-card case: the label sits bottom right, too small in the

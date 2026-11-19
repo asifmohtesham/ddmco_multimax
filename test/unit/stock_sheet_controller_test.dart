@@ -45,7 +45,7 @@ class _FakeBox {
   Future<void> remove(String key) async => m.remove(key);
 }
 
-class _FakeDecoder implements PhotoDecoder {
+class _FakeDecoder extends PhotoDecoder {
   _FakeDecoder(this.codes, {this.unsupported = false});
   final Map<String, List<String>?> codes;
   final bool unsupported;
@@ -56,6 +56,16 @@ class _FakeDecoder implements PhotoDecoder {
 
   /// When set, every decode waits for it.
   Completer<void>? gate;
+
+  @override
+  Future<List<String>?> readWhole(String path) => decode(path);
+
+  @override
+  Future<List<String>?> zoomIn(
+    String path, {
+    required List<String> whole,
+    bool Function()? stopped,
+  }) async => whole;
 
   @override
   Future<List<String>?> decode(String path) async {
