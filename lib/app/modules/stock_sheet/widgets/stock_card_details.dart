@@ -202,8 +202,9 @@ class StockCardDetails extends StatelessWidget {
   }
 }
 
-/// One Stock Ageing row: the four figures in two columns, then each age
-/// bucket with its quantity and a bar scaled to the largest bucket.
+/// One Stock Ageing row: the four figures in two columns, labelled as the
+/// report titles them, then each age bucket with its quantity and a bar
+/// scaled to the largest bucket.
 class _AgeingFigures extends StatelessWidget {
   const _AgeingFigures({required this.row});
 
@@ -239,8 +240,8 @@ class _AgeingFigures extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  pair('Available Qty', formatQty(row.availableQty)),
-                  pair('Earliest', '${row.earliest}'),
+                  pair(row.availableQtyLabel, formatQty(row.availableQty)),
+                  pair(row.earliestLabel, '${row.earliest}'),
                 ],
               ),
             ),
@@ -248,8 +249,8 @@ class _AgeingFigures extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  pair('Average Age', formatQty(row.averageAge)),
-                  pair('Latest', '${row.latest}'),
+                  pair(row.averageAgeLabel, formatQty(row.averageAge)),
+                  pair(row.latestLabel, '${row.latest}'),
                 ],
               ),
             ),

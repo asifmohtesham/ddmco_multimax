@@ -518,6 +518,62 @@ void main() {
       },
     );
 
+    test(
+      'a late "no access" for rows no longer listed leaves the file screen alone',
+      () async {
+        final provider = _FakeProvider(stock: {_a: 1, _b: 1});
+        final c = make(
+          _FakeDecoder({
+            'p0': [eanB],
+            'p1': [eanA],
+          }),
+          provider,
+        );
+        await c.start(['p0']);
+        await settled(c);
+        provider
+          ..stockGate = Completer<void>()
+          ..stockError = const StockAccessDenied();
+        expect(await c.addPhotos(['p1']), isNull);
+        await pumpEventQueue();
+        expect(c.review.last.stage, ReadStage.checkingStock);
+
+        c.removeAt(1);
+        await c.makeSheet(SheetFormat.excel);
+        expect(c.phase.value, StockSheetPhase.done);
+
+        provider.stockGate!.complete();
+        await pumpEventQueue();
+        expect(c.phase.value, StockSheetPhase.done);
+        expect(c.errorMessage.value, isNull);
+        expect(c.files, hasLength(1));
+      },
+    );
+
+    test(
+      'a late "no access" for rows no longer listed leaves the review alone',
+      () async {
+        final provider = _FakeProvider()
+          ..stockGate = Completer<void>()
+          ..stockError = const StockAccessDenied();
+        final c = make(
+          _FakeDecoder({
+            'p1': [eanA],
+          }),
+          provider,
+        );
+        await c.start(['p1']);
+        await pumpEventQueue();
+        expect(c.review.single.stage, ReadStage.checkingStock);
+
+        c.removeAt(0);
+        provider.stockGate!.complete();
+        await pumpEventQueue();
+        expect(c.phase.value, StockSheetPhase.reviewing);
+        expect(c.errorMessage.value, isNull);
+      },
+    );
+
     test('no access to stock levels still ends in the error state', () async {
       final provider = _FakeProvider()..stockError = const StockAccessDenied();
       final c = make(
@@ -745,6 +801,62 @@ void main() {
         decoder.zoomGate!.complete();
         await settled(c);
         expect(c.review.map((e) => e.path), ['q1']);
+      },
+    );
+
+    test(
+      'closing in the middle of a zoom stops it; the decoder goes once it returns',
+      () async {
+        final decoder = _FakeDecoder({'p1': const []})
+          ..zoomGate = Completer<void>()
+          ..zoomed['p1'] = [eanA];
+        final c = make(decoder, _FakeProvider());
+        await c.start(['p1']);
+        await pumpEventQueue();
+        expect(c.review.single.stage, ReadStage.zooming);
+
+        c.onClose();
+        await pumpEventQueue();
+        // The read in hand is not cut off under the platform's feet.
+        expect(decoder.disposed, isFalse);
+
+        decoder.zoomGate!.complete();
+        await pumpEventQueue();
+        expect(decoder.stops, ['p1']);
+        expect(decoder.disposed, isTrue);
+        expect(c.review.single.items, isEmpty);
+      },
+    );
+
+    test(
+      'a "no access" from the last review\'s batch does not fail the new one',
+      () async {
+        final provider = _FakeProvider(stock: {_a: 1})
+          ..stockGate = Completer<void>()
+          ..stockError = const StockAccessDenied();
+        final c = make(
+          _FakeDecoder({
+            'p1': [eanA],
+            'q1': [eanA],
+          }),
+          provider,
+        );
+        await c.start(['p1']);
+        await pumpEventQueue();
+        await c.start(['q1']);
+        await pumpEventQueue();
+        expect(provider.stockRequests, [
+          [_a],
+          [_a],
+        ]);
+
+        // The old batch fails (its error is used up); the new one answers.
+        provider.stockGate!.complete();
+        await settled(c);
+        expect(c.phase.value, StockSheetPhase.reviewing);
+        expect(c.errorMessage.value, isNull);
+        expect(c.review.single.path, 'q1');
+        expect(c.review.single.items.single.stock!.total, 1);
       },
     );
 

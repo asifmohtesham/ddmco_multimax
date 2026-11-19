@@ -247,6 +247,22 @@ void main() {
       },
     );
 
+    test(
+      'zoomIn stopped after the last tile makes and reads no 2x copy',
+      () async {
+        final result = await decoder.zoomIn(
+          photo(),
+          whole: const [],
+          // The tiles find nothing; the stop comes once the last is read.
+          stopped: () => analyser.tiles.length == 18,
+        );
+        expect(result, isNull);
+        expect(analyser.tiles, hasLength(18));
+        expect(analyser.retries, isEmpty);
+        expect(temp.listSync(), isEmpty);
+      },
+    );
+
     test('a first pass that finds nothing is followed by the tiles: one '
         'small label is read from the tile that holds it', () async {
       // The wallet-card case: the label sits bottom right, too small in the

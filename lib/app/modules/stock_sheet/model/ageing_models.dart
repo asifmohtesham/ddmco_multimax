@@ -8,6 +8,10 @@ class ItemAgeing {
     required this.earliest,
     required this.latest,
     required this.buckets,
+    this.availableQtyLabel = 'Available Qty',
+    this.averageAgeLabel = 'Average Age',
+    this.earliestLabel = 'Earliest',
+    this.latestLabel = 'Latest',
   });
 
   /// Set only when the run gives one row per warehouse.
@@ -21,6 +25,14 @@ class ItemAgeing {
 
   /// Quantity per age bucket, labelled as the report titles it ("0 - 90").
   final List<({String label, double qty})> buckets;
+
+  /// The labels of the four figures, as the report's columns title them
+  /// (`qty`, `average_age`, `earliest`, `latest`); the usual titles when a
+  /// column is missing.
+  final String availableQtyLabel;
+  final String averageAgeLabel;
+  final String earliestLabel;
+  final String latestLabel;
 }
 
 enum AgeingStatus { loading, ready, missing, failed, denied }

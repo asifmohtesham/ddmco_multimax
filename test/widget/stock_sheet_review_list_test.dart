@@ -678,6 +678,37 @@ void main() {
       );
     });
 
+    testWidgets('the four figures carry the labels the report gave', (
+      tester,
+    ) async {
+      const titled = ItemAgeing(
+        availableQty: 384,
+        averageAge: 120.5,
+        earliest: 400,
+        latest: 3,
+        availableQtyLabel: 'Qty on Hand',
+        averageAgeLabel: 'Avg Age',
+        earliestLabel: 'Oldest',
+        latestLabel: 'Newest',
+        buckets: [(label: '0 - 90', qty: 384)],
+      );
+      await tester.pumpWidget(
+        _app(
+          const StockCardDetails(
+            stock: _inStock,
+            ageing: AgeingState(AgeingStatus.ready, [titled]),
+            onRetry: _noop,
+          ),
+        ),
+      );
+      for (final label in ['Qty on Hand', 'Avg Age', 'Oldest', 'Newest']) {
+        expect(find.text(label), findsOneWidget, reason: label);
+      }
+      for (final label in ['Available Qty', 'Average Age', 'Earliest']) {
+        expect(find.text(label), findsNothing, reason: label);
+      }
+    });
+
     testWidgets('the other ageing states say what they are', (tester) async {
       for (final (state, text) in [
         (

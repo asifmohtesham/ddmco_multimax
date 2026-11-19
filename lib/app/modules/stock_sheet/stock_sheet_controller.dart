@@ -1244,7 +1244,9 @@ class StockSheetController extends GetxController {
   /// known nor already asked for (one Item call and one stock call, ERP
   /// images alongside), then settles every row checking stock whose codes
   /// are all known. A batch that fails leaves its rows "Stock not checked"
-  /// (for [retryCheck]); no access to stock levels ends in the error state.
+  /// (for [retryCheck]); no access to stock levels ends in the error state
+  /// while a listed row still waits for those codes, and is dropped
+  /// otherwise.
   Future<void> _requestStock() async {
     if (_closed) return;
     _settleKnown();
@@ -1278,7 +1280,15 @@ class StockSheetController extends GetxController {
       return;
     }
     if (failure is StockAccessDenied) {
-      _fail(noAccessMessage);
+      // Only while a row on the list still waits for these codes: rows
+      // swiped away, or a file already made, leave nothing to say it about.
+      final asked = codes.toSet();
+      if (_reviewing &&
+          review.any(
+            (e) => !e.settled && e.codes.any((c) => asked.contains(c.itemCode)),
+          )) {
+        _fail(noAccessMessage);
+      }
     } else if (failure != null) {
       _markUnchecked(codes.toSet());
     }

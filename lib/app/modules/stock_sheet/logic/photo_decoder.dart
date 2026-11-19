@@ -27,7 +27,8 @@ abstract class PhotoDecoder {
 
   /// Round two: tiles, then the 2x copy for a small photo that still has no
   /// item. [whole] is what [readWhole] gave. `null` when [stopped] said so
-  /// (it is asked before each read) or when the photo cannot be read.
+  /// (it is asked before each read, the 2x copy's included) or when the
+  /// photo cannot be read.
   Future<List<String>?> zoomIn(
     String path, {
     required List<String> whole,
@@ -129,6 +130,8 @@ class MlKitPhotoDecoder extends PhotoDecoder {
         if (items >= 2 || _anyClassifies(all)) return all;
       }
       if (items >= 2) return whole;
+      // Asked once more before the 2x copy is made and read.
+      if (stopped?.call() ?? false) return null;
       // Last resort for a small photo: one label larger than a tile (over
       // 40% of the photo) that only reads enlarged.
       final retry = await _retryUpscaled(path);

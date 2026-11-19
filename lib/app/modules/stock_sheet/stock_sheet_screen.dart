@@ -221,8 +221,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     if (mounted && error != null) AppNotification.warning(error);
   }
 
-  /// Back during the review: the photos go only if the user says so. The
-  /// controller's onClose cleans up once the screen has gone.
+  /// Back during the review, or while the photos given are fingerprinted:
+  /// the photos go only if the user says so. The controller's onClose
+  /// cleans up once the screen has gone.
   Future<void> _confirmDiscard() async {
     if (_askingDiscard) return;
     _askingDiscard = true;
@@ -346,8 +347,11 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   Widget build(BuildContext context) {
     return Obx(() {
       final reviewing = _reviewing;
+      // From the first frame with photos: while they are fingerprinted too.
+      final askFirst =
+          reviewing || controller.phase.value == StockSheetPhase.decoding;
       return PopScope(
-        canPop: !reviewing,
+        canPop: !askFirst,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _confirmDiscard();
         },
@@ -459,9 +463,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
         // The list stays behind the out-of-stock question.
         return Column(
           children: [
-            // Its own Obx: it changes several times a second while reading,
-            // and must not rebuild the rest of the screen.
-            Obx(() => ReadingStrip(entries: controller.review.toList())),
+            // Built from the same rows as the list: the body's Obx rebuilds
+            // both whenever a row changes.
+            ReadingStrip(entries: controller.review.toList()),
             Expanded(child: _reviewList()),
           ],
         );

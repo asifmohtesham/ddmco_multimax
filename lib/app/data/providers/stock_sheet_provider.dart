@@ -128,6 +128,14 @@ class StockSheetProvider {
       ageingRange,
     );
     final buckets = StockAgeingLogic.parseBuckets(columns);
+    // The four figures' labels, verbatim from the report.
+    final labels = <String, String>{
+      for (final c in columns)
+        if (c is Map &&
+            _text(c['fieldname']) != null &&
+            _text(c['label']) != null)
+          _text(c['fieldname'])!: _text(c['label'])!,
+    };
     final kept = StockAgeingLogic.parseRows(
       message['result'],
     ).where((r) => r['item_code']?.toString() == itemCode).toList();
@@ -144,6 +152,10 @@ class StockSheetProvider {
             for (final b in buckets)
               (label: b.label, qty: num_(r[b.qtyKey])),
           ],
+          availableQtyLabel: labels['qty'] ?? 'Available Qty',
+          averageAgeLabel: labels['average_age'] ?? 'Average Age',
+          earliestLabel: labels['earliest'] ?? 'Earliest',
+          latestLabel: labels['latest'] ?? 'Latest',
         ),
     ];
   }

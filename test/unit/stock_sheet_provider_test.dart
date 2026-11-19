@@ -316,6 +316,56 @@ void main() {
       expect(rows.single.warehouse, isNull);
     });
 
+    test('the four figures are labelled as the report titles them', () async {
+      api.ageingMessage = {
+        'columns': [
+          {'fieldname': 'qty', 'label': 'Qty on Hand', 'fieldtype': 'Float'},
+          {
+            'fieldname': 'average_age',
+            'label': 'Avg Age',
+            'fieldtype': 'Float',
+          },
+          {'fieldname': 'earliest', 'label': 'Oldest', 'fieldtype': 'Int'},
+          {'fieldname': 'latest', 'label': 'Newest', 'fieldtype': 'Int'},
+        ],
+        'result': [
+          {'item_code': '1003999', 'qty': 5},
+        ],
+      };
+      final row = (await provider.fetchStockAgeing('1003999')).single;
+      expect(
+        (
+          row.availableQtyLabel,
+          row.averageAgeLabel,
+          row.earliestLabel,
+          row.latestLabel,
+        ),
+        ('Qty on Hand', 'Avg Age', 'Oldest', 'Newest'),
+      );
+    });
+
+    test('a figure whose column is missing keeps its usual label', () async {
+      api.ageingMessage = {
+        'columns': [
+          {'fieldname': 'qty', 'label': 'Qty on Hand', 'fieldtype': 'Float'},
+          {'fieldname': 'latest', 'label': '', 'fieldtype': 'Int'},
+        ],
+        'result': [
+          {'item_code': '1003999', 'qty': 5},
+        ],
+      };
+      final row = (await provider.fetchStockAgeing('1003999')).single;
+      expect(
+        (
+          row.availableQtyLabel,
+          row.averageAgeLabel,
+          row.earliestLabel,
+          row.latestLabel,
+        ),
+        ('Qty on Hand', 'Average Age', 'Earliest', 'Latest'),
+      );
+    });
+
     test('rows for other items are dropped; none left is an empty list', () async {
       api.ageingMessage = {
         'columns': const [],

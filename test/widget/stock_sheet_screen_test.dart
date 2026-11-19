@@ -338,10 +338,38 @@ void main() {
     expect(find.text('home'), findsOneWidget);
   });
 
-  testWidgets('Back outside the review leaves at once', (tester) async {
-    await open(tester);
+  testWidgets('Back while the photos are fingerprinted asks first', (
+    tester,
+  ) async {
+    await open(tester, paths: ['a.jpg']);
+    controller.total.value = 1;
     controller.phase.value = StockSheetPhase.decoding;
     await tester.pump();
+    // The progress spinner never settles, so pump a fixed time.
+    Future<void> settle() => tester.pump(const Duration(milliseconds: 500));
+
+    await tester.pageBack();
+    await settle();
+    expect(find.text('Discard these photos?'), findsOneWidget);
+    await tester.tap(find.text('Keep reviewing'));
+    await settle();
+    expect(find.text('Discard these photos?'), findsNothing);
+    expect(find.byType(StockSheetScreen), findsOneWidget);
+
+    await tester.pageBack();
+    await settle();
+    await tester.tap(find.text('Discard'));
+    await settle();
+    await settle();
+    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.text('home'), findsOneWidget);
+  });
+
+  testWidgets('Back from the start, with no photos, leaves at once', (
+    tester,
+  ) async {
+    await open(tester);
+    expect(controller.phase.value, StockSheetPhase.idle);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
