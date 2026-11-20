@@ -7,8 +7,8 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 /// Item and Finished Goods stock lookups for the stock sheet.
-class StockSheetProvider {
-  StockSheetProvider({ApiProvider? api, DateTime Function()? now})
+class ItemsFromPhotosProvider {
+  ItemsFromPhotosProvider({ApiProvider? api, DateTime Function()? now})
     : _api = api,
       _now = now ?? DateTime.now;
 

@@ -426,9 +426,9 @@ class AppPages {
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(
-      name:       AppRoutes.STOCK_SHEET,
-      page:       () => const StockSheetScreen(),
-      binding:    StockSheetBinding(),
+      name:       AppRoutes.ITEMS_FROM_PHOTOS,
+      page:       () => const ItemsFromPhotosScreen(),
+      binding:    ItemsFromPhotosBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

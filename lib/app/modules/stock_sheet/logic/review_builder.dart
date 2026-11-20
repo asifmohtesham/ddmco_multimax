@@ -106,8 +106,8 @@ class ReviewBuilder {
 
   /// Rows for every included item, and one unresolved entry per photo that
   /// resolved nothing. Rack and quantity never reach the result.
-  static StockSheetResult toResult(List<ReviewEntry> list) {
-    final rows = <StockSheetRow>[];
+  static ItemsFromPhotosResult toResult(List<ReviewEntry> list) {
+    final rows = <ItemsFromPhotosRow>[];
     final unresolved = <UnresolvedEntry>[];
     // The photo's number in the list, counting each photo once however many
     // rows it gave.
@@ -116,7 +116,7 @@ class ReviewBuilder {
       final p = photoNumber.putIfAbsent(entry.path, () => photoNumber.length);
       if (entry.resolved) {
         for (final item in entry.items.where((i) => i.included)) {
-          rows.add(StockSheetRow(
+          rows.add(ItemsFromPhotosRow(
             photoIndex: p,
             photoPath: entry.path,
             barcode: item.code.barcode,
@@ -147,7 +147,7 @@ class ReviewBuilder {
             reason: UnresolvedReason.noRecognisedCode));
       }
     }
-    return StockSheetResult(rows: rows, unresolved: unresolved);
+    return ItemsFromPhotosResult(rows: rows, unresolved: unresolved);
   }
 
   static List<ReviewEntry> _replace(

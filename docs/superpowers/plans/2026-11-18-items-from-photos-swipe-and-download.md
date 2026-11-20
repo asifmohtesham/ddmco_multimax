@@ -4,7 +4,7 @@
 
 **Goal:** Remove a photo from the review list with a swipe (with Undo), and save the generated Excel/PDF to a chosen folder with a Download button on Mac, iPhone and Android.
 
-**Architecture:** Two controller additions in `StockSheetController` (`removeAt`/`restore`, `download()` with an injectable saver) and their UI in `ReviewList` (a `Dismissible` per row) and the finished-state footer of `StockSheetScreen`. Download uses `file_picker`'s `saveFile(fileName:, bytes:)`.
+**Architecture:** Two controller additions in `ItemsFromPhotosController` (`removeAt`/`restore`, `download()` with an injectable saver) and their UI in `ReviewList` (a `Dismissible` per row) and the finished-state footer of `ItemsFromPhotosScreen`. Download uses `file_picker`'s `saveFile(fileName:, bytes:)`.
 
 **Tech Stack:** Flutter (GetX), `file_picker`, the Mac over SSH for the iOS build (`ssh sys6.it.ka 'ssh -o BatchMode=yes mbp.it.ka zsh -s' < script.sh`).
 
@@ -61,7 +61,7 @@
 - Test: `test/unit/items_from_photos_controller_test.dart`, `test/widget/items_from_photos_screen_test.dart`
 
 **Interfaces:**
-- Produces: `typedef FileSaver = Future<bool> Function(String fileName, Uint8List bytes);` (true when saved, false when the user cancelled; throws on failure); `StockSheetController({..., FileSaver? saveFile})`, default calls `FilePicker.platform.saveFile(fileName: fileName, bytes: bytes)` and returns `result != null`; `final downloading = false.obs;`; `Future<String?> download()` returning the message to show (`"Saved <name>."`, `"Saved 2 files."`, `"Couldn't save the file. Try again."`) or null (cancelled, nothing to do, or already running).
+- Produces: `typedef FileSaver = Future<bool> Function(String fileName, Uint8List bytes);` (true when saved, false when the user cancelled; throws on failure); `ItemsFromPhotosController({..., FileSaver? saveFile})`, default calls `FilePicker.platform.saveFile(fileName: fileName, bytes: bytes)` and returns `result != null`; `final downloading = false.obs;`; `Future<String?> download()` returning the message to show (`"Saved <name>."`, `"Saved 2 files."`, `"Couldn't save the file. Try again."`) or null (cancelled, nothing to do, or already running).
 - `static const String saveFailedMessage = "Couldn't save the file. Try again.";`
 
 - [ ] **Step 1: Failing tests**

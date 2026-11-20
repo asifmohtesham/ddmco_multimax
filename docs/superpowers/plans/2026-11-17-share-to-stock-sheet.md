@@ -45,8 +45,8 @@ lib/app/modules/stock_sheet/
   logic/stock_aggregator.dart                            # sum report rows, build rows (pure)
   logic/thumbnail_maker.dart                             # downscale â†’ JPEG bytes
   logic/photo_decoder.dart                               # PhotoDecoder + MlKitPhotoDecoder
-  output/xlsx_stock_sheet_writer.dart                    # OOXML via archive
-  output/pdf_stock_sheet_writer.dart                     # pdf package
+  output/xlsx_items_from_photos_writer.dart                    # OOXML via archive
+  output/pdf_items_from_photos_writer.dart                     # pdf package
   items_from_photos_controller.dart
   items_from_photos_binding.dart
   items_from_photos_screen.dart
@@ -72,29 +72,29 @@ docs/ios_share_extension_setup.md
 - Produces:
   - `class Ean8 { static bool isValid(String code); }`: 8 digits, and the weights 3,1,3,1,3,1,3 give the check digit (as `ean8_ok` in the sidecar).
   - `class ClassifiedCode { final String itemCode; final String barcode; final String? batchNo; }` (const constructor, value equality).
-  - `class StockSheetCodec { static ClassifiedCode? classify(String raw); static List<ClassifiedCode> itemsInPhoto(List<String> rawValues); }`. `itemsInPhoto` de-dupes by `itemCode` in first-seen order. If any code for that item was a batch QR, `batchNo` keeps it.
+  - `class ItemsFromPhotosCodec { static ClassifiedCode? classify(String raw); static List<ClassifiedCode> itemsInPhoto(List<String> rawValues); }`. `itemsInPhoto` de-dupes by `itemCode` in first-seen order. If any code for that item was a batch QR, `batchNo` keeps it.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```dart
 test('valid EAN-8 â†’ item code is first 7 digits', () {
-  expect(StockSheetCodec.classify('30003330'),
+  expect(ItemsFromPhotosCodec.classify('30003330'),
       const ClassifiedCode(itemCode: '3000333', barcode: '30003330', batchNo: null));
 });
-test('bad checksum is ignored', () => expect(StockSheetCodec.classify('30003331'), isNull));
+test('bad checksum is ignored', () => expect(ItemsFromPhotosCodec.classify('30003331'), isNull));
 test('batch QR â†’ item from prefix, batch kept', () {
-  expect(StockSheetCodec.classify(' 30003330-4CPIWR '),
+  expect(ItemsFromPhotosCodec.classify(' 30003330-4CPIWR '),
       const ClassifiedCode(itemCode: '3000333', barcode: '30003330', batchNo: '30003330-4CPIWR'));
 });
 test('batch QR with bad prefix checksum is ignored',
-    () => expect(StockSheetCodec.classify('30003331-4CPIWR'), isNull));
+    () => expect(ItemsFromPhotosCodec.classify('30003331-4CPIWR'), isNull));
 test('EAN-13, Code 128 text and junk are ignored', () {
   for (final s in ['4006381333931', 'SHIPMENT-12', '', 'ABCDEFGH']) {
-    expect(StockSheetCodec.classify(s), isNull, reason: s);
+    expect(ItemsFromPhotosCodec.classify(s), isNull, reason: s);
   }
 });
 test('same item twice in one photo (EAN + its batch QR) â†’ one entry with batch', () {
-  final items = StockSheetCodec.itemsInPhoto(['30003330', '30003330-4CPIWR', '20011369']);
+  final items = ItemsFromPhotosCodec.itemsInPhoto(['30003330', '30003330-4CPIWR', '20011369']);
   expect(items.map((e) => e.itemCode), ['3000333', '2001136']);
   expect(items.first.batchNo, '30003330-4CPIWR');
 });
@@ -126,19 +126,19 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 - Produces (models):
   - `class PhotoScan { final int index; final String path; final List<String> rawValues; final List<ClassifiedCode> items; final bool decodeFailed; }`
   - `class ItemInfo { final String itemCode; final String? itemName; final String? variantOf; final String? countryOfOrigin; }`
-  - `class StockSheetRow { final int photoIndex; final String photoPath; final String barcode; final String? itemName; final String? variantOf; final String? countryOfOrigin; final bool outOfStock; }`
+  - `class ItemsFromPhotosRow { final int photoIndex; final String photoPath; final String barcode; final String? itemName; final String? variantOf; final String? countryOfOrigin; final bool outOfStock; }`
   - `enum UnresolvedReason { unreadable, noRecognisedCode, notInErp }`
   - `class UnresolvedEntry { final int photoIndex; final String photoPath; final UnresolvedReason reason; final String? barcode; }` (`barcode` is set for `notInErp`)
-  - `class StockSheetResult { final List<StockSheetRow> rows; final List<UnresolvedEntry> unresolved; int get outOfStockCount; }`
+  - `class ItemsFromPhotosResult { final List<ItemsFromPhotosRow> rows; final List<UnresolvedEntry> unresolved; int get outOfStockCount; }`
   - `class StockAccessDenied implements Exception {}`
 - Produces (provider):
-  - `StockSheetProvider({ApiProvider? api})`
+  - `ItemsFromPhotosProvider({ApiProvider? api})`
   - `Future<Map<String, ItemInfo>> fetchItems(List<String> itemCodes)`: `getDocumentList('Item', fields: ['name','item_name','variant_of','country_of_origin'], filterTuples: [['Item','name','in', chunk]], limit: 0)`.
   - `Future<List<Map<String, dynamic>>> fetchFinishedGoodsStock(List<String> itemCodes)`: per chunk, `getStockBalanceReport(fromDate: today, toDate: today, itemCodes: chunk, warehouses: const ['Finished Goods - KA'])`. Keep `.rows` whose `item_code` is in the chunk; on v15 < 15.72 the report ignores the item filter and returns the whole warehouse. `today` comes from an injected `DateTime Function() now`.
   - Both use chunks of 100 distinct codes (the 100-photo limit allows several items per photo), merge the results, and map a `DioException` with status 403 to `StockAccessDenied`. Other errors are rethrown.
 - Produces (aggregator):
   - `static Map<String, double> StockAggregator.sumByItem(List<Map<String, dynamic>> reportRows)`: sums `bal_qty` per `item_code`. `bal_qty` may arrive as int, double or numeric string. Rows without an `item_code` are skipped.
-  - `static StockSheetResult StockAggregator.build(List<PhotoScan> scans, Map<String, ItemInfo> items, Map<String, double> stock)`: rows in photo order, then code order. A `decodeFailed` scan gives `unreadable`. No classified items gives `noRecognisedCode`. An item missing from `items` gives `notInErp`. Out of stock = `(stock[code] ?? 0) <= 0`.
+  - `static ItemsFromPhotosResult StockAggregator.build(List<PhotoScan> scans, Map<String, ItemInfo> items, Map<String, double> stock)`: rows in photo order, then code order. A `decodeFailed` scan gives `unreadable`. No classified items gives `noRecognisedCode`. An item missing from `items` gives `notInErp`. Out of stock = `(stock[code] ?? 0) <= 0`.
 
 - [ ] **Step 1: Write the failing aggregator tests**
   - `sumByItem` over `[{item_code:'2001136',warehouse:'WH-DXB1 - KA',bal_qty:60.0},{item_code:'2001136',warehouse:'WH-DXB3 - KA',bal_qty:-5},{item_code:'2002349',bal_qty:'295'},{item_code:'',bal_qty:420}]` â†’ `{'2001136':55.0,'2002349':295.0}`.
@@ -192,15 +192,15 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 ### Task 4: Excel writer (hand-written OOXML)
 
 **Files:**
-- Create: `lib/app/modules/stock_sheet/output/xlsx_stock_sheet_writer.dart`
+- Create: `lib/app/modules/stock_sheet/output/xlsx_items_from_photos_writer.dart`
 - Modify: `items_from_photos_models.dart`
-- Test: `test/unit/xlsx_stock_sheet_writer_test.dart`
+- Test: `test/unit/xlsx_items_from_photos_writer_test.dart`
 
 **Interfaces:**
-- Consumes: `StockSheetRow` (Task 2).
+- Consumes: `ItemsFromPhotosRow` (Task 2).
 - Produces:
-  - `class StockSheetDocument { final String title; final String subtitle; final List<StockSheetRow> rows; final Map<String, Uint8List> thumbnails /* by photoPath */; final bool highlightOutOfStock; final bool showStatus; }`
-  - `class XlsxStockSheetWriter { static Uint8List write(StockSheetDocument doc); }`
+  - `class ItemsFromPhotosDocument { final String title; final String subtitle; final List<ItemsFromPhotosRow> rows; final Map<String, Uint8List> thumbnails /* by photoPath */; final bool highlightOutOfStock; final bool showStatus; }`
+  - `class XlsxItemsFromPhotosWriter { static Uint8List write(ItemsFromPhotosDocument doc); }`
 
 **What the file must contain** (copy the sidecar's `render_xlsx` layout):
 - **Zip parts:** `[Content_Types].xml`, `_rels/.rels`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/styles.xml`, `xl/worksheets/sheet1.xml`, `xl/worksheets/_rels/sheet1.xml.rels`, `xl/drawings/drawing1.xml`, `xl/drawings/_rels/drawing1.xml.rels`, and `xl/media/imageN.jpeg`.
@@ -224,7 +224,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
   - an out-of-stock row's cells reference the style index whose `<fill>` is `FFC7CE`, and an in-stock row's cells don't;
   - for **Review focus 1**, an item name `STRAPS & BELTS <35mm> "x"` round-trips: parse `sheet1.xml` with `package:xml` (already a transitive dependency via `excel`; add it as a dev_dependency if analyze complains), and the cell text equals the input;
   - the Barcode `01234565` keeps its leading zero.
-- [ ] **Step 2: Run `flutter test test/unit/xlsx_stock_sheet_writer_test.dart`.** Expected: FAIL.
+- [ ] **Step 2: Run `flutter test test/unit/xlsx_items_from_photos_writer_test.dart`.** Expected: FAIL.
 - [ ] **Step 3: Implement the writer.**
 - [ ] **Step 4: Run the same command.** Expected: PASS. Then write one sample file to the scratch directory and open it in LibreOffice (`soffice --headless --convert-to pdf`) to check it isn't flagged as corrupt.
 - [ ] **Step 5: Commit** `feat(stock-sheet): Excel writer with embedded thumbnails`
@@ -234,12 +234,12 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 ### Task 5: PDF writer
 
 **Files:**
-- Create: `lib/app/modules/stock_sheet/output/pdf_stock_sheet_writer.dart`
-- Test: `test/unit/pdf_stock_sheet_writer_test.dart`
+- Create: `lib/app/modules/stock_sheet/output/pdf_items_from_photos_writer.dart`
+- Test: `test/unit/pdf_items_from_photos_writer_test.dart`
 
 **Interfaces:**
-- Consumes: `StockSheetDocument` (Task 4).
-- Produces: `class PdfStockSheetWriter { static Future<Uint8List> write(StockSheetDocument doc); }`
+- Consumes: `ItemsFromPhotosDocument` (Task 4).
+- Produces: `class PdfItemsFromPhotosWriter { static Future<Uint8List> write(ItemsFromPhotosDocument doc); }`
 
 **Layout** (copy the sidecar's `render_pdf`):
 - **Page:** A4 portrait, 12 mm side margins, 12 mm top and 14 mm bottom.
@@ -255,7 +255,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
   - the bytes start with `%PDF`;
   - 40 rows give more than one page (count `/Type /Page` objects, or check the length grows against a 5-row document);
   - `showStatus` doesn't throw with 7 columns.
-- [ ] **Step 2: Run `flutter test test/unit/pdf_stock_sheet_writer_test.dart`.** Expected: FAIL.
+- [ ] **Step 2: Run `flutter test test/unit/pdf_items_from_photos_writer_test.dart`.** Expected: FAIL.
 - [ ] **Step 3: Implement the writer.**
 - [ ] **Step 4: Run the same command.** Expected: PASS.
 - [ ] **Step 5: Commit** `feat(stock-sheet): PDF writer`
@@ -273,15 +273,15 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 - Produces:
   - `enum SheetFormat { excel, pdf, both }`
   - `enum OutOfStockChoice { includeRed, includePlain, leaveOut }`
-  - `enum StockSheetPhase { idle, decoding, checkingStock, awaitingChoice, building, done, error }`
-  - `StockSheetController({PhotoDecoder Function()? decoderFactory, StockSheetProvider? provider, Future<void> Function(List<XFile>)? shareFiles, DateTime Function()? now})`. The defaults are the real implementations; `shareFiles` wraps `SharePlus.instance.share(ShareParams(files: â€¦))`.
-  - Observables: `busy` (RxBool), `phase`, `decoded` (RxInt), `total` (RxInt), `errorMessage` (RxnString), `result` (Rxn<StockSheetResult>), `files` (RxList<XFile>), and `thumbnails` (RxMap<String, Uint8List>, keyed by photo path; the screen uses it for the not-found list).
+  - `enum ItemsFromPhotosPhase { idle, decoding, checkingStock, awaitingChoice, building, done, error }`
+  - `ItemsFromPhotosController({PhotoDecoder Function()? decoderFactory, ItemsFromPhotosProvider? provider, Future<void> Function(List<XFile>)? shareFiles, DateTime Function()? now})`. The defaults are the real implementations; `shareFiles` wraps `SharePlus.instance.share(ShareParams(files: â€¦))`.
+  - Observables: `busy` (RxBool), `phase`, `decoded` (RxInt), `total` (RxInt), `errorMessage` (RxnString), `result` (Rxn<ItemsFromPhotosResult>), `files` (RxList<XFile>), and `thumbnails` (RxMap<String, Uint8List>, keyed by photo path; the screen uses it for the not-found list).
   - `static const int maxPhotos = 100;`
   - `Future<void> start(List<String> paths, SheetFormat format)`:
     - if busy, it returns (the guard);
     - more than `maxPhotos` â†’ `errorMessage` set to the Global Constraints text, `phase = error`, nothing decoded;
     - otherwise it decodes in sequence, updating `decoded`, and makes the thumbnails;
-    - it then fetches the items and the Stock Balance rows for the distinct item codes and builds the `StockSheetResult`;
+    - it then fetches the items and the Stock Balance rows for the distinct item codes and builds the `ItemsFromPhotosResult`;
     - if `outOfStockCount > 0`, it sets `phase = awaitingChoice` and returns; otherwise it builds the files at once.
   - `Future<void> chooseOutOfStock(OutOfStockChoice? choice)`: `null` (sheet dismissed) â†’ `phase = idle` and the run is cancelled. Otherwise it filters the rows (`leaveOut` drops out-of-stock rows), sets `highlightOutOfStock = choice == includeRed` and `showStatus = choice != leaveOut`, and builds.
   - `Future<void> retry()`: reruns from the ERP step using the kept `PhotoScan`s and does **not** decode again.
@@ -312,7 +312,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 **Files:**
 - Create: `items_from_photos_binding.dart`, `items_from_photos_screen.dart`, `widgets/format_sheet.dart`, `widgets/out_of_stock_sheet.dart`, `widgets/items_from_photos_result_list.dart`, `lib/app/data/services/share_intake_service.dart`
 - Modify:
-  - `lib/app/data/routes/app_routes.dart`: `STOCK_SHEET = '/stock/stock-sheet'`
+  - `lib/app/data/routes/app_routes.dart`: `ITEMS_FROM_PHOTOS = '/stock/stock-sheet'`
   - `app_pages.dart`: `rightToLeftWithFade`
   - `lib/main.dart`: `Get.put<ShareIntakeService>(â€¦, permanent: true)` after `AuthenticationController`
   - `pubspec.yaml`: `receive_sharing_intent: ^1.9.0`
@@ -320,12 +320,12 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 - Test: `test/widget/items_from_photos_screen_test.dart`, `test/unit/share_intake_service_test.dart`
 
 **Interfaces:**
-- Consumes: `StockSheetController` (Task 6), `AuthenticationController.isAuthenticated`.
+- Consumes: `ItemsFromPhotosController` (Task 6), `AuthenticationController.isAuthenticated`.
 - Produces:
   - `ShareIntakeService({Stream<List<String>>? warmShares, Future<List<String>> Function()? initialShare, void Function()? resetShare})`. The defaults wrap `ReceiveSharingIntent.instance.getMediaStream()`, `getInitialMedia()` and `reset()`, filtered to `SharedMediaType.image` paths.
   - `RxList<String> pendingPhotos`
   - `void deliver(List<String> paths)`. Not signed in â†’ keep the photos; when `isAuthenticated` turns true (an `ever` worker kept in a field), wait for HOME, then open the route. Signed in â†’ open the route, or hand off as below.
-  - Route arguments: `List<String>` paths. On a warm share while `STOCK_SHEET` is open: if the controller is `busy`, show the snackbar `A stock sheet is already being made.` and drop the share; otherwise restart the screen with the new paths (Review focus 3).
+  - Route arguments: `List<String>` paths. On a warm share while `ITEMS_FROM_PHOTOS` is open: if the controller is `busy`, show the snackbar `A stock sheet is already being made.` and drop the share; otherwise restart the screen with the new paths (Review focus 3).
   - **Screen:**
     - On open, it shows `FormatSheet` (Excel / PDF / Both).
     - Dismissing it closes the screen.

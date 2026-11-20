@@ -100,7 +100,7 @@ void main() {
     });
 
     test('negative total is out of stock; 0.5 is in stock', () {
-      StockSheetRow rowFor(double qty) => StockAggregator.build(
+      ItemsFromPhotosRow rowFor(double qty) => StockAggregator.build(
             [PhotoScan(index: 0, path: 'a', items: [_code('2001141', '20011414')])],
             {'2001141': _known},
             {'2001141': qty},

@@ -6,8 +6,9 @@ rules behind it, how each platform gets photos in, where the code lives, and wha
 reading, ERP images; see §8). The dated specs and plans in `docs/superpowers/` are the history;
 this file is the summary. Where they disagree, the code and this file win.
 
-Code identifiers keep the old name: module `lib/app/modules/stock_sheet/`, classes `StockSheet*`, route
-`AppRoutes.STOCK_SHEET`. User-facing text always says **Items from Photos** (capital P).
+The `ItemsFromPhotos*` classes still live in `lib/app/modules/stock_sheet/`.
+`AppRoutes.ITEMS_FROM_PHOTOS` uses the existing path `/stock/stock-sheet`.
+User-facing text says **Items from Photos** (capital P).
 
 ## 1. The user story
 
@@ -234,7 +235,7 @@ fewer, or download them first."
 | Screen (start state, review, footer, dialogs, snackbars) | `lib/app/modules/stock_sheet/items_from_photos_screen.dart` |
 | Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`items_from_photos_codec`, `photo_decoder`, `sheet_reading`, `photo_fingerprint`, `review_builder`, `stock_aggregator`,
 `thumbnail_maker`) |
-| Writers | `lib/app/modules/stock_sheet/output/` (`xlsx_stock_sheet_writer`, `pdf_stock_sheet_writer`) |
+| Writers | `lib/app/modules/stock_sheet/output/` (`xlsx_items_from_photos_writer`, `pdf_items_from_photos_writer`) |
 | Widgets | `lib/app/modules/stock_sheet/widgets/` (`review_list`, `rack_chips`, `fix_code_sheet`, `out_of_stock_sheet`, `items_from_photos_choice_sheet`, `items_from_photos_result_list`, `items_from_photos_start_panel`, `items_from_photos_button`) |
 | Entry points | `lib/app/modules/item/widgets/item_list_app_bar.dart`, `lib/app/modules/home/home_screen.dart` + `global_widgets/barcode_input_widget.dart` (`trailingActions`) |
 | Android | `AndroidManifest.xml`, `MainActivity.kt`, `SharedStreamCopier.kt`, `android/build.gradle.kts` |
@@ -242,8 +243,8 @@ fewer, or download them first."
 
 Phases: `idle → decoding → checkingStock → reviewing → (awaitingChoice) → building → done`, plus `error`.
 Tests: `test/unit/` — `items_from_photos_controller`, `items_from_photos_codec`, `items_from_photos_photo_decoder`,
-`items_from_photos_provider`, `sheet_reading`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
-`pdf_stock_sheet_writer`, `ios_share_extension_contract`; `test/widget/` — `items_from_photos_screen`,
+`items_from_photos_provider`, `sheet_reading`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_items_from_photos_writer`,
+`pdf_items_from_photos_writer`, `ios_share_extension_contract`; `test/widget/` — `items_from_photos_screen`,
 `items_from_photos_review_list`, `items_from_photos_button`. CI runs no tests; run `flutter test` before merging.
 
 ## 8. Release history

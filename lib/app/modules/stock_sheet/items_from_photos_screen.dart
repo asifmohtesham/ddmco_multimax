@@ -57,8 +57,8 @@ enum _AddSource { camera, gallery, files }
 /// Stateful (not a GetView) because it drives the share, the out-of-stock
 /// sheet and the new-share question from workers on the controller, which
 /// need this screen's lifetime and context.
-class StockSheetScreen extends StatefulWidget {
-  const StockSheetScreen({
+class ItemsFromPhotosScreen extends StatefulWidget {
+  const ItemsFromPhotosScreen({
     super.key,
     this.paths,
     this.pickCamera = _takePhoto,
@@ -83,11 +83,11 @@ class StockSheetScreen extends StatefulWidget {
   final Future<bool> Function() runningOnMac;
 
   @override
-  State<StockSheetScreen> createState() => _StockSheetScreenState();
+  State<ItemsFromPhotosScreen> createState() => _ItemsFromPhotosScreenState();
 }
 
-class _StockSheetScreenState extends State<StockSheetScreen> {
-  final StockSheetController controller = Get.find<StockSheetController>();
+class _ItemsFromPhotosScreenState extends State<ItemsFromPhotosScreen> {
+  final ItemsFromPhotosController controller = Get.find<ItemsFromPhotosController>();
   final List<Worker> _workers = [];
 
   /// Bumped when this screen closes the sheets above it for a new share, so
@@ -114,16 +114,16 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     _workers
       ..add(ever<int>(controller.shareSerial, (_) => _startShare()))
       ..add(
-        ever<StockSheetPhase>(controller.phase, (phase) {
-          if (phase != StockSheetPhase.reviewing) _closeUndoBar();
-          if (phase == StockSheetPhase.awaitingChoice) _askOutOfStock();
+        ever<ItemsFromPhotosPhase>(controller.phase, (phase) {
+          if (phase != ItemsFromPhotosPhase.reviewing) _closeUndoBar();
+          if (phase == ItemsFromPhotosPhase.awaitingChoice) _askOutOfStock();
         }),
       )
       ..add(
         ever<int>(
           controller.alreadyListed,
           (_) => AppNotification.warning(
-            StockSheetController.alreadyListedMessage,
+            ItemsFromPhotosController.alreadyListedMessage,
           ),
         ),
       )
@@ -170,7 +170,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   }
 
   bool get _reviewing => switch (controller.phase.value) {
-    StockSheetPhase.reviewing || StockSheetPhase.awaitingChoice => true,
+    ItemsFromPhotosPhase.reviewing || ItemsFromPhotosPhase.awaitingChoice => true,
     _ => false,
   };
 
@@ -189,7 +189,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     final choice = await showOutOfStockSheet(context, count: count);
     if (!mounted || serial != controller.shareSerial.value) return;
     if (epoch != _sheetEpoch) return;
-    if (controller.phase.value != StockSheetPhase.awaitingChoice) return;
+    if (controller.phase.value != ItemsFromPhotosPhase.awaitingChoice) return;
     // Dismissed (null), it goes back to the review.
     await controller.chooseOutOfStock(choice);
   }
@@ -431,10 +431,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   Widget _body() {
     switch (controller.phase.value) {
-      case StockSheetPhase.idle:
+      case ItemsFromPhotosPhase.idle:
         if (!_openedEmpty) return const SizedBox.shrink();
         return Obx(
-          () => StockSheetStartPanel(
+          () => ItemsFromPhotosStartPanel(
             onMac: _onMac,
             busy: _picking.value,
             onChooseFiles: () => _startFrom(_AddSource.files),
@@ -442,17 +442,17 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             onTakePhoto: _onMac ? null : () => _startFrom(_AddSource.camera),
           ),
         );
-      case StockSheetPhase.decoding:
+      case ItemsFromPhotosPhase.decoding:
         final total = controller.total.value;
         final decoded = controller.decoded.value;
         return _Progress(
           value: total == 0 ? null : decoded / total,
           label: 'Reading photo ${math.min(decoded + 1, total)} of $total',
         );
-      case StockSheetPhase.checkingStock:
+      case ItemsFromPhotosPhase.checkingStock:
         return const _Progress(label: 'Checking stock…');
-      case StockSheetPhase.reviewing:
-      case StockSheetPhase.awaitingChoice:
+      case ItemsFromPhotosPhase.reviewing:
+      case ItemsFromPhotosPhase.awaitingChoice:
         // The list stays behind the out-of-stock question.
         return ReviewList(
           entries: controller.review.toList(),
@@ -465,18 +465,18 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
           removeEnabled: controller.canRemove,
           recheckBusy: controller.rechecking,
         );
-      case StockSheetPhase.building:
+      case ItemsFromPhotosPhase.building:
         return const _Progress(label: 'Generating the file…');
-      case StockSheetPhase.done:
+      case ItemsFromPhotosPhase.done:
         final result = controller.result.value;
         if (result == null) return const SizedBox.shrink();
-        return StockSheetResultList(
+        return ItemsFromPhotosResultList(
           result: result,
           // The photos on the sheet, as in the file's subtitle.
           photoCount: controller.sheetPhotoCount,
           thumbnails: Map.of(controller.thumbnails),
         );
-      case StockSheetPhase.error:
+      case ItemsFromPhotosPhase.error:
         return _ErrorMessage(
           message: controller.errorMessage.value ?? 'Something went wrong.',
         );
@@ -521,7 +521,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   Future<void> _download() async {
     final message = await controller.download();
     if (!mounted || message == null) return;
-    if (message == StockSheetController.saveFailedMessage) {
+    if (message == ItemsFromPhotosController.saveFailedMessage) {
       AppNotification.warning(message);
     } else {
       AppNotification.success(message);
@@ -530,8 +530,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   Widget _footer() {
     switch (controller.phase.value) {
-      case StockSheetPhase.reviewing:
-      case StockSheetPhase.awaitingChoice:
+      case ItemsFromPhotosPhase.reviewing:
+      case ItemsFromPhotosPhase.awaitingChoice:
         // One row of the file per item switched on.
         final n = controller.sheetItemCount;
         final label = 'Generate file · $n item${n == 1 ? '' : 's'}';
@@ -586,7 +586,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             ),
           ],
         );
-      case StockSheetPhase.done:
+      case ItemsFromPhotosPhase.done:
         return _ActionBar(
           message: controller.errorMessage.value,
           children: [
@@ -616,7 +616,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             OutlinedButton(onPressed: _close, child: const Text('Done')),
           ],
         );
-      case StockSheetPhase.error:
+      case ItemsFromPhotosPhase.error:
         return _ActionBar(
           children: [
             if (controller.canRetry)
@@ -640,7 +640,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   }
 }
 
-/// Asks what to do with [StockSheetController.pendingShare]. Add is offered
+/// Asks what to do with [ItemsFromPhotosController.pendingShare]. Add is offered
 /// only when the photos fit under the limit, counting photos still being
 /// added. The text follows a second share joining the first and an add
 /// landing; once the share is cleared on answering, the last text stays
@@ -648,7 +648,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 class _PendingShareDialog extends StatefulWidget {
   const _PendingShareDialog({required this.controller});
 
-  final StockSheetController controller;
+  final ItemsFromPhotosController controller;
 
   @override
   State<_PendingShareDialog> createState() => _PendingShareDialogState();
@@ -674,7 +674,7 @@ class _PendingShareDialogState extends State<_PendingShareDialog> {
               ? asked.count == 1
                     ? 'Add this photo to the list, or start again?'
                     : 'Add these ${asked.count} photos to the list, or start again?'
-              : StockSheetController.roomMessage(asked.room),
+              : ItemsFromPhotosController.roomMessage(asked.room),
         ),
         actions: [
           TextButton(

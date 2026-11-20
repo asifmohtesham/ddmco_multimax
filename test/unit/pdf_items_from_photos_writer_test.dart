@@ -4,12 +4,12 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
-import 'package:multimax/app/modules/stock_sheet/output/pdf_stock_sheet_writer.dart';
+import 'package:multimax/app/modules/stock_sheet/output/pdf_items_from_photos_writer.dart';
 
 Uint8List _jpeg(int w, int h) =>
     Uint8List.fromList(img.encodeJpg(img.Image(width: w, height: h)));
 
-StockSheetRow _row(int i, {bool oos = false, String? path}) => StockSheetRow(
+ItemsFromPhotosRow _row(int i, {bool oos = false, String? path}) => ItemsFromPhotosRow(
       photoIndex: i,
       photoPath: 'p$i.jpg',
       // The ERP image's key; rows of one item share it.
@@ -21,8 +21,8 @@ StockSheetRow _row(int i, {bool oos = false, String? path}) => StockSheetRow(
       outOfStock: oos,
     );
 
-StockSheetDocument _doc(int n, {bool status = false, bool thumbs = true}) =>
-    StockSheetDocument(
+ItemsFromPhotosDocument _doc(int n, {bool status = false, bool thumbs = true}) =>
+    ItemsFromPhotosDocument(
       title: 'Items',
       subtitle: '17/11/2026 10:00',
       rows: [for (var i = 0; i < n; i++) _row(i, oos: i == 1)],
@@ -37,49 +37,49 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('produces a PDF', () async {
-    final bytes = await PdfStockSheetWriter.write(_doc(3));
+    final bytes = await PdfItemsFromPhotosWriter.write(_doc(3));
     expect(latin1.decode(bytes.sublist(0, 4)), '%PDF');
   });
 
   test('40 rows span more than one page', () async {
-    final small = await PdfStockSheetWriter.write(_doc(5));
-    final big = await PdfStockSheetWriter.write(_doc(40));
+    final small = await PdfItemsFromPhotosWriter.write(_doc(5));
+    final big = await PdfItemsFromPhotosWriter.write(_doc(40));
     expect(_pageCount(small), 1);
     expect(_pageCount(big), greaterThan(1));
   });
 
   test('showStatus renders the seven-column table', () async {
-    final bytes = await PdfStockSheetWriter.write(_doc(4, status: true));
+    final bytes = await PdfItemsFromPhotosWriter.write(_doc(4, status: true));
     expect(latin1.decode(bytes.sublist(0, 4)), '%PDF');
   });
 
   test('rows without thumbnails and an empty sheet do not throw', () async {
-    expect((await PdfStockSheetWriter.write(_doc(3, thumbs: false))).isNotEmpty, isTrue);
-    expect((await PdfStockSheetWriter.write(_doc(0))).isNotEmpty, isTrue);
+    expect((await PdfItemsFromPhotosWriter.write(_doc(3, thumbs: false))).isNotEmpty, isTrue);
+    expect((await PdfItemsFromPhotosWriter.write(_doc(0))).isNotEmpty, isTrue);
   });
 
   test('an image shared by several rows is embedded once', () async {
-    final shared = StockSheetDocument(
+    final shared = ItemsFromPhotosDocument(
       title: 't',
       subtitle: 's',
       rows: [for (var i = 0; i < 5; i++) _row(i, path: 'same.jpg')],
       thumbnails: {'same.jpg': _jpeg(80, 120)},
     );
-    final separate = StockSheetDocument(
+    final separate = ItemsFromPhotosDocument(
       title: 't',
       subtitle: 's',
       rows: [for (var i = 0; i < 5; i++) _row(i)],
       thumbnails: {for (var i = 0; i < 5; i++) 'p$i.jpg': _jpeg(80, 120)},
     );
-    final a = await PdfStockSheetWriter.write(shared);
-    final b = await PdfStockSheetWriter.write(separate);
+    final a = await PdfItemsFromPhotosWriter.write(shared);
+    final b = await PdfItemsFromPhotosWriter.write(separate);
     expect(a.length, lessThan(b.length));
   });
 
   test('writeInBackground builds the same document off the UI isolate', () async {
     final doc = _doc(40, status: true);
-    final here = await PdfStockSheetWriter.write(doc);
-    final there = await PdfStockSheetWriter.writeInBackground(doc);
+    final here = await PdfItemsFromPhotosWriter.write(doc);
+    final there = await PdfItemsFromPhotosWriter.writeInBackground(doc);
     expect(latin1.decode(there.sublist(0, 4)), '%PDF');
     expect(_pageCount(there), _pageCount(here));
     expect(_pageCount(there), greaterThan(1));

@@ -60,7 +60,7 @@ class StorageService {
 
   // Stock sheet: the file format of the last Make sheet
   // ('excel' | 'pdf' | 'both').
-  static const String _stockSheetFormatKey = 'stock_sheet_last_format';
+  static const String _itemsFromPhotosFormatKey = 'stock_sheet_last_format';
 
   // --- User Data ---
   Future<void> saveUser(User user) async {
@@ -285,9 +285,9 @@ class StorageService {
       _box.read<String>('$_soLastPriceListKey::$user');
 
   // --- Stock sheet: last file format ---
-  Future<void> saveStockSheetFormat(String value) async =>
-      _box.write(_stockSheetFormatKey, value);
+  Future<void> saveItemsFromPhotosFormat(String value) async =>
+      _box.write(_itemsFromPhotosFormatKey, value);
 
   /// Null until the first Make sheet.
-  String? getStockSheetFormat() => _box.read<String>(_stockSheetFormatKey);
+  String? getItemsFromPhotosFormat() => _box.read<String>(_itemsFromPhotosFormatKey);
 }

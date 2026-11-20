@@ -5,15 +5,15 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
-import 'package:multimax/app/modules/stock_sheet/output/xlsx_stock_sheet_writer.dart';
+import 'package:multimax/app/modules/stock_sheet/output/xlsx_items_from_photos_writer.dart';
 import 'package:xml/xml.dart';
 
 Uint8List _jpeg(int w, int h) =>
     Uint8List.fromList(img.encodeJpg(img.Image(width: w, height: h)));
 
-StockSheetRow _row(int i, String barcode,
+ItemsFromPhotosRow _row(int i, String barcode,
         {String? name, bool oos = false, String? path}) =>
-    StockSheetRow(
+    ItemsFromPhotosRow(
       photoIndex: i,
       photoPath: 'p$i.jpg',
       // The ERP image's key; rows of one item share it.
@@ -30,13 +30,13 @@ Archive _open(Uint8List bytes) => ZipDecoder().decodeBytes(bytes);
 String _text(Archive a, String name) =>
     utf8.decode(a.findFile(name)!.content as List<int>);
 
-StockSheetDocument _doc({
-  List<StockSheetRow>? rows,
+ItemsFromPhotosDocument _doc({
+  List<ItemsFromPhotosRow>? rows,
   Map<String, Uint8List>? thumbs,
   bool highlight = true,
   bool status = false,
 }) =>
-    StockSheetDocument(
+    ItemsFromPhotosDocument(
       title: 'Items',
       subtitle: '17/11/2026 10:00',
       rows: rows ??
@@ -71,7 +71,7 @@ XmlElement _cell(Archive a, String ref) =>
 
 void main() {
   test('contains every OOXML part', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc()));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc()));
     final names = a.files.map((f) => f.name).toSet();
     for (final n in [
       '[Content_Types].xml',
@@ -92,7 +92,7 @@ void main() {
   });
 
   test('header texts are in order and there is no Item Code', () {
-    final c = _cells(_open(XlsxStockSheetWriter.write(_doc())));
+    final c = _cells(_open(XlsxItemsFromPhotosWriter.write(_doc())));
     expect(
       ['A4', 'B4', 'C4', 'D4', 'E4', 'F4'].map((r) => c[r]).toList(),
       ['#', 'Image', 'Barcode', 'Variant Of', 'Country of Origin', 'Item Name'],
@@ -104,14 +104,14 @@ void main() {
   });
 
   test('showStatus adds the Stock column', () {
-    final c = _cells(_open(XlsxStockSheetWriter.write(_doc(status: true))));
+    final c = _cells(_open(XlsxItemsFromPhotosWriter.write(_doc(status: true))));
     expect(c['G4'], 'Stock');
     expect(c['G5'], 'In stock');
     expect(c['G6'], 'Out of stock');
   });
 
   test('one picture per row with an ERP image, a blank cell otherwise', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc()));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc()));
     final drawing = _text(a, 'xl/drawings/drawing1.xml');
     expect('<xdr:pic>'.allMatches(drawing).length, 2);
     final c = _cells(a);
@@ -120,7 +120,7 @@ void main() {
   });
 
   test('pictures are scaled to a 110 px long side', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc()));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc()));
     final drawing = XmlDocument.parse(_text(a, 'xl/drawings/drawing1.xml'));
     final exts = drawing
         .findAllElements('xdr:ext')
@@ -155,7 +155,7 @@ void main() {
   }
 
   test('out-of-stock row uses the red style, in-stock rows do not', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc(status: true)));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc(status: true)));
     final red = redStyles(a);
     final rows = rowStyles(a);
     expect(rows[6]!.every(red.contains), isTrue);
@@ -164,7 +164,7 @@ void main() {
   });
 
   test('highlightOutOfStock false leaves every row unhighlighted', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc(highlight: false, status: true)));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc(highlight: false, status: true)));
     final red = redStyles(a);
     for (final r in [5, 6, 7]) {
       expect(rowStyles(a)[r]!.any(red.contains), isFalse);
@@ -174,14 +174,14 @@ void main() {
 
   test('special characters round-trip through XML', () {
     const name = 'STRAPS & BELTS <35mm> "x" \'y\'';
-    final a = _open(XlsxStockSheetWriter.write(
+    final a = _open(XlsxItemsFromPhotosWriter.write(
         _doc(rows: [_row(0, '01234565', name: name)])));
     expect(_cells(a)['F5'], name);
   });
 
   test('XML-illegal control characters are dropped; tab and newline stay', () {
     const name = 'A\u0000B\u0001C\u0008D\u000BE\u000CF\u000EG\u001FH\tI\nJ\rK';
-    final bytes = XlsxStockSheetWriter.write(
+    final bytes = XlsxItemsFromPhotosWriter.write(
         _doc(rows: [_row(0, '01234565', name: name)]));
     final a = _open(bytes);
     // XmlDocument.parse would throw on any illegal character left behind.
@@ -189,7 +189,7 @@ void main() {
   });
 
   test('the # column holds numbers in the row style', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc(status: true)));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc(status: true)));
     final c = _cells(a);
     expect([c['A5'], c['A6'], c['A7']], ['1', '2', '3']);
     final first = _cell(a, 'A5');
@@ -203,7 +203,7 @@ void main() {
   });
 
   test('barcode keeps its leading zero as text', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc()));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc()));
     expect(_cells(a)['C5'], '01234565');
     final doc = XmlDocument.parse(_text(a, 'xl/worksheets/sheet1.xml'));
     final c = doc.findAllElements('c').firstWhere((e) => e.getAttribute('r') == 'C5');
@@ -215,7 +215,7 @@ void main() {
   });
 
   test('sheet set-up: freeze, filter, print titles, fit to width', () {
-    final a = _open(XlsxStockSheetWriter.write(_doc(status: true)));
+    final a = _open(XlsxItemsFromPhotosWriter.write(_doc(status: true)));
     final sheet = _text(a, 'xl/worksheets/sheet1.xml');
     expect(sheet, contains('ySplit="4"'));
     expect(sheet, contains('state="frozen"'));
@@ -230,8 +230,8 @@ void main() {
 
   test('writeInBackground gives the same workbook as write', () async {
     final doc = _doc(status: true);
-    final here = _open(XlsxStockSheetWriter.write(doc));
-    final there = _open(await XlsxStockSheetWriter.writeInBackground(doc));
+    final here = _open(XlsxItemsFromPhotosWriter.write(doc));
+    final there = _open(await XlsxItemsFromPhotosWriter.writeInBackground(doc));
     expect(
       there.files.map((f) => f.name).toList(),
       here.files.map((f) => f.name).toList(),

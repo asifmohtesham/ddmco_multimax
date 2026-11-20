@@ -53,7 +53,7 @@ Office staff on the Mac (and phone users) asked for two things after using 2.43.
 
 - Footer in the finished state: **Share files** (filled) · **Download** (outlined, download icon) · **Done**.
   On a narrow phone the Download button may show its icon only; the layout must not overflow at 360 dp.
-- `StockSheetController` gains `final downloading = false.obs;` and `Future<void> download()`, with an
+- `ItemsFromPhotosController` gains `final downloading = false.obs;` and `Future<void> download()`, with an
   injectable saver `Future<bool> Function(String fileName, Uint8List bytes)` (default: `file_picker`'s
   `FilePicker.platform.saveFile(fileName:, bytes:)`, true when a location was chosen). It saves each file in
   `files` in turn, with its existing `Items-<yyyyMMdd-HHmm>` name and extension. Busy flag + re-entry guard as

@@ -29,7 +29,7 @@ class OutOfStockSheet extends StatelessWidget {
       onTap: () => Navigator.of(context).pop(choice),
     );
 
-    return StockSheetChoiceSheet(
+    return ItemsFromPhotosChoiceSheet(
       title: count == 1
           ? '1 item is out of stock'
           : '$count items are out of stock',

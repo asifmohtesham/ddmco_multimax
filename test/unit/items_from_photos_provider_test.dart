@@ -88,7 +88,7 @@ List<String> _codes(int n) => List.generate(n, (i) => '${2000000 + i}');
 
 void main() {
   late _FakeApi api;
-  late StockSheetProvider provider;
+  late ItemsFromPhotosProvider provider;
 
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -102,7 +102,7 @@ void main() {
 
   setUp(() {
     api = _FakeApi();
-    provider = StockSheetProvider(
+    provider = ItemsFromPhotosProvider(
       api: api,
       now: () => DateTime(2026, 11, 17, 9, 5),
     );

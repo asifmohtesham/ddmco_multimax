@@ -62,12 +62,12 @@ class StockAggregator {
   ///   carrying its barcode; the photo's other items still get rows.
   /// - A row is out of stock when `(stock[code] ?? 0) <= 0`.
   /// - The same item in two photos gives two rows (one per photo).
-  static StockSheetResult build(
+  static ItemsFromPhotosResult build(
     List<PhotoScan> scans,
     Map<String, ItemInfo> items,
     Map<String, double> stock,
   ) {
-    final rows = <StockSheetRow>[];
+    final rows = <ItemsFromPhotosRow>[];
     final unresolved = <UnresolvedEntry>[];
     for (final scan in scans) {
       if (scan.decodeFailed) {
@@ -97,7 +97,7 @@ class StockAggregator {
           ));
           continue;
         }
-        rows.add(StockSheetRow(
+        rows.add(ItemsFromPhotosRow(
           photoIndex: scan.index,
           photoPath: scan.path,
           barcode: code.barcode,
@@ -108,6 +108,6 @@ class StockAggregator {
         ));
       }
     }
-    return StockSheetResult(rows: rows, unresolved: unresolved);
+    return ItemsFromPhotosResult(rows: rows, unresolved: unresolved);
   }
 }

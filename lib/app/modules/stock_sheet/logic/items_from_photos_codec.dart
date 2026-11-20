@@ -2,8 +2,8 @@ import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.
 import 'package:multimax/app/shared/barcode/ean8.dart';
 
 /// Turns raw barcode text read from a photo into item codes.
-class StockSheetCodec {
-  const StockSheetCodec._();
+class ItemsFromPhotosCodec {
+  const ItemsFromPhotosCodec._();
 
   /// `{EAN8}-{BatchID}` with an alphanumeric batch ID.
   static final RegExp _batchQr = RegExp(r'^(\d{8})-[A-Za-z0-9]+$');

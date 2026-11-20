@@ -46,7 +46,7 @@ class MlKitPhotoDecoder implements PhotoDecoder {
       // One label (an EAN-8 and its batch QR count as one item) is read in
       // full by the first pass. Two or more items mean a sheet of labels:
       // read it again in tiles for the codes too small to be found whole.
-      if (StockSheetCodec.itemsInPhoto(first).length < 2) return first;
+      if (ItemsFromPhotosCodec.itemsInPhoto(first).length < 2) return first;
       final tiled = await _readTiles(path);
       if (tiled == null) return first;
       return SheetReading.inReadingOrder([
@@ -132,7 +132,7 @@ class MlKitPhotoDecoder implements PhotoDecoder {
   }
 
   bool _anyClassifies(List<String> values) =>
-      values.any((raw) => StockSheetCodec.classify(raw) != null);
+      values.any((raw) => ItemsFromPhotosCodec.classify(raw) != null);
 
   /// The pixel size from the image header alone, without decoding the
   /// pixels; `null` when the bytes are not an image the package reads.
