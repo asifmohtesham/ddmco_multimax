@@ -7,7 +7,7 @@ import 'package:get/get.dart';
 import 'package:image/image.dart' as img;
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/rack_chips.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';

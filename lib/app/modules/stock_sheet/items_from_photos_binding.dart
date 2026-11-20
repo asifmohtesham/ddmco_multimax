@@ -1,5 +1,5 @@
 import 'package:get/get.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 
 class StockSheetBinding extends Bindings {
   @override

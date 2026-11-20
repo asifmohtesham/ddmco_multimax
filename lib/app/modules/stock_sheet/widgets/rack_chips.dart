@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 /// A quantity to at most three decimals, without trailing zeros (`305`,
 /// `2.5`, and `0.3` for a sum of `0.1 + 0.2`).

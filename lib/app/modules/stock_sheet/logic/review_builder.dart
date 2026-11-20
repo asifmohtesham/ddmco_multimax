@@ -1,5 +1,5 @@
 import '../model/review_models.dart';
-import '../model/stock_sheet_models.dart';
+import '../model/items_from_photos_models.dart';
 
 /// Pure operations on the review list. Every method returns new lists and
 /// entries; inputs are never mutated.

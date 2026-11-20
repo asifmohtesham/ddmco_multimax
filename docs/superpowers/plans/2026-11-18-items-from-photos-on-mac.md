@@ -36,9 +36,9 @@
 
 **Files:**
 - Create: `lib/app/modules/stock_sheet/logic/photo_fingerprint.dart`
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart` (constructor, `start`, `_newPhotos`, `addPhotos`, `offerShare`, `_hold`, `pendingShareFits`)
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart` (constructor, `start`, `_newPhotos`, `addPhotos`, `offerShare`, `_hold`, `pendingShareFits`)
 - Modify: `pubspec.yaml` (add `crypto: ^3.0.7` as a direct dependency)
-- Test: `test/unit/stock_sheet_controller_test.dart`, `test/unit/photo_fingerprint_test.dart`
+- Test: `test/unit/items_from_photos_controller_test.dart`, `test/unit/photo_fingerprint_test.dart`
 
 **Interfaces:**
 - Produces: `typedef PhotoFingerprinter = Future<Map<String, String>> Function(List<String> paths);` and `Future<Map<String, String>> fingerprintPhotos(List<String> paths)` (SHA-256 hex of each file's bytes, computed with `Isolate.run`; a file that can't be read maps to `'unreadable:<path>'` so it is unique and kept).
@@ -47,7 +47,7 @@
 - [ ] **Step 1: Write the failing tests**
 
 `photo_fingerprint_test.dart`: `same bytes under two names give the same fingerprint`; `a missing file gets a unique unreadable fingerprint` (expect `'unreadable:/no/such.jpg'`).
-`stock_sheet_controller_test.dart` (inject a fake `fingerprint` mapping paths to fixed strings):
+`items_from_photos_controller_test.dart` (inject a fake `fingerprint` mapping paths to fixed strings):
 - `start reads two copies of the same photo once` — paths `a.jpg`, `b.jpg` with the same fingerprint → decoder called with `['a.jpg']`.
 - `addPhotos skips a photo already listed by content` — review holds `a.jpg` (fp `X`); `addPhotos(['c.jpg'])` with `c.jpg` → `X` returns `StockSheetController.alreadyListedMessage`.
 - `a held share counts only new photos` — while reviewing, `offerShare(['c.jpg','d.jpg'])` with `c.jpg` a content duplicate → `pendingShare` equals `['d.jpg']`.
@@ -55,7 +55,7 @@
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/stock_sheet_controller_test.dart`
+Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/items_from_photos_controller_test.dart`
 Expected: FAIL (undefined `fingerprintPhotos`, unknown parameter `fingerprint`).
 
 - [ ] **Step 3: Implement**
@@ -69,17 +69,17 @@ Expected: FAIL (undefined `fingerprintPhotos`, unknown parameter `fingerprint`).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/stock_sheet_controller_test.dart`
+Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/items_from_photos_controller_test.dart`
 Expected: PASS, and the existing controller tests still pass.
 
 - [ ] **Step 5: Show the warning on screen**
 
-In `stock_sheet_screen.dart` `initState`, add `ever<int>(controller.alreadyListed, (_) => AppNotification.warning(StockSheetController.alreadyListedMessage))` to `_workers`. Widget test in `test/widget/stock_sheet_screen_test.dart`: `a re-shared duplicate shows "Those photos are already in the list."`.
+In `items_from_photos_screen.dart` `initState`, add `ever<int>(controller.alreadyListed, (_) => AppNotification.warning(StockSheetController.alreadyListedMessage))` to `_workers`. Widget test in `test/widget/items_from_photos_screen_test.dart`: `a re-shared duplicate shows "Those photos are already in the list."`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pubspec.yaml pubspec.lock lib/app/modules/stock_sheet test/unit/photo_fingerprint_test.dart test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_screen_test.dart
+git add pubspec.yaml pubspec.lock lib/app/modules/stock_sheet test/unit/photo_fingerprint_test.dart test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_screen_test.dart
 git commit -m "feat(stock-sheet): skip photos already in the list by content"
 ```
 
@@ -129,8 +129,8 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 ### Task 4: Clean up copies in every intake folder
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart` (`_deleteSharedCopies`, constructor)
-- Test: `test/unit/stock_sheet_controller_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart` (`_deleteSharedCopies`, constructor)
+- Test: `test/unit/items_from_photos_controller_test.dart`
 
 **Interfaces:**
 - Consumes: `NativeIntake.sharedFolders()` (Task 2).
@@ -146,9 +146,9 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 
 **Files:**
 - Modify: `pubspec.yaml` (add `file_selector: ^1.0.3`; confirm `file_selector_ios` has `ios/file_selector_ios/Package.swift` in the pub cache, else use `file_picker` with the same `PhotoPicker` shape and note it in the commit)
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_screen.dart`
-- Create: `lib/app/modules/stock_sheet/widgets/stock_sheet_start_panel.dart`
-- Test: `test/widget/stock_sheet_screen_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_screen.dart`
+- Create: `lib/app/modules/stock_sheet/widgets/items_from_photos_start_panel.dart`
+- Test: `test/widget/items_from_photos_screen_test.dart`
 
 **Interfaces:**
 - Consumes: `NativeIntake.isRunningOnMac` (Task 2); `controller.offerShare(List<String>)` (existing).

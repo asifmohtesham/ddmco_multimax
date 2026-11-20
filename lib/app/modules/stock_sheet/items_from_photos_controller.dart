@@ -10,17 +10,17 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
+import 'package:multimax/app/data/providers/items_from_photos_provider.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_fingerprint.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/review_builder.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_aggregator.dart';
-import 'package:multimax/app/modules/stock_sheet/logic/stock_sheet_codec.dart';
+import 'package:multimax/app/modules/stock_sheet/logic/items_from_photos_codec.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/thumbnail_maker.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/modules/stock_sheet/output/pdf_stock_sheet_writer.dart';
 import 'package:multimax/app/modules/stock_sheet/output/xlsx_stock_sheet_writer.dart';
 

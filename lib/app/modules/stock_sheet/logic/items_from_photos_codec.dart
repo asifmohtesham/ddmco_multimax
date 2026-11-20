@@ -1,4 +1,4 @@
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/shared/barcode/ean8.dart';
 
 /// Turns raw barcode text read from a photo into item codes.

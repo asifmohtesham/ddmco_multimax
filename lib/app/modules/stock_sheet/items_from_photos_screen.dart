@@ -9,12 +9,12 @@ import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_result_list.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_start_panel.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_result_list.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_start_panel.dart';
 
 /// Returns the paths of the photos taken or picked; empty when cancelled.
 typedef PhotoPicker = Future<List<String>> Function();

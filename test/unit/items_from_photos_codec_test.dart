@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:multimax/app/modules/stock_sheet/logic/stock_sheet_codec.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/logic/items_from_photos_codec.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/shared/barcode/ean8.dart';
 
 void main() {

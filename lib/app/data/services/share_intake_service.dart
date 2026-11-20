@@ -10,7 +10,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 
 /// Receives photos shared to Multimax from the gallery and opens the stock
 /// sheet for them.

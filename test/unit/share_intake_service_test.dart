@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/share_intake_service.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 
 /// Records [start] instead of running a job.
 class _SpyStockSheetController extends StockSheetController {

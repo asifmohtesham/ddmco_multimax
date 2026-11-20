@@ -5,11 +5,11 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:image/image.dart' as img;
-import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
+import 'package:multimax/app/data/providers/items_from_photos_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// A checksum-valid EAN-8 for a seven-digit item code.

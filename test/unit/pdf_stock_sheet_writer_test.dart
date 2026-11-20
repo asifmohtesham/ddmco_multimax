@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/modules/stock_sheet/output/pdf_stock_sheet_writer.dart';
 
 Uint8List _jpeg(int w, int h) =>

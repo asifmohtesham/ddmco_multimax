@@ -34,10 +34,10 @@
 ### Task 1: Swipe to delete with Undo
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart`
 - Modify: `lib/app/modules/stock_sheet/widgets/review_list.dart`
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_screen.dart` (the `ReviewList(...)` call ~line 421)
-- Test: `test/unit/stock_sheet_controller_test.dart`, `test/widget/stock_sheet_review_list_test.dart`, `test/widget/stock_sheet_screen_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_screen.dart` (the `ReviewList(...)` call ~line 421)
+- Test: `test/unit/items_from_photos_controller_test.dart`, `test/widget/items_from_photos_review_list_test.dart`, `test/widget/items_from_photos_screen_test.dart`
 
 **Interfaces:**
 - Produces: `ReviewEntry? removeAt(int index)` (null when out of range or the list is changing); `void restore(ReviewEntry entry, int index)` (inserts at `index.clamp(0, review.length)`; ignored if an entry with the same path is already listed); `bool get canRemove` (false while `adding`, `rechecking`, `fixing` or `busy`).
@@ -47,7 +47,7 @@
   - Controller: `removeAt drops the entry and returns it`; `removeAt does nothing while photos are being added` (returns null, list unchanged); `restore puts the entry back at its index`; `restore clamps the index after the list shrank`; `a removed photo can be added again` (remove `a.jpg`, then `addPhotos` with a copy that has `a.jpg`'s fingerprint → added, not `alreadyListedMessage`).
   - Review list widget: `swiping a row end-to-start calls onRemove with its index`; `no swipe when removeEnabled is false` (drag left, `onRemove` not called, row still present).
   - Screen widget: `swipe shows "Photo removed." and Undo restores the row` (finds the photo's row again at the same position).
-- [ ] **Step 2: Run, expect FAIL** — `flutter test test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_review_list_test.dart test/widget/stock_sheet_screen_test.dart`.
+- [ ] **Step 2: Run, expect FAIL** — `flutter test test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_review_list_test.dart test/widget/items_from_photos_screen_test.dart`.
 - [ ] **Step 3: Implement** — controller methods above (removal does not delete the copy; clean-up at close still covers it); `Dismissible(key: ValueKey('dismiss-${entry.path}'), direction: removeEnabled ? DismissDirection.endToStart : DismissDirection.none, background/secondaryBackground: red700 + white `Icons.delete_outline`)` around each row, keeping the existing `ValueKey(path)` for reordering; the screen passes `onRemove` that calls `removeAt`, then shows a `SnackBar` via `ScaffoldMessenger` with text "Photo removed." and a `SnackBarAction` "Undo" calling `restore`, and `removeEnabled: controller.canRemove` inside an `Obx`.
 - [ ] **Step 4: Run, expect PASS**; then `flutter test` and `flutter analyze` (no new errors or warnings).
 - [ ] **Step 5: Commit** — `feat(stock-sheet): swipe to remove a photo from the list, with Undo`.
@@ -56,9 +56,9 @@
 
 **Files:**
 - Modify: `pubspec.yaml` (add `file_picker`; pick the newest version whose iOS package has `Package.swift` and whose Flutter floor is ≤ 3.50; note the resolved version and the SPM check in the commit body)
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart`
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_screen.dart` (finished-state footer ~line 506-530)
-- Test: `test/unit/stock_sheet_controller_test.dart`, `test/widget/stock_sheet_screen_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_screen.dart` (finished-state footer ~line 506-530)
+- Test: `test/unit/items_from_photos_controller_test.dart`, `test/widget/items_from_photos_screen_test.dart`
 
 **Interfaces:**
 - Produces: `typedef FileSaver = Future<bool> Function(String fileName, Uint8List bytes);` (true when saved, false when the user cancelled; throws on failure); `StockSheetController({..., FileSaver? saveFile})`, default calls `FilePicker.platform.saveFile(fileName: fileName, bytes: bytes)` and returns `result != null`; `final downloading = false.obs;`; `Future<String?> download()` returning the message to show (`"Saved <name>."`, `"Saved 2 files."`, `"Couldn't save the file. Try again."`) or null (cancelled, nothing to do, or already running).

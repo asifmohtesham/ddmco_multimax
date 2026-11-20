@@ -229,22 +229,22 @@ fewer, or download them first."
 |---|---|
 | Intake (shares, drops, stranded shares, sign-in hold) | `lib/app/data/services/share_intake_service.dart` (permanent, registered in `main.dart`) |
 | Native channel (Dart) | `lib/app/data/services/native_intake.dart` |
-| ERP calls | `lib/app/data/providers/stock_sheet_provider.dart` |
-| Controller (phases, review ops, duplicates, add, remove/restore, make, share, download, clean-up) | `lib/app/modules/stock_sheet/stock_sheet_controller.dart` |
-| Screen (start state, review, footer, dialogs, snackbars) | `lib/app/modules/stock_sheet/stock_sheet_screen.dart` |
-| Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`stock_sheet_codec`, `photo_decoder`, `sheet_reading`, `photo_fingerprint`, `review_builder`, `stock_aggregator`,
+| ERP calls | `lib/app/data/providers/items_from_photos_provider.dart` |
+| Controller (phases, review ops, duplicates, add, remove/restore, make, share, download, clean-up) | `lib/app/modules/stock_sheet/items_from_photos_controller.dart` |
+| Screen (start state, review, footer, dialogs, snackbars) | `lib/app/modules/stock_sheet/items_from_photos_screen.dart` |
+| Codes, decoding, fingerprints, review model building, stock sums, thumbnails | `lib/app/modules/stock_sheet/logic/` (`items_from_photos_codec`, `photo_decoder`, `sheet_reading`, `photo_fingerprint`, `review_builder`, `stock_aggregator`,
 `thumbnail_maker`) |
 | Writers | `lib/app/modules/stock_sheet/output/` (`xlsx_stock_sheet_writer`, `pdf_stock_sheet_writer`) |
-| Widgets | `lib/app/modules/stock_sheet/widgets/` (`review_list`, `rack_chips`, `fix_code_sheet`, `out_of_stock_sheet`, `stock_sheet_choice_sheet`, `stock_sheet_result_list`, `stock_sheet_start_panel`, `items_from_photos_button`) |
+| Widgets | `lib/app/modules/stock_sheet/widgets/` (`review_list`, `rack_chips`, `fix_code_sheet`, `out_of_stock_sheet`, `items_from_photos_choice_sheet`, `items_from_photos_result_list`, `items_from_photos_start_panel`, `items_from_photos_button`) |
 | Entry points | `lib/app/modules/item/widgets/item_list_app_bar.dart`, `lib/app/modules/home/home_screen.dart` + `global_widgets/barcode_input_widget.dart` (`trailingActions`) |
 | Android | `AndroidManifest.xml`, `MainActivity.kt`, `SharedStreamCopier.kt`, `android/build.gradle.kts` |
 | iOS | `ios/ShareExtension/`, `ios/Runner/IntakeBridge.swift`, `AppDelegate.swift`, `Runner.entitlements`, `Info.plist` |
 
 Phases: `idle → decoding → checkingStock → reviewing → (awaitingChoice) → building → done`, plus `error`.
-Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sheet_photo_decoder`,
-`stock_sheet_provider`, `sheet_reading`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
-`pdf_stock_sheet_writer`, `ios_share_extension_contract`; `test/widget/` — `stock_sheet_screen`,
-`stock_sheet_review_list`, `items_from_photos_button`. CI runs no tests; run `flutter test` before merging.
+Tests: `test/unit/` — `items_from_photos_controller`, `items_from_photos_codec`, `items_from_photos_photo_decoder`,
+`items_from_photos_provider`, `sheet_reading`, `review_builder`, `photo_fingerprint`, `share_intake_service`, `native_intake`, `xlsx_stock_sheet_writer`,
+`pdf_stock_sheet_writer`, `ios_share_extension_contract`; `test/widget/` — `items_from_photos_screen`,
+`items_from_photos_review_list`, `items_from_photos_button`. CI runs no tests; run `flutter test` before merging.
 
 ## 8. Release history
 

@@ -2,8 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/data/providers/items_from_photos_provider.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 typedef _Report = ({
   List<Map<String, dynamic>> columns,

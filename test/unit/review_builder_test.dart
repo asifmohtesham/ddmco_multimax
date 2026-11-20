@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/review_builder.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 ClassifiedCode code(String item) =>
     ClassifiedCode(itemCode: item, barcode: '${item}5');

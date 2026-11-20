@@ -49,7 +49,7 @@ Office staff on the Mac (and phone users) asked for two things after using 2.43.
 - Removing the last photo leaves an empty list; **Generate file** is already disabled with nothing on the
   sheet.
 
-### Download (finished state, `stock_sheet_screen.dart` footer and `stock_sheet_controller.dart`)
+### Download (finished state, `items_from_photos_screen.dart` footer and `items_from_photos_controller.dart`)
 
 - Footer in the finished state: **Share files** (filled) · **Download** (outlined, download icon) · **Done**.
   On a narrow phone the Download button may show its icon only; the layout must not overflow at 360 dp.

@@ -7,7 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'sheet_reading.dart';
-import 'stock_sheet_codec.dart';
+import 'items_from_photos_codec.dart';
 
 /// Reads the barcodes in one photo.
 abstract class PhotoDecoder {

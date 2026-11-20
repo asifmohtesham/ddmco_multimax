@@ -40,20 +40,20 @@
 ```
 lib/app/shared/barcode/ean8.dart                         # shared checksum (ScanService delegates)
 lib/app/modules/stock_sheet/
-  model/stock_sheet_models.dart                          # value types + enums
-  logic/stock_sheet_codec.dart                           # classify / de-dupe (pure)
+  model/items_from_photos_models.dart                          # value types + enums
+  logic/items_from_photos_codec.dart                           # classify / de-dupe (pure)
   logic/stock_aggregator.dart                            # sum report rows, build rows (pure)
   logic/thumbnail_maker.dart                             # downscale â†’ JPEG bytes
   logic/photo_decoder.dart                               # PhotoDecoder + MlKitPhotoDecoder
   output/xlsx_stock_sheet_writer.dart                    # OOXML via archive
   output/pdf_stock_sheet_writer.dart                     # pdf package
-  stock_sheet_controller.dart
-  stock_sheet_binding.dart
-  stock_sheet_screen.dart
+  items_from_photos_controller.dart
+  items_from_photos_binding.dart
+  items_from_photos_screen.dart
   widgets/format_sheet.dart
   widgets/out_of_stock_sheet.dart
-  widgets/stock_sheet_result_list.dart
-lib/app/data/providers/stock_sheet_provider.dart
+  widgets/items_from_photos_result_list.dart
+lib/app/data/providers/items_from_photos_provider.dart
 lib/app/data/services/share_intake_service.dart
 ios/ShareExtension/{ShareViewController.swift,Info.plist,ShareExtension.entitlements}
 docs/ios_share_extension_setup.md
@@ -64,9 +64,9 @@ docs/ios_share_extension_setup.md
 ### Task 1: Shared EAN-8 checksum and code classifier
 
 **Files:**
-- Create: `lib/app/shared/barcode/ean8.dart`, `lib/app/modules/stock_sheet/model/stock_sheet_models.dart`, `lib/app/modules/stock_sheet/logic/stock_sheet_codec.dart`
+- Create: `lib/app/shared/barcode/ean8.dart`, `lib/app/modules/stock_sheet/model/items_from_photos_models.dart`, `lib/app/modules/stock_sheet/logic/items_from_photos_codec.dart`
 - Modify: `lib/app/data/services/scan_service.dart` (`_isValidEan8` delegates to `Ean8.isValid`)
-- Test: `test/unit/stock_sheet_codec_test.dart`
+- Test: `test/unit/items_from_photos_codec_test.dart`
 
 **Interfaces:**
 - Produces:
@@ -107,9 +107,9 @@ test('Ean8.isValid agrees with ScanService examples', () {
 
 These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†’ `20011369`, 2002349 â†’ `20023492`, 2001141 â†’ `20011413`, 1004954 â†’ `10049549`, 1004963 â†’ `10049631`, 3000333 â†’ `30003330`.
 
-- [ ] **Step 2: Run `flutter test test/unit/stock_sheet_codec_test.dart`.** Expected: FAIL (undefined names).
+- [ ] **Step 2: Run `flutter test test/unit/items_from_photos_codec_test.dart`.** Expected: FAIL (undefined names).
 - [ ] **Step 3: Implement the three files.** Point `ScanService._isValidEan8` at `Ean8.isValid`, keeping its behaviour.
-- [ ] **Step 4: Run `flutter test test/unit/stock_sheet_codec_test.dart test/unit/` (scan service tests included).** Expected: PASS.
+- [ ] **Step 4: Run `flutter test test/unit/items_from_photos_codec_test.dart test/unit/` (scan service tests included).** Expected: PASS.
 - [ ] **Step 5: Commit** `feat(stock-sheet): EAN-8 checksum and label code classifier`
 
 ---
@@ -117,9 +117,9 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 ### Task 2: ERP lookups and stock aggregation
 
 **Files:**
-- Create: `lib/app/data/providers/stock_sheet_provider.dart`, `lib/app/modules/stock_sheet/logic/stock_aggregator.dart`
-- Modify: `stock_sheet_models.dart` (add the types below)
-- Test: `test/unit/stock_aggregator_test.dart`, `test/unit/stock_sheet_provider_test.dart`
+- Create: `lib/app/data/providers/items_from_photos_provider.dart`, `lib/app/modules/stock_sheet/logic/stock_aggregator.dart`
+- Modify: `items_from_photos_models.dart` (add the types below)
+- Test: `test/unit/stock_aggregator_test.dart`, `test/unit/items_from_photos_provider_test.dart`
 
 **Interfaces:**
 - Consumes: `ClassifiedCode` (Task 1).
@@ -152,7 +152,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
   - that 150 codes give 2 Item calls and 2 report calls;
   - that report rows for codes outside the chunk are dropped (the v15 < 15.72 case);
   - that a 403 `DioException` from either call throws `StockAccessDenied`.
-- [ ] **Step 3: Run `flutter test test/unit/stock_aggregator_test.dart test/unit/stock_sheet_provider_test.dart`.** Expected: FAIL.
+- [ ] **Step 3: Run `flutter test test/unit/stock_aggregator_test.dart test/unit/items_from_photos_provider_test.dart`.** Expected: FAIL.
 - [ ] **Step 4: Implement the provider, the aggregator and the model additions.**
 - [ ] **Step 5: Run the same command.** Expected: PASS.
 - [ ] **Step 6: Commit** `feat(stock-sheet): batched Item lookup and Stock Balance aggregation`
@@ -193,7 +193,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 
 **Files:**
 - Create: `lib/app/modules/stock_sheet/output/xlsx_stock_sheet_writer.dart`
-- Modify: `stock_sheet_models.dart`
+- Modify: `items_from_photos_models.dart`
 - Test: `test/unit/xlsx_stock_sheet_writer_test.dart`
 
 **Interfaces:**
@@ -265,8 +265,8 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 ### Task 6: Stock sheet controller (the run)
 
 **Files:**
-- Create: `lib/app/modules/stock_sheet/stock_sheet_controller.dart`
-- Test: `test/unit/stock_sheet_controller_test.dart`
+- Create: `lib/app/modules/stock_sheet/items_from_photos_controller.dart`
+- Test: `test/unit/items_from_photos_controller_test.dart`
 
 **Interfaces:**
 - Consumes: Tasks 1 to 5.
@@ -300,7 +300,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
   - **Review focus 5:** the decoder returns `null` for one path â†’ `unresolved` holds `unreadable` and the run still completes;
   - a 403 â†’ the exact access-denied text;
   - calling `start` while `busy` is a no-op.
-- [ ] **Step 2: Run `flutter test test/unit/stock_sheet_controller_test.dart`.** Expected: FAIL.
+- [ ] **Step 2: Run `flutter test test/unit/items_from_photos_controller_test.dart`.** Expected: FAIL.
 - [ ] **Step 3: Implement the controller.**
 - [ ] **Step 4: Run the same command.** Expected: PASS.
 - [ ] **Step 5: Commit** `feat(stock-sheet): run controller with out-of-stock choice and retry`
@@ -310,14 +310,14 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
 ### Task 7: Screen, sheets, route and share intake
 
 **Files:**
-- Create: `stock_sheet_binding.dart`, `stock_sheet_screen.dart`, `widgets/format_sheet.dart`, `widgets/out_of_stock_sheet.dart`, `widgets/stock_sheet_result_list.dart`, `lib/app/data/services/share_intake_service.dart`
+- Create: `items_from_photos_binding.dart`, `items_from_photos_screen.dart`, `widgets/format_sheet.dart`, `widgets/out_of_stock_sheet.dart`, `widgets/items_from_photos_result_list.dart`, `lib/app/data/services/share_intake_service.dart`
 - Modify:
   - `lib/app/data/routes/app_routes.dart`: `STOCK_SHEET = '/stock/stock-sheet'`
   - `app_pages.dart`: `rightToLeftWithFade`
   - `lib/main.dart`: `Get.put<ShareIntakeService>(â€¦, permanent: true)` after `AuthenticationController`
   - `pubspec.yaml`: `receive_sharing_intent: ^1.9.0`
   - `android/app/src/main/AndroidManifest.xml`: the `SEND` and `SEND_MULTIPLE` `image/*` filters from spec Â§6.6
-- Test: `test/widget/stock_sheet_screen_test.dart`, `test/unit/share_intake_service_test.dart`
+- Test: `test/widget/items_from_photos_screen_test.dart`, `test/unit/share_intake_service_test.dart`
 
 **Interfaces:**
 - Consumes: `StockSheetController` (Task 6), `AuthenticationController.isAuthenticated`.
@@ -338,7 +338,7 @@ These are the EAN-8s for the test items, for this and later fixtures: 2001136 â†
   - **ShareIntakeService** (fake streams, a fake auth `RxBool`): a share while signed out keeps `pendingPhotos`, and nothing navigates until auth flips (inject a `navigate` callback to observe); `resetShare` is called once per consumed share.
   - **Review focus 3:** a warm share while `busy` â†’ snackbar text, and `start` isn't called again.
   - **Widget** (fake controller states): in dark mode, the format sheet's background equals `context.scheme.fg` (or `surface`) and no `Colors.white`; toggling `busy` swaps the button for a spinner; the result list ends with `End of list`.
-- [ ] **Step 2: Run `flutter test test/unit/share_intake_service_test.dart test/widget/stock_sheet_screen_test.dart`.** Expected: FAIL.
+- [ ] **Step 2: Run `flutter test test/unit/share_intake_service_test.dart test/widget/items_from_photos_screen_test.dart`.** Expected: FAIL.
 - [ ] **Step 3: Implement the files and modifications.** Run `flutter pub get`.
 - [ ] **Step 4: Run the same command.** Expected: PASS. Then run `flutter analyze` and expect no new issues against the baseline.
 - [ ] **Step 5: Commit** `feat(stock-sheet): share intake, screen and Android share target`

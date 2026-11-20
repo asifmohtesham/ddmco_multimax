@@ -6,7 +6,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/rack_chips.dart';
 
 /// The review list: one row per item read from a photo (a photo of several

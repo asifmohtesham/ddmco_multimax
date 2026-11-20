@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 /// What a finished run found: the counts, the out-of-stock items, and the
 /// photos (or codes) that produced no row. The last two are on screen only;

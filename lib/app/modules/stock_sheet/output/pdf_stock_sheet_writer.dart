@@ -5,7 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../model/stock_sheet_models.dart';
+import '../model/items_from_photos_models.dart';
 
 /// Writes the stock sheet as an A4 portrait PDF that mirrors the Excel
 /// layout: the same columns, header colour and red out-of-stock rows.

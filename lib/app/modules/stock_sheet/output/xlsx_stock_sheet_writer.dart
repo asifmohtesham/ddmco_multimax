@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
 
-import '../model/stock_sheet_models.dart';
+import '../model/items_from_photos_models.dart';
 
 /// Writes the stock sheet as an `.xlsx` workbook, building the OOXML parts by
 /// hand so the thumbnails can be embedded as real pictures.
