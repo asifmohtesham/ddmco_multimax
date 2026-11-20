@@ -120,9 +120,16 @@ A check costs one report call when the item has a single batch in scope (the com
 
 A floor user needs read on Batch, Warehouse, Purchase Receipt, Delivery Note and Stock Entry,
 and both reports. On 19 November 2026 every user who had created a Delivery Note in the
-previous 60 days held Stock User, which covers all of them. This was worked out from the role
-tables as a System Manager, **not tested as a floor user**. Because the check fails closed, a
+previous 60 days held Stock User, which covers all of them. Because the check fails closed, a
 user who cannot read one of these is refused every batch in a `WH-` warehouse.
+
+**Tested as a floor user on 20 November 2026**, on the Pixel 7 against
+`erp-testing.multimax.cloud` (Frappe 16.56 / ERPNext 16.55), signed in as a user holding only
+Sales User, Delivery User, Stock User and Stock User - Custom. All seven lookups in the table
+above were allowed and none needed its fallback form; the refusal sheet, the "View older
+stock" link, "Scan older batch", acceptance of the oldest batch and the oldest-first picker
+all worked. The same run passed for a user who also holds Stock Manager, Delivery Manager and
+Item Manager. Not tested: a user without Stock User, and the Stock Entry sheet on a device.
 
 ## Live data, 19 November 2026
 
