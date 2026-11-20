@@ -9,6 +9,7 @@ import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/item_image_viewer.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
@@ -502,6 +503,21 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       ageing: Map.of(controller.ageing),
       onToggleCard: controller.toggleCard,
       onRetryAgeing: controller.retryAgeing,
+      onPreviewImage: (context, info) {
+        final url = info.image!.trim();
+        final sheet = controller;
+        Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => ItemImageViewer(
+              item: info,
+              cachedBytes: sheet.cachedItemImage(url),
+              load: ({required refresh}) =>
+                  sheet.itemImage(url, refresh: refresh),
+            ),
+          ),
+        );
+      },
     );
   }
 

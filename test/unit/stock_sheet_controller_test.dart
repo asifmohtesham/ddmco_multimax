@@ -201,6 +201,17 @@ class _FakeProvider extends StockSheetProvider {
   }
 }
 
+class _ImageProvider extends _FakeProvider {
+  final requests = <String>[];
+  Completer<Uint8List> download = Completer<Uint8List>();
+
+  @override
+  Future<Uint8List> fetchImage(String url) {
+    requests.add(url);
+    return download.future;
+  }
+}
+
 void main() {
   late Directory tmp;
   late List<List<XFile>> shared;
@@ -298,6 +309,45 @@ void main() {
         (p) async =>
             Uint8List.fromList(img.encodeJpg(img.Image(width: 4, height: 4))),
   );
+
+  test('Item Image downloads are shared and cached until reset', () async {
+    const url = '/files/item.jpg';
+    final provider = _ImageProvider();
+    final c = make(_FakeDecoder({}), provider);
+    final bytes = img.encodeJpg(img.Image(width: 4, height: 4));
+
+    final failed = c.itemImage(url);
+    expect(c.itemImage(url), same(failed));
+    expect(provider.requests, [url]);
+    final failure = expectLater(failed, throwsException);
+    provider.download.completeError(Exception('offline'));
+    await failure;
+    expect(c.cachedItemImage(url), isNull);
+
+    provider.download = Completer<Uint8List>();
+    final retried = c.itemImage(url);
+    provider.download.complete(bytes);
+    expect(await retried, same(bytes));
+    expect(c.cachedItemImage(url), same(bytes));
+    expect(await c.itemImage(url), same(bytes));
+    expect(provider.requests, [url, url]);
+
+    c.reset();
+    expect(c.cachedItemImage(url), isNull);
+    provider.download = Completer<Uint8List>();
+    final oldDownload = provider.download;
+    final oldRequest = c.itemImage(url);
+    c.reset();
+    provider.download = Completer<Uint8List>();
+    final newRequest = c.itemImage(url);
+    oldDownload.complete(bytes);
+    await oldRequest;
+    expect(c.cachedItemImage(url), isNull);
+    expect(c.itemImage(url), same(newRequest));
+    provider.download.complete(bytes);
+    expect(await newRequest, same(bytes));
+    expect(c.cachedItemImage(url), same(bytes));
+  });
 
   /// Lets the reading loop run until every row is settled (or it can go no
   /// further, e.g. stuck behind an error).

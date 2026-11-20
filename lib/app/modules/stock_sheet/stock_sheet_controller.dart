@@ -198,6 +198,34 @@ class StockSheetController extends GetxController {
   final result = Rxn<StockSheetResult>();
   final files = <XFile>[].obs;
   final thumbnails = <String, Uint8List>{}.obs;
+  final _itemImages = <String, Uint8List>{};
+  final _itemImageRequests = <String, Future<Uint8List>>{};
+
+  Uint8List? cachedItemImage(String url) => _itemImages[url];
+
+  Future<Uint8List> itemImage(String url, {bool refresh = false}) {
+    if (refresh) _itemImages.remove(url);
+    final cached = cachedItemImage(url);
+    if (cached != null) return Future.value(cached);
+
+    return _itemImageRequests.putIfAbsent(url, () {
+      late final Future<Uint8List> request;
+      request = Future.sync(() => _provider.fetchImage(url))
+          .then((bytes) {
+            // A reset may have replaced this request while the download finished.
+            if (identical(_itemImageRequests[url], request)) {
+              _itemImages[url] = bytes;
+            }
+            return bytes;
+          })
+          .whenComplete(() {
+            if (identical(_itemImageRequests[url], request)) {
+              _itemImageRequests.remove(url);
+            }
+          });
+      return request;
+    });
+  }
 
   /// The photos in sheet order, with what was found in each (see
   /// [StockSheetPhase.reviewing]).
@@ -993,6 +1021,8 @@ class StockSheetController extends GetxController {
     errorMessage.value = null;
     openCards.clear();
     ageing.clear();
+    _itemImages.clear();
+    _itemImageRequests.clear();
     _knownCodes.clear();
     _itemsByCode.clear();
     _stockByCode.clear();

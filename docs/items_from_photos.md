@@ -107,6 +107,12 @@ renumber.
 | Ready | item name, `barcode · Variant Of`, pill **In stock** (green) or **Out of stock** (red), an arrow |
 | Unresolved | "Unreadable photo", "No recognised code", "Not in ERP: <barcode>", **✎ Type or scan code** |
 
+- Tap a resolved item's ERP thumbnail to open the full-size Item Image. The viewer shows the item code and offers
+  pinch-to-zoom and a Close button. System back or Escape also closes it. While downloading, it shows a spinner and
+  “Loading image…”. If the image cannot be loaded or decoded, the viewer shows an error and offers **Retry**.
+  Full-size downloads are cached in memory by URL until the review resets, so reopening a cached image skips the
+  loading state. The preview is available only when the row displays an ERP thumbnail and has an ERP image URL.
+  Tap the row body to open its stock card.
 - **Pills** use the `AppColors` ramp (x500 at 13% fill, 35% border, x700 ink in light, x300 in dark); a spinner on a
   pill takes the pill's ink colour. **Balance Qty and racks are no longer on the row** (the rack chips and their
   "Stock by rack" sheet are gone): they are on the card, on screen only, never in the file.
@@ -380,6 +386,8 @@ Tests: `test/unit/` — `stock_sheet_controller`, `stock_sheet_codec`, `stock_sh
   Xcode 27) covers sharing from Photos, the start state and Choose files, but not reading.
 
 ## 10. Open items and known limits
+
+- **Item Image preview (20/11/2026).** Device verification and Telegram Mini App parity are pending.
 
 - **The reading redesign on a device (Pixel 7, release build with a side-by-side package name, 19/11/2026).**
   Ten 1,280 px wallet cards through Choose files…: the review was on screen about half a second after the photos
