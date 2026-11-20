@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/common/controllers/awesome_bar_controller.dart';
 import 'package:flutter_html/flutter_html.dart';
 
 class AwesomeBar extends StatelessWidget {
-  AwesomeBar({Key? key}) : super(key: key);
+  AwesomeBar({super.key});
 
   final AwesomeBarController controller = Get.put(AwesomeBarController());
 
@@ -68,7 +69,8 @@ class AwesomeBar extends StatelessWidget {
             }
 
             // Empty State Handling
-            if (controller.options.isEmpty) {
+            final options = controller.options.toList();
+            if (options.isEmpty) {
               if (searchController.text.trim().isEmpty) {
                 // Show Recent Searches
                 if (controller.recentOptions.isEmpty) {
@@ -99,10 +101,10 @@ class AwesomeBar extends StatelessWidget {
             return ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: controller.options.length,
+              itemCount: options.length,
               itemBuilder: (context, index) {
-                final option = controller.options[index];
-                final showHeader = index == 0 || controller.options[index - 1].type != option.type;
+                final option = options[index];
+                final showHeader = index == 0 || options[index - 1].type != option.type;
                 
                 final listTile = _buildOptionTile(context, searchController, option, false);
 
@@ -136,22 +138,27 @@ class AwesomeBar extends StatelessWidget {
   }
   
   Widget _buildEmptyHints(BuildContext context) {
+    final scheme = context.scheme;
     return Padding(
       padding: const EdgeInsets.all(32.0),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.search_off, size: 48, color: Colors.grey.withOpacity(0.5)),
+          Icon(Icons.search_off, size: 48, color: scheme.textSubtle),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'No results found',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: scheme.textMuted,
+            ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Try searching for an ID, a Doctype (e.g. "Delivery Note"), "New Task", or evaluate expressions like "2 + 2".',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: scheme.textMuted),
           ),
         ],
       ),
