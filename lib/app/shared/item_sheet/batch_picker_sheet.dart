@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
+import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'batch_picker_controller.dart';
 
 /// A draggable bottom sheet that lists all available batches for an item
@@ -23,13 +25,18 @@ Future<String?> showBatchPickerSheet(
   required String itemCode,
   String? warehouse,
   Color accentColor = Colors.teal,
+  bool oldestFirst = false,
 }) async {
   final tag = '${itemCode}_${warehouse ?? 'any'}';
 
   // Register a fresh controller for this sheet; delete it on close.
   if (!Get.isRegistered<BatchPickerController>(tag: tag)) {
     Get.put(
-      BatchPickerController(itemCode: itemCode, warehouse: warehouse),
+      BatchPickerController(
+        itemCode: itemCode,
+        warehouse: warehouse,
+        oldestFirst: oldestFirst,
+      ),
       tag: tag,
       permanent: false,
     );
@@ -127,6 +134,7 @@ class BatchPickerSheet extends StatelessWidget {
                         const Divider(height: 1, indent: 16, endIndent: 16),
                     itemBuilder: (_, i) => _BatchRow(
                       row:         rows[i],
+                      age:         c.ages[rows[i].batchNo],
                       accentColor: accentColor,
                       onTap:       () => Get.back(result: rows[i].batchNo),
                     ),
@@ -323,10 +331,14 @@ class _BatchRow extends StatelessWidget {
   final Color               accentColor;
   final VoidCallback        onTap;
 
+  /// Set when the list is ordered oldest first; shown under the batch number.
+  final BatchAge?           age;
+
   const _BatchRow({
     required this.row,
     required this.accentColor,
     required this.onTap,
+    this.age,
   });
 
   @override
@@ -355,6 +367,16 @@ class _BatchRow extends StatelessWidget {
                       color:       expired ? Colors.red.shade400 : null,
                     ),
                   ),
+                  if (age != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '${age!.fromReceipt ? 'Received' : 'Dated'} '
+                        '${DateFormat('dd MMM yyyy').format(age!.date)}',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: context.scheme.textMuted),
+                      ),
+                    ),
                   if (row.expiryDate != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),

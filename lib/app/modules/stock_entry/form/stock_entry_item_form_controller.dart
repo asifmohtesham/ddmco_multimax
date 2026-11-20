@@ -10,6 +10,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/shared/barcode_listener_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/barcode_aware_mixin.dart';
+import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_controller_base.dart';
 import 'package:multimax/app/shared/item_sheet/serial_field_mixin.dart';
 import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.dart';
@@ -228,6 +229,32 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
   @override
   bool get isAddMode => editingItemName.value == null;
+
+  // ── Oldest stock first (docs/batch_age_validation.md) ─────────────────────
+  /// Issues and transfers for manufacture take stock out, so a batch is
+  /// refused while an older batch of the item is still available. Receipts,
+  /// plain transfers and the finished-good row of a Manufacture are exempt.
+  @override
+  bool get enforcesBatchAge =>
+      _parent.enforcesBatchAge && !isFinishedItem.value;
+
+  @override
+  String? get batchAgeOwnDoctype => 'Stock Entry';
+
+  @override
+  String? get batchAgeOwnDocName => _parent.batchAgeDocName;
+
+  /// The batch this row was opened with; never refused on re-open.
+  @override
+  String? get batchAgeExemptBatch =>
+      editingItemName.value == null ? null : editingOriginalBatch;
+
+  /// This entry's other rows for the item (the row being edited is left out).
+  @override
+  List<BatchDraftLine> get batchAgeOwnLines => _parent.batchAgeLines(
+        itemCode.value,
+        excludeRowName: editingItemName.value,
+      );
 
   // ── RackFieldWithBrowseDelegate: picker flow (Commit 9) ──────────────────
 
@@ -1253,6 +1280,7 @@ class StockEntryItemFormController extends ItemSheetControllerBase
 
     final rowId = editingItemName.value;
     if (rowId != null) {
+      await _assertBatchOrderKept(rowId: rowId, qty: qty, batch: batch, sWh: sWh);
       _parent.updateItem(
         rowId, qty, batch, srcRack, tgtRack, sWh, tWh, serial,
         bypassPosCap: allowFullSerials.value,
@@ -1263,6 +1291,44 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         bypassPosCap: allowFullSerials.value,
       );
     }
+  }
+
+  /// Oldest stock first: an edit that reduces an older-batch row (or moves it
+  /// to another batch or warehouse) frees that stock again. Refused while a
+  /// newer batch of the item is on the entry. Throws the reason to show.
+  Future<void> _assertBatchOrderKept({
+    required String rowId,
+    required double qty,
+    required String? batch,
+    required String? sWh,
+  }) async {
+    final rows  = _parent.stockEntry.value?.items ?? const <StockEntryItem>[];
+    final index = rows.indexWhere((r) => r.name == rowId);
+    if (index < 0) return;
+
+    final saved = rows[index];
+    final freesStock = qty < saved.qty ||
+        (batch ?? '') != (saved.batchNo ?? '') ||
+        (sWh ?? '') != (saved.sWarehouse ?? '');
+    if (!freesStock) return;
+
+    final edited = StockEntryItem(
+      name:           saved.name,
+      itemCode:       saved.itemCode,
+      qty:            qty,
+      basicRate:      saved.basicRate,
+      batchNo:        batch,
+      sWarehouse:     sWh,
+      isFinishedItem: saved.isFinishedItem,
+    );
+    final reason = await _parent.batchOrderBreak(
+      itemCode:     saved.itemCode,
+      rowWarehouse: saved.sWarehouse,
+      after: [
+        for (var i = 0; i < rows.length; i++) i == index ? edited : rows[i],
+      ],
+    );
+    if (reason != null) throw Exception(reason);
   }
 
   /// Re-fetches the batch balance when a rack scan resolves the item-level
@@ -1290,6 +1356,8 @@ class StockEntryItemFormController extends ItemSheetControllerBase
         if (isClosed) return;
         if (isBatchValid.value && batchController.text.trim().isNotEmpty) {
           fetchBatchBalance();
+          // The oldest-stock-first check depends on the pick warehouse too.
+          recheckBatchAge();
         }
       },
       time: const Duration(milliseconds: 200),
