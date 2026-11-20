@@ -11,6 +11,7 @@ import 'package:multimax/app/data/models/warehouse_stock_line.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/recent_search_suggestions.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/voice_search_sheet.dart';
 
@@ -20,14 +21,18 @@ import 'package:multimax/app/modules/global_widgets/voice_search_sheet.dart';
 /// renders the hits grouped by doctype. Tapping a hit opens that document's
 /// form with the arguments the form expects ([GlobalSearchTarget.argsFor]).
 ///
-/// Deliberately separate from [DocTypeSearchDelegate] (which 11 list screens
-/// depend on) so this stays single-purpose and that one stays stable.
+/// Recent searches are shared across scope chips and saved per user when
+/// they submit a query, pick a hit, or run a recent search.
 class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
   GlobalDocumentSearchDelegate({
     GlobalSearchService? service,
     Future<String?> Function(BuildContext context)? voicePrompt,
+    RecentSearchStore? recentSearchStore,
   })  : _providedService = service,
-        _voicePrompt = voicePrompt ?? VoiceSearchSheet.show;
+        _voicePrompt = voicePrompt ?? VoiceSearchSheet.show,
+        _history = RecentSearchHistory('global', _kMinChars, recentSearchStore);
+
+  final RecentSearchHistory _history;
 
   /// Opens the voice dictation UI and yields the transcript. Injectable so
   /// tests can drive the wiring without a live recognizer.
@@ -148,7 +153,20 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
     final update = voiceQueryUpdate(transcript);
     if (update == null) return; // no speech → leave the field untouched
     query = update;
-    showResults(context);
+    super.showResults(context);
+  }
+
+  @override
+  void showResults(BuildContext context) {
+    _history.record(query);
+    super.showResults(context);
+  }
+
+  @override
+  void dispose() {
+    _history.dispose();
+    _scope.dispose();
+    super.dispose();
   }
 
   @override
@@ -170,7 +188,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
       valueListenable: _scope,
       builder: (context, scope, _) {
         final scheme = context.scheme;
-        return Container(
+        return Material(
           color: scheme.bg,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -191,10 +209,17 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
 
   Widget _buildResultsArea(BuildContext context, GlobalSearchTarget? scope) {
     if (query.trim().length < _kMinChars) {
-      return _messageState(
-        context,
-        icon: Icons.search,
-        message: 'Type at least $_kMinChars characters',
+      return _history.build(
+        query: query,
+        fallback: _messageState(
+          context,
+          icon: Icons.search,
+          message: 'Type at least $_kMinChars characters',
+        ),
+        onSelect: (context, term) {
+          query = term;
+          showResults(context);
+        },
       );
     }
 
@@ -218,6 +243,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
             ? (codes) => _service.warehouseBalances(codes, wh)
             : null,
         onTap: (item) {
+          _history.record(query);
           close(context, null);
           Get.toNamed(scope.route, arguments: scope.argsFor(item.id));
         },
@@ -261,6 +287,7 @@ class GlobalDocumentSearchDelegate extends SearchDelegate<void> {
           itemReadable: _itemReadable,
           service: _service,
           onTap: (target, item) {
+            _history.record(query);
             close(context, null);
             Get.toNamed(target.route, arguments: target.argsFor(item.id));
           },

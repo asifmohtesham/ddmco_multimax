@@ -6,6 +6,7 @@ import 'package:multimax/app/data/constants/global_search_targets.dart';
 import 'package:multimax/app/data/models/global_search_item.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
+import 'package:multimax/app/modules/global_widgets/recent_search_suggestions.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_flow.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
@@ -22,6 +23,8 @@ import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 ///     - In *local mode* ([doctype]/[targetRoute] empty, [onSearchChanged]
 ///       provided) every keystroke is forwarded to the controller's RxString
 ///       and the delegate closes on submit so the filtered list is revealed.
+///     - Recent searches are saved on explicit commits, per user and
+///       [recentSearchKey] (or [doctype]). Selecting one runs the search.
 ///
 ///  2. **Filter button** — badged [IconButton] injected into [buildActions]
 ///     when [onFilterTap] is provided.  Mirrors the old trailing filter icon
@@ -77,6 +80,10 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
       searcher;
 
   bool get _isApiMode => doctype.isNotEmpty && targetRoute.isNotEmpty;
+  static const _minApiChars = 3;
+
+  final String? recentSearchKey;
+  late final RecentSearchHistory _history;
 
   DocTypeSearchDelegate({
     this.doctype = '',
@@ -88,7 +95,16 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     this.onFilterTap,
     this.onImageScanResult,
     this.searcher,
-  });
+    this.recentSearchKey,
+    RecentSearchStore? recentSearchStore,
+  }) {
+    final key = recentSearchKey ?? doctype;
+    _history = RecentSearchHistory(
+      key.trim().isEmpty ? null : key,
+      _isApiMode ? _minApiChars : 1,
+      recentSearchStore,
+    );
+  }
 
   @override
   String? get searchFieldLabel =>
@@ -247,6 +263,13 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
   // ── Results & Suggestions ─────────────────────────────────────────────
 
   @override
+  void showResults(BuildContext context) {
+    // Flutter's keyboard submit calls this before building the results.
+    _history.record(query);
+    super.showResults(context);
+  }
+
+  @override
   Widget buildResults(BuildContext context) {
     // Called during Flutter's build phase → use post-frame callback.
     _notifySearchChanged(query);
@@ -254,7 +277,11 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     if (_isApiMode) return _buildApiResults(context);
 
     // Local mode: close overlay so the filtered list is visible.
-    WidgetsBinding.instance.addPostFrameCallback((_) => close(context, null));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted && ModalRoute.of(context)?.isCurrent == true) {
+        close(context, null);
+      }
+    });
     return const SizedBox.shrink();
   }
 
@@ -263,27 +290,39 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
     // Called during Flutter's build phase → use post-frame callback.
     _notifySearchChanged(query);
 
-    if (_isApiMode) {
-      if (query.trim().length < 3) {
-        return _buildMessageState(
-          icon: Icons.search,
-          message: 'Type at least 3 characters',
-        );
-      }
-      return _buildApiResults(context);
-    }
+    if (_isApiMode) return _buildApiResults(context);
 
-    // Local mode: show a hint card — the list behind updates live.
-    return _buildLocalHint(context);
+    return _history.build(
+      query: query,
+      fallback: _buildLocalHint(context),
+      includeHint: query.isNotEmpty,
+      onSelect: (context, term) {
+        query = term;
+        _applyLocalSearch(context);
+      },
+    );
+  }
+
+  void _applyLocalSearch(BuildContext context) {
+    _history.record(query);
+    onSearchChanged?.call(query);
+    close(context, null);
   }
 
   // ── API result list ───────────────────────────────────────────────────
 
   Widget _buildApiResults(BuildContext context) {
-    if (query.trim().length < 3) {
-      return _buildMessageState(
-        icon: Icons.search,
-        message: 'Type at least 3 characters',
+    if (query.trim().length < _minApiChars) {
+      return _history.build(
+        query: query,
+        fallback: _buildMessageState(
+          icon: Icons.search,
+          message: 'Type at least $_minApiChars characters',
+        ),
+        onSelect: (context, term) {
+          query = term;
+          showResults(context);
+        },
       );
     }
 
@@ -352,10 +391,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
               const SizedBox(height: 24),
               FilledButton.tonalIcon(
                 // onPressed is a gesture handler → synchronous call is fine.
-                onPressed: () {
-                  if (onSearchChanged != null) onSearchChanged!(query);
-                  close(context, null);
-                },
+                onPressed: () => _applyLocalSearch(context),
                 icon: const Icon(Icons.check, size: 16),
                 label: const Text('Apply'),
               ),
@@ -382,6 +418,7 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
       trailing: const Icon(Icons.chevron_right),
       // onTap is a gesture handler → synchronous call is fine.
       onTap: () {
+        _history.record(query);
         close(context, null);
         // Resolve the argument shape the target form expects — a bare String
         // crashes forms that read Get.arguments['name'] (String's [] wants an
@@ -443,6 +480,12 @@ class DocTypeSearchDelegate extends SearchDelegate<void> {
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _history.dispose();
+    super.dispose();
+  }
 }
 
 /// Backward-compatibility alias.  Any call-site still using
@@ -458,6 +501,7 @@ Future<void> editListSearch(
   required RxString searchQuery,
   String doctype = '',
   String targetRoute = '',
+  String? recentSearchKey,
   ValueChanged<String>? onSearchChanged,
   VoidCallback? onSearchClear,
   ValueChanged<ImageScanResult>? onImageScanResult,
@@ -468,6 +512,7 @@ Future<void> editListSearch(
       delegate: DocTypeSearchDelegate(
         doctype: doctype,
         targetRoute: targetRoute,
+        recentSearchKey: listRecentSearchKey(context, recentSearchKey, doctype),
         searchQuery: searchQuery,
         onSearchChanged: onSearchChanged,
         onSearchClear: onSearchClear,
