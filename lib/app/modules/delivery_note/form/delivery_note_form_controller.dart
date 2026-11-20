@@ -187,8 +187,8 @@ class DeliveryNoteFormController extends GetxController
   void checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') {
-      isDirty.value = canAutoSave;
-      if (isDirty.value) scheduleAutoSave();
+      isDirty.value = !(isSoMode && items.isEmpty);
+      if (canAutoSave) scheduleAutoSave();
       return;
     }
     if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
@@ -259,7 +259,9 @@ class DeliveryNoteFormController extends GetxController
       await _startFromSalesOrder(salesOrderNameArg!);
     }
     await _validateCustomerOnOpen();
-    isDirty.value   = canAutoSave;
+    // An untouched SO-bound DN has nothing to lose; leaving it is not
+    // "discarding changes".
+    isDirty.value   = !(isSoMode && items.isEmpty);
     _originalJson   = '';
     isLoading.value = false;
   }

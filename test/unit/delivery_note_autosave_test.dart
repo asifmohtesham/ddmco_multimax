@@ -9,6 +9,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_binding.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_screen.dart';
 
 const _autoSaveDelay = Duration(seconds: 1);
 
@@ -85,7 +86,10 @@ void main() {
   });
   tearDown(Get.reset);
 
-  Future<DeliveryNoteFormController> openNewNote(WidgetTester tester) async {
+  Future<DeliveryNoteFormController> openNewNote(
+    WidgetTester tester, {
+    bool renderForm = false,
+  }) async {
     await tester.pumpWidget(
       GetMaterialApp(
         home: const SizedBox.shrink(),
@@ -93,7 +97,9 @@ void main() {
           GetPage(
             name: '/note',
             binding: DeliveryNoteFormBinding(),
-            page: () => const SizedBox.shrink(),
+            page: () => renderForm
+                ? const DeliveryNoteFormScreen()
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -122,12 +128,13 @@ void main() {
   testWidgets('manual Save on a new empty note shows the validation banner', (
     tester,
   ) async {
-    final controller = await openNewNote(tester);
-    await controller.saveDocument();
+    final controller = await openNewNote(tester, renderForm: true);
+    await tester.tap(find.byTooltip('Save'));
+    await tester.pump();
 
     expect(api.creates, isEmpty);
     expect(controller.bannerVisible.value, isTrue);
-    expect(controller.bannerMessage.value, 'Add an item before saving.');
+    expect(find.text('Add an item before saving.'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
   });
 
