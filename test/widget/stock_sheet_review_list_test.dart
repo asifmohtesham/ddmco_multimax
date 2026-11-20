@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:image/image.dart' as img;
@@ -11,20 +13,23 @@ import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/item_image_viewer.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/stock_card_details.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
-ReviewItem _item(String barcode, ItemStock? stock) => ReviewItem(
-  code: ClassifiedCode(itemCode: barcode.substring(0, 7), barcode: barcode),
-  info: ItemInfo(
-    itemCode: barcode.substring(0, 7),
-    itemName: 'Item $barcode',
-    variantOf: 'Parent',
-  ),
-  stock: stock,
-);
+ReviewItem _item(String barcode, ItemStock? stock, {String? image}) =>
+    ReviewItem(
+      code: ClassifiedCode(itemCode: barcode.substring(0, 7), barcode: barcode),
+      info: ItemInfo(
+        itemCode: barcode.substring(0, 7),
+        itemName: 'Item $barcode',
+        variantOf: 'Parent',
+        image: image,
+      ),
+      stock: stock,
+    );
 
 const _twoRacks = ItemStock(
   total: 377,
@@ -57,6 +62,7 @@ ReviewList _list(
   Map<String, AgeingState> ageing = const {},
   void Function(String)? onToggleCard,
   void Function(String)? onRetryAgeing,
+  void Function(BuildContext, ItemInfo)? onPreviewImage,
 }) => ReviewList(
   entries: entries,
   thumbnails: thumbnails,
@@ -70,6 +76,7 @@ ReviewList _list(
   ageing: ageing,
   onToggleCard: onToggleCard ?? (_) {},
   onRetryAgeing: onRetryAgeing ?? (_) {},
+  onPreviewImage: onPreviewImage,
 );
 
 /// The item code of [_twoRackEntry] (see [_item]).
@@ -565,6 +572,182 @@ void main() {
     final images = tester.widgetList<Image>(find.byType(Image)).toList();
     expect(images, hasLength(2));
     expect(find.byIcon(Icons.image_outlined), findsOneWidget);
+  });
+
+  testWidgets('ERP thumbnail opens the viewer without toggling stock', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final jpeg = img.encodeJpg(img.Image(width: 4, height: 4));
+    final entry = ReviewEntry(
+      path: 'item',
+      items: [_item('12345670', _inStock, image: '/files/item.jpg')],
+    );
+    final toggles = <String>[];
+    await tester.pumpWidget(
+      _app(
+        _list(
+          [entry],
+          thumbnails: {ItemInfo.thumbnailKey(_a): jpeg},
+          onToggleCard: toggles.add,
+          onPreviewImage: (context, item) {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (_) => ItemImageViewer(
+                  item: item,
+                  cachedBytes: jpeg,
+                  load: ({required refresh}) async =>
+                      throw StateError('Cached bytes should bypass the loader'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    final target = find.bySemanticsLabel('Preview item image');
+    final data = tester.getSemantics(target).getSemanticsData();
+    expect(data.flagsCollection.isButton, isTrue);
+    expect(data.hasAction(SemanticsAction.tap), isTrue);
+    await tester.tap(target);
+    await tester.pump();
+    expect(find.text('Loading image…', skipOffstage: false), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.text(_a), findsOneWidget);
+    expect(toggles, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemImageViewer), findsNothing);
+    await tester.tap(find.text('Item 12345670'));
+    expect(toggles, [entry.id]);
+    semantics.dispose();
+  });
+
+  testWidgets('preview requires an ERP URL and a displayed ERP thumbnail', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final jpeg = img.encodeJpg(img.Image(width: 4, height: 4));
+    final withImage = _item('76543210', null, image: '/files/item.jpg');
+    await tester.pumpWidget(
+      _app(
+        _list(
+          [
+            ReviewEntry(path: 'photo', decodeFailed: true),
+            ReviewEntry(path: 'no-image', items: [_item('12345670', null)]),
+            ReviewEntry(path: 'no-thumbnail', items: [withImage]),
+            ReviewEntry(
+              path: 'checking',
+              stage: ReadStage.checkingStock,
+              items: [_item('22222220', null, image: '/files/checking.jpg')],
+            ),
+          ],
+          thumbnails: {'photo': jpeg, ItemInfo.thumbnailKey('2222222'): jpeg},
+          onPreviewImage: (_, _) => fail('No thumbnail should open a preview'),
+        ),
+      ),
+    );
+    expect(find.bySemanticsLabel('Preview item image'), findsNothing);
+    await tester.tap(find.byType(Image));
+    semantics.dispose();
+  });
+
+  testWidgets('dark viewer shows loading, failure and Retry', (tester) async {
+    final first = Completer<Uint8List>();
+    final retry = Completer<Uint8List>();
+    final jpeg = img.encodeJpg(img.Image(width: 4, height: 4));
+    var calls = 0;
+    await tester.pumpWidget(
+      _app(
+        ItemImageViewer(
+          item: _twoRackEntry.items.single.info,
+          cachedBytes: null,
+          load: ({required refresh}) =>
+              ++calls == 1 ? first.future : retry.future,
+        ),
+        brightness: Brightness.dark,
+      ),
+    );
+    expect(find.text('Loading image…'), findsOneWidget);
+    final viewer = find.byType(ItemImageViewer);
+    final scaffold = find.descendant(
+      of: viewer,
+      matching: find.byType(Scaffold),
+    );
+    final colours = Theme.of(tester.element(viewer)).colorScheme;
+    expect(colours.brightness, Brightness.dark);
+    expect(tester.widget<Scaffold>(scaffold).backgroundColor, colours.surface);
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).foregroundColor,
+      colours.onSurface,
+    );
+    expect(
+      tester
+          .widget<CircularProgressIndicator>(
+            find.byType(CircularProgressIndicator),
+          )
+          .color,
+      colours.onSurface,
+    );
+
+    first.completeError(Exception('offline'));
+    await tester.pump();
+    expect(find.text("Couldn't load the image."), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.text('Loading image…'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+
+    retry.complete(jpeg);
+    await tester.pumpAndSettle();
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as MemoryImage).bytes, same(jpeg));
+    expect(find.text("Couldn't load the image."), findsNothing);
+  });
+
+  testWidgets('Retry replaces an image that could not be decoded', (
+    tester,
+  ) async {
+    final jpeg = img.encodeJpg(img.Image(width: 4, height: 4));
+    await tester.pumpWidget(
+      _app(
+        ItemImageViewer(
+          item: _twoRackEntry.items.single.info,
+          cachedBytes: Uint8List.fromList([1, 2, 3]),
+          load: ({required refresh}) async {
+            expect(refresh, isTrue);
+            return jpeg;
+          },
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await tester.pump();
+      final image = tester.widget<Image>(find.byType(Image));
+      final context = tester.element(find.byType(Image));
+      final stream = image.image.resolve(
+        createLocalImageConfiguration(context),
+      );
+      final decoded = Completer<void>();
+      final listener = ImageStreamListener(
+        (_, _) => decoded.complete(),
+        onError: (_, _) => decoded.complete(),
+      );
+      stream.addListener(listener);
+      await decoded.future;
+      stream.removeListener(listener);
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('The image could not be decoded.'), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as MemoryImage).bytes, same(jpeg));
   });
 
   testWidgets('End of list is present', (tester) async {

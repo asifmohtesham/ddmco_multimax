@@ -29,6 +29,7 @@ class ReviewList extends StatefulWidget {
     required this.ageing,
     required this.onToggleCard,
     required this.onRetryAgeing,
+    this.onPreviewImage,
     this.removeEnabled = true,
     this.recheckBusy,
   });
@@ -39,6 +40,7 @@ class ReviewList extends StatefulWidget {
   /// [ItemInfo.thumbnailKey]. An item's row shows its ERP image (a
   /// placeholder when it has none); a row with no item shows its photo.
   final Map<String, Uint8List> thumbnails;
+  final void Function(BuildContext, ItemInfo)? onPreviewImage;
 
   Uint8List? _thumbnailFor(ReviewEntry entry) {
     // Checking stock: the ERP image is not there yet, so a placeholder.
@@ -145,6 +147,7 @@ class _ReviewListState extends State<ReviewList> {
                 index: i,
                 entry: entries[i],
                 thumbnail: widget._thumbnailFor(entries[i]),
+                onPreviewImage: widget.onPreviewImage,
                 recheckBusy: widget.recheckBusy ?? _idle,
                 open: widget.openCards.contains(entries[i].id),
                 ageing: entries[i].resolved
@@ -190,6 +193,7 @@ class _ReviewRow extends StatelessWidget {
     required this.index,
     required this.entry,
     required this.thumbnail,
+    required this.onPreviewImage,
     required this.recheckBusy,
     required this.open,
     required this.ageing,
@@ -203,6 +207,7 @@ class _ReviewRow extends StatelessWidget {
   final int index;
   final ReviewEntry entry;
   final Uint8List? thumbnail;
+  final void Function(BuildContext, ItemInfo)? onPreviewImage;
   final RxBool recheckBusy;
 
   /// True when the row's card is open (only a ready row's card shows).
@@ -240,6 +245,16 @@ class _ReviewRow extends StatelessWidget {
     final resolved = entry.resolved;
     final radius = BorderRadius.circular(AppRadius.lg);
 
+    final info = resolved ? entry.items.first.info : null;
+    final preview = onPreviewImage;
+    final thumb = _Thumb(bytes: thumbnail);
+    final canPreview =
+        thumbnail != null &&
+        info != null &&
+        (info.image?.trim().isNotEmpty ?? false) &&
+        preview != null;
+    void openPreview() => preview!(context, info!);
+
     final content = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -256,7 +271,21 @@ class _ReviewRow extends StatelessWidget {
             ),
           ),
         ),
-        _Thumb(bytes: thumbnail),
+        if (canPreview)
+          Semantics(
+            button: true,
+            container: true,
+            label: 'Preview item image',
+            onTap: openPreview,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              excludeFromSemantics: true,
+              onTap: openPreview,
+              child: thumb,
+            ),
+          )
+        else
+          thumb,
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -332,8 +361,7 @@ class _ReviewRow extends StatelessWidget {
               ],
             ),
     );
-    // A tap anywhere on a ready row, except the handle and the switch, opens
-    // or closes its card; a swipe or a drag is not a tap.
+    // A tap on the row body opens or closes its card.
     final tappable = item == null
         ? box
         : GestureDetector(
