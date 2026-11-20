@@ -83,9 +83,9 @@ below are a deadline, not a nice-to-have.
 - [ ] **Oldest stock first reservations and stale drafts.** Cover the cases
       where stock reserved for another order still blocks a pick and a stale
       draft keeps its quantity off the balance.
-- [ ] **Delivery Note warehouse auto-save.** Selecting a warehouse queues one
-      empty-items create. Trace the second observed POST and gate both auto-save
-      and manual creation on the first item.
+- [ ] **Delivery Note warehouse auto-save.** The first-item guard for auto-save
+      and manual Save is on branch `fix/delivery-note-empty-autosave`. The
+      trigger for the second observed POST is still unidentified.
 - [ ] **Windows-only test failures.** Fix the three teardown failures in
       `test/unit/stock_ageing_controller_test.dart` where file locks block
       temp-folder deletion, and the `/` cleanup-root failure in
@@ -93,7 +93,10 @@ below are a deadline, not a nice-to-have.
 - [ ] **Keep `master` in step with `release/play-store`.** Fast-forward
       `master` after each release, as done by hand on 20 November 2026.
       Consider adding a step to `.github/workflows/release.yml`.
-- [ ] **Items from Photos symbols.** Decide whether to rename the remaining
-      `StockSheet`/`stockSheet` identifiers, including the controller,
-      provider, models, widgets, writers and storage/share helpers, and the
-      `STOCK_SHEET` route constant.
+- [ ] **Items from Photos legacy names.** The module folder
+      `lib/app/modules/stock_sheet/` needs a separate move decision under
+      `tool/bump_version.dart`. The existing route path `/stock/stock-sheet`,
+      preference key `stock_sheet_last_format`, temporary filename prefixes
+      `stock_sheet_tile_` and `stock_sheet_retry_`, and debug log labels
+      `StockSheetController`, `StockSheetFormatStore` and `StockSheetScreen`
+      remain in use.
