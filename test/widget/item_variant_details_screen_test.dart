@@ -20,6 +20,8 @@ class _FakeApi extends ApiProvider {
   final requests = <Map<String, dynamic>>[];
   final detailRequests = <List<String>>[];
   final stockRequests = <String>[];
+  final stockRows = <Map<String, dynamic>>[];
+  final details = <String, Map<String, dynamic>>{};
 
   @override
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
@@ -28,7 +30,7 @@ class _FakeApi extends ApiProvider {
     String? batchNo,
   }) async {
     stockRequests.add(itemCode);
-    return [];
+    return stockRows;
   }
 
   @override
@@ -52,7 +54,7 @@ class _FakeApi extends ApiProvider {
     List<String> itemCodes,
   ) async {
     detailRequests.add(itemCodes);
-    return {};
+    return details;
   }
 
   @override
@@ -95,13 +97,18 @@ void main() {
   });
   tearDown(Get.reset);
 
-  Future<void> open(WidgetTester tester, {Object? preset}) async {
+  Future<void> open(
+    WidgetTester tester, {
+    Object? preset,
+    ThemeMode mode = ThemeMode.dark,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(390, 850));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       GetMaterialApp(
+        theme: buildAppTheme(AppScheme.light, Brightness.light),
         darkTheme: buildAppTheme(AppScheme.dark, Brightness.dark),
-        themeMode: ThemeMode.dark,
+        themeMode: mode,
         home: const Scaffold(),
         getPages: [
           GetPage(
@@ -215,13 +222,156 @@ void main() {
     expect(find.text('End of list\nCurrent Stock 936 Nos'), findsOneWidget);
   });
 
+  testWidgets('large reports show a passive scrollbar and allow body scrolling', (
+    tester,
+  ) async {
+    await open(tester, preset: {'item_code': 'ACP-25'});
+    await tester.tap(find.text('Run Report'));
+    await tester.pump();
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: <Map<String, dynamic>>[
+        for (var index = 0; index < 501; index++)
+          {'variant_name': 'Variant $index'},
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    final controller = Get.find<ItemVariantDetailsController>();
+    final scrollbar = tester
+        .widgetList<Scrollbar>(find.byType(Scrollbar))
+        .singleWhere((bar) => bar.controller == controller.scrollController);
+    expect(scrollbar.thumbVisibility, isTrue);
+    expect(scrollbar.interactive, isFalse);
+
+    await tester.drag(
+      find.byType(CustomScrollView),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.scrollController.offset, greaterThan(0));
+  });
+
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('card layout and stock in ${mode.name} mode', (tester) async {
+      await open(tester, preset: 'ACP-25', mode: mode);
+      if (mode == ThemeMode.dark) {
+        await pick(tester, 'Warehouses', 'POS-DXB2 - KA');
+      }
+      api.stockRows.add({'rack': 'Rack A', 'qty': 1.5});
+      api.report.complete((
+        columns: [
+          {'fieldname': 'current_stock', 'label': 'Current Stock'},
+          {'fieldname': 'item_group', 'label': 'Item Group'},
+          {'fieldname': 'stock_uom', 'label': 'Stock UOM'},
+          {'fieldname': 'material', 'label': 'Material'},
+          {'fieldname': 'brand', 'label': 'Brand'},
+          {'fieldname': 'length', 'label': 'Length'},
+        ],
+        rows: [
+          {
+            'variant_name': 'ACP-25',
+            'item_group': 'Belts',
+            'indent': 0,
+            'current_stock': 936,
+            'stock_uom': 'Nos',
+          },
+          {
+            'variant_name': '2002492',
+            'item_group': 'Belts',
+            'indent': 1,
+            'current_stock': 936,
+            'stock_uom': 'Nos',
+            'material': 'Cotton',
+            'brand': '-',
+            'length': ' ',
+          },
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+
+      final card = find.byType(Card);
+      final bounds = tester.getRect(
+        find.descendant(of: card, matching: find.byType(Material)).first,
+      );
+      expect(bounds.left, 390 - bounds.right);
+      expect(tester.getTopLeft(find.text('ACP-25')).dx, bounds.left);
+      expect(
+        find.text('Current Stock  936 Nos', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.text('Belts'), findsNWidgets(2));
+      expect(find.text('Item Group: Belts'), findsNothing);
+      expect(find.text('Stock UOM: Nos'), findsNothing);
+      expect(find.text('Material: Cotton'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^(Brand|Length):')), findsNothing);
+      expect(find.text('20'), findsNothing);
+      final placeholder = find.byIcon(Icons.image_outlined);
+      final theme = Theme.of(tester.element(card));
+      final scheme = theme.colorScheme;
+      expect(
+        theme.brightness,
+        mode == ThemeMode.light ? Brightness.light : Brightness.dark,
+      );
+      expect(tester.widget<Icon>(placeholder).color, scheme.onPrimaryContainer);
+      final stock = tester.widget<Text>(find.text('Current Stock 936 Nos'));
+      expect(stock.style?.color, scheme.onSurface);
+      final foreground = scheme.onSurface.computeLuminance();
+      final background =
+          theme.cardTheme.color?.computeLuminance() ??
+          scheme.surfaceContainerLow.computeLuminance();
+      final ratio = foreground > background
+          ? (foreground + 0.05) / (background + 0.05)
+          : (background + 0.05) / (foreground + 0.05);
+      expect(ratio, greaterThanOrEqualTo(4.5));
+
+      await tester.tap(
+        find.text(
+          mode == ThemeMode.dark
+              ? 'Check Stock Across Warehouses'
+              : 'Check Stock',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Total  1.5 Nos'), findsOneWidget);
+      expect(find.text('1.5 Nos'), findsOneWidget);
+      expect(find.textContaining('pcs'), findsNothing);
+    });
+  }
+
+  testWidgets('the card gallery banner uses the full card width', (
+    tester,
+  ) async {
+    await open(tester, preset: 'ACP-25');
+    api.details['2002506'] = {'image': 'https://example.invalid/belt.png'};
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: [
+        {'variant_name': 'ACP-25', 'indent': 0},
+        {'variant_name': '2002506', 'indent': 1},
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    final card = tester.getRect(
+      find
+          .descendant(of: find.byType(Card), matching: find.byType(Material))
+          .first,
+    );
+    final banner = tester.getRect(find.byType(Image));
+    expect(banner.left, card.left);
+    expect(banner.right, card.right);
+    expect(tester.getTopLeft(find.text('ACP-25')).dx, banner.left);
+  });
+
   testWidgets('touch can drag the thumb and tap the right edge of cards', (
     tester,
   ) async {
     await open(tester, preset: 'ACP-25');
     await tester.tap(find.text('Run Report'));
     final ItemVariantDetailsResult result = (
-      columns: [],
+      columns: <Map<String, dynamic>>[],
       rows: [
         for (var index = 0; index < 100; index++)
           {'variant_name': 'Variant-$index', 'indent': 1},
@@ -236,6 +386,27 @@ void main() {
       (widget) => widget is Scrollbar && widget.controller == scrollController,
     );
     final bounds = tester.getRect(scrollbar);
+    final scrollbarPaint = find.descendant(
+      of: scrollbar,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.foregroundPainter is ScrollbarPainter,
+      ),
+    );
+    final painter =
+        tester.widget<CustomPaint>(scrollbarPaint).foregroundPainter!
+            as ScrollbarPainter;
+    final paintOrigin = tester.getTopLeft(scrollbarPaint);
+    final thumbY = bounds.top + 12 - paintOrigin.dy;
+    final touchLeft =
+        List.generate(bounds.width.toInt(), (x) => x).firstWhere(
+          (x) => painter.hitTestOnlyThumbInteractive(
+            Offset(x.toDouble(), thumbY),
+            PointerDeviceKind.touch,
+          ),
+        ) +
+        paintOrigin.dx;
     final drag = await tester.startGesture(
       Offset(bounds.right - 2, bounds.top + 12),
     );
@@ -254,6 +425,18 @@ void main() {
     final stockButton = find
         .widgetWithText(OutlinedButton, 'Check Stock')
         .first;
+    expect(
+      touchLeft - tester.getRect(stockButton).right,
+      greaterThanOrEqualTo(3),
+    );
+    expect(
+      touchLeft - tester.getRect(cardHeader).right,
+      greaterThanOrEqualTo(3),
+    );
+    expect(
+      touchLeft - tester.getRect(find.byIcon(Icons.chevron_right).first).right,
+      greaterThanOrEqualTo(3),
+    );
     await tester.tapAt(
       tester.getRect(stockButton).centerRight - const Offset(2, 0),
     );
@@ -300,7 +483,10 @@ void main() {
       isNull,
     );
 
-    const ItemVariantDetailsResult empty = (columns: [], rows: []);
+    const ItemVariantDetailsResult empty = (
+      columns: <Map<String, dynamic>>[],
+      rows: [],
+    );
     api.report.complete(empty);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Set Filters'));

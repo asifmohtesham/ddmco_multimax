@@ -21,9 +21,17 @@
 const kTemplateTotalFields = ['current_stock', 'in_production', 'open_orders'];
 
 const _nonChipFields = {
-  'variant_name', 'item', 'item_name', 'variant_of',
-  'current_stock', 'in_production', 'open_orders',
-  'avg_buying_price_list_rate', 'avg_selling_price_list_rate',
+  'variant_name',
+  'item',
+  'item_name',
+  'variant_of',
+  'item_group',
+  'stock_uom',
+  'current_stock',
+  'in_production',
+  'open_orders',
+  'avg_buying_price_list_rate',
+  'avg_selling_price_list_rate',
 };
 
 /// Populated chip values in the report's column order.
@@ -77,10 +85,13 @@ List<({String label, String value})> templateTotals(
   };
   return [
     for (final field in kTemplateTotalFields)
-      if (row[field] != null)
+      if (formatReportNumber(row[field]).trim().isNotEmpty)
         (
           label: (labels[field]?.isNotEmpty ?? false) ? labels[field]! : field,
-          value: formatReportNumber(row[field]),
+          value: formatStockQuantity(
+            row[field],
+            field == 'open_orders' ? null : row['stock_uom'],
+          ),
         ),
   ];
 }
@@ -93,6 +104,20 @@ String formatReportNumber(dynamic value) {
         : value.toString();
   }
   return value?.toString() ?? '';
+}
+
+/// Formats a stock figure using the unit supplied by the report.
+String formatStockQuantity(dynamic value, Object? stockUom) {
+  final quantity = formatReportNumber(value).trim();
+  final unit = stockUom?.toString().trim();
+  if (quantity.isEmpty ||
+      unit == null ||
+      unit.isEmpty ||
+      unit == '-' ||
+      unit == '—') {
+    return quantity;
+  }
+  return '$quantity $unit';
 }
 
 /// Sums variant quantities by stock UOM. Template subtotals, sales-order
