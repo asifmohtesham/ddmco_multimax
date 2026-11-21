@@ -14,129 +14,171 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   const ItemVariantDetailsScreen({super.key});
 
-  // ── Filter field descriptors ───────────────────────────────────────────────
-  List<ReportFilterField> get _fields => [
-    const ReportFilterField(
-      key:         'item_code',
-      label:       'Item *',
-      type:        ReportFilterType.doctypeLink,
+  static const filterFields = [
+    ReportFilterField(
+      key: 'item',
+      label: 'Items',
+      type: ReportFilterType.doctypeMultiLink,
       linkDoctype: 'Item',
-      prefixIcon:  Icons.category_outlined,
-      required:    true,
-      linkFilters: {'disabled': 0, 'has_variants': 1},
+      prefixIcon: Icons.category_outlined,
+      linkFilters: {'has_variants': 1},
+    ),
+    ReportFilterField(
+      key: 'item_group',
+      label: 'Item Groups',
+      type: ReportFilterType.doctypeMultiLink,
+      linkDoctype: 'Item Group',
+      prefixIcon: Icons.account_tree_outlined,
+    ),
+    ReportFilterField(
+      key: 'warehouse',
+      label: 'Warehouses',
+      type: ReportFilterType.doctypeMultiLink,
+      linkDoctype: 'Warehouse',
+      prefixIcon: Icons.warehouse_outlined,
     ),
   ];
 
-  // ── Filter chip builder ────────────────────────────────────────────────────
   List<Widget> _buildFilterChips(BuildContext context) {
-    // Routes through the shared FilterChipWidget so chip styling stays uniform
-    // across every list and report screen.
-    final chips = <Widget>[];
-    controller.activeFilters.forEach((key, label) => chips.add(FilterChipWidget(
+    if (controller.isLoading.value) return [];
+    return [
+      for (final entry in controller.activeFilters.entries)
+        FilterChipWidget(
           icon: Icons.filter_alt_outlined,
-          label: label,
-          onDeleted: () => controller.clearFilter(key),
-          onTap: () => _openFilters(context, focusKey: key),
-        )));
-    return chips;
+          label: entry.value,
+          onDeleted: () => controller.clearFilter(entry.key),
+          onTap: () => _openFilters(context, focusKey: entry.key),
+        ),
+    ];
   }
 
-  void _openFilters(BuildContext context, {String? focusKey}) =>
-      showReportFilterSheet(
-    context:     context,
-    focusKey:    focusKey,
-    title:       'Item Variant Details Filters',
-    fields:      _fields,
-    controllers: controller.filterControllers,
-    onRun:       controller.runReport,
-    onClear:     controller.clearFilters,
-  );
+  void _openFilters(BuildContext context, {String? focusKey}) {
+    if (controller.isLoading.value) return;
+    showReportFilterSheet(
+      context: context,
+      focusKey: focusKey,
+      title: 'Item Variant Details Filters',
+      fields: filterFields,
+      controllers: controller.filterControllers,
+      onRun: controller.runReport,
+      onClear: controller.clearFilters,
+      validate: controller.validateFilters,
+    );
+  }
 
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
 
     return AppShellScaffold(
       body: Obx(() {
+        final busy = controller.isLoading.value;
         return RefreshIndicator(
-          onRefresh:       controller.runReport,
-          color:           cs.primary,
+          onRefresh: controller.runReport,
+          color: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              DocTypeListHeader(
-                title:                     'Item Variant Details',
-                automaticallyImplyLeading: false,
-                activeFilters: controller.activeFilters
-                    .map((k, v) => MapEntry(k, v as dynamic))
-                    .obs,
-                onFilterTap:        () => _openFilters(context),
-                filterChipsBuilder: _buildFilterChips,
-                onClearAllFilters:  controller.clearFilters,
-              ),
+          child: Scrollbar(
+            interactive: true,
+            thumbVisibility: !busy && controller.reportData.isNotEmpty,
+            controller: controller.scrollController,
+            child: CustomScrollView(
+              controller: controller.scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                DocTypeListHeader(
+                  title: 'Item Variant Details',
+                  automaticallyImplyLeading: false,
+                  activeFilters: <String, dynamic>{
+                    if (!busy) ...controller.activeFilters,
+                  }.obs,
+                  onFilterTap: busy ? null : () => _openFilters(context),
+                  filterChipsBuilder: _buildFilterChips,
+                  onClearAllFilters: busy ? null : controller.clearFilters,
+                ),
 
-              if (controller.isLoading.value)
-                const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (controller.reportData.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.style_outlined, size: 64, color: cs.outlineVariant),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Enter an Item and tap Run Report',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: cs.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 24),
-                          FilledButton.tonalIcon(
-                            onPressed: () => _openFilters(context),
-                            icon:  const Icon(Icons.filter_alt_outlined),
-                            label: const Text('Set Filters'),
-                          ),
-                        ],
+                if (busy)
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (controller.reportData.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.style_outlined,
+                              size: 64,
+                              color: cs.outlineVariant,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              controller.reportError.value ??
+                                  (controller.hasRun.value
+                                      ? 'No variants match these filters.'
+                                      : 'Select Items or Item Groups, then run the report.'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 24),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _openFilters(context),
+                              icon: const Icon(Icons.filter_alt_outlined),
+                              label: const Text('Set Filters'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
+                  )
+                else
+                  SliverPadding(
+                    // Keep card taps outside the scrollbar thumb's touch target.
+                    padding: EdgeInsets.fromLTRB(12, 4, 32, 80 + bottomPadding),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        if (index == controller.reportData.length) {
+                          final summary = variantQuantitySummary(
+                            controller.reportData,
+                            controller.reportColumns,
+                          );
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              ['End of list', ...summary].join('\n'),
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: cs.onSurfaceVariant),
+                            ),
+                          );
+                        }
                         final row = controller.reportData[index];
                         // v16.55 heads each template's variants with a
                         // subtotal row; it is a heading, not a variant.
                         if (isTemplateRow(row)) {
                           return _TemplateHeader(
-                            row:     row,
+                            row: row,
                             columns: controller.reportColumns,
                           );
                         }
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _VariantTile(
-                            row:        row,
-                            columns:    controller.reportColumns,
+                            row: row,
+                            columns: controller.reportColumns,
                             controller: controller,
                           ),
                         );
-                      },
-                      childCount: controller.reportData.length,
+                      }, childCount: controller.reportData.length + 1),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         );
       }),
@@ -243,19 +285,6 @@ class _VariantTile extends StatelessWidget {
     required this.controller,
   });
 
-  // Non-attribute report columns that must not render as attribute chips
-  static const _skipFields = {
-    'variant_name', 'item', 'item_name', 'variant_of',
-    'current_stock', 'in_production', 'open_orders',
-    'avg_buying_price_list_rate', 'avg_selling_price_list_rate',
-  };
-
-  static bool _isEmpty(dynamic v) {
-    if (v == null) return true;
-    final s = v.toString().trim();
-    return s.isEmpty || s == '—' || s == '-';
-  }
-
   String? _imageUrl(String? path) {
     if (path == null || path.isEmpty) return null;
     if (path.startsWith('http')) return path;
@@ -271,9 +300,7 @@ class _VariantTile extends StatelessWidget {
         ?? row['item']?.toString()
         ?? '—';
 
-    final attrCols = columns
-        .where((c) => !_skipFields.contains(c['fieldname'] as String? ?? ''))
-        .toList();
+    final chips = variantChips(row, columns).toList();
 
     return Obx(() {
       final details        = controller.itemDetails[itemCode];
@@ -389,19 +416,13 @@ class _VariantTile extends StatelessWidget {
                   ),
 
                   // ── Attribute chips ──────────────────────────────
-                  if (attrCols.isNotEmpty) ...[
+                  if (chips.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Wrap(
                       spacing: 6, runSpacing: 6,
                       children: [
-                        for (final col in attrCols)
-                          Builder(builder: (ctx) {
-                            final fieldname = col['fieldname'] as String? ?? '';
-                            final label     = col['label']     as String? ?? fieldname;
-                            final val       = row[fieldname];
-                            if (_isEmpty(val)) return const SizedBox.shrink();
-                            return _AttrChip(label: label, value: val.toString());
-                          }),
+                        for (final chip in chips)
+                          _AttrChip(label: chip.label, value: chip.value),
                       ],
                     ),
                   ],
@@ -426,7 +447,10 @@ class _VariantTile extends StatelessWidget {
                                   : Icons.inventory_2_outlined,
                               size: 16,
                             ),
-                      label: Text(isExpanded ? 'Hide Stock' : 'Check Stock'),
+                      label: Text(isExpanded ? 'Hide Stock' :
+                          controller.activeFilters.containsKey('warehouse')
+                              ? 'Check Stock Across Warehouses'
+                              : 'Check Stock'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: cs.primary,
                         side:  BorderSide(color: cs.primary.withValues(alpha: 0.4)),
@@ -706,7 +730,7 @@ class _GalleryItem {
 
 class _ImageGallery extends StatefulWidget {
   final List<_GalleryItem> items;
-  final int                initialIndex;
+  final int initialIndex;
   const _ImageGallery({required this.items, required this.initialIndex});
 
   @override

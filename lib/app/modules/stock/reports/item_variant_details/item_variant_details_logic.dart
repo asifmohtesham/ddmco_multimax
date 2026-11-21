@@ -20,6 +20,28 @@
 /// The report fields a template row totals, in report order.
 const kTemplateTotalFields = ['current_stock', 'in_production', 'open_orders'];
 
+const _nonChipFields = {
+  'variant_name', 'item', 'item_name', 'variant_of',
+  'current_stock', 'in_production', 'open_orders',
+  'avg_buying_price_list_rate', 'avg_selling_price_list_rate',
+};
+
+/// Populated chip values in the report's column order.
+Iterable<({String label, String value})> variantChips(
+  Map<String, dynamic> row,
+  List<Map<String, dynamic>> columns,
+) sync* {
+  for (final column in columns) {
+    final field = column['fieldname'] as String?;
+    if (field == null || _nonChipFields.contains(field)) continue;
+    final value = row[field]?.toString().trim();
+    if (value == null || value.isEmpty || value == '-' || value == '—') {
+      continue;
+    }
+    yield (label: column['label'] as String? ?? field, value: value);
+  }
+}
+
 /// Whether [row] is a template subtotal row rather than a variant.
 ///
 /// Must hold on both server versions: a v15 row carries no `indent` at all
@@ -34,7 +56,10 @@ bool isTemplateRow(Map<String, dynamic> row) {
 
 /// The rows of [rows] that are variants, in report order.
 List<Map<String, dynamic>> variantRowsOf(Iterable<Map<String, dynamic>> rows) =>
-    [for (final r in rows) if (!isTemplateRow(r)) r];
+    [
+      for (final r in rows)
+        if (!isTemplateRow(r)) r,
+    ];
 
 /// The totals a template [row] carries, as `label → value` in report order.
 ///
@@ -68,4 +93,36 @@ String formatReportNumber(dynamic value) {
         : value.toString();
   }
   return value?.toString() ?? '';
+}
+
+/// Sums variant quantities by stock UOM. Template subtotals, sales-order
+/// counts and rates are excluded.
+List<String> variantQuantitySummary(
+  Iterable<Map<String, dynamic>> rows,
+  List<Map<String, dynamic>> columns,
+) {
+  const quantityFields = ['current_stock', 'in_production'];
+  final totalsByUom = <String, Map<String, num>>{};
+  for (final row in rows) {
+    if (isTemplateRow(row)) continue;
+    final uom = row['stock_uom']?.toString() ?? '';
+    final totals = totalsByUom.putIfAbsent(uom, () => {});
+    for (final field in quantityFields) {
+      final value = row[field];
+      if (value is num) {
+        totals.update(field, (sum) => sum + value, ifAbsent: () => value);
+      }
+    }
+  }
+  final labels = {
+    for (final column in columns) column['fieldname']: column['label'],
+  };
+  return [
+    for (final entry in totalsByUom.entries)
+      for (final field in quantityFields)
+        if (entry.value.containsKey(field))
+          '${labels[field] ?? (field == 'current_stock' ? 'Current Stock' : 'In Production')} '
+              '${formatReportNumber(entry.value[field])}'
+              '${entry.key.isEmpty ? '' : ' ${entry.key}'}',
+  ];
 }

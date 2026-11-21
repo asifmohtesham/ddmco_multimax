@@ -1,69 +1,95 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 class ItemVariantDetailsController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
 
-  // ── Filter state ───────────────────────────────────────────────────────────
-  final itemCodeController = TextEditingController();
-  late final Map<String, TextEditingController> filterControllers;
-
-  // ── Report state ───────────────────────────────────────────────────────────
-  final isLoading     = false.obs;
-  final reportData    = <Map<String, dynamic>>[].obs;
-  final reportColumns = <Map<String, dynamic>>[].obs;
+  static const filterLabels = {
+    'item': 'Items',
+    'item_group': 'Item Groups',
+    'warehouse': 'Warehouses',
+  };
+  final filterControllers = {
+    for (final key in filterLabels.keys) key: TextEditingController(),
+  };
+  final scrollController = ScrollController();
   final activeFilters = <String, String>{}.obs;
 
-  // ── Item detail cache ─────────────────────────────────────────────────────
-  /// variant_name → {item_name, item_group, image?}
+  final isLoading = false.obs;
+  final hasRun = false.obs;
+  final reportError = RxnString();
+  final reportData = <Map<String, dynamic>>[].obs;
+  final reportColumns = <Map<String, dynamic>>[].obs;
   final itemDetails = <String, Map<String, dynamic>>{}.obs;
-
-  // ── Stock balance cache ────────────────────────────────────────────────────
-  /// item_code → [{warehouse, actual_qty}] once fetched; absent = not yet loaded
   final stockBalances = <String, List<Map<String, dynamic>>>{}.obs;
-  final loadingStock  = <String, bool>{}.obs;
+  final loadingStock = <String, bool>{}.obs;
+  int _reportGeneration = 0;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  List<String> _values(String key) =>
+      splitMultiValue(filterControllers[key]!.text);
+
+  String? validateFilters() {
+    final hasItems = _values('item').isNotEmpty;
+    final hasGroups = _values('item_group').isNotEmpty;
+    if (hasItems && hasGroups) return 'Select either Items or Item Groups.';
+    if (!hasItems && !hasGroups) {
+      return 'Select at least one Item or Item Group.';
+    }
+    return null;
+  }
+
   @override
   void onInit() {
     super.onInit();
-    filterControllers = {'item_code': itemCodeController};
-    itemCodeController.addListener(_rebuildActiveFilters);
+    final args = Get.arguments;
+    final preset = args is Map
+        ? args['item'] ?? args['item_code'] ?? args['itemCode']
+        : args;
+    if (preset is String) filterControllers['item']!.text = preset;
+    if (preset is List) {
+      filterControllers['item']!.text = joinMultiValue(
+        preset.whereType<String>(),
+      );
+    }
+    for (final controller in filterControllers.values) {
+      controller.addListener(_filtersChanged);
+    }
+    _rebuildActiveFilters();
   }
 
   @override
   void onClose() {
-    itemCodeController.removeListener(_rebuildActiveFilters);
-    itemCodeController.dispose();
+    for (final controller in filterControllers.values) {
+      controller.dispose();
+    }
+    scrollController.dispose();
     super.onClose();
   }
 
-  // ── Public API ─────────────────────────────────────────────────────────────
-  int get activeFilterCount =>
-      filterControllers.values.where((c) => c.text.trim().isNotEmpty).length;
-
   void clearFilter(String key) {
+    if (isLoading.value) return;
     filterControllers[key]?.clear();
-    activeFilters.remove(key);
-    if (key == 'item_code') {
-      reportData.clear();
-      reportColumns.clear();
-      itemDetails.clear();
-      stockBalances.clear();
-      loadingStock.clear();
-    }
   }
 
   void clearFilters() {
-    for (final c in filterControllers.values) {
-      c.clear();
+    if (isLoading.value) return;
+    for (final controller in filterControllers.values) {
+      controller.clear();
     }
-    activeFilters.clear();
+  }
+
+  void _clearReport() {
+    _reportGeneration++;
+    hasRun.value = false;
+    reportError.value = null;
     reportData.clear();
     reportColumns.clear();
     itemDetails.clear();
@@ -72,76 +98,97 @@ class ItemVariantDetailsController extends GetxController {
   }
 
   Future<void> runReport() async {
-    final itemCode = itemCodeController.text.trim();
-
-    if (itemCode.isEmpty) {
-      GlobalSnackbar.warning(
-        title:   'Filter Required',
-        message: 'Please select an Item to run the report.',
-      );
+    if (isLoading.value) return;
+    final validation = validateFilters();
+    if (validation != null) {
+      GlobalSnackbar.warning(title: 'Filters', message: validation);
       return;
     }
 
     isLoading.value = true;
-    reportData.clear();
-    reportColumns.clear();
-    itemDetails.clear();
-    stockBalances.clear();
-    loadingStock.clear();
+    _clearReport();
+    final generation = _reportGeneration;
 
     try {
-      final result = await _api.getItemVariantDetails(itemCode);
+      final result = await _api.getItemVariantDetails(
+        items: _values('item'),
+        itemGroups: _values('item_group'),
+        warehouses: _values('warehouse'),
+      );
+      if (isClosed) return;
       reportColumns.assignAll(result.columns);
       reportData.assignAll(result.rows);
-      unawaited(_fetchDetails());
-    } catch (e) {
-      GlobalSnackbar.error(
-        title:   'Report Error',
-        message: 'Failed to fetch Item Variant Details: $e',
-      );
+      unawaited(_fetchDetails(generation));
+    } on FormatException catch (error) {
+      reportError.value = error.message;
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      reportError.value = status == null
+          ? 'Could not reach the report server.'
+          : 'The server could not run the report (HTTP $status).';
+    } catch (_) {
+      reportError.value = 'Could not load Item Variant Details.';
     } finally {
+      hasRun.value = true;
       isLoading.value = false;
     }
   }
 
-  /// Toggle inline stock balance for [itemCode].
-  /// First call fetches and expands; second call collapses.
+  /// Toggle the separate Stock Balance lookup for one variant.
   Future<void> fetchStockBalance(String itemCode) async {
     if (loadingStock[itemCode] == true) return;
     if (stockBalances.containsKey(itemCode)) {
       stockBalances.remove(itemCode);
       return;
     }
+    final generation = _reportGeneration;
     loadingStock[itemCode] = true;
     try {
       final rows = await _api.getStockBalanceWithDimension(itemCode: itemCode);
-      stockBalances[itemCode] = rows;
+      if (_isCurrent(generation)) stockBalances[itemCode] = rows;
     } catch (_) {
-      stockBalances[itemCode] = [];
+      if (_isCurrent(generation)) stockBalances[itemCode] = [];
     } finally {
-      loadingStock[itemCode] = false;
+      if (_isCurrent(generation)) loadingStock[itemCode] = false;
     }
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  static const _labels = {'item_code': 'Item'};
+  void _filtersChanged() {
+    _rebuildActiveFilters();
+    if (hasRun.value) _clearReport();
+  }
 
   void _rebuildActiveFilters() {
-    activeFilters.clear();
-    filterControllers.forEach((key, ctrl) {
-      final v = ctrl.text.trim();
-      if (v.isNotEmpty) activeFilters[key] = '${_labels[key] ?? key}: $v';
+    activeFilters.assignAll({
+      for (final entry in filterLabels.entries)
+        if (_values(entry.key).isNotEmpty)
+          entry.key: '${entry.value}: ${_values(entry.key).length} selected',
     });
   }
 
-  Future<void> _fetchDetails() async {
-    // Template subtotal rows (v16.55) are headings; only variants get a tile.
+  bool _isCurrent(int generation) =>
+      !isClosed && generation == _reportGeneration;
+
+  Future<void> _fetchDetails(int generation) async {
     final codes = variantRowsOf(reportData)
-        .map((r) => r['variant_name']?.toString() ?? r['item']?.toString() ?? '')
-        .where((c) => c.isNotEmpty)
+        .map(
+          (r) => r['variant_name']?.toString() ?? r['item']?.toString() ?? '',
+        )
+        .where((code) => code.isNotEmpty)
+        .toSet()
         .toList();
-    if (codes.isEmpty) return;
-    final details = await _api.getItemDetails(codes);
-    itemDetails.assignAll(details);
+    // Group selections can return thousands of variants. Bound the list sent
+    // in each get_list query to keep the request URL manageable.
+    const batchSize = 50;
+    for (
+      var start = 0;
+      start < codes.length && _isCurrent(generation);
+      start += batchSize
+    ) {
+      final details = await _api.getItemDetails(
+        codes.sublist(start, math.min(start + batchSize, codes.length)),
+      );
+      if (_isCurrent(generation)) itemDetails.addAll(details);
+    }
   }
 }
