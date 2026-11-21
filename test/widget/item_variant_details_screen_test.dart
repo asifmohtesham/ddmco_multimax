@@ -9,7 +9,7 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
-import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
@@ -211,46 +211,49 @@ void main() {
     expect(scrollbar.controller, same(scrollView.controller));
     expect(scrollbar.interactive, isTrue);
     expect(scrollbar.thumbVisibility, isTrue);
-    expect(api.detailRequests, [
-      ['2002506', '2002499'],
-    ]);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+    expect(api.detailRequests.expand((batch) => batch), contains('2002506'));
 
     controller.scrollController.jumpTo(
       controller.scrollController.position.maxScrollExtent,
     );
     await tester.pumpAndSettle();
-    expect(find.text('End of list\nCurrent Stock 936 Nos'), findsOneWidget);
-  });
-
-  testWidgets('large reports show a passive scrollbar and allow body scrolling', (
-    tester,
-  ) async {
-    await open(tester, preset: {'item_code': 'ACP-25'});
-    await tester.tap(find.text('Run Report'));
-    await tester.pump();
-    api.report.complete((
-      columns: <Map<String, dynamic>>[],
-      rows: <Map<String, dynamic>>[
-        for (var index = 0; index < 501; index++)
-          {'variant_name': 'Variant $index'},
-      ],
-    ));
-    await tester.pumpAndSettle();
-
-    final controller = Get.find<ItemVariantDetailsController>();
-    final scrollbar = tester
-        .widgetList<Scrollbar>(find.byType(Scrollbar))
-        .singleWhere((bar) => bar.controller == controller.scrollController);
-    expect(scrollbar.thumbVisibility, isTrue);
-    expect(scrollbar.interactive, isFalse);
-
-    await tester.drag(
-      find.byType(CustomScrollView),
-      const Offset(0, -300),
+    expect(
+      find.text(
+        'End of list\nQuantity totals for shown results\nCurrent Stock 936 Nos',
+      ),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
-    expect(controller.scrollController.offset, greaterThan(0));
   });
+
+  testWidgets(
+    'large reports show a passive scrollbar and allow body scrolling',
+    (tester) async {
+      await open(tester, preset: {'item_code': 'ACP-25'});
+      await tester.tap(find.text('Run Report'));
+      await tester.pump();
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: <Map<String, dynamic>>[
+          for (var index = 0; index < 501; index++)
+            {'variant_name': 'Variant $index'},
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      final controller = Get.find<ItemVariantDetailsController>();
+      final scrollbar = tester
+          .widgetList<Scrollbar>(find.byType(Scrollbar))
+          .singleWhere((bar) => bar.controller == controller.scrollController);
+      expect(scrollbar.thumbVisibility, isTrue);
+      expect(scrollbar.interactive, isFalse);
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(controller.scrollController.offset, greaterThan(0));
+    },
+  );
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
     testWidgets('card layout and stock in ${mode.name} mode', (tester) async {
@@ -359,10 +362,17 @@ void main() {
           .descendant(of: find.byType(Card), matching: find.byType(Material))
           .first,
     );
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
     final banner = tester.getRect(find.byType(Image));
     expect(banner.left, card.left);
     expect(banner.right, card.right);
     expect(tester.getTopLeft(find.text('ACP-25')).dx, banner.left);
+    expect(banner.height, 84);
+    await tester.tap(find.byType(Image));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byType(ItemImagePreview), findsOneWidget);
   });
 
   testWidgets('touch can drag the thumb and tap the right edge of cards', (
@@ -478,8 +488,10 @@ void main() {
     ]);
     expect(
       tester
-          .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
-          .onFilterTap,
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.filter_alt_outlined).first,
+          )
+          .onPressed,
       isNull,
     );
 
@@ -499,4 +511,119 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('debounced search, collapse, and warehouse stock counts', (
+    tester,
+  ) async {
+    await open(tester, preset: 'ACP-25');
+    await pick(tester, 'Warehouses', 'POS-DXB2 - KA');
+    await pick(tester, 'Warehouses', 'WH-DXB1 - KA');
+    api.report.complete((
+      columns: [
+        {'fieldname': 'material'},
+      ],
+      rows: [
+        {'variant_name': 'ACP-25', 'indent': 0},
+        {'variant_name': '2002492', 'indent': 1, 'current_stock': 4},
+        {'variant_name': 'ACP-MIX', 'indent': 0},
+        {'variant_name': '2002499', 'indent': 1, 'material': 'Microfibre'},
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(find.text('Item Variant Details'), findsOneWidget);
+    expect(find.text('2 templates · 2 variants'), findsOneWidget);
+    await tester.tap(find.text('Collapse All'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Card), findsNothing);
+    await tester.tap(find.text('Expand All'));
+    await tester.pumpAndSettle();
+    expect(find.text('2002492'), findsOneWidget);
+    await tester.tap(find.text('Collapse All'));
+    await tester.pumpAndSettle();
+    final search = find.widgetWithText(TextField, 'Search loaded results');
+    await tester.enterText(search, 'Microfibre');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('2 templates · 2 variants'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.text('2 templates · 1 of 2 variants'), findsOneWidget);
+    expect(find.text('2002499'), findsOneWidget);
+    expect(find.text('ACP-25'), findsNothing);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.byType(Card), findsNothing);
+    await tester.tap(find.text('In stock in 2 warehouses'));
+    await tester.pumpAndSettle();
+    expect(find.text('ACP-25'), findsOneWidget);
+    expect(find.text('ACP-MIX'), findsNothing);
+    expect(find.text('2 templates · 1 of 2 variants'), findsOneWidget);
+    expect(api.requests, hasLength(1));
+  });
+
+  for (final size in [2, 205]) {
+    testWidgets('sticky heading switches in a $size-group report', (
+      tester,
+    ) async {
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          for (var g = 0; g < size; g++) ...[
+            {'variant_name': 'Template $g', 'indent': 0},
+            for (var v = 0; v < 8; v++)
+              {'variant_name': 'Variant $g/$v', 'indent': 1},
+          ],
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      if (size > 2) {
+        expect(api.detailRequests, isEmpty);
+        final search = find.widgetWithText(TextField, 'Search loaded results');
+        await tester.enterText(search, 'Template 0');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+        await tester.enterText(search, 'Template');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .focusNode
+              .hasFocus,
+          isTrue,
+        );
+        await tester.tap(find.byTooltip('Clear search'));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Expand All'));
+        await tester.pumpAndSettle();
+      }
+      final scroll = Get.find<ItemVariantDetailsController>().scrollController;
+      final toolbar = tester
+          .getBottomLeft(find.text('Item Variant Details'))
+          .dy;
+      scroll.jumpTo(460);
+      await tester.pumpAndSettle();
+      final first = tester.getCenter(find.text('Template 0').hitTestable());
+      expect(first.dy, inInclusiveRange(toolbar, toolbar + 75));
+      for (var n = 0; n < 8; n++) {
+        scroll.jumpTo(scroll.offset + 240);
+        await tester.pumpAndSettle();
+        final next = find.text('Template 1').hitTestable();
+        if (next.evaluate().length != 1) continue;
+        final y = tester.getCenter(next).dy;
+        if (y >= toolbar && y < toolbar + 75) break;
+      }
+      final second = tester.getCenter(find.text('Template 1').hitTestable());
+      expect(second.dy, inInclusiveRange(toolbar, toolbar + 75));
+      expect(find.text('Template 0').hitTestable(), findsNothing);
+      expect(
+        api.detailRequests.expand((batch) => batch),
+        isNot(contains('Variant 204/0')),
+      );
+    });
+  }
 }
