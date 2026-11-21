@@ -129,4 +129,94 @@ void main() {
     expect(formatReportNumber(3), '3');
     expect(formatReportNumber(null), '');
   });
+
+  group('loaded results', () {
+    final columns = <VariantRow>[
+      {'fieldname': 'colour'},
+    ];
+
+    test(
+      'grouped search finds codes, fetched names and populated attributes',
+      () {
+        final data = VariantResults([
+          v16Template,
+          v16Variant,
+          {
+            'variant_name': '1001440',
+            'indent': 1,
+            'colour': '-',
+            'current_stock': 0,
+          },
+          {'variant_name': 'EMPTY', 'indent': 0},
+        ], columns);
+        expect(data.templateCount, 2);
+        expect(data.variants, hasLength(2));
+        expect(data.filter(query: 'mIx').single.variants, [v16Variant]);
+        expect(data.filter(query: '1001439').single.group.code, '---WAL');
+        expect(
+          data
+              .filter(
+                query: ' wallet ',
+                details: {
+                  '1001439': {'item_name': 'Travel Wallet'},
+                },
+              )
+              .single
+              .variants,
+          [v16Variant],
+        );
+        expect(data.filter(query: 'wal').single.variants, hasLength(2));
+        expect(data.filter(query: 'EMPTY').single.variants, isEmpty);
+        expect(data.filter(query: 'EMPTY', inStock: true), isEmpty);
+      },
+    );
+
+    test('legacy flat search and stock use only matching quantity totals', () {
+      final data = VariantResults([
+        v15Variant,
+        {
+          'item': 'Z',
+          'variant_of': 'OLD',
+          'current_stock': -4,
+          'in_production': 9,
+        },
+      ], columns);
+      expect(data.templateCount, 0);
+      final singleTemplate = VariantResults(
+        [v15Variant],
+        columns,
+        singleRequestedTemplate: 'Legacy template',
+      );
+      expect(singleTemplate.filter(query: 'legacy').single.variants, [
+        v15Variant,
+      ]);
+      expect(data.filter(query: 'old').single.variants.single['item'], 'Z');
+      expect(data.filter(query: 'MIX').single.variants, [v15Variant]);
+      final shown = data.filter(inStock: true).single.variants;
+      expect(shown, [v15Variant]);
+      expect(variantQuantitySummary(shown, columns), [
+        'Current Stock 12',
+        'In Production 0',
+      ]);
+    });
+
+    test('collapse threshold is 200 variants and overrides restore', () {
+      VariantResults data(int count) => VariantResults([
+        v16Template,
+        for (var i = 0; i < count; i++) {...v16Variant},
+      ], columns);
+      final small = data(200);
+      expect(small.isExpanded(small.groups.single), isTrue);
+      final large = data(201);
+      final group = large.groups.single;
+      expect(large.isExpanded(group), isFalse);
+      large.toggle(group);
+      expect(large.isExpanded(group), isTrue);
+      final saved = large.expansion;
+      large.setAllExpanded(false);
+      expect(large.isExpanded(group), isFalse);
+      large.restoreExpansion(saved);
+      expect(large.isExpanded(group), isTrue);
+    });
+  });
 }

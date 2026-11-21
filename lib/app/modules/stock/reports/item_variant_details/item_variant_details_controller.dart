@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,8 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
+
+typedef StickyVariantHeading = ({VariantGroup group, double offset});
 
 class ItemVariantDetailsController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
@@ -20,6 +21,88 @@ class ItemVariantDetailsController extends GetxController {
   final filterControllers = {
     for (final key in filterLabels.keys) key: TextEditingController(),
   };
+  final stickyHeading = ValueNotifier<StickyVariantHeading?>(null);
+  final searchController = TextEditingController();
+  final query = ''.obs;
+  final inStock = false.obs;
+  final results = Rxn<VariantResults>();
+  final viewRevision = 0.obs;
+  final searchRevision = 0.obs;
+  Timer? _searchTimer;
+  Timer? _detailTimer;
+  final _requestedDetails = <String>{};
+  final _nearbyDetails = <String>{};
+  final _matchedDetails = <String>{};
+  Set<String> _visibleSearchCodes = {};
+  final _detailUpdates = <String, Rxn<VariantRow>>{};
+  bool _fetchingDetails = false;
+
+  Rxn<VariantRow> detailsFor(String code) =>
+      _detailUpdates.putIfAbsent(code, () => Rxn(itemDetails[code]));
+
+  int get warehouseCount => _values('warehouse').length;
+
+  void search(String value) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 250), () {
+      final next = value.trim();
+      if (next == query.value) return;
+      _matchedDetails.clear();
+      final data = results.value;
+      final expansion = _preSearchExpansion;
+      if (next.isEmpty && expansion != null) {
+        data?.restoreExpansion(expansion);
+        _preSearchExpansion = null;
+      } else if (next.isNotEmpty) {
+        _preSearchExpansion ??= data?.expansion;
+        data?.setAllExpanded(true);
+      }
+      if (scrollController.hasClients) scrollController.jumpTo(0);
+      query.value = next;
+    });
+  }
+
+  void setInStock(bool value) {
+    if (scrollController.hasClients) scrollController.jumpTo(0);
+    inStock.value = value;
+  }
+
+  (VariantResults?, String, bool, int)? _visibleKey;
+  List<({VariantGroup group, List<VariantRow> variants})> _visible = [];
+  ({bool collapsed, Set<VariantGroup> overrides})? _preSearchExpansion;
+
+  List<({VariantGroup group, List<VariantRow> variants})> visibleGroups(
+    VariantResults? data,
+    String term,
+    bool stockOnly,
+  ) {
+    final namesRevision = term.isEmpty ? 0 : searchRevision.value;
+    final key = (data, term, stockOnly, namesRevision);
+    if (key != _visibleKey) {
+      _visibleKey = key;
+      _visible =
+          data?.filter(query: term, inStock: stockOnly, details: itemDetails) ??
+          [];
+      _visibleSearchCodes = {
+        if (term.isNotEmpty)
+          for (final match in _visible) ...match.variants.map(variantCode),
+      };
+    }
+    viewRevision.value;
+    return _visible;
+  }
+
+  void toggleGroup(VariantGroup group) {
+    results.value?.toggle(group);
+    viewRevision.value++;
+  }
+
+  void setAllExpanded(bool expanded) {
+    if (scrollController.hasClients) scrollController.jumpTo(0);
+    results.value?.setAllExpanded(expanded);
+    viewRevision.value++;
+  }
+
   final scrollController = ScrollController();
   final activeFilters = <String, String>{}.obs;
 
@@ -28,7 +111,7 @@ class ItemVariantDetailsController extends GetxController {
   final reportError = RxnString();
   final reportData = <Map<String, dynamic>>[].obs;
   final reportColumns = <Map<String, dynamic>>[].obs;
-  final itemDetails = <String, Map<String, dynamic>>{}.obs;
+  final itemDetails = <String, Map<String, dynamic>>{};
   final stockBalances = <String, List<Map<String, dynamic>>>{}.obs;
   final loadingStock = <String, bool>{}.obs;
   int _reportGeneration = 0;
@@ -70,6 +153,10 @@ class ItemVariantDetailsController extends GetxController {
     for (final controller in filterControllers.values) {
       controller.dispose();
     }
+    _searchTimer?.cancel();
+    _detailTimer?.cancel();
+    stickyHeading.dispose();
+    searchController.dispose();
     scrollController.dispose();
     super.onClose();
   }
@@ -88,6 +175,20 @@ class ItemVariantDetailsController extends GetxController {
 
   void _clearReport() {
     _reportGeneration++;
+    _searchTimer?.cancel();
+    _detailTimer?.cancel();
+    _detailTimer = null;
+    _requestedDetails.clear();
+    _nearbyDetails.clear();
+    _matchedDetails.clear();
+    _detailUpdates.clear();
+    _fetchingDetails = false;
+    _preSearchExpansion = null;
+    stickyHeading.value = null;
+    results.value = null;
+    searchController.clear();
+    query.value = '';
+    inStock.value = false;
     hasRun.value = false;
     reportError.value = null;
     reportData.clear();
@@ -108,17 +209,23 @@ class ItemVariantDetailsController extends GetxController {
     isLoading.value = true;
     _clearReport();
     final generation = _reportGeneration;
+    if (scrollController.hasClients) scrollController.jumpTo(0);
 
     try {
+      final items = _values('item');
       final result = await _api.getItemVariantDetails(
-        items: _values('item'),
+        items: items,
         itemGroups: _values('item_group'),
         warehouses: _values('warehouse'),
       );
-      if (isClosed) return;
+      if (!_isCurrent(generation)) return;
       reportColumns.assignAll(result.columns);
       reportData.assignAll(result.rows);
-      unawaited(_fetchDetails(generation));
+      results.value = VariantResults(
+        result.rows,
+        result.columns,
+        singleRequestedTemplate: items.length == 1 ? items.single : null,
+      );
     } on FormatException catch (error) {
       reportError.value = error.message;
     } on DioException catch (error) {
@@ -169,26 +276,64 @@ class ItemVariantDetailsController extends GetxController {
   bool _isCurrent(int generation) =>
       !isClosed && generation == _reportGeneration;
 
+  void queueNearbyDetails(String code) {
+    if (code.isEmpty || _requestedDetails.contains(code)) return;
+    _nearbyDetails.add(code);
+    _scheduleDetails();
+  }
+
+  void queueMatchedDetails(Iterable<VariantRow> matches) {
+    for (final row in matches) {
+      final code = variantCode(row);
+      if (code.isNotEmpty && !_requestedDetails.contains(code)) {
+        _matchedDetails.add(code);
+      }
+    }
+    _scheduleDetails();
+  }
+
+  void _scheduleDetails() {
+    if (_fetchingDetails ||
+        (_nearbyDetails.isEmpty && _matchedDetails.isEmpty)) {
+      return;
+    }
+    _detailTimer ??= Timer(const Duration(milliseconds: 32), () {
+      _detailTimer = null;
+      unawaited(_fetchDetails(_reportGeneration));
+    });
+  }
+
   Future<void> _fetchDetails(int generation) async {
-    final codes = variantRowsOf(reportData)
-        .map(
-          (r) => r['variant_name']?.toString() ?? r['item']?.toString() ?? '',
-        )
-        .where((code) => code.isNotEmpty)
-        .toSet()
-        .toList();
-    // Group selections can return thousands of variants. Bound the list sent
-    // in each get_list query to keep the request URL manageable.
-    const batchSize = 50;
-    for (
-      var start = 0;
-      start < codes.length && _isCurrent(generation);
-      start += batchSize
-    ) {
-      final details = await _api.getItemDetails(
-        codes.sublist(start, math.min(start + batchSize, codes.length)),
-      );
-      if (_isCurrent(generation)) itemDetails.addAll(details);
+    // New viewport work overtakes search matches waiting in the queue.
+    final batch = {
+      ..._nearbyDetails.toList().reversed.take(50).toList().reversed,
+      ..._matchedDetails.take(50),
+    }.take(50).toList();
+    _nearbyDetails.removeAll(batch);
+    _matchedDetails.removeAll(batch);
+    _requestedDetails.addAll(batch);
+    _fetchingDetails = true;
+    try {
+      final details = await _api.getItemDetails(batch);
+      if (!_isCurrent(generation)) return;
+      itemDetails.addAll(details);
+      for (final code in batch) {
+        _detailUpdates[code]?.value = details[code];
+      }
+      final term = query.value.toLowerCase();
+      if (term.isNotEmpty &&
+          details.entries.any((entry) {
+            final name = entry.value['item_name']?.toString().toLowerCase();
+            return !_visibleSearchCodes.contains(entry.key) &&
+                (name?.contains(term) ?? false);
+          })) {
+        searchRevision.value++;
+      }
+    } finally {
+      if (_isCurrent(generation)) {
+        _fetchingDetails = false;
+        _scheduleDetails();
+      }
     }
   }
 }

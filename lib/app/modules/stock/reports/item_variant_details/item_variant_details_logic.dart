@@ -151,3 +151,119 @@ List<String> variantQuantitySummary(
               '${entry.key.isEmpty ? '' : ' ${entry.key}'}',
   ];
 }
+
+String variantCode(Map<String, dynamic> row) =>
+    (row['variant_name'] ?? row['item'] ?? '').toString();
+
+typedef VariantRow = Map<String, dynamic>;
+
+class VariantGroup {
+  final VariantRow? heading;
+  final List<VariantRow> variants;
+
+  const VariantGroup(this.heading, this.variants);
+
+  String get code => heading == null ? '' : variantCode(heading!);
+}
+
+class VariantResults {
+  static const collapseAboveVariants = 200;
+
+  final groups = <VariantGroup>[];
+  final variants = <VariantRow>[];
+  final _searchText = <VariantRow, List<String>>{};
+  final _templateCodes = <VariantGroup, String>{};
+  final _overrides = <VariantGroup>{};
+  late final int templateCount;
+  late bool _collapsed;
+
+  VariantResults(
+    Iterable<VariantRow> rows,
+    List<VariantRow> columns, {
+    String? singleRequestedTemplate,
+  }) {
+    VariantGroup? group;
+    for (final row in rows) {
+      if (isTemplateRow(row)) {
+        group = VariantGroup(row, []);
+        groups.add(group);
+        _templateCodes[group] = group.code.toLowerCase();
+        continue;
+      }
+      if (group == null) {
+        group = VariantGroup(null, []);
+        groups.add(group);
+      }
+      group.variants.add(row);
+      variants.add(row);
+      _searchText[row] = [
+        variantCode(row),
+        if (row['item_name'] != null) row['item_name'].toString(),
+        if (row['template'] != null) row['template'].toString(),
+        if (row['variant_of'] != null) row['variant_of'].toString(),
+        if (group.heading == null && singleRequestedTemplate != null)
+          singleRequestedTemplate,
+        ...variantChips(row, columns).map((chip) => chip.value),
+      ].map((value) => value.toLowerCase()).toList();
+    }
+    templateCount = _templateCodes.length;
+    _collapsed = variants.length > collapseAboveVariants;
+  }
+
+  ({bool collapsed, Set<VariantGroup> overrides}) get expansion =>
+      (collapsed: _collapsed, overrides: _overrides.toSet());
+
+  void restoreExpansion(({bool collapsed, Set<VariantGroup> overrides}) state) {
+    _collapsed = state.collapsed;
+    _overrides
+      ..clear()
+      ..addAll(state.overrides);
+  }
+
+  bool isExpanded(VariantGroup group) =>
+      group.heading == null || _collapsed == _overrides.contains(group);
+
+  void toggle(VariantGroup group) {
+    if (!_overrides.add(group)) _overrides.remove(group);
+  }
+
+  void setAllExpanded(bool expanded) {
+    _collapsed = !expanded;
+    _overrides.clear();
+  }
+
+  List<({VariantGroup group, List<VariantRow> variants})> filter({
+    String query = '',
+    bool inStock = false,
+    Map<String, VariantRow> details = const {},
+  }) {
+    final term = query.trim().toLowerCase();
+    final result = <({VariantGroup group, List<VariantRow> variants})>[];
+    for (final group in groups) {
+      if (term.isEmpty && !inStock) {
+        result.add((group: group, variants: group.variants));
+        continue;
+      }
+      final headingMatches =
+          term.isNotEmpty && (_templateCodes[group]?.contains(term) ?? false);
+      final matches = [
+        for (final row in group.variants)
+          if ((!inStock ||
+                  (num.tryParse('${row['current_stock']}') ?? 0) > 0) &&
+              (term.isEmpty ||
+                  headingMatches ||
+                  _searchText[row]!.any((value) => value.contains(term)) ||
+                  (details[variantCode(row)]?['item_name']
+                          ?.toString()
+                          .toLowerCase()
+                          .contains(term) ??
+                      false)))
+            row,
+      ];
+      if (matches.isNotEmpty || (headingMatches && !inStock)) {
+        result.add((group: group, variants: matches));
+      }
+    }
+    return result;
+  }
+}

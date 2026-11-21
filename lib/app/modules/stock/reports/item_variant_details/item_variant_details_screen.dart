@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
-import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
@@ -13,6 +13,10 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   const ItemVariantDetailsScreen({super.key});
+
+  static const _headingExtent = 52.0;
+  // Native groups measure one child per delegate, even when offscreen.
+  static const _maxNativeGroups = 24;
 
   // Large thumb jumps make SliverList lay out intervening variable-height rows.
   static const _maxDraggableRows = 500;
@@ -78,29 +82,141 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     return AppShellScaffold(
       body: Obx(() {
         final busy = controller.isLoading.value;
+        final data = controller.results.value;
+        final query = controller.query.value;
+        final stock = controller.inStock.value;
+        final groups = controller.visibleGroups(data, query, stock);
+        final shown = groups.expand((match) => match.variants).toList();
+        final grouped = (data?.templateCount ?? 0) > 0;
+        final collapsed =
+            grouped &&
+            groups.every(
+              (match) =>
+                  match.group.heading != null &&
+                  (!data!.isExpanded(match.group) || match.variants.isEmpty),
+            );
         final rowCount = controller.reportData.length;
-        return RefreshIndicator(
+        if (query.isNotEmpty) controller.queueMatchedDetails(shown);
+        final lazyGroups =
+            grouped && !collapsed && groups.length > _maxNativeGroups;
+        final scrollView = RefreshIndicator(
           onRefresh: controller.runReport,
           color: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
           child: Scrollbar(
-            interactive: rowCount <= _maxDraggableRows,
+            interactive: rowCount <= _maxDraggableRows || collapsed,
             thumbVisibility: !busy && rowCount > 0,
             controller: controller.scrollController,
             child: CustomScrollView(
               controller: controller.scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                DocTypeListHeader(
-                  title: 'Item Variant Details',
-                  automaticallyImplyLeading: false,
-                  activeFilters: <String, dynamic>{
-                    if (!busy) ...controller.activeFilters,
-                  }.obs,
-                  onFilterTap: busy ? null : () => _openFilters(context),
-                  filterChipsBuilder: _buildFilterChips,
-                  onClearAllFilters: busy ? null : controller.clearFilters,
+                SliverAppBar(
+                  pinned: true,
+                  title: const Text('Item Variant Details'),
+                  leading: Builder(
+                    builder: (context) => IconButton(
+                      tooltip: MaterialLocalizations.of(
+                        context,
+                      ).openAppDrawerTooltip,
+                      onPressed: Scaffold.of(context).openDrawer,
+                      icon: const Icon(Icons.menu),
+                    ),
+                  ),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Filters',
+                      onPressed: busy ? null : () => _openFilters(context),
+                      icon: const Icon(Icons.filter_alt_outlined),
+                    ),
+                  ],
                 ),
+                if (!busy)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (controller.activeFilters.isNotEmpty)
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  ..._buildFilterChips(context),
+                                  if (controller.activeFilters.length > 1)
+                                    TextButton(
+                                      onPressed: controller.clearFilters,
+                                      child: const Text('Clear all'),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          if (data != null) ...[
+                            Text(
+                              [
+                                if (grouped) '${data.templateCount} templates',
+                                if (query.isNotEmpty || stock)
+                                  '${shown.length} of ${data.variants.length} variants'
+                                else
+                                  '${data.variants.length} variants',
+                              ].join(' · '),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: controller.searchController,
+                              onChanged: controller.search,
+                              textInputAction: TextInputAction.search,
+                              decoration: InputDecoration(
+                                labelText: 'Search loaded results',
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIcon: query.isNotEmpty
+                                    ? IconButton(
+                                        tooltip: 'Clear search',
+                                        onPressed: () {
+                                          controller.searchController.clear();
+                                          controller.search('');
+                                        },
+                                        icon: const Icon(Icons.clear),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                            Wrap(
+                              spacing: 8,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                FilterChip(
+                                  selected: stock,
+                                  onSelected: controller.setInStock,
+                                  label: Text(
+                                    switch (controller.warehouseCount) {
+                                      0 => 'In stock',
+                                      1 => 'In stock in 1 warehouse',
+                                      final count =>
+                                        'In stock in $count warehouses',
+                                    },
+                                  ),
+                                ),
+                                if (grouped) ...[
+                                  TextButton(
+                                    onPressed: () =>
+                                        controller.setAllExpanded(false),
+                                    child: const Text('Collapse All'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        controller.setAllExpanded(true),
+                                    child: const Text('Expand All'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
 
                 if (busy)
                   const SliverFillRemaining(
@@ -140,53 +256,210 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                       ),
                     ),
                   )
-                else
-                  SliverPadding(
-                    // Card controls are inset beyond the thumb's touch target.
-                    padding: EdgeInsets.fromLTRB(12, 4, 12, 80 + bottomPadding),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        if (index == controller.reportData.length) {
-                          final summary = variantQuantitySummary(
-                            controller.reportData,
+                else if (data != null) ...[
+                  if (lazyGroups)
+                    _lazyGroupSliver(data, groups)
+                  else
+                    ..._resultSlivers(data, groups),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        12,
+                        16,
+                        12,
+                        80 + bottomPadding,
+                      ),
+                      child: Text(
+                        [
+                          if (shown.isEmpty) 'No variants match.',
+                          'End of list',
+                          'Quantity totals for shown results',
+                          ...variantQuantitySummary(
+                            shown,
                             controller.reportColumns,
-                          );
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Text(
-                              ['End of list', ...summary].join('\n'),
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: cs.onSurfaceVariant),
-                            ),
-                          );
-                        }
-                        final row = controller.reportData[index];
-                        // v16.55 heads each template's variants with a
-                        // subtotal row; it is a heading, not a variant.
-                        if (isTemplateRow(row)) {
-                          return _TemplateHeader(
-                            row: row,
-                            columns: controller.reportColumns,
-                          );
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _VariantTile(
-                            row: row,
-                            columns: controller.reportColumns,
-                            controller: controller,
                           ),
-                        );
-                      }, childCount: controller.reportData.length + 1),
+                        ].join('\n'),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
+                ],
               ],
             ),
           ),
         );
+        return Stack(
+          children: [
+            scrollView,
+            if (lazyGroups)
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                left: 12,
+                right: 12,
+                height: _headingExtent,
+                child: ValueListenableBuilder(
+                  valueListenable: controller.stickyHeading,
+                  builder: (context, sticky, _) {
+                    if (sticky == null || !data!.isExpanded(sticky.group)) {
+                      return const SizedBox.shrink();
+                    }
+                    return ClipRect(
+                      child: Transform.translate(
+                        offset: Offset(0, sticky.offset),
+                        child: _groupTitle(sticky.group, true),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
       }),
     );
+  }
+
+  Widget _groupTitle(VariantGroup group, bool expanded) => _GroupTitle(
+    group: group,
+    expanded: expanded,
+    onTap: () => controller.toggleGroup(group),
+  );
+
+  Widget _lazyGroupSliver(
+    VariantResults data,
+    List<({VariantGroup group, List<VariantRow> variants})> groups,
+  ) {
+    final entries = <({VariantGroup group, VariantRow? row, bool title})>[];
+    for (final match in groups) {
+      final group = match.group;
+      final heading = group.heading;
+      if (heading != null) {
+        entries.add((group: group, row: null, title: true));
+      }
+      if (!data.isExpanded(group) || match.variants.isEmpty) continue;
+      if (heading != null) {
+        entries.add((group: group, row: null, title: false));
+      }
+      entries.addAll(
+        match.variants.map((row) => (group: group, row: row, title: false)),
+      );
+    }
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      sliver: _StickyGroupList(
+        sticky: controller.stickyHeading,
+        groupAt: (index) {
+          final entry = entries[index];
+          return (
+            group: entry.group,
+            title: entry.title,
+            expanded:
+                entry.group.heading != null && data.isExpanded(entry.group),
+          );
+        },
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final entry = entries[index];
+          if (entry.title) {
+            return SizedBox(
+              height: _headingExtent,
+              child: _groupTitle(entry.group, data.isExpanded(entry.group)),
+            );
+          }
+          final row = entry.row;
+          if (row == null) {
+            return _TemplateHeader(
+              row: entry.group.heading!,
+              columns: controller.reportColumns,
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _VariantTile(
+              row: row,
+              columns: controller.reportColumns,
+              controller: controller,
+              compactImage: entry.group.heading != null,
+            ),
+          );
+        }, childCount: entries.length),
+      ),
+    );
+  }
+
+  List<Widget> _resultSlivers(
+    VariantResults data,
+    List<({VariantGroup group, List<VariantRow> variants})> groups,
+  ) {
+    final slivers = <Widget>[];
+    final columns = controller.reportColumns;
+    Widget variants(List<VariantRow> rows, {required bool grouped}) =>
+        SliverList.builder(
+          itemCount: rows.length,
+          itemBuilder: (context, index) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _VariantTile(
+              row: rows[index],
+              columns: columns,
+              controller: controller,
+              compactImage: grouped,
+            ),
+          ),
+        );
+    Widget inset(Widget sliver, VariantGroup group) => SliverPadding(
+      key: ObjectKey(group),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      sliver: sliver,
+    );
+    // Fixed-extent runs can seek straight to a heading on a thumb jump.
+    var collapsed = <VariantGroup>[];
+    void flushCollapsed() {
+      if (collapsed.isEmpty) return;
+      final run = collapsed;
+      collapsed = [];
+      slivers.add(
+        inset(
+          SliverFixedExtentList.builder(
+            itemExtent: _headingExtent,
+            itemCount: run.length,
+            itemBuilder: (context, index) => _groupTitle(run[index], false),
+          ),
+          run.first,
+        ),
+      );
+    }
+
+    for (final match in groups) {
+      final group = match.group;
+      final heading = group.heading;
+      if (heading != null &&
+          (!data.isExpanded(group) || match.variants.isEmpty)) {
+        collapsed.add(group);
+        continue;
+      }
+      flushCollapsed();
+      if (heading == null) {
+        slivers.add(inset(variants(match.variants, grouped: false), group));
+      } else {
+        slivers.add(
+          inset(
+            SliverMainAxisGroup(
+              slivers: [
+                PinnedHeaderSliver(child: _groupTitle(group, true)),
+                SliverToBoxAdapter(
+                  child: _TemplateHeader(row: heading, columns: columns),
+                ),
+                variants(match.variants, grouped: true),
+              ],
+            ),
+            group,
+          ),
+        );
+      }
+    }
+    flushCollapsed();
+    return slivers;
   }
 }
 
@@ -200,10 +473,7 @@ void _openImageViewer(
   showDialog<void>(
     context: context,
     useSafeArea: false,
-    builder: (_) => _ImageGallery(
-      items: items,
-      initialIndex: initialIndex,
-    ),
+    builder: (_) => _ImageGallery(items: items, initialIndex: initialIndex),
   );
 }
 
@@ -212,30 +482,185 @@ void _openImageViewer(
 /// The subtotal row ERPNext v16.55 puts above each template's variants:
 /// the template's code and Item Group, and the totals the report gives it,
 /// under the report's own column labels.
+// Multi-delegate viewports lay out a child in every delegate to estimate
+// scroll extents. A single lazy delegate avoids that cost for large reports.
+typedef _GroupAt =
+    ({VariantGroup group, bool title, bool expanded}) Function(int index);
+
+class _StickyGroupList extends SliverList {
+  final ValueNotifier<StickyVariantHeading?> sticky;
+  final _GroupAt groupAt;
+
+  const _StickyGroupList({
+    required this.sticky,
+    required this.groupAt,
+    required super.delegate,
+  });
+
+  @override
+  RenderSliverList createRenderObject(BuildContext context) =>
+      _RenderStickyGroupList(
+        childManager: context as SliverMultiBoxAdaptorElement,
+        sticky: sticky,
+        groupAt: groupAt,
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderStickyGroupList renderObject,
+  ) {
+    renderObject
+      ..groupAt = groupAt
+      ..markNeedsLayout();
+  }
+}
+
+class _RenderStickyGroupList extends RenderSliverList {
+  final ValueNotifier<StickyVariantHeading?> sticky;
+  _GroupAt groupAt;
+  StickyVariantHeading? _next;
+  bool _scheduled = false;
+
+  _RenderStickyGroupList({
+    required super.childManager,
+    required this.sticky,
+    required this.groupAt,
+  });
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (geometry?.scrollOffsetCorrection != null) return;
+    final boundary =
+        constraints.scrollOffset +
+        constraints.overlap.clamp(0.0, double.infinity);
+    VariantGroup? active;
+    var offset = 0.0;
+    if (constraints.remainingPaintExtent > 0) {
+      for (var child = firstChild; child != null; child = childAfter(child)) {
+        final top = childScrollOffset(child)!;
+        if (top + paintExtentOf(child) <= boundary) continue;
+        final entry = groupAt(indexOf(child));
+        if (active == null) {
+          if (!entry.expanded ||
+              top > boundary ||
+              (entry.title && top == boundary)) {
+            break;
+          }
+          active = entry.group;
+        } else if (entry.group != active) {
+          offset = (top - boundary - ItemVariantDetailsScreen._headingExtent)
+              .clamp(-ItemVariantDetailsScreen._headingExtent, 0.0);
+          break;
+        }
+      }
+    }
+    _next = active == null ? null : (group: active, offset: offset);
+    if (_scheduled || sticky.value == _next) return;
+    _scheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (attached) sticky.value = _next;
+    });
+  }
+}
+
+// SliverList may build cached children and estimate extents with offscreen
+// delegates. Schedule enrichment from paint so those children stay cheap.
+class _VisibleVariant extends SingleChildRenderObjectWidget {
+  final VoidCallback onPaint;
+  const _VisibleVariant({required this.onPaint, required super.child});
+
+  @override
+  _RenderVisibleVariant createRenderObject(BuildContext context) =>
+      _RenderVisibleVariant(onPaint);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderVisibleVariant renderObject,
+  ) {
+    renderObject.onPaint = onPaint;
+  }
+}
+
+class _RenderVisibleVariant extends RenderProxyBox {
+  VoidCallback onPaint;
+  _RenderVisibleVariant(this.onPaint);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    onPaint();
+    super.paint(context, offset);
+  }
+}
+
+class _GroupTitle extends StatelessWidget {
+  final VariantGroup group;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  const _GroupTitle({
+    required this.group,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerLow,
+      child: Semantics(
+        header: true,
+        expanded: expanded,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    group.code,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(expanded ? Icons.expand_less : Icons.expand_more),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TemplateHeader extends StatelessWidget {
-  final Map<String, dynamic>       row;
+  final Map<String, dynamic> row;
   final List<Map<String, dynamic>> columns;
 
   const _TemplateHeader({required this.row, required this.columns});
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    final code      = row['variant_name']?.toString() ?? '';
     final itemGroup = row['item_group']?.toString() ?? '';
-    final totals    = templateTotals(row, columns);
+    final totals = templateTotals(row, columns);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            code,
-            style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
           if (itemGroup.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),
@@ -248,19 +673,21 @@ class _TemplateHeader extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Wrap(
-                spacing: 14, runSpacing: 4,
+                spacing: 14,
+                runSpacing: 4,
                 children: [
                   for (final t in totals)
                     Text.rich(
                       TextSpan(
                         text: '${t.label}  ',
-                        style: text.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        style: text.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
                         children: [
                           TextSpan(
                             text: t.value,
                             style: text.labelMedium?.copyWith(
-                              color:      cs.onSurface,
+                              color: cs.onSurface,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -279,14 +706,17 @@ class _TemplateHeader extends StatelessWidget {
 // ── Variant tile ──────────────────────────────────────────────────────────────
 
 class _VariantTile extends StatelessWidget {
-  final Map<String, dynamic>         row;
-  final List<Map<String, dynamic>>   columns;
+  final Map<String, dynamic> row;
+  final List<Map<String, dynamic>> columns;
   final ItemVariantDetailsController controller;
+
+  final bool compactImage;
 
   const _VariantTile({
     required this.row,
     required this.columns,
     required this.controller,
+    required this.compactImage,
   });
 
   String? _imageUrl(String? path) {
@@ -297,200 +727,234 @@ class _VariantTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
-    final itemCode = row['variant_name']?.toString()
-        ?? row['item']?.toString()
-        ?? '—';
+    final itemCode = variantCode(row);
+    final detail = controller.detailsFor(itemCode);
 
     final chips = variantChips(row, columns).toList();
     final stockUom = row['stock_uom'];
     final currentStock = formatStockQuantity(row['current_stock'], stockUom);
 
-    return Obx(() {
-      final details        = controller.itemDetails[itemCode];
-      final itemName       = details?['item_name']  as String? ?? '';
-      final itemGroup      = details?['item_group'] as String? ??
-          row['item_group']?.toString() ?? '';
-      final imageUrl       = _imageUrl(details?['image'] as String?);
-      final stockRows      = controller.stockBalances[itemCode];
-      final isStockLoading = controller.loadingStock[itemCode] == true;
-      final isExpanded     = stockRows != null;
+    return _VisibleVariant(
+      onPaint: () => controller.queueNearbyDetails(itemCode),
+      child: Obx(() {
+        final details = detail.value;
+        final itemName = details?['item_name'] as String? ?? '';
+        final itemGroup =
+            details?['item_group'] as String? ??
+            row['item_group']?.toString() ??
+            '';
+        final imageUrl = _imageUrl(details?['image'] as String?);
+        final stockRows = controller.stockBalances[itemCode];
+        final isStockLoading = controller.loadingStock[itemCode] == true;
+        final isExpanded = stockRows != null;
 
-      return Card(
-        elevation:       1,
-        shadowColor:     cs.shadow.withValues(alpha: 0.12),
-        clipBehavior:    Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Full-width image banner (tap to open gallery) ──────
-            if (imageUrl != null)
-              InkWell(
-                onTap: () {
-                  // Collect all variant images in report order so the gallery
-                  // can slide between items; open at the tapped item's index.
-                  final items       = <_GalleryItem>[];
-                  var   startIndex  = 0;
-                  for (final r in variantRowsOf(controller.reportData)) {
-                    final code = r['variant_name']?.toString()
-                        ?? r['item']?.toString() ?? '';
-                    final url  = _imageUrl(
-                        controller.itemDetails[code]?['image'] as String?);
-                    if (url == null) continue;
-                    if (code == itemCode) startIndex = items.length;
-                    items.add(_GalleryItem(
-                      url:      url,
-                      itemCode: code,
-                      itemName: controller.itemDetails[code]?['item_name']
-                              as String? ?? '',
-                    ));
-                  }
-                  if (items.isEmpty) return;
-                  _openImageViewer(
-                    context,
-                    items:        items,
-                    initialIndex: startIndex,
-                  );
-                },
-                child: _ImageBanner(imageUrl: imageUrl),
-              ),
-
-            // ── Content ────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Header row (tappable → item form) ──────────
-                  InkWell(
-                    onTap: () => Get.toNamed(
-                      AppRoutes.ITEM_FORM,
-                      arguments: {'itemCode': itemCode},
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (imageUrl == null) ...[
-                            const _ItemThumb(),
-                            const SizedBox(width: 12),
-                          ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  itemCode,
-                                  style: text.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                if (itemName.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      itemName,
-                                      style: text.bodySmall?.copyWith(
-                                          color: cs.onSurface),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                if (itemGroup.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 1),
-                                    child: Text(
-                                      itemGroup,
-                                      style: text.labelSmall?.copyWith(
-                                          color: cs.onSurfaceVariant),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.chevron_right,
-                              color: cs.outlineVariant, size: 18),
-                        ],
-                      ),
-                    ),
+        return Card(
+          elevation: 1,
+          shadowColor: cs.shadow.withValues(alpha: 0.12),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Full-width image banner (tap to open gallery) ──────
+              if (imageUrl != null)
+                InkWell(
+                  onTap: () {
+                    // Collect all variant images in report order so the gallery
+                    // can slide between items; open at the tapped item's index.
+                    final items = <_GalleryItem>[];
+                    var startIndex = 0;
+                    for (final r in variantRowsOf(controller.reportData)) {
+                      final code =
+                          r['variant_name']?.toString() ??
+                          r['item']?.toString() ??
+                          '';
+                      final url = _imageUrl(
+                        controller.itemDetails[code]?['image'] as String?,
+                      );
+                      if (url == null) continue;
+                      if (code == itemCode) startIndex = items.length;
+                      items.add(
+                        _GalleryItem(
+                          url: url,
+                          itemCode: code,
+                          itemName:
+                              controller.itemDetails[code]?['item_name']
+                                  as String? ??
+                              '',
+                        ),
+                      );
+                    }
+                    if (items.isEmpty) return;
+                    _openImageViewer(
+                      context,
+                      items: items,
+                      initialIndex: startIndex,
+                    );
+                  },
+                  child: _ImageBanner(
+                    imageUrl: imageUrl,
+                    compact: compactImage,
                   ),
+                ),
 
-                  if (currentStock.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Current Stock $currentStock',
-                        style: text.labelMedium?.copyWith(
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.w700,
+              // ── Content ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Header row (tappable → item form) ──────────
+                    InkWell(
+                      onTap: () => Get.toNamed(
+                        AppRoutes.ITEM_FORM,
+                        arguments: {'itemCode': itemCode},
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (imageUrl == null) ...[
+                              const _ItemThumb(),
+                              const SizedBox(width: 12),
+                            ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    itemCode,
+                                    style: text.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  if (itemName.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        itemName,
+                                        style: text.bodySmall?.copyWith(
+                                          color: cs.onSurface,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  if (itemGroup.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 1),
+                                      child: Text(
+                                        itemGroup,
+                                        style: text.labelSmall?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              color: cs.outlineVariant,
+                              size: 18,
+                            ),
+                          ],
                         ),
                       ),
                     ),
 
-                  // ── Attribute chips ──────────────────────────────
-                  if (chips.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6, runSpacing: 6,
-                      children: [
-                        for (final chip in chips)
-                          _AttrChip(label: chip.label, value: chip.value),
-                      ],
-                    ),
-                  ],
+                    if (currentStock.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Current Stock $currentStock',
+                          style: text.labelMedium?.copyWith(
+                            color: cs.onSurface,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
 
-                  // ── Check Stock button ───────────────────────────
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: isStockLoading
-                          ? null
-                          : () => controller.fetchStockBalance(itemCode),
-                      icon: isStockLoading
-                          ? SizedBox(
-                              width: 14, height: 14,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: cs.primary),
-                            )
-                          : Icon(
-                              isExpanded
-                                  ? Icons.expand_less
-                                  : Icons.inventory_2_outlined,
-                              size: 16,
-                            ),
-                      label: Text(isExpanded ? 'Hide Stock' :
-                          controller.activeFilters.containsKey('warehouse')
+                    // ── Attribute chips ──────────────────────────────
+                    if (chips.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final chip in chips)
+                            _AttrChip(label: chip.label, value: chip.value),
+                        ],
+                      ),
+                    ],
+
+                    // ── Check Stock button ───────────────────────────
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: isStockLoading
+                            ? null
+                            : () => controller.fetchStockBalance(itemCode),
+                        icon: isStockLoading
+                            ? SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: cs.primary,
+                                ),
+                              )
+                            : Icon(
+                                isExpanded
+                                    ? Icons.expand_less
+                                    : Icons.inventory_2_outlined,
+                                size: 16,
+                              ),
+                        label: Text(
+                          isExpanded
+                              ? 'Hide Stock'
+                              : controller.activeFilters.containsKey(
+                                  'warehouse',
+                                )
                               ? 'Check Stock Across Warehouses'
-                              : 'Check Stock'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: cs.primary,
-                        side:  BorderSide(color: cs.primary.withValues(alpha: 0.4)),
-                        visualDensity: VisualDensity.compact,
-                        textStyle: text.labelSmall,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
+                              : 'Check Stock',
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: cs.primary,
+                          side: BorderSide(
+                            color: cs.primary.withValues(alpha: 0.4),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          textStyle: text.labelSmall,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
 
-                  // ── Stock section ────────────────────────────────
-                  if (isExpanded)
-                    _StockSection(rows: stockRows, stockUom: stockUom),
-                ],
+                    // ── Stock section ────────────────────────────────
+                    if (isExpanded)
+                      _StockSection(rows: stockRows, stockUom: stockUom),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    });
+            ],
+          ),
+        );
+      }),
+    );
   }
 }
 
@@ -498,26 +962,31 @@ class _VariantTile extends StatelessWidget {
 
 class _ImageBanner extends StatelessWidget {
   final String imageUrl;
-  static const _height = 200.0;
+  final bool compact;
 
-  const _ImageBanner({required this.imageUrl});
+  const _ImageBanner({required this.imageUrl, required this.compact});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return SizedBox(
-      width:  double.infinity,
-      height: _height,
+      width: double.infinity,
+      height: compact ? 84 : 200,
       child: Image.network(
         imageUrl,
         fit: BoxFit.cover,
+        cacheWidth:
+            (MediaQuery.sizeOf(context).width *
+                    MediaQuery.devicePixelRatioOf(context))
+                .ceil(),
         loadingBuilder: (_, child, progress) => progress == null
             ? child
             : ColoredBox(
                 color: cs.surfaceContainerHighest,
                 child: const Center(
                   child: SizedBox(
-                    width: 24, height: 24,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
@@ -525,8 +994,11 @@ class _ImageBanner extends StatelessWidget {
         errorBuilder: (_, __, ___) => ColoredBox(
           color: cs.surfaceContainerHighest,
           child: Center(
-            child: Icon(Icons.broken_image_outlined,
-                size: 48, color: cs.outlineVariant),
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 48,
+              color: cs.outlineVariant,
+            ),
           ),
         ),
       ),
@@ -544,9 +1016,10 @@ class _ItemThumb extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      width: _size, height: _size,
+      width: _size,
+      height: _size,
       decoration: BoxDecoration(
-        color:        cs.primaryContainer,
+        color: cs.primaryContainer,
         borderRadius: BorderRadius.circular(10),
       ),
       alignment: Alignment.center,
@@ -564,18 +1037,18 @@ class _AttrChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color:        cs.secondaryContainer,
+        color: cs.secondaryContainer,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         '$label: $value',
         style: text.labelSmall?.copyWith(
-          color:      cs.onSecondaryContainer,
+          color: cs.onSecondaryContainer,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -592,7 +1065,7 @@ class _StockSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
     if (rows.isEmpty) {
@@ -606,13 +1079,14 @@ class _StockSection extends StatelessWidget {
     }
 
     final totalQty = rows.fold<double>(
-      0, (sum, r) => sum + ((r['qty'] as num?)?.toDouble() ?? 0),
+      0,
+      (sum, r) => sum + ((r['qty'] as num?)?.toDouble() ?? 0),
     );
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
       decoration: BoxDecoration(
-        color:        cs.surfaceContainerHighest,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -641,24 +1115,26 @@ class _StockSection extends StatelessWidget {
             ),
           ),
           Divider(
-            height: 1, thickness: 1,
+            height: 1,
+            thickness: 1,
             color: cs.outlineVariant.withValues(alpha: 0.35),
           ),
           // Per-rack rows
           ...rows.asMap().entries.map((entry) {
             final isLast = entry.key == rows.length - 1;
-            final r      = entry.value;
+            final r = entry.value;
             return Column(
               children: [
                 _StockRow(
                   rack: r['rack']?.toString() ?? '—',
-                  qty:  (r['qty'] as num?) ?? 0,
+                  qty: (r['qty'] as num?) ?? 0,
                   stockUom: stockUom,
                 ),
                 if (!isLast)
                   Divider(
                     height: 1,
-                    indent: 14, endIndent: 14,
+                    indent: 14,
+                    endIndent: 14,
                     color: cs.outlineVariant.withValues(alpha: 0.2),
                   ),
               ],
@@ -674,9 +1150,13 @@ class _StockSection extends StatelessWidget {
 
 class _StockRow extends StatelessWidget {
   final String rack;
-  final num    qty;
+  final num qty;
   final Object? stockUom;
-  const _StockRow({required this.rack, required this.qty, required this.stockUom});
+  const _StockRow({
+    required this.rack,
+    required this.qty,
+    required this.stockUom,
+  });
 
   Color _qtyColor(ColorScheme cs, Brightness brightness) {
     if (qty < 0) return cs.error;
@@ -690,8 +1170,8 @@ class _StockRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs    = Theme.of(context).colorScheme;
-    final text  = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     final color = _qtyColor(cs, Theme.of(context).brightness);
 
     return Padding(
@@ -708,13 +1188,13 @@ class _StockRow extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color:        color.withValues(alpha: 0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               formatStockQuantity(qty, stockUom),
               style: text.labelMedium?.copyWith(
-                color:      color,
+                color: color,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -760,9 +1240,10 @@ class _ImageGalleryState extends State<_ImageGallery> {
     return ItemImagePreview(
       key: ValueKey(_current),
       url: item.url,
-      title: [item.itemCode, item.itemName]
-          .where((text) => text.isNotEmpty)
-          .join(' · '),
+      title: [
+        item.itemCode,
+        item.itemName,
+      ].where((text) => text.isNotEmpty).join(' · '),
       navigationActions: [
         if (total > 1) ...[
           IconButton(
