@@ -6,6 +6,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
@@ -148,20 +149,13 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
 void _openImageViewer(
   BuildContext context, {
   required List<_GalleryItem> items,
-  required int                initialIndex,
+  required int initialIndex,
 }) {
-  // showGeneralDialog fills the whole screen; showDialog constrains content
-  // through DialogRoute's centering + width logic, which produces a box.
-  showGeneralDialog<void>(
-    context:            context,
-    barrierDismissible: true,
-    barrierLabel:       '',
-    barrierColor:       Colors.black87,
-    transitionDuration: const Duration(milliseconds: 150),
-    transitionBuilder:  (_, anim, __, child) =>
-        FadeTransition(opacity: anim, child: child),
-    pageBuilder: (ctx, _, __) => _ImageGallery(
-      items:        items,
+  showDialog<void>(
+    context: context,
+    useSafeArea: false,
+    builder: (_) => _ImageGallery(
+      items: items,
       initialIndex: initialIndex,
     ),
   );
@@ -720,169 +714,36 @@ class _ImageGallery extends StatefulWidget {
 }
 
 class _ImageGalleryState extends State<_ImageGallery> {
-  late final PageController _page;
-  late int _current;
-
-  @override
-  void initState() {
-    super.initState();
-    _current = widget.initialIndex;
-    _page    = PageController(initialPage: widget.initialIndex);
-  }
-
-  @override
-  void dispose() {
-    _page.dispose();
-    super.dispose();
-  }
+  late int _current = widget.initialIndex;
 
   @override
   Widget build(BuildContext context) {
-    final topPad    = MediaQuery.of(context).padding.top;
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    final total     = widget.items.length;
-    final item      = widget.items[_current];
+    final total = widget.items.length;
+    final item = widget.items[_current];
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // ── Swipeable image pages ──────────────────────────────────
-        PageView.builder(
-          controller:    _page,
-          itemCount:     total,
-          onPageChanged: (i) => setState(() => _current = i),
-          itemBuilder:   (_, i) {
-            // ValueKey forces InteractiveViewer to reset its transform
-            // (zoom + pan) when the user swipes to a new page.
-            return InteractiveViewer(
-              key:      ValueKey(i),
-              minScale: 0.5,
-              maxScale: 8.0,
-              child: Center(
-                child: Image.network(
-                  widget.items[i].url,
-                  fit: BoxFit.contain,
-                  loadingBuilder: (_, child, prog) => prog == null
-                      ? child
-                      : const Center(
-                          child: CircularProgressIndicator(
-                              color: Colors.white)),
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        size: 64, color: Colors.white54),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-
-        // ── Top bar: counter + close ───────────────────────────────
-        Positioned(
-          top: topPad + 8, left: 0, right: 0,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                _pill('${_current + 1} / $total'),
-                const Spacer(),
-                IconButton(
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black54,
-                    minimumSize:     const Size(48, 48),
-                  ),
-                  icon:      const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
+    return ItemImagePreview(
+      key: ValueKey(_current),
+      url: item.url,
+      title: [item.itemCode, item.itemName]
+          .where((text) => text.isNotEmpty)
+          .join(' · '),
+      navigationActions: [
+        if (total > 1) ...[
+          IconButton(
+            tooltip: 'Previous image',
+            onPressed: _current == 0 ? null : () => setState(() => _current--),
+            icon: const Icon(Icons.chevron_left),
           ),
-        ),
-
-        // ── Bottom caption: item code + name + dots ────────────────
-        Positioned(
-          bottom: bottomPad + 16, left: 16, right: 16,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-            decoration: BoxDecoration(
-              color:        Colors.black54,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              mainAxisSize:      MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.itemCode,
-                  style: const TextStyle(
-                    color:      Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize:   15,
-                  ),
-                ),
-                if (item.itemName.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    item.itemName,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 13),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                if (total > 1) ...[
-                  const SizedBox(height: 10),
-                  _PageDots(current: _current, total: total),
-                ],
-              ],
-            ),
+          Text('${_current + 1} / $total'),
+          IconButton(
+            tooltip: 'Next image',
+            onPressed: _current == total - 1
+                ? null
+                : () => setState(() => _current++),
+            icon: const Icon(Icons.chevron_right),
           ),
-        ),
+        ],
       ],
-    );
-  }
-
-  static Widget _pill(String text) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    decoration: BoxDecoration(
-      color:        Colors.black54,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      text,
-      style: const TextStyle(color: Colors.white, fontSize: 13),
-    ),
-  );
-}
-
-// ── Page dot indicator ─────────────────────────────────────────────────────────
-
-class _PageDots extends StatelessWidget {
-  final int current;
-  final int total;
-  const _PageDots({required this.current, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    // Show dots only when there are few enough to display clearly;
-    // the "N / total" counter in the top pill handles the rest.
-    if (total > 9) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(total, (i) {
-        final active = i == current;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve:    Curves.easeOut,
-          width:    active ? 20 : 6,
-          height:   6,
-          margin:   const EdgeInsets.symmetric(horizontal: 3),
-          decoration: BoxDecoration(
-            color:        active ? Colors.white : Colors.white38,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        );
-      }),
     );
   }
 }

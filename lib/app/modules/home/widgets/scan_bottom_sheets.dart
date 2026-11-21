@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 
 class ItemDetailSheet extends StatelessWidget {
   final Item item;
@@ -294,7 +295,10 @@ class MultiItemSelectionSheet extends StatelessWidget {
                     itemCount: items.length,
                     itemBuilder: (context, index) {
                       final item = items[index];
-                      final imageUrl = item.image != null ? '$baseUrl${item.image}' : null;
+                      final image = item.image;
+                      final imageUrl = image == null || image.isEmpty
+                          ? null
+                          : Uri.parse(baseUrl).resolve(image).toString();
 
                       return GestureDetector(
                         onTap: () {
@@ -315,27 +319,34 @@ class MultiItemSelectionSheet extends StatelessWidget {
                             children: [
                               // Image Section
                               Expanded(
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                                      child: imageUrl != null
-                                          ? Image.network(
-                                        imageUrl,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 600,
-                                        cacheHeight: 500,
-                                        errorBuilder: (_, __, ___) => _buildPlaceholder(scheme),
-                                      )
-                                          : _buildPlaceholder(scheme),
-                                    ),
-                                    if (imageUrl != null)
-                                      Positioned(
-                                        right: 8,
-                                        top: 8,
-                                        child: GestureDetector(
-                                          onTap: () => _showEnlargedImage(context, imageUrl),
+                                child: GestureDetector(
+                                  onTap: imageUrl == null
+                                      ? null
+                                      : () => showItemImagePreview(
+                                            context,
+                                            imageUrl,
+                                            item.itemCode,
+                                            item.itemName,
+                                          ),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                        child: imageUrl != null
+                                            ? Image.network(
+                                                imageUrl,
+                                                fit: BoxFit.cover,
+                                                cacheWidth: 600,
+                                                cacheHeight: 500,
+                                                errorBuilder: (_, __, ___) => _buildPlaceholder(scheme),
+                                              )
+                                            : _buildPlaceholder(scheme),
+                                      ),
+                                      if (imageUrl != null)
+                                        Positioned(
+                                          right: 8,
+                                          top: 8,
                                           child: Container(
                                             padding: const EdgeInsets.all(6),
                                             decoration: BoxDecoration(
@@ -345,8 +356,8 @@ class MultiItemSelectionSheet extends StatelessWidget {
                                             child: const Icon(Icons.zoom_in, color: Colors.white, size: 18),
                                           ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
 
@@ -425,37 +436,4 @@ class MultiItemSelectionSheet extends StatelessWidget {
     );
   }
 
-  void _showEnlargedImage(BuildContext parentContext, String url) {
-    Get.dialog(
-      Builder(
-        builder: (context) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: EdgeInsets.zero,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              InteractiveViewer(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(url),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 40,
-                right: 20,
-                child: IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                  style: IconButton.styleFrom(backgroundColor: Colors.black45),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

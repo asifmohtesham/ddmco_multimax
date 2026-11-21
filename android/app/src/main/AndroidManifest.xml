@@ -3,6 +3,7 @@
     package="com.ddmco.multimax">
 
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <!-- Android 13+ runtime permission for the scheduled digest notification.
          (Also merged in by flutter_local_notifications; declared explicitly
          for self-documentation.) -->
