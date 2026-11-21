@@ -306,7 +306,7 @@ class ApiProvider {
 
     try {
       return await _dio.get(endpoint, queryParameters: queryParameters);
-    } on DioException catch (e) {
+    } on DioException {
       rethrow;
     }
   }
@@ -2400,7 +2400,7 @@ class ApiProvider {
     try {
       final formData = FormData.fromMap({'usr': username, 'pwd': password});
       return await _dio.post('/api/method/login', data: formData, options: SessionExpiryInterceptor.unchecked(Options(contentType: Headers.formUrlEncodedContentType)));
-    } on DioException catch (e) {
+    } on DioException {
       rethrow;
     }
   }
