@@ -18,9 +18,6 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   // Native groups measure one child per delegate, even when offscreen.
   static const _maxNativeGroups = 24;
 
-  // Large thumb jumps make SliverList lay out intervening variable-height rows.
-  static const _maxDraggableRows = 500;
-
   static const filterFields = [
     ReportFilterField(
       key: 'item',
@@ -96,6 +93,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                   (!data!.isExpanded(match.group) || match.variants.isEmpty),
             );
         final rowCount = controller.reportData.length;
+        final draggable = canDragVariantScrollbar(
+          rowCount,
+          collapsed: collapsed,
+        );
+        final filtered = query.isNotEmpty || stock;
+        final footerStyle = Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant);
         if (query.isNotEmpty) controller.queueMatchedDetails(shown);
         final lazyGroups =
             grouped && !collapsed && groups.length > _maxNativeGroups;
@@ -104,7 +109,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
           color: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
           child: Scrollbar(
-            interactive: rowCount <= _maxDraggableRows || collapsed,
+            interactive: draggable,
             thumbVisibility: !busy && rowCount > 0,
             controller: controller.scrollController,
             child: CustomScrollView(
@@ -182,6 +187,34 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                                     : null,
                               ),
                             ),
+                            Obx(() {
+                              final progress = controller.nameProgress.value;
+                              if (query.isEmpty) return const SizedBox.shrink();
+                              if (progress != null) {
+                                return Semantics(
+                                  liveRegion: true,
+                                  child: Text(
+                                    'Searching names… ${progress.done} / ${progress.total}',
+                                  ),
+                                );
+                              }
+                              if (controller.nameSearchIncomplete.value) {
+                                return Row(
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'Some item names could not be loaded.',
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: controller.retrySearchNames,
+                                      child: const Text('Retry'),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }),
                             Wrap(
                               spacing: 8,
                               crossAxisAlignment: WrapCrossAlignment.center,
@@ -212,6 +245,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                                 ],
                               ],
                             ),
+                            if (!draggable)
+                              Text(
+                                grouped
+                                    ? 'Collapse groups to drag the scrollbar'
+                                    : 'Swipe the list to scroll long results',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: cs.onSurfaceVariant),
+                              ),
                           ],
                         ],
                       ),
@@ -258,9 +299,9 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                   )
                 else if (data != null) ...[
                   if (lazyGroups)
-                    _lazyGroupSliver(data, groups)
+                    _lazyGroupSliver(data, groups, filtered)
                   else
-                    ..._resultSlivers(data, groups),
+                    ..._resultSlivers(data, groups, filtered),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
@@ -269,21 +310,31 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                         12,
                         80 + bottomPadding,
                       ),
-                      child: Text(
-                        [
-                          if (shown.isEmpty) 'No variants match.',
-                          'End of list',
-                          'Quantity totals for shown results',
-                          ...variantQuantitySummary(
-                            shown,
-                            controller.reportColumns,
-                          ),
-                        ].join('\n'),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
+                      child: shown.isEmpty
+                          ? Obx(() {
+                              if (controller.nameProgress.value != null ||
+                                  (query.isNotEmpty &&
+                                      controller.nameSearchIncomplete.value)) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(
+                                'No variants match.',
+                                textAlign: TextAlign.center,
+                                style: footerStyle,
+                              );
+                            })
+                          : Text(
+                              [
+                                'End of list',
+                                'Quantity totals for shown results',
+                                ...variantQuantitySummary(
+                                  shown,
+                                  controller.reportColumns,
+                                ),
+                              ].join('\n'),
+                              textAlign: TextAlign.center,
+                              style: footerStyle,
+                            ),
                     ),
                   ),
                 ],
@@ -327,11 +378,32 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     onTap: () => controller.toggleGroup(group),
   );
 
+  Widget _collapsedTitle(VariantGroup group, int shown, bool filtered) {
+    final summary = group.collapsedSummary(shown, filtered: filtered);
+    return Obx(() {
+      final cached = controller.detailsFor(group.code).value;
+      final name = (group.heading?['item_name'] ?? cached?['item_name'])
+          ?.toString()
+          .trim();
+      return _GroupTitle(
+        group: group,
+        expanded: false,
+        name: name,
+        summary: summary,
+        onTap: () => controller.toggleGroup(group),
+      );
+    });
+  }
+
   Widget _lazyGroupSliver(
     VariantResults data,
     List<({VariantGroup group, List<VariantRow> variants})> groups,
+    bool filtered,
   ) {
     final entries = <({VariantGroup group, VariantRow? row, bool title})>[];
+    final counts = {
+      for (final match in groups) match.group: match.variants.length,
+    };
     for (final match in groups) {
       final group = match.group;
       final heading = group.heading;
@@ -364,7 +436,13 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
           if (entry.title) {
             return SizedBox(
               height: _headingExtent,
-              child: _groupTitle(entry.group, data.isExpanded(entry.group)),
+              child: data.isExpanded(entry.group) && counts[entry.group]! > 0
+                  ? _groupTitle(entry.group, true)
+                  : _collapsedTitle(
+                      entry.group,
+                      counts[entry.group]!,
+                      filtered,
+                    ),
             );
           }
           final row = entry.row;
@@ -391,6 +469,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   List<Widget> _resultSlivers(
     VariantResults data,
     List<({VariantGroup group, List<VariantRow> variants})> groups,
+    bool filtered,
   ) {
     final slivers = <Widget>[];
     final columns = controller.reportColumns;
@@ -413,7 +492,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       sliver: sliver,
     );
     // Fixed-extent runs can seek straight to a heading on a thumb jump.
-    var collapsed = <VariantGroup>[];
+    var collapsed = <({VariantGroup group, List<VariantRow> variants})>[];
     void flushCollapsed() {
       if (collapsed.isEmpty) return;
       final run = collapsed;
@@ -423,9 +502,13 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
           SliverFixedExtentList.builder(
             itemExtent: _headingExtent,
             itemCount: run.length,
-            itemBuilder: (context, index) => _groupTitle(run[index], false),
+            itemBuilder: (context, index) => _collapsedTitle(
+              run[index].group,
+              run[index].variants.length,
+              filtered,
+            ),
           ),
-          run.first,
+          run.first.group,
         ),
       );
     }
@@ -435,7 +518,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       final heading = group.heading;
       if (heading != null &&
           (!data.isExpanded(group) || match.variants.isEmpty)) {
-        collapsed.add(group);
+        collapsed.add(match);
         continue;
       }
       flushCollapsed();
@@ -599,11 +682,15 @@ class _RenderVisibleVariant extends RenderProxyBox {
 class _GroupTitle extends StatelessWidget {
   final VariantGroup group;
   final bool expanded;
+  final String? name;
+  final String? summary;
   final VoidCallback onTap;
 
   const _GroupTitle({
     required this.group,
     required this.expanded,
+    this.name,
+    this.summary,
     required this.onTap,
   });
 
@@ -618,18 +705,30 @@ class _GroupTitle extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: summary == null ? 8 : 0,
+            ),
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    group.code,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: summary == null
+                      ? _code(theme)
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _code(theme),
+                            Text(
+                              summary!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
                 const SizedBox(width: 4),
                 Icon(expanded ? Icons.expand_less : Icons.expand_more),
@@ -640,6 +739,15 @@ class _GroupTitle extends StatelessWidget {
       ),
     );
   }
+
+  Widget _code(ThemeData theme) => Text(
+    name == null || name!.isEmpty || name == group.code
+        ? group.code
+        : '${group.code} · $name',
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+  );
 }
 
 class _TemplateHeader extends StatelessWidget {

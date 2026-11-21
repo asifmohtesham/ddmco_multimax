@@ -28,6 +28,11 @@ class ItemVariantDetailsController extends GetxController {
   final results = Rxn<VariantResults>();
   final viewRevision = 0.obs;
   final searchRevision = 0.obs;
+  final nameProgress = Rxn<({int done, int total})>();
+  final nameSearchIncomplete = false.obs;
+  final _itemNames = <String, String>{};
+  final _checkedNames = <String>{};
+  CancelToken? _nameRequest;
   Timer? _searchTimer;
   Timer? _detailTimer;
   final _requestedDetails = <String>{};
@@ -59,7 +64,67 @@ class ItemVariantDetailsController extends GetxController {
       }
       if (scrollController.hasClients) scrollController.jumpTo(0);
       query.value = next;
+      if (next.isNotEmpty) unawaited(loadSearchNames());
     });
+  }
+
+  Future<void> retrySearchNames() async {
+    if (_nameRequest != null) return;
+    _checkedNames.removeWhere((code) => !_itemNames.containsKey(code));
+    await loadSearchNames();
+  }
+
+  Future<void> loadSearchNames() async {
+    final data = results.value;
+    if (data == null || query.value.isEmpty || _nameRequest != null) return;
+    final codes = {
+      for (final row in data.variants)
+        if (variantCode(row).isNotEmpty &&
+            (row['item_name']?.toString().trim().isEmpty ?? true))
+          variantCode(row),
+    };
+    final pending = codes
+        .where(
+          (code) =>
+              !_checkedNames.contains(code) &&
+              (itemDetails[code]?['item_name']?.toString().trim().isEmpty ??
+                  true),
+        )
+        .toList();
+    final total = codes.length;
+    if (pending.isEmpty) return;
+
+    final generation = _reportGeneration;
+    final request = CancelToken();
+    _nameRequest = request;
+    var done = total - pending.length;
+    nameProgress.value = (done: done, total: total);
+    const batchSize = 800;
+    try {
+      for (var start = 0; start < pending.length; start += batchSize) {
+        final batch = pending.skip(start).take(batchSize).toList();
+        final names = await _api.getItemNames(batch, cancelToken: request);
+        if (!_isCurrent(generation)) return;
+        _itemNames.addAll(names);
+        _checkedNames.addAll(batch);
+        done += batch.length;
+        nameProgress.value = (done: done, total: total);
+        searchRevision.value++;
+      }
+      nameSearchIncomplete.value = codes.any(
+        (code) =>
+            !_itemNames.containsKey(code) &&
+            (itemDetails[code]?['item_name']?.toString().trim().isEmpty ??
+                true),
+      );
+    } catch (_) {
+      if (_isCurrent(generation)) nameSearchIncomplete.value = true;
+    } finally {
+      if (_isCurrent(generation)) {
+        _nameRequest = null;
+        nameProgress.value = null;
+      }
+    }
   }
 
   void setInStock(bool value) {
@@ -81,7 +146,12 @@ class ItemVariantDetailsController extends GetxController {
     if (key != _visibleKey) {
       _visibleKey = key;
       _visible =
-          data?.filter(query: term, inStock: stockOnly, details: itemDetails) ??
+          data?.filter(
+            query: term,
+            inStock: stockOnly,
+            details: itemDetails,
+            names: _itemNames,
+          ) ??
           [];
       _visibleSearchCodes = {
         if (term.isNotEmpty)
@@ -155,6 +225,7 @@ class ItemVariantDetailsController extends GetxController {
     }
     _searchTimer?.cancel();
     _detailTimer?.cancel();
+    _nameRequest?.cancel();
     stickyHeading.dispose();
     searchController.dispose();
     scrollController.dispose();
@@ -175,6 +246,12 @@ class ItemVariantDetailsController extends GetxController {
 
   void _clearReport() {
     _reportGeneration++;
+    _nameRequest?.cancel();
+    _nameRequest = null;
+    _itemNames.clear();
+    _checkedNames.clear();
+    nameProgress.value = null;
+    nameSearchIncomplete.value = false;
     _searchTimer?.cancel();
     _detailTimer?.cancel();
     _detailTimer = null;

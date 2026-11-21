@@ -306,7 +306,7 @@ class ApiProvider {
 
     try {
       return await _dio.get(endpoint, queryParameters: queryParameters);
-    } on DioException catch (e) {
+    } on DioException {
       rethrow;
     }
   }
@@ -1318,6 +1318,32 @@ class ApiProvider {
   // ---------------------------------------------------------------------------
   // getItemDetails — Item Variant Details tile helper
   // ---------------------------------------------------------------------------
+
+  /// Reads names for the report's exact item codes with normal Item permissions.
+  Future<Map<String, String>> getItemNames(
+    List<String> itemCodes, {
+    CancelToken? cancelToken,
+  }) async {
+    if (itemCodes.isEmpty) return {};
+    if (!_dioInitialised) await _initDio();
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/api/method/frappe.client.get_list',
+      data: {
+        'doctype': 'Item',
+        'fields': ['name', 'item_name'],
+        'filters': [
+          ['name', 'in', itemCodes],
+        ],
+        'limit_page_length': itemCodes.length,
+      },
+      cancelToken: cancelToken,
+    );
+    return {
+      for (final row in response.data!['message'] as List)
+        if (row['item_name'] is String)
+          row['name'] as String: row['item_name'] as String,
+    };
+  }
 
   /// Batch-fetches item_name, item_group, and image for [itemCodes].
   /// Returns a map of item code → {item_name, item_group, image?}.
@@ -2374,7 +2400,7 @@ class ApiProvider {
     try {
       final formData = FormData.fromMap({'usr': username, 'pwd': password});
       return await _dio.post('/api/method/login', data: formData, options: SessionExpiryInterceptor.unchecked(Options(contentType: Headers.formUrlEncodedContentType)));
-    } on DioException catch (e) {
+    } on DioException {
       rethrow;
     }
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +23,18 @@ class _FakeApi extends ApiProvider {
   final stockRequests = <String>[];
   final stockRows = <Map<String, dynamic>>[];
   final details = <String, Map<String, dynamic>>{};
+
+  Completer<Map<String, String>>? names;
+  final nameRequests = <List<String>>[];
+
+  @override
+  Future<Map<String, String>> getItemNames(
+    List<String> itemCodes, {
+    CancelToken? cancelToken,
+  }) async {
+    nameRequests.add(itemCodes);
+    return names == null ? {} : await names!.future;
+  }
 
   @override
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
@@ -248,10 +261,86 @@ void main() {
           .singleWhere((bar) => bar.controller == controller.scrollController);
       expect(scrollbar.thumbVisibility, isTrue);
       expect(scrollbar.interactive, isFalse);
+      expect(
+        find.text('Swipe the list to scroll long results'),
+        findsOneWidget,
+      );
 
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
       await tester.pumpAndSettle();
       expect(controller.scrollController.offset, greaterThan(0));
+    },
+  );
+
+  testWidgets(
+    'collapsed headings keep their extent and stock context in dark mode',
+    (tester) async {
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          {
+            'variant_name': 'ACP-25',
+            'indent': 0,
+            'item_name': 'Classic Belt',
+            'current_stock': 3,
+            'stock_uom': 'Nos',
+          },
+          {'variant_name': 'A', 'indent': 1, 'current_stock': 3},
+          {'variant_name': 'B', 'indent': 1, 'current_stock': 0},
+          {'variant_name': 'Mixed', 'indent': 0},
+          {'variant_name': 'C', 'indent': 1},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Collapse All'));
+      await tester.pumpAndSettle();
+      final title = find.text('ACP-25 · Classic Belt');
+      final heading = find
+          .ancestor(of: title, matching: find.byType(InkWell))
+          .first;
+      expect(tester.getSize(heading).height, 52);
+      final summary = find.text('2 variants · Current Stock 3 Nos');
+      final scheme = Theme.of(tester.element(summary)).colorScheme;
+      expect(scheme.brightness, Brightness.dark);
+      expect(
+        tester.widget<Text>(summary).style!.color,
+        scheme.onSurfaceVariant,
+      );
+      expect(find.text('1 variant'), findsOneWidget);
+      await tester.tap(find.text('In stock'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 of 2 · Current Stock 3 Nos'), findsOneWidget);
+      expect(tester.getSize(heading).height, 52);
+    },
+  );
+
+  testWidgets(
+    'name-only search shows progress and finds an offscreen variant',
+    (tester) async {
+      await open(tester, preset: 'ACP-25');
+      api.names = Completer<Map<String, String>>();
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          {'variant_name': 'ACP-25', 'indent': 0},
+          for (var index = 0; index < 201; index++)
+            {'variant_name': 'Code-$index', 'indent': 1},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      expect(api.detailRequests, isEmpty);
+      await tester.enterText(find.byType(TextField), 'Unseen Name');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Searching names… 0 / 201'), findsOneWidget);
+      expect(find.text('No variants match.'), findsNothing);
+      expect(api.nameRequests.single.last, 'Code-200');
+      api.names!.complete({'Code-200': 'Unseen Name'});
+      await tester.pumpAndSettle();
+      expect(find.text('Code-200'), findsOneWidget);
+      expect(find.textContaining('Searching names'), findsNothing);
     },
   );
 
@@ -600,6 +689,10 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Expand All'));
         await tester.pumpAndSettle();
+        expect(
+          find.text('Collapse groups to drag the scrollbar'),
+          findsOneWidget,
+        );
       }
       final scroll = Get.find<ItemVariantDetailsController>().scrollController;
       final toolbar = tester

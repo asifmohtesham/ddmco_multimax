@@ -370,3 +370,45 @@ from the User document and bypass the fallbacks.
    submit one of each.
 7. Job Card: start, pause with a quantity, resume, complete, submit.
 8. Sales Order: add an item and confirm the rate and UOM are filled in.
+
+### Item Variant Details navigation on large reports
+
+Keep the scrollbar passive above 500 report rows while the visible list
+contains expanded cards. The report shows "Collapse groups to drag the
+scrollbar" beside Collapse All and Expand All. Fully collapsed groups use
+a 52 logical-pixel extent and support direct thumb seeking. Large flat
+replies use touch scrolling and show their own hint.
+
+The Pixel 7 profile freeze baseline measured 1,501.2 ms for Belts and
+4,755.1 ms with one ANR for Belts + Wallets. The combined frame spent
+4,747 ms in Flutter's UI phase. Released v2.51.0 reached 19.59 ms and
+34.94 ms on the respective collapsed thumb runs, with zero ANRs.
+Its separate combined Expand All action peaked at 112.99 ms.
+
+Flutter's variable-height SliverList measures intervening children on
+a distant pixel jump. Fixed placeholder rows could seek quickly during
+a drag, but resolving the landing point requires changing scroll
+geometry and preserving the visible row and offset. Group-index seeking,
+auto-collapse, and expansion caps all change the meaning of Expand All
+or the thumb. The existing collapsed mode already provides group-index
+seeking on demand. The package option, super_sliver_list 0.4.1, estimates
+unmeasured extents and supports index jumps. It is the closest fit for
+keeping expanded cards and thumb navigation together. Adoption would
+need to preserve the report's pinned heading and pass the same
+Pixel 7 profile gesture measurements. No package was added.
+
+Name search loads the missing variant names via the standard
+`frappe.client.get_list` Item method. The request body contains only
+the exact report codes, two field names and a row limit. Both v15 and
+v16 accept the same arguments and enforce normal Item list permissions.
+The cache lasts for one report. The screen reports an incomplete search
+if the server refuses the call or omits requested names. Group headings
+display the server's subtotal and suppress it when the server leaves
+it empty for mixed UOMs. Flat replies have no template subtotal.
+The follow-up Pixel 7 profile run used 1,994 Belts rows and 7,500 combined
+rows. Five Belts down/up pairs peaked at 15.42 ms. One combined down/up
+pair peaked at 10.35 ms. The combined Expand All action peaked at
+40.95 ms. Android logged zero ANRs. The passive runs used long edge
+swipes on already-expanded content, so these results verify normal
+scrolling under the guard. They give no timing for an interactive
+variable-height thumb.

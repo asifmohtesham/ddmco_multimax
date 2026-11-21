@@ -163,6 +163,17 @@ class VariantGroup {
 
   const VariantGroup(this.heading, this.variants);
 
+  String collapsedSummary(int shown, {required bool filtered}) {
+    final count = filtered
+        ? '$shown of ${variants.length}'
+        : '${variants.length} ${variants.length == 1 ? 'variant' : 'variants'}';
+    final stock = formatStockQuantity(
+      heading?['current_stock'],
+      heading?['stock_uom'],
+    );
+    return stock.isEmpty ? count : '$count · Current Stock $stock';
+  }
+
   String get code => heading == null ? '' : variantCode(heading!);
 }
 
@@ -236,6 +247,7 @@ class VariantResults {
     String query = '',
     bool inStock = false,
     Map<String, VariantRow> details = const {},
+    Map<String, String> names = const {},
   }) {
     final term = query.trim().toLowerCase();
     final result = <({VariantGroup group, List<VariantRow> variants})>[];
@@ -253,6 +265,8 @@ class VariantResults {
               (term.isEmpty ||
                   headingMatches ||
                   _searchText[row]!.any((value) => value.contains(term)) ||
+                  (names[variantCode(row)]?.toLowerCase().contains(term) ??
+                      false) ||
                   (details[variantCode(row)]?['item_name']
                           ?.toString()
                           .toLowerCase()
@@ -267,3 +281,6 @@ class VariantResults {
     return result;
   }
 }
+
+bool canDragVariantScrollbar(int rowCount, {required bool collapsed}) =>
+    rowCount <= 500 || collapsed;
