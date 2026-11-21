@@ -19,6 +19,11 @@ import 'package:multimax/app/data/services/global_search_service.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 
+typedef ItemVariantDetailsResult = ({
+  List<Map<String, dynamic>> columns,
+  List<Map<String, dynamic>> rows,
+});
+
 class ApiProvider {
   static const String defaultBaseUrl = "https://erp.domain.com";
 
@@ -1051,45 +1056,118 @@ class ApiProvider {
   // getItemVariantDetails
   // ---------------------------------------------------------------------------
 
-  /// Fetches all variants of [itemCode] (the template/parent item) via the
-  /// ERPNext "Item Variant Details" script report.
-  ///
-  /// Returns both column definitions (dynamic per item template) and row data
-  /// so the UI can render attribute columns generically at runtime.
-  Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
-      getItemVariantDetails(String itemCode) async {
+  Future<ItemVariantDetailsResult> getItemVariantDetails({
+    List<String> items = const [],
+    List<String> itemGroups = const [],
+    List<String> warehouses = const [],
+  }) async {
     if (!_dioInitialised) await _initDio();
 
-    late final Response response;
-    try {
-      response = await _dio.get(
-        '/api/method/frappe.desk.query_report.run',
-        queryParameters: {
-          'report_name'           : 'Item Variant Details',
-          'filters'               : json.encode({'item': itemCode}),
-          'ignore_prepared_report': 'true',
-          '_'                     : DateTime.now().millisecondsSinceEpoch,
-        },
-      );
-    } on DioException {
-      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
-    } catch (_) {
-      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
-    }
-
-    if (response.statusCode != 200) {
-      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
-    }
-
-    return parseItemVariantDetailsResponse(
-      response.data['message'] as Map<String, dynamic>?,
+    return requestItemVariantDetails(
+      items: items,
+      itemGroups: itemGroups,
+      warehouses: warehouses,
+      request: (filters) async {
+        final response = await _dio.get<Map<String, dynamic>>(
+          '/api/method/frappe.desk.query_report.run',
+          queryParameters: {
+            'report_name': 'Item Variant Details',
+            'filters': json.encode(filters),
+            'ignore_prepared_report': 'true',
+            '_': DateTime.now().millisecondsSinceEpoch,
+          },
+        );
+        final message = response.data?['message'];
+        if (message is! Map<String, dynamic> ||
+            message['columns'] is! List || message['result'] is! List) {
+          throw const FormatException('The server returned an invalid report.');
+        }
+        return parseItemVariantDetailsResponse(message);
+      },
     );
+  }
+
+  static Map<String, dynamic> itemVariantDetailsFilters({
+    List<String> items = const [],
+    List<String> itemGroups = const [],
+    List<String> warehouses = const [],
+  }) => {
+    if (items.isNotEmpty) 'item': items.length == 1 ? items.single : items,
+    if (itemGroups.isNotEmpty) 'item_group': itemGroups,
+    if (warehouses.isNotEmpty) 'warehouse': warehouses,
+  };
+
+  static Future<ItemVariantDetailsResult> requestItemVariantDetails({
+    required List<String> items,
+    required List<String> itemGroups,
+    required List<String> warehouses,
+    required Future<ItemVariantDetailsResult> Function(Map<String, dynamic>)
+        request,
+  }) async {
+    final filters = itemVariantDetailsFilters(
+      items: items,
+      itemGroups: itemGroups,
+      warehouses: warehouses,
+    );
+    final hasExtraFilters = itemGroups.isNotEmpty || warehouses.isNotEmpty;
+    final canSplit = items.length > 1 && itemGroups.isEmpty;
+    const unsupportedFilters = FormatException(
+      'This server cannot apply Item Groups or Warehouses in this report. '
+      'Clear those filters and select Items.',
+    );
+    bool supportsFilters(ItemVariantDetailsResult result) {
+      // The legacy report has neither of these Link columns. Its dynamic
+      // attributes can have the same fieldnames but are Data columns.
+      final links = {
+        for (final column in result.columns)
+          if (column['fieldtype'] == 'Link')
+            (column['fieldname'], column['options']),
+      };
+      return links.containsAll({('item_group', 'Item Group'), ('stock_uom', 'UOM')});
+    }
+
+    try {
+      final result = await request(filters);
+      if (supportsFilters(result)) return result;
+      if (hasExtraFilters) throw unsupportedFilters;
+      if (!canSplit) return result;
+    } on DioException catch (error) {
+      final data = error.response?.data;
+      final errorType = data is Map ? data['exc_type'] : null;
+      // Frappe may hide tracebacks. Match the exception types raised by the
+      // legacy document lookup, without retrying network or permission errors.
+      final rejectedItem = switch (error.response?.statusCode) {
+        404 => errorType == 'DoesNotExistError',
+        417 => errorType == 'ValidationError',
+        500 => {'TypeError', 'ValueError', 'AttributeError'}.contains(errorType),
+        _ => false,
+      };
+      if (!rejectedItem) rethrow;
+      if (hasExtraFilters && items.isEmpty) {
+        throw const FormatException(
+          'The server could not run this filter combination. '
+          'Try selecting Items without Item Groups or Warehouses.',
+        );
+      }
+      if (!canSplit) rethrow;
+    }
+
+    final columns = <Object?, Map<String, dynamic>>{};
+    final rows = <Map<String, dynamic>>[];
+    for (final item in items) {
+      final result = await request({...filters, 'item': item});
+      if (hasExtraFilters && !supportsFilters(result)) throw unsupportedFilters;
+      for (final column in result.columns) {
+        columns.putIfAbsent(column['fieldname'], () => column);
+      }
+      rows.addAll(result.rows);
+    }
+    return (columns: columns.values.toList(), rows: rows);
   }
 
   /// Exposed as a public static method so unit tests can exercise the parsing
   /// logic without a live HTTP connection or GetX service registration.
-  static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
-      parseItemVariantDetailsResponse(Map<String, dynamic>? message) {
+  static ItemVariantDetailsResult parseItemVariantDetailsResponse(Map<String, dynamic>? message) {
     const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
     if (message == null) return empty;
     try {

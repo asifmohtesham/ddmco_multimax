@@ -6,6 +6,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 void main() {
+  test('footer sums variant quantities once and keeps stock UOMs separate', () {
+    final totals = variantQuantitySummary(
+      [
+        {'indent': 0, 'current_stock': 72, 'stock_uom': 'Nos'},
+        {
+          'indent': 1,
+          'current_stock': 72.0,
+          'in_production': 0,
+          'stock_uom': 'Nos',
+          'open_orders': 4,
+          'avg_selling_price_list_rate': 2.92,
+        },
+        {'indent': 1, 'current_stock': 0, 'stock_uom': 'Nos'},
+        {'indent': 1, 'current_stock': 1.5, 'stock_uom': 'Kg'},
+      ],
+      [
+        {'fieldname': 'current_stock', 'label': 'Current Stock'},
+        {'fieldname': 'in_production', 'label': 'In Production'},
+      ],
+    );
+    expect(totals, [
+      'Current Stock 72 Nos',
+      'In Production 0 Nos',
+      'Current Stock 1.5 Kg',
+    ]);
+  });
+
   // v16.55: template subtotal row, then its variants.
   final v16Template = <String, dynamic>{
     'variant_name': '---WAL',
@@ -84,13 +111,15 @@ void main() {
         'current_stock': null,
         'in_production': null,
       };
-      expect(templateTotals(mixed, columns),
-          [(label: 'Open Sales Orders', value: '1')]);
+      expect(templateTotals(mixed, columns), [
+        (label: 'Open Sales Orders', value: '1'),
+      ]);
     });
 
     test('falls back to the fieldname when a column has no label', () {
-      expect(templateTotals({'open_orders': 2}, const []),
-          [(label: 'open_orders', value: '2')]);
+      expect(templateTotals({'open_orders': 2}, const []), [
+        (label: 'open_orders', value: '2'),
+      ]);
     });
   });
 
