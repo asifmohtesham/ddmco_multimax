@@ -2,12 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+// Keep the shared Flutter Material API until the app migrates to material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
-import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/home/rack_scan_logic.dart';
@@ -155,7 +156,7 @@ class HomeController extends GetxController {
   /// True while the selected doctype's preview fetch is in flight.
   final isLoadingPreview = false.obs;
 
-  /// Preview cache keyed by '<doctype>::<actionableCacheKey(scope, email)>'.
+  /// Preview cache keyed by `<doctype>::<actionableCacheKey(scope, email)>`.
   final Map<String, List<ActionableDocRowData>> _previewCache = {};
 
   // --- Today's attendance (site-wide; does NOT follow selectedFilterUser) ---
@@ -430,7 +431,7 @@ class HomeController extends GetxController {
       attendanceRows.assignAll(rows);
       attendanceLoadedAt.value = DateTime.now();
     } catch (e) {
-      print("Error fetching today's attendance: $e");
+      debugPrint("Error fetching today's attendance: $e");
     } finally {
       isLoadingAttendance.value = false;
     }
@@ -589,7 +590,7 @@ class HomeController extends GetxController {
         }
       }
     } catch (e) {
-      print('Error fetching users: $e');
+      debugPrint('Error fetching users: $e');
     } finally {
       isLoadingUsers.value = false;
     }
@@ -604,6 +605,9 @@ class HomeController extends GetxController {
 
   Future<void> fetchDashboardData() async {
     isLoadingStats.value = true;
+    // Attendance has its own permission gate. A denied manufacturing count
+    // must not prevent the signed-in employee's attendance from loading.
+    final attendance = fetchTodayAttendance();
     try {
       Map<String, dynamic> woFilters = {'status': 'In Process'};
       Map<String, dynamic> jcFilters = {'status': 'Open'};
@@ -630,13 +634,13 @@ class HomeController extends GetxController {
         _fetchActiveWipJc(),
         fetchUpcomingTodos(),
         fetchActionableCounts(force: true),
-        fetchTodayAttendance(), // swallows its own errors
       ]);
       _applyDefaultSelection();
     } catch (e) {
-      print('Error fetching dashboard stats: $e');
+      debugPrint('Error fetching dashboard stats: $e');
     } finally {
       isLoadingStats.value = false;
+      await attendance;
     }
   }
 
@@ -672,7 +676,7 @@ class HomeController extends GetxController {
         _recomputeTasksFirst();
       }
     } catch (e) {
-      print('Error fetching upcoming todos: $e');
+      debugPrint('Error fetching upcoming todos: $e');
     }
   }
 
@@ -717,7 +721,7 @@ class HomeController extends GetxController {
       // Guard against a scope flip landing before this fetch returns.
       if (scope == actionableScope.value) actionableCounts.assignAll(counts);
     } catch (e) {
-      print('Error fetching actionable counts: $e');
+      debugPrint('Error fetching actionable counts: $e');
     } finally {
       if (scope == actionableScope.value) isLoadingActionable.value = false;
     }
@@ -809,7 +813,7 @@ class HomeController extends GetxController {
       // Guard against a chip change landing before this fetch returns.
       if (doctype == selectedActionable.value) previewDocs.assignAll(rows);
     } catch (e) {
-      print('Error fetching preview docs: $e');
+      debugPrint('Error fetching preview docs: $e');
     } finally {
       if (doctype == selectedActionable.value) isLoadingPreview.value = false;
     }
@@ -985,9 +989,11 @@ class HomeController extends GetxController {
           if (buckets.containsKey(key)) {
             final existing = buckets[key]!;
             double qty = 0.0;
-            if (type == 'DN') qty = _safeParseDouble(item['total_qty']);
-            else if (type == 'SE') qty = _safeParseDouble(item['custom_total_qty']);
-            else if (type == 'PR') qty = _safeParseDouble(item['total_qty']);
+            if (type == 'DN' || type == 'PR') {
+              qty = _safeParseDouble(item['total_qty']);
+            } else if (type == 'SE') {
+              qty = _safeParseDouble(item['custom_total_qty']);
+            }
 
             int custCount = (type == 'DN' && item['customer'] != null) ? 1 : 0;
             buckets[key] = TimelinePoint(
@@ -1008,7 +1014,7 @@ class HomeController extends GetxController {
 
       timelineData.assignAll(buckets.values.toList());
     } catch (e) {
-      print('Error fetching timeline: $e');
+      debugPrint('Error fetching timeline: $e');
     } finally {
       isLoadingTimeline.value = false;
     }
@@ -1071,7 +1077,7 @@ class HomeController extends GetxController {
 
   void _openItemDetailSheet(String itemCode, {String? batchNo}) {
     Get.put(ItemTabController());
-    Get.put(ItemFormController())..loadItem(itemCode, batchNo: batchNo);
+    Get.put(ItemFormController()).loadItem(itemCode, batchNo: batchNo);
     // The modal path bypasses ItemFormBinding; the Re-order tab's warehouse
     // pickers need this.
     if (!Get.isRegistered<WarehouseProvider>()) {

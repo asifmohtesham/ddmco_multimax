@@ -1,3 +1,5 @@
+// Keep the shared Flutter Material API until the app migrates to material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/attendance_models.dart';
@@ -25,7 +27,7 @@ class MyAttendanceCard extends StatelessWidget {
   /// Today's holiday name ("Eid al-Fitr"); '' on a weekly off or a working day.
   final String holidayName;
 
-  /// The viewer's own row; null while the first load is in flight.
+  /// The viewer's own row, when available.
   final EmployeeDayStatus? row;
   final ShiftRules shift;
   final DateTime now;
@@ -52,7 +54,14 @@ class MyAttendanceCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(color: s.border),
           ),
-          child: r == null ? _skeleton(s) : _content(context, r),
+          child: r != null
+              ? _content(context, r)
+              : isLoading
+                  ? _skeleton(s)
+                  : Text(
+                      'Attendance unavailable',
+                      style: TextStyle(fontSize: 13, color: s.textMuted),
+                    ),
         ),
       ),
     );
