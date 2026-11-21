@@ -261,10 +261,58 @@ void main() {
           .singleWhere((bar) => bar.controller == controller.scrollController);
       expect(scrollbar.thumbVisibility, isTrue);
       expect(scrollbar.interactive, isFalse);
+      expect(
+        find.text('Swipe the list to scroll long results'),
+        findsOneWidget,
+      );
 
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
       await tester.pumpAndSettle();
       expect(controller.scrollController.offset, greaterThan(0));
+    },
+  );
+
+  testWidgets(
+    'collapsed headings keep their extent and stock context in dark mode',
+    (tester) async {
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          {
+            'variant_name': 'ACP-25',
+            'indent': 0,
+            'item_name': 'Classic Belt',
+            'current_stock': 3,
+            'stock_uom': 'Nos',
+          },
+          {'variant_name': 'A', 'indent': 1, 'current_stock': 3},
+          {'variant_name': 'B', 'indent': 1, 'current_stock': 0},
+          {'variant_name': 'Mixed', 'indent': 0},
+          {'variant_name': 'C', 'indent': 1},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Collapse All'));
+      await tester.pumpAndSettle();
+      final title = find.text('ACP-25 · Classic Belt');
+      final heading = find
+          .ancestor(of: title, matching: find.byType(InkWell))
+          .first;
+      expect(tester.getSize(heading).height, 52);
+      final summary = find.text('2 variants · Current Stock 3 Nos');
+      final scheme = Theme.of(tester.element(summary)).colorScheme;
+      expect(scheme.brightness, Brightness.dark);
+      expect(
+        tester.widget<Text>(summary).style!.color,
+        scheme.onSurfaceVariant,
+      );
+      expect(find.text('1 variant'), findsOneWidget);
+      await tester.tap(find.text('In stock'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 of 2 · Current Stock 3 Nos'), findsOneWidget);
+      expect(tester.getSize(heading).height, 52);
     },
   );
 
@@ -641,6 +689,10 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Expand All'));
         await tester.pumpAndSettle();
+        expect(
+          find.text('Collapse groups to drag the scrollbar'),
+          findsOneWidget,
+        );
       }
       final scroll = Get.find<ItemVariantDetailsController>().scrollController;
       final toolbar = tester
