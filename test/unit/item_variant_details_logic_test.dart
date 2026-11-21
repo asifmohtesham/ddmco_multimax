@@ -99,8 +99,8 @@ void main() {
 
     test('uses the report\'s own column labels, in report order', () {
       expect(templateTotals(v16Template, columns), [
-        (label: 'Current Stock', value: '12'),
-        (label: 'In Production', value: '0'),
+        (label: 'Current Stock', value: '12 Nos'),
+        (label: 'In Production', value: '0 Nos'),
         (label: 'Open Sales Orders', value: '1'),
       ]);
     });
@@ -109,7 +109,7 @@ void main() {
       final mixed = {
         ...v16Template,
         'current_stock': null,
-        'in_production': null,
+        'in_production': '',
       };
       expect(templateTotals(mixed, columns), [
         (label: 'Open Sales Orders', value: '1'),

@@ -14,6 +14,9 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   const ItemVariantDetailsScreen({super.key});
 
+  // Large thumb jumps make SliverList lay out intervening variable-height rows.
+  static const _maxDraggableRows = 500;
+
   static const filterFields = [
     ReportFilterField(
       key: 'item',
@@ -75,13 +78,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     return AppShellScaffold(
       body: Obx(() {
         final busy = controller.isLoading.value;
+        final rowCount = controller.reportData.length;
         return RefreshIndicator(
           onRefresh: controller.runReport,
           color: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
           child: Scrollbar(
-            interactive: true,
-            thumbVisibility: !busy && controller.reportData.isNotEmpty,
+            interactive: rowCount <= _maxDraggableRows,
+            thumbVisibility: !busy && rowCount > 0,
             controller: controller.scrollController,
             child: CustomScrollView(
               controller: controller.scrollController,
@@ -138,8 +142,8 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                   )
                 else
                   SliverPadding(
-                    // Keep card taps outside the scrollbar thumb's touch target.
-                    padding: EdgeInsets.fromLTRB(12, 4, 32, 80 + bottomPadding),
+                    // Card controls are inset beyond the thumb's touch target.
+                    padding: EdgeInsets.fromLTRB(12, 4, 12, 80 + bottomPadding),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate((context, index) {
                         if (index == controller.reportData.length) {
@@ -301,11 +305,14 @@ class _VariantTile extends StatelessWidget {
         ?? '—';
 
     final chips = variantChips(row, columns).toList();
+    final stockUom = row['stock_uom'];
+    final currentStock = formatStockQuantity(row['current_stock'], stockUom);
 
     return Obx(() {
       final details        = controller.itemDetails[itemCode];
       final itemName       = details?['item_name']  as String? ?? '';
-      final itemGroup      = details?['item_group'] as String? ?? '';
+      final itemGroup      = details?['item_group'] as String? ??
+          row['item_group']?.toString() ?? '';
       final imageUrl       = _imageUrl(details?['image'] as String?);
       final stockRows      = controller.stockBalances[itemCode];
       final isStockLoading = controller.loadingStock[itemCode] == true;
@@ -370,7 +377,7 @@ class _VariantTile extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (imageUrl == null) ...[
-                            _ItemThumb(itemCode: itemCode),
+                            const _ItemThumb(),
                             const SizedBox(width: 12),
                           ],
                           Expanded(
@@ -414,6 +421,18 @@ class _VariantTile extends StatelessWidget {
                       ),
                     ),
                   ),
+
+                  if (currentStock.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Current Stock $currentStock',
+                        style: text.labelMedium?.copyWith(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
 
                   // ── Attribute chips ──────────────────────────────
                   if (chips.isNotEmpty) ...[
@@ -463,7 +482,8 @@ class _VariantTile extends StatelessWidget {
                   ),
 
                   // ── Stock section ────────────────────────────────
-                  if (isExpanded) _StockSection(rows: stockRows),
+                  if (isExpanded)
+                    _StockSection(rows: stockRows, stockUom: stockUom),
                 ],
               ),
             ),
@@ -514,19 +534,15 @@ class _ImageBanner extends StatelessWidget {
   }
 }
 
-// ── Initials thumbnail (shown only when no image is available) ────────────────
+// ── Image placeholder (shown only when no image is available) ────────────────
 
 class _ItemThumb extends StatelessWidget {
-  final String itemCode;
   static const _size = 54.0;
-  const _ItemThumb({required this.itemCode});
+  const _ItemThumb();
 
   @override
   Widget build(BuildContext context) {
-    final cs       = Theme.of(context).colorScheme;
-    final initials = itemCode.length >= 2
-        ? itemCode.substring(0, 2).toUpperCase()
-        : itemCode.toUpperCase();
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: _size, height: _size,
       decoration: BoxDecoration(
@@ -534,14 +550,7 @@ class _ItemThumb extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       alignment: Alignment.center,
-      child: Text(
-        initials,
-        style: TextStyle(
-          color:      cs.onPrimaryContainer,
-          fontWeight: FontWeight.w700,
-          fontSize:   17,
-        ),
-      ),
+      child: Icon(Icons.image_outlined, color: cs.onPrimaryContainer),
     );
   }
 }
@@ -578,7 +587,8 @@ class _AttrChip extends StatelessWidget {
 
 class _StockSection extends StatelessWidget {
   final List<Map<String, dynamic>> rows;
-  const _StockSection({required this.rows});
+  final Object? stockUom;
+  const _StockSection({required this.rows, required this.stockUom});
 
   @override
   Widget build(BuildContext context) {
@@ -621,7 +631,7 @@ class _StockSection extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  'Total  ${totalQty.toStringAsFixed(0)} pcs',
+                  'Total  ${formatStockQuantity(totalQty, stockUom)}',
                   style: text.labelMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: totalQty > 0 ? cs.primary : cs.onSurfaceVariant,
@@ -643,6 +653,7 @@ class _StockSection extends StatelessWidget {
                 _StockRow(
                   rack: r['rack']?.toString() ?? '—',
                   qty:  (r['qty'] as num?) ?? 0,
+                  stockUom: stockUom,
                 ),
                 if (!isLast)
                   Divider(
@@ -664,7 +675,8 @@ class _StockSection extends StatelessWidget {
 class _StockRow extends StatelessWidget {
   final String rack;
   final num    qty;
-  const _StockRow({required this.rack, required this.qty});
+  final Object? stockUom;
+  const _StockRow({required this.rack, required this.qty, required this.stockUom});
 
   Color _qtyColor(ColorScheme cs, Brightness brightness) {
     if (qty < 0) return cs.error;
@@ -700,7 +712,7 @@ class _StockRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              '${qty.toStringAsFixed(0)} pcs',
+              formatStockQuantity(qty, stockUom),
               style: text.labelMedium?.copyWith(
                 color:      color,
                 fontWeight: FontWeight.w700,

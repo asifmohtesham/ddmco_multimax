@@ -311,9 +311,7 @@ void main() {
         (label: 'Open Sales Orders', value: '0'),
       ]);
       expect(variantChips(variants.first, report.columns), [
-        (label: 'Item Group', value: 'Belts'),
         (label: 'Brand', value: 'Example'),
-        (label: 'Stock UOM', value: 'Nos'),
       ]);
       expect(variantChips(variants.last, report.columns), isEmpty);
     });
