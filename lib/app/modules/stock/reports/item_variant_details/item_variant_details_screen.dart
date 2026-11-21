@@ -96,6 +96,9 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                   (!data!.isExpanded(match.group) || match.variants.isEmpty),
             );
         final rowCount = controller.reportData.length;
+        final footerStyle = Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant);
         if (query.isNotEmpty) controller.queueMatchedDetails(shown);
         final lazyGroups =
             grouped && !collapsed && groups.length > _maxNativeGroups;
@@ -182,6 +185,34 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                                     : null,
                               ),
                             ),
+                            Obx(() {
+                              final progress = controller.nameProgress.value;
+                              if (query.isEmpty) return const SizedBox.shrink();
+                              if (progress != null) {
+                                return Semantics(
+                                  liveRegion: true,
+                                  child: Text(
+                                    'Searching names… ${progress.done} / ${progress.total}',
+                                  ),
+                                );
+                              }
+                              if (controller.nameSearchIncomplete.value) {
+                                return Row(
+                                  children: [
+                                    const Expanded(
+                                      child: Text(
+                                        'Some item names could not be loaded.',
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: controller.retrySearchNames,
+                                      child: const Text('Retry'),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            }),
                             Wrap(
                               spacing: 8,
                               crossAxisAlignment: WrapCrossAlignment.center,
@@ -269,21 +300,31 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                         12,
                         80 + bottomPadding,
                       ),
-                      child: Text(
-                        [
-                          if (shown.isEmpty) 'No variants match.',
-                          'End of list',
-                          'Quantity totals for shown results',
-                          ...variantQuantitySummary(
-                            shown,
-                            controller.reportColumns,
-                          ),
-                        ].join('\n'),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
+                      child: shown.isEmpty
+                          ? Obx(() {
+                              if (controller.nameProgress.value != null ||
+                                  (query.isNotEmpty &&
+                                      controller.nameSearchIncomplete.value)) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(
+                                'No variants match.',
+                                textAlign: TextAlign.center,
+                                style: footerStyle,
+                              );
+                            })
+                          : Text(
+                              [
+                                'End of list',
+                                'Quantity totals for shown results',
+                                ...variantQuantitySummary(
+                                  shown,
+                                  controller.reportColumns,
+                                ),
+                              ].join('\n'),
+                              textAlign: TextAlign.center,
+                              style: footerStyle,
+                            ),
                     ),
                   ),
                 ],

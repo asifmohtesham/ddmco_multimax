@@ -236,6 +236,7 @@ class VariantResults {
     String query = '',
     bool inStock = false,
     Map<String, VariantRow> details = const {},
+    Map<String, String> names = const {},
   }) {
     final term = query.trim().toLowerCase();
     final result = <({VariantGroup group, List<VariantRow> variants})>[];
@@ -253,6 +254,8 @@ class VariantResults {
               (term.isEmpty ||
                   headingMatches ||
                   _searchText[row]!.any((value) => value.contains(term)) ||
+                  (names[variantCode(row)]?.toLowerCase().contains(term) ??
+                      false) ||
                   (details[variantCode(row)]?['item_name']
                           ?.toString()
                           .toLowerCase()

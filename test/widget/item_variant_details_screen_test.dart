@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +23,18 @@ class _FakeApi extends ApiProvider {
   final stockRequests = <String>[];
   final stockRows = <Map<String, dynamic>>[];
   final details = <String, Map<String, dynamic>>{};
+
+  Completer<Map<String, String>>? names;
+  final nameRequests = <List<String>>[];
+
+  @override
+  Future<Map<String, String>> getItemNames(
+    List<String> itemCodes, {
+    CancelToken? cancelToken,
+  }) async {
+    nameRequests.add(itemCodes);
+    return names == null ? {} : await names!.future;
+  }
 
   @override
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
@@ -252,6 +265,34 @@ void main() {
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
       await tester.pumpAndSettle();
       expect(controller.scrollController.offset, greaterThan(0));
+    },
+  );
+
+  testWidgets(
+    'name-only search shows progress and finds an offscreen variant',
+    (tester) async {
+      await open(tester, preset: 'ACP-25');
+      api.names = Completer<Map<String, String>>();
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          {'variant_name': 'ACP-25', 'indent': 0},
+          for (var index = 0; index < 201; index++)
+            {'variant_name': 'Code-$index', 'indent': 1},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      expect(api.detailRequests, isEmpty);
+      await tester.enterText(find.byType(TextField), 'Unseen Name');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Searching names… 0 / 201'), findsOneWidget);
+      expect(find.text('No variants match.'), findsNothing);
+      expect(api.nameRequests.single.last, 'Code-200');
+      api.names!.complete({'Code-200': 'Unseen Name'});
+      await tester.pumpAndSettle();
+      expect(find.text('Code-200'), findsOneWidget);
+      expect(find.textContaining('Searching names'), findsNothing);
     },
   );
 
