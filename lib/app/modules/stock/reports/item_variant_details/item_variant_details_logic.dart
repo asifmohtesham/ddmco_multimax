@@ -163,10 +163,11 @@ class VariantGroup {
 
   const VariantGroup(this.heading, this.variants);
 
+  String get variantCountLabel =>
+      '${variants.length} ${variants.length == 1 ? 'variant' : 'variants'}';
+
   String collapsedSummary(int shown, {required bool filtered}) {
-    final count = filtered
-        ? '$shown of ${variants.length}'
-        : '${variants.length} ${variants.length == 1 ? 'variant' : 'variants'}';
+    final count = filtered ? '$shown of ${variants.length}' : variantCountLabel;
     final stock = formatStockQuantity(
       heading?['current_stock'],
       heading?['stock_uom'],

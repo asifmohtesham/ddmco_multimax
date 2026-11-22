@@ -6,12 +6,44 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_image_size.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 typedef StickyVariantHeading = ({VariantGroup group, double offset});
 
 class ItemVariantDetailsController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
+
+  ItemVariantDetailsController({StorageService? storage})
+    : _storage = storage ?? StorageService();
+
+  final StorageService _storage;
+  final imageSize = VariantImageSize.defaultSize.obs;
+  final savingImageSize = false.obs;
+  final _detailsWithoutImages = <String>{};
+
+  Future<void> setImageSize(VariantImageSize size) async {
+    if (savingImageSize.value || size == imageSize.value) return;
+    savingImageSize.value = true;
+    _applyImageSize(size);
+    try {
+      await _storage.saveItemVariantImageSize(size.name);
+    } catch (_) {
+      if (!isClosed) _applyImageSize(VariantImageSize.defaultSize);
+    } finally {
+      if (!isClosed) savingImageSize.value = false;
+    }
+  }
+
+  void _applyImageSize(VariantImageSize size) {
+    if (imageSize.value == VariantImageSize.off &&
+        size != VariantImageSize.off) {
+      _requestedDetails.removeAll(_detailsWithoutImages);
+      _detailsWithoutImages.clear();
+    }
+    imageSize.value = size;
+  }
 
   static const filterLabels = {
     'item': 'Items',
@@ -202,6 +234,13 @@ class ItemVariantDetailsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    try {
+      imageSize.value = VariantImageSize.fromStorage(
+        _storage.getItemVariantImageSize(),
+      );
+    } catch (_) {
+      imageSize.value = VariantImageSize.defaultSize;
+    }
     final args = Get.arguments;
     final preset = args is Map
         ? args['item'] ?? args['item_code'] ?? args['itemCode']
@@ -256,6 +295,7 @@ class ItemVariantDetailsController extends GetxController {
     _detailTimer?.cancel();
     _detailTimer = null;
     _requestedDetails.clear();
+    _detailsWithoutImages.clear();
     _nearbyDetails.clear();
     _matchedDetails.clear();
     _detailUpdates.clear();
@@ -391,7 +431,12 @@ class ItemVariantDetailsController extends GetxController {
     _requestedDetails.addAll(batch);
     _fetchingDetails = true;
     try {
-      final details = await _api.getItemDetails(batch);
+      final includeImage = imageSize.value != VariantImageSize.off;
+      if (!includeImage) _detailsWithoutImages.addAll(batch);
+      final details = await _api.getItemDetails(
+        batch,
+        includeImage: includeImage,
+      );
       if (!_isCurrent(generation)) return;
       itemDetails.addAll(details);
       for (final code in batch) {

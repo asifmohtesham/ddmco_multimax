@@ -171,6 +171,11 @@ class StorageService {
     return v is List ? v.map((e) => e.toString()).toList() : null;
   }
 
+  Object? getItemVariantImageSize() => _box.read('ivd_image_size');
+
+  Future<void> saveItemVariantImageSize(String size) async =>
+      _box.write('ivd_image_size', size);
+
   // --- Dashboard view preferences ---
   // Quick Create card layout: 1 or 2 columns. Anything else clamps to the
   // 1-column default so a stale/corrupt value can never break the grid.

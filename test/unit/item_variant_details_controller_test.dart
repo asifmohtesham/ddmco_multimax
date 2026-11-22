@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
@@ -40,16 +42,70 @@ class _NamesApi extends Fake implements ApiProvider {
   );
 }
 
+class _DetailFieldsApi extends ApiProvider {
+  List<String>? requestedFields;
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String? positional, {
+    String? doctype,
+    Map<String, dynamic>? filters,
+    List<String>? fields,
+    int limit = 20,
+    String orderBy = 'modified desc',
+    String? groupBy = '',
+    String? filterDoctype,
+  }) async {
+    requestedFields = fields;
+    return [
+      {
+        'name': 'A',
+        'item_name': 'Belt A',
+        'item_group': 'Belts',
+        'image': '/files/belt.png',
+      },
+    ];
+  }
+}
+
+class _EmptyStorage {
+  Object? read(String key) => null;
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late _NamesApi api;
   late ItemVariantDetailsController controller;
 
   setUp(() {
     api = Get.put<ApiProvider>(_NamesApi()) as _NamesApi;
-    controller = Get.put(ItemVariantDetailsController());
+    controller = Get.put(
+      ItemVariantDetailsController(
+        storage: StorageService.withStorage(_EmptyStorage()),
+      ),
+    );
     controller.filterControllers['item']!.text = 'Example';
   });
   tearDown(Get.reset);
+
+  test('Off omits image URLs from the Item details request', () async {
+    const channel = MethodChannel('plugins.flutter.io/path_provider');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (_) async => 'build');
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    final fieldsApi = _DetailFieldsApi();
+    await Future<void>.delayed(Duration.zero);
+    final details = await fieldsApi.getItemDetails(['A'], includeImage: false);
+    expect(fieldsApi.requestedFields, ['name', 'item_name', 'item_group']);
+    expect(details, {
+      'A': {'item_name': 'Belt A', 'item_group': 'Belts'},
+    });
+    final withImage = await fieldsApi.getItemDetails(['A']);
+    expect(fieldsApi.requestedFields, contains('image'));
+    expect(withImage['A']?['image'], '/files/belt.png');
+  });
 
   Future<void> startSearch() async {
     await controller.runReport();
