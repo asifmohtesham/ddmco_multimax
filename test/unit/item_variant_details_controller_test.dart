@@ -89,7 +89,7 @@ void main() {
   });
   tearDown(Get.reset);
 
-  test('Off omits image URLs from the Item details request', () async {
+  test('Item detail enrichment fetches image URLs', () async {
     const channel = MethodChannel('plugins.flutter.io/path_provider');
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -97,11 +97,6 @@ void main() {
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     final fieldsApi = _DetailFieldsApi();
     await Future<void>.delayed(Duration.zero);
-    final details = await fieldsApi.getItemDetails(['A'], includeImage: false);
-    expect(fieldsApi.requestedFields, ['name', 'item_name', 'item_group']);
-    expect(details, {
-      'A': {'item_name': 'Belt A', 'item_group': 'Belts'},
-    });
     final withImage = await fieldsApi.getItemDetails(['A']);
     expect(fieldsApi.requestedFields, contains('image'));
     expect(withImage['A']?['image'], '/files/belt.png');

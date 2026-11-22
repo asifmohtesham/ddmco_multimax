@@ -17,6 +17,58 @@
 // attributes, and its stock figures are null when its variants do not share
 // a stock UOM.
 
+import 'package:intl/intl.dart';
+
+const _rateFields = {
+  'avg_buying_price_list_rate',
+  'avg_selling_price_list_rate',
+};
+
+bool isFixedVariantField(String field) =>
+    const {'variant_name', 'item', 'item_code', 'item_name'}.contains(field);
+
+bool defaultVariantField(String field) =>
+    !_rateFields.contains(field) &&
+    !const {'variant_of', 'in_production', 'open_orders'}.contains(field);
+
+/// Selected secondary values, in the order returned by the server.
+Iterable<({String label, String value})> selectedVariantValues(
+  VariantRow row,
+  List<VariantRow> columns,
+  bool Function(String) showsField,
+) sync* {
+  for (final column in columns) {
+    final field = column['fieldname'];
+    if (field is! String ||
+        isFixedVariantField(field) ||
+        field == 'item_group' ||
+        field == 'current_stock' ||
+        !showsField(field)) {
+      continue;
+    }
+    if (field == 'stock_uom' &&
+        showsField('current_stock') &&
+        formatReportNumber(row['current_stock']).isNotEmpty) {
+      continue;
+    }
+    final value = row[field]?.toString().trim();
+    if (value == null || value.isEmpty || value == '-' || value == '—') {
+      continue;
+    }
+    final currency = row['currency']?.toString().trim() ?? '';
+    final rate = _rateFields.contains(field) ? num.tryParse(value) : null;
+    yield (
+      label: column['label']?.toString() ?? field,
+      value: rate == null
+          ? value
+          : NumberFormat.currency(
+              name: currency.isEmpty ? null : currency,
+              symbol: currency.isEmpty ? '' : '$currency ',
+            ).format(rate),
+    );
+  }
+}
+
 /// The report fields a template row totals, in report order.
 const kTemplateTotalFields = ['current_stock', 'in_production', 'open_orders'];
 

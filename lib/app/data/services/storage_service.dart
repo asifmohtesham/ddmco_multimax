@@ -171,10 +171,18 @@ class StorageService {
     return v is List ? v.map((e) => e.toString()).toList() : null;
   }
 
-  Object? getItemVariantImageSize() => _box.read('ivd_image_size');
+  Map<String, bool> getItemVariantFields() {
+    final saved = _box.read('ivd_fields');
+    if (saved is! Map) return {};
+    return {
+      for (final entry in saved.entries)
+        if (entry.key is String && entry.value is bool)
+          entry.key as String: entry.value as bool,
+    };
+  }
 
-  Future<void> saveItemVariantImageSize(String size) async =>
-      _box.write('ivd_image_size', size);
+  Future<void> saveItemVariantFields(Map<String, bool> fields) async =>
+      _box.write('ivd_fields', fields);
 
   // --- Dashboard view preferences ---
   // Quick Create card layout: 1 or 2 columns. Anything else clamps to the
