@@ -9,6 +9,7 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_image_size.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
@@ -119,6 +120,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                 SliverAppBar(
                   pinned: true,
                   title: const Text('Item Variant Details'),
+                  titleSpacing: 8,
                   leading: Builder(
                     builder: (context) => IconButton(
                       tooltip: MaterialLocalizations.of(
@@ -129,6 +131,69 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                     ),
                   ),
                   actions: [
+                    Obx(() {
+                      final size = controller.imageSize.value;
+                      final saving = controller.savingImageSize.value;
+                      final label = 'Image size: ${size.label}';
+                      return Semantics(
+                        label: label,
+                        button: true,
+                        enabled: !saving,
+                        child: PopupMenuButton<VariantImageSize>(
+                          tooltip: label,
+                          enabled: !saving,
+                          initialValue: size,
+                          onSelected: (size) => _changeImageSize(context, size),
+                          itemBuilder: (_) => [
+                            for (final option in VariantImageSize.values)
+                              CheckedPopupMenuItem(
+                                value: option,
+                                checked: size == option,
+                                child: Text(option.label),
+                              ),
+                          ],
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              child: Center(
+                                child: saving
+                                    ? SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                          color: cs.onPrimary,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : ExcludeSemantics(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons
+                                                  .photo_size_select_actual_outlined,
+                                              size: 19,
+                                            ),
+                                            Text(
+                                              size.label,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
                     IconButton(
                       tooltip: 'Filters',
                       onPressed: busy ? null : () => _openFilters(context),
@@ -372,6 +437,69 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     );
   }
 
+  void _changeImageSize(BuildContext context, VariantImageSize size) {
+    if (size == controller.imageSize.value) return;
+    _preserveVariantAnchor(context, controller.scrollController);
+    controller.setImageSize(size);
+  }
+
+  static final _pendingAnchors = Expando<bool>();
+
+  static void _preserveVariantAnchor(
+    BuildContext context,
+    ScrollController scroll,
+  ) {
+    if (!scroll.hasClients) return;
+    final position = scroll.position;
+    if (_pendingAnchors[position] == true) return;
+    final pixels = position.pixels;
+    _RenderVisibleVariant? anchor;
+    double originalOffset = 0;
+    final toolbarExtent = MediaQuery.paddingOf(context).top + kToolbarHeight;
+
+    void findAnchor(Element element) {
+      if (anchor != null) return;
+      if (element.widget is _VisibleVariant) {
+        final box = element.renderObject! as _RenderVisibleVariant;
+        final viewport = RenderAbstractViewport.maybeOf(box);
+        if (box.hasSize && viewport != null) {
+          final offset = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+          if (offset + box.size.height > toolbarExtent &&
+              offset < position.viewportDimension) {
+            anchor = box;
+            originalOffset = offset;
+          }
+        }
+        return;
+      }
+      element.visitChildren(findAnchor);
+    }
+
+    // Async tile updates read the previous layout during the build phase.
+    (context as Element).visitChildren(findAnchor);
+    final box = anchor;
+    if (box == null) return;
+    _pendingAnchors[position] = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingAnchors[position] = null;
+      if (!context.mounted ||
+          !box.attached ||
+          !scroll.hasClients ||
+          scroll.position != position ||
+          position.pixels != pixels) {
+        return;
+      }
+      final viewport = RenderAbstractViewport.maybeOf(box);
+      if (viewport == null) return;
+      final offset = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+      final target = (pixels + offset - originalOffset).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if (target != pixels) scroll.jumpTo(target);
+    });
+  }
+
   Widget _groupTitle(VariantGroup group) => _GroupTitle(
     group: group,
     expanded: true,
@@ -566,6 +694,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
         ? const EdgeInsets.fromLTRB(4, 0, 4, 14)
         : const EdgeInsets.only(bottom: 8),
     child: _VariantTile(
+      key: ValueKey(variantCode(row)),
       row: row,
       columns: controller.reportColumns,
       controller: controller,
@@ -900,7 +1029,7 @@ class _TemplateHeader extends StatelessWidget {
 
 // ── Variant tile ──────────────────────────────────────────────────────────────
 
-class _VariantTile extends StatelessWidget {
+class _VariantTile extends StatefulWidget {
   final Map<String, dynamic> row;
   final List<Map<String, dynamic>> columns;
   final ItemVariantDetailsController controller;
@@ -908,11 +1037,21 @@ class _VariantTile extends StatelessWidget {
   final String? templateCode;
 
   const _VariantTile({
+    super.key,
     required this.row,
     required this.columns,
     required this.controller,
     required this.templateCode,
   });
+
+  @override
+  State<_VariantTile> createState() => _VariantTileState();
+}
+
+class _VariantTileState extends State<_VariantTile> {
+  String? _failedImageUrl;
+  VariantImageSize? _previousSize;
+  bool _hadLargeBanner = false;
 
   String? _imageUrl(String? path) {
     if (path == null || path.isEmpty) return null;
@@ -925,6 +1064,7 @@ class _VariantTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
+    final _VariantTile(:row, :columns, :controller, :templateCode) = widget;
     final itemCode = variantCode(row);
     final detail = controller.detailsFor(itemCode);
 
@@ -942,10 +1082,81 @@ class _VariantTile extends StatelessWidget {
             details?['item_group'] as String? ??
             row['item_group']?.toString() ??
             '';
-        final imageUrl = _imageUrl(details?['image'] as String?);
+        final size = controller.imageSize.value;
+        final imageUrl = size == VariantImageSize.off
+            ? null
+            : _imageUrl(details?['image'] as String?);
+        final isLarge = size == VariantImageSize.large;
+        final failed =
+            isLarge && imageUrl != null && imageUrl == _failedImageUrl;
+        final hasLargeBanner = isLarge && imageUrl != null && !failed;
+        if (_previousSize == size && _hadLargeBanner != hasLargeBanner) {
+          ItemVariantDetailsScreen._preserveVariantAnchor(
+            Scrollable.of(context).context,
+            controller.scrollController,
+          );
+        }
+        _previousSize = size;
+        _hadLargeBanner = hasLargeBanner;
+
+        final leading = size == VariantImageSize.small;
+        final height = size.imageHeight(grouped: templateCode != null);
         final stockRows = controller.stockBalances[itemCode];
         final isStockLoading = controller.loadingStock[itemCode] == true;
         final isExpanded = stockRows != null;
+
+        void openGallery() {
+          // Collect all variant images in report order so the gallery
+          // can slide between items; open at the tapped item's index.
+          final items = <_GalleryItem>[];
+          var startIndex = 0;
+          for (final r in variantRowsOf(controller.reportData)) {
+            final code =
+                r['variant_name']?.toString() ?? r['item']?.toString() ?? '';
+            final url = _imageUrl(
+              controller.itemDetails[code]?['image'] as String?,
+            );
+            if (url == null) continue;
+            if (code == itemCode) startIndex = items.length;
+            items.add(
+              _GalleryItem(
+                url: url,
+                itemCode: code,
+                itemName:
+                    controller.itemDetails[code]?['item_name'] as String? ?? '',
+              ),
+            );
+          }
+          if (items.isEmpty) return;
+          _openImageViewer(context, items: items, initialIndex: startIndex);
+        }
+
+        Widget image(double width) => Semantics(
+          label: 'View image for $itemCode',
+          button: true,
+          container: true,
+          onTap: openGallery,
+          child: InkWell(
+            excludeFromSemantics: true,
+            onTap: openGallery,
+            child: _VariantImage(
+              url: imageUrl!,
+              width: width,
+              height: height,
+              onError: isLarge
+                  ? () {
+                      // Image.errorBuilder runs during build.
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted || _failedImageUrl == imageUrl) return;
+                        final currentImage = detail.value?['image'] as String?;
+                        if (_imageUrl(currentImage) != imageUrl) return;
+                        setState(() => _failedImageUrl = imageUrl);
+                      });
+                    }
+                  : null,
+            ),
+          ),
+        );
 
         return Card.outlined(
           margin: EdgeInsets.zero,
@@ -959,52 +1170,13 @@ class _VariantTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Full-width image banner (tap to open gallery) ──────
-              if (imageUrl != null)
-                InkWell(
-                  onTap: () {
-                    // Collect all variant images in report order so the gallery
-                    // can slide between items; open at the tapped item's index.
-                    final items = <_GalleryItem>[];
-                    var startIndex = 0;
-                    for (final r in variantRowsOf(controller.reportData)) {
-                      final code =
-                          r['variant_name']?.toString() ??
-                          r['item']?.toString() ??
-                          '';
-                      final url = _imageUrl(
-                        controller.itemDetails[code]?['image'] as String?,
-                      );
-                      if (url == null) continue;
-                      if (code == itemCode) startIndex = items.length;
-                      items.add(
-                        _GalleryItem(
-                          url: url,
-                          itemCode: code,
-                          itemName:
-                              controller.itemDetails[code]?['item_name']
-                                  as String? ??
-                              '',
-                        ),
-                      );
-                    }
-                    if (items.isEmpty) return;
-                    _openImageViewer(
-                      context,
-                      items: items,
-                      initialIndex: startIndex,
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                    child: _ImageBanner(
-                      imageUrl: imageUrl,
-                      compact: templateCode != null,
-                    ),
-                  ),
+              if (hasLargeBanner ||
+                  (size == VariantImageSize.medium && imageUrl != null))
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                  child: image(double.infinity),
                 ),
 
-              // ── Content ────────────────────────────────────────────
               Padding(
                 padding: EdgeInsets.all(templateCode == null ? 14 : 12),
                 child: Column(
@@ -1027,8 +1199,18 @@ class _VariantTile extends StatelessWidget {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (imageUrl == null) ...[
-                                const _ItemThumb(),
+                              if (leading ||
+                                  (size == VariantImageSize.medium &&
+                                      imageUrl == null) ||
+                                  (isLarge && !hasLargeBanner)) ...[
+                                if (leading && imageUrl != null)
+                                  image(size.placeholderSize)
+                                else
+                                  _ItemThumb(
+                                    width: size.placeholderSize,
+                                    height: size.placeholderSize,
+                                    broken: failed,
+                                  ),
                                 const SizedBox(width: 12),
                               ],
                               Expanded(
@@ -1172,70 +1354,90 @@ class _VariantTile extends StatelessWidget {
 
 // ── Full-width image banner ────────────────────────────────────────────────────
 
-class _ImageBanner extends StatelessWidget {
-  final String imageUrl;
-  final bool compact;
+class _VariantImage extends StatelessWidget {
+  const _VariantImage({
+    required this.url,
+    required this.width,
+    required this.height,
+    this.onError,
+  });
 
-  const _ImageBanner({required this.imageUrl, required this.compact});
+  final String url;
+  final double width;
+  final double height;
+  final VoidCallback? onError;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final ratio = MediaQuery.devicePixelRatioOf(context);
     return SizedBox(
-      width: double.infinity,
-      height: compact ? 84 : 200,
-      child: Image.network(
-        imageUrl,
-        fit: BoxFit.cover,
-        cacheWidth:
-            (MediaQuery.sizeOf(context).width *
-                    MediaQuery.devicePixelRatioOf(context))
-                .ceil(),
-        loadingBuilder: (_, child, progress) => progress == null
-            ? child
-            : ColoredBox(
-                color: cs.surfaceContainerHighest,
-                child: const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+      width: width,
+      height: height,
+      child: LayoutBuilder(
+        builder: (_, constraints) => Image(
+          image: ResizeImage(
+            NetworkImage(url),
+            width: (constraints.maxWidth * ratio).ceil(),
+            height: (constraints.maxHeight * ratio).ceil(),
+            policy: ResizeImagePolicy.fit,
+          ),
+          fit: BoxFit.cover,
+          excludeFromSemantics: true,
+          loadingBuilder: (_, child, progress) => progress == null
+              ? child
+              : ColoredBox(
+                  color: cs.surfaceContainerHighest,
+                  child: const Center(
+                    child: SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
                 ),
-              ),
-        errorBuilder: (_, __, ___) => ColoredBox(
-          color: cs.surfaceContainerHighest,
-          child: Center(
-            child: Icon(
-              Icons.broken_image_outlined,
-              size: 48,
-              color: cs.outlineVariant,
-            ),
-          ),
+          errorBuilder: (_, __, ___) {
+            final handleError = onError;
+            if (handleError == null) {
+              return _ItemThumb(width: width, height: height, broken: true);
+            }
+            handleError();
+            return const SizedBox.shrink();
+          },
         ),
       ),
     );
   }
 }
 
-// ── Image placeholder (shown only when no image is available) ────────────────
-
 class _ItemThumb extends StatelessWidget {
-  static const _size = 54.0;
-  const _ItemThumb();
+  const _ItemThumb({
+    required this.width,
+    required this.height,
+    this.broken = false,
+  });
+
+  final double width;
+  final double height;
+  final bool broken;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      width: _size,
-      height: _size,
-      decoration: BoxDecoration(
-        color: cs.primaryContainer,
-        borderRadius: BorderRadius.circular(10),
+    return ExcludeSemantics(
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: broken ? cs.surfaceContainerHighest : cs.primaryContainer,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          broken ? Icons.broken_image_outlined : Icons.image_outlined,
+          size: (height * 24 / 54).clamp(20, 48).toDouble(),
+          color: broken ? cs.onSurfaceVariant : cs.onPrimaryContainer,
+        ),
       ),
-      alignment: Alignment.center,
-      child: Icon(Icons.image_outlined, color: cs.onPrimaryContainer),
     );
   }
 }
