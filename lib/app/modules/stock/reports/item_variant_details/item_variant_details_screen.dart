@@ -301,7 +301,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                   if (lazyGroups)
                     _lazyGroupSliver(data, groups, filtered)
                   else
-                    ..._resultSlivers(data, groups, filtered),
+                    ..._resultSlivers(data, groups, filtered, cs),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
@@ -360,7 +360,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                     return ClipRect(
                       child: Transform.translate(
                         offset: Offset(0, sticky.offset),
-                        child: _groupTitle(sticky.group, true),
+                        child: _groupTitle(sticky.group),
                       ),
                     );
                   },
@@ -372,9 +372,10 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     );
   }
 
-  Widget _groupTitle(VariantGroup group, bool expanded) => _GroupTitle(
+  Widget _groupTitle(VariantGroup group) => _GroupTitle(
     group: group,
-    expanded: expanded,
+    expanded: true,
+    summary: group.variantCountLabel,
     onTap: () => controller.toggleGroup(group),
   );
 
@@ -437,7 +438,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
             return SizedBox(
               height: _headingExtent,
               child: data.isExpanded(entry.group) && counts[entry.group]! > 0
-                  ? _groupTitle(entry.group, true)
+                  ? _groupTitle(entry.group)
                   : _collapsedTitle(
                       entry.group,
                       counts[entry.group]!,
@@ -447,18 +448,25 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
           }
           final row = entry.row;
           if (row == null) {
-            return _TemplateHeader(
-              row: entry.group.heading!,
-              columns: controller.reportColumns,
+            return _GroupBody(
+              child: _TemplateHeader(
+                row: entry.group.heading!,
+                columns: controller.reportColumns,
+              ),
             );
           }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _VariantTile(
-              row: row,
-              columns: controller.reportColumns,
-              controller: controller,
-              compactImage: entry.group.heading != null,
+          final templateCode = entry.group.heading == null
+              ? null
+              : entry.group.code;
+          final tile = _variantTile(row, templateCode);
+          if (templateCode == null) return tile;
+          return _GroupBody(
+            last:
+                index + 1 == entries.length ||
+                entries[index + 1].group != entry.group,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: tile,
             ),
           );
         }, childCount: entries.length),
@@ -470,21 +478,15 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     VariantResults data,
     List<({VariantGroup group, List<VariantRow> variants})> groups,
     bool filtered,
+    ColorScheme scheme,
   ) {
     final slivers = <Widget>[];
     final columns = controller.reportColumns;
-    Widget variants(List<VariantRow> rows, {required bool grouped}) =>
+    Widget variants(List<VariantRow> rows, String? templateCode) =>
         SliverList.builder(
           itemCount: rows.length,
-          itemBuilder: (context, index) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _VariantTile(
-              row: rows[index],
-              columns: columns,
-              controller: controller,
-              compactImage: grouped,
-            ),
-          ),
+          itemBuilder: (context, index) =>
+              _variantTile(rows[index], templateCode),
         );
     Widget inset(Widget sliver, VariantGroup group) => SliverPadding(
       key: ObjectKey(group),
@@ -523,18 +525,32 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       }
       flushCollapsed();
       if (heading == null) {
-        slivers.add(inset(variants(match.variants, grouped: false), group));
+        slivers.add(inset(variants(match.variants, null), group));
       } else {
         slivers.add(
           inset(
-            SliverMainAxisGroup(
-              slivers: [
-                PinnedHeaderSliver(child: _groupTitle(group, true)),
-                SliverToBoxAdapter(
-                  child: _TemplateHeader(row: heading, columns: columns),
+            SliverPadding(
+              padding: const EdgeInsets.only(bottom: 8),
+              sliver: DecoratedSliver(
+                decoration: _groupDecoration(scheme, top: true, bottom: true),
+                sliver: SliverMainAxisGroup(
+                  slivers: [
+                    PinnedHeaderSliver(
+                      child: SizedBox(
+                        height: _headingExtent,
+                        child: _groupTitle(group),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: _TemplateHeader(row: heading, columns: columns),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      sliver: variants(match.variants, group.code),
+                    ),
+                  ],
                 ),
-                variants(match.variants, grouped: true),
-              ],
+              ),
             ),
             group,
           ),
@@ -544,6 +560,18 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     flushCollapsed();
     return slivers;
   }
+
+  Widget _variantTile(VariantRow row, String? templateCode) => Padding(
+    padding: templateCode == null
+        ? const EdgeInsets.fromLTRB(4, 0, 4, 14)
+        : const EdgeInsets.only(bottom: 8),
+    child: _VariantTile(
+      row: row,
+      columns: controller.reportColumns,
+      controller: controller,
+      templateCode: templateCode,
+    ),
+  );
 }
 
 // ── Image gallery viewer ──────────────────────────────────────────────────────
@@ -679,60 +707,119 @@ class _RenderVisibleVariant extends RenderProxyBox {
   }
 }
 
+// Strengthen the Material outline token with theme ink for both surfaces.
+Color _resultOutline(ColorScheme scheme) =>
+    Color.lerp(scheme.outlineVariant, scheme.onSurface, 0.60)!;
+
+BoxDecoration _groupDecoration(
+  ColorScheme scheme, {
+  bool top = false,
+  bool bottom = false,
+}) {
+  const corner = Radius.circular(12);
+  final side = BorderSide(color: _resultOutline(scheme));
+  return BoxDecoration(
+    color: scheme.surfaceContainer,
+    borderRadius: BorderRadius.vertical(
+      top: top ? corner : Radius.zero,
+      bottom: bottom ? corner : Radius.zero,
+    ),
+    border: Border(
+      top: top ? side : BorderSide.none,
+      bottom: bottom ? side : BorderSide.none,
+      left: side,
+      right: side,
+    ),
+  );
+}
+
+// The large-report delegate paints adjoining pieces of the same outline.
+// It can still build and lay out only the visible and cached rows.
+class _GroupBody extends StatelessWidget {
+  final Widget child;
+  final bool last;
+
+  const _GroupBody({required this.child, this.last = false});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: last ? 8 : 0),
+    child: DecoratedBox(
+      decoration: _groupDecoration(Theme.of(context).colorScheme, bottom: last),
+      child: child,
+    ),
+  );
+}
+
 class _GroupTitle extends StatelessWidget {
   final VariantGroup group;
   final bool expanded;
   final String? name;
-  final String? summary;
+  final String summary;
   final VoidCallback onTap;
 
   const _GroupTitle({
     required this.group,
     required this.expanded,
     this.name,
-    this.summary,
+    required this.summary,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      child: Semantics(
-        header: true,
-        expanded: expanded,
+    final codeLabel = name == null || name!.isEmpty || name == group.code
+        ? group.code
+        : '${group.code}, $name';
+    final stockSummary = expanded
+        ? group.collapsedSummary(group.variants.length, filtered: false)
+        : summary;
+    return Semantics(
+      header: true,
+      button: true,
+      expanded: expanded,
+      label: 'Template $codeLabel, ${stockSummary.replaceAll(' · ', ', ')}',
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Material(
+        type: MaterialType.transparency,
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 4,
-              vertical: summary == null ? 8 : 0,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: summary == null
-                      ? _code(theme)
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _code(theme),
-                            Text(
-                              summary!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
+            padding: EdgeInsets.only(bottom: expanded ? 0 : 4),
+            child: Ink(
+              decoration: _groupDecoration(
+                theme.colorScheme,
+                top: true,
+                bottom: !expanded,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _code(theme),
+                          Text(
+                            summary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(expanded ? Icons.expand_less : Icons.expand_more),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Icon(expanded ? Icons.expand_less : Icons.expand_more),
-              ],
+              ),
             ),
           ),
         ),
@@ -765,7 +852,7 @@ class _TemplateHeader extends StatelessWidget {
     final totals = templateTotals(row, columns);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -818,13 +905,13 @@ class _VariantTile extends StatelessWidget {
   final List<Map<String, dynamic>> columns;
   final ItemVariantDetailsController controller;
 
-  final bool compactImage;
+  final String? templateCode;
 
   const _VariantTile({
     required this.row,
     required this.columns,
     required this.controller,
-    required this.compactImage,
+    required this.templateCode,
   });
 
   String? _imageUrl(String? path) {
@@ -844,6 +931,7 @@ class _VariantTile extends StatelessWidget {
     final chips = variantChips(row, columns).toList();
     final stockUom = row['stock_uom'];
     final currentStock = formatStockQuantity(row['current_stock'], stockUom);
+    final zeroStock = num.tryParse('${row['current_stock']}') == 0;
 
     return _VisibleVariant(
       onPaint: () => controller.queueNearbyDetails(itemCode),
@@ -859,12 +947,14 @@ class _VariantTile extends StatelessWidget {
         final isStockLoading = controller.loadingStock[itemCode] == true;
         final isExpanded = stockRows != null;
 
-        return Card(
-          elevation: 1,
-          shadowColor: cs.shadow.withValues(alpha: 0.12),
-          clipBehavior: Clip.antiAlias,
+        return Card.outlined(
+          margin: EdgeInsets.zero,
+          color: cs.surface,
+          elevation: 0,
+          clipBehavior: Clip.none,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(8),
+            side: BorderSide(color: _resultOutline(cs)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -905,77 +995,86 @@ class _VariantTile extends StatelessWidget {
                       initialIndex: startIndex,
                     );
                   },
-                  child: _ImageBanner(
-                    imageUrl: imageUrl,
-                    compact: compactImage,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                    child: _ImageBanner(
+                      imageUrl: imageUrl,
+                      compact: templateCode != null,
+                    ),
                   ),
                 ),
 
               // ── Content ────────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.all(templateCode == null ? 14 : 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // ── Header row (tappable → item form) ──────────
-                    InkWell(
-                      onTap: () => Get.toNamed(
-                        AppRoutes.ITEM_FORM,
-                        arguments: {'itemCode': itemCode},
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (imageUrl == null) ...[
-                              const _ItemThumb(),
-                              const SizedBox(width: 12),
-                            ],
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    itemCode,
-                                    style: text.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  if (itemName.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Text(
-                                        itemName,
-                                        style: text.bodySmall?.copyWith(
-                                          color: cs.onSurface,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                    Semantics(
+                      label: templateCode == null
+                          ? 'Open item $itemCode'
+                          : 'Open variant $itemCode of $templateCode',
+                      button: true,
+                      child: InkWell(
+                        onTap: () => Get.toNamed(
+                          AppRoutes.ITEM_FORM,
+                          arguments: {'itemCode': itemCode},
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (imageUrl == null) ...[
+                                const _ItemThumb(),
+                                const SizedBox(width: 12),
+                              ],
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      itemCode,
+                                      style: text.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                  if (itemGroup.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 1),
-                                      child: Text(
-                                        itemGroup,
-                                        style: text.labelSmall?.copyWith(
-                                          color: cs.onSurfaceVariant,
+                                    if (itemName.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          itemName,
+                                          style: text.bodySmall?.copyWith(
+                                            color: cs.onSurface,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                ],
+                                    if (itemGroup.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 1),
+                                        child: Text(
+                                          itemGroup,
+                                          style: text.labelSmall?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            Icon(
-                              Icons.chevron_right,
-                              color: cs.outlineVariant,
-                              size: 18,
-                            ),
-                          ],
+                              Icon(
+                                Icons.chevron_right,
+                                color: cs.onSurfaceVariant,
+                                size: 18,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -986,8 +1085,12 @@ class _VariantTile extends StatelessWidget {
                         child: Text(
                           'Current Stock $currentStock',
                           style: text.labelMedium?.copyWith(
-                            color: cs.onSurface,
-                            fontWeight: FontWeight.w700,
+                            color: zeroStock
+                                ? cs.onSurfaceVariant
+                                : cs.onSurface,
+                            fontWeight: zeroStock
+                                ? FontWeight.w500
+                                : FontWeight.w700,
                           ),
                         ),
                       ),
@@ -1042,7 +1145,8 @@ class _VariantTile extends StatelessWidget {
                           side: BorderSide(
                             color: cs.primary.withValues(alpha: 0.4),
                           ),
-                          visualDensity: VisualDensity.compact,
+                          minimumSize: const Size(0, 48),
+                          visualDensity: VisualDensity.standard,
                           textStyle: text.labelSmall,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,

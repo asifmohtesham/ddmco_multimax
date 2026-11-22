@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -15,6 +16,16 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
+
+Rect groupRect(WidgetTester tester, Finder finder) {
+  final sliver = tester.renderObject<RenderSliver>(finder);
+  final origin = MatrixUtils.transformPoint(
+    sliver.getTransformTo(null),
+    Offset.zero,
+  );
+  return origin &
+      Size(sliver.constraints.crossAxisExtent, sliver.geometry!.scrollExtent);
+}
 
 class _FakeApi extends ApiProvider {
   late final report = Completer<ItemVariantDetailsResult>();
@@ -388,6 +399,10 @@ void main() {
         find.descendant(of: card, matching: find.byType(Material)).first,
       );
       expect(bounds.left, 390 - bounds.right);
+      final group = find.byType(DecoratedSliver);
+      final groupBounds = groupRect(tester, group);
+      expect(bounds.left, groupBounds.left + 8);
+      expect(bounds.right, groupBounds.right - 8);
       expect(tester.getTopLeft(find.text('ACP-25')).dx, bounds.left);
       expect(
         find.text('Current Stock  936 Nos', findRichText: true),
@@ -406,6 +421,27 @@ void main() {
         theme.brightness,
         mode == ThemeMode.light ? Brightness.light : Brightness.dark,
       );
+      final shape = tester.widget<Card>(card).shape! as RoundedRectangleBorder;
+      final decoration =
+          tester.widget<DecoratedSliver>(group).decoration as BoxDecoration;
+      final groupBorder = decoration.border! as Border;
+      final outline = Color.lerp(
+        scheme.outlineVariant,
+        scheme.onSurface,
+        0.60,
+      )!;
+      expect(shape.side.color, outline);
+      expect(shape.side.width, greaterThan(0));
+      expect(groupBorder.top.color, outline);
+      for (final surface in [
+        scheme.surfaceContainerLow,
+        scheme.surfaceContainer,
+        scheme.surface,
+      ]) {
+        final a = outline.computeLuminance() + 0.05;
+        final b = surface.computeLuminance() + 0.05;
+        expect(a > b ? a / b : b / a, greaterThanOrEqualTo(3));
+      }
       expect(tester.widget<Icon>(placeholder).color, scheme.onPrimaryContainer);
       final stock = tester.widget<Text>(find.text('Current Stock 936 Nos'));
       expect(stock.style?.color, scheme.onSurface);
@@ -432,7 +468,7 @@ void main() {
     });
   }
 
-  testWidgets('the card gallery banner uses the full card width', (
+  testWidgets('the card gallery banner sits inside the card outline', (
     tester,
   ) async {
     await open(tester, preset: 'ACP-25');
@@ -454,14 +490,85 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     await tester.pumpAndSettle();
     final banner = tester.getRect(find.byType(Image));
-    expect(banner.left, card.left);
-    expect(banner.right, card.right);
-    expect(tester.getTopLeft(find.text('ACP-25')).dx, banner.left);
+    expect(banner.left, card.left + 4);
+    expect(banner.right, card.right - 4);
     expect(banner.height, 84);
     await tester.tap(find.byType(Image));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.byType(ItemImagePreview), findsOneWidget);
+  });
+
+  testWidgets('each template enclosure owns only its heading and variants', (
+    tester,
+  ) async {
+    await open(tester, preset: 'ACP-25');
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: [
+        {
+          'variant_name': 'ACP-25',
+          'indent': 0,
+          'current_stock': 936,
+          'stock_uom': 'Nos',
+        },
+        {'variant_name': 'A', 'indent': 1},
+        {'variant_name': 'B', 'indent': 1},
+        {'variant_name': 'ACP-MIX', 'indent': 0},
+        {'variant_name': 'C', 'indent': 1},
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    final groups = find.byType(DecoratedSliver);
+    expect(groups, findsNWidgets(2));
+    final first = groups.first;
+    final second = groups.last;
+    Finder inside(Finder group, String code) =>
+        find.descendant(of: group, matching: find.text(code));
+    for (final code in ['ACP-25', 'A', 'B']) {
+      expect(inside(first, code), findsOneWidget);
+      expect(inside(second, code), findsNothing);
+    }
+    for (final code in ['ACP-MIX', 'C']) {
+      expect(inside(second, code), findsOneWidget);
+      expect(inside(first, code), findsNothing);
+    }
+    expect(
+      find.bySemanticsLabel(
+        'Template ACP-25, 2 variants, Current Stock 936 Nos',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Open variant A of ACP-25')),
+      findsOneWidget,
+    );
+    final bounds = groupRect(tester, first);
+    expect(bounds.contains(tester.getCenter(inside(first, 'B'))), isTrue);
+    expect(groupRect(tester, second).top - bounds.bottom, 8);
+    semantics.dispose();
+  });
+
+  testWidgets('legacy flat results keep the outlined cards and omit groups', (
+    tester,
+  ) async {
+    await open(tester, preset: 'ACP-25');
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: [
+        {'variant_name': 'Legacy'},
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    final card = tester.widget<Card>(find.byType(Card));
+    expect((card.shape! as RoundedRectangleBorder).side.width, 1);
+    expect(find.byType(DecoratedSliver), findsNothing);
+    expect(find.text('Legacy'), findsOneWidget);
   });
 
   testWidgets('touch can drag the thumb and tap the right edge of cards', (
