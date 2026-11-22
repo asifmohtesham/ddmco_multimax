@@ -10,6 +10,14 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 class _NamesApi extends Fake implements ApiProvider {
+  final stockRequests =
+      <
+        ({
+          String itemCode,
+          List<String> warehouses,
+          Completer<List<Map<String, dynamic>>> reply,
+        })
+      >[];
   final requests =
       <
         ({
@@ -18,6 +26,22 @@ class _NamesApi extends Fake implements ApiProvider {
           Completer<Map<String, String>> reply,
         })
       >[];
+
+  @override
+  Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
+    required String itemCode,
+    String? warehouse,
+    List<String> warehouses = const [],
+    String? batchNo,
+  }) {
+    final reply = Completer<List<Map<String, dynamic>>>();
+    stockRequests.add((
+      itemCode: itemCode,
+      warehouses: warehouses,
+      reply: reply,
+    ));
+    return reply.future;
+  }
 
   @override
   Future<Map<String, String>> getItemNames(
@@ -88,6 +112,64 @@ void main() {
     controller.filterControllers['item']!.text = 'Example';
   });
   tearDown(Get.reset);
+
+  test('stock checks use the report warehouses and can be collapsed', () async {
+    final warehouseFilter = controller.filterControllers['warehouse']!;
+    for (final warehouses in <List<String>>[
+      [],
+      ['WH-A'],
+      ['WH-A', 'WH-B'],
+    ]) {
+      warehouseFilter.text = warehouses.join('\n');
+      await controller.runReport();
+      final lookup = controller.fetchStockBalance('Code-1');
+      final request = api.stockRequests.last;
+      expect(request.itemCode, 'Code-1');
+      expect(request.warehouses, warehouses);
+      expect(controller.loadingStock['Code-1'], isTrue);
+
+      final duplicate = controller.fetchStockBalance('Code-1');
+      expect(api.stockRequests.last, request);
+      await duplicate;
+      request.reply.complete([
+        {'rack': 'Rack 1', 'qty': 2.5},
+      ]);
+      await lookup;
+      expect(controller.loadingStock['Code-1'], isFalse);
+      expect(controller.stockBalances['Code-1']?.single['qty'], 2.5);
+
+      await controller.fetchStockBalance('Code-1');
+      expect(controller.stockBalances, isEmpty);
+      expect(api.stockRequests.last, request);
+    }
+  });
+
+  test('changing warehouses discards an in-flight stock check', () async {
+    final warehouseFilter = controller.filterControllers['warehouse']!;
+    warehouseFilter.text = 'WH-A';
+    await controller.runReport();
+    final oldLookup = controller.fetchStockBalance('Code-1');
+    final oldRequest = api.stockRequests.single;
+
+    warehouseFilter.text = 'WH-B';
+    await controller.runReport();
+    final newLookup = controller.fetchStockBalance('Code-1');
+    final newRequest = api.stockRequests.last;
+    expect(newRequest.warehouses, ['WH-B']);
+    oldRequest.reply.complete([
+      {'rack': 'Old Rack', 'qty': 9},
+    ]);
+    await oldLookup;
+    expect(controller.stockBalances, isEmpty);
+    expect(controller.loadingStock['Code-1'], isTrue);
+
+    newRequest.reply.complete([
+      {'rack': 'New Rack', 'qty': 3},
+    ]);
+    await newLookup;
+    expect(controller.stockBalances['Code-1']?.single['rack'], 'New Rack');
+    expect(controller.loadingStock['Code-1'], isFalse);
+  });
 
   test('Item detail enrichment fetches image URLs', () async {
     const channel = MethodChannel('plugins.flutter.io/path_provider');

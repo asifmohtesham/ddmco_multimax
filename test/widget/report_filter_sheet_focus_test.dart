@@ -26,7 +26,11 @@ void main() {
     }
   });
 
-  Future<void> open(WidgetTester tester, {String? focusKey}) async {
+  Future<void> open(
+    WidgetTester tester, {
+    String? focusKey,
+    List<ReportFilterField> filterFields = fields,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(390, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
@@ -36,9 +40,10 @@ void main() {
             onPressed: () => showReportFilterSheet(
               context: ctx,
               title: 'Filters',
-              fields: fields,
+              fields: filterFields,
               controllers: ctrls,
               onRun: () {},
+              onClear: () {},
               focusKey: focusKey,
             ),
             child: const Text('open'),
@@ -53,6 +58,62 @@ void main() {
 
   TextField fieldLabelled(WidgetTester tester, String label) =>
       tester.widget<TextField>(find.widgetWithText(TextField, label));
+
+  testWidgets('a short filter sheet fits its content', (tester) async {
+    await open(tester, filterFields: [fields[1]]);
+
+    final sheet = tester.getRect(find.byType(BottomSheet));
+    expect(sheet.height, lessThan(250));
+    expect(sheet.bottom, 1000);
+    expect(find.widgetWithText(TextField, 'Brand').hitTestable(), findsOneWidget);
+    expect(find.text('Run Report').hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('a tall sheet caps its height and pins its header and footer',
+      (tester) async {
+    final many = [
+      for (var i = 0; i < 18; i++)
+        ReportFilterField(key: 'f$i', label: 'Filter $i'),
+    ];
+    ctrls.addEntries(
+      many.map((field) => MapEntry(field.key, TextEditingController())),
+    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 40);
+    addTearDown(tester.view.reset);
+    await open(tester, filterFields: many);
+
+    final sheet = find.byType(BottomSheet);
+    final title = find.text('Filters');
+    final clear = find.text('Clear');
+    final run = find.text('Run Report');
+    final first = find.widgetWithText(TextField, 'Filter 0');
+    final last = find.widgetWithText(TextField, 'Filter 17');
+    final viewport = find.byType(SingleChildScrollView);
+
+    expect(tester.getSize(sheet).height, closeTo((1000 - 40) * 0.9, 1));
+    final headerTop = tester.getTopLeft(title).dy;
+    final footerTop = tester.getTopLeft(run).dy;
+    expect(first.hitTestable(), findsOneWidget);
+    expect(last.hitTestable(), findsNothing);
+    await tester.drag(viewport, const Offset(0, -650));
+    await tester.pumpAndSettle();
+
+    expect(first.hitTestable(), findsNothing);
+    expect(last.hitTestable(), findsOneWidget);
+    expect(tester.getTopLeft(title).dy, headerTop);
+    expect(clear.hitTestable(), findsOneWidget);
+    expect(tester.getTopLeft(run).dy, footerTop);
+
+    await tester.tap(last);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 460);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(title.hitTestable(), findsOneWidget);
+    expect(run.hitTestable(), findsOneWidget);
+    expect(tester.getBottomRight(run).dy, lessThan(1000 - 460));
+  });
 
   testWidgets('a text filter takes focus with the caret at the end',
       (tester) async {

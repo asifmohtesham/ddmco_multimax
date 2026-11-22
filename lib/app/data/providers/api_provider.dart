@@ -818,7 +818,7 @@ class ApiProvider {
     bool ignoreClosingBalance   = false,
     bool includeZeroStockItems  = false,
   }) {
-    final whs = warehouses?.where((w) => w.trim().isNotEmpty).toList() ?? const [];
+    final warehouseFilter = _stockBalanceWarehouseFilter(warehouses);
     return <String, dynamic>{
       'company'             : company,
       'from_date'           : fromDate,
@@ -826,8 +826,7 @@ class ApiProvider {
       'valuation_field_type': 'Currency',
       if (itemCodeFilter != null)
         'item_code'         : itemCodeFilter,
-      if (whs.length == 1)  'warehouse'      : whs.first,
-      if (whs.length > 1)   'warehouse'      : whs,
+      if (warehouseFilter != null) 'warehouse': warehouseFilter,
       if (itemGroup != null && itemGroup.isNotEmpty)
         'item_group'        : itemGroup,
       if (warehouseType != null && warehouseType.isNotEmpty)
@@ -842,6 +841,12 @@ class ApiProvider {
       if (ignoreClosingBalance)  'ignore_closing_balance'   : 1,
       if (includeZeroStockItems) 'include_zero_stock_items' : 1,
     };
+  }
+
+  static Object? _stockBalanceWarehouseFilter(List<String>? warehouses) {
+    final selected = warehouses?.where((w) => w.trim().isNotEmpty).toList();
+    if (selected == null || selected.isEmpty) return null;
+    return selected.length == 1 ? selected.single : selected;
   }
 
   Future<({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})>
@@ -1413,8 +1418,9 @@ class ApiProvider {
   //   • RackPickerController.load  (Browse Rack sheet)
   // ---------------------------------------------------------------------------
 
-  /// Fetch per-rack stock balance rows for [itemCode] + [warehouse],
-  /// optionally filtered by [batchNo].
+  /// Fetch per-rack stock balance rows for [itemCode], optionally scoped to
+  /// [warehouse] or [warehouses] and filtered by [batchNo]. A non-empty
+  /// [warehouses] selection takes precedence over [warehouse].
   ///
   /// Always sends `show_variant_attributes=1` and
   /// `show_dimension_wise_stock=1` so the Stock Balance report expands
@@ -1427,6 +1433,7 @@ class ApiProvider {
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
     required String itemCode,
     String? warehouse,
+    List<String> warehouses = const [],
     String? batchNo,
   }) async {
     if (!_dioInitialised) await _initDio();
@@ -1434,6 +1441,8 @@ class ApiProvider {
     final storage = Get.find<StorageService>();
     final company = storage.getCompany();
     final today   = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final warehouseFilter = _stockBalanceWarehouseFilter(warehouses) ??
+        (warehouse?.isNotEmpty == true ? warehouse : null);
 
     final filters = <String, dynamic>{
       'company'                  : company,
@@ -1442,8 +1451,8 @@ class ApiProvider {
       'item_code'                : await stockBalanceItemCodeFilter(itemCode),
       'show_variant_attributes'  : 1,
       'show_dimension_wise_stock': 1,
+      if (warehouseFilter != null) 'warehouse': warehouseFilter,
     };
-    if (warehouse != null && warehouse.isNotEmpty) filters['warehouse'] = warehouse;
     if (batchNo   != null && batchNo.isNotEmpty)   filters['batch_no']  = batchNo;
 
     late final Response response;

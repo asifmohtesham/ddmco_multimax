@@ -28,8 +28,8 @@ enum ReportFilterType {
   doctypeLink,
 
   /// Multi-value DocType picker (ERPNext `MultiSelectList`): selected names
-  /// render as removable chips with an "Add" affordance that opens the same
-  /// picker sheet. The controller holds the values joined by
+  /// render as removable chips with an "Add" affordance that opens a picker
+  /// for selecting multiple records. The controller holds the values joined by
   /// [kMultiValueSeparator] — read them back with [splitMultiValue].
   /// Requires [ReportFilterField.linkDoctype] to be set.
   doctypeMultiLink,
@@ -166,7 +166,7 @@ int activeFilterCount(Map<String, TextEditingController> controllers) =>
 // showReportFilterSheet
 // ---------------------------------------------------------------------------
 
-/// Opens a [DraggableScrollableSheet] bottom sheet that renders [fields]
+/// Opens a content-sized modal bottom sheet that renders [fields]
 /// using [controllers].  Calls [onRun] (and pops the sheet) when the user
 /// taps **Run Report**.  Optionally validates that all [ReportFilterField.required]
 /// fields are non-empty before calling [onRun]. [validate] can return an
@@ -214,10 +214,9 @@ Future<void> showReportFilterSheet({
   List<ReportFilterToggle> toggles = const [],
   String togglesLabel = 'Options',
   /// Key of the field the user asked to edit (e.g. by tapping its active
-  /// filter chip). The sheet opens tall, brings that field into view and
-  /// starts editing it: a text field takes focus, a date or link field opens
-  /// its picker. A chip group's or toggle's key brings its choices into
-  /// view; any other key only opens the sheet tall.
+  /// filter chip). The sheet brings that field into view and starts editing
+  /// it: a text field takes focus, a date or link field opens its picker.
+  /// A chip group's or toggle's key brings its choices into view.
   String? focusKey,
 }) async {
   await showModalBottomSheet(
@@ -246,6 +245,8 @@ Future<void> showReportFilterSheet({
 // ---------------------------------------------------------------------------
 
 class _ReportFilterSheet extends StatelessWidget {
+  static const _maxHeightFraction = 0.9;
+
   final String                             title;
   final List<ReportFilterField>            fields;
   final Map<String, TextEditingController> controllers;
@@ -277,20 +278,20 @@ class _ReportFilterSheet extends StatelessWidget {
     final cs        = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return DraggableScrollableSheet(
-      // Open tall when a specific field was asked for, so it is on screen.
-      initialChildSize: focusKey != null ? 0.95 : 0.6,
-      minChildSize:     0.4,
-      maxChildSize:     0.95,
-      expand: false,
-      builder: (ctx, scrollCtrl) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: LayoutBuilder(builder: (ctx, constraints) {
         return Container(
+          constraints: BoxConstraints(
+            maxHeight: constraints.maxHeight * _maxHeightFraction,
+          ),
           decoration: BoxDecoration(
             color: cs.surface,
             borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(24)),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               // ── drag handle ──────────────────────────────────────────────
               const SizedBox(height: 12),
@@ -350,9 +351,9 @@ class _ReportFilterSheet extends StatelessWidget {
               // ── fields ────────────────────────────────────────────────────
               // Built eagerly (not a lazy ListView) so a field far down the
               // sheet exists to be scrolled to when its chip asks for it.
-              Expanded(
+              Flexible(
                 child: SingleChildScrollView(
-                  controller: scrollCtrl,
+                  primary: false,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                   child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -417,9 +418,7 @@ class _ReportFilterSheet extends StatelessWidget {
                     20,
                     8,
                     20,
-                    MediaQuery.of(ctx).viewInsets.bottom +
-                        MediaQuery.of(ctx).padding.bottom +
-                        12),
+                    MediaQuery.paddingOf(ctx).bottom + 12),
                 child: Row(
                   children: [
                     Expanded(child: _runButton(ctx, cs)),
@@ -429,7 +428,7 @@ class _ReportFilterSheet extends StatelessWidget {
             ],
           ),
         );
-      },
+      }),
     );
   }
 
@@ -819,7 +818,9 @@ class _FieldWidgetState extends State<_FieldWidget> {
     final doctype = field.linkDoctype;
     if (doctype == null || doctype.isEmpty) return;
 
-    final selected = await showModalBottomSheet<String>(
+    final isMultiple = field.type == ReportFilterType.doctypeMultiLink;
+    final initialSelection = isMultiple ? splitMultiValue(ctrl.text) : null;
+    final selected = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -829,18 +830,12 @@ class _FieldWidgetState extends State<_FieldWidget> {
         title:    field.label,
         filters:  field.linkFilters,
         titleField: field.linkTitleField,
+        initialSelection: initialSelection,
       ),
     );
 
-    if (selected == null) return;
-    if (field.type == ReportFilterType.doctypeMultiLink) {
-      final values = splitMultiValue(ctrl.text);
-      if (!values.contains(selected)) {
-        ctrl.text = joinMultiValue([...values, selected]);
-      }
-      return;
-    }
-    ctrl.text = selected;
+    if (!mounted || selected == null) return;
+    ctrl.text = isMultiple ? joinMultiValue(selected) : selected.single;
   }
 }
 
@@ -932,11 +927,15 @@ class _DoctypeLinkSheet extends StatefulWidget {
   /// See [ReportFilterField.linkTitleField].
   final String?                 titleField;
 
+  /// A non-null list enables multi-selection, including when it starts empty.
+  final List<String>? initialSelection;
+
   const _DoctypeLinkSheet({
     required this.doctype,
     required this.title,
     this.filters,
     this.titleField,
+    this.initialSelection,
   });
 
   @override
@@ -946,6 +945,7 @@ class _DoctypeLinkSheet extends StatefulWidget {
 class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
   final _searchCtrl  = TextEditingController();
   final _searchFocus = FocusNode();
+  late final _selection = widget.initialSelection?.toSet();
   // The app's shared provider (session cookies, base URL) when registered.
   final _apiProvider = Get.isRegistered<ApiProvider>()
       ? Get.find<ApiProvider>()
@@ -1028,6 +1028,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
     final cs            = Theme.of(context).colorScheme;
     final textTheme     = Theme.of(context).textTheme;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final selection = _selection;
 
     return AnimatedPadding(
       padding:  EdgeInsets.only(bottom: keyboardHeight),
@@ -1076,6 +1077,12 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                             fontWeight: FontWeight.w700),
                       ),
                     ),
+                    if (selection != null)
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(ctx).pop(selection.toList()),
+                        child: const Text('Done'),
+                      ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.of(ctx).pop(),
@@ -1099,7 +1106,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                 child: TextField(
                   controller: _searchCtrl,
                   focusNode:  _searchFocus,
-                  autofocus:  true,
+                  autofocus:  selection == null,
                   decoration: InputDecoration(
                     hintText:    (widget.titleField?.isNotEmpty ?? false)
                         ? 'Search ${widget.doctype} by name or ID…'
@@ -1142,24 +1149,41 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                             : Material(
                                 type: MaterialType.transparency,
                                 child: ListView.builder(
-                                controller: scrollCtrl,
-                                itemCount:  _items.length,
-                                itemBuilder: (_, i) {
-                                  final option = _items[i];
-                                  return ListTile(
-                                    dense:    true,
-                                    title:    Text(option.display),
-                                    // The ID under the name it belongs to.
-                                    subtitle: option.hasDistinctTitle
+                                  controller: scrollCtrl,
+                                  itemCount: _items.length,
+                                  itemBuilder: (_, i) {
+                                    final option = _items[i];
+                                    final subtitle = option.hasDistinctTitle
                                         ? Text(option.name)
-                                        : null,
-                                    onTap:    () =>
-                                        Navigator.of(ctx).pop(option.name),
-                                    trailing: const Icon(
-                                        Icons.chevron_right, size: 18),
-                                  );
-                                },
-                              ),
+                                        : null;
+                                    if (selection != null) {
+                                      return CheckboxListTile(
+                                        dense: true,
+                                        title: Text(option.display),
+                                        subtitle: subtitle,
+                                        value: selection.contains(option.name),
+                                        onChanged: (checked) {
+                                          setState(() {
+                                            if (checked == true) {
+                                              selection.add(option.name);
+                                            } else {
+                                              selection.remove(option.name);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    }
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(option.display),
+                                      subtitle: subtitle,
+                                      onTap: () =>
+                                          Navigator.of(ctx).pop([option.name]),
+                                      trailing: const Icon(
+                                          Icons.chevron_right, size: 18),
+                                    );
+                                  },
+                                ),
                               ),
               ),
             ],

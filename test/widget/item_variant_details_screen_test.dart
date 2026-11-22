@@ -33,7 +33,7 @@ class _FakeApi extends ApiProvider {
   late final report = Completer<ItemVariantDetailsResult>();
   final requests = <Map<String, dynamic>>[];
   final detailRequests = <List<String>>[];
-  final stockRequests = <String>[];
+  final stockRequests = <({String itemCode, List<String> warehouses})>[];
   final stockRows = <Map<String, dynamic>>[];
   final details = <String, Map<String, dynamic>>{};
 
@@ -55,9 +55,14 @@ class _FakeApi extends ApiProvider {
     required String itemCode,
     String? warehouse,
     String? batchNo,
+    List<String> warehouses = const [],
   }) async {
-    stockRequests.add(itemCode);
-    return stockRows;
+    stockRequests.add((itemCode: itemCode, warehouses: warehouses));
+    return stockRows
+        .where(
+          (row) => warehouses.isEmpty || warehouses.contains(row['warehouse']),
+        )
+        .toList();
   }
 
   @override
@@ -95,17 +100,16 @@ class _FakeApi extends ApiProvider {
     int limit = 20,
     Map<String, dynamic>? filters,
   }) async {
-    switch (doctype) {
-      case 'Item':
-        expect(filters, {'has_variants': 1});
-        return ['ACP-25', 'ACP-MIX'];
-      case 'Item Group':
-        return ['Belts', 'Wallets'];
-      case 'Warehouse':
-        return ['POS-DXB2 - KA', 'WH-DXB1 - KA'];
-      default:
-        throw StateError('Unexpected picker for $doctype');
-    }
+    if (doctype == 'Item') expect(filters, {'has_variants': 1});
+    final options = switch (doctype) {
+      'Item' => ['ACP-25', 'ACP-MIX'],
+      'Item Group' => ['Belts', 'Wallets'],
+      'Warehouse' => ['POS-DXB2 - KA', 'WH-DXB1 - KA'],
+      _ => throw StateError('Unexpected picker for $doctype'),
+    };
+    return options
+        .where((option) => option.toLowerCase().contains(query.toLowerCase()))
+        .toList();
   }
 }
 
@@ -181,7 +185,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> pick(WidgetTester tester, String field, String value) async {
+  Future<void> openPicker(WidgetTester tester, String field) async {
     final row = find.ancestor(
       of: find.text(field),
       matching: find.byType(InputDecorator),
@@ -190,7 +194,15 @@ void main() {
     await tester.ensureVisible(action);
     await tester.tap(action);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, value));
+  }
+
+  Finder option(String value) => find.widgetWithText(CheckboxListTile, value);
+
+  Future<void> pick(WidgetTester tester, String field, String value) async {
+    await openPicker(tester, field);
+    await tester.tap(option(value));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
   }
 
@@ -498,7 +510,7 @@ void main() {
   });
 
   testWidgets(
-    'large reports show a passive scrollbar and allow body scrolling',
+    'large reports scroll under the pinned filter toolbar',
     (tester) async {
       await open(tester, preset: {'item_code': 'ACP-25'});
       await tester.tap(find.text('Run Report'));
@@ -523,9 +535,22 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
+      final filter = find.byTooltip('1 filter active — tap to edit');
+      final results = find.byType(CustomScrollView);
+      await tester.drag(results, const Offset(0, -300));
       await tester.pumpAndSettle();
-      expect(controller.scrollController.offset, greaterThan(0));
+      final scrolledOffset = controller.scrollController.offset;
+      expect(scrolledOffset, greaterThan(0));
+      final filterTop = tester.getTopLeft(filter).dy;
+      expect(filterTop, inInclusiveRange(0, kToolbarHeight));
+
+      await tester.drag(results, const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(controller.scrollController.offset, greaterThan(scrolledOffset));
+      expect(tester.getTopLeft(filter).dy, filterTop);
+      await tester.tap(filter.hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.text('Item Variant Details Filters'), findsOneWidget);
     },
   );
 
@@ -606,10 +631,25 @@ void main() {
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
     testWidgets('card layout and stock in ${mode.name} mode', (tester) async {
       await open(tester, preset: 'ACP-25', mode: mode);
-      if (mode == ThemeMode.dark) {
-        await pick(tester, 'Warehouses', 'POS-DXB2 - KA');
+      final warehouses = mode == ThemeMode.dark
+          ? ['POS-DXB2 - KA', 'WH-DXB1 - KA']
+          : <String>[];
+      if (warehouses.isNotEmpty) {
+        await openPicker(tester, 'Warehouses');
+        for (final warehouse in warehouses) {
+          await tester.tap(option(warehouse));
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('Done'));
+        await tester.pumpAndSettle();
       }
-      api.stockRows.add({'rack': 'Rack A', 'qty': 1.5});
+      api.stockRows.addAll([
+        {'rack': 'Rack A', 'qty': 1.5, 'warehouse': 'POS-DXB2 - KA'},
+        if (warehouses.isNotEmpty) ...[
+          {'rack': 'Rack B', 'qty': 2.5, 'warehouse': 'WH-DXB1 - KA'},
+          {'rack': 'Excluded rack', 'qty': 10, 'warehouse': 'Other warehouse'},
+        ],
+      ]);
       api.report.complete((
         columns: [
           {'fieldname': 'current_stock', 'label': 'Current Stock'},
@@ -710,8 +750,18 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Total  1.5 Nos'), findsOneWidget);
+      expect(api.stockRequests.single.itemCode, '2002492');
+      expect(api.stockRequests.single.warehouses, warehouses);
+      expect(find.text('Rack A'), findsOneWidget);
+      expect(find.text('Excluded rack'), findsNothing);
       expect(find.text('1.5 Nos'), findsOneWidget);
+      if (warehouses.isNotEmpty) {
+        expect(find.text('Rack B'), findsOneWidget);
+        expect(find.text('2.5 Nos'), findsOneWidget);
+        expect(find.text('Total  4 Nos'), findsOneWidget);
+      } else {
+        expect(find.text('Total  1.5 Nos'), findsOneWidget);
+      }
       expect(find.textContaining('pcs'), findsNothing);
     });
   }
@@ -899,13 +949,93 @@ void main() {
       tester.getRect(stockButton).centerRight - const Offset(2, 0),
     );
     await tester.pumpAndSettle();
-    expect(api.stockRequests, ['Variant-0']);
+    expect(api.stockRequests.single.itemCode, 'Variant-0');
 
     await tester.tapAt(
       tester.getRect(cardHeader).centerRight - const Offset(2, 0),
     );
     await tester.pumpAndSettle();
     expect(find.text('Item form'), findsOneWidget);
+  });
+
+  testWidgets('items can be searched and selected before one report run', (
+    tester,
+  ) async {
+    await open(tester);
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Select at least one Item or Item Group.'),
+      findsOneWidget,
+    );
+
+    await pick(tester, 'Warehouses', 'WH-DXB1 - KA');
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Select at least one Item or Item Group.'),
+      findsOneWidget,
+    );
+    expect(api.requests, isEmpty);
+
+    await openPicker(tester, 'Items');
+    await tester.tap(option('ACP-25'));
+    await tester.pumpAndSettle();
+    expect(find.text('Select Items'), findsOneWidget);
+    expect(tester.widget<CheckboxListTile>(option('ACP-25')).value, isTrue);
+
+    await tester.enterText(find.byType(TextField), 'MIX');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(option('ACP-25'), findsNothing);
+    await tester.tap(option('ACP-MIX'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    await openPicker(tester, 'Items');
+    expect(tester.widget<CheckboxListTile>(option('ACP-25')).value, isTrue);
+    expect(tester.widget<CheckboxListTile>(option('ACP-MIX')).value, isTrue);
+    await tester.tap(option('ACP-25'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    for (final code in ['ACP-25', 'ACP-MIX']) {
+      expect(find.widgetWithText(InputChip, code), findsOneWidget);
+    }
+
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: [
+        {'variant_name': 'Belt-1', 'item_name': 'Demo Belt'},
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(api.requests.single, {
+      'item': ['ACP-25', 'ACP-MIX'],
+      'warehouse': ['WH-DXB1 - KA'],
+    });
+    expect(find.text('Belt-1'), findsOneWidget);
+    expect(find.text('Items: 2 selected'), findsOneWidget);
+    expect(find.text('Warehouses: 1 selected'), findsOneWidget);
+
+    await tester.tap(find.text('Items: 2 selected'));
+    await tester.pumpAndSettle();
+    expect(find.text('Select Items'), findsOneWidget);
+    await tester.tap(option('ACP-25'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(InputChip, 'ACP-25'), findsNothing);
+    expect(find.widgetWithText(InputChip, 'ACP-MIX'), findsOneWidget);
+
+    await tester.tap(find.text('Clear'));
+    await tester.pumpAndSettle();
+    expect(find.text('Belt-1'), findsNothing);
+    expect(find.text('Items: 1 selected'), findsNothing);
+    expect(find.text('Warehouses: 1 selected'), findsNothing);
+    expect(api.requests, hasLength(1));
   });
 
   testWidgets('group selection validates conflict and supports clearing', (

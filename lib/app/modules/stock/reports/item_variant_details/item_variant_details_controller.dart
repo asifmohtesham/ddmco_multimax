@@ -224,6 +224,7 @@ class ItemVariantDetailsController extends GetxController {
   final itemDetails = <String, Map<String, dynamic>>{};
   final stockBalances = <String, List<Map<String, dynamic>>>{}.obs;
   final loadingStock = <String, bool>{}.obs;
+  List<String> _reportWarehouses = const [];
   int _reportGeneration = 0;
 
   List<String> _values(String key) =>
@@ -291,6 +292,7 @@ class ItemVariantDetailsController extends GetxController {
 
   void _clearReport() {
     _reportGeneration++;
+    _reportWarehouses = const [];
     _nameRequest?.cancel();
     _nameRequest = null;
     _itemNames.clear();
@@ -336,12 +338,14 @@ class ItemVariantDetailsController extends GetxController {
 
     try {
       final items = _values('item');
+      final warehouses = _values('warehouse');
       final result = await _api.getItemVariantDetails(
         items: items,
         itemGroups: _values('item_group'),
-        warehouses: _values('warehouse'),
+        warehouses: warehouses,
       );
       if (!_isCurrent(generation)) return;
+      _reportWarehouses = warehouses;
       reportColumns.assignAll(result.columns);
       reportData.assignAll(result.rows);
       results.value = VariantResults(
@@ -374,7 +378,10 @@ class ItemVariantDetailsController extends GetxController {
     final generation = _reportGeneration;
     loadingStock[itemCode] = true;
     try {
-      final rows = await _api.getStockBalanceWithDimension(itemCode: itemCode);
+      final rows = await _api.getStockBalanceWithDimension(
+        itemCode: itemCode,
+        warehouses: _reportWarehouses,
+      );
       if (_isCurrent(generation)) stockBalances[itemCode] = rows;
     } catch (_) {
       if (_isCurrent(generation)) stockBalances[itemCode] = [];
