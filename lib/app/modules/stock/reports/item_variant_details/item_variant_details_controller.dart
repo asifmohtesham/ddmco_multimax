@@ -7,7 +7,6 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
-import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_image_size.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 typedef StickyVariantHeading = ({VariantGroup group, double offset});
@@ -19,30 +18,38 @@ class ItemVariantDetailsController extends GetxController {
     : _storage = storage ?? StorageService();
 
   final StorageService _storage;
-  final imageSize = VariantImageSize.defaultSize.obs;
-  final savingImageSize = false.obs;
-  final _detailsWithoutImages = <String>{};
+  final _fieldOverrides = <String, bool>{}.obs;
+  Future<void> _fieldWrites = Future.value();
 
-  Future<void> setImageSize(VariantImageSize size) async {
-    if (savingImageSize.value || size == imageSize.value) return;
-    savingImageSize.value = true;
-    _applyImageSize(size);
-    try {
-      await _storage.saveItemVariantImageSize(size.name);
-    } catch (_) {
-      if (!isClosed) _applyImageSize(VariantImageSize.defaultSize);
-    } finally {
-      if (!isClosed) savingImageSize.value = false;
+  bool showsField(String field) =>
+      isFixedVariantField(field) ||
+      (_fieldOverrides[field] ?? defaultVariantField(field));
+
+  void toggleField(String field) {
+    if (isFixedVariantField(field)) return;
+    final next = !showsField(field);
+    if (next == defaultVariantField(field)) {
+      _fieldOverrides.remove(field);
+    } else {
+      _fieldOverrides[field] = next;
     }
+    _saveFields();
   }
 
-  void _applyImageSize(VariantImageSize size) {
-    if (imageSize.value == VariantImageSize.off &&
-        size != VariantImageSize.off) {
-      _requestedDetails.removeAll(_detailsWithoutImages);
-      _detailsWithoutImages.clear();
-    }
-    imageSize.value = size;
+  void resetFields() {
+    _fieldOverrides.clear();
+    _saveFields();
+  }
+
+  void _saveFields() {
+    final snapshot = Map<String, bool>.of(_fieldOverrides);
+    _fieldWrites = _fieldWrites.then((_) async {
+      try {
+        await _storage.saveItemVariantFields(snapshot);
+      } catch (_) {
+        // Keep the current selection available for this session.
+      }
+    });
   }
 
   static const filterLabels = {
@@ -68,6 +75,7 @@ class ItemVariantDetailsController extends GetxController {
   Timer? _searchTimer;
   Timer? _detailTimer;
   final _requestedDetails = <String>{};
+  final _detailRetryAfter = <String, DateTime>{};
   final _nearbyDetails = <String>{};
   final _matchedDetails = <String>{};
   Set<String> _visibleSearchCodes = {};
@@ -235,11 +243,9 @@ class ItemVariantDetailsController extends GetxController {
   void onInit() {
     super.onInit();
     try {
-      imageSize.value = VariantImageSize.fromStorage(
-        _storage.getItemVariantImageSize(),
-      );
+      _fieldOverrides.assignAll(_storage.getItemVariantFields());
     } catch (_) {
-      imageSize.value = VariantImageSize.defaultSize;
+      // Storage may be unavailable. Use the report defaults.
     }
     final args = Get.arguments;
     final preset = args is Map
@@ -295,7 +301,7 @@ class ItemVariantDetailsController extends GetxController {
     _detailTimer?.cancel();
     _detailTimer = null;
     _requestedDetails.clear();
-    _detailsWithoutImages.clear();
+    _detailRetryAfter.clear();
     _nearbyDetails.clear();
     _matchedDetails.clear();
     _detailUpdates.clear();
@@ -394,7 +400,7 @@ class ItemVariantDetailsController extends GetxController {
       !isClosed && generation == _reportGeneration;
 
   void queueNearbyDetails(String code) {
-    if (code.isEmpty || _requestedDetails.contains(code)) return;
+    if (!_canRequestDetails(code)) return;
     _nearbyDetails.add(code);
     _scheduleDetails();
   }
@@ -402,11 +408,17 @@ class ItemVariantDetailsController extends GetxController {
   void queueMatchedDetails(Iterable<VariantRow> matches) {
     for (final row in matches) {
       final code = variantCode(row);
-      if (code.isNotEmpty && !_requestedDetails.contains(code)) {
+      if (_canRequestDetails(code)) {
         _matchedDetails.add(code);
       }
     }
     _scheduleDetails();
+  }
+
+  bool _canRequestDetails(String code) {
+    if (code.isEmpty || _requestedDetails.contains(code)) return false;
+    final retryAfter = _detailRetryAfter[code];
+    return retryAfter == null || DateTime.now().isAfter(retryAfter);
   }
 
   void _scheduleDetails() {
@@ -431,16 +443,19 @@ class ItemVariantDetailsController extends GetxController {
     _requestedDetails.addAll(batch);
     _fetchingDetails = true;
     try {
-      final includeImage = imageSize.value != VariantImageSize.off;
-      if (!includeImage) _detailsWithoutImages.addAll(batch);
-      final details = await _api.getItemDetails(
-        batch,
-        includeImage: includeImage,
-      );
+      final details = await _api.getItemDetails(batch);
       if (!_isCurrent(generation)) return;
       itemDetails.addAll(details);
+      final retryAfter = DateTime.now().add(const Duration(seconds: 8));
       for (final code in batch) {
-        _detailUpdates[code]?.value = details[code];
+        final detail = details[code];
+        if (detail == null) {
+          _requestedDetails.remove(code);
+          _detailRetryAfter[code] = retryAfter;
+        } else {
+          _detailRetryAfter.remove(code);
+          _detailUpdates[code]?.value = detail;
+        }
       }
       final term = query.value.toLowerCase();
       if (term.isNotEmpty &&

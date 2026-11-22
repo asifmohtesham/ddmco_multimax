@@ -14,9 +14,8 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
-import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_binding.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
-import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_image_size.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
@@ -33,7 +32,6 @@ Rect groupRect(WidgetTester tester, Finder finder) {
 class _FakeApi extends ApiProvider {
   late final report = Completer<ItemVariantDetailsResult>();
   final requests = <Map<String, dynamic>>[];
-  final imageFields = <bool>[];
   final detailRequests = <List<String>>[];
   final stockRequests = <String>[];
   final stockRows = <Map<String, dynamic>>[];
@@ -80,19 +78,13 @@ class _FakeApi extends ApiProvider {
 
   @override
   Future<Map<String, Map<String, dynamic>>> getItemDetails(
-    List<String> itemCodes, {
-    bool includeImage = true,
-  }) async {
+    List<String> itemCodes,
+  ) async {
     detailRequests.add(itemCodes);
-    imageFields.add(includeImage);
     await detailGate?.future;
     return {
       for (final code in itemCodes)
-        if (details.containsKey(code))
-          code: {
-            for (final entry in details[code]!.entries)
-              if (includeImage || entry.key != 'image') entry.key: entry.value,
-          },
+        if (details.containsKey(code)) code: details[code]!,
     };
   }
 
@@ -117,22 +109,16 @@ class _FakeApi extends ApiProvider {
   }
 }
 
-class _ImageSizeBox {
+class _FieldsBox {
   Object? value;
-  bool failRead = false;
-  bool failWrite = false;
-  Completer<void>? pendingWrite;
 
   Object? read(String key) {
-    expect(key, 'ivd_image_size');
-    if (failRead) throw StateError('read failed');
+    expect(key, 'ivd_fields');
     return value;
   }
 
   Future<void> write(String key, Object? next) async {
-    expect(key, 'ivd_image_size');
-    if (failWrite) throw StateError('write failed');
-    await pendingWrite?.future;
+    expect(key, 'ivd_fields');
     value = next;
   }
 }
@@ -160,9 +146,9 @@ void main() {
     WidgetTester tester, {
     Object? preset,
     ThemeMode mode = ThemeMode.dark,
-    StorageService? storage,
+    double height = 850,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(390, 850));
+    await tester.binding.setSurfaceSize(Size(390, height));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       GetMaterialApp(
@@ -178,13 +164,13 @@ void main() {
           GetPage(
             name: '/variants',
             page: () => const ItemVariantDetailsScreen(),
-            binding: storage == null
-                ? ItemVariantDetailsBinding()
-                : BindingsBuilder(
-                    () => Get.lazyPut(
-                      () => ItemVariantDetailsController(storage: storage),
-                    ),
-                  ),
+            binding: BindingsBuilder(
+              () => Get.lazyPut(
+                () => ItemVariantDetailsController(
+                  storage: StorageService.withStorage(_FieldsBox()),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -208,55 +194,43 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  test('image size maps to legacy defaults and explicit dimensions', () {
-    expect(VariantImageSize.fromStorage(null), VariantImageSize.medium);
-    expect(VariantImageSize.fromStorage(3), VariantImageSize.medium);
-    expect(VariantImageSize.fromStorage('unknown'), VariantImageSize.medium);
-    expect(VariantImageSize.fromStorage('off'), VariantImageSize.off);
-    expect(
-      VariantImageSize.values.map((size) => size.imageHeight(grouped: true)),
-      [0, 48, 84, 200],
-    );
-    expect(
-      VariantImageSize.values.map((size) => size.imageHeight(grouped: false)),
-      [0, 48, 200, 200],
-    );
-    expect(VariantImageSize.values.map((size) => size.placeholderSize), [
-      0,
-      48,
-      54,
-      54,
-    ]);
-  });
+  test(
+    'field overrides persist across reports with different columns',
+    () async {
+      final box = _FieldsBox();
+      final storage = StorageService.withStorage(box);
+      final first = ItemVariantDetailsController(storage: storage)..onInit();
+      expect(first.showsField('material'), isTrue);
+      expect(first.showsField('avg_buying_price_list_rate'), isFalse);
+      first.toggleField('material');
+      first.toggleField('avg_buying_price_list_rate');
+      await Future<void>.delayed(Duration.zero);
 
-  test('image size loads, saves and falls back when storage fails', () async {
-    final box = _ImageSizeBox();
-    final storage = StorageService.withStorage(box);
-    final first = ItemVariantDetailsController(storage: storage)..onInit();
-    addTearDown(first.onClose);
-    expect(first.imageSize.value, VariantImageSize.medium);
-    await first.setImageSize(VariantImageSize.large);
-    expect(box.value, 'large');
+      final reopened = ItemVariantDetailsController(storage: storage)..onInit();
+      reopened.reportColumns.assignAll([
+        {'fieldname': 'colour', 'label': 'Colour'},
+      ]);
+      expect(reopened.showsField('colour'), isTrue);
+      reopened.toggleField('colour');
+      await Future<void>.delayed(Duration.zero);
+      expect(storage.getItemVariantFields(), {
+        'material': false,
+        'avg_buying_price_list_rate': true,
+        'colour': false,
+      });
+      expect(reopened.showsField('material'), isFalse);
+      reopened.resetFields();
+      await Future<void>.delayed(Duration.zero);
+      expect(storage.getItemVariantFields(), isEmpty);
+      first.onClose();
+      reopened.onClose();
+    },
+  );
 
-    final reopened = ItemVariantDetailsController(storage: storage)..onInit();
-    addTearDown(reopened.onClose);
-    expect(reopened.imageSize.value, VariantImageSize.large);
-    box.failWrite = true;
-    await reopened.setImageSize(VariantImageSize.small);
-    expect(reopened.imageSize.value, VariantImageSize.medium);
-
-    box.failRead = true;
-    final fallback = ItemVariantDetailsController(storage: storage)..onInit();
-    addTearDown(fallback.onClose);
-    expect(fallback.imageSize.value, VariantImageSize.medium);
-  });
-
-  Future<void> cacheImage(double width, double height) async {
+  Future<void> cacheImage(double width) async {
     final key = await ResizeImage(
       const NetworkImage('https://example.invalid/belt.png'),
       width: width.ceil(),
-      height: height.ceil(),
-      policy: ResizeImagePolicy.fit,
     ).obtainKey(ImageConfiguration.empty);
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawColor(const Color(0xFFFFFFFF), ui.BlendMode.src);
@@ -271,139 +245,81 @@ void main() {
     addTearDown(() => PaintingBinding.instance.imageCache.evict(key));
   }
 
-  for (final grouped in [true, false]) {
-    testWidgets(
-      'image options in ${grouped ? 'grouped' : 'flat'} dark results',
-      (tester) async {
-        final box = _ImageSizeBox()..value = 'off';
-        final storage = StorageService.withStorage(box);
-        final semantics = tester.ensureSemantics();
-        await open(tester, preset: 'ACP-25', storage: storage);
-        api.details['A'] = {
-          'image': 'https://example.invalid/belt.png',
-          'item_name': 'Test Belt',
-          'item_group': 'Belts',
-        };
-        api.report.complete((
-          columns: <Map<String, dynamic>>[],
-          rows: [
-            if (grouped) {'variant_name': 'ACP-25', 'indent': 0},
-            {'variant_name': 'A', if (grouped) 'indent': 1},
-          ],
-        ));
-        await tester.tap(find.text('Run Report'));
-        await tester.pumpAndSettle();
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.pumpAndSettle();
-        expect(api.imageFields, [false]);
-        expect(find.text('Test Belt'), findsOneWidget);
-        expect(find.text('Belts'), findsOneWidget);
-        expect(find.byType(Image), findsNothing);
-        expect(find.byIcon(Icons.image_outlined), findsNothing);
-
-        var current = VariantImageSize.off;
-        Future<void> select(VariantImageSize size) async {
-          final control = find.byTooltip('Image size: ${current.label}');
-          expect(tester.getSize(control).height, greaterThanOrEqualTo(48));
-          expect(
-            find.bySemanticsLabel(RegExp('Image size: ${current.label}')),
-            findsWidgets,
-          );
-          await tester.tap(control);
-          await tester.pumpAndSettle();
-          final options = find.byWidgetPredicate(
-            (widget) =>
-                widget is CheckedPopupMenuItem<VariantImageSize> &&
-                widget.value == current &&
-                widget.checked,
-          );
-          expect(options, findsOneWidget);
-          final checkSaving = grouped && current == VariantImageSize.off;
-          if (checkSaving) box.pendingWrite = Completer<void>();
-          await tester.tap(
-            find.widgetWithText(
-              CheckedPopupMenuItem<VariantImageSize>,
-              size.label,
-            ),
-          );
-          if (checkSaving) {
-            await tester.pump();
-            await tester.pump(const Duration(milliseconds: 350));
-            final button = find.byType(PopupMenuButton<VariantImageSize>);
-            expect(
-              tester.widget<PopupMenuButton<VariantImageSize>>(button).enabled,
-              isFalse,
-            );
-            final progress = find.descendant(
-              of: button,
-              matching: find.byType(CircularProgressIndicator),
-            );
-            expect(
-              tester.widget<CircularProgressIndicator>(progress).color,
-              Theme.of(tester.element(button)).colorScheme.onPrimary,
-            );
-            box.pendingWrite!.complete();
-            box.pendingWrite = null;
-          }
-          await tester.pumpAndSettle();
-          current = size;
-        }
-
-        for (final size in [
-          VariantImageSize.small,
-          VariantImageSize.medium,
-          VariantImageSize.large,
-        ]) {
-          final ratio = tester.view.devicePixelRatio;
-          final width = size == VariantImageSize.small
-              ? 48.0
-              : tester.getSize(find.byType(Card).first).width - 8;
-          await cacheImage(
-            width * ratio,
-            size.imageHeight(grouped: grouped) * ratio,
-          );
-
-          await select(size);
-          await tester.pump(const Duration(milliseconds: 50));
-          await tester.pumpAndSettle();
-          final image = find.byType(Image);
-          final extent = tester.getSize(image);
-          expect(extent.height, size.imageHeight(grouped: grouped));
-          if (size == VariantImageSize.small) expect(extent.width, 48);
-          final provider = tester.widget<Image>(image).image as ResizeImage;
-          expect(provider.width, (extent.width * ratio).ceil());
-          expect(provider.height, (extent.height * ratio).ceil());
-        }
-
-        expect(api.imageFields, [false, true]);
-        expect(api.requests, hasLength(1));
-        if (grouped) {
-          await tester.tap(find.text('Collapse All'));
-          await tester.pumpAndSettle();
-          final heading = find.bySemanticsLabel(RegExp('Template ACP-25'));
-          expect(tester.getSize(heading).height, 52);
-          await select(VariantImageSize.small);
-          expect(tester.getSize(heading).height, 52);
-        }
-        await select(VariantImageSize.off);
-        expect(find.byType(Image), findsNothing);
-        final reopened = ItemVariantDetailsController(storage: storage)
-          ..onInit();
-        addTearDown(reopened.onClose);
-        expect(reopened.imageSize.value, VariantImageSize.off);
-        semantics.dispose();
-      },
+  testWidgets('shared header opens server-labelled fields for a flat report', (
+    tester,
+  ) async {
+    await open(tester, preset: 'ACP-25');
+    api.report.complete((
+      columns: [
+        {'fieldname': 'variant_name', 'label': 'Variant'},
+        {'fieldname': 'item_name', 'label': 'Description'},
+        {'fieldname': 'material', 'label': 'Leather Material'},
+        {'fieldname': 'current_stock', 'label': 'Current Stock'},
+        {'fieldname': 'stock_uom', 'label': 'Stock UOM'},
+        {'fieldname': 'avg_buying_price_list_rate', 'label': 'Buying Rate'},
+      ],
+      rows: [
+        {
+          'variant_name': 'Belt-1',
+          'item_name': 'Demo Belt',
+          'material': 'Leather',
+          'current_stock': 3,
+          'stock_uom': 'Nos',
+          'avg_buying_price_list_rate': 12.5,
+          'currency': 'AED',
+        },
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DocTypeListHeader), findsOneWidget);
+    expect(find.text('Item Variant Details'), findsOneWidget);
+    expect(find.text('Items: 1 selected'), findsOneWidget);
+    expect(find.byTooltip(RegExp('Image size')), findsNothing);
+    expect(find.textContaining('Leather', findRichText: true), findsOneWidget);
+    expect(find.text('Current Stock 3 Nos'), findsOneWidget);
+    expect(find.textContaining('AED 12.50', findRichText: true), findsNothing);
+    await tester.tap(find.byTooltip('Fields'));
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.widgetWithText(CheckboxListTile, label);
+    expect(tester.widget<CheckboxListTile>(field('Variant')).onChanged, isNull);
+    expect(
+      tester.widget<CheckboxListTile>(field('Description')).onChanged,
+      isNull,
     );
-  }
+    expect(
+      tester.widget<CheckboxListTile>(field('Leather Material')).value,
+      isTrue,
+    );
+    expect(
+      tester.widget<CheckboxListTile>(field('Buying Rate')).value,
+      isFalse,
+    );
+    await tester.tap(field('Leather Material'));
+    await tester.pumpAndSettle();
+    await tester.tap(field('Buying Rate'));
+    await tester.pumpAndSettle();
+    Get.back<void>();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Leather', findRichText: true), findsNothing);
+    expect(
+      find.textContaining('AED 12.50', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Quantity totals for shown results\nCurrent Stock 3 Nos',
+      ),
+      findsOneWidget,
+    );
+    expect(api.requests, hasLength(1));
+  });
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
-    testWidgets('Large uses compact placeholders in ${mode.name}', (
+    testWidgets('Images use compact placeholders in ${mode.name}', (
       tester,
     ) async {
-      final storage = StorageService.withStorage(
-        _ImageSizeBox()..value = 'large',
-      );
-      await open(tester, preset: 'ACP-25', storage: storage, mode: mode);
+      await open(tester, preset: 'ACP-25', mode: mode);
       api.detailGate = Completer<void>();
       api.details['Broken'] = {'image': 'https://example.invalid/missing.png'};
       api.report.complete((
@@ -451,13 +367,10 @@ void main() {
     });
   }
 
-  testWidgets('a newly known Large image preserves the visible variant', (
+  testWidgets('a newly known image preserves the visible variant', (
     tester,
   ) async {
-    final storage = StorageService.withStorage(
-      _ImageSizeBox()..value = 'large',
-    );
-    await open(tester, preset: 'ACP-25', storage: storage);
+    await open(tester, preset: 'ACP-25');
     api.detailGate = Completer<void>();
     api.details['Row 0'] = {'image': 'https://example.invalid/belt.png'};
     api.report.complete((
@@ -472,13 +385,15 @@ void main() {
 
     final card = find.byType(Card).first;
     final ratio = tester.view.devicePixelRatio;
-    await cacheImage((tester.getSize(card).width - 8) * ratio, 200 * ratio);
+    await cacheImage((tester.getSize(card).width - 8) * ratio);
     final scroll = Get.find<ItemVariantDetailsController>().scrollController;
     scroll.jumpTo(tester.getSize(card).height * 3 + 42);
     await tester.pumpAndSettle();
 
     final toolbarBottom =
-        MediaQuery.paddingOf(tester.element(card)).top + kToolbarHeight;
+        MediaQuery.paddingOf(tester.element(card)).top +
+        kToolbarHeight +
+        DocTypeListHeader.chipRowHeight;
     final anchor = find.byType(Card).evaluate().firstWhere((element) {
       final box = element.renderObject! as RenderBox;
       return box.localToGlobal(Offset.zero).dy + box.size.height >
@@ -651,6 +566,8 @@ void main() {
         scheme.onSurfaceVariant,
       );
       expect(find.text('1 variant'), findsOneWidget);
+      await tester.ensureVisible(find.text('In stock'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('In stock'));
       await tester.pumpAndSettle();
       expect(find.text('1 of 2 · Current Stock 3 Nos'), findsOneWidget);
@@ -803,6 +720,7 @@ void main() {
     tester,
   ) async {
     await open(tester, preset: 'ACP-25');
+    api.detailGate = Completer<void>();
     api.details['2002506'] = {'image': 'https://example.invalid/belt.png'};
     api.report.complete((
       columns: <Map<String, dynamic>>[],
@@ -818,13 +736,16 @@ void main() {
           .descendant(of: find.byType(Card), matching: find.byType(Material))
           .first,
     );
+    await cacheImage((card.width - 8) * tester.view.devicePixelRatio);
     await tester.pump(const Duration(milliseconds: 50));
+    api.detailGate!.complete();
     await tester.pumpAndSettle();
-    final banner = tester.getRect(find.byType(Image));
+    final bannerFinder = find.byType(RawImage);
+    final banner = tester.getRect(bannerFinder);
     expect(banner.left, card.left + 4);
     expect(banner.right, card.right - 4);
     expect(banner.height, 84);
-    await tester.tap(find.byType(Image));
+    await tester.tap(bannerFinder);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.byType(ItemImagePreview), findsOneWidget);
@@ -833,7 +754,7 @@ void main() {
   testWidgets('each template enclosure owns only its heading and variants', (
     tester,
   ) async {
-    await open(tester, preset: 'ACP-25');
+    await open(tester, preset: 'ACP-25', height: 1100);
     api.report.complete((
       columns: <Map<String, dynamic>>[],
       rows: [
@@ -1015,10 +936,8 @@ void main() {
     ]);
     expect(
       tester
-          .widget<IconButton>(
-            find.widgetWithIcon(IconButton, Icons.filter_alt_outlined).first,
-          )
-          .onPressed,
+          .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
+          .onFilterTap,
       isNull,
     );
 
@@ -1081,6 +1000,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(find.byType(Card), findsNothing);
+    await tester.ensureVisible(find.text('In stock in 2 warehouses'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('In stock in 2 warehouses'));
     await tester.pumpAndSettle();
     expect(find.text('ACP-25'), findsOneWidget);

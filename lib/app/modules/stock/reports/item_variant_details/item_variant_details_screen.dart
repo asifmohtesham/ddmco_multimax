@@ -9,7 +9,7 @@ import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
-import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_image_size.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
@@ -117,89 +117,37 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
               controller: controller.scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverAppBar(
-                  pinned: true,
-                  title: const Text('Item Variant Details'),
-                  titleSpacing: 8,
-                  leading: Builder(
-                    builder: (context) => IconButton(
-                      tooltip: MaterialLocalizations.of(
-                        context,
-                      ).openAppDrawerTooltip,
-                      onPressed: Scaffold.of(context).openDrawer,
-                      icon: const Icon(Icons.menu),
-                    ),
-                  ),
-                  actions: [
-                    Obx(() {
-                      final size = controller.imageSize.value;
-                      final saving = controller.savingImageSize.value;
-                      final label = 'Image size: ${size.label}';
-                      return Semantics(
-                        label: label,
-                        button: true,
-                        enabled: !saving,
-                        child: PopupMenuButton<VariantImageSize>(
-                          tooltip: label,
-                          enabled: !saving,
-                          initialValue: size,
-                          onSelected: (size) => _changeImageSize(context, size),
-                          itemBuilder: (_) => [
-                            for (final option in VariantImageSize.values)
-                              CheckedPopupMenuItem(
-                                value: option,
-                                checked: size == option,
-                                child: Text(option.label),
-                              ),
-                          ],
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              child: Center(
-                                child: saving
-                                    ? SizedBox.square(
-                                        dimension: 18,
-                                        child: CircularProgressIndicator(
-                                          color: cs.onPrimary,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : ExcludeSemantics(
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(
-                                              Icons
-                                                  .photo_size_select_actual_outlined,
-                                              size: 19,
-                                            ),
-                                            Text(
-                                              size.label,
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
+                DocTypeListHeader(
+                  title: 'Item Variant Details',
+                  automaticallyImplyLeading: false,
+                  activeFilters: controller.activeFilters,
+                  onFilterTap: busy ? null : () => _openFilters(context),
+                  filterChipsBuilder: _buildFilterChips,
+                  onClearAllFilters: controller.clearFilters,
+                  extraActions: [
                     IconButton(
-                      tooltip: 'Filters',
-                      onPressed: busy ? null : () => _openFilters(context),
-                      icon: const Icon(Icons.filter_alt_outlined),
+                      tooltip: 'Fields',
+                      icon: const Icon(Icons.view_agenda_outlined),
+                      onPressed: controller.reportColumns.isEmpty
+                          ? null
+                          : () => _openFields(context),
                     ),
                   ],
+                  extraActionsKey: controller.reportColumns.isNotEmpty,
+                  quickChips: [
+                    if (data != null)
+                      FilterChip(
+                        selected: stock,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: controller.setInStock,
+                        label: Text(switch (controller.warehouseCount) {
+                          0 => 'In stock',
+                          1 => 'In stock in 1 warehouse',
+                          final count => 'In stock in $count warehouses',
+                        }),
+                      ),
+                  ],
+                  quickChipsKey: (stock, busy, controller.warehouseCount),
                 ),
                 if (!busy)
                   SliverToBoxAdapter(
@@ -208,20 +156,6 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (controller.activeFilters.isNotEmpty)
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  ..._buildFilterChips(context),
-                                  if (controller.activeFilters.length > 1)
-                                    TextButton(
-                                      onPressed: controller.clearFilters,
-                                      child: const Text('Clear all'),
-                                    ),
-                                ],
-                              ),
-                            ),
                           if (data != null) ...[
                             Text(
                               [
@@ -280,23 +214,11 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                               }
                               return const SizedBox.shrink();
                             }),
-                            Wrap(
-                              spacing: 8,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                FilterChip(
-                                  selected: stock,
-                                  onSelected: controller.setInStock,
-                                  label: Text(
-                                    switch (controller.warehouseCount) {
-                                      0 => 'In stock',
-                                      1 => 'In stock in 1 warehouse',
-                                      final count =>
-                                        'In stock in $count warehouses',
-                                    },
-                                  ),
-                                ),
-                                if (grouped) ...[
+                            if (grouped)
+                              Wrap(
+                                spacing: 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
                                   TextButton(
                                     onPressed: () =>
                                         controller.setAllExpanded(false),
@@ -308,8 +230,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                                     child: const Text('Expand All'),
                                   ),
                                 ],
-                              ],
-                            ),
+                              ),
                             if (!draggable)
                               Text(
                                 grouped
@@ -412,7 +333,10 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
             scrollView,
             if (lazyGroups)
               Positioned(
-                top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                top:
+                    MediaQuery.paddingOf(context).top +
+                    kToolbarHeight +
+                    DocTypeListHeader.chipRowHeight,
                 left: 12,
                 right: 12,
                 height: _headingExtent,
@@ -437,10 +361,24 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     );
   }
 
-  void _changeImageSize(BuildContext context, VariantImageSize size) {
-    if (size == controller.imageSize.value) return;
-    _preserveVariantAnchor(context, controller.scrollController);
-    controller.setImageSize(size);
+  void _openFields(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _FieldsSheet(
+        controller: controller,
+        preserveAnchor: () {
+          if (!controller.scrollController.hasClients) return;
+          final viewport =
+              controller.scrollController.position.context.notificationContext;
+          if (viewport != null) {
+            _preserveVariantAnchor(viewport, controller.scrollController);
+          }
+        },
+      ),
+    );
   }
 
   static final _pendingAnchors = Expando<bool>();
@@ -455,7 +393,10 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     final pixels = position.pixels;
     _RenderVisibleVariant? anchor;
     double originalOffset = 0;
-    final toolbarExtent = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final toolbarExtent =
+        MediaQuery.paddingOf(context).top +
+        kToolbarHeight +
+        DocTypeListHeader.chipRowHeight;
 
     void findAnchor(Element element) {
       if (anchor != null) return;
@@ -1029,6 +970,79 @@ class _TemplateHeader extends StatelessWidget {
 
 // ── Variant tile ──────────────────────────────────────────────────────────────
 
+class _FieldsSheet extends StatelessWidget {
+  const _FieldsSheet({required this.controller, required this.preserveAnchor});
+
+  final ItemVariantDetailsController controller;
+  final VoidCallback preserveAnchor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      builder: (context, scroll) => Obx(() {
+        return ListView(
+          controller: scroll,
+          padding: EdgeInsets.only(
+            bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Fields',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      preserveAnchor();
+                      controller.resetFields();
+                    },
+                    child: const Text('Reset to defaults'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Item code and name are always shown. '
+                'These choices apply to variant cards.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            for (final column in controller.reportColumns)
+              if (column['fieldname'] case final String field)
+                CheckboxListTile(
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(column['label']?.toString() ?? field),
+                  value: controller.showsField(field),
+                  onChanged: isFixedVariantField(field)
+                      ? null
+                      : (_) {
+                          preserveAnchor();
+                          controller.toggleField(field);
+                        },
+                ),
+          ],
+        );
+      }),
+    );
+  }
+}
+
 class _VariantTile extends StatefulWidget {
   final Map<String, dynamic> row;
   final List<Map<String, dynamic>> columns;
@@ -1049,9 +1063,7 @@ class _VariantTile extends StatefulWidget {
 }
 
 class _VariantTileState extends State<_VariantTile> {
-  String? _failedImageUrl;
-  VariantImageSize? _previousSize;
-  bool _hadLargeBanner = false;
+  String? _lastDisplayedImage;
 
   String? _imageUrl(String? path) {
     if (path == null || path.isEmpty) return null;
@@ -1068,39 +1080,36 @@ class _VariantTileState extends State<_VariantTile> {
     final itemCode = variantCode(row);
     final detail = controller.detailsFor(itemCode);
 
-    final chips = variantChips(row, columns).toList();
     final stockUom = row['stock_uom'];
-    final currentStock = formatStockQuantity(row['current_stock'], stockUom);
     final zeroStock = num.tryParse('${row['current_stock']}') == 0;
 
     return _VisibleVariant(
       onPaint: () => controller.queueNearbyDetails(itemCode),
       child: Obx(() {
         final details = detail.value;
-        final itemName = details?['item_name'] as String? ?? '';
-        final itemGroup =
-            details?['item_group'] as String? ??
-            row['item_group']?.toString() ??
-            '';
-        final size = controller.imageSize.value;
-        final imageUrl = size == VariantImageSize.off
-            ? null
-            : _imageUrl(details?['image'] as String?);
-        final isLarge = size == VariantImageSize.large;
-        final failed =
-            isLarge && imageUrl != null && imageUrl == _failedImageUrl;
-        final hasLargeBanner = isLarge && imageUrl != null && !failed;
-        if (_previousSize == size && _hadLargeBanner != hasLargeBanner) {
-          ItemVariantDetailsScreen._preserveVariantAnchor(
-            Scrollable.of(context).context,
-            controller.scrollController,
-          );
-        }
-        _previousSize = size;
-        _hadLargeBanner = hasLargeBanner;
-
-        final leading = size == VariantImageSize.small;
-        final height = size.imageHeight(grouped: templateCode != null);
+        final reportName = row['item_name']?.toString().trim() ?? '';
+        final itemName = reportName.isEmpty
+            ? (details?['item_name']?.toString() ?? '')
+            : reportName;
+        final itemGroup = controller.showsField('item_group')
+            ? (row['item_group'] ?? details?['item_group'])?.toString() ?? ''
+            : '';
+        final columnsByField = {
+          for (final column in columns) column['fieldname']: column['label'],
+        };
+        final chips = selectedVariantValues(
+          row,
+          columns,
+          controller.showsField,
+        ).toList();
+        final currentStock = controller.showsField('current_stock')
+            ? formatStockQuantity(
+                row['current_stock'],
+                controller.showsField('stock_uom') ? stockUom : null,
+              )
+            : '';
+        final imageUrl = _imageUrl(details?['image'] as String?);
+        final height = templateCode == null ? 200.0 : 84.0;
         final stockRows = controller.stockBalances[itemCode];
         final isStockLoading = controller.loadingStock[itemCode] == true;
         final isExpanded = stockRows != null;
@@ -1131,34 +1140,7 @@ class _VariantTileState extends State<_VariantTile> {
           _openImageViewer(context, items: items, initialIndex: startIndex);
         }
 
-        Widget image(double width) => Semantics(
-          label: 'View image for $itemCode',
-          button: true,
-          container: true,
-          onTap: openGallery,
-          child: InkWell(
-            excludeFromSemantics: true,
-            onTap: openGallery,
-            child: _VariantImage(
-              url: imageUrl!,
-              width: width,
-              height: height,
-              onError: isLarge
-                  ? () {
-                      // Image.errorBuilder runs during build.
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted || _failedImageUrl == imageUrl) return;
-                        final currentImage = detail.value?['image'] as String?;
-                        if (_imageUrl(currentImage) != imageUrl) return;
-                        setState(() => _failedImageUrl = imageUrl);
-                      });
-                    }
-                  : null,
-            ),
-          ),
-        );
-
-        return Card.outlined(
+        Widget card({Widget? banner, bool broken = false}) => Card.outlined(
           margin: EdgeInsets.zero,
           color: cs.surface,
           elevation: 0,
@@ -1170,11 +1152,10 @@ class _VariantTileState extends State<_VariantTile> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (hasLargeBanner ||
-                  (size == VariantImageSize.medium && imageUrl != null))
+              if (banner != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-                  child: image(double.infinity),
+                  child: banner,
                 ),
 
               Padding(
@@ -1199,18 +1180,12 @@ class _VariantTileState extends State<_VariantTile> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (leading ||
-                                  (size == VariantImageSize.medium &&
-                                      imageUrl == null) ||
-                                  (isLarge && !hasLargeBanner)) ...[
-                                if (leading && imageUrl != null)
-                                  image(size.placeholderSize)
-                                else
-                                  _ItemThumb(
-                                    width: size.placeholderSize,
-                                    height: size.placeholderSize,
-                                    broken: failed,
-                                  ),
+                              if (banner == null) ...[
+                                _ItemThumb(
+                                  width: 54,
+                                  height: 54,
+                                  broken: broken,
+                                ),
                                 const SizedBox(width: 12),
                               ],
                               Expanded(
@@ -1265,7 +1240,7 @@ class _VariantTileState extends State<_VariantTile> {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          'Current Stock $currentStock',
+                          '${columnsByField['current_stock'] ?? 'Current Stock'} $currentStock',
                           style: text.labelMedium?.copyWith(
                             color: zeroStock
                                 ? cs.onSurfaceVariant
@@ -1347,64 +1322,39 @@ class _VariantTileState extends State<_VariantTile> {
             ],
           ),
         );
-      }),
-    );
-  }
-}
-
-// ── Full-width image banner ────────────────────────────────────────────────────
-
-class _VariantImage extends StatelessWidget {
-  const _VariantImage({
-    required this.url,
-    required this.width,
-    required this.height,
-    this.onError,
-  });
-
-  final String url;
-  final double width;
-  final double height;
-  final VoidCallback? onError;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final ratio = MediaQuery.devicePixelRatioOf(context);
-    return SizedBox(
-      width: width,
-      height: height,
-      child: LayoutBuilder(
-        builder: (_, constraints) => Image(
-          image: ResizeImage(
-            NetworkImage(url),
-            width: (constraints.maxWidth * ratio).ceil(),
-            height: (constraints.maxHeight * ratio).ceil(),
-            policy: ResizeImagePolicy.fit,
-          ),
-          fit: BoxFit.cover,
-          excludeFromSemantics: true,
-          loadingBuilder: (_, child, progress) => progress == null
-              ? child
-              : ColoredBox(
-                  color: cs.surfaceContainerHighest,
-                  child: const Center(
-                    child: SizedBox.square(
-                      dimension: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
+        final ratio = MediaQuery.devicePixelRatioOf(context);
+        return LayoutBuilder(
+          builder: (context, constraints) => imageUrl == null
+              ? card()
+              : Image.network(
+                  imageUrl,
+                  key: ValueKey(imageUrl),
+                  width: double.infinity,
+                  height: height,
+                  cacheWidth: ((constraints.maxWidth - 8) * ratio).ceil(),
+                  fit: BoxFit.cover,
+                  excludeFromSemantics: true,
+                  errorBuilder: (_, error, stack) => card(broken: true),
+                  frameBuilder: (context, image, frame, synchronouslyLoaded) {
+                    if (frame == null) return card();
+                    if (_lastDisplayedImage != imageUrl) {
+                      _lastDisplayedImage = imageUrl;
+                      ItemVariantDetailsScreen._preserveVariantAnchor(
+                        Scrollable.of(context).context,
+                        controller.scrollController,
+                      );
+                    }
+                    return card(
+                      banner: Semantics(
+                        label: 'View image for $itemCode',
+                        button: true,
+                        child: InkWell(onTap: openGallery, child: image),
+                      ),
+                    );
+                  },
                 ),
-          errorBuilder: (_, __, ___) {
-            final handleError = onError;
-            if (handleError == null) {
-              return _ItemThumb(width: width, height: height, broken: true);
-            }
-            handleError();
-            return const SizedBox.shrink();
-          },
-        ),
-      ),
+        );
+      }),
     );
   }
 }

@@ -1349,13 +1349,13 @@ class ApiProvider {
   /// Returns a map of item code → {item_name, item_group, image?}.
   /// The image value is null when the field is unset.
   Future<Map<String, Map<String, dynamic>>> getItemDetails(
-      List<String> itemCodes, {bool includeImage = true}) async {
+      List<String> itemCodes) async {
     if (itemCodes.isEmpty) return {};
     try {
       final rows = await getList(
         null,
         doctype: 'Item',
-        fields:  ['name', 'item_name', 'item_group', if (includeImage) 'image'],
+        fields:  ['name', 'item_name', 'item_group', 'image'],
         filters: {'name': ['in', itemCodes]},
         limit:   itemCodes.length + 1,
         orderBy: 'name asc',
@@ -1365,7 +1365,7 @@ class ApiProvider {
           r['name'].toString(): {
             'item_name':  r['item_name']?.toString()  ?? '',
             'item_group': r['item_group']?.toString() ?? '',
-            if (includeImage) 'image': (r['image']?.toString().isNotEmpty ?? false)
+            'image': (r['image']?.toString().isNotEmpty ?? false)
                 ? r['image'].toString()
                 : null,
           },
