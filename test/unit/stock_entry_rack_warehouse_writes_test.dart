@@ -186,6 +186,7 @@ void main() {
         null,
       );
       expect(await controller.saveDocument(), isTrue);
+      expect(controller.warehouseNotice.value, contains('1 existing rows'));
       final row = (api.writes.single['items'] as List).single as Map;
       expect(row['s_warehouse'], _dxb);
       expect(row['rack'], _rack);
@@ -204,6 +205,48 @@ void main() {
       expect(await controller.saveDocument(), isFalse);
       expect(api.writes, hasLength(1));
       await tester.pump(const Duration(seconds: 3));
+    },
+  );
+
+  testWidgets(
+    'server-cleared header replaces the stale default change notice',
+    (tester) async {
+      controller
+        ..mode = 'edit'
+        ..name = 'SE-1';
+      await controller.fetchDocument();
+      controller.changeHeaderWarehouse('WH-DXB3 - KA', source: true);
+      expect(
+        controller.warehouseNotice.value,
+        contains('changed to WH-DXB3 - KA'),
+      );
+
+      api.draft = {
+        ...api.draft,
+        'from_warehouse': null,
+        'items': [
+          ...api.draft['items'] as List,
+          {
+            'name': 'SE-ROW-2',
+            'item_code': '2003050',
+            'qty': 1,
+            'batch_no': '20030506-4BC87Z',
+            's_warehouse': _wip,
+            'rack': _rack,
+          },
+        ],
+      };
+
+      await controller.fetchDocument();
+      expect(controller.fromWarehouse.value, isNull);
+      expect(
+        controller.warehouseNotice.value,
+        'Item rows use more than one source warehouse. Review $_dxb, $_wip.',
+      );
+      expect(controller.stockEntry.value!.items.map((row) => row.sWarehouse), [
+        _dxb,
+        _wip,
+      ]);
     },
   );
 

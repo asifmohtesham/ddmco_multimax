@@ -761,6 +761,8 @@ class StockEntryFormController extends GetxController
   // ── Fetch document ───────────────────────────────────────────────────────────────────────────────────
 
   Future<void> fetchDocument() async {
+    final previousSource = warehouseValue(fromWarehouse.value);
+    final previousTarget = warehouseValue(toWarehouse.value);
     isLoading.value = true;
     try {
       final response = await _provider.getStockEntry(name);
@@ -777,7 +779,12 @@ class StockEntryFormController extends GetxController
             for (final row in entry.items)
               if (row.name != null) row.name!: row,
         };
-        if (warehouseNotice.value == null) _showMixedWarehouseNotice();
+        final defaultsChanged =
+            warehouseValue(entry.fromWarehouse) != previousSource ||
+            warehouseValue(entry.toWarehouse) != previousTarget;
+        if (defaultsChanged || warehouseNotice.value == null) {
+          _showMixedWarehouseNotice();
+        }
         savedRackNotice.value = null;
         if (entry.docstatus == 0) unawaited(_inspectSavedRacks(entry));
 
