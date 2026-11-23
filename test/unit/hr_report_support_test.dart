@@ -1,19 +1,5 @@
-import 'dart:convert';
-
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
-
-DioException _dioError(Object? body, {int status = 403}) {
-  final options = RequestOptions(
-    path: '/api/method/frappe.desk.query_report.run',
-  );
-  return DioException(
-    requestOptions: options,
-    type: DioExceptionType.badResponse,
-    response: Response(requestOptions: options, statusCode: status, data: body),
-  );
-}
 
 void main() {
   group('parseReportSummary', () {
@@ -84,67 +70,6 @@ void main() {
       expect(formatHours(0.75), '45m');
       expect(formatHours(0), '0h');
       expect(formatHours(-1), '0h');
-    });
-  });
-
-  group('readableReportError', () {
-    test('reads the message out of _server_messages', () {
-      // Verbatim from the live 403 on the Timesheet-based report.
-      final body = {
-        'exception':
-            "frappe.exceptions.PermissionError: You don't have permission to get a report on: Timesheet",
-        '_server_messages': jsonEncode([
-          jsonEncode({
-            'message':
-                "You don't have permission to get a report on: Timesheet",
-            'indicator': 'red',
-            'raise_exception': 1,
-          }),
-        ]),
-      };
-      expect(
-        readableReportError(_dioError(body)),
-        "You don't have permission to get a report on: Timesheet",
-      );
-    });
-
-    test('strips HTML from a server message', () {
-      final body = {
-        '_server_messages': jsonEncode([
-          jsonEncode({
-            'message':
-                'The metrics for this report are calculated based on <b>Standard Working Hours</b>. '
-                'Please set <b>Standard Working Hours</b> in <a href="/app/hr-settings">HR Settings</a>.',
-          }),
-        ]),
-      };
-      expect(
-        readableReportError(_dioError(body, status: 417)),
-        'The metrics for this report are calculated based on Standard Working Hours. '
-        'Please set Standard Working Hours in HR Settings.',
-      );
-    });
-
-    test('falls back to the exception text without its class', () {
-      final body = {
-        'exception':
-            'frappe.exceptions.ValidationError: From Date must come before To Date',
-      };
-      expect(
-        readableReportError(_dioError(body, status: 417)),
-        'From Date must come before To Date',
-      );
-    });
-
-    test('connection failure reads as such', () {
-      final error = DioException(
-        requestOptions: RequestOptions(path: '/'),
-        type: DioExceptionType.connectionError,
-      );
-      expect(
-        readableReportError(error),
-        contains('Could not reach the server'),
-      );
     });
   });
 

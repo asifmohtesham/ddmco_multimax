@@ -4,9 +4,6 @@
 /// Free of Flutter/GetX so the wire contract unit-tests without a binding.
 library;
 
-import 'dart:convert';
-
-import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 
 /// Rows of a `frappe.desk.query_report.run` response as string-keyed maps;
@@ -97,58 +94,6 @@ String formatHours(double hours) {
   if (m == 0) return '${h}h';
   return '${h}h ${m}m';
 }
-
-/// The human part of a failed `query_report.run`. Frappe puts it in the body
-/// (`_server_messages`, then `exception`), not in the status line.
-String readableReportError(Object error) {
-  if (error is DioException) {
-    final data = error.response?.data;
-    if (data is Map) {
-      final fromMessages = _serverMessageText(data['_server_messages']);
-      if (fromMessages != null) return fromMessages;
-
-      final exception = data['exception']?.toString() ?? '';
-      if (exception.isNotEmpty) {
-        // "frappe.exceptions.PermissionError: You don't have …" → the message.
-        final colon = exception.indexOf(': ');
-        return _stripHtml(
-          colon > 0 ? exception.substring(colon + 2) : exception,
-        );
-      }
-    }
-    if (error.type == DioExceptionType.connectionError ||
-        error.type == DioExceptionType.connectionTimeout) {
-      return 'Could not reach the server. Check the connection and try again.';
-    }
-    return error.message ?? 'Could not run the report.';
-  }
-  return error.toString();
-}
-
-/// `_server_messages` is a JSON array of JSON-encoded `{message: …}` objects.
-String? _serverMessageText(Object? raw) {
-  if (raw is! String || raw.isEmpty) return null;
-  try {
-    final outer = jsonDecode(raw);
-    if (outer is! List) return null;
-    final texts = <String>[];
-    for (final entry in outer) {
-      final decoded = entry is String ? jsonDecode(entry) : entry;
-      final message = decoded is Map ? decoded['message'] : decoded;
-      final text = _stripHtml(message?.toString() ?? '');
-      if (text.isNotEmpty) texts.add(text);
-    }
-    return texts.isEmpty ? null : texts.join('\n');
-  } catch (_) {
-    return null;
-  }
-}
-
-String _stripHtml(String text) => text
-    .replaceAll(RegExp(r'<[^>]*>'), '')
-    .replaceAll('&nbsp;', ' ')
-    .replaceAll(RegExp(r'\s+'), ' ')
-    .trim();
 
 // ── Period presets ──────────────────────────────────────────────────────────
 

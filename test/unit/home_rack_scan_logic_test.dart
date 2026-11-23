@@ -114,7 +114,7 @@ void main() {
   });
 
   group('rackLookupFailure', () {
-    test('server error carries the HTTP status and the server text', () {
+    test('server error uses plain report feedback', () {
       // Live v16 answer for a well-formed code whose warehouse does not exist.
       final failure = rackLookupFailure(_dio(
         DioExceptionType.badResponse,
@@ -126,10 +126,11 @@ void main() {
       ));
 
       expect(failure.title, 'Server Error');
-      expect(failure.message, 'HTTP 500: list index out of range');
+      expect(failure.message,
+          'The server could not run Stock Balance. Try again later.');
     });
 
-    test('server error prefers _server_messages over exception', () {
+    test('permission error names the report', () {
       final failure = rackLookupFailure(_dio(
         DioExceptionType.badResponse,
         status: 403,
@@ -141,7 +142,8 @@ void main() {
       ));
 
       expect(failure.title, 'Server Error');
-      expect(failure.message, 'HTTP 403: Not permitted to run Stock Balance');
+      expect(failure.message,
+          "You don't have permission to run Stock Balance. Ask your administrator.");
     });
 
     test('connection failure is a network error, not a server error', () {
@@ -166,10 +168,10 @@ void main() {
       expect(failure.title, 'Unexpected Response');
     });
 
-    test('anything else keeps its own text', () {
+    test('other failures suppress exception details', () {
       final failure = rackLookupFailure(StateError('boom'));
       expect(failure.title, 'Rack Look-up Failed');
-      expect(failure.message, contains('boom'));
+      expect(failure.message, 'Could not run Stock Balance. Try again.');
     });
   });
 

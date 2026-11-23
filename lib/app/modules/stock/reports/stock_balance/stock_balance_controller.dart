@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
@@ -327,7 +328,7 @@ class StockBalanceController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
-        message: 'Failed to fetch Stock Balance: $e',
+        message: readableReportError(e, reportName: 'Stock Balance'),
       );
     } finally {
       isLoading.value = false;

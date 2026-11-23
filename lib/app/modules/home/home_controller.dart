@@ -1171,8 +1171,7 @@ class HomeController extends GetxController {
         backgroundColor: Colors.transparent,
       );
       return ScanOutcome.ok;
-    } catch (e, st) {
-      debugPrint('Rack look-up for $rackCode failed: $e\n$st');
+    } catch (e) {
       final failure = rackLookupFailure(e);
       GlobalSnackbar.error(title: failure.title, message: failure.message);
       return ScanOutcome.error;

@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 
@@ -82,7 +83,10 @@ class BomStockCustomerCodeController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
-        message: 'Failed to run BOM Stock with Customer Code: $e',
+        message: readableReportError(
+          e,
+          reportName: 'BOM Stock with Customer Code',
+        ),
       );
     } finally {
       isRunning.value = false;

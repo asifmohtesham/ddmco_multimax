@@ -158,8 +158,17 @@ The fix does not depend on the answer.
 - The request now passes the rack as the `rack` inventory-dimension filter
   (`ItemProvider.getWarehouseStock(warehouse, rack: …)`), a list on v15 and
   v16, so the reply is the one rack and not the whole warehouse.
-- A failure is reported as what it is: a code that is not a rack code, a server
-  error with its status and text, a network failure, or an unrecognised reply.
+- Rack look-up distinguishes invalid codes, report refusals, connection
+  failures and unrecognised replies.
+
+**Tablet smoke follow-up.** Reports share one error message mapper. HTTP 403
+and Frappe `PermissionError` replies name the report and direct the user to
+their administrator. Connection failures give a retry hint. Server failures
+use plain text. For validation feedback the app reads the actual message
+field and removes HTML. Frappe metadata and exception IDs remain in debug
+logs. The same API v1 error fields are available on v15 and v16.
+[Frappe v15 response source](https://github.com/frappe/frappe/blob/version-15/frappe/utils/response.py#L31-L64),
+[Frappe v16 response source](https://github.com/frappe/frappe/blob/v16.60.0/frappe/utils/response.py#L36-L60).
 
 The fix was checked against live replies from the audited server by the session
 that wrote it. It has not been confirmed on a device as part of this audit.

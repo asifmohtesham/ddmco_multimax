@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
@@ -174,7 +175,10 @@ class BatchWiseBalanceController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
-        message: 'Failed to fetch batch-wise balance: $e',
+        message: readableReportError(
+          e,
+          reportName: 'Batch-Wise Balance History',
+        ),
       );
     } finally {
       isLoading.value = false;

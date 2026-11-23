@@ -2,12 +2,13 @@
 /// Balance report sit on the scanned rack, and what to tell the user when the
 /// look-up fails.
 ///
-/// Free of Flutter/GetX so the wire contract unit-tests without a binding.
+/// Unit-testable without a widget tree.
 library;
 
 import 'package:dio/dio.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart'
-    show readableReportError, reportMaps;
+    show reportMaps;
 
 /// Rows of a `frappe.desk.query_report.run` Stock Balance body whose `rack`
 /// is [rackCode].
@@ -38,34 +39,13 @@ List<Map<String, dynamic>> rackRowsFromStockBalance(
 
 /// Snackbar title and message for a rack look-up that threw [error].
 ///
-/// Keeps the three failure kinds apart: the server answered with an error
-/// (status and the server's own text), the request never got an answer
-/// (connection or time-out), or the answer was not a Stock Balance reply.
 ({String title, String message}) rackLookupFailure(Object error) {
+  final message = readableReportError(error, reportName: 'Stock Balance');
   if (error is DioException) {
-    final status = error.response?.statusCode;
-    if (status != null) {
-      return (
-        title: 'Server Error',
-        message: 'HTTP $status: ${readableReportError(error)}',
-      );
-    }
-    return switch (error.type) {
-      DioExceptionType.connectionTimeout ||
-      DioExceptionType.connectionError => (
-        title: 'Network Error',
-        message: 'Could not reach the server. Check the connection and try '
-            'again.',
-      ),
-      DioExceptionType.sendTimeout || DioExceptionType.receiveTimeout => (
-        title: 'Network Error',
-        message: 'The server took too long to answer. Try again.',
-      ),
-      _ => (
-        title: 'Network Error',
-        message: error.message ?? 'The request failed. Try again.',
-      ),
-    };
+    return (
+      title: error.response == null ? 'Network Error' : 'Server Error',
+      message: message,
+    );
   }
   if (error is FormatException) {
     return (
@@ -74,7 +54,7 @@ List<Map<String, dynamic>> rackRowsFromStockBalance(
           'recognise.',
     );
   }
-  return (title: 'Rack Look-up Failed', message: '$error');
+  return (title: 'Rack Look-up Failed', message: message);
 }
 
 /// Message for a scanned code that is not a `<company>-<type>-<site>-<shelf>`

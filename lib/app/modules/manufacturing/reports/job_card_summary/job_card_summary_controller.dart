@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/work_order_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/work_order_provider.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
@@ -173,7 +174,7 @@ class JobCardSummaryController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(
         title:   'Report Error',
-        message: 'Failed to load Job Card Summary: $e',
+        message: readableReportError(e, reportName: 'Job Card Summary'),
       );
     } finally {
       isLoading.value = false;
