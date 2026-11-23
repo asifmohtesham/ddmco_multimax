@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/models/item_model.dart';
@@ -105,11 +106,6 @@ class _FakeRackLoader extends ItemProvider {
   ) async => _response({'data': []});
 }
 
-class _TestDataWedge extends DataWedgeService {
-  @override
-  void onInit() {}
-}
-
 void main() {
   late _FakeApiProvider api;
   late _FakeScanService scans;
@@ -118,6 +114,11 @@ void main() {
   late int startingScanRevision;
 
   setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.ddmco.multimax/scan'),
+          (_) async => null,
+        );
     SharedPreferences.setMockInitialValues({});
     api = _FakeApiProvider();
     Get.put<ApiProvider>(api);
@@ -132,7 +133,7 @@ void main() {
     Get.put<DeliveryNoteProvider>(DeliveryNoteProvider());
     Get.put<ToDoProvider>(ToDoProvider());
     Get.put<StorageService>(StorageService.withStorage(null));
-    Get.put<DataWedgeService>(_TestDataWedge());
+    Get.put<DataWedgeService>(DataWedgeService());
     Get.put<AuthenticationController>(AuthenticationController());
     Get.put<PermissionService>(PermissionService());
     // Construct directly to keep Dashboard startup requests out of these tests.
