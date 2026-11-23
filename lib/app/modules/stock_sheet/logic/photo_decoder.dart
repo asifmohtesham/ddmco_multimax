@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'grey_plane.dart';
 import 'sheet_reading.dart';
-import 'stock_sheet_codec.dart';
+import 'items_from_photos_codec.dart';
 
 /// One code the platform found in an image file: its text, and its corners
 /// in that image's pixels (none when the platform gives none).
@@ -38,7 +38,7 @@ abstract class PhotoDecoder {
   /// True unless [whole] holds exactly one item: one label (an EAN-8 and its
   /// batch QR count as one item) is read in full by round one.
   static bool needsZoom(List<String> whole) =>
-      StockSheetCodec.itemsInPhoto(whole).length != 1;
+      ItemsFromPhotosCodec.itemsInPhoto(whole).length != 1;
 
   Future<void> dispose();
 }
@@ -115,7 +115,7 @@ class MlKitPhotoDecoder extends PhotoDecoder {
     bool Function()? stopped,
   }) async {
     try {
-      final items = StockSheetCodec.itemsInPhoto(whole).length;
+      final items = ItemsFromPhotosCodec.itemsInPhoto(whole).length;
       // Two or more items mean a sheet of labels; no item at all is most
       // often a label too small to be found in the whole photo (a product
       // card with one small EAN-8). Both are read again in tiles.
@@ -214,7 +214,7 @@ class MlKitPhotoDecoder extends PhotoDecoder {
   }
 
   bool _anyClassifies(List<String> values) =>
-      values.any((raw) => StockSheetCodec.classify(raw) != null);
+      values.any((raw) => ItemsFromPhotosCodec.classify(raw) != null);
 
   /// The pixel size from the image header alone, without decoding the
   /// pixels; `null` when the bytes are not an image the package reads.

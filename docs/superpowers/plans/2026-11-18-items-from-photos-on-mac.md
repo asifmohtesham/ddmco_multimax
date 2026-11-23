@@ -15,7 +15,7 @@
 - iOS deployment target 15.0; iOS plugins through Swift Package Manager only (check any new plugin ships `ios/<name>/Package.swift`).
 - `receive_sharing_intent` stays pinned at exactly `1.9.0`; the app half reads `UserDefaults(suiteName: "group.com.ddmco.multimax")` key `ShareKey` = JSON array of `{"path": <file URL absolute string, percent-decoded>, "mimeType": <String?>, "type": "image"}` after the URL `ShareMedia-com.ddmco.multimax:share` opens the app.
 - App Group `group.com.ddmco.multimax`; Info.plist key `AppGroupId`.
-- At most 100 photos (`StockSheetController.maxPhotos`); images only.
+- At most 100 photos (`ItemsFromPhotosController.maxPhotos`); images only.
 - Share screen time-out: 120 seconds.
 - Copy, verbatim: "Items from Photos", "Choose files…", "Choose from gallery", "Take a photo", "Choose photos of item labels to list their stock as Excel or PDF.", "On a Mac you can also drag photos here or share them from Finder.", "Sending N photos to Multimax…", "Couldn't read these photos.", "Multimax couldn't get these photos in time. Try fewer, or download them first.", "Switch to Multimax to continue.", existing "Those photos are already in the list."
 - British English in copy, comments and commit messages; Conventional Commits; end commits with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -36,26 +36,26 @@
 
 **Files:**
 - Create: `lib/app/modules/stock_sheet/logic/photo_fingerprint.dart`
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart` (constructor, `start`, `_newPhotos`, `addPhotos`, `offerShare`, `_hold`, `pendingShareFits`)
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart` (constructor, `start`, `_newPhotos`, `addPhotos`, `offerShare`, `_hold`, `pendingShareFits`)
 - Modify: `pubspec.yaml` (add `crypto: ^3.0.7` as a direct dependency)
-- Test: `test/unit/stock_sheet_controller_test.dart`, `test/unit/photo_fingerprint_test.dart`
+- Test: `test/unit/items_from_photos_controller_test.dart`, `test/unit/photo_fingerprint_test.dart`
 
 **Interfaces:**
 - Produces: `typedef PhotoFingerprinter = Future<Map<String, String>> Function(List<String> paths);` and `Future<Map<String, String>> fingerprintPhotos(List<String> paths)` (SHA-256 hex of each file's bytes, computed with `Isolate.run`; a file that can't be read maps to `'unreadable:<path>'` so it is unique and kept).
-- Produces: `StockSheetController({..., PhotoFingerprinter? fingerprint})`.
+- Produces: `ItemsFromPhotosController({..., PhotoFingerprinter? fingerprint})`.
 
 - [ ] **Step 1: Write the failing tests**
 
 `photo_fingerprint_test.dart`: `same bytes under two names give the same fingerprint`; `a missing file gets a unique unreadable fingerprint` (expect `'unreadable:/no/such.jpg'`).
-`stock_sheet_controller_test.dart` (inject a fake `fingerprint` mapping paths to fixed strings):
+`items_from_photos_controller_test.dart` (inject a fake `fingerprint` mapping paths to fixed strings):
 - `start reads two copies of the same photo once` — paths `a.jpg`, `b.jpg` with the same fingerprint → decoder called with `['a.jpg']`.
-- `addPhotos skips a photo already listed by content` — review holds `a.jpg` (fp `X`); `addPhotos(['c.jpg'])` with `c.jpg` → `X` returns `StockSheetController.alreadyListedMessage`.
+- `addPhotos skips a photo already listed by content` — review holds `a.jpg` (fp `X`); `addPhotos(['c.jpg'])` with `c.jpg` → `X` returns `ItemsFromPhotosController.alreadyListedMessage`.
 - `a held share counts only new photos` — while reviewing, `offerShare(['c.jpg','d.jpg'])` with `c.jpg` a content duplicate → `pendingShare` equals `['d.jpg']`.
 - `a held share of only duplicates is not asked` — `offerShare(['c.jpg'])` (duplicate) → `pendingShare` stays empty and the returned future/notification yields `alreadyListedMessage` (see Step 3 for the signal).
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/stock_sheet_controller_test.dart`
+Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/items_from_photos_controller_test.dart`
 Expected: FAIL (undefined `fingerprintPhotos`, unknown parameter `fingerprint`).
 
 - [ ] **Step 3: Implement**
@@ -69,17 +69,17 @@ Expected: FAIL (undefined `fingerprintPhotos`, unknown parameter `fingerprint`).
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/stock_sheet_controller_test.dart`
+Run: `flutter test test/unit/photo_fingerprint_test.dart test/unit/items_from_photos_controller_test.dart`
 Expected: PASS, and the existing controller tests still pass.
 
 - [ ] **Step 5: Show the warning on screen**
 
-In `stock_sheet_screen.dart` `initState`, add `ever<int>(controller.alreadyListed, (_) => AppNotification.warning(StockSheetController.alreadyListedMessage))` to `_workers`. Widget test in `test/widget/stock_sheet_screen_test.dart`: `a re-shared duplicate shows "Those photos are already in the list."`.
+In `items_from_photos_screen.dart` `initState`, add `ever<int>(controller.alreadyListed, (_) => AppNotification.warning(ItemsFromPhotosController.alreadyListedMessage))` to `_workers`. Widget test in `test/widget/items_from_photos_screen_test.dart`: `a re-shared duplicate shows "Those photos are already in the list."`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pubspec.yaml pubspec.lock lib/app/modules/stock_sheet test/unit/photo_fingerprint_test.dart test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_screen_test.dart
+git add pubspec.yaml pubspec.lock lib/app/modules/stock_sheet test/unit/photo_fingerprint_test.dart test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_screen_test.dart
 git commit -m "feat(stock-sheet): skip photos already in the list by content"
 ```
 
@@ -116,7 +116,7 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 - Produces: new optional constructor parameters `Stream<List<String>>? drops`, `Future<List<String>> Function()? strandedShare`, `Future<void> Function()? markShareHandled`, `Stream<void>? resumes`, `Duration strandedDelay = const Duration(milliseconds: 1500)`. Defaults: `NativeIntake.instance.drops`, `.takeStrandedShare`, `.markShareHandled`, and a stream of `AppLifecycleState.resumed` events (from an `AppLifecycleListener`).
 
 - [ ] **Step 1: Write the failing tests** (fake streams, `fakeAsync`):
-  - `a drop is delivered like a share` — drop `['/d/a.jpg']` while on HOME and signed in → `openStockSheet` called with it.
+  - `a drop is delivered like a share` — drop `['/d/a.jpg']` while on HOME and signed in → `openItemsFromPhotos` called with it.
   - `a drop while a sheet is being made shows the busy message` — active sheet whose `offerShare` returns `ShareOffer.refusedBusy` → `notify(ShareIntakeService.busyMessage)`.
   - `a warm share marks the share handled` — warm stream emits → `markShareHandled` called once.
   - `a stranded share is picked up after resume` — `resumes` emits, after `strandedDelay` `strandedShare` returns `['/g/a.jpg']` → delivered.
@@ -129,12 +129,12 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 ### Task 4: Clean up copies in every intake folder
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart` (`_deleteSharedCopies`, constructor)
-- Test: `test/unit/stock_sheet_controller_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart` (`_deleteSharedCopies`, constructor)
+- Test: `test/unit/items_from_photos_controller_test.dart`
 
 **Interfaces:**
 - Consumes: `NativeIntake.sharedFolders()` (Task 2).
-- Produces: `StockSheetController({..., Future<List<String>> Function()? extraCleanupRoots})`, default `NativeIntake.instance.sharedFolders`.
+- Produces: `ItemsFromPhotosController({..., Future<List<String>> Function()? extraCleanupRoots})`, default `NativeIntake.instance.sharedFolders`.
 
 - [ ] **Step 1: Failing test** `onClose deletes given photos in an extra intake folder but not elsewhere` — temp dirs `root` (temp) and `group` (extra); files `group/x.jpg` and `elsewhere/y.jpg` given via `start`; after `onClose` and a pump, `x.jpg` is gone, `y.jpg` remains.
 - [ ] **Step 2: Run, expect FAIL.**
@@ -146,13 +146,13 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 
 **Files:**
 - Modify: `pubspec.yaml` (add `file_selector: ^1.0.3`; confirm `file_selector_ios` has `ios/file_selector_ios/Package.swift` in the pub cache, else use `file_picker` with the same `PhotoPicker` shape and note it in the commit)
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_screen.dart`
-- Create: `lib/app/modules/stock_sheet/widgets/stock_sheet_start_panel.dart`
-- Test: `test/widget/stock_sheet_screen_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_screen.dart`
+- Create: `lib/app/modules/stock_sheet/widgets/items_from_photos_start_panel.dart`
+- Test: `test/widget/items_from_photos_screen_test.dart`
 
 **Interfaces:**
 - Consumes: `NativeIntake.isRunningOnMac` (Task 2); `controller.offerShare(List<String>)` (existing).
-- Produces: `StockSheetScreen({..., PhotoPicker pickFiles = _chooseFiles, Future<bool> Function() runningOnMac = _runningOnMac})` where `_runningOnMac` calls `NativeIntake.instance.isRunningOnMac()`; `_AddSource.files`; `StockSheetStartPanel({required bool onMac, required VoidCallback onChooseFiles, required VoidCallback onChooseGallery, VoidCallback? onTakePhoto})` (null `onTakePhoto` hides the button).
+- Produces: `ItemsFromPhotosScreen({..., PhotoPicker pickFiles = _chooseFiles, Future<bool> Function() runningOnMac = _runningOnMac})` where `_runningOnMac` calls `NativeIntake.instance.isRunningOnMac()`; `_AddSource.files`; `ItemsFromPhotosStartPanel({required bool onMac, required VoidCallback onChooseFiles, required VoidCallback onChooseGallery, VoidCallback? onTakePhoto})` (null `onTakePhoto` hides the button).
 
 - [ ] **Step 1: Failing widget tests**:
   - `opened without photos shows the start panel` — texts "Choose photos of item labels to list their stock as Excel or PDF.", "Choose files…", "Choose from gallery", "Take a photo".
@@ -221,9 +221,9 @@ git commit -m "feat(stock-sheet): skip photos already in the list by content"
 - Test: `test/widget/items_from_photos_button_test.dart`
 
 **Interfaces:**
-- Produces: `ItemsFromPhotosButton({super.key, Color? color})` — an `IconButton` (`Icons.photo_library_outlined`, tooltip "Items from Photos") wrapped in `DocTypeGuard(doctype: 'Stock Entry', permType: 'report', child: …)`, `onPressed: () => Get.toNamed(AppRoutes.STOCK_SHEET)` (no arguments → start state).
+- Produces: `ItemsFromPhotosButton({super.key, Color? color})` — an `IconButton` (`Icons.photo_library_outlined`, tooltip "Items from Photos") wrapped in `DocTypeGuard(doctype: 'Stock Entry', permType: 'report', child: …)`, `onPressed: () => Get.toNamed(AppRoutes.ITEMS_FROM_PHOTOS)` (no arguments → start state).
 
-- [ ] **Step 1: Failing widget tests**: `shows the icon with the Items from Photos tooltip when allowed`; `hidden without Stock Entry report permission` (use the guard's existing test seam, as in other `DocTypeGuard` tests); `tapping opens the screen with no photos` (GetX test route, expect `Get.currentRoute == AppRoutes.STOCK_SHEET` and `Get.arguments == null`); `BarcodeInputWidget renders trailingActions`.
+- [ ] **Step 1: Failing widget tests**: `shows the icon with the Items from Photos tooltip when allowed`; `hidden without Stock Entry report permission` (use the guard's existing test seam, as in other `DocTypeGuard` tests); `tapping opens the screen with no photos` (GetX test route, expect `Get.currentRoute == AppRoutes.ITEMS_FROM_PHOTOS` and `Get.arguments == null`); `BarcodeInputWidget renders trailingActions`.
 - [ ] **Step 2: Run, expect FAIL.**
 - [ ] **Step 3: Implement** the button, the `trailingActions` slot, and use it in `ItemListAppBar.extraActions` (first in the list) and in `home_screen.dart`'s `BarcodeInputWidget(trailingActions: const [ItemsFromPhotosButton()])`.
 - [ ] **Step 4: Run, expect PASS**; `flutter test` (whole suite) and `flutter analyze` with no new errors or warnings.

@@ -8,7 +8,7 @@ The user selects photos in Photos (or in Finder on a Mac, where Multimax runs as
 and chooses Multimax. Our own `ShareViewController` loads each photo as a file, copies it into the App Group
 container, writes the `receive_sharing_intent` hand-over record and opens the app through the URL scheme
 `ShareMedia-com.ddmco.multimax`; the plugin's app half hands the paths to `ShareIntakeService`, which opens
-"Items from Photos" (route `STOCK_SHEET`). The Runner's `IntakeBridge` also takes photos dragged onto the
+"Items from Photos" (route `ITEMS_FROM_PHOTOS`). The Runner's `IntakeBridge` also takes photos dragged onto the
 window and shares whose URL never brought the app forward.
 
 ## What is in the repository

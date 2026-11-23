@@ -11,7 +11,7 @@ import 'package:image/image.dart' as img;
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/item_image_viewer.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';

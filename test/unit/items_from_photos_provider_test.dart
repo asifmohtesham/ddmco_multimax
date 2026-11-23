@@ -2,8 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/providers/stock_sheet_provider.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/data/providers/items_from_photos_provider.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 typedef _Report = ({
   List<Map<String, dynamic>> columns,
@@ -104,7 +104,7 @@ List<String> _codes(int n) => List.generate(n, (i) => '${2000000 + i}');
 
 void main() {
   late _FakeApi api;
-  late StockSheetProvider provider;
+  late ItemsFromPhotosProvider provider;
 
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -118,7 +118,7 @@ void main() {
 
   setUp(() {
     api = _FakeApi();
-    provider = StockSheetProvider(
+    provider = ItemsFromPhotosProvider(
       api: api,
       now: () => DateTime(2026, 11, 17, 9, 5),
       company: () => 'KA',

@@ -4,8 +4,8 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 /// What "Items from Photos" shows when it is opened without photos: the ways
 /// to bring some in. A null [onTakePhoto] hides the camera (a Mac has none
 /// worth offering) and the drag hint shows in its place.
-class StockSheetStartPanel extends StatelessWidget {
-  const StockSheetStartPanel({
+class ItemsFromPhotosStartPanel extends StatelessWidget {
+  const ItemsFromPhotosStartPanel({
     super.key,
     required this.onMac,
     required this.onChooseFiles,

@@ -154,7 +154,7 @@ also sweep files older than a day in both on app start, for copies left by a cra
 
 ### Duplicates by content
 
-`StockSheetController` keeps a content fingerprint (SHA-256 of the file's bytes; computing it off the UI
+`ItemsFromPhotosController` keeps a content fingerprint (SHA-256 of the file's bytes; computing it off the UI
 isolate is the builder's call) for every photo in the run: the first share, photos added, and photos held
 for the add-or-start-again question. A new photo whose fingerprint is already known is skipped, exactly as a
 same-path photo is skipped today; the path check stays. The add-or-start-again question counts only the
@@ -163,7 +163,7 @@ shown. Applies on every platform.
 
 ### 4. Start state of "Items from Photos"
 
-Today the screen opened without photos shows nothing (`StockSheetPhase.idle` renders an empty box). It
+Today the screen opened without photos shows nothing (`ItemsFromPhotosPhase.idle` renders an empty box). It
 becomes a start state:
 
 ```
@@ -182,7 +182,7 @@ becomes a start state:
 └────────────────────────────────────────┘
 ```
 
-- Picking photos starts the normal run (`StockSheetController` with those paths, as a share does).
+- Picking photos starts the normal run (`ItemsFromPhotosController` with those paths, as a share does).
 - "Take a photo" is hidden where there is no camera (the Mac). How to detect "iOS app on Mac"
   (`ProcessInfo.isiOSAppOnMac` over a channel, or camera availability) is the builder's call. The Mac line
   of text shows only on the Mac.
@@ -200,7 +200,7 @@ becomes a start state:
   (`BarcodeInputWidget`, beside the camera), tooltip "Items from Photos". It shows wherever the bar shows,
   including the Mac, where the camera button is irrelevant but present today. My call; the alternative is a
   second icon on the "Scan to start" card.
-- Route stays `AppRoutes.STOCK_SHEET`; opening it with no arguments shows the start state.
+- Route stays `AppRoutes.ITEMS_FROM_PHOTOS`; opening it with no arguments shows the start state.
 
 ## Verification
 
