@@ -149,6 +149,7 @@ The `docs/` folder contains important design and architecture notes:
 - `docs/versioning_conventions.md` — semver bump procedure (diff-driven; MAJOR/MINOR/PATCH + build-number rules)
 - `docs/erpnext_v16_compatibility_audit.md` — live v16 audit (15 November 2026): what broke, how each fix serves v15 and v16, what was verified, what was not, and the smoke test for a new server version
 - `docs/app_bar_conventions.md` — AppBar/header standards for list vs. form screens
+- `docs/recent_searches.md` — Search overlay history, per-user storage, and screen scoping
 - `docs/stock_entry_flow.md` — Dual-rack (source/target) logic for Stock Entry
 - `docs/STATEFUL_WIDGET_AUDIT.md` — Known widget lifecycle issues (orphaned Workers, setState conflicts)
 - `docs/pos_delivery_note_item_rate_report.md` — Backend ERPNext Script Report + Client Script (customer-code ↔ item-code mapping); reproducible source for a Desk-only artifact

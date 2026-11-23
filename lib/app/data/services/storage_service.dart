@@ -1,4 +1,5 @@
 import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/services/recent_searches.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -79,6 +80,40 @@ class StorageService {
     await _box.remove(_userKey);
     await _box.remove(_tokenKey);
     printInfo(info: "User data cleared from local storage.");
+  }
+
+  String _recentSearchesKey(String context, String user) =>
+      'recent_searches::$context::$user';
+
+  List<String> getRecentSearches(String context, String user) {
+    final raw = _box.read<Object>(_recentSearchesKey(context, user));
+    return raw is List ? raw.whereType<String>().toList() : const [];
+  }
+
+  Future<void> addRecentSearch(
+    String context,
+    String user,
+    String query, {
+    int minLength = 1,
+  }) async {
+    final current = getRecentSearches(context, user);
+    final next = RecentSearches.add(current, query, minLength: minLength);
+    if (!identical(current, next)) {
+      await _box.write(_recentSearchesKey(context, user), next);
+    }
+  }
+
+  Future<void> removeRecentSearch(
+    String context,
+    String user,
+    String query,
+  ) async {
+    final next = RecentSearches.remove(getRecentSearches(context, user), query);
+    await _box.write(_recentSearchesKey(context, user), next);
+  }
+
+  Future<void> clearRecentSearches(String context, String user) async {
+    await _box.write(_recentSearchesKey(context, user), RecentSearches.clear());
   }
 
   // --- Token ---

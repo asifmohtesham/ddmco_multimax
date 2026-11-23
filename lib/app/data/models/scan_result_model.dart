@@ -15,6 +15,8 @@ enum ScanType {
   error,
 }
 
+enum ScanOutcome { ok, notFound, invalid, empty, error }
+
 class ScanResult {
   final ScanType type;
   final String rawCode;
@@ -30,6 +32,7 @@ class ScanResult {
 
   // Error Info
   final String? message;
+  final ScanOutcome? failureOutcome;
 
   const ScanResult({
     required this.type,
@@ -40,15 +43,21 @@ class ScanResult {
     this.itemData,
     this.candidates,
     this.message,
+    this.failureOutcome,
   });
 
   // ── Factory constructors (DRY: eliminate repeated inline construction) ────
 
-  factory ScanResult.error(String rawCode, String message) => ScanResult(
-        type: ScanType.error,
-        rawCode: rawCode,
-        message: message,
-      );
+  factory ScanResult.error(
+    String rawCode,
+    String message, {
+    ScanOutcome outcome = ScanOutcome.error,
+  }) => ScanResult(
+    type: ScanType.error,
+    rawCode: rawCode,
+    message: message,
+    failureOutcome: outcome,
+  );
 
   factory ScanResult.rack(String rawCode) => ScanResult(
         type: ScanType.rack,

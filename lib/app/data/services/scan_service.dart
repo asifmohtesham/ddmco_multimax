@@ -177,7 +177,11 @@ class ScanService extends GetxService {
       return ScanResult.error(code, 'Variant lookup error: $e');
     }
 
-    return ScanResult.error(code, 'Item not found or invalid barcode');
+    return ScanResult.error(
+      code,
+      'Item not found or invalid barcode',
+      outcome: ScanOutcome.notFound,
+    );
   }
 
   // ── EAN-8 checksum validation ─────────────────────────────────────────────

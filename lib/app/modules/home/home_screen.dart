@@ -63,7 +63,7 @@ class HomeScreen extends GetView<HomeController> {
               title: 'Dashboard',
               automaticallyImplyLeading: false,
               extraActions: [
-                AwesomeBar(),
+                AwesomeBar(onScanRepeat: controller.onScan),
               ],
             ),
             SliverPadding(

@@ -1,145 +1,67 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/search_provider.dart';
+import 'package:multimax/app/modules/common/services/awesome_bar_recent_store.dart';
 import 'package:multimax/app/utils/fuzzy_search.dart';
 import 'package:math_expressions/math_expressions.dart';
 import 'package:multimax/app/data/constants/global_search_targets.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'dart:async';
 
-class AwesomeBarOption {
-  final String type;
-  final String label;
-  final String value;
-  final int index;
-  final String route;
-  final Map<String, dynamic>? routeOptions;
-  final String? description;
-  final bool isGlobalSearch;
-  final IconData? icon;
-  final Color? color;
-  
-  AwesomeBarOption({
-    required this.type,
-    required this.label,
-    required this.value,
-    this.index = 0,
-    required this.route,
-    this.routeOptions,
-    this.description,
-    this.isGlobalSearch = false,
-    this.icon,
-    this.color,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'type': type,
-    'label': label,
-    'value': value,
-    'route': route,
-    'routeOptions': routeOptions,
-    'description': description,
-    'isGlobalSearch': isGlobalSearch,
-  };
-
-  factory AwesomeBarOption.fromJson(Map<String, dynamic> json) {
-    return AwesomeBarOption(
-      type: json['type'] ?? '',
-      label: json['label'] ?? '',
-      value: json['value'] ?? '',
-      route: json['route'] ?? '',
-      routeOptions: json['routeOptions'] != null ? Map<String, dynamic>.from(json['routeOptions']) : null,
-      description: json['description'],
-      isGlobalSearch: json['isGlobalSearch'] ?? false,
-    );
-  }
-}
+export 'package:multimax/app/modules/common/services/awesome_bar_recent_store.dart';
 
 class AwesomeBarController extends GetxController {
-  final SearchProvider _searchProvider = Get.put(SearchProvider());
+  AwesomeBarController({Future<Response> Function(String)? globalSearch})
+    : _globalSearch = globalSearch ?? SearchProvider().globalSearch;
+
+  final Future<Response> Function(String) _globalSearch;
   
   final options = <AwesomeBarOption>[].obs;
   final recentOptions = <AwesomeBarOption>[].obs;
   final isLoading = false.obs;
   
   Timer? _debounce;
+  int _searchSequence = 0;
+  StreamSubscription<List<AwesomeBarOption>>? _recentSubscription;
   
   @override
   void onInit() {
     super.onInit();
-    _loadRecents();
+    _recentSubscription = AwesomeBarRecentStore.changes.listen(
+      recentOptions.assignAll,
+    );
+    unawaited(_loadRecents());
+  }
+
+  @override
+  void onClose() {
+    _debounce?.cancel();
+    _searchSequence++;
+    unawaited(_recentSubscription?.cancel());
+    _recentSubscription = null;
+    super.onClose();
   }
   
   Future<void> _loadRecents() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final recentsJson = prefs.getStringList('awesome_bar_recents') ?? [];
-      final List<AwesomeBarOption> loaded = [];
-      for (var str in recentsJson) {
-        final opt = AwesomeBarOption.fromJson(jsonDecode(str));
-        loaded.add(_enrichWithIcon(opt));
-      }
-      recentOptions.value = loaded;
-    } catch (e) {
-      print('Failed to load recent searches: $e');
-    }
-  }
-
-  Future<void> _saveRecent(AwesomeBarOption option) async {
-    // Don't save calculator results
-    if (option.type == 'Calculator') return;
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      // Remove if exists to put it at the top
-      recentOptions.removeWhere((o) => o.value == option.value && o.route == option.route);
-      recentOptions.insert(0, option);
-      // Keep only last 5
-      if (recentOptions.length > 5) {
-        recentOptions.removeLast();
-      }
-      
-      final List<String> encoded = recentOptions.map((o) => jsonEncode(o.toJson())).toList();
-      await prefs.setStringList('awesome_bar_recents', encoded);
-    } catch (e) {
-      print('Failed to save recent search: $e');
-    }
+    final loaded = await AwesomeBarRecentStore.read();
+    if (_recentSubscription != null) recentOptions.assignAll(loaded);
   }
 
   void onSearchQueryChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    
-    if (query.trim().isEmpty) {
-      options.clear();
-      return;
-    }
+    _debounce?.cancel();
+    final sequence = ++_searchSequence;
+    final trimmedQuery = query.trim();
+    isLoading.value = trimmedQuery.isNotEmpty;
+    options.clear();
+    if (trimmedQuery.isEmpty) return;
 
     _debounce = Timer(const Duration(milliseconds: 300), () {
-      _performSearch(query.trim());
+      _performSearch(trimmedQuery, sequence);
     });
   }
   
-  AwesomeBarOption _enrichWithIcon(AwesomeBarOption opt) {
-    final target = searchTargetForDoctype(opt.type == 'Search Result' ? '' : opt.type);
-    if (target != null) {
-      return AwesomeBarOption(
-        type: opt.type,
-        label: opt.label,
-        value: opt.value,
-        index: opt.index,
-        route: opt.route,
-        description: opt.description,
-        isGlobalSearch: opt.isGlobalSearch,
-        icon: target.icon,
-        color: target.color,
-      );
-    }
-    return opt;
-  }
-
-  Future<void> _performSearch(String query) async {
-    isLoading.value = true;
+  Future<void> _performSearch(String query, int sequence) async {
     final List<AwesomeBarOption> results = [];
     
     // 1. Math Evaluator
@@ -153,28 +75,21 @@ class AwesomeBarController extends GetxController {
     
     // 3. Global Search Results
     try {
-      final globalResponse = await _searchProvider.globalSearch(query);
+      final globalResponse = await _globalSearch(query);
+      if (sequence != _searchSequence) return;
       if (globalResponse.data != null && globalResponse.data['message'] != null) {
         final List globalItems = globalResponse.data['message'];
         for (var item in globalItems) {
-          String description = item['content'] ?? '';
-          description = description.replaceAll(' ||| ', ' • ');
-          
-          final opt = AwesomeBarOption(
-            type: item['doctype'] ?? 'Search Result',
-            label: item['title'] ?? item['name'],
-            value: item['name'],
-            description: description,
-            route: "/app/${item['doctype']}/${item['name']}",
-            isGlobalSearch: true,
-          );
-          results.add(_enrichWithIcon(opt));
+          final opt = AwesomeBarOption.fromGlobalSearchHit(item);
+          if (opt != null) results.add(opt);
         }
       }
     } catch (e) {
-      print('Global search failed: $e');
+      debugPrint('Global search failed: $e');
     }
     
+    if (sequence != _searchSequence) return;
+
     // Sort and Update
     results.sort((a, b) {
       int cmp = b.index.compareTo(a.index);
@@ -256,14 +171,16 @@ class AwesomeBarController extends GetxController {
   }
   
   void onOptionSelected(AwesomeBarOption option) {
-    _saveRecent(option);
-    
+    if (option.isScan) return;
     if (option.type == 'Calculator') {
       Get.snackbar('Result', option.value);
       return;
     }
-    if (option.route.isNotEmpty) {
-      Get.toNamed(option.route, arguments: option.routeOptions);
+    final resolved = option.resolveNavigation();
+    if (resolved == null) return;
+    unawaited(AwesomeBarRecentStore.record(resolved));
+    if (resolved.route.isNotEmpty) {
+      Get.toNamed(resolved.route, arguments: resolved.routeOptions);
     }
   }
 }

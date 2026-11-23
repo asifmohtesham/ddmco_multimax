@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart'; // clampDouble
 import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/add_filter_chip.dart';
 import 'package:multimax/app/modules/global_widgets/global_search_delegate.dart';
+import 'package:multimax/app/modules/global_widgets/recent_search_suggestions.dart';
 import 'package:multimax/app/shared/image_scan/image_scan_result.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -185,6 +186,8 @@ class DocTypeListHeader extends StatelessWidget {
 
   // ── Search ────────────────────────────────────────────────────────────
   final String? searchDoctype;
+  /// Overrides the doctype or route used to scope recent searches.
+  final String? recentSearchKey;
   final String? searchRoute;
   final RxString? searchQuery;
   final ValueChanged<String>? onSearchChanged;
@@ -244,6 +247,7 @@ class DocTypeListHeader extends StatelessWidget {
     this.pinnedAppBar = true,
     this.floatingAppBar = false,
     this.searchDoctype,
+    this.recentSearchKey,
     this.searchRoute,
     this.searchQuery,
     this.onSearchChanged,
@@ -294,6 +298,8 @@ class DocTypeListHeader extends StatelessWidget {
         extraActionsKey: extraActionsKey,
         automaticallyImplyLeading: automaticallyImplyLeading,
         searchDoctype: searchDoctype,
+        recentSearchKey:
+            listRecentSearchKey(context, recentSearchKey, searchDoctype),
         searchRoute: searchRoute,
         searchQuery: searchQuery,
         onSearchChanged: onSearchChanged,
@@ -345,6 +351,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
   final bool automaticallyImplyLeading;
   final String? searchDoctype;
   final String? searchRoute;
+  final String? recentSearchKey;
   final RxString? searchQuery;
   final ValueChanged<String>? onSearchChanged;
   final VoidCallback? onSearchClear;
@@ -397,6 +404,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.extraActionsKey,
     required this.automaticallyImplyLeading,
     required this.searchDoctype,
+    required this.recentSearchKey,
     required this.searchRoute,
     required this.searchQuery,
     required this.onSearchChanged,
@@ -753,6 +761,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                             context: ctx,
                             delegate: DocTypeSearchDelegate(
                               doctype: searchDoctype ?? '',
+                              recentSearchKey: recentSearchKey,
                               targetRoute: searchRoute ?? '',
                               searchQuery: searchQuery,
                               onSearchChanged: onSearchChanged,
@@ -795,6 +804,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                     context: ctx,
                     delegate: DocTypeSearchDelegate(
                       doctype: searchDoctype ?? '',
+                      recentSearchKey: recentSearchKey,
                       targetRoute: searchRoute ?? '',
                       searchQuery: null,
                       onSearchChanged: onSearchChanged,
@@ -840,6 +850,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
         title != old.title ||
         automaticallyImplyLeading != old.automaticallyImplyLeading ||
         searchDoctype != old.searchDoctype ||
+        recentSearchKey != old.recentSearchKey ||
         searchRoute != old.searchRoute ||
         (extraActions?.length ?? 0) != (old.extraActions?.length ?? 0) ||
         extraActionsKey != old.extraActionsKey ||
