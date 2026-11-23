@@ -1,5 +1,7 @@
 // ignore_for_file: lines_longer_than_80_chars
 
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/global_widgets/validated_field_widget.dart';
 
@@ -104,6 +106,7 @@ class ValidatedRackField extends StatelessWidget {
   /// Receives the current field value. Typically delegates to the same
   /// method as [onValidate] with the submitted string.
   final ValueChanged<String> onSubmitted;
+  final ValueChanged<String>? onChanged;
 
   /// Optional callback fired when the picker (shelves) icon button is tapped.
   ///
@@ -128,6 +131,7 @@ class ValidatedRackField extends StatelessWidget {
     required this.onReset,
     required this.onValidate,
     required this.onSubmitted,
+    this.onChanged,
     this.onPickerTap,
   });
 
@@ -181,6 +185,7 @@ class ValidatedRackField extends StatelessWidget {
       onEdit: onEdit,
       onReset: onReset,
       onFieldSubmitted: onSubmitted,
+      onChanged: onChanged,
       fontFamily: 'ShureTechMono',
       // Valid state: picker icon precedes the edit (✏) button.
       extraSuffixActions: onPickerTap != null ? [_pickerBtn()] : const [],

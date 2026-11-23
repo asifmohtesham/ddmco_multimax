@@ -15,15 +15,18 @@ enum RackLookupStatus {
 class RackWarehouseLookup {
   final RackLookupStatus status;
   final String? warehouse;
+  final String? name;
 
-  const RackWarehouseLookup.found(this.warehouse)
+  const RackWarehouseLookup.found(this.warehouse, {this.name})
       : status = RackLookupStatus.found;
 
   const RackWarehouseLookup.notFound()
       : status = RackLookupStatus.notFound,
-        warehouse = null;
+        warehouse = null,
+        name = null;
 
   const RackWarehouseLookup.error()
       : status = RackLookupStatus.error,
-        warehouse = null;
+        warehouse = null,
+        name = null;
 }
