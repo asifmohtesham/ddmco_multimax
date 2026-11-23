@@ -1,1 +1,1 @@
-A new Delivery Note is saved only after you add an item. If you tap Save before adding one, the app asks you to add an item first.
+List screens remember your searches. Tap one to search again, use × to remove it, or choose Clear all and confirm. Item, rack and variant codes scanned on the Dashboard appear in search’s Recent list, including scans that found nothing. Recent holds up to 10 entries. Tap a scan to repeat it. Recent items and documents in Dashboard search now open their forms.
