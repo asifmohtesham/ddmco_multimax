@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/foundation.dart';
+// Keep the shared Flutter Material API until the app migrates to material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -8,6 +10,7 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/item_price_model.dart';
 import 'package:multimax/app/data/models/pricing_rule_model.dart';
+import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
@@ -224,6 +227,19 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  SuppliersByItemFilters suppliersFiltersFor(Item item) => item.hasVariants
+      ? SuppliersByItemFilters(variantOf: [item.itemCode])
+      : SuppliersByItemFilters(items: [item.itemCode]);
+
+  Future<List<SuppliersByItemNode>> loadSuppliers(
+    SuppliersByItemFilters filters,
+  ) =>
+      _apiProvider.runSuppliersByItem(filters);
+
+  void openSuppliersReport(SuppliersByItemFilters filters) {
+    Get.toNamed(AppRoutes.SUPPLIERS_BY_ITEM, arguments: filters);
   }
 
   Future<void> fetchAttachments() async {

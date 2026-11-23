@@ -46,6 +46,8 @@ abstract class AppRoutes {
   static const ITEM_VARIANT_DETAILS  = _Paths.ITEM_VARIANT_DETAILS;
   static const STOCK_BALANCE              = _Paths.STOCK_BALANCE;
   static const STOCK_AGEING               = _Paths.STOCK_AGEING;
+  // ignore: constant_identifier_names
+  static const SUPPLIERS_BY_ITEM     = _Paths.SUPPLIERS_BY_ITEM;
   static const ITEMS_FROM_PHOTOS                = _Paths.ITEMS_FROM_PHOTOS;
   static const BOM_STOCK_CUSTOMER_CODE    = _Paths.BOM_STOCK_CUSTOMER_CODE;
   static const POS_DN_ITEM_RATE       = _Paths.POS_DN_ITEM_RATE;
@@ -102,6 +104,8 @@ abstract class _Paths {
   static const ITEM_VARIANT_DETAILS  = '/stock/reports/item-variant-details';
   static const STOCK_BALANCE              = '/stock/reports/stock-balance';
   static const STOCK_AGEING               = '/stock/reports/stock-ageing';
+  // ignore: constant_identifier_names
+  static const SUPPLIERS_BY_ITEM     = '/stock/reports/suppliers-by-item';
   static const ITEMS_FROM_PHOTOS                = '/stock/stock-sheet';
   static const BOM_STOCK_CUSTOMER_CODE    = '/manufacturing/reports/bom-stock-customer-code';
   static const POS_DN_ITEM_RATE       = '/selling/reports/pos-dn-item-rate';

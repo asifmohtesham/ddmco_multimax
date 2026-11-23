@@ -1,5 +1,8 @@
 typedef PermEntry = ({String doctype, String permType});
 
+const PermEntry kSuppliersByItemPermission =
+    (doctype: 'Suppliers by Item', permType: 'report');
+
 // Top-level drawer items (outside any _ModuleGroup)
 const List<PermEntry> kTopLevelPermissions = [
   (doctype: 'ToDo', permType: 'read'),
@@ -34,6 +37,7 @@ const List<PermEntry> kStockPermissions = [
 ];
 
 const List<PermEntry> kBuyingPermissions = [
+  kSuppliersByItemPermission,
   (doctype: 'Purchase Order',   permType: 'read'),
   (doctype: 'Purchase Receipt', permType: 'read'),
   (doctype: 'Purchase Order',   permType: 'create'), // New Purchase Order FAB

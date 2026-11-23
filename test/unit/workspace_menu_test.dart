@@ -77,7 +77,13 @@ void main() {
         ['Buying', 'Stock', 'Accounting', 'Manufacturing', 'Selling', 'HR']);
 
     final buying = m[0];
-    expect(_links(buying), ['Purchase Order', 'Purchase Receipt']);
+    expect(_links(buying), [
+      'Purchase Order',
+      'Purchase Receipt',
+      'Suppliers by Item',
+    ]);
+    final reports = buying.sections.singleWhere((s) => s.label == 'Reports');
+    expect(reports.links.single.guard, kSuppliersByItemPermission);
 
     final stock = m[1];
     // Item sits at its native workspace's card, not Buying's shortcut.
@@ -520,7 +526,7 @@ void main() {
     expect(labels(t), contains('Custom Reports'));
   });
 
-  test('every drawer guard is prefetched at login (no skeleton flash)', () {
+  test('every drawer guard is registered at login (no skeleton flash)', () {
     for (final l in kNavCatalog) {
       expect(kAppPermissions, contains(l.guard), reason: l.title);
     }

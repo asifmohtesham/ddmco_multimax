@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
+import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
 
 // ---------------------------------------------------------------------------
@@ -171,6 +172,7 @@ int activeFilterCount(Map<String, TextEditingController> controllers) =>
 /// taps **Run Report**.  Optionally validates that all [ReportFilterField.required]
 /// fields are non-empty before calling [onRun]. [validate] can return an
 /// inline error message for invalid filter combinations.
+/// [runBusy] connects the Run control to the report's in-flight state.
 ///
 /// ### Usage
 /// ```dart
@@ -200,6 +202,7 @@ Future<void> showReportFilterSheet({
   required List<ReportFilterField> fields,
   required Map<String, TextEditingController> controllers,
   required VoidCallback onRun,
+  RxBool? runBusy,
   String? Function()? validate,
   VoidCallback? onClear,
   Map<String, String> sectionLabels = const {},
@@ -229,6 +232,7 @@ Future<void> showReportFilterSheet({
       fields:        fields,
       controllers:   controllers,
       onRun:         onRun,
+      runBusy:       runBusy,
       validate:      validate,
       onClear:       onClear,
       sectionLabels: sectionLabels,
@@ -251,6 +255,7 @@ class _ReportFilterSheet extends StatelessWidget {
   final List<ReportFilterField>            fields;
   final Map<String, TextEditingController> controllers;
   final VoidCallback                       onRun;
+  final RxBool?                            runBusy;
   final String? Function()?                validate;
   final VoidCallback?                      onClear;
   final Map<String, String>                sectionLabels;
@@ -264,6 +269,7 @@ class _ReportFilterSheet extends StatelessWidget {
     required this.fields,
     required this.controllers,
     required this.onRun,
+    this.runBusy,
     this.validate,
     this.onClear,
     this.sectionLabels = const {},
@@ -325,6 +331,7 @@ class _ReportFilterSheet extends StatelessWidget {
                     if (onClear != null)
                       TextButton.icon(
                         onPressed: () {
+                          if (runBusy?.value ?? false) return;
                           onClear!();
                           Navigator.of(ctx).pop();
                         },
@@ -433,39 +440,53 @@ class _ReportFilterSheet extends StatelessWidget {
   }
 
   Widget _runButton(BuildContext ctx, ColorScheme cs) {
-    Widget button([ValueChanged<String>? showValidation]) =>
-        FilledButton.icon(
-          onPressed: () {
-            // Validate required fields
-            final missing = fields
-                .where((f) =>
-                    f.required &&
-                    (controllers[f.key]?.text.trim().isEmpty ?? true))
-                .map((f) => f.label.replaceAll('*', '').trim())
-                .toList();
-            if (missing.isNotEmpty) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-                SnackBar(
-                  content: Text('Required: ${missing.join(', ')}'),
-                  backgroundColor: cs.error,
-                ),
-              );
-              return;
-            }
-            if (showValidation != null) {
-              final error = validate?.call();
-              if (error != null) {
-                showValidation(error);
-                return;
-              }
-            }
-            Navigator.of(ctx).pop();
-            onRun();
-          },
-          icon: const Icon(Icons.play_arrow_rounded),
-          label: const Text('Run Report', style: TextStyle(fontSize: 15)),
-          style: FilledButton.styleFrom(padding: const EdgeInsets.all(14)),
+    Widget button([ValueChanged<String>? showValidation]) {
+      void run() {
+        if (runBusy?.value ?? false) return;
+        final missing = fields
+            .where((f) =>
+                f.required &&
+                (controllers[f.key]?.text.trim().isEmpty ?? true))
+            .map((f) => f.label.replaceAll('*', '').trim())
+            .toList();
+        if (missing.isNotEmpty) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(
+              content: Text('Required: ${missing.join(', ')}'),
+              backgroundColor: cs.error,
+            ),
+          );
+          return;
+        }
+        if (showValidation != null) {
+          final error = validate?.call();
+          if (error != null) {
+            showValidation(error);
+            return;
+          }
+        }
+        Navigator.of(ctx).pop();
+        onRun();
+      }
+
+      const icon = Icon(Icons.play_arrow_rounded);
+      final style = FilledButton.styleFrom(padding: const EdgeInsets.all(14));
+      if (runBusy case final busy?) {
+        return AsyncFilledButton(
+          busy: busy,
+          onPressed: run,
+          icon: icon,
+          label: 'Run Report',
+          style: style,
         );
+      }
+      return FilledButton.icon(
+        onPressed: run,
+        icon: icon,
+        label: const Text('Run Report', style: TextStyle(fontSize: 15)),
+        style: style,
+      );
+    }
 
     if (validate == null) return button();
 

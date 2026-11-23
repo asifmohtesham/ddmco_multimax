@@ -9,6 +9,7 @@ import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
 import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
+import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/safe_log_interceptor.dart';
 import 'package:multimax/app/data/providers/session_expiry_interceptor.dart';
 import 'package:multimax/app/data/providers/csrf_interceptor.dart';
@@ -1748,6 +1749,70 @@ class ApiProvider {
       },
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // SUPPLIERS BY ITEM
+  // ---------------------------------------------------------------------------
+
+  /// Runs the read-only Suppliers by Item script report.
+  Future<List<SuppliersByItemNode>> runSuppliersByItem(
+    SuppliersByItemFilters filters,
+  ) async {
+    if (filters.hasInvalidDateRange) {
+      throw const SuppliersByItemReportException(
+        SuppliersByItemReportException.invalidDateRange,
+      );
+    }
+    if (!_dioInitialised) await _initDio();
+
+    late final Response<dynamic> response;
+    try {
+      response = await _dio.post(
+        '/api/method/frappe.desk.query_report.run',
+        data: {
+          'report_name': 'Suppliers by Item',
+          'filters': json.encode(filters.toJson()),
+          'ignore_prepared_report': 'true',
+          'are_default_filters': 'false',
+        },
+        options: Options(contentType: Headers.formUrlEncodedContentType),
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 403 || _isSuppliersByItemPermissionError(e.response?.data)) {
+        throw _suppliersByItemPermissionDenied;
+      }
+      throw SuppliersByItemReportException(
+        status == null
+            ? 'Could not reach the report server. Try again.'
+            : 'The server could not run Suppliers by Item (HTTP $status).',
+      );
+    }
+
+    final data = response.data;
+    if (_isSuppliersByItemPermissionError(data)) {
+      throw _suppliersByItemPermissionDenied;
+    }
+    final message = data is Map ? data['message'] : null;
+    final result = message is Map ? message['result'] : null;
+    if (result is! List) {
+      throw const SuppliersByItemReportException(
+        'The server returned an invalid Suppliers by Item response.',
+      );
+    }
+    return SuppliersByItemNode.parseRows(result);
+  }
+
+  static const _suppliersByItemPermissionDenied =
+      SuppliersByItemReportException(
+        SuppliersByItemReportException.denied,
+        permissionDenied: true,
+      );
+
+  static bool _isSuppliersByItemPermissionError(Object? data) =>
+      data is Map &&
+      (data['exc_type'] == 'PermissionError' ||
+          (data['exception']?.toString().contains('PermissionError') ?? false));
 
   // ---------------------------------------------------------------------------
   // STOCK AGEING - CUSTOM
