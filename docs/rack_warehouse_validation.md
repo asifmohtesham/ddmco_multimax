@@ -71,6 +71,8 @@ The incident was `MAT-STE-2026-08492-1`, row 1. The `WH-WIP1 - KA` header and `K
 
 ## Tested on the Pixel 7
 
+### Owner session
+
 23 November 2026, KA-IT-SYS6. `Pixel_7` emulator on Android 17 (API 37), Flutter 3.50.0, x64 debug build with the temporary package suffix `.smoke`, against `https://erp-testing.multimax.cloud`. The device and local APK checksums matched. The existing `com.ddmco.multimax` install remained installed. The emulator ran in the user’s RDP session with `swiftshader_indirect`. The debug app used software rendering after emulator responsiveness issues. Scans were injected through the app’s DataWedge broadcast receiver via adb.
 
 The smoke test used an existing testing session for Asif. Relevant assigned roles included Stock User, Stock Manager, Sales User, Sales Manager, Delivery User, Delivery Manager, Item Manager and System Manager. Rack and Warehouse resource GETs succeeded. Floor-only permissions, the blank-link Company fallback and a live ERPNext v15 site were outside this run.
@@ -92,3 +94,29 @@ The Material Issue scan refusal, confirmation and rack-first initialization ran 
 Created test drafts `MAT-STE-2026-08338`, `MAT-STE-2026-08339` and `MAT-DN-2026-01180` on `erp-testing.multimax.cloud`. All three were deleted and a follow-up GET returned 404 for each. All three were drafts throughout the test. The emulator remained running.
 
 Device coverage excluded physical HID or Zebra hardware, SO/POS Delivery Note routes, internal Delivery Note transfers, Work Order/Manufacture/Repack prefill, or legacy Stock Entry Submit. The rapid replacement check used naturally timed responses.
+
+### Floor session
+
+23 November 2026 on the same Pixel 7 AVD, Phase 2 APK and testing site. Scans used the DataWedge broadcast receiver via adb. Created and left enabled **Floor Test** (`floor.test@multimax.cloud`). Its four assigned roles were Sales User, Delivery User, Stock User and Stock User - Custom. Copied the Company and Employee User Permissions from an active floor user who created both Stock Entries and Delivery Notes in the previous 60 days. Standard ERP account provisioning generated a linked Contact, Notification Settings and a self-share for Floor Test.
+
+The floor account's REST login returned HTTP 200. All requested GETs also returned HTTP 200.
+
+| GET | Floor result |
+|---|---|
+| `Rack/KA-WH-WIP1-1A` and Rack list filtered by `WH-WIP1 - KA` | 200 each. The detail linked to WIP1 and the list returned its rack. |
+| `Warehouse/WH-DXB1 - KA` and Warehouse lists | 200 each. The general list, both document header pickers and the row picker each returned eight warehouses. |
+| `Stock Entry Type` with `name` and `purpose` | 200. Thirteen types returned, including Material Issue with its purpose. |
+| Stock Balance and Batch-Wise Balance History via `frappe.desk.query_report.run` | 200 each for the item-sheet and batch-age requests. Results returned for item `2003050` in DXB1. |
+
+| Case | Floor result | Evidence |
+|---|---|---|
+| 1. Material Issue mismatch | Passed. WIP1 default, pinned DXB1 row and WIP1 rack produced the mismatch. Add could not save the row. A floor-session GET confirmed the user had created no draft. | `floor-01-stock-entry-rack-refusal.png` |
+| 2. Matched pair under a different default | Passed. Warehouse differs showed DXB1 vs WIP1. Keep warehouse saved `MAT-STE-2026-08340`. Reopen and REST confirmed the DXB1 row and rack under the WIP1 default at quantity 1. | `floor-02-stock-entry-warehouse-warning.png`, `floor-02b-reopened-pair.png` |
+| 3. Fresh rack initialization | Passed. With DXB1 as the default, scanning the WIP1 rack after the item initialized the unpinned row to WIP1. The rack and subsequently scanned batch both showed 120 available. | `floor-03-fresh-rack-initialized.png` |
+| 4. Manual Delivery Note | Passed. The DXB1 rack validated at quantity 1 with rack balance 1,422. The WIP1 rack was refused on the pinned DXB1 row. REST confirmed the original matched pair was still in the draft. | `floor-04-dn-valid-rack.png`, `floor-04a-dn-rack-refusal.png` |
+| 5. Batch age | Passed. The younger batch `10028902-4CDQ9W` triggered “Older stock must ship first” for `10028902-7CY` and `10028902-46FTRR`. Scan older batch cleared the batch field. | `floor-05-dn-batch-age-refusal.png` |
+| 6. Material Transfer target | Passed. At quantity 1 with a valid DXB1 source pair, the WIP1 target rack was refused against the pinned DXB3 target. No transfer draft was created. | `floor-06-transfer-target-refusal.png` |
+| 7. Sales Order scan-to-pick | Skipped. Testing had zero Sales Orders. This app path needs a submitted order, which would require a change outside the draft-only test scope. | |
+| 8. Legacy Material Issue mismatch | Passed. Owner-created draft `MAT-STE-2026-08339` showed a saved-pair warning. Floor Test changed the source default to DXB3 and saved. REST confirmed the DXB1 row and WIP1 rack persisted. The app showed a row-specific mismatch on Submit, and REST confirmed `docstatus=0`. Successful submission after repair was outside the draft-only scope. | `floor-08-legacy-warning.png`, `floor-08a-legacy-edit-saved.png` |
+
+The three drafts created and deleted on `erp-testing.multimax.cloud` were `MAT-STE-2026-08339`, `MAT-STE-2026-08340` and `MAT-DN-2026-01180`. Follow-up GETs returned 404 for all three. The Pixel 7 app was signed out after the run.
