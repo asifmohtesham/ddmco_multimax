@@ -251,6 +251,31 @@ version check.
 The live checks used the privileged API account. Ordinary-user permissions,
 the new device UI and a live v15 server remain unverified.
 
+## Drawer report visibility (23 November 2026)
+
+Desk sends a map of report names allowed for the signed-in user. Frappe v15
+and early v16 put it in `frappe.boot.user.all_reports`. Later v16 releases
+such as 16.56 and 16.60 publish the same map at `frappe.boot.allowed_reports`.
+Frappe uses the map to show Report links in Desk, with the Report's roles,
+custom role overrides, disabled status, and Report list permissions taken
+into account. The `user.can_get_report` list contains DocType names and
+cannot identify which named reports the user may open.
+[Frappe v15 user boot](https://github.com/frappe/frappe/blob/version-15/frappe/utils/user.py#L225-L253),
+[Frappe v15 report map](https://github.com/frappe/frappe/blob/version-15/frappe/boot.py#L177-L285),
+[Frappe v16 Desk boot](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/desk_views.py#L24-L36),
+[Frappe v16 report map](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/desk_views.py#L152-L279).
+
+The mobile drawer reads either shape from the existing Desk request and
+matches exact report names once the boot user matches the signed-in Frappe
+User. Missing or malformed data keeps the default visibility. A valid empty
+map hides all report links. The cached workspace layout stays available
+offline. Report permissions stay in memory until sign-out. The existing
+DocType checks also apply. Frappe still checks access when the report runs,
+including permissions for the chosen filters, so a visible link can still
+lead to a permission message.
+[Frappe v15 report execution](https://github.com/frappe/frappe/blob/version-15/frappe/desk/query_report.py#L248-L268),
+[Frappe v16 report execution](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/query_report.py#L262-L283).
+
 ## How both versions are served
 
 No fix depends on knowing the server version. Each one either uses a form both
