@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
@@ -20,6 +21,7 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
+import 'package:multimax/app/modules/home/home_screen.dart';
 import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dart';
 
 // Focused coverage for HomeController.fetchActionableCounts — the "Upcoming &
@@ -143,8 +145,7 @@ class _FakeAuthController extends AuthenticationController {
   Future<void> checkAuthenticationStatus() async {}
 }
 
-/// StorageService fake: never touches GetStorage. Only [getBaseUrl] is reached
-/// (by ApiProvider._initDio during construction); everything else is unused.
+/// Supplies the API base URL and accepts Dashboard preference writes in memory.
 class _FakeStorageService extends StorageService {
   _FakeStorageService() : super.withStorage(null);
 
@@ -155,6 +156,9 @@ class _FakeStorageService extends StorageService {
   // implementation writes through the (null, in this fake) GetStorage box.
   @override
   Future<void> saveDashboardActionableScope(String value) async {}
+
+  @override
+  Future<void> saveDashboardTasksFirst(String user, bool value) async {}
 }
 
 User _user(String email) =>
@@ -212,11 +216,16 @@ void main() {
 
   tearDown(() => Get.deleteAll(force: true));
 
-  test('Dashboard loads own attendance when the Job Card count is denied',
+  test('Dashboard keeps other data when the Job Card count is denied',
       () async {
     auth.currentUser.value = _user('me@x.com').copyWith(employeeId: 'EMP-1');
     perm.access['Attendance'] = true;
+    perm.access['Delivery Note'] = true;
     api.deniedCounts.add('Job Card');
+    api.counts.addAll({'Work Order': 0, 'BOM': 7, 'Delivery Note': 3});
+    api.listRows['ToDo'] = [
+      {'name': 'TODO-0001', 'description': 'Check stock'},
+    ];
     api.listRows['Employee'] = [
       {
         'name': 'EMP-1',
@@ -229,8 +238,46 @@ void main() {
     await controller.fetchDashboardData();
 
     expect(api.queries.map((q) => q.doctype), contains('Job Card'));
+    expect(controller.activeJobCardsCount.value, isNull);
+    expect(controller.activeWorkOrdersCount.value, 0);
+    expect(controller.activeBomCount.value, 7);
+    expect(controller.openTodoCount.value, 1);
+    expect(controller.actionableCounts['Delivery Note'], 3);
+    expect(api.listQueries.map((q) => q.doctype), isNot(contains('Job Card')));
+    expect(controller.isLoadingStats.value, isFalse);
     expect(controller.isLoadingAttendance.value, isFalse);
     expect(controller.myAttendance?.employee.name, 'EMP-1');
+  });
+
+  testWidgets('Dashboard pulse omits denied cards and keeps a real zero',
+      (tester) async {
+    api.counts.addAll({'Work Order': 0, 'Job Card': 2, 'BOM': 7});
+    api.deniedCounts.add('Job Card');
+    controller.isLoadingTimeline.value = false;
+    controller.isLoadingUsers.value = false;
+    await controller.fetchDashboardData();
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: DashboardPulse(controller: controller)),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Job Cards'), findsNothing);
+    expect(find.text('Work Orders'), findsOneWidget);
+    expect(tester.widget<PulseStat>(find.byType(PulseStat)).actual, 0);
+    expect(find.text('Active BOMs'), findsOneWidget);
+    expect(find.text('Performance'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+
+    api.deniedCounts.addAll(['Work Order', 'BOM']);
+    await controller.fetchDashboardData();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PulseStat), findsNothing);
+    expect(find.byType(BomCountCard), findsNothing);
+    expect(find.text('Performance'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   // GetX runs onClose synchronously when the route is disposed, while the

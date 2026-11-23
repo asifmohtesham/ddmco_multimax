@@ -306,6 +306,18 @@ purposes for subcontracting. `StatusPill` handles `To Pay`.
 
 ## Behaviour changes worth knowing
 
+- Dashboard Work Order, Job Card and BOM counts use the standard
+  GET method `frappe.client.get_count`. Both versions build the count through
+  the permission-checked list query. The standard Job Card grants are for
+  System Manager, Manufacturing User and Manufacturing Manager. Stock User
+  has read access to Work Order and BOM in upstream metadata. A refused count
+  hides its card quietly. Successful counts (including zero), tasks, actionable
+  drafts and attendance still load. The Dashboard skips the optional Job Card
+  resume lookup when the Job Card count is unavailable.
+  [Frappe v15 query](https://github.com/frappe/frappe/blob/version-15/frappe/model/db_query.py#L835-L854)
+  · [Frappe v16 query](https://github.com/frappe/frappe/blob/v16.60.0/frappe/model/db_query.py#L578-L597)
+  · [ERPNext v15 Job Card](https://github.com/frappe/erpnext/blob/version-15/erpnext/manufacturing/doctype/job_card/job_card.json#L522-L568)
+  · [ERPNext v16 Job Card](https://github.com/frappe/erpnext/blob/v16.60.0/erpnext/manufacturing/doctype/job_card/job_card.json#L692-L738)
 - `get_item_details` now authorises the pricing context: `doctype` must be a
   transaction DocType, the customer needs `select` permission, the price list
   must be a selling one, and the resolved warehouse must be within the user's
