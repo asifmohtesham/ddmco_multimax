@@ -11,16 +11,19 @@ void main() {
       String? rack = 'RACK-SRC',
       String? toRack = 'RACK-TGT',
       String? serial,
-    }) =>
-        StockEntryItem(
-          itemCode: itemCode,
-          qty: qty,
-          basicRate: 0.0,
-          batchNo: batchNo,
-          rack: rack,
-          toRack: toRack,
-          customInvoiceSerialNumber: serial,
-        );
+      String? sourceWarehouse,
+      String? targetWarehouse,
+    }) => StockEntryItem(
+      itemCode: itemCode,
+      qty: qty,
+      basicRate: 0.0,
+      batchNo: batchNo,
+      rack: rack,
+      toRack: toRack,
+      customInvoiceSerialNumber: serial,
+      sWarehouse: sourceWarehouse,
+      tWarehouse: targetWarehouse,
+    );
 
     bool call(
       StockEntryItem existing, {
@@ -29,15 +32,18 @@ void main() {
       String? sourceRack = 'RACK-SRC',
       String? targetRack = 'RACK-TGT',
       String? serial,
-    }) =>
-        StockEntryFormController.isDuplicateLine(
-          existing,
-          itemCode: itemCode,
-          batch: batch,
-          sourceRack: sourceRack,
-          targetRack: targetRack,
-          serial: serial,
-        );
+      String? sourceWarehouse,
+      String? targetWarehouse,
+    }) => StockEntryFormController.isDuplicateLine(
+      existing,
+      itemCode: itemCode,
+      batch: batch,
+      sourceRack: sourceRack,
+      targetRack: targetRack,
+      sourceWarehouse: sourceWarehouse,
+      targetWarehouse: targetWarehouse,
+      serial: serial,
+    );
 
     test('T-1: same item/batch/source-rack/target-rack → duplicate', () {
       expect(call(existingItem()), isTrue);
@@ -58,10 +64,7 @@ void main() {
     });
 
     test('T-4: different batch → not duplicate', () {
-      expect(
-        call(existingItem(batchNo: 'BATCH-1'), batch: 'BATCH-2'),
-        isFalse,
-      );
+      expect(call(existingItem(batchNo: 'BATCH-1'), batch: 'BATCH-2'), isFalse);
     });
 
     test('T-5: different source rack → not duplicate', () {
@@ -79,35 +82,62 @@ void main() {
       );
     });
 
-    test('T-7: both racks null → duplicate (no rack tracking on this item)',
-        () {
-      expect(
-        call(existingItem(rack: null, toRack: null),
-            sourceRack: null, targetRack: null),
-        isTrue,
-      );
-    });
+    test(
+      'T-7: both racks null → duplicate (no rack tracking on this item)',
+      () {
+        expect(
+          call(
+            existingItem(rack: null, toRack: null),
+            sourceRack: null,
+            targetRack: null,
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('T-8: same item/batch/rack but different POS invoice serial → '
         'not duplicate (distinct POS invoice lines must stay separate)', () {
+      expect(call(existingItem(serial: '1'), serial: '2'), isFalse);
+    });
+
+    test('T-9: both null serial (non-POS entry) → duplicate', () {
+      expect(call(existingItem(serial: null), serial: null), isTrue);
+    });
+
+    test('different effective source or target warehouse prevents a merge', () {
+      final row = existingItem(
+        sourceWarehouse: 'WH-DXB1 - KA',
+        targetWarehouse: 'WH-WIP1 - KA',
+      );
       expect(
-        call(existingItem(serial: '1'), serial: '2'),
+        call(
+          row,
+          sourceWarehouse: 'WH-DXB1 - KA',
+          targetWarehouse: 'WH-WIP1 - KA',
+        ),
+        isTrue,
+      );
+      expect(
+        call(
+          row,
+          sourceWarehouse: 'WH-DXB3 - KA',
+          targetWarehouse: 'WH-WIP1 - KA',
+        ),
+        isFalse,
+      );
+      expect(
+        call(
+          row,
+          sourceWarehouse: 'WH-DXB1 - KA',
+          targetWarehouse: 'WH-WIP3 - KA',
+        ),
         isFalse,
       );
     });
 
-    test('T-9: both null serial (non-POS entry) → duplicate', () {
-      expect(
-        call(existingItem(serial: null), serial: null),
-        isTrue,
-      );
-    });
-
     test('T-10: null serial treated same as "0" (no POS context)', () {
-      expect(
-        call(existingItem(serial: '0'), serial: null),
-        isTrue,
-      );
+      expect(call(existingItem(serial: '0'), serial: null), isTrue);
     });
   });
 }

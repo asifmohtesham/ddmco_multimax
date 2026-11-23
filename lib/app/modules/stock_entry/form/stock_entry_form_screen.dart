@@ -1,3 +1,5 @@
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/mr_item_row.dart';
@@ -45,6 +47,10 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
       final isSaving   = controller.isSaving.value;
       final saveResult = controller.saveResult.value;
       final isLoading  = controller.isLoading.value;
+      final notices = [
+        controller.savedRackNotice.value,
+        controller.warehouseNotice.value,
+      ].nonNulls.toList();
       // Read here, not inside headerSliverBuilder: NestedScrollView calls
       // that closure after this builder returns, so Obx would not track it.
       final isSubmitting = controller.isSubmitting.value;
@@ -93,10 +99,24 @@ class StockEntryFormScreen extends GetView<StockEntryFormController> {
                   ? const Center(child: CircularProgressIndicator())
                   : entry == null
                       ? const Center(child: Text('Stock entry not found.'))
-                      : TabBarView(
+                      : Column(
                           children: [
-                            DetailsTab(controller: controller, entry: entry),
-                            _ItemsTab(controller: controller, entry: entry),
+                            for (final notice in notices)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                                child: Text(
+                                  notice,
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                                ),
+                              ),
+                            Expanded(
+                              child: TabBarView(
+                                children: [
+                                  DetailsTab(controller: controller, entry: entry),
+                                  _ItemsTab(controller: controller, entry: entry),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
             ),

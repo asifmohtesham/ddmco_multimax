@@ -1,8 +1,7 @@
-import 'dart:developer';
-
 class StockEntry {
   final String name;
   final String purpose;
+  final String? company;
   final double totalAmount;
   String postingDate;
   final String modified;
@@ -27,6 +26,7 @@ class StockEntry {
   StockEntry({
     required this.name,
     required this.purpose,
+    this.company,
     required this.totalAmount,
     required this.postingDate,
     required this.modified,
@@ -57,6 +57,7 @@ class StockEntry {
     return StockEntry(
       name:               json['name']?.toString() ?? 'No Name',
       purpose:            json['purpose']?.toString() ?? 'No Purpose',
+      company:            json['company']?.toString(),
       totalAmount:        _parseDouble(json['total_amount']),
       postingDate:        json['posting_date']?.toString() ?? '',
       modified:           json['modified']?.toString() ?? '',
@@ -95,7 +96,7 @@ class StockEntry {
       'from_bom':             fromBom ? 1 : 0,
       if (fromBom && bomNo != null) 'bom_no': bomNo,
       if (fromBom) 'fg_completed_qty': fgCompletedQty,
-      'items': items.map((i) => i.toJson()).toList(),
+      'items': items.map((i) => i.toJson(purpose: purpose)).toList(),
     };
   }
 
@@ -129,6 +130,7 @@ class StockEntry {
   static int _parseInt(dynamic value) {
     if (value == null) return 0;
     if (value is int) return value;
+    if (value is bool) return value ? 1 : 0;
     if (value is double) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
@@ -156,6 +158,8 @@ class StockEntryItem {
   // Returned by make_stock_entry; must be echoed back on save so ERP
   // does not raise FinishedGoodError.
   final int isFinishedItem;
+  final String? secondaryItemType;
+  final String? valuationType;
   // Metadata Fields
   final String? owner;
   final String? creation;
@@ -180,6 +184,8 @@ class StockEntryItem {
     this.materialRequest,
     this.materialRequestItem,
     this.isFinishedItem = 0,
+    this.secondaryItemType,
+    this.valuationType,
     this.owner,
     this.creation,
     this.modified,
@@ -206,6 +212,8 @@ class StockEntryItem {
       materialRequest: json['material_request']?.toString(),
       materialRequestItem: json['material_request_item']?.toString(),
       isFinishedItem: StockEntry._parseInt(json['is_finished_item']),
+      secondaryItemType: json['secondary_item_type']?.toString(),
+      valuationType: json['valuation_type']?.toString(),
       owner: json['owner']?.toString(),
       creation: json['creation']?.toString(),
       modified: json['modified']?.toString(),
@@ -214,30 +222,79 @@ class StockEntryItem {
     );
   }
 
-  Map<String, dynamic> toJson() {
+  bool get isOutput => isFinishedItem == 1 ||
+      (secondaryItemType?.trim().isNotEmpty ?? false) ||
+      (valuationType?.trim().isNotEmpty ?? false);
+
+  /// Applicable movement sides for the ERP purpose and this row's role.
+  ({bool source, bool target}) movementSides(String purpose) {
+    return switch (purpose) {
+      'Material Issue' || 'Material Consumption for Manufacture' =>
+        (source: true, target: false),
+      'Material Receipt' => (source: false, target: true),
+      'Material Transfer' || 'Material Transfer for Manufacture' =>
+        (source: true, target: true),
+      'Manufacture' || 'Repack' =>
+        (source: !isOutput, target: isOutput),
+      _ => (
+        source: sWarehouse?.trim().isNotEmpty ?? false,
+        target: tWarehouse?.trim().isNotEmpty ?? false,
+      ),
+    };
+  }
+
+  StockEntryItem withLocations(
+    String? source,
+    String? target, {
+    String? sourceRack,
+    String? targetRack,
+  }) =>
+      StockEntryItem(
+        name: name,
+        itemCode: itemCode,
+        qty: qty,
+        basicRate: basicRate,
+        itemGroup: itemGroup,
+        customVariantOf: customVariantOf,
+        batchNo: batchNo,
+        itemName: itemName,
+        rack: sourceRack ?? rack,
+        toRack: targetRack ?? toRack,
+        sWarehouse: source,
+        tWarehouse: target,
+        customInvoiceSerialNumber: customInvoiceSerialNumber,
+        materialRequest: materialRequest,
+        materialRequestItem: materialRequestItem,
+        isFinishedItem: isFinishedItem,
+        secondaryItemType: secondaryItemType,
+        valuationType: valuationType,
+        owner: owner,
+        creation: creation,
+        modified: modified,
+        modifiedBy: modifiedBy,
+        docstatus: docstatus,
+      );
+
+  Map<String, dynamic> toJson({String? purpose}) {
+    final sides = purpose == null
+        ? (source: !isOutput, target: true)
+        : movementSides(purpose);
     final Map<String, dynamic> data = {
       'item_code': itemCode,
-      'qty':        qty,
+      'qty': qty,
       'basic_rate': basicRate,
-      'batch_no':   batchNo,
-      // ── Manufacture row asymmetry ──────────────────────────────────────
-      // Finished good rows (is_finished_item == 1) are PRODUCED into a
-      // target warehouse — they must NOT carry an s_warehouse, otherwise
-      // ERPNext treats the batch as consumed from WIP and immediately
-      // posts a negative stock ledger entry.
-      //
-      // Component rows (is_finished_item == 0) are CONSUMED from a source
-      // warehouse — they must NOT carry a t_warehouse on outgoing-only
-      // entries, matching the payload that the ERPNext web UI generates.
-      if (isFinishedItem != 1) 's_warehouse': sWarehouse,
-      if (isFinishedItem == 1 || sWarehouse == null) 't_warehouse': tWarehouse,
-      'rack':    rack,
+      'batch_no': batchNo,
+      if (sides.source) 's_warehouse': sWarehouse,
+      if (sides.target) 't_warehouse': tWarehouse,
+      'rack': rack,
       'to_rack': toRack,
       'custom_invoice_serial_number': customInvoiceSerialNumber,
       'material_request':      materialRequest,
       'material_request_item': materialRequestItem,
       'use_serial_batch_fields': 1,
       'is_finished_item':      isFinishedItem,
+      if (secondaryItemType != null) 'secondary_item_type': secondaryItemType,
+      if (valuationType != null) 'valuation_type': valuationType,
     };
     if (name != null) data['name'] = name;
     return data;

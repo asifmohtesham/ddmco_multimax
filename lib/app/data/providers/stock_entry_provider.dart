@@ -39,7 +39,7 @@ class StockEntryProvider {
     return _apiProvider.getDocumentList(
       'Stock Entry Type',
       limit: 0,
-      fields: ['name'],
+      fields: ['name', 'purpose'],
       orderBy: 'name asc',
     );
   }
@@ -58,8 +58,11 @@ class StockEntryProvider {
   }
 
   /// Submit a saved Stock Entry (docstatus 0 → 1).
-  Future<Response> submitStockEntry(String name) async {
-    return _apiProvider.submitDocument('Stock Entry', name);
+  Future<Response> submitStockEntry(String name, {required String modified}) {
+    return _apiProvider.updateDocument('Stock Entry', name, {
+      'docstatus': 1,
+      'modified': modified,
+    });
   }
 
   /// Whether the current session user may submit the specific Stock Entry
@@ -117,29 +120,26 @@ class StockEntryProvider {
     return null;
   }
 
-  /// Fetches all items from [seName] and returns a lookup map of
-  /// item_code → {batch_no, rack} using your custom rack field name.
-  Future<Map<String, TransferRow>> getTransferSEItemLookup(
-      String seName) async {
+  /// Transfer rows retain the destination warehouse and rack for WIP consumption.
+  Future<Map<String, List<TransferRow>>> getTransferSEItemLookup(
+    String seName,
+  ) async {
     final res = await _apiProvider.getDocument('Stock Entry', seName);
     if (res.statusCode != 200 || res.data['data'] == null) return {};
     final items = res.data['data']['items'] as List? ?? [];
-    final lookup = <String, TransferRow>{};
+    final lookup = <String, List<TransferRow>>{};
     for (final row in items) {
       final code = row['item_code'] as String? ?? '';
-      if (code.isEmpty) continue;
-      lookup[code] = TransferRow(
-        batchNo: row['batch_no'] as String?,
-        rack:    row['rack'] as String?,
-      );
+      final warehouse = row['t_warehouse'] as String? ?? '';
+      if (code.isEmpty || warehouse.isEmpty) continue;
+      (lookup[code] ??= []).add((
+        batch: row['batch_no'] as String?,
+        rack: row['to_rack'] as String?,
+        warehouse: warehouse,
+      ));
     }
     return lookup;
   }
 }
 
-// ── Private data carrier ───────────────────────────────────────────────────────
-class TransferRow {
-  final String? batchNo;
-  final String? rack;
-  const TransferRow({this.batchNo, this.rack});
-}
+typedef TransferRow = ({String? batch, String? rack, String warehouse});

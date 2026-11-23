@@ -1,3 +1,5 @@
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
@@ -37,6 +39,7 @@ class DetailsTab extends StatelessWidget {
             children: [
               EntryTypeCard(
                 type: type,
+                purpose: controller.movementPurpose,
                 helperText: controller.getTypeHelperText(type),
                 fromWarehouse: controller.fromWarehouse.value,
                 toWarehouse: controller.toWarehouse.value,

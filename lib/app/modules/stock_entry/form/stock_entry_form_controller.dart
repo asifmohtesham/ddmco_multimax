@@ -1,4 +1,6 @@
 import 'dart:async';
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -30,6 +32,9 @@ import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 
 import 'package:multimax/app/shared/item_sheet/batch_age_checker.dart';
 import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
+import 'package:multimax/app/shared/item_sheet/rack_warehouse_resolver.dart';
+import 'package:multimax/app/shared/item_sheet/rack_warehouse_rule.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/rack_warehouse_controls.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
 
@@ -45,6 +50,26 @@ class StockEntryFormController extends GetxController
   final PosUploadProvider   _posProvider    = Get.find<PosUploadProvider>();
   final StorageService      _storageService = Get.find<StorageService>();
   final ScanService         _scanService    = Get.find<ScanService>();
+
+  late final rackWarehouseResolver = RackWarehouseResolver(_apiProvider);
+  final warehouseConfirmation = WarehouseDivergenceConfirmation();
+  final warehouseNotice = RxnString();
+  final savedRackNotice = RxnString();
+  final stockEntryPurposes = <String, String>{}.obs;
+  Map<String, StockEntryItem> _savedRows = {};
+  String? _savedPurpose;
+
+  String get company => stockEntry.value?.company ?? _storageService.getCompany();
+
+  String get movementPurpose {
+    final type = stockEntryType.value;
+    final entry = stockEntry.value;
+    if (entry != null && entry.stockEntryType == type && entry.purpose != 'No Purpose' &&
+        (mode != 'new' || !stockEntryPurposes.containsKey(type))) {
+      return entry.purpose;
+    }
+    return stockEntryPurposes[type] ?? type;
+  }
 
   // ── Arguments ───────────────────────────────────────────────────────────────────────────────────
   // NOTE: these MUST be assigned inside onInit(), not as field initializers.
@@ -62,9 +87,10 @@ class StockEntryFormController extends GetxController
   // ── Document state ────────────────────────────────────────────────────────────────────────────────
 
   var isLoading        = true.obs;
-  var isScanning       = false.obs;
-  var isSaving         = false.obs;
-  var isDirty          = false.obs;
+  @override
+  final isSaving = false.obs;
+  @override
+  final isDirty = false.obs;
   var isSubmitting     = false.obs;
   var canSubmitPerm    = false.obs; // fail-closed default until pre-check confirms
   var isAddingItem     = false.obs;
@@ -115,7 +141,8 @@ class StockEntryFormController extends GetxController
   var itemFormKey = GlobalKey<FormState>();
   final ScrollController scrollController = ScrollController();
 
-  Timer?  _autoSubmitTimer;
+  Timer? _autoSubmitTimer;
+  Worker? _autoSubmitWorker;
   Worker? _fromWarehouseWorker;
   Worker? _toWarehouseWorker;
   Worker? _stockEntryTypeWorker;
@@ -167,18 +194,26 @@ class StockEntryFormController extends GetxController
     if (!hasItems) return false;
     if (stockEntryType.isEmpty) return false;
     if (requiresSourceWarehouse &&
-        (fromWarehouse == null || fromWarehouse.isEmpty)) return false;
+        (fromWarehouse == null || fromWarehouse.isEmpty)) {
+      return false;
+    }
     if (requiresTargetWarehouse &&
-        (toWarehouse == null || toWarehouse.isEmpty)) return false;
+        (toWarehouse == null || toWarehouse.isEmpty)) {
+      return false;
+    }
     return true;
   }
 
   @override
-  bool get canAutoSave => computeCanAutoSave(
+  bool get canAutoSave =>
+      !isItemSheetOpen.value && !warehouseConfirmation.isPending.value &&
+      computeCanAutoSave(
         hasItems:                stockEntry.value?.items.isNotEmpty ?? false,
         stockEntryType:          stockEntryType.value,
-        requiresSourceWarehouse: requiresSourceWarehouse,
-        requiresTargetWarehouse: requiresTargetWarehouse,
+        requiresSourceWarehouse: requiresSourceWarehouse &&
+            !(stockEntry.value?.items.every((row) => _present(row.sWarehouse)) ?? false),
+        requiresTargetWarehouse: requiresTargetWarehouse &&
+            !(stockEntry.value?.items.every((row) => _present(row.tWarehouse)) ?? false),
         fromWarehouse:           fromWarehouse.value,
         toWarehouse:             toWarehouse.value,
       );
@@ -364,6 +399,7 @@ class StockEntryFormController extends GetxController
     disposeRealtimeSync();
     disposeScanWiring();
     _autoSubmitTimer?.cancel();
+    _autoSubmitWorker?.dispose();
     _saveResultTimer?.cancel();
     _fromWarehouseWorker?.dispose();
     _toWarehouseWorker?.dispose();
@@ -436,7 +472,9 @@ class StockEntryFormController extends GetxController
       prefillItems: prefillItems,
     );
 
-    for (final item in prefillItems) ensureItemKey(item);
+    for (final item in prefillItems) {
+      ensureItemKey(item);
+    }
     isLoading.value = false;
     isDirty.value   = true;
   }
@@ -487,7 +525,10 @@ class StockEntryFormController extends GetxController
         customVariantOf: e['variant_of'] as String?,
         batchNo:   e['batch_no']    as String?,
         rack:      e['rack']        as String?,
-        toRack: null, sWarehouse: sW, tWarehouse: tW,
+        toRack: e['to_rack'] as String?, sWarehouse: sW, tWarehouse: tW,
+        isFinishedItem: (e['is_finished_item'] == true || e['is_finished_item'] == 1) ? 1 : 0,
+        secondaryItemType: e['secondary_item_type'] as String?,
+        valuationType: e['valuation_type'] as String?,
         customInvoiceSerialNumber: null,
         materialRequest: null, materialRequestItem: null,
       );
@@ -531,19 +572,29 @@ class StockEntryFormController extends GetxController
   }
 
   void _wireAutoSubmit(StockEntryItemFormController child) {
-    final autoEnabled   = _storageService.getAutoSubmitEnabled();
-    final autoDelaySecs = _storageService.getAutoSubmitDelay();
-    child.setupAutoSubmit(
-      onValid: () async {
-        if (!autoEnabled)           return;
-        if (!isItemSheetOpen.value) return;
-        if (!isEditable)            return;
+    _autoSubmitWorker?.dispose();
+    if (!child.isAddMode || !_storageService.getAutoSubmitEnabled()) return;
+    final delay = Duration(seconds: _storageService.getAutoSubmitDelay());
+
+    void schedule(bool valid) {
+      _autoSubmitTimer?.cancel();
+      if (!valid) return;
+      _autoSubmitTimer = Timer(delay, () async {
+        if (child.isClosed || !isEditable || !isItemSheetOpen.value ||
+            !child.isSheetValid.value || warehouseConfirmation.isPending.value) {
+          return;
+        }
         isAddingItem.value = true;
-        await Future.delayed(Duration(seconds: autoDelaySecs));
-        await _handleItemFormSubmit();
-        isAddingItem.value = false;
-      },
-    );
+        try {
+          await _handleItemFormSubmit();
+        } finally {
+          isAddingItem.value = false;
+        }
+      });
+    }
+
+    _autoSubmitWorker = ever(child.isSheetValid, schedule);
+    schedule(child.isSheetValid.value);
   }
 
   void determineSource(String type, String ref) {
@@ -642,7 +693,7 @@ class StockEntryFormController extends GetxController
       // ── NEW: fetch batch+rack from the linked Transfer SE ──────────────────
       // Silently skipped when no submitted Transfer SE exists (graceful
       // degradation — items still appear, batch/rack just remain blank).
-      Map<String, TransferRow> transferLookup = {};
+      Map<String, List<TransferRow>> transferLookup = {};
       try {
         final linkedSe = await _provider.getLinkedTransferSE(woName);
         if (linkedSe != null) {
@@ -653,47 +704,52 @@ class StockEntryFormController extends GetxController
       }
       // ──────────────────────────────────────────────────────────────────────
 
-      return rawItems.asMap().entries.map((entry) {
-        final e          = Map<String, dynamic>.from(entry.value as Map);
-        final id         = 'mfg_prefill_${entry.key}_${DateTime.now().millisecondsSinceEpoch}';
-        final isFinished = e['is_finished_item'];
-
-        final sW = (e['s_warehouse'] as String?)?.isNotEmpty == true
-            ? e['s_warehouse'] as String
-            : argFrom;
-        final tW = (e['t_warehouse'] as String?)?.isNotEmpty == true
-            ? e['t_warehouse'] as String
-            : argTo;
-
-        // ── NEW: pull batch + source rack from Transfer SE for raw
-        //   material rows only. Finished good row keeps nulls so
-        //   the user can enter the target rack manually.
-        final isFinishedBool =
-            isFinished == true || isFinished == 1;
-        final transfer = isFinishedBool
-            ? null
-            : transferLookup[e['item_code'] as String? ?? ''];
+      return await Future.wait(rawItems.asMap().entries.map((entry) async {
+        final e = Map<String, dynamic>.from(entry.value as Map);
+        final item = StockEntryItem.fromJson({
+          ...e,
+          'name': 'mfg_prefill_${entry.key}_${DateTime.now().millisecondsSinceEpoch}',
+          'custom_variant_of': e['variant_of'],
+        });
+        final source = item.isOutput ? null : (item.sWarehouse ?? argFrom);
+        final target = item.isOutput ? (item.tWarehouse ?? argTo) : null;
+        final batch = item.batchNo;
+        final matches = (transferLookup[item.itemCode] ?? const <TransferRow>[])
+            .where((row) => !item.isOutput &&
+                row.warehouse == source &&
+                (!_present(batch) || batch == row.batch))
+            .toSet();
+        final transfer = matches.length == 1 ? matches.single : null;
+        final rack = item.isOutput ? item.toRack : (transfer?.rack ?? item.rack);
+        String? validRack;
+        if (_present(rack)) {
+          final verdict = await rackWarehouseResolver.check(
+            rack: rack!,
+            rowWarehouse: item.isOutput ? target : source,
+            company: company,
+            side: item.isOutput ? RackSide.target : RackSide.source,
+          );
+          if (verdict.isValid) validRack = verdict.rack;
+        }
 
         return StockEntryItem(
-          name:            id,
-          itemCode:        e['item_code']   as String? ?? '',
-          itemName:        e['item_name']   as String?,
-          qty:             (e['qty']        as num?)?.toDouble() ?? 0.0,
-          basicRate:       (e['basic_rate'] as num?)?.toDouble() ?? 0.0,
-          itemGroup:       e['item_group']  as String?,
-          customVariantOf: e['variant_of']  as String?,
-          // Transfer SE values take priority; BOM row values are the fallback.
-          batchNo:         transfer?.batchNo ?? e['batch_no'] as String?,
-          rack:            transfer?.rack    ?? e['rack']     as String?,
-          toRack:          null,   // target rack: user fills for finished item
-          sWarehouse:      sW,
-          tWarehouse:      tW,
-          customInvoiceSerialNumber: null,
-          materialRequest:     null,
-          materialRequestItem: null,
-          isFinishedItem:  isFinished,
+          name: item.name,
+          itemCode: item.itemCode,
+          itemName: item.itemName,
+          qty: item.qty,
+          basicRate: item.basicRate,
+          itemGroup: item.itemGroup,
+          customVariantOf: item.customVariantOf,
+          batchNo: transfer?.batch ?? batch,
+          rack: item.isOutput ? null : validRack,
+          toRack: item.isOutput ? validRack : null,
+          sWarehouse: source,
+          tWarehouse: target,
+          isFinishedItem: item.isFinishedItem,
+          secondaryItemType: item.secondaryItemType,
+          valuationType: item.valuationType,
         );
-      }).toList();
+      }));
     } on DioException catch (e) {
       GlobalSnackbar.warning(
         message: 'Could not fetch BOM items: ${e.response?.statusCode}',
@@ -715,6 +771,15 @@ class StockEntryFormController extends GetxController
         stockEntryType.value = entry.stockEntryType ?? 'Material Transfer';
         fromWarehouse.value  = entry.fromWarehouse;
         toWarehouse.value    = entry.toWarehouse;
+        _savedPurpose = movementPurpose;
+        _savedRows = {
+          if (entry.docstatus == 0)
+            for (final row in entry.items)
+              if (row.name != null) row.name!: row,
+        };
+        if (warehouseNotice.value == null) _showMixedWarehouseNotice();
+        savedRackNotice.value = null;
+        if (entry.docstatus == 0) unawaited(_inspectSavedRacks(entry));
 
         final ref = entry.customReferenceNo ?? '';
         customReferenceNoController.text = ref;
@@ -789,92 +854,146 @@ class StockEntryFormController extends GetxController
   // ── Warehouse helpers ──────────────────────────────────────────────────────────────────────────────────
 
   bool get requiresSourceWarehouse {
-    final t = stockEntryType.value;
+    final t = movementPurpose;
     return t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture' ||
         t == 'Material Issue';
   }
 
   bool get requiresTargetWarehouse {
-    final t = stockEntryType.value;
+    final t = movementPurpose;
     return t == 'Material Transfer' ||
         t == 'Material Transfer for Manufacture' ||
         t == 'Material Receipt';
   }
 
-  bool enforceWarehouseBeforeScan() {
-    if (requiresSourceWarehouse &&
-        (fromWarehouse.value == null ||
-            fromWarehouse.value!.isEmpty)) {
-      return true;
-    }
-    if (requiresTargetWarehouse &&
-        (toWarehouse.value == null ||
-            toWarehouse.value!.isEmpty)) {
-      return true;
-    }
+  bool _validateHeaderBeforeScan() {
+    if (stockEntryType.value.isNotEmpty) return true;
+    GlobalSnackbar.warning(
+      message: 'Please select a Stock Entry Type (Details tab) before scanning.',
+    );
     return false;
   }
 
-  bool _validateHeaderBeforeScan() {
-    if (stockEntryType.value.isEmpty) {
-      GlobalSnackbar.warning(
-          message: 'Please select a Stock Entry Type (Details tab) before scanning.');
-      return false;
+  void changeHeaderWarehouse(String? warehouse, {required bool source}) {
+    final header = source ? fromWarehouse : toWarehouse;
+    if (header.value == warehouse) return;
+
+    final rows = stockEntry.value?.items;
+    if (rows != null) {
+      final materialized = [
+        for (final row in rows)
+          _effectiveRow(row, movementPurpose, fromWarehouse.value, toWarehouse.value),
+      ];
+      rows.assignAll(materialized);
+      stockEntry.refresh();
     }
-    if (requiresSourceWarehouse &&
-        (fromWarehouse.value == null ||
-            fromWarehouse.value!.isEmpty)) {
-      GlobalSnackbar.warning(
-          message: 'Please set the Source Warehouse (Details tab) before scanning.');
-      return false;
-    }
-    if (requiresTargetWarehouse &&
-        (toWarehouse.value == null ||
-            toWarehouse.value!.isEmpty)) {
-      GlobalSnackbar.warning(
-          message: 'Please set the Target Warehouse (Details tab) before scanning.');
-      return false;
-    }
-    return true;
+    header.value = warehouse;
+
+    final side = source ? RackSide.source : RackSide.target;
+    final differing = rows?.where((row) {
+      final sides = row.movementSides(movementPurpose);
+      final current = source ? row.sWarehouse : row.tWarehouse;
+      return (source ? sides.source : sides.target) &&
+          _present(current) &&
+          current != warehouse;
+    }).length ?? 0;
+    warehouseNotice.value = differing == 0
+        ? null
+        : !_present(warehouse)
+            ? 'Default ${side.label} cleared. Existing item rows keep their warehouses.'
+            : 'Default ${side.label} changed to $warehouse. '
+                '$differing existing rows use a different warehouse.';
   }
 
-  void propagateHeaderWarehouseToItems({required bool source}) {
-    final entry = stockEntry.value;
-    if (entry == null || entry.items.isEmpty) return;
+  static bool _present(String? value) => value?.trim().isNotEmpty ?? false;
 
-    final newWarehouse = source
-        ? fromWarehouse.value
-        : toWarehouse.value;
-    if (newWarehouse == null || newWarehouse.isEmpty) return;
+  StockEntryItem _effectiveRow(
+    StockEntryItem row,
+    String purpose,
+    String? sourceDefault,
+    String? targetDefault,
+  ) {
+    final sides = row.movementSides(purpose);
+    return row.withLocations(
+      sides.source && !_present(row.sWarehouse) ? sourceDefault : row.sWarehouse,
+      sides.target && !_present(row.tWarehouse) ? targetDefault : row.tWarehouse,
+    );
+  }
 
-    final updated = entry.items.map((item) {
-      return StockEntryItem(
-        name:       item.name,
-        itemCode:   item.itemCode,
-        qty:        item.qty,
-        basicRate:  item.basicRate,
-        itemGroup:  item.itemGroup,
-        customVariantOf: item.customVariantOf,
-        batchNo:    item.batchNo,
-        itemName:   item.itemName,
-        rack:       item.rack,
-        toRack:     item.toRack,
-        sWarehouse: source ? newWarehouse : item.sWarehouse,
-        tWarehouse: source ? item.tWarehouse : newWarehouse,
-        customInvoiceSerialNumber: item.customInvoiceSerialNumber,
-        materialRequest:     item.materialRequest,
-        materialRequestItem: item.materialRequestItem,
-        isFinishedItem: item.isFinishedItem,
-        owner:      item.owner,
-        creation:   item.creation,
-        modified:   item.modified,
-        modifiedBy: item.modifiedBy,
-      );
-    }).toList();
+  RackRowSnapshot rackSnapshot(StockEntryItem row, String purpose, RackSide side) {
+    final source = side == RackSide.source;
+    final movement = row.movementSides(purpose);
+    return RackRowSnapshot(
+      item: row.itemCode,
+      batch: row.batchNo,
+      warehouse: source ? row.sWarehouse : row.tWarehouse,
+      rack: source ? row.rack : row.toRack,
+      applies: source ? movement.source : movement.target,
+      quantity: row.qty,
+    );
+  }
 
-    stockEntry.update((val) => val?.items.assignAll(updated));
-    _markDirty();
+  bool canRetainSavedRack(
+    StockEntryItem candidate,
+    RackSide side, {
+    bool submitting = false,
+  }) {
+    final original = _savedRows[candidate.name];
+    final savedPurpose = _savedPurpose;
+    final purpose = movementPurpose;
+    return original != null &&
+        savedPurpose != null &&
+        original.movementSides(savedPurpose) == candidate.movementSides(purpose) &&
+        rackSnapshot(original, savedPurpose, side).canRetain(
+          rackSnapshot(candidate, purpose, side),
+          submitting: submitting,
+        );
+  }
+
+  Iterable<String?> _peerWarehouses(RackSide side, {String? exclude}) sync* {
+    final purpose = movementPurpose;
+    for (final item in stockEntry.value?.items ?? const <StockEntryItem>[]) {
+      if ((exclude != null && item.name == exclude) || item.qty <= 0) continue;
+      final row = _effectiveRow(item, purpose, fromWarehouse.value, toWarehouse.value);
+      final movement = row.movementSides(purpose);
+      if (side == RackSide.source && movement.source) yield row.sWarehouse;
+      if (side == RackSide.target && movement.target) yield row.tWarehouse;
+    }
+  }
+
+  Future<bool> confirmRowWarehouses({
+    required String? source,
+    required String? target,
+    required String? rowName,
+  }) => warehouseConfirmation.confirm([
+    WarehouseDivergence(
+      side: RackSide.source,
+      warehouse: source,
+      header: fromWarehouse.value,
+      peers: _peerWarehouses(RackSide.source, exclude: rowName),
+    ),
+    WarehouseDivergence(
+      side: RackSide.target,
+      warehouse: target,
+      header: toWarehouse.value,
+      peers: _peerWarehouses(RackSide.target, exclude: rowName),
+    ),
+  ]);
+
+  void _showMixedWarehouseNotice() {
+    final messages = <String>[];
+    for (final side in [RackSide.source, RackSide.target]) {
+      final header = side == RackSide.source ? fromWarehouse.value : toWarehouse.value;
+      if (_present(header)) continue;
+      final warehouses = _peerWarehouses(side).whereType<String>()
+          .where(_present).toSet().toList()..sort();
+      if (warehouses.length > 1) {
+        messages.add('Item rows use more than one ${side.label}. '
+            'Review ${warehouses.join(', ')}.');
+      }
+    }
+    warehouseNotice.value = messages.isEmpty ? null : messages.join('\n');
   }
 
   bool _validateScanContext(ScanResult result) {
@@ -929,6 +1048,8 @@ class StockEntryFormController extends GetxController
       materialRequest:     matReq,
       materialRequestItem: matReqItem,
       isFinishedItem: item.isFinishedItem,
+      secondaryItemType: item.secondaryItemType,
+      valuationType: item.valuationType,
       owner:       item.owner,
       creation:    item.creation,
       modified:    item.modified,
@@ -986,6 +1107,8 @@ class StockEntryFormController extends GetxController
       materialRequest:     existing.materialRequest,
       materialRequestItem: existing.materialRequestItem,
       isFinishedItem: existing.isFinishedItem,
+      secondaryItemType: existing.secondaryItemType,
+      valuationType: existing.valuationType,
       owner:      existing.owner,
       creation:   existing.creation,
       modified:   existing.modified,
@@ -1008,11 +1131,13 @@ class StockEntryFormController extends GetxController
     // within the same POS invoice-serial context (so distinct POS invoice
     // lines never get merged into one another).
     final existingIdx = items.indexWhere((i) => isDuplicateLine(
-        i,
+        _effectiveRow(i, movementPurpose, fromWarehouse.value, toWarehouse.value),
         itemCode: currentItemCode,
         batch: batch,
         sourceRack: sourceRack,
         targetRack: targetRack,
+        sourceWarehouse: sWarehouse,
+        targetWarehouse: tWarehouse,
         serial: serial));
 
     if (resolvedSerial != '0' && posUpload.value != null && !bypassPosCap) {
@@ -1052,6 +1177,8 @@ class StockEntryFormController extends GetxController
         materialRequest:     existing.materialRequest,
         materialRequestItem: existing.materialRequestItem,
         isFinishedItem: existing.isFinishedItem,
+        secondaryItemType: existing.secondaryItemType,
+        valuationType: existing.valuationType,
         owner:      existing.owner,
         creation:   existing.creation,
         modified:   existing.modified,
@@ -1097,85 +1224,62 @@ class StockEntryFormController extends GetxController
     required String? sourceRack,
     required String? targetRack,
     required String? serial,
+    String? sourceWarehouse,
+    String? targetWarehouse,
   }) {
     return existing.itemCode.trim().toLowerCase() ==
             itemCode.trim().toLowerCase() &&
         (existing.batchNo ?? '') == (batch ?? '') &&
         (existing.rack ?? '') == (sourceRack ?? '') &&
         (existing.toRack ?? '') == (targetRack ?? '') &&
+        (existing.sWarehouse ?? '') == (sourceWarehouse ?? '') &&
+        (existing.tWarehouse ?? '') == (targetWarehouse ?? '') &&
         (existing.customInvoiceSerialNumber ?? '0') == (serial ?? '0');
   }
 
   // ── addItem coordinator ──────────────────────────────────────────────────────────────────────────────────
   bool _isClosingSheet = false;
+  bool _applyingItemRow = false;
 
   Future<void> _handleItemFormSubmit() async {
     _autoSubmitTimer?.cancel();
+    if (_applyingItemRow || _isClosingSheet || isSaving.value || isSubmitting.value) return;
     final child = Get.find<StockEntryItemFormController>();
+    final document = stockEntry.value;
+    if (document == null) return;
 
-    // 1. Run submit() through the state machine so the button immediately
-    //    transitions to the orange loading spinner while work is in progress.
-    //    submitWithFeedback() sets saveButtonState → loading → success/error
-    //    and returns false if validation or submit() itself throws.
-    final success = await child.submitWithFeedback();
-    if (!success) return; // button already shows error state for 1.5 s then resets
-    child.notifySerialItemsChanged();
-
-    // Guard: prevent double-close if auto-submit and manual tap race.
-    if (_isClosingSheet) return;
-
-    final items = stockEntry.value?.items ?? [];
-    final String highlightKey = child.editingItemName.value ??
-        (items.lastOrNull?.name ?? '');
-    barcodeController.clear();
-    triggerHighlight(highlightKey);
-
-    // 2. Dismiss the keyboard BEFORE closing the sheet so the IME-dismiss
-    //    frame has no live TextEditingControllers to rebuild against.
-    //    FocusManager.instance.primaryFocus?.unfocus() works from the
-    //    controller layer without needing a BuildContext.
-    FocusManager.instance.primaryFocus?.unfocus();
-
-    // 3. Wait one frame for the IME insets callback to fire and settle.
-    //    This ensures Flutter's WindowInsets rebuild (triggered by the OS
-    //    collapsing the keyboard) completes BEFORE we close the sheet and
-    //    schedule controller disposal.
-    await Future.delayed(Duration.zero);
-
-    // 4. Execute the save WHILE the sheet (and its controllers) are still alive.
-    //    The controllers are not disposed until after this returns.
-    // 4. Save — keep sheet open on failure so user can retry.
-    bool saved = false;
-    if (mode == 'new') {
-      try {
-        await saveDocument();
-        saved = true;
-      } catch (_) {
-        saved = false;
+    _applyingItemRow = true;
+    final before = [...document.items];
+    final wasDirty = isDirty.value;
+    try {
+      if (!await child.submitWithFeedback()) return;
+      if (const ListEquality<StockEntryItem>().equals(before, document.items)) return;
+      if (!identical(stockEntry.value, document)) return;
+      if (isClosed || child.isClosed) {
+        document.items.assignAll(before);
+        if (!isClosed) stockEntry.refresh();
+        return;
       }
-    } else {
+      child.notifySerialItemsChanged();
+      final highlightKey = child.editingItemName.value ?? document.items.lastOrNull?.name ?? '';
+      barcodeController.clear();
+      triggerHighlight(highlightKey);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await Future<void>.delayed(Duration.zero);
       isDirty.value = true;
-      try {
-        await saveDocument();
-        saved = true;
-      } catch (_) {
-        saved = false;
+      final saved = await saveDocument();
+      if (!saved && identical(stockEntry.value, document)) {
+        document.items.assignAll(before);
+        stockEntry.refresh();
+        isDirty.value = wasDirty;
+        child.notifySerialItemsChanged();
       }
-    }
-
-    // 5. Only NOW close the sheet. GetX will call onDelete → disposeControllers()
-    //    which defers TEC disposal to the next two frames via postFrameCallback.
-    //    At this point the save is complete, the keyboard is fully dismissed,
-    //    and no widget rebuild is in-flight that references qtyController.
-    // 5. Close sheet only on success (or always close — your choice).
-    if (saved && !_isClosingSheet && Get.isBottomSheetOpen == true) {
-      _isClosingSheet = true;
-      Get.back();
-      // Reset the flag after the closing frame completes so the next
-      // item scan can open a fresh sheet normally.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _isClosingSheet = false;
-      });
+      if (saved && !child.isClosed && Get.isBottomSheetOpen == true) {
+        _isClosingSheet = true;
+        Get.back();
+      }
+    } finally {
+      _applyingItemRow = false;
     }
   }
 
@@ -1412,7 +1516,11 @@ class StockEntryFormController extends GetxController
       );
     } finally {
       child.disposeBarcodeListener(); // BarcodeAwareMixin: detach before delete
+      _autoSubmitWorker?.dispose();
+      _autoSubmitWorker = null;
+      _autoSubmitTimer?.cancel();
       isItemSheetOpen.value = false;
+      if (isDirty.value) scheduleAutoSave();
       _isClosingSheet = false;
       Get.delete<StockEntryItemFormController>();
     }
@@ -1420,6 +1528,7 @@ class StockEntryFormController extends GetxController
 
   // ── Scan routing ───────────────────────────────────────────────────────────────────────────────────
 
+  @override
   Future<void> scanBarcode(String barcode) async {
     if (isClosed) return;
     if (checkStaleAndBlock()) return;
@@ -1487,9 +1596,12 @@ class StockEntryFormController extends GetxController
     try {
       final response = await _provider.getStockEntryTypes();
       if (response.statusCode == 200 && response.data['data'] != null) {
-        stockEntryTypes.value = (response.data['data'] as List)
-            .map((e) => e['name'] as String)
-            .toList();
+        final types = (response.data['data'] as List).whereType<Map>();
+        stockEntryPurposes.assignAll({
+          for (final type in types)
+            if (type['purpose'] is String) type['name'] as String: type['purpose'] as String,
+        });
+        stockEntryTypes.assignAll(types.map((e) => e['name'] as String));
       }
     } catch (e) {
       if (stockEntryTypes.isEmpty) {
@@ -1512,7 +1624,7 @@ class StockEntryFormController extends GetxController
         if (isClosed) return;
         final key = itemKeys[uniqueId];
         final ctx = key?.currentContext;
-        if (ctx == null) return;
+        if (ctx == null || !ctx.mounted) return;
         final ro = ctx.findRenderObject();
         if (ro == null || !ro.attached) return;
         Scrollable.ensureVisible(
@@ -1548,20 +1660,6 @@ class StockEntryFormController extends GetxController
       GlobalSnackbar.error(message: 'Please select a Stock Entry Type');
       return false;
     }
-    // Resolve warehouses from first item if header fields are still null.
-    final firstItem = stockEntry.value?.items.firstOrNull;
-    if (fromWarehouse.value == null && firstItem?.sWarehouse != null) {
-      fromWarehouse.value = firstItem!.sWarehouse;
-    }
-    if (toWarehouse.value == null && firstItem?.tWarehouse != null) {
-      toWarehouse.value = firstItem!.tWarehouse;
-    }
-    if (stockEntryType.value == 'Material Transfer' &&
-        (fromWarehouse.value == null || toWarehouse.value == null)) {
-      GlobalSnackbar.error(
-          message: 'Source and Target Warehouses are required');
-      return false;
-    }
     return true;
   }
 
@@ -1588,9 +1686,12 @@ class StockEntryFormController extends GetxController
     },
   };
 
-  List<Map<String, dynamic>> _buildItemsPayload() {
-    return (stockEntry.value?.items ?? []).map((item) {
-      final json = item.toJson();
+  List<Map<String, dynamic>> _buildItemsPayload(
+    List<StockEntryItem> rows,
+    String purpose,
+  ) {
+    return rows.map((item) {
+      final json = item.toJson(purpose: purpose);
       _stripLocalName(json);
       _stripZeroRate(json);
       _injectMrFields(json, item);
@@ -1602,7 +1703,8 @@ class StockEntryFormController extends GetxController
 
   void _stripLocalName(Map<String, dynamic> json) {
     final n = json['name']?.toString() ?? '';
-    if (n.startsWith('local_') || n.startsWith('wo_prefill_')) {
+    if (n.startsWith('local_') || n.startsWith('wo_prefill_') ||
+        n.startsWith('mfg_prefill_')) {
       json.remove('name');
     }
   }
@@ -1637,9 +1739,71 @@ class StockEntryFormController extends GetxController
     }
   }
 
+  Future<RackPairVerdict> checkRowRack(
+    StockEntryItem row,
+    String purpose,
+    RackSide side,
+  ) {
+    final pair = rackSnapshot(row, purpose, side);
+    return rackWarehouseResolver.check(
+      rack: pair.rack ?? '',
+      rowWarehouse: pair.warehouse,
+      company: company,
+      side: side,
+      applicable: pair.applies,
+    );
+  }
+
+  Future<void> _inspectSavedRacks(StockEntry entry) async {
+    final purpose = movementPurpose;
+    final rows = List<StockEntryItem>.of(entry.items);
+    for (final (index, row) in rows.indexed) {
+      if (isClosed || !identical(stockEntry.value, entry)) return;
+      final current = _effectiveRow(row, purpose, entry.fromWarehouse, entry.toWarehouse);
+      for (final side in [RackSide.source, RackSide.target]) {
+        if (!_present(rackSnapshot(current, purpose, side).rack)) continue;
+        final verdict = await checkRowRack(current, purpose, side);
+        if (isClosed || !identical(stockEntry.value, entry)) return;
+        if (!verdict.isValid) {
+          savedRackNotice.value = 'Row ${index + 1}. ${verdict.savedMessage}';
+          return;
+        }
+      }
+    }
+  }
+
+  Future<List<StockEntryItem>> _checkedRows(
+    List<StockEntryItem> rows,
+    String purpose, {
+    bool submitting = false,
+  }) async {
+    final result = <StockEntryItem>[];
+    for (final (index, row) in rows.indexed) {
+      String? sourceRack;
+      String? targetRack;
+      for (final side in [RackSide.source, RackSide.target]) {
+        final pair = rackSnapshot(row, purpose, side);
+        if (!_present(pair.rack)) continue;
+        final verdict = await checkRowRack(row, purpose, side);
+        if (!verdict.isValid) {
+          if (canRetainSavedRack(row, side, submitting: submitting)) continue;
+          throw Exception('Row ${index + 1}. ${verdict.message}');
+        }
+        if (side == RackSide.source) {
+          sourceRack = verdict.rack;
+        } else {
+          targetRack = verdict.rack;
+        }
+      }
+      result.add(row.withLocations(row.sWarehouse, row.tWarehouse,
+          sourceRack: sourceRack, targetRack: targetRack));
+    }
+    return result;
+  }
+
   // ── Create / update ───────────────────────────────────────────────────────
 
-  Future<void> _createDocument(Map<String, dynamic> data) async {
+  Future<bool> _createDocument(Map<String, dynamic> data) async {
     final res = await _provider.createStockEntry(data);
     if (res.statusCode == 200) {
       name = res.data['data']['name'];
@@ -1648,14 +1812,16 @@ class StockEntryFormController extends GetxController
       await fetchDocument();
       _setSaveResult(SaveResult.success);
       GlobalSnackbar.success(message: 'Stock Entry created: $name');
+      return true;
     } else {
       _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(
           message: 'Failed to create: ${res.data['exception'] ?? 'Unknown error'}');
+      return false;
     }
   }
 
-  Future<void> _updateDocument(Map<String, dynamic> data) async {
+  Future<bool> _updateDocument(Map<String, dynamic> data) async {
     final res = await _provider.updateStockEntry(name, data);
     if (res.statusCode == 200) {
       if (res.data['data'] != null) {
@@ -1664,10 +1830,12 @@ class StockEntryFormController extends GetxController
       _setSaveResult(SaveResult.success);
       isDirty.value = false;
       await fetchDocument();
+      return true;
     } else {
       _setSaveResult(SaveResult.error);
       GlobalSnackbar.error(
           message: 'Failed to update: ${res.data['exception'] ?? 'Unknown error'}');
+      return false;
     }
   }
 
@@ -1695,47 +1863,77 @@ class StockEntryFormController extends GetxController
 
   // ── saveDocument (orchestrator only, ~15 lines) ─────────────────────────
 
-  Future<void> saveDocument() async {
-    if (isSaving.value) return;
-    if (checkStaleAndBlock()) return;
-    if (!_validateHeaderForSave()) return;
+  @override
+  Future<bool> saveDocument() async {
+    if (isSaving.value || isSubmitting.value || warehouseConfirmation.isPending.value) {
+      return false;
+    }
+    if (checkStaleAndBlock() || !_validateHeaderForSave()) return false;
 
     isSaving.value = true;
-    final data = _buildHeaderPayload()
-      ..['items'] = _buildItemsPayload();
+    final header = _buildHeaderPayload();
+    final currentItems = List<StockEntryItem>.of(stockEntry.value?.items ?? []);
+    final purpose = movementPurpose;
+    final rows = [
+      for (final row in currentItems)
+        _effectiveRow(row, purpose, fromWarehouse.value, toWarehouse.value),
+    ];
     try {
-      if (mode == 'new') {
-        await _createDocument(data);
-      } else {
-        await _updateDocument(data);
+      final checked = await _checkedRows(rows, purpose);
+      if (isClosed || checkStaleAndBlock()) return false;
+      if (movementPurpose != purpose ||
+          !const ListEquality<StockEntryItem>().equals(currentItems, stockEntry.value?.items) ||
+          !const MapEquality<String, dynamic>().equals(header, _buildHeaderPayload())) {
+        throw Exception('This Stock Entry changed while checking rack warehouses. Save again.');
       }
+      final data = header..['items'] = _buildItemsPayload(checked, purpose);
+      return mode == 'new' ? await _createDocument(data) : await _updateDocument(data);
     } on DioException catch (e) {
       _handleSaveDioError(e);
     } catch (e) {
       _setSaveResult(SaveResult.error);
-      GlobalSnackbar.error(message: 'Save failed: $e');
+      GlobalSnackbar.error(message: e.toString().replaceFirst('Exception: ', ''));
     } finally {
       isSaving.value = false;
     }
+    return false;
   }
 
   // ── Submit ──────────────────────────────────────────────────────────────
   Future<void> submitDocument() async {
-    if (!canSubmit) return;
-    // Mirror ERPNext desk's submit prompt.
-    final confirmed = await GlobalDialog.confirm(
-      title:        'Confirm',
-      message:      'Permanently Submit $name?',
-      confirmText:  'Yes',
-      confirmColor: AppColors.blue600,
-    );
-    if (confirmed != true) return;
-
+    if (!canSubmit || checkStaleAndBlock()) return;
     isSubmitting.value = true;
     try {
-      final res = await _provider.submitStockEntry(name);
+      final confirmed = await GlobalDialog.confirm(
+        title: 'Confirm',
+        message: 'Permanently Submit $name?',
+        confirmText: 'Yes',
+        confirmColor: AppColors.blue600,
+      );
+      if (confirmed != true || isClosed) return;
+      final response = await _provider.getStockEntry(name);
+      final data = response.data['data'];
+      if (response.statusCode != 200 || data is! Map<String, dynamic>) {
+        throw Exception('Could not verify the saved Stock Entry. Retry Submit.');
+      }
+      final entry = StockEntry.fromJson(data);
+      if (entry.docstatus != 0 || entry.modified != stockEntry.value?.modified) {
+        await reloadDocument();
+        GlobalSnackbar.warning(message: 'This Stock Entry changed. Review the latest draft.');
+        return;
+      }
+      final purpose = entry.purpose == 'No Purpose' ? movementPurpose : entry.purpose;
+      await _checkedRows([
+        for (final row in entry.items)
+          _effectiveRow(row, purpose, entry.fromWarehouse, entry.toWarehouse),
+      ], purpose, submitting: true);
+      if (isClosed || checkStaleAndBlock() || isDirty.value ||
+          entry.modified != stockEntry.value?.modified) {
+        return;
+      }
+      final res = await _provider.submitStockEntry(name, modified: entry.modified);
       if (res.statusCode == 200) {
-        await fetchDocument(); // now docstatus 1, read-only; perm refreshed to false
+        await fetchDocument();
         GlobalSnackbar.success(message: 'Stock Entry $name submitted');
       } else {
         GlobalSnackbar.error(message: 'Failed to submit Stock Entry');
@@ -1744,7 +1942,7 @@ class StockEntryFormController extends GetxController
       if (handleVersionConflict(e)) return;
       GlobalSnackbar.error(message: _extractDioErrorMessage(e, 'Submit failed'));
     } catch (e) {
-      GlobalSnackbar.error(message: 'Submit failed: $e');
+      GlobalSnackbar.error(message: e.toString().replaceFirst('Exception: ', ''));
     } finally {
       isSubmitting.value = false;
     }
