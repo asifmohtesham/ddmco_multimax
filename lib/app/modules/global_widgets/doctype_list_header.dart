@@ -723,15 +723,13 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                   );
             return isActive
                 ? Stack(
-                    clipBehavior: Clip.none,
                     children: [
                       button,
-                      if (count > 0)
-                        Positioned(
-                          right: -2,
-                          top: -2,
-                          child: CountBadge(count: count),
-                        ),
+                      PositionedDirectional(
+                        end: 2,
+                        top: 2,
+                        child: CountBadge(count: count),
+                      ),
                     ],
                   )
                 : button;

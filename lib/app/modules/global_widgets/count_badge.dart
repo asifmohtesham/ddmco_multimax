@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// A notification/count badge (ERPNext v15 `.count-badge`): 18px min, pill
-/// shaped, red500 bg + white text by default; [muted] uses `scheme.textSubtle`
+/// shaped, red700 bg + white text by default; [muted] uses `scheme.textSubtle`
 /// for quieter tab counts.
-///
-/// The default red500 background with white text is intrinsic/spec-mandated
-/// from ds.css `.count-badge`.
 class CountBadge extends StatelessWidget {
   final int count;
   final bool muted;
@@ -16,8 +13,7 @@ class CountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.scheme;
-    // ds.css .count-badge is intrinsically red500/#fff; muted swaps the bg only.
-    final bg = muted ? s.textSubtle : AppColors.red500;
+    final bg = muted ? s.textSubtle : AppColors.red700;
     return Container(
       constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
       padding: const EdgeInsets.symmetric(horizontal: 5),

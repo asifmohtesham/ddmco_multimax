@@ -20,6 +20,9 @@ have distinct leading-button and action-bar rules.
 | Leading (left) | ☰ Drawer / Menu `IconButton` | List screens are **top-level destinations** opened from the nav drawer. There is no meaningful parent route to go back to. |
 | Actions (right) | Filter icon · Search icon · any extras | Filter and search are the only list-level actions. |
 
+The active-filter count sits inside the filter button's top trailing corner
+in both header states.
+
 ### How to implement
 
 Pass `automaticallyImplyLeading: false` to `DocTypeListHeader`. Flutter then
