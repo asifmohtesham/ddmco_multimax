@@ -17,9 +17,8 @@ queries shorter than three characters after normalization.
 > the dashboard's search icon opens the AwesomeBar, and nothing in the app opens
 > `GlobalDocumentSearchDelegate`. Its history support is built and covered by
 > widget tests, but users won't see it until something opens that delegate
-> again. The AwesomeBar keeps its own, separate list of recently visited
-> places. The Pixel 7 smoke test on 20 Nov 2026 confirmed the list-screen
-> behaviour on a device. The dashboard part could not be tested there.
+> again. The AwesomeBar keeps its own RECENT list. The Pixel 7 smoke test on
+> 20 Nov 2026 confirmed the list-screen behaviour on a device.
 
 ## Storage and screen setup
 
@@ -49,6 +48,17 @@ Selecting an entry opens results in API and dashboard search, or applies the
 filter and closes local search. The remove button deletes one entry in place.
 **Clear all** prompts before clearing the current context. Storage writes run
 in the background, and search continues if a write fails.
+
+## Dashboard scans
+
+Scans from the Dashboard's **Scan Item / Batch / Rack** field, camera or
+hardware scanner appear in the search overlay's **RECENT** list. Both successful
+and failed scans are saved. Failed scans show what happened. Tapping a scan
+repeats the lookup and moves the entry to the top with its latest result.
+
+The AwesomeBar keeps up to ten entries on the device, newest first, across
+scans and navigation picks. Scanning the same code again replaces the earlier
+scan entry. Empty input and POS Upload labels are excluded.
 
 ## Out of scope
 

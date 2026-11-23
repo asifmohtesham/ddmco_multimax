@@ -36,6 +36,7 @@ import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/scan_constants.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
+import 'package:multimax/app/modules/common/services/awesome_bar_recent_store.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/models/todo_model.dart';
 import 'package:multimax/app/data/providers/todo_provider.dart';
@@ -1023,38 +1024,62 @@ class HomeController extends GetxController {
   // --- Scan & Item Sheet Logic ---
   Future<void> onScan(String code) async {
     if (isScanning.value) return;
-    if (code.isEmpty) return;
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) return;
 
+    // POS Upload labels jump straight to fulfillment and would otherwise
+    // be interpreted as rack asset codes by ScanService.
+    final isPosUpload = ScanConstants.isPosUploadDocName(trimmed);
+    ScanResult? result;
+    var outcome = ScanOutcome.error;
     isScanning.value = true;
     try {
-      // POS Upload document labels (e.g. ML-2026-02011) are scanned on the
-      // Dashboard to jump straight to fulfillment work. Recognise them before
-      // ScanService, which would otherwise misread the hyphenated name as a
-      // rack asset-code and fail.
-      final trimmed = code.trim();
-      if (ScanConstants.isPosUploadDocName(trimmed)) {
+      if (isPosUpload) {
         await _handlePosUploadScan(trimmed);
-        return;
+      } else {
+        result = await _scanService.processScan(code);
+        outcome = await _showDashboardScanResult(result);
       }
+    } catch (e) {
+      GlobalSnackbar.error(title: 'Scan Error', message: '$e');
+    } finally {
+      if (!isPosUpload) {
+        final item = result?.itemData;
+        final itemName = item?.itemName.trim();
+        await AwesomeBarRecentStore.record(
+          AwesomeBarOption.scan(
+            code: code,
+            kind: result?.type ?? ScanType.unknown,
+            outcome: outcome,
+            itemLabel: itemName != null && itemName.isNotEmpty
+                ? itemName
+                : item?.itemCode ?? result?.itemCode,
+            rackId: result?.rackId,
+          ),
+        );
+      }
+      isScanning.value = false;
+      barcodeController.clear();
+    }
+  }
 
-      final result = await _scanService.processScan(code);
-
-      if (result.type == ScanType.rack && result.rackId != null) {
-        await _handleRackScan(result.rackId!);
-      }
-      else if (result.isSuccess && (result.type == ScanType.item || result.type == ScanType.batch) && result.itemData != null) {
-        _openItemDetailSheet(result.itemData!.itemCode, batchNo: result.batchNo);
-      }
-      else if (result.type == ScanType.variant_of) {
+  Future<ScanOutcome> _showDashboardScanResult(ScanResult result) async {
+    final itemCode = result.itemData?.itemCode ?? result.itemCode;
+    switch (result.type) {
+      case ScanType.rack when result.rackId != null:
+        return _handleRackScan(result.rackId!);
+      case ScanType.item || ScanType.batch
+          when itemCode != null && itemCode.isNotEmpty:
+        _openItemDetailSheet(itemCode, batchNo: result.batchNo);
+      case ScanType.variant_of:
         barcodeController.clear();
         Get.toNamed(AppRoutes.ITEM, arguments: {
           'filters': {
-            'variant_of': ['like', '%${result.rawCode}%']
+            'variant_of': ['like', '%${result.rawCode}%'],
           },
-          'pageTitle': 'Variant: ${result.rawCode}'
+          'pageTitle': 'Variant: ${result.rawCode}',
         });
-      }
-      else if (result.type == ScanType.multiple && result.candidates != null) {
+      case ScanType.multiple when result.candidates != null:
         barcodeController.clear();
         Get.bottomSheet(
           MultiItemSelectionSheet(
@@ -1064,15 +1089,18 @@ class HomeController extends GetxController {
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
         );
-      } else {
-        GlobalSnackbar.error(title: 'Not Found', message: result.message ?? 'Item not found');
-      }
-    } catch (e) {
-      GlobalSnackbar.error(title: 'Scan Error', message: '$e');
-    } finally {
-      isScanning.value = false;
-      barcodeController.clear();
+      default:
+        final outcome = result.failureOutcome ??
+            (result.type == ScanType.error
+                ? ScanOutcome.error
+                : ScanOutcome.notFound);
+        GlobalSnackbar.error(
+          title: outcome == ScanOutcome.error ? 'Scan Error' : 'Not Found',
+          message: result.message ?? 'Item not found',
+        );
+        return outcome;
     }
+    return ScanOutcome.ok;
   }
 
   void _openItemDetailSheet(String itemCode, {String? batchNo}) {
@@ -1105,7 +1133,7 @@ class HomeController extends GetxController {
     });
   }
 
-  Future<void> _handleRackScan(String rackCode) async {
+  Future<ScanOutcome> _handleRackScan(String rackCode) async {
     isRackScanning.value = true;
     barcodeController.clear();
     try {
@@ -1115,7 +1143,7 @@ class HomeController extends GetxController {
           title: 'Invalid Rack QR',
           message: invalidRackCodeMessage(rackCode),
         );
-        return;
+        return ScanOutcome.invalid;
       }
 
       final today = DateTime.now();
@@ -1126,26 +1154,28 @@ class HomeController extends GetxController {
 
       if (contents.entries.isEmpty) {
         GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
-      } else {
-        Get.bottomSheet(
-          RackContentsSheet(
-            rackId: rackCode,
-            entries: contents.entries,
-            baseUrl: _apiProvider.baseUrl,
-            itemDetailsFailed: contents.itemDetailsFailed,
-            asOf: today,
-            loadAsOf: (date) =>
-                _loadRackContents(rackCode, location.warehouseName, date),
-            onItemTap: _openItemFromRack,
-          ),
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-        );
+        return ScanOutcome.empty;
       }
+      Get.bottomSheet(
+        RackContentsSheet(
+          rackId: rackCode,
+          entries: contents.entries,
+          baseUrl: _apiProvider.baseUrl,
+          itemDetailsFailed: contents.itemDetailsFailed,
+          asOf: today,
+          loadAsOf: (date) =>
+              _loadRackContents(rackCode, location.warehouseName, date),
+          onItemTap: _openItemFromRack,
+        ),
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+      );
+      return ScanOutcome.ok;
     } catch (e, st) {
       debugPrint('Rack look-up for $rackCode failed: $e\n$st');
       final failure = rackLookupFailure(e);
       GlobalSnackbar.error(title: failure.title, message: failure.message);
+      return ScanOutcome.error;
     } finally {
       isRackScanning.value = false;
     }
