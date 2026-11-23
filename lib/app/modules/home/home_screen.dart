@@ -1,3 +1,5 @@
+// Keep the shared Flutter Material API until the app migrates to material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/common/widgets/awesome_bar.dart';
 import 'package:get/get.dart';
@@ -7,7 +9,6 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/camera_scan_overlay.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_guard.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
-import 'package:multimax/app/modules/global_widgets/global_document_search_delegate.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/global_widgets/barcode_input_widget.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_button.dart';
@@ -314,7 +315,6 @@ class HomeScreen extends GetView<HomeController> {
       final me = controller.myAttendance;
       final loading = controller.isLoadingAttendance.value &&
           controller.attendanceLoadedAt.value == null;
-      if (me == null && !loading) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.only(bottom: 18),
         child: MyAttendanceCard(

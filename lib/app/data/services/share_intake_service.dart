@@ -10,7 +10,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 
 /// Receives photos shared to Multimax from the gallery and opens the stock
 /// sheet for them.
@@ -27,8 +27,8 @@ class ShareIntakeService extends GetxService {
     void Function()? resetShare,
     RxBool? isAuthenticated,
     String Function()? currentRoute,
-    void Function(List<String> paths)? openStockSheet,
-    StockSheetController? Function()? activeStockSheet,
+    void Function(List<String> paths)? openItemsFromPhotos,
+    ItemsFromPhotosController? Function()? activeItemsFromPhotos,
     void Function(String message)? notify,
     Stream<List<String>>? drops,
     Stream<int>? dropFailures,
@@ -41,8 +41,9 @@ class ShareIntakeService extends GetxService {
        _resetShare = resetShare ?? _pluginReset,
        _isAuthenticated = isAuthenticated,
        _currentRoute = currentRoute ?? (() => Get.currentRoute),
-       _openStockSheet = openStockSheet ?? _defaultOpen,
-       _activeStockSheet = activeStockSheet ?? _defaultActiveStockSheet,
+       _openItemsFromPhotos = openItemsFromPhotos ?? _defaultOpen,
+       _activeItemsFromPhotos =
+           activeItemsFromPhotos ?? _defaultActiveItemsFromPhotos,
        _notify =
            notify ?? ((message) => GlobalSnackbar.warning(message: message)),
        _drops = drops,
@@ -70,8 +71,8 @@ class ShareIntakeService extends GetxService {
   final void Function() _resetShare;
   final RxBool? _isAuthenticated;
   final String Function() _currentRoute;
-  final void Function(List<String> paths) _openStockSheet;
-  final StockSheetController? Function() _activeStockSheet;
+  final void Function(List<String> paths) _openItemsFromPhotos;
+  final ItemsFromPhotosController? Function() _activeItemsFromPhotos;
   final void Function(String message) _notify;
   final Stream<List<String>>? _drops;
   final Stream<int>? _dropFailures;
@@ -144,8 +145,8 @@ class ShareIntakeService extends GetxService {
     if (paths.isEmpty) return;
     _resetShare();
 
-    final sheet = _currentRoute() == AppRoutes.STOCK_SHEET
-        ? _activeStockSheet()
+    final sheet = _currentRoute() == AppRoutes.ITEMS_FROM_PHOTOS
+        ? _activeItemsFromPhotos()
         : null;
     if (sheet != null) {
       // A share held as pending is the screen's to ask about.
@@ -206,7 +207,7 @@ class ShareIntakeService extends GetxService {
     if (_handOverRoutes.contains(_currentRoute())) return;
     final paths = pendingPhotos.toList();
     pendingPhotos.clear();
-    _openStockSheet(paths);
+    _openItemsFromPhotos(paths);
   }
 
   Future<void> _takeInitialShare() async {
@@ -250,12 +251,12 @@ class ShareIntakeService extends GetxService {
   /// a push would hit the navigator's lock.
   static void _defaultOpen(List<String> paths) {
     Future<void>.delayed(Duration.zero, () {
-      Get.toNamed<void>(AppRoutes.STOCK_SHEET, arguments: paths);
+      Get.toNamed<void>(AppRoutes.ITEMS_FROM_PHOTOS, arguments: paths);
     });
   }
 
-  static StockSheetController? _defaultActiveStockSheet() =>
-      Get.isRegistered<StockSheetController>()
-      ? Get.find<StockSheetController>()
+  static ItemsFromPhotosController? _defaultActiveItemsFromPhotos() =>
+      Get.isRegistered<ItemsFromPhotosController>()
+      ? Get.find<ItemsFromPhotosController>()
       : null;
 }

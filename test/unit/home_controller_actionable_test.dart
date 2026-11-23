@@ -34,6 +34,7 @@ import 'package:multimax/app/modules/home/widgets/dashboard_actionable_strip.dar
 class _FakeApiProvider extends ApiProvider {
   /// Count returned for a doctype under mine scope (and the everyone fallback).
   final Map<String, int> counts = {};
+  final Set<String> deniedCounts = {};
 
   /// Count override for everyone-scope calls (filters carry no `owner`).
   final Map<String, int> everyoneCounts = {};
@@ -51,6 +52,14 @@ class _FakeApiProvider extends ApiProvider {
       {Map<String, dynamic>? filters,
       List<List<dynamic>>? filterTuples}) async {
     queries.add((doctype: doctype, filters: filters));
+    if (deniedCounts.contains(doctype)) {
+      final request = RequestOptions(path: '/api/method/frappe.client.get_count');
+      throw DioException.badResponse(
+        statusCode: 403,
+        requestOptions: request,
+        response: Response(requestOptions: request, statusCode: 403),
+      );
+    }
     // Mine-scope filters carry an `owner` equality; everyone-scope don't.
     final isMine = filters?.containsKey('owner') ?? false;
     // Capture the value BEFORE awaiting the gate, so a later map mutation can't
@@ -202,6 +211,27 @@ void main() {
   });
 
   tearDown(() => Get.deleteAll(force: true));
+
+  test('Dashboard loads own attendance when the Job Card count is denied',
+      () async {
+    auth.currentUser.value = _user('me@x.com').copyWith(employeeId: 'EMP-1');
+    perm.access['Attendance'] = true;
+    api.deniedCounts.add('Job Card');
+    api.listRows['Employee'] = [
+      {
+        'name': 'EMP-1',
+        'employee_name': 'Employee One',
+        'status': 'Active',
+        'attendance_device_id': '1',
+      },
+    ];
+
+    await controller.fetchDashboardData();
+
+    expect(api.queries.map((q) => q.doctype), contains('Job Card'));
+    expect(controller.isLoadingAttendance.value, isFalse);
+    expect(controller.myAttendance?.employee.name, 'EMP-1');
+  });
 
   // GetX runs onClose synchronously when the route is disposed, while the
   // Dashboard can still rebuild once more; its scan box then re-attaches to

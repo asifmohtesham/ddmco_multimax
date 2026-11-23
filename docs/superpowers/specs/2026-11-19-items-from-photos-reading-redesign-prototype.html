@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0">
+<title>Reading Photos Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a control bar over two phone screens (today, proposed) that share one clock; notes below. */
+:root {
+  --bg: #F4F5F6; --fg: #FFFFFF; --subtle: #F9FAFA;
+  --text: #1F272E; --muted: #525C66; --faint: #74808B;
+  --border: #EBEEF0; --border-strong: #D8DEE3;
+  --primary: #870E18; --on-primary: #FFFFFF;
+  --bar: #870E18; --on-bar: #FFFFFF; --on-bar-muted: rgba(255,255,255,.78);
+  --red-ink: #9A2222; --red-fill: rgba(224,54,54,.13); --red-line: rgba(224,54,54,.35);
+  --orange-ink: #9E5409; --orange-fill: rgba(240,133,27,.13); --orange-line: rgba(240,133,27,.35);
+  --green-ink: #1F5E34; --green-fill: rgba(56,161,96,.13); --green-line: rgba(56,161,96,.35);
+  --page: #E9ECEE; --device: #1F272E;
+  --bin: #9A2222; --on-bin: #FFFFFF;
+  --sans: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15191D; --fg: #1F262C; --subtle: #262D34;
+    --text: #EEF1F4; --muted: #9AA5AF; --faint: #6F7C87;
+    --border: #2E353C; --border-strong: #3A424A;
+    --primary: #D9707C; --on-primary: #2A0509;
+    --bar: #1F262C; --on-bar: #EEF1F4; --on-bar-muted: #9AA5AF;
+    --red-ink: #F09494; --orange-ink: #F7B67A; --green-ink: #8FD3A8;
+    --page: #0E1114; --device: #000000;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15191D; --fg: #1F262C; --subtle: #262D34;
+  --text: #EEF1F4; --muted: #9AA5AF; --faint: #6F7C87;
+  --border: #2E353C; --border-strong: #3A424A;
+  --primary: #D9707C; --on-primary: #2A0509;
+  --bar: #1F262C; --on-bar: #EEF1F4; --on-bar-muted: #9AA5AF;
+  --red-ink: #F09494; --orange-ink: #F7B67A; --green-ink: #8FD3A8;
+  --page: #0E1114; --device: #000000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--text);
+  font: 15px/1.5 var(--sans);
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { font-size: 24px; line-height: 1.25; margin: 0; font-weight: 700; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 65ch; }
+h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; font-weight: 700; }
+
+/* Controls */
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  background: var(--fg); border: 1px solid var(--border-strong); border-radius: 12px; padding: 10px 14px;
+}
+.controls button, .controls select {
+  font: 500 14px var(--sans); color: var(--text); background: var(--subtle);
+  border: 1px solid var(--border-strong); border-radius: 8px; padding: 7px 12px; cursor: pointer;
+}
+.controls button.main { background: var(--primary); color: var(--on-primary); border-color: transparent; min-width: 76px; }
+.controls button:focus-visible, .controls select:focus-visible, .controls input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.scrub { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.scrub input { flex: 1; min-width: 0; accent-color: var(--primary); }
+.clock { font: 500 14px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+
+/* Phones */
+.phones { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 26px 22px; }
+.col { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.col h3 { margin: 0; font-size: 16px; font-weight: 700; text-align: center; }
+.col .sub { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+.phone {
+  width: 100%; max-width: 340px; height: 620px; background: var(--bg);
+  border: 8px solid var(--device); border-radius: 30px; overflow: hidden;
+  display: flex; flex-direction: column; font-size: 14px;
+}
+.appbar { background: var(--bar); color: var(--on-bar); padding: 12px 14px; display: flex; align-items: center; gap: 12px; min-height: 58px; border-bottom: 1px solid var(--border); }
+.appbar .back { font-size: 20px; line-height: 1; }
+.appbar .ttl { font-size: 17px; font-weight: 500; line-height: 1.2; }
+.appbar .st { font-size: 12px; color: var(--on-bar-muted); margin-top: 2px; }
+.appbar .plus { margin-left: auto; font-size: 22px; line-height: 1; }
+
+.center { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 28px; gap: 12px; text-align: center; }
+.track { height: 4px; background: var(--border-strong); border-radius: 2px; overflow: hidden; position: relative; }
+.track i { display: block; height: 100%; background: var(--primary); width: 0; }
+.track.wait i { width: 35%; position: absolute; animation: slide 1.4s ease-in-out infinite; }
+@keyframes slide { from { left: -35%; } to { left: 100%; } }
+
+.strip { background: var(--fg); border-bottom: 1px solid var(--border); padding: 9px 14px 10px; display: flex; flex-direction: column; gap: 7px; }
+.strip .line { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.strip .now { font-weight: 500; }
+.strip .tally { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.list { flex: 1; overflow-y: auto; padding: 10px 10px 4px; display: flex; flex-direction: column; gap: 8px; }
+.row { background: var(--fg); border: 1px solid var(--border); border-radius: 12px; padding: 10px 10px 10px 6px; display: flex; gap: 8px; align-items: flex-start; }
+.row.fresh { animation: arrive .35s ease-out; }
+/* A photo not read yet: no fill, dashed edge, muted name. */
+.row.dim { background: transparent; border-style: dashed; border-color: var(--border-strong); }
+.row.dim .name { color: var(--muted); font-weight: 500; }
+.quiet.busy { display: inline-flex; align-items: center; gap: 6px; }
+/* The proposed screen's rows answer to the finger while reading goes on. */
+.phone { position: relative; }
+.slot { position: relative; border-radius: 12px; }
+.slot.swiping { background: var(--bin); }
+.slot.swiping::after { content: "Remove"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--on-bin); font-size: 13px; font-weight: 500; }
+.slot.swiping .row { position: relative; z-index: 1; background: var(--fg); }
+.slot.dragging { z-index: 2; }
+.slot.dragging .row { background: var(--fg); box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+.live .row { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.live .grip { touch-action: none; cursor: grab; padding-bottom: 16px; }
+button.sw { border: 0; padding: 0; cursor: pointer; }
+button.sw:disabled { cursor: default; opacity: .6; }
+button.sw:focus-visible, .snack button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.snack { position: absolute; left: 10px; right: 10px; bottom: 108px; z-index: 3; background: var(--text); color: var(--fg); border-radius: 8px; padding: 9px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }
+.snack button { background: none; border: 0; color: inherit; font: 700 13px var(--sans); text-decoration: underline; cursor: pointer; padding: 4px; }
+/* A read row says only In stock or Out of stock; a tap opens the card. */
+.pill.in { color: var(--green-ink); background: var(--green-fill); border-color: var(--green-line); }
+.row.card { flex-wrap: wrap; cursor: pointer; }
+button.chev { margin-left: auto; width: 30px; height: 24px; border: 0; background: none; cursor: pointer; position: relative; border-radius: 6px; }
+button.chev::before { content: ""; position: absolute; left: 10px; top: 5px; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); }
+.row.open button.chev::before { transform: rotate(-135deg); top: 10px; }
+button.chev:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.more { flex: 1 0 100%; min-width: 0; border-top: 1px solid var(--border); margin-top: 8px; padding: 8px 4px 2px 6px; display: flex; flex-direction: column; gap: 6px; }
+.more h4 { margin: 4px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.more h4 .eg { font-weight: 400; font-style: italic; text-transform: none; letter-spacing: 0; }
+.more p { margin: 0; }
+.kv { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.kv th { text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 2px 0; }
+.kv td { padding: 3px 0; }
+.kv th:last-child, .kv td:last-child { text-align: right; font-weight: 500; }
+.kv td.m { font-family: var(--mono); font-size: 12px; }
+.kv td.barcell { width: 30%; padding: 0 10px; }
+.kv td.barcell i { display: block; height: 6px; border-radius: 3px; background: var(--primary); opacity: .6; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; font-size: 13px; }
+.pair span { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+.pair b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.try { margin: 0; font-size: 13px; color: var(--muted); text-align: center; max-width: 340px; }
+@keyframes arrive { from { opacity: .2; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.grip { color: var(--faint); font-size: 14px; letter-spacing: -2px; padding: 16px 2px 0 4px; }
+.thumb { width: 54px; height: 54px; border-radius: 8px; background: var(--subtle); border: 1px solid var(--border); flex: none; position: relative; }
+/* A wallet card as the photo: the product block, and the small EAN-8 bottom right that the whole-photo pass misses. */
+.thumb.photo::before { content: ""; position: absolute; left: 8px; top: 8px; width: 26px; height: 20px; border-radius: 3px; background: var(--border-strong); }
+.thumb.photo::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 14px; height: 7px; background: repeating-linear-gradient(90deg, var(--text) 0 1px, transparent 1px 2px); }
+.thumb.none::before { content: ""; position: absolute; inset: 17px; border: 2px solid var(--faint); border-radius: 3px; opacity: .7; }
+.body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.name { font-weight: 700; }
+.code { font: 12px var(--mono); color: var(--muted); }
+.stock { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 2px; font-size: 13px; }
+.stock b { font-weight: 700; }
+.chip { font: 11px var(--mono); border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 6px; color: var(--muted); }
+.pill { font-size: 12px; font-weight: 500; border-radius: 999px; padding: 2px 9px; border: 1px solid; display: inline-flex; align-items: center; gap: 6px; }
+.pill.out { color: var(--red-ink); background: var(--red-fill); border-color: var(--red-line); }
+.pill.closer { color: var(--orange-ink); background: var(--orange-fill); border-color: var(--orange-line); }
+.quiet { color: var(--muted); font-size: 13px; }
+.skel { height: 12px; width: 62%; border-radius: 4px; background: var(--border-strong); opacity: .7; margin: 3px 0 2px; }
+.spin { width: 11px; height: 11px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: turn .8s linear infinite; }
+@keyframes turn { to { transform: rotate(360deg); } }
+.sw { flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border-strong); position: relative; margin-top: 16px; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--fg); }
+.sw.on { background: var(--primary); }
+.sw.on::after { left: 17px; }
+.end { text-align: center; color: var(--muted); font-size: 12px; padding: 6px 0 10px; }
+
+.foot { background: var(--fg); border-top: 1px solid var(--border); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; font-size: 13px; text-align: center; }
+.seg span { padding: 6px 0; border-left: 1px solid var(--border-strong); }
+.seg span:first-child { border-left: 0; background: var(--subtle); font-weight: 500; }
+.gen { text-align: center; padding: 10px; border-radius: 8px; font-weight: 500; background: var(--primary); color: var(--on-primary); }
+.gen.off { background: var(--border-strong); color: var(--muted); }
+
+/* Marks under each phone */
+.marks { width: 100%; max-width: 340px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; margin: 0; }
+.marks dt { color: var(--muted); }
+.marks dd { margin: 0; font: 500 13px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.marks dd.hit { color: var(--green-ink); }
+
+/* Notes */
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; }
+.notes > div { min-width: 0; }
+.notes ol, .notes ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 65ch; }
+.notes li { color: var(--text); }
+.notes .q { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .row.fresh, .spin, .track.wait i { animation: none; }
+  .track.wait i { left: 0; width: 100%; opacity: .5; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Reading photos: today and proposed</h1>
+    <p class="lede">Ten wallet product cards chosen in Items from Photos. Five are read whole; five have a label too small to read whole, so the app zooms in on them. Both screens run on the same clock, with the times measured on the XCover7 on 19 November 2026.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Playback">
+    <button class="main" id="play" type="button">Play</button>
+    <button id="restart" type="button">Restart</button>
+    <label class="scrub"><span class="clock" id="clock">0.0 s</span>
+      <input id="scrub" type="range" min="0" max="45" step="0.1" value="9" aria-label="Time since the photos were chosen, in seconds">
+    </label>
+    <label>Speed
+      <select id="speed">
+        <option value="1">1x</option>
+        <option value="3" selected>3x</option>
+        <option value="8">8x</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="phones">
+    <section class="col" aria-labelledby="h-now">
+      <h3 id="h-now">Today</h3>
+      <p class="sub">One bar until every photo is read and stock is checked</p>
+      <div class="phone" id="phone-now"></div>
+      <dl class="marks">
+        <dt>First barcode on screen</dt><dd id="now-first">43.9 s</dd>
+        <dt>Five rows with stock</dt><dd id="now-five">43.9 s</dd>
+        <dt>Every row with stock</dt><dd id="now-all">43.9 s</dd>
+      </dl>
+    </section>
+    <section class="col" aria-labelledby="h-new">
+      <h3 id="h-new">Proposed</h3>
+      <p class="sub">All ten rows at once; a quick pass on every photo first</p>
+      <div class="phone" id="phone-new"></div>
+      <p class="try">Try it while it plays: tap a read row to open it, tap a switch, drag a row by its handle, swipe a row left to remove it.</p>
+      <dl class="marks">
+        <dt>First barcode on screen</dt><dd id="new-first">0.7 s</dd>
+        <dt>Five rows with stock</dt><dd id="new-five">7.0 s</dd>
+        <dt>Every row with stock</dt><dd id="new-all">40.5 s</dd>
+      </dl>
+    </section>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h2>What the proposed screen does</h2>
+      <ol>
+        <li><strong>Two rounds.</strong> Every photo gets the quick whole-photo pass first (about half a second each). Photos with no code wait in the list for the app to zoom in on them, instead of holding up the ones behind them.</li>
+        <li><strong>Rows fill in.</strong> All ten photos have their rows from the start, greyed until read, so the list never grows under the finger. A row gets its barcode as soon as it is read. Name, stock and rack follow when the ERP answers; stock is asked for in batches while reading goes on.</li>
+        <li><strong>Short rows, details on a tap.</strong> A read row says only In stock or Out of stock. A tap opens the card to Rack-Wise Stock Balance and Stock Ageing, with the reports' own column titles; another tap closes it. The rack balance is there at once. Stock Ageing is fetched the first time a card is opened and kept after that.</li>
+        <li><strong>Nothing is locked.</strong> While reading goes on, a row can be dragged to a new place or swiped away (with Undo), and switched off once it has its barcode. A removed photo is not read: one the app is zooming in on stops at once and the next one starts, so the run ends sooner. Undo puts it back in its place, to wait its turn again. The app zooms in on the waiting rows from the top of the list down, so dragging a row up gets it read sooner. Only "Generate file" waits for the last photo.</li>
+        <li><strong>The wait is explained.</strong> The strip under the title says which photo the app is zooming in on and keeps a tally of what is read and what is left.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>What is measured and what is assumed</h2>
+      <ul>
+        <li>Measured: each photo's first pass (0.15–0.47 s), the tiles (4.0–4.3 s to write, 1.8–4.1 s to read), and 43.9 s from choosing the photos to the list.</li>
+        <li>Assumed: the ERP answers a batch in 2.0 s and a single item in 1.2 s. Today's whole check took about 4.5 s.</li>
+        <li>The total barely changes (about 41 s against 44 s). What changes is how soon there is something to check.</li>
+        <li>The Stock Ageing figures are examples, not ERP data, and the 1.5 s it takes to arrive here is assumed. The rack figures are the ones seen in the smoke test.</li>
+        <li>Removing a photo shortens the proposed clock by the time zooming in on it would take; a photo put back with Undo starts again from the beginning.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Decided so far</h2>
+      <ul>
+        <li>All ten photos have rows from the start, greyed until read.</li>
+        <li>Rows can be switched, dragged and swiped while reading goes on.</li>
+        <li>A read row shows only In stock or Out of stock; a tap opens the card.</li>
+        <li>Stock Ageing is fetched the first time a card is opened.</li>
+        <li>A photo removed while the app is zooming in on it stops at once.</li>
+        <li>Zooming in follows the list from the top; a row dragged up is read sooner.</li>
+        <li>A sheet of labels stays one row until it is zoomed in on (not shown here).</li>
+        <li>The wording is "Zooming in…", here and in the Telegram bot.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // The ten cards of the 19/11/2026 smoke test. first = whole-photo pass; write/read = tiles (missed photos only).
+  var PHOTOS = [
+    { code: '10039892', variant: 'LTC-08', name: 'WALLETS MTR CH', qty: 10,  rack: 'KA-WH-DXB1-20C', first: 0.471 },
+    { code: '10039991', variant: 'INV-08', name: 'WALLETS MTR',    qty: 384, rack: 'KA-WH-DXB1-20D', first: 0.286, write: 4.278, read: 4.083 },
+    { code: '10040010', variant: 'INV-10', name: 'WALLETS MTR',    qty: 432, rack: 'KA-WH-DXB1-20D', first: 0.191, write: 4.284, read: 2.048 },
+    { code: '10039922', variant: 'INV-01', name: 'WALLETS MTR',    qty: 216, rack: 'KA-WH-DXB1-20D', first: 0.299 },
+    { code: '10039984', variant: 'INV-07', name: 'WALLETS MTR',    qty: 300, rack: 'KA-WH-DXB1-22D', first: 0.337 },
+    { code: '10039885', variant: 'LTC-07', name: 'WALLETS MTR CH', qty: 0,   rack: null,             first: 0.199, write: 4.153, read: 2.743 },
+    { code: '10039915', variant: 'LTC-10', name: 'WALLETS MTR CH', qty: 36,  rack: 'KA-WH-DXB1-20A', first: 0.208, write: 4.046, read: 2.708 },
+    { code: '10039977', variant: 'INV-06', name: 'WALLETS MTR',    qty: 420, rack: 'KA-WH-DXB1-22D', first: 0.325 },
+    { code: '10039908', variant: 'LTC-09', name: 'WALLETS MTR CH', qty: 0,   rack: null,             first: 0.145, write: 4.155, read: 1.844 },
+    { code: '10040003', variant: 'INV-09', name: 'WALLETS MTR',    qty: 600, rack: 'KA-WH-DXB1-22D', first: 0.337 }
+  ];
+  var N = PHOTOS.length;
+  var OVERHEAD = 0.22;        // thumbnail and bookkeeping per photo (measured total minus the passes)
+  var STOCK_TODAY = 4.6;      // measured: review appeared 43.9 s after the photos were chosen
+  var STOCK_BATCH = 2.0;      // assumed
+  var STOCK_ONE = 1.2;        // assumed
+
+  // Today: one photo after another, tiles straight after a missed first pass.
+  var t = 0;
+  PHOTOS.forEach(function (p) {
+    t += p.first + OVERHEAD + (p.write ? p.write + p.read : 0);
+    p.todayDone = t;
+  });
+  var TODAY_READ = t, TODAY_LIST = t + STOCK_TODAY;
+
+  // Proposed: round one (quick pass on all), then the closer look for the missed ones.
+  t = 0;
+  PHOTOS.forEach(function (p) { t += p.first + OVERHEAD; p.seen = t; });
+  var ROUND1 = t;
+  // Round two: the closer look, one missed photo at a time. A photo that has been removed is not read,
+  // and one being zoomed in on stops at once. Undo puts it back in its place, to wait its turn and start afresh.
+  var gone = PHOTOS.map(function () { return []; });   // per photo: when it was removed and put back, {from, to}
+  // The list's order over time: zooming in takes the first waiting row, so a row dragged up is read sooner.
+  var moves = [{ at: 0, order: PHOTOS.map(function (_, i) { return i; }) }];
+  function orderAt(t) {
+    var found = moves[0];
+    moves.forEach(function (m) { if (m.at <= t && m.at >= found.at) found = m; });
+    return found.order;
+  }
+  var removed = {}, NEW_DONE, END;
+  function replan() {
+    var queue = [];
+    PHOTOS.forEach(function (p, i) {
+      if (p.write) { p.tries = []; p.readAt = Infinity; p.fullAt = Infinity; queue.push({ i: i, from: ROUND1 }); }
+      else { p.readAt = p.seen; p.fullAt = ROUND1 + STOCK_BATCH; }
+    });
+    var t = ROUND1, guard = 0;
+    while (queue.length && guard++ < 500) {
+      var k = -1, list = orderAt(t);
+      queue.sort(function (a, b) { return list.indexOf(a.i) - list.indexOf(b.i); });
+      for (var j = 0; j < queue.length; j++) { if (queue[j].from <= t) { k = j; break; } }
+      if (k < 0) { t = Math.min.apply(null, queue.map(function (q) { return q.from; })); continue; }
+      var job = queue.splice(k, 1)[0], p = PHOTOS[job.i], end = t + p.write + p.read, hit = null;
+      gone[job.i].forEach(function (g) {
+        var away = g.from <= t && (g.to === undefined || g.to > t);   // removed as its turn comes
+        var cut = g.from > t && g.from < end;                         // removed while being looked at
+        if ((away || cut) && (!hit || g.from < hit.from)) hit = g;
+      });
+      if (!hit) { p.tries.push({ start: t, end: end }); p.readAt = end; p.fullAt = end + STOCK_ONE; t = end; continue; }
+      if (hit.from > t) { p.tries.push({ start: t, end: hit.from }); t = hit.from; }   // stopped at once
+      if (hit.to !== undefined) queue.push({ i: job.i, from: hit.to });               // Undo: it waits its turn again
+    }
+    var ends = PHOTOS.filter(function (p, i) { return !removed[i]; }).map(function (p) { return p.fullAt; }).filter(isFinite);
+    NEW_DONE = ends.length ? Math.max.apply(null, ends) : ROUND1;
+    END = Math.ceil(Math.max(TODAY_LIST, NEW_DONE)) + 1;
+  }
+  replan();
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+
+  function stockLine(p) {
+    if (p.qty <= 0) return '<div class="stock"><span class="pill out">Out of stock · 0</span></div>';
+    return '<div class="stock"><b>' + p.qty + '</b><span class="chip">' + esc(p.rack) + ' ' + p.qty + '</span></div>';
+  }
+  function fullRow(p, fresh) {
+    return '<div class="row' + (fresh ? ' fresh' : '') + '"><span class="grip" aria-hidden="true">⋮⋮</span><span class="thumb none" aria-hidden="true"></span>' +
+      '<div class="body"><div class="name">' + esc(p.name) + '</div><div class="code">' + p.code + ' · ' + p.variant + '</div>' + stockLine(p) + '</div>' +
+      '<span class="sw on" aria-hidden="true"></span></div>';
+  }
+  function appbar(title, sub, plus) {
+    return '<div class="appbar"><span class="back" aria-hidden="true">←</span><div><div class="ttl">' + title + '</div>' +
+      (sub ? '<div class="st">' + sub + '</div>' : '') + '</div>' + (plus ? '<span class="plus" aria-hidden="true">＋</span>' : '') + '</div>';
+  }
+  function footer(count, ready) {
+    return '<div class="foot"><div class="seg"><span>Excel</span><span>PDF</span><span>Both</span></div>' +
+      '<div class="gen' + (ready ? '' : ' off') + '">Generate file · ' + count + (count === 1 ? ' item' : ' items') + '</div></div>';
+  }
+
+  function renderToday(now) {
+    if (now >= TODAY_LIST) {
+      return appbar('Review photos', N + ' photos · ' + N + ' items in the file', true) +
+        '<div class="list">' + PHOTOS.map(function (p) { return fullRow(p, false); }).join('') + '<div class="end">End of list</div></div>' + footer(N, true);
+    }
+    if (now >= TODAY_READ) {
+      return appbar('Items from Photos') + '<div class="center"><div class="track wait"><i></i></div><div>Checking stock…</div></div>';
+    }
+    var done = PHOTOS.filter(function (p) { return p.todayDone <= now; }).length;
+    return appbar('Items from Photos') + '<div class="center"><div class="track"><i style="width:' + (done / N * 100) + '%"></i></div>' +
+      '<div>Reading photo ' + Math.min(done + 1, N) + ' of ' + N + '</div></div>';
+  }
+
+  // Stock Ageing, by barcode: quantities per bucket, Average Age, Earliest, Latest. Example figures only.
+  var BUCKETS = ['0 - 90', '91 - 180', '181 - 360', '361 - 720', '721 - Above'];
+  var AGE = {
+    '10039892': { b: [0, 10, 0, 0, 0],    avg: 132, e: 132, l: 132 },
+    '10039991': { b: [96, 48, 240, 0, 0], avg: 212, e: 298, l: 41 },
+    '10040010': { b: [432, 0, 0, 0, 0],   avg: 37,  e: 37,  l: 37 },
+    '10039922': { b: [0, 72, 144, 0, 0],  avg: 231, e: 301, l: 118 },
+    '10039984': { b: [60, 0, 240, 0, 0],  avg: 248, e: 305, l: 22 },
+    '10039915': { b: [0, 0, 0, 36, 0],    avg: 402, e: 402, l: 402 },
+    '10039977': { b: [120, 300, 0, 0, 0], avg: 128, e: 170, l: 33 },
+    '10040003': { b: [600, 0, 0, 0, 0],   avg: 19,  e: 26,  l: 12 }
+  };
+  function details(p, i) {
+    var racks = p.qty > 0
+      ? '<table class="kv"><thead><tr><th>Rack</th><th>Balance Qty</th></tr></thead><tbody><tr><td class="m">' + esc(p.rack) + '</td><td>' + p.qty + '</td></tr></tbody></table>'
+      : '<p class="quiet">No stock in Finished Goods - KA.</p>';
+    var a = AGE[p.code], ageing;
+    if (!a) {
+      ageing = '<p class="quiet">Not in the Stock Ageing report: nothing in stock.</p>';
+    } else if (aged[i] !== 'ready') {
+      // Stock Ageing is asked for when the card is first opened, and kept after that.
+      ageing = '<p class="quiet busy"><span class="spin" aria-hidden="true"></span>Fetching Stock Ageing…</p><div class="skel"></div><div class="skel"></div>';
+    } else {
+      var most = Math.max.apply(null, a.b);
+      ageing = '<div class="pair"><span>Available Qty <b>' + p.qty + '</b></span><span>Average Age <b>' + a.avg + '</b></span>' +
+        '<span>Earliest <b>' + a.e + '</b></span><span>Latest <b>' + a.l + '</b></span></div><table class="kv"><tbody>' +
+        BUCKETS.map(function (label, k) {
+          return '<tr><td>Age (' + label + ')</td><td class="barcell"><i style="width:' + (most ? a.b[k] / most * 100 : 0) + '%"></i></td><td>' + a.b[k] + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+    return '<div class="more"><h4>Rack-Wise Stock Balance</h4>' + racks +
+      '<h4>Stock Ageing' + (a && aged[i] === 'ready' ? ' <span class="eg">example figures</span>' : '') + '</h4>' + ageing + '</div>';
+  }
+  function cardRow(p, i, fresh) {
+    var isOpen = !!open[i];
+    return '<div class="row card' + (fresh ? ' fresh' : '') + (isOpen ? ' open' : '') + '">' +
+      '<span class="grip" aria-hidden="true">⋮⋮</span><span class="thumb none" aria-hidden="true"></span>' +
+      '<div class="body"><div class="name">' + esc(p.name) + '</div><div class="code">' + p.code + ' · ' + p.variant + '</div>' +
+      '<div class="stock"><span class="pill ' + (p.qty > 0 ? 'in">In stock' : 'out">Out of stock') + '</span>' +
+      '<button type="button" class="chev" aria-expanded="' + isOpen + '" aria-label="Rack-Wise Stock Balance and Stock Ageing"></button></div></div>' +
+      toggle(!off[i], true) + (isOpen ? details(p, i) : '') + '</div>';
+  }
+
+  // What the person has done to the proposed list. It outlives scrubbing; Restart clears it.
+  var order, off, open, aged, undo, undoTimer = null, run = 0;
+  var AGEING_FETCH = 1500;   // assumed: one item's Stock Ageing run, in real milliseconds
+  function resetUser() {
+    order = PHOTOS.map(function (_, i) { return i; });
+    off = {}; removed = {}; open = {}; aged = {}; undo = null; run++;
+    gone = PHOTOS.map(function () { return []; });
+    moves = [{ at: 0, order: order.slice() }];
+    replan();
+    clearTimeout(undoTimer);
+  }
+  resetUser();
+  open[3] = true; aged[3] = 'ready';   // the page opens with one card expanded, to show what a tap gives
+  // Opens or closes a card. The first opening of an item in stock fetches its Stock Ageing.
+  function toggleCard(i) {
+    open[i] = !open[i];
+    if (!open[i] || aged[i] || !AGE[PHOTOS[i].code]) return;
+    aged[i] = 'loading';
+    var mine = run;
+    setTimeout(function () {
+      if (mine !== run) return;   // Restart was pressed meanwhile
+      aged[i] = 'ready';
+      redrawNew();
+    }, AGEING_FETCH);
+  }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  function slot(i, inner) { return '<div class="slot" data-i="' + i + '">' + inner + '</div>'; }
+  function toggle(on, can) {
+    return '<button type="button" class="sw' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" aria-label="Include in the file"' + (can ? '' : ' disabled') + '></button>';
+  }
+
+  var lastShown = {};
+  function renderNew(now) {
+    var kept = order.filter(function (i) { return !removed[i]; });
+    var seenCount = PHOTOS.filter(function (p) { return p.seen <= now; }).length;
+    var read = kept.filter(function (i) { return PHOTOS[i].readAt <= now; }).length;
+    var inFile = kept.filter(function (i) { return PHOTOS[i].readAt <= now && !off[i]; }).length;
+    var finished = now >= NEW_DONE;
+    var active = null;
+    PHOTOS.forEach(function (p, i) {
+      (p.tries || []).forEach(function (look) { if (look.start <= now && now < look.end) active = i; });
+    });
+
+    var strip = '';
+    if (!finished) {
+      var label, tally = read + ' read';
+      if (now < ROUND1) {
+        label = 'Reading photo ' + Math.min(seenCount + 1, N) + ' of ' + N;
+      } else if (active !== null) {
+        label = removed[active] ? 'Zooming in…' : 'Zooming in on photo ' + (active + 1) + ' of ' + N + '…';
+        tally += ' · ' + (kept.length - read) + ' to go';
+      } else {
+        label = 'Checking stock…';
+      }
+      strip = '<div class="strip"><div class="line"><span class="now">' + label + '</span><span class="tally">' + tally + '</span></div>' +
+        '<div class="track"><i style="width:' + (kept.length ? read / kept.length * 100 : 100) + '%"></i></div></div>';
+    }
+
+    var rows = kept.map(function (i) {
+      var p = PHOTOS[i];
+      // Every photo has its row from the start; one not yet reached is greyed.
+      var state = p.seen > now ? (i === seenCount ? 'reading' : 'pending')
+        : p.fullAt <= now ? 'full' : p.readAt <= now ? 'read' : i === active ? 'closer' : 'queued';
+      var fresh = lastShown[i] !== state;
+      lastShown[i] = state;
+      if (state === 'full') return slot(i, cardRow(p, i, fresh));
+      var cls = 'row' + (fresh ? ' fresh' : '');
+      if (state === 'read') {
+        return slot(i, '<div class="' + cls + '"><span class="grip" aria-hidden="true">⋮⋮</span><span class="thumb none" aria-hidden="true"></span>' +
+          '<div class="body"><div class="skel"></div><div class="code">' + p.code + '</div><div class="quiet">Checking stock…</div></div>' +
+          toggle(!off[i], true) + '</div>');
+      }
+      if (state === 'pending' || state === 'reading') cls += ' dim';
+      return slot(i, '<div class="' + cls + '"><span class="grip" aria-hidden="true">⋮⋮</span><span class="thumb photo" aria-hidden="true"></span>' +
+        '<div class="body"><div class="name">Photo ' + (i + 1) + '</div>' +
+        (state === 'closer'
+          ? '<div><span class="pill closer"><span class="spin" aria-hidden="true"></span>Zooming in…</span></div>'
+          : state === 'reading'
+          ? '<div class="quiet busy"><span class="spin" aria-hidden="true"></span>Reading…</div>'
+          : state === 'pending'
+          ? '<div class="quiet">Not read yet</div>'
+          : '<div class="quiet">Waiting to zoom in</div>') +
+        '</div>' + toggle(false, false) + '</div>');
+    }).join('');
+
+    var sub = plural(kept.length, 'photo') + ' · ' + plural(inFile, 'item') + (finished ? ' in the file' : ' so far');
+    var snack = undo ? '<div class="snack" role="status"><span>' + undo.text + '</span><button type="button" id="undo">Undo</button></div>' : '';
+    return {
+      html: appbar('Review photos', sub, finished) + strip + '<div class="list" id="new-list">' + rows +
+        (finished ? '<div class="end">End of list</div>' : '') + '</div>' + snack + footer(inFile, finished && inFile > 0),
+      active: active
+    };
+  }
+
+  var elNow = document.getElementById('phone-now'), elNew = document.getElementById('phone-new');
+  var scrub = document.getElementById('scrub'), clock = document.getElementById('clock');
+  var play = document.getElementById('play'), speed = document.getElementById('speed');
+  scrub.max = END;
+  elNew.classList.add('live');
+
+  function mark(id, at, now) {
+    var el = document.getElementById(id);
+    el.textContent = isFinite(at) ? at.toFixed(1) + ' s' : '—';
+    el.className = now >= at ? 'hit' : '';
+  }
+  // When the fifth row still in the list has its stock; none when fewer than five are left.
+  function fifthFull() {
+    var times = PHOTOS.filter(function (p, i) { return !removed[i]; }).map(function (p) { return p.fullAt; })
+      .filter(isFinite).sort(function (a, b) { return a - b; });
+    return times.length >= 5 ? times[4] : NaN;
+  }
+
+  var now = parseFloat(scrub.value), playing = false, last = 0, prevNowHtml = '', prevNewHtml = '';
+  var hold = false;   // a finger is on a row: leave the list alone until it lifts
+  function draw() {
+    var a = renderToday(now);
+    if (a !== prevNowHtml) { elNow.innerHTML = a; prevNowHtml = a; }
+    if (!hold) {
+      var b = renderNew(now);
+      if (b.html !== prevNewHtml) {
+        var old = document.getElementById('new-list'), top = old ? old.scrollTop : 0;
+        elNew.innerHTML = b.html; prevNewHtml = b.html;
+        var list = document.getElementById('new-list');
+        list.scrollTop = top;
+        var row = playing && b.active !== null ? list.querySelector('.slot[data-i="' + b.active + '"]') : null;
+        if (row && (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight || row.offsetTop < list.scrollTop)) {
+          list.scrollTop = Math.max(0, row.offsetTop - list.clientHeight / 2);
+        }
+      }
+    }
+    clock.textContent = now.toFixed(1) + ' s';
+    scrub.value = now;
+    mark('now-first', TODAY_LIST, now); mark('now-five', TODAY_LIST, now); mark('now-all', TODAY_LIST, now);
+    scrub.max = END;
+    mark('new-first', PHOTOS[0].seen, now); mark('new-five', fifthFull(), now); mark('new-all', NEW_DONE, now);
+  }
+  function redrawNew() { prevNewHtml = ''; draw(); }
+
+  // Switch, Undo.
+  elNew.addEventListener('click', function (e) {
+    if (e.target.closest('#undo') && undo) {
+      removed[undo.i] = false;
+      gone[undo.i][gone[undo.i].length - 1].to = now;
+      replan();
+      undo = null; clearTimeout(undoTimer);
+      redrawNew();
+      return;
+    }
+    var chev = e.target.closest('button.chev');
+    if (chev) {
+      toggleCard(+chev.closest('.slot').dataset.i);
+      redrawNew();
+      return;
+    }
+    var sw = e.target.closest('button.sw');
+    if (sw && !sw.disabled) {
+      var i = +sw.closest('.slot').dataset.i;
+      off[i] = !off[i];
+      redrawNew();
+    }
+  });
+
+  // Swipe a row left to remove it; drag it by the handle to move it.
+  var gesture = null;
+  function removeRow(i) {
+    removed[i] = true;
+    gone[i].push({ from: now });
+    replan();
+    undo = { i: i, text: PHOTOS[i].readAt <= now ? 'Item removed.' : 'Photo removed.' };
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(function () { undo = null; redrawNew(); }, 5000);
+  }
+  function moveRow(i, y) {
+    var before = null;
+    Array.prototype.some.call(elNew.querySelectorAll('.slot'), function (s) {
+      if (+s.dataset.i === i) return false;
+      var r = s.getBoundingClientRect();
+      if (y < r.top + r.height / 2) { before = +s.dataset.i; return true; }
+      return false;
+    });
+    order.splice(order.indexOf(i), 1);
+    if (before === null) order.push(i); else order.splice(order.indexOf(before), 0, i);
+    moves.push({ at: now, order: order.slice() });
+    replan();
+  }
+  elNew.addEventListener('pointerdown', function (e) {
+    var el = e.target.closest('.slot');
+    if (!el || e.target.closest('button')) return;
+    gesture = { el: el, i: +el.dataset.i, x: e.clientX, y: e.clientY, id: e.pointerId, kind: null };
+    if (e.target.closest('.grip')) {
+      gesture.kind = 'drag'; hold = true;
+      el.classList.add('dragging');
+      el.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+  });
+  elNew.addEventListener('pointermove', function (e) {
+    if (!gesture || e.pointerId !== gesture.id) return;
+    var dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+    if (!gesture.kind) {
+      if (dx < -8 && Math.abs(dx) > Math.abs(dy)) {
+        gesture.kind = 'swipe'; hold = true;
+        gesture.el.classList.add('swiping');
+        gesture.el.setPointerCapture(e.pointerId);
+      } else if (Math.abs(dy) > 8) { gesture = null; return; }   // a scroll, not a swipe
+      else return;
+    }
+    if (gesture.kind === 'swipe') gesture.el.firstElementChild.style.transform = 'translateX(' + Math.min(0, dx) + 'px)';
+    else gesture.el.style.transform = 'translateY(' + dy + 'px)';
+  });
+  function endGesture(e, cancelled) {
+    if (!gesture || e.pointerId !== gesture.id) return;
+    var g = gesture;
+    gesture = null; hold = false;
+    if (!cancelled && g.kind === 'swipe' && e.clientX - g.x < -90) removeRow(g.i);
+    else if (!cancelled && g.kind === 'drag') moveRow(g.i, e.clientY);
+    else if (!cancelled && !g.kind && PHOTOS[g.i].fullAt <= now) toggleCard(g.i);   // a plain tap on a read row
+    redrawNew();
+  }
+  elNew.addEventListener('pointerup', function (e) { endGesture(e, false); });
+  elNew.addEventListener('pointercancel', function (e) { endGesture(e, true); });
+
+  function tick(ts) {
+    if (!playing) return;
+    now = Math.min(END, now + (ts - last) / 1000 * parseFloat(speed.value));
+    last = ts;
+    draw();
+    if (now >= END) { setPlaying(false); return; }
+    requestAnimationFrame(tick);
+  }
+  function setPlaying(on) {
+    playing = on;
+    play.textContent = on ? 'Pause' : 'Play';
+    if (on) { last = performance.now(); requestAnimationFrame(tick); }
+  }
+  play.addEventListener('click', function () {
+    if (!playing && now >= END) { now = 0; lastShown = {}; }
+    setPlaying(!playing);
+  });
+  document.getElementById('restart').addEventListener('click', function () {
+    now = 0; lastShown = {}; resetUser();
+    redrawNew(); setPlaying(true);
+  });
+  scrub.addEventListener('input', function () { setPlaying(false); now = parseFloat(scrub.value); draw(); });
+  draw();
+})();
+</script>
+
+</body>
+</html>

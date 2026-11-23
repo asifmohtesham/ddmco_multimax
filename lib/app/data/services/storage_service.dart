@@ -61,7 +61,7 @@ class StorageService {
 
   // Stock sheet: the file format of the last Make sheet
   // ('excel' | 'pdf' | 'both').
-  static const String _stockSheetFormatKey = 'stock_sheet_last_format';
+  static const String _itemsFromPhotosFormatKey = 'stock_sheet_last_format';
 
   // --- User Data ---
   Future<void> saveUser(User user) async {
@@ -206,6 +206,19 @@ class StorageService {
     return v is List ? v.map((e) => e.toString()).toList() : null;
   }
 
+  Map<String, bool> getItemVariantFields() {
+    final saved = _box.read('ivd_fields');
+    if (saved is! Map) return {};
+    return {
+      for (final entry in saved.entries)
+        if (entry.key is String && entry.value is bool)
+          entry.key as String: entry.value as bool,
+    };
+  }
+
+  Future<void> saveItemVariantFields(Map<String, bool> fields) async =>
+      _box.write('ivd_fields', fields);
+
   // --- Dashboard view preferences ---
   // Quick Create card layout: 1 or 2 columns. Anything else clamps to the
   // 1-column default so a stale/corrupt value can never break the grid.
@@ -320,9 +333,9 @@ class StorageService {
       _box.read<String>('$_soLastPriceListKey::$user');
 
   // --- Stock sheet: last file format ---
-  Future<void> saveStockSheetFormat(String value) async =>
-      _box.write(_stockSheetFormatKey, value);
+  Future<void> saveItemsFromPhotosFormat(String value) async =>
+      _box.write(_itemsFromPhotosFormatKey, value);
 
   /// Null until the first Make sheet.
-  String? getStockSheetFormat() => _box.read<String>(_stockSheetFormatKey);
+  String? getItemsFromPhotosFormat() => _box.read<String>(_itemsFromPhotosFormatKey);
 }

@@ -24,6 +24,8 @@ import 'package:multimax/app/modules/item/form/widgets/item_prices_tab.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_card.dart';
 import 'package:multimax/app/modules/item/form/widgets/reorder_rule_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
+import 'package:multimax/app/modules/global_widgets/file_download_button.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 
 class ItemFormScreen extends GetView<ItemFormController> {
   const ItemFormScreen({super.key});
@@ -662,8 +664,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
 
   Widget _buildAttachmentsTab(BuildContext context, ColorScheme cs) {
     final theme = Theme.of(context);
-    final String baseUrl = Get.find<ApiProvider>().baseUrl;
-
     return Obx(() {
       if (controller.attachments.isEmpty) {
         return Center(
@@ -686,9 +686,10 @@ class ItemFormScreen extends GetView<ItemFormController> {
         itemBuilder: (ctx, i) {
           final file = controller.attachments[i];
           final String fileUrl = file['file_url'] ?? '';
-          final String fileName = file['file_name'] ?? 'Unknown';
-          final bool isImg = controller.isImage(fileUrl);
-          final String fullUrl = '$baseUrl$fileUrl';
+          final String? fileName = file['file_name'];
+          final bool isImg =
+              controller.isImage(fileName) || controller.isImage(fileUrl);
+          final fullUrl = controller.attachmentUrl(fileUrl);
 
           return Card(
             elevation: 0,
@@ -699,10 +700,16 @@ class ItemFormScreen extends GetView<ItemFormController> {
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () {
-                if (isImg) _openFullScreenImage(context, fullUrl);
-                else controller.copyLink(fileUrl);
-              },
+              onTap: fileUrl.isEmpty
+                  ? null
+                  : () {
+                      if (isImg) {
+                        showItemImagePreview(context, fullUrl, '', fileName ?? '',
+                            fileName: fileName);
+                      } else {
+                        controller.copyLink(fileUrl);
+                      }
+                    },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -734,24 +741,31 @@ class ItemFormScreen extends GetView<ItemFormController> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 6, 4, 2),
                     child: Text(
-                      fileName,
+                      fileName ?? 'Unknown',
                       style: theme.textTheme.labelSmall
                           ?.copyWith(color: cs.onSurface),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      icon: Icon(Icons.share, size: 18,
-                          color: cs.onSurfaceVariant),
-                      onPressed: () =>
-                          controller.shareFile(fileUrl, fileName),
-                      padding: const EdgeInsets.only(right: 8, bottom: 4),
-                      constraints: const BoxConstraints(),
+                  if (fileUrl.isNotEmpty)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        FileDownloadButton(
+                          key: ValueKey(fullUrl),
+                          url: fullUrl,
+                          fileName: fileName,
+                          isImage: isImg,
+                        ),
+                        FileDownloadButton(
+                          key: ValueKey('share-$fullUrl'),
+                          url: fullUrl,
+                          fileName: fileName,
+                          shareOnly: true,
+                        ),
+                      ],
                     ),
-                  ),
                 ],
               ),
             ),
@@ -759,58 +773,6 @@ class ItemFormScreen extends GetView<ItemFormController> {
         },
       );
     });
-  }
-
-  // ── Shared helpers ────────────────────────────────────────────────────────
-
-  void _openFullScreenImage(BuildContext context, String url) {
-    Get.dialog(
-      barrierDismissible: true,
-      barrierColor: Colors.black87,
-      Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.zero,
-        child: GestureDetector(
-          onVerticalDragEnd: (details) {
-            if (details.primaryVelocity != null &&
-                details.primaryVelocity! > 300) {
-              Get.back();
-            }
-          },
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                child: Center(
-                  child: Image.network(
-                    url,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return const Center(
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 64,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 40,
-                right: 20,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: Get.back,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ── Re-order Tab ──────────────────────────────────────────────────────────

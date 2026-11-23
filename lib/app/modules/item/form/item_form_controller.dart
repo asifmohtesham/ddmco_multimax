@@ -16,8 +16,6 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/item/form/reorder_rules.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:dio/dio.dart';
 
 class ItemFormController extends GetxController with OptimisticLockingMixin {
@@ -673,7 +671,7 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
 
   bool isImage(String? url) {
     if (url == null) return false;
-    final lower = url.toLowerCase();
+    final lower = (Uri.tryParse(url)?.path ?? url).toLowerCase();
     return lower.endsWith('.png') ||
         lower.endsWith('.jpg') ||
         lower.endsWith('.jpeg') ||
@@ -687,34 +685,14 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     GlobalSnackbar.success(message: 'Copied to clipboard');
   }
 
+  String attachmentUrl(String url) =>
+      Uri.parse(_apiProvider.baseUrl).resolve(url).toString();
+
   void copyLink(String? relativeUrl) {
     if (relativeUrl == null) return;
-    final fullUrl = '${_apiProvider.baseUrl}$relativeUrl';
+    final fullUrl = attachmentUrl(relativeUrl);
     Clipboard.setData(ClipboardData(text: fullUrl));
     GlobalSnackbar.success(message: 'Link copied to clipboard');
   }
 
-  Future<void> shareFile(String? relativeUrl, String? fileName) async {
-    if (relativeUrl == null || fileName == null) return;
-    final fullUrl = '${_apiProvider.baseUrl}$relativeUrl';
-
-    Get.dialog(
-      const Center(child: CircularProgressIndicator()),
-      barrierDismissible: false,
-    );
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final savePath = '${tempDir.path}/$fileName';
-      await Dio().download(fullUrl, savePath);
-      if (Get.isDialogOpen == true) Get.back();
-      await Share.shareXFiles([XFile(savePath)], text: 'Shared via Multimax ERP');
-    } catch (e) {
-      if (Get.isDialogOpen == true) Get.back();
-      Clipboard.setData(ClipboardData(text: fullUrl));
-      GlobalSnackbar.info(
-          title: 'Share Info',
-          message: 'Could not download file. Link copied.');
-    }
-  }
 }

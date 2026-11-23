@@ -5,12 +5,12 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../model/stock_sheet_models.dart';
+import '../model/items_from_photos_models.dart';
 
 /// Writes the stock sheet as an A4 portrait PDF that mirrors the Excel
 /// layout: the same columns, header colour and red out-of-stock rows.
-class PdfStockSheetWriter {
-  PdfStockSheetWriter._();
+class PdfItemsFromPhotosWriter {
+  PdfItemsFromPhotosWriter._();
 
   static const _headerFill = PdfColor.fromInt(0xFF305496);
   static const _grid = PdfColor.fromInt(0xFFBFBFBF);
@@ -30,7 +30,7 @@ class PdfStockSheetWriter {
   /// [regular] and [bold] default to the bundled Inter fonts, so characters
   /// outside Latin-1 do not break the built-in Helvetica.
   static Future<Uint8List> write(
-    StockSheetDocument doc, {
+    ItemsFromPhotosDocument doc, {
     pw.Font? regular,
     pw.Font? bold,
   }) async {
@@ -43,7 +43,7 @@ class PdfStockSheetWriter {
   /// The same document as [write], laid out on a background isolate so a
   /// large share does not freeze the UI. The fonts are read here, because
   /// the asset bundle is only reachable from the UI isolate.
-  static Future<Uint8List> writeInBackground(StockSheetDocument doc) async {
+  static Future<Uint8List> writeInBackground(ItemsFromPhotosDocument doc) async {
     final regular = await _fontData(_regularFontFile);
     final bold = await _fontData(_boldFontFile);
     return Isolate.run(
@@ -52,7 +52,7 @@ class PdfStockSheetWriter {
   }
 
   static Future<Uint8List> _render(
-    StockSheetDocument doc,
+    ItemsFromPhotosDocument doc,
     pw.Font regularFont,
     pw.Font boldFont,
   ) async {

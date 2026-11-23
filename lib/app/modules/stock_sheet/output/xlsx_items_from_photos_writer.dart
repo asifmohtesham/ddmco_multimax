@@ -5,12 +5,12 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
 
-import '../model/stock_sheet_models.dart';
+import '../model/items_from_photos_models.dart';
 
 /// Writes the stock sheet as an `.xlsx` workbook, building the OOXML parts by
 /// hand so the thumbnails can be embedded as real pictures.
-class XlsxStockSheetWriter {
-  XlsxStockSheetWriter._();
+class XlsxItemsFromPhotosWriter {
+  XlsxItemsFromPhotosWriter._();
 
   static const _sheetName = 'Items';
   static const _firstDataRow = 5;
@@ -34,10 +34,10 @@ class XlsxStockSheetWriter {
 
   /// [write] on a background isolate, so decoding every thumbnail does not
   /// freeze the UI. The document is plain data and is copied across.
-  static Future<Uint8List> writeInBackground(StockSheetDocument doc) =>
+  static Future<Uint8List> writeInBackground(ItemsFromPhotosDocument doc) =>
       Isolate.run(() => write(doc));
 
-  static Uint8List write(StockSheetDocument doc) {
+  static Uint8List write(ItemsFromPhotosDocument doc) {
     final headers = [
       '#',
       'Image',

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,12 +7,14 @@ import 'package:multimax/app/core/utils/app_notification.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/fix_code_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/item_image_viewer.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_result_list.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_start_panel.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_result_list.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_start_panel.dart';
 
 /// Returns the paths of the photos taken or picked; empty when cancelled.
 typedef PhotoPicker = Future<List<String>> Function();
@@ -57,8 +57,8 @@ enum _AddSource { camera, gallery, files }
 /// Stateful (not a GetView) because it drives the share, the out-of-stock
 /// sheet and the new-share question from workers on the controller, which
 /// need this screen's lifetime and context.
-class StockSheetScreen extends StatefulWidget {
-  const StockSheetScreen({
+class ItemsFromPhotosScreen extends StatefulWidget {
+  const ItemsFromPhotosScreen({
     super.key,
     this.paths,
     this.pickCamera = _takePhoto,
@@ -83,11 +83,11 @@ class StockSheetScreen extends StatefulWidget {
   final Future<bool> Function() runningOnMac;
 
   @override
-  State<StockSheetScreen> createState() => _StockSheetScreenState();
+  State<ItemsFromPhotosScreen> createState() => _ItemsFromPhotosScreenState();
 }
 
-class _StockSheetScreenState extends State<StockSheetScreen> {
-  final StockSheetController controller = Get.find<StockSheetController>();
+class _ItemsFromPhotosScreenState extends State<ItemsFromPhotosScreen> {
+  final ItemsFromPhotosController controller = Get.find<ItemsFromPhotosController>();
   final List<Worker> _workers = [];
 
   /// Bumped when this screen closes the sheets above it for a new share, so
@@ -114,16 +114,16 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     _workers
       ..add(ever<int>(controller.shareSerial, (_) => _startShare()))
       ..add(
-        ever<StockSheetPhase>(controller.phase, (phase) {
-          if (phase != StockSheetPhase.reviewing) _closeUndoBar();
-          if (phase == StockSheetPhase.awaitingChoice) _askOutOfStock();
+        ever<ItemsFromPhotosPhase>(controller.phase, (phase) {
+          if (phase != ItemsFromPhotosPhase.reviewing) _closeUndoBar();
+          if (phase == ItemsFromPhotosPhase.awaitingChoice) _askOutOfStock();
         }),
       )
       ..add(
         ever<int>(
           controller.alreadyListed,
           (_) => AppNotification.warning(
-            StockSheetController.alreadyListedMessage,
+            ItemsFromPhotosController.alreadyListedMessage,
           ),
         ),
       )
@@ -170,7 +170,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   }
 
   bool get _reviewing => switch (controller.phase.value) {
-    StockSheetPhase.reviewing || StockSheetPhase.awaitingChoice => true,
+    ItemsFromPhotosPhase.reviewing || ItemsFromPhotosPhase.awaitingChoice => true,
     _ => false,
   };
 
@@ -189,7 +189,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     final choice = await showOutOfStockSheet(context, count: count);
     if (!mounted || serial != controller.shareSerial.value) return;
     if (epoch != _sheetEpoch) return;
-    if (controller.phase.value != StockSheetPhase.awaitingChoice) return;
+    if (controller.phase.value != ItemsFromPhotosPhase.awaitingChoice) return;
     // Dismissed (null), it goes back to the review.
     await controller.chooseOutOfStock(choice);
   }
@@ -222,8 +222,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     if (mounted && error != null) AppNotification.warning(error);
   }
 
-  /// Back during the review: the photos go only if the user says so. The
-  /// controller's onClose cleans up once the screen has gone.
+  /// Back during the review, or while the photos given are fingerprinted:
+  /// the photos go only if the user says so. The controller's onClose
+  /// cleans up once the screen has gone.
   Future<void> _confirmDiscard() async {
     if (_askingDiscard) return;
     _askingDiscard = true;
@@ -253,10 +254,14 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     _close();
   }
 
+  /// The row is named by its id, taken now: while the code is typed, rows
+  /// above it can become several, so its index may change.
   void _fix(int index) {
+    if (index < 0 || index >= controller.review.length) return;
+    final rowId = controller.review[index].id;
     showFixCodeSheet(
       context,
-      onSubmit: (code) => controller.fixCode(index, code),
+      onSubmit: (code) => controller.fixCode(rowId, code),
     );
   }
 
@@ -294,8 +299,9 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
     }
   }
 
-  Future<void> _retryCheck(int index) async {
-    final error = await controller.retryCheck(index);
+  /// "Retry check" on any row checks every "Stock not checked" row.
+  Future<void> _retryCheck(int _) async {
+    final error = await controller.retryCheck();
     if (mounted && error != null) AppNotification.warning(error);
   }
 
@@ -342,8 +348,11 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   Widget build(BuildContext context) {
     return Obx(() {
       final reviewing = _reviewing;
+      // From the first frame with photos: while they are fingerprinted too.
+      final askFirst =
+          reviewing || controller.phase.value == ItemsFromPhotosPhase.decoding;
       return PopScope(
-        canPop: !reviewing,
+        canPop: !askFirst,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _confirmDiscard();
         },
@@ -363,6 +372,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
       title: Obx(() {
         final photos = controller.photoCount;
         final items = controller.sheetItemCount;
+        final reading = controller.reading.value;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -370,7 +380,8 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             const Text('Review photos'),
             Text(
               '$photos photo${photos == 1 ? '' : 's'} · '
-              '$items item${items == 1 ? '' : 's'} in the file',
+              '$items item${items == 1 ? '' : 's'} '
+              '${reading ? 'so far' : 'in the file'}',
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
             ),
           ],
@@ -431,10 +442,10 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   Widget _body() {
     switch (controller.phase.value) {
-      case StockSheetPhase.idle:
+      case ItemsFromPhotosPhase.idle:
         if (!_openedEmpty) return const SizedBox.shrink();
         return Obx(
-          () => StockSheetStartPanel(
+          () => ItemsFromPhotosStartPanel(
             onMac: _onMac,
             busy: _picking.value,
             onChooseFiles: () => _startFrom(_AddSource.files),
@@ -442,45 +453,72 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             onTakePhoto: _onMac ? null : () => _startFrom(_AddSource.camera),
           ),
         );
-      case StockSheetPhase.decoding:
-        final total = controller.total.value;
-        final decoded = controller.decoded.value;
+      case ItemsFromPhotosPhase.decoding:
+        // Only the moment the photos are fingerprinted; the reading itself
+        // shows in the review's strip.
         return _Progress(
-          value: total == 0 ? null : decoded / total,
-          label: 'Reading photo ${math.min(decoded + 1, total)} of $total',
+          label: 'Reading photo 1 of ${controller.total.value}',
         );
-      case StockSheetPhase.checkingStock:
-        return const _Progress(label: 'Checking stock…');
-      case StockSheetPhase.reviewing:
-      case StockSheetPhase.awaitingChoice:
+      case ItemsFromPhotosPhase.reviewing:
+      case ItemsFromPhotosPhase.awaitingChoice:
         // The list stays behind the out-of-stock question.
-        return ReviewList(
-          entries: controller.review.toList(),
-          thumbnails: Map.of(controller.thumbnails),
-          onReorder: controller.reorder,
-          onToggle: controller.setIncluded,
-          onFix: _fix,
-          onRetryCheck: _retryCheck,
-          onRemove: _remove,
-          removeEnabled: controller.canRemove,
-          recheckBusy: controller.rechecking,
+        return Column(
+          children: [
+            // Built from the same rows as the list: the body's Obx rebuilds
+            // both whenever a row changes.
+            ReadingStrip(entries: controller.review.toList()),
+            Expanded(child: _reviewList()),
+          ],
         );
-      case StockSheetPhase.building:
+      case ItemsFromPhotosPhase.building:
         return const _Progress(label: 'Generating the file…');
-      case StockSheetPhase.done:
+      case ItemsFromPhotosPhase.done:
         final result = controller.result.value;
         if (result == null) return const SizedBox.shrink();
-        return StockSheetResultList(
+        return ItemsFromPhotosResultList(
           result: result,
           // The photos on the sheet, as in the file's subtitle.
           photoCount: controller.sheetPhotoCount,
           thumbnails: Map.of(controller.thumbnails),
         );
-      case StockSheetPhase.error:
+      case ItemsFromPhotosPhase.error:
         return _ErrorMessage(
           message: controller.errorMessage.value ?? 'Something went wrong.',
         );
     }
+  }
+
+  Widget _reviewList() {
+    return ReviewList(
+      entries: controller.review.toList(),
+      thumbnails: Map.of(controller.thumbnails),
+      onReorder: controller.reorder,
+      onToggle: controller.setIncluded,
+      onFix: _fix,
+      onRetryCheck: _retryCheck,
+      onRemove: _remove,
+      removeEnabled: controller.canRemove,
+      recheckBusy: controller.rechecking,
+      openCards: controller.openCards.toSet(),
+      ageing: Map.of(controller.ageing),
+      onToggleCard: controller.toggleCard,
+      onRetryAgeing: controller.retryAgeing,
+      onPreviewImage: (context, info) {
+        final url = info.image!.trim();
+        final sheet = controller;
+        Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => ItemImageViewer(
+              item: info,
+              cachedBytes: sheet.cachedItemImage(url),
+              load: ({required refresh}) =>
+                  sheet.itemImage(url, refresh: refresh),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// Saves the files to a folder the user picks. Outlined beside the filled
@@ -521,7 +559,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   Future<void> _download() async {
     final message = await controller.download();
     if (!mounted || message == null) return;
-    if (message == StockSheetController.saveFailedMessage) {
+    if (message == ItemsFromPhotosController.saveFailedMessage) {
       AppNotification.warning(message);
     } else {
       AppNotification.success(message);
@@ -530,16 +568,18 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 
   Widget _footer() {
     switch (controller.phase.value) {
-      case StockSheetPhase.reviewing:
-      case StockSheetPhase.awaitingChoice:
+      case ItemsFromPhotosPhase.reviewing:
+      case ItemsFromPhotosPhase.awaitingChoice:
         // One row of the file per item switched on.
         final n = controller.sheetItemCount;
         final label = 'Generate file · $n item${n == 1 ? '' : 's'}';
         const icon = Icon(Icons.description_outlined);
-        // Nothing on the sheet, or the list still changing: makeSheet would
-        // refuse, so the button says so by being disabled.
+        // Nothing on the sheet, or the list still changing (photos being read
+        // included): makeSheet would refuse, so the button says so by being
+        // disabled.
         final blocked =
             n == 0 ||
+            controller.reading.value ||
             controller.adding.value ||
             controller.rechecking.value ||
             controller.fixing.value;
@@ -586,7 +626,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             ),
           ],
         );
-      case StockSheetPhase.done:
+      case ItemsFromPhotosPhase.done:
         return _ActionBar(
           message: controller.errorMessage.value,
           children: [
@@ -616,7 +656,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
             OutlinedButton(onPressed: _close, child: const Text('Done')),
           ],
         );
-      case StockSheetPhase.error:
+      case ItemsFromPhotosPhase.error:
         return _ActionBar(
           children: [
             if (controller.canRetry)
@@ -640,7 +680,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
   }
 }
 
-/// Asks what to do with [StockSheetController.pendingShare]. Add is offered
+/// Asks what to do with [ItemsFromPhotosController.pendingShare]. Add is offered
 /// only when the photos fit under the limit, counting photos still being
 /// added. The text follows a second share joining the first and an add
 /// landing; once the share is cleared on answering, the last text stays
@@ -648,7 +688,7 @@ class _StockSheetScreenState extends State<StockSheetScreen> {
 class _PendingShareDialog extends StatefulWidget {
   const _PendingShareDialog({required this.controller});
 
-  final StockSheetController controller;
+  final ItemsFromPhotosController controller;
 
   @override
   State<_PendingShareDialog> createState() => _PendingShareDialogState();
@@ -674,7 +714,7 @@ class _PendingShareDialogState extends State<_PendingShareDialog> {
               ? asked.count == 1
                     ? 'Add this photo to the list, or start again?'
                     : 'Add these ${asked.count} photos to the list, or start again?'
-              : StockSheetController.roomMessage(asked.room),
+              : ItemsFromPhotosController.roomMessage(asked.room),
         ),
         actions: [
           TextButton(
@@ -697,12 +737,9 @@ class _PendingShareDialogState extends State<_PendingShareDialog> {
 }
 
 class _Progress extends StatelessWidget {
-  const _Progress({required this.label, this.value});
+  const _Progress({required this.label});
 
   final String label;
-
-  /// Null for an indeterminate bar.
-  final double? value;
 
   @override
   Widget build(BuildContext context) {
@@ -713,7 +750,7 @@ class _Progress extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            LinearProgressIndicator(value: value, backgroundColor: s.subtle),
+            LinearProgressIndicator(backgroundColor: s.subtle),
             const SizedBox(height: 12),
             Text(label, style: TextStyle(color: s.text)),
           ],

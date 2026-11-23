@@ -134,6 +134,13 @@ Form screen
   extraActions: [ reload, save, share ]
 ```
 
+**The title shows once.** As in Material 3's large top app bar, the title
+appears either large (expanded) or in the toolbar (collapsed), never both.
+`DocTypeListHeader` hides the toolbar title until the header is more than
+half collapsed. Screens must not add their own toolbar title to work around
+it. This applies to every screen since the Item Variant Details work of
+22 November 2026; before that, expanded headers showed the title twice.
+
 ---
 
 ## 4. Suggestions for Future Improvement

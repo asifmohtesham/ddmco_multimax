@@ -111,8 +111,8 @@ class ItemStock {
 }
 
 /// One sheet row: a single item found in a single photo.
-class StockSheetRow {
-  const StockSheetRow({
+class ItemsFromPhotosRow {
+  const ItemsFromPhotosRow({
     required this.photoIndex,
     required this.photoPath,
     required this.barcode,
@@ -127,7 +127,7 @@ class StockSheetRow {
   final String photoPath;
   final String barcode;
 
-  /// The key of the Item's ERP image in [StockSheetDocument.thumbnails], or
+  /// The key of the Item's ERP image in [ItemsFromPhotosDocument.thumbnails], or
   /// null when the Item has none: the Image cell is then left blank. The
   /// photo itself is never the row's image.
   final String? imageKey;
@@ -156,10 +156,10 @@ class UnresolvedEntry {
   final String? barcode;
 }
 
-class StockSheetResult {
-  const StockSheetResult({required this.rows, required this.unresolved});
+class ItemsFromPhotosResult {
+  const ItemsFromPhotosResult({required this.rows, required this.unresolved});
 
-  final List<StockSheetRow> rows;
+  final List<ItemsFromPhotosRow> rows;
   final List<UnresolvedEntry> unresolved;
 
   int get outOfStockCount => rows.where((r) => r.outOfStock).length;
@@ -175,8 +175,8 @@ class StockAccessDenied implements Exception {
 }
 
 /// Everything a writer needs to render the sheet.
-class StockSheetDocument {
-  const StockSheetDocument({
+class ItemsFromPhotosDocument {
+  const ItemsFromPhotosDocument({
     required this.title,
     required this.subtitle,
     required this.rows,
@@ -187,9 +187,9 @@ class StockSheetDocument {
 
   final String title;
   final String subtitle;
-  final List<StockSheetRow> rows;
+  final List<ItemsFromPhotosRow> rows;
 
-  /// JPEG thumbnails keyed by [StockSheetRow.imageKey].
+  /// JPEG thumbnails keyed by [ItemsFromPhotosRow.imageKey].
   final Map<String, Uint8List> thumbnails;
 
   /// Colour out-of-stock rows red.

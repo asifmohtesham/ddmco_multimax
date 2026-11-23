@@ -1,7 +1,98 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
+
+class _EmptySettings {
+  T? read<T>(String key) => null;
+}
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'dimension-wise Stock Balance encodes the selected warehouses',
+    () async {
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (_) async => 'build');
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      Get.put(StorageService.withStorage(_EmptySettings()));
+      addTearDown(Get.reset);
+      final api = ApiProvider();
+      await api.initDio();
+      final requests = <Map<String, dynamic>>[];
+      api.dio.interceptors
+        ..clear()
+        ..add(
+          InterceptorsWrapper(
+            onRequest: (request, handler) {
+              final query = request.queryParameters;
+              if (query['report_name'] == 'Stock Balance') {
+                requests.add(
+                  jsonDecode(query['filters'] as String)
+                      as Map<String, dynamic>,
+                );
+              }
+              handler.resolve(
+                Response(
+                  requestOptions: request,
+                  statusCode: 200,
+                  data: {
+                    'message': {
+                      if (query['report_name'] == 'Stock Balance')
+                        'result': <dynamic>[
+                          {'rack': 'Rack 1', 'bal_qty': 2.5},
+                        ]
+                      else
+                        'erpnext': {'version': '16.60.0'},
+                    },
+                  },
+                ),
+              );
+            },
+          ),
+        );
+
+      final rows = await api.getStockBalanceWithDimension(itemCode: 'Variant');
+      await api.getStockBalanceWithDimension(
+        itemCode: 'Variant',
+        warehouses: ['WH-A'],
+      );
+      await api.getStockBalanceWithDimension(
+        itemCode: 'Variant',
+        warehouses: ['WH-A', 'WH-B'],
+      );
+      await api.getStockBalanceWithDimension(
+        itemCode: 'Variant',
+        warehouse: 'Legacy WH',
+        batchNo: 'Batch 1',
+      );
+
+      expect(rows, [
+        {'rack': 'Rack 1', 'qty': 2.5},
+      ]);
+      expect(requests.first.containsKey('warehouse'), isFalse);
+      expect(requests.map((filters) => filters['warehouse']), [
+        null,
+        'WH-A',
+        ['WH-A', 'WH-B'],
+        'Legacy WH',
+      ]);
+      expect(requests.last['batch_no'], 'Batch 1');
+      for (final filters in requests) {
+        expect(filters['item_code'], ['Variant']);
+        expect(filters['show_dimension_wise_stock'], 1);
+        expect(filters['show_variant_attributes'], 1);
+      }
+    },
+  );
+
   group('ApiProvider.parseStockBalanceResponse', () {
     test('T-1: returns empty record when message is null', () {
       final result = ApiProvider.parseStockBalanceResponse(null);

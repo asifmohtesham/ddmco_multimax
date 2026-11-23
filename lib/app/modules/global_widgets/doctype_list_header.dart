@@ -164,6 +164,9 @@ const double _kChipRow = 48.0;
 /// The expanded (large) title in the area above the toolbar never clips:
 /// [softWrap] is `true`, [maxLines] is `null`.
 class DocTypeListHeader extends StatelessWidget {
+  /// Height of the pinned filter and quick-chip row.
+  static const chipRowHeight = _kChipRow;
+
   // ── AppBar ────────────────────────────────────────────────────────────
   final String title;
   final List<Widget>? extraActions;
@@ -496,7 +499,8 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     final statusBarShield = SizedBox(height: statusBarHeight);
 
     // ─ Toolbar row ──────────────────────────────────────────────────────
-    final toolbar = _buildToolbar(context, colorScheme, theme);
+    final showLargeTitle = collapseProgress < 0.5;
+    final toolbar = _buildToolbar(context, colorScheme, theme, !showLargeTitle);
 
     // ─ Large title (fades out as user scrolls) ──────────────────────────
     final largeTitle = Opacity(
@@ -604,7 +608,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
                 children: [
                   SizedBox(
                     height: math.max(0.0, _kExpandedExtra * expandProgress),
-                    child: largeTitle,
+                    child: showLargeTitle ? largeTitle : null,
                   ),
                   toolbar,
                   if (bottom != null) bottom!,
@@ -627,6 +631,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
     BuildContext context,
     ColorScheme colorScheme,
     ThemeData theme,
+    bool showTitle,
   ) {
     final titleStyle  = theme.textTheme.titleLarge;
     final maxFontSize = (titleStyle?.fontSize ?? 22.0);
@@ -635,7 +640,7 @@ class _DocTypeListHeaderDelegate extends SliverPersistentHeaderDelegate {
       height: _kToolbar,
       child: NavigationToolbar(
         leading: _buildLeading(context),
-        middle: AutoSizeText(
+        middle: !showTitle ? null : AutoSizeText(
           title,
           style: titleStyle,
           maxLines: _kAutoSizeMaxLines,

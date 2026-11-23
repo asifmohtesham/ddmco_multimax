@@ -66,3 +66,37 @@ below are a deadline, not a nice-to-have.
 - [ ] **`git fetch origin` fails from `.claude/worktrees/*`** ("correct access
       rights"); side sessions cannot see the remote. Fix the credential/remote
       setup for worktrees so they can diff against `origin/release/play-store`.
+
+## Follow-ups after 2.46.1 (2026-11-20)
+
+- [ ] **Oldest stock first on ERPNext v15.** Exercise every query and fallback
+      against v15. Only v16 was verified, and none of the fallback forms has run.
+- [ ] **Oldest stock first in Stock Entry.** Smoke-test the item sheet on a
+      device for Material Issue and Material Transfer for Manufacture. Only
+      the Delivery Note sheet was exercised.
+- [ ] **Oldest stock first without the Stock User role.** Test with an account
+      that lacks the role. The check fails closed, so the user is refused
+      every batch in a `WH-` warehouse.
+- [ ] **Oldest stock first role-based override.** Implement the business's
+      later-stage Server Script and enforce the rule in
+      `docs/batch_age_validation.md`.
+- [ ] **Oldest stock first reservations and stale drafts.** Cover the cases
+      where stock reserved for another order still blocks a pick and a stale
+      draft keeps its quantity off the balance.
+- [ ] **Delivery Note's second POST.** The first-item guard for auto-save and
+      manual Save is merged. Trace the second POST observed during the
+      original smoke test.
+- [ ] **Windows-only test failures.** Fix the teardown failures in
+      `test/unit/stock_ageing_controller_test.dart` where file locks block
+      temp-folder deletion, and the `/` cleanup-root failure in
+      `test/unit/items_from_photos_controller_test.dart`.
+- [ ] **Keep `master` in step with `release/play-store`.** Fast-forward
+      `master` after each release, as done by hand on 20 November 2026.
+      Consider adding a step to `.github/workflows/release.yml`.
+- [ ] **Items from Photos module folder.** The Dart filenames and identifiers
+      now use Items from Photos names. Decide separately whether to move
+      `lib/app/modules/stock_sheet/` under `tool/bump_version.dart`. The feature
+      uses the established route path `/stock/stock-sheet`, preference key
+      `stock_sheet_last_format`, temporary filename prefixes `stock_sheet_tile_`
+      and `stock_sheet_retry_`, and debug log labels `StockSheetController`,
+      `StockSheetFormatStore` and `StockSheetScreen`.

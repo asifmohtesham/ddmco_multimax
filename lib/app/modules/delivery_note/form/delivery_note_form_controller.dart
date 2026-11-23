@@ -132,6 +132,9 @@ class DeliveryNoteFormController extends GetxController
   List<DeliveryNoteItem> get items => deliveryNote.value?.items ?? [];
 
   @override
+  bool get canAutoSave => mode != 'new' || items.isNotEmpty;
+
+  @override
   void onInit() {
     super.onInit();
     fetchWarehouses();
@@ -184,8 +187,9 @@ class DeliveryNoteFormController extends GetxController
   void checkForChanges() {
     if (deliveryNote.value == null) return;
     if (mode == 'new') {
-      if (isSoMode && items.isEmpty) { isDirty.value = false; return; }
-      isDirty.value = true; scheduleAutoSave(); return;
+      isDirty.value = !(isSoMode && items.isEmpty);
+      if (canAutoSave) scheduleAutoSave();
+      return;
     }
     if (deliveryNote.value?.docstatus != 0) { isDirty.value = false; return; }
     final tempNote = DeliveryNote(
@@ -702,15 +706,15 @@ class DeliveryNoteFormController extends GetxController
   @override
   Future<void> saveDocument() async {
     if (isSaving.value) return;
+    final note = deliveryNote.value;
+    if (note == null) return;
+    if (!canAutoSave) {
+      showBanner('Add an item before saving.', type: BannerType.error);
+      return;
+    }
+
     isSaving.value = true;
     try {
-      final note = deliveryNote.value;
-      if (note == null) return;
-
-      // An item-less draft fails ERPNext's mandatory check; nothing to save
-      // until the first item is picked.
-      if (mode == 'new' && isSoMode && note.items.isEmpty) return;
-
       final payload = note.toJson();
       if (mode == 'new' && _soHeader.isNotEmpty) {
         payload.addAll(_soHeader);

@@ -5,7 +5,7 @@
 **Status:** approved by the user on 17/11/2026: the answers in §10 and the recommended approaches in §5
 (on-device decode and render, `receive_sharing_intent`, a hand-written `.xlsx` via `archive`).
 Revised the same day at the user's direction: stock comes from the `Stock Balance` report, not Bin (§5.4).
-**Implemented** on 18/11/2026 in v2.41.0+129. Later user decisions: files are named `Items-<yyyyMMdd-HHmm>` and titled **Items** (the worksheet tab too); the screen keeps the heading "Stock sheet". **Renamed** on 18/11/2026: the feature is called **Items from Photos** everywhere (the screen heading, the busy notice, and the Telegram bot), while code identifiers (`stock_sheet`, `StockSheet*`, route `STOCK_SHEET`) keep their names. Android was verified on a Samsung XCover7 (debug and release builds): a signed-out share, a cold start, a warm share via `onNewIntent`, the out-of-stock question, the Excel and PDF contents, and the unreadable / no-code lists. **Not verified:** iOS (never built; the Runner App Group is held back until the profile carries it, see `docs/ios_share_extension_setup.md`), and a warm share started from the gallery's own task (`singleTop`).
+**Implemented** on 18/11/2026 in v2.41.0+129. Later user decisions: files are named `Items-<yyyyMMdd-HHmm>` and titled **Items** (the worksheet tab too); the screen keeps the heading "Stock sheet". **Renamed** on 18/11/2026: the feature is called **Items from Photos** everywhere (the screen heading, the busy notice, and the Telegram bot). Dart uses `ItemsFromPhotos*` and `ITEMS_FROM_PHOTOS`. The module directory is `stock_sheet` and the route path is `/stock/stock-sheet`. Android was verified on a Samsung XCover7 (debug and release builds): a signed-out share, a cold start, a warm share via `onNewIntent`, the out-of-stock question, the Excel and PDF contents, and the unreadable / no-code lists. **Not verified:** iOS (never built; the Runner App Group is held back until the profile carries it, see `docs/ios_share_extension_setup.md`), and a warm share started from the gallery's own task (`singleTop`).
 **Reference behaviour:** the Telegram **📋 Stock sheet** feature (now **📋 Items from Photos**), built and confirmed working on 17/11/2026
 (n8n workflow `Telegram - Stock Sheet` plus the `stocksheet` sidecar: FastAPI, zxing-cpp, openpyxl, reportlab).
 
@@ -166,7 +166,7 @@ Signed in? ── no ──► Login (photos kept in the service) ── success
 More than 100 photos? ── yes ──► message "Share up to 100 photos at a time (you shared N)", nothing processed
    │ no
    ▼
-STOCK_SHEET route  ──► bottom sheet 1: Excel / PDF / Both
+ITEMS_FROM_PHOTOS route  ──► bottom sheet 1: Excel / PDF / Both
    ▼
 Progress: "Reading photo 7 of 23…" → "Checking stock…"
    ▼
@@ -188,22 +188,22 @@ known, which is also where Telegram asks it. Dismissing sheet 2 cancels the run;
 
 | Piece | Where | Notes |
 |---|---|---|
-| `ShareIntakeService` (GetxService, permanent) | `lib/app/data/services/share_intake_service.dart` | Registered in `main.dart` next to `ScanService`. Holds `pendingPhotos` (paths). Listens to both streams and stores its `StreamSubscription`, cancelled in `onClose`. When signed in it calls `Get.toNamed(STOCK_SHEET)`. Otherwise it waits for `isAuthenticated` (an `ever` worker kept in a field) and opens the route after `processSuccessfulLogin` has landed on HOME. It calls `ReceiveSharingIntent.reset()` once consumed, so a rotation or relaunch doesn't replay the share. |
-| `StockSheetCodec` (pure) | `lib/app/modules/stock_sheet/stock_sheet_codec.dart` | `ean8IsValid`, `classify(String raw) → ClassifiedCode?` (`itemCode`, `barcode`, `batchNo`), `rowsFor(photo, rawCodes)` with de-dupe per item within a photo. `ScanService._isValidEan8` moves here or to a shared util so there is one checksum. |
-| `StockSheetProvider` | `lib/app/data/providers/stock_sheet_provider.dart` | `fetchItems(codes)` through `ApiProvider.getDocumentList` (filter tuples, `limit: 0`). `fetchFinishedGoodsStock(codes)` through `ApiProvider.getStockBalanceReport(fromDate: today, toDate: today, itemCodes: chunk, warehouses: ['Finished Goods - KA'])`, keeping only rows whose `item_code` is in the chunk (this covers v15 < 15.72, where the item filter is omitted and the whole warehouse comes back). Chunks of 100 codes keep the URL short. |
+| `ShareIntakeService` (GetxService, permanent) | `lib/app/data/services/share_intake_service.dart` | Registered in `main.dart` next to `ScanService`. Holds `pendingPhotos` (paths). Listens to both streams and stores its `StreamSubscription`, cancelled in `onClose`. When signed in it calls `Get.toNamed(ITEMS_FROM_PHOTOS)`. Otherwise it waits for `isAuthenticated` (an `ever` worker kept in a field) and opens the route after `processSuccessfulLogin` has landed on HOME. It calls `ReceiveSharingIntent.reset()` once consumed, so a rotation or relaunch doesn't replay the share. |
+| `ItemsFromPhotosCodec` (pure) | `lib/app/modules/stock_sheet/logic/items_from_photos_codec.dart` | `ean8IsValid`, `classify(String raw) → ClassifiedCode?` (`itemCode`, `barcode`, `batchNo`), `rowsFor(photo, rawCodes)` with de-dupe per item within a photo. `ScanService._isValidEan8` moves here or to a shared util so there is one checksum. |
+| `ItemsFromPhotosProvider` | `lib/app/data/providers/items_from_photos_provider.dart` | `fetchItems(codes)` through `ApiProvider.getDocumentList` (filter tuples, `limit: 0`). `fetchFinishedGoodsStock(codes)` through `ApiProvider.getStockBalanceReport(fromDate: today, toDate: today, itemCodes: chunk, warehouses: ['Finished Goods - KA'])`, keeping only rows whose `item_code` is in the chunk (this covers v15 < 15.72, where the item filter is omitted and the whole warehouse comes back). Chunks of 100 codes keep the URL short. |
 | `StockAggregator` (pure) | same module | Sums the report's `bal_qty` per `item_code`, ignoring rows without an `item_code`. A missing code gives 0. Builds the final row list with `outOfStock` and `notFound`. |
-| `StockSheetController` / `Binding` / `Screen` | `lib/app/modules/stock_sheet/` | A GetX module. The controller holds `busy` (`RxBool`, re-entrancy guard, cleared in `finally`), a `phase` and `progress`, and the results. |
+| `ItemsFromPhotosController` / `Binding` / `Screen` | `lib/app/modules/stock_sheet/` | A GetX module. The controller holds `busy` (`RxBool`, re-entrancy guard, cleared in `finally`), a `phase` and `progress`, and the results. |
 | `ThumbnailMaker` | same module | Decodes with `ui.instantiateImageCodec(targetWidth/Height ≈ 480 px long side)`, which honours EXIF orientation natively and is fast. It re-encodes to JPEG q≈82 (`image` package, run in an isolate) so each thumbnail is about 30–60 KB. |
-| `XlsxStockSheetWriter` | same module | Hand-written OOXML via `archive` (§5.3 option 1). |
-| `PdfStockSheetWriter` | same module | `pdf` package. A4 portrait with 12 mm margins, a `MultiPage` table with a repeated header row, the same column widths as reportlab, image max 26 mm, a footer with the title and "Page n", and a red row background when highlighting. |
-| Route `STOCK_SHEET` | `app_routes.dart` / `app_pages.dart` | `rightToLeftWithFade`, like other flow screens. |
+| `XlsxItemsFromPhotosWriter` | same module | Hand-written OOXML via `archive` (§5.3 option 1). |
+| `PdfItemsFromPhotosWriter` | same module | `pdf` package. A4 portrait with 12 mm margins, a `MultiPage` table with a repeated header row, the same column widths as reportlab, image max 26 mm, a footer with the title and "Page n", and a red row background when highlighting. |
+| Route `ITEMS_FROM_PHOTOS` | `app_routes.dart` / `app_pages.dart` | `rightToLeftWithFade`, like other flow screens. |
 
 ### 6.3 Decoding
 
 - `MobileScannerController.analyzeImage(path, formats: [ean8, ean13, qrCode, code128, dataMatrix])` returns a
   `BarcodeCapture` with **all** barcodes ML Kit finds in the image. The flow processes photos one at a time to
   keep memory flat. One controller is created for the run and disposed at the end.
-- Each `rawValue` goes through `StockSheetCodec.classify`. Codes that don't classify (EAN-13, a stray Code 128)
+- Each `rawValue` goes through `ItemsFromPhotosCodec.classify`. Codes that don't classify (EAN-13, a stray Code 128)
   are ignored for rows, but they are kept so an "unreadable" photo can say "codes found, none recognised".
 - **Fallback for missed codes** (builder's call, matching the sidecar's retries): if a photo yields no recognised
   code, retry once on a 2× upscaled greyscale copy written to the temp dir. Add more retries only if testing on
@@ -263,10 +263,10 @@ Xcode. These are the steps on the Mac:
 
 ## 7. Testing
 
-- **Unit:** `StockSheetCodec`: valid/invalid EAN-8 checksums, batch QR with good and bad prefixes, EAN-13 and
+- **Unit:** `ItemsFromPhotosCodec`: valid/invalid EAN-8 checksums, batch QR with good and bad prefixes, EAN-13 and
   junk ignored, de-dupe within a photo, two photos giving two rows. `StockAggregator`: sum across warehouses, a
   an item missing from the report gives out of stock, a negative total gives out of stock, an unknown item gives not found.
-  `XlsxStockSheetWriter`: unzip and check the parts exist, the header row, `t="s"`/text format on Barcode, the red
+  `XlsxItemsFromPhotosWriter`: unzip and check the parts exist, the header row, `t="s"`/text format on Barcode, the red
   style on out-of-stock rows, one picture anchor per row. `ShareIntakeService`: pending photos survive the
   sign-in redirect (with fake streams).
 - **Widget:** the format sheet in dark mode (surface tokens), and the busy flag toggling the progress UI.
@@ -312,6 +312,6 @@ user's OK.
 ## 11. Left to the builder
 
 - The exact progress wording and the result-screen layout, within the §6.5 conventions.
-- Whether the EAN-8 checksum moves to a shared util or stays in `StockSheetCodec`, with `ScanService` delegating.
+- Whether the EAN-8 checksum moves to a shared util or stays in `ItemsFromPhotosCodec`, with `ScanService` delegating.
 - The thumbnail size and quality, within "about 30–60 KB each".
 - How the temp files are cleaned up (delete the shared copies and thumbnails when the result screen closes).

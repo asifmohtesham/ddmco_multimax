@@ -43,6 +43,8 @@
 	<string>Used to scan barcodes</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is used for voice search.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save downloaded ERPNext images to your Photos library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Photo library access lets you attach an image to a document or scan a barcode from a saved photo.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -1,3 +1,5 @@
+// Keep the shared Flutter Material API until the app migrates to material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -179,7 +181,7 @@ void main() {
       expect(taps, 0);
     });
 
-    testWidgets('loading: skeleton, no text ($mode)', (tester) async {
+    testWidgets('skeleton gives way to unavailable when loading ends ($mode)', (tester) async {
       await pump(
         tester,
         MyAttendanceCard(row: null, shift: shift, now: now, isLoading: true),
@@ -187,6 +189,14 @@ void main() {
       );
       expect(find.byType(MonthDotStrip), findsNothing);
       expect(find.byType(Text), findsNothing);
+
+      await pump(
+        tester,
+        MyAttendanceCard(row: null, shift: shift, now: now, isLoading: false),
+        brightness,
+      );
+      expect(find.text('Attendance unavailable'), findsOneWidget);
+      expect(find.byType(MonthDotStrip), findsNothing);
     });
   }
 }

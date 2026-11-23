@@ -2,20 +2,20 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 /// What a finished run found: the counts, the out-of-stock items, and the
 /// photos (or codes) that produced no row. The last two are on screen only;
 /// they are never written to the file.
-class StockSheetResultList extends StatefulWidget {
-  const StockSheetResultList({
+class ItemsFromPhotosResultList extends StatefulWidget {
+  const ItemsFromPhotosResultList({
     super.key,
     required this.result,
     required this.photoCount,
     required this.thumbnails,
   });
 
-  final StockSheetResult result;
+  final ItemsFromPhotosResult result;
   final int photoCount;
 
   /// JPEG thumbnails: photos keyed by path, ERP images by
@@ -30,10 +30,11 @@ class StockSheetResultList extends StatefulWidget {
   };
 
   @override
-  State<StockSheetResultList> createState() => _StockSheetResultListState();
+  State<ItemsFromPhotosResultList> createState() =>
+      _ItemsFromPhotosResultListState();
 }
 
-class _StockSheetResultListState extends State<StockSheetResultList> {
+class _ItemsFromPhotosResultListState extends State<ItemsFromPhotosResultList> {
   final _scroll = ScrollController();
 
   @override
@@ -120,7 +121,7 @@ class _StockSheetResultListState extends State<StockSheetResultList> {
                   style: TextStyle(color: s.text),
                 ),
                 subtitle: Text(
-                  StockSheetResultList.reasonText(entry),
+                  ItemsFromPhotosResultList.reasonText(entry),
                   style: TextStyle(color: s.textMuted),
                 ),
               ),

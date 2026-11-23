@@ -55,6 +55,7 @@ the server.
 | — | Breaking | Writes | v16 enforces CSRF on cookie-session writes | Fixed in 2.29.0 |
 | — | Breaking | Stock Balance | `item_code` must be a list on every v16 | Fixed in 2.30.0 |
 | N4 | Functional | Dashboard rack scan | The Stock Balance result ends with a positional total row; the scan read it as a keyed row and always failed | Fixed in 2.35.1; missed by the audit |
+| N5 | Cosmetic | Item Variant Details | Empty attribute chips take up space in variant cards | Fixed in working tree; 16.60 checked live |
 | P1 | Pre-existing | Lists | Child-table lists without a parent are refused on v15 and v16 | Open |
 | P3 | Pre-existing | Search | `SearchProvider.getBootData` calls `frappe.boot`, a module, not a method | Open |
 
@@ -168,6 +169,78 @@ report's `message.result` was re-read (18 other sites, in `ApiProvider`, the
 Item screens and the report controllers). All of them keep only keyed rows, or handle
 positional rows explicitly. The Dashboard rack scan was the only one that did
 not.
+
+## Follow-up on ERPNext 16.60.0 (21 November 2026)
+
+### N5 — Item Variant Details filters and empty attributes
+
+The tagged report JavaScript, Python and metadata are identical in 16.55.0
+and 16.60.0. Both expose three `MultiSelectList` filters in Desk:
+`item` (Items), `item_group` (Item Groups) and `warehouse` (Warehouses).
+The Python report accepts a string or list for `item`. The app sends a
+scalar for one template and a list for several. Item Groups and Warehouses
+are sent as lists. Empty selections are omitted.
+
+Both v16 tags return keyed template subtotal rows at `indent: 0` and variant
+rows at `indent: 1` with a `template` parent. The report adds no grand-total
+row. Columns include Item, Item Group, dynamic attributes, stock UOM,
+quantities, order count and prices. Brand can come from the dynamic attributes.
+On production (16.60.0) every attribute column is present on each variant row
+and an unset attribute comes back as the literal string `-`. Rows also carry
+`template` and `currency` keys that are not report columns, so they never
+become chips. Template rows carry `stock_uom` and the three totals.
+
+**Fix:** build chips only for populated values, so missing values, blanks
+and dash placeholders occupy no space. Template headings and variant-only
+item lookups follow N3. The new test covers headings, variants, blank and
+dash values. Its fixture follows the production response.
+
+**Live read-only checks (21 November 2026, Frappe/ERPNext 16.60.0).**
+All report calls set `ignore_prepared_report=true`. Captures are under
+`build/smoke/ivd/multiselect/`. Times are elapsed HTTP time from one request
+per case.
+
+| Capture | Filters | HTTP | Result |
+|---|---|---:|---|
+| `item.json` | ACP-25 | 200 | 3 rows, one template, Current Stock 936 |
+| `items.json` | ACP-25 and ACP-MIX | 200 | 5 rows, two contiguous template blocks |
+| `groups.json` | Belts only | 200 | 1,991 rows including 939 headings in 1.11 s (532 KB) |
+| `multiple_groups.json` | Belts and Wallets | 200 | 7,496 rows including 2,892 headings in 2.28 s (2.01 MB) |
+| `warehouse.json` | POS-DXB2 - KA only | 200 | 0 rows |
+| `item_warehouse.json` | ACP-25 and POS-DXB2 - KA | 200 | Same 3 rows, Current Stock 936 to 72 |
+| `groups_warehouse.json` | Belts and POS-DXB2 - KA | 200 | Same 1,991 rows in the same order, variant Current Stock 224,963 to 23,292 |
+| `multiple_warehouses.json` | ACP-25 and POS-DXB2 - KA / WH-DXB1 - KA | 200 | Same 3 rows, Current Stock 936 |
+| `empty.json` | Empty object | 200 | 0 rows |
+| `non_template.json` | Variant 2002506 in Items | 200 | 0 rows |
+| `item_and_group.json` | ACP-25 and Belts together | 417 | ValidationError requiring either Items or Item Groups |
+
+Group selection includes descendants and enabled templates. The upstream
+queries have no report-level row cap or pagination. Warehouse selection
+includes descendant warehouses and scopes Current Stock, In Production and
+Open Sales Orders by source. Current Stock was the only field that changed in
+the captures. The app requires Items or Item Groups, enforces their mutual
+exclusion, and lets Warehouses qualify either. The variant tile's separate
+Stock Balance lookup is labelled as across warehouses when a warehouse
+filter is active.
+
+**v15 compatibility.** Desk declares a required single Item Link. Python
+passes it to `get_doc("Item", item)` to build the columns and compares
+`variant_of` with a scalar equality filter. Current v15 Frappe source can
+use the list to pick one matching document for the columns. The variant
+query still compares the Link against the stringified list and ordinarily
+returns zero rows. A lookup rejection can also occur. For matching Frappe
+rejections or a successful legacy-shaped reply to a multi-item request,
+the app retries one scalar per template and merges the variant blocks in
+selection order, with the union of dynamic columns. Scalar retries keep any selected
+warehouses. The report Python
+doesn't read `item_group` or `warehouse`. A group-only request lacks the
+required Item, and a legacy result returned with extra filters is discarded
+with an explanation. This prevents showing unfiltered quantities as
+warehouse-filtered values. The fallback uses server responses without a
+version check.
+
+The live checks used the privileged API account. Ordinary-user permissions,
+the new device UI and a live v15 server remain unverified.
 
 ## How both versions are served
 
@@ -287,9 +360,55 @@ from the User document and bypass the fallbacks.
 1. Open the drawer: screens are grouped under the server's workspaces.
 2. Open the profile: the role list is filled in.
 3. Open a POS Upload: the Status field is enabled for a user with level-1 write.
-4. Run Item Variant Details for a template: one heading, then its variants.
+4. Run Item Variant Details for a template: one heading on v16, then its
+   variants. On v15 expect only variants. Check that empty attributes take up
+   no space and that item names and images load where available.
+   On v16 run multiple Items, then multiple Item Groups, each with multiple
+   Warehouses. Check removable selections, quantity totals and tree blocks.
 5. Scan a rack on the Dashboard: the rack's contents open.
 6. Stock Entry, Delivery Note, Packing Slip and Purchase Receipt: save and
    submit one of each.
 7. Job Card: start, pause with a quantity, resume, complete, submit.
 8. Sales Order: add an item and confirm the rate and UOM are filled in.
+
+### Item Variant Details navigation on large reports
+
+Keep the scrollbar passive above 500 report rows while the visible list
+contains expanded cards. The report shows "Collapse groups to drag the
+scrollbar" beside Collapse All and Expand All. Fully collapsed groups use
+a 52 logical-pixel extent and support direct thumb seeking. Large flat
+replies use touch scrolling and show their own hint.
+
+The Pixel 7 profile freeze baseline measured 1,501.2 ms for Belts and
+4,755.1 ms with one ANR for Belts + Wallets. The combined frame spent
+4,747 ms in Flutter's UI phase. Released v2.51.0 reached 19.59 ms and
+34.94 ms on the respective collapsed thumb runs, with zero ANRs.
+Its separate combined Expand All action peaked at 112.99 ms.
+
+Flutter's variable-height SliverList measures intervening children on
+a distant pixel jump. Fixed placeholder rows could seek quickly during
+a drag, but resolving the landing point requires changing scroll
+geometry and preserving the visible row and offset. Group-index seeking,
+auto-collapse, and expansion caps all change the meaning of Expand All
+or the thumb. The existing collapsed mode already provides group-index
+seeking on demand. The package option, super_sliver_list 0.4.1, estimates
+unmeasured extents and supports index jumps. It is the closest fit for
+keeping expanded cards and thumb navigation together. Adoption would
+need to preserve the report's pinned heading and pass the same
+Pixel 7 profile gesture measurements. No package was added.
+
+Name search loads the missing variant names via the standard
+`frappe.client.get_list` Item method. The request body contains only
+the exact report codes, two field names and a row limit. Both v15 and
+v16 accept the same arguments and enforce normal Item list permissions.
+The cache lasts for one report. The screen reports an incomplete search
+if the server refuses the call or omits requested names. Group headings
+display the server's subtotal and suppress it when the server leaves
+it empty for mixed UOMs. Flat replies have no template subtotal.
+The follow-up Pixel 7 profile run used 1,994 Belts rows and 7,500 combined
+rows. Five Belts down/up pairs peaked at 15.42 ms. One combined down/up
+pair peaked at 10.35 ms. The combined Expand All action peaked at
+40.95 ms. Android logged zero ANRs. The passive runs used long edge
+swipes on already-expanded content, so these results verify normal
+scrolling under the guard. They give no timing for an interactive
+variable-height thumb.

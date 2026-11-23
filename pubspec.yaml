@@ -2,7 +2,7 @@ name: multimax
 description: "Manage stock, order, packing and delivery."
 publish_to: 'none'
 
-version: 2.46.1+135
+version: 2.53.2+147
 
 environment:
   sdk: ^3.8.1
@@ -25,6 +25,7 @@ dependencies:
   percent_indicator:
   flutter_html:
   share_plus: ^13.3.1
+  gal: ^3.0.1
   # Receives photos shared from the gallery (stock sheet): cold start via
   # getInitialMedia(), warm app via getMediaStream().
   # Pinned: our own iOS share screen (ios/ShareExtension/ShareViewController.swift)

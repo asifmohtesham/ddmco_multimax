@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
-import 'package:multimax/app/modules/stock_sheet/widgets/stock_sheet_choice_sheet.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/widgets/items_from_photos_choice_sheet.dart';
 
 /// Asks how the sheet treats [count] out-of-stock items. Returns null when
 /// dismissed, which goes back to the review.
@@ -29,7 +29,7 @@ class OutOfStockSheet extends StatelessWidget {
       onTap: () => Navigator.of(context).pop(choice),
     );
 
-    return StockSheetChoiceSheet(
+    return ItemsFromPhotosChoiceSheet(
       title: count == 1
           ? '1 item is out of stock'
           : '$count items are out of stock',

@@ -41,7 +41,7 @@ void main() {
         getPages: [
           GetPage(name: '/', page: () => Scaffold(body: Center(child: child))),
           GetPage(
-              name: AppRoutes.STOCK_SHEET,
+              name: AppRoutes.ITEMS_FROM_PHOTOS,
               page: () => const Scaffold(body: Text('stock sheet'))),
         ],
       );
@@ -75,7 +75,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.photo_library_outlined));
     await tester.pumpAndSettle();
 
-    expect(Get.currentRoute, AppRoutes.STOCK_SHEET);
+    expect(Get.currentRoute, AppRoutes.ITEMS_FROM_PHOTOS);
     expect(Get.arguments, isNull);
   });
 

@@ -1,1 +1,1 @@
-Oldest stock first: when you scan, type or pick a batch on a Delivery Note or a stock issue, the app now refuses it while an older batch of the same item is still in stock in the warehouse. A sheet shows which batch to ship first and the racks where the item is kept. If you need the newer batch, ask your supervisor to add it in Desk. The batch picker now lists the oldest batch first.
+A new Delivery Note is saved only after you add an item. If you tap Save before adding one, the app asks you to add an item first.

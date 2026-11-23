@@ -22,7 +22,7 @@ class ItemsFromPhotosButton extends StatelessWidget {
         icon: const Icon(Icons.photo_library_outlined),
         color: color,
         tooltip: 'Items from Photos',
-        onPressed: () => Get.toNamed(AppRoutes.STOCK_SHEET),
+        onPressed: () => Get.toNamed(AppRoutes.ITEMS_FROM_PHOTOS),
       ),
     );
   }

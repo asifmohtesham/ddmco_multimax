@@ -17,8 +17,90 @@
 // attributes, and its stock figures are null when its variants do not share
 // a stock UOM.
 
+import 'package:intl/intl.dart';
+
+const _rateFields = {
+  'avg_buying_price_list_rate',
+  'avg_selling_price_list_rate',
+};
+
+bool isFixedVariantField(String field) =>
+    const {'variant_name', 'item', 'item_code', 'item_name'}.contains(field);
+
+bool defaultVariantField(String field) =>
+    !_rateFields.contains(field) &&
+    !const {'variant_of', 'in_production', 'open_orders'}.contains(field);
+
+/// Selected secondary values, in the order returned by the server.
+Iterable<({String label, String value})> selectedVariantValues(
+  VariantRow row,
+  List<VariantRow> columns,
+  bool Function(String) showsField,
+) sync* {
+  for (final column in columns) {
+    final field = column['fieldname'];
+    if (field is! String ||
+        isFixedVariantField(field) ||
+        field == 'item_group' ||
+        field == 'current_stock' ||
+        !showsField(field)) {
+      continue;
+    }
+    if (field == 'stock_uom' &&
+        showsField('current_stock') &&
+        formatReportNumber(row['current_stock']).isNotEmpty) {
+      continue;
+    }
+    final value = row[field]?.toString().trim();
+    if (value == null || value.isEmpty || value == '-' || value == '—') {
+      continue;
+    }
+    final currency = row['currency']?.toString().trim() ?? '';
+    final rate = _rateFields.contains(field) ? num.tryParse(value) : null;
+    yield (
+      label: column['label']?.toString() ?? field,
+      value: rate == null
+          ? value
+          : NumberFormat.currency(
+              name: currency.isEmpty ? null : currency,
+              symbol: currency.isEmpty ? '' : '$currency ',
+            ).format(rate),
+    );
+  }
+}
+
 /// The report fields a template row totals, in report order.
 const kTemplateTotalFields = ['current_stock', 'in_production', 'open_orders'];
+
+const _nonChipFields = {
+  'variant_name',
+  'item',
+  'item_name',
+  'variant_of',
+  'item_group',
+  'stock_uom',
+  'current_stock',
+  'in_production',
+  'open_orders',
+  'avg_buying_price_list_rate',
+  'avg_selling_price_list_rate',
+};
+
+/// Populated chip values in the report's column order.
+Iterable<({String label, String value})> variantChips(
+  Map<String, dynamic> row,
+  List<Map<String, dynamic>> columns,
+) sync* {
+  for (final column in columns) {
+    final field = column['fieldname'] as String?;
+    if (field == null || _nonChipFields.contains(field)) continue;
+    final value = row[field]?.toString().trim();
+    if (value == null || value.isEmpty || value == '-' || value == '—') {
+      continue;
+    }
+    yield (label: column['label'] as String? ?? field, value: value);
+  }
+}
 
 /// Whether [row] is a template subtotal row rather than a variant.
 ///
@@ -34,7 +116,10 @@ bool isTemplateRow(Map<String, dynamic> row) {
 
 /// The rows of [rows] that are variants, in report order.
 List<Map<String, dynamic>> variantRowsOf(Iterable<Map<String, dynamic>> rows) =>
-    [for (final r in rows) if (!isTemplateRow(r)) r];
+    [
+      for (final r in rows)
+        if (!isTemplateRow(r)) r,
+    ];
 
 /// The totals a template [row] carries, as `label → value` in report order.
 ///
@@ -52,10 +137,13 @@ List<({String label, String value})> templateTotals(
   };
   return [
     for (final field in kTemplateTotalFields)
-      if (row[field] != null)
+      if (formatReportNumber(row[field]).trim().isNotEmpty)
         (
           label: (labels[field]?.isNotEmpty ?? false) ? labels[field]! : field,
-          value: formatReportNumber(row[field]),
+          value: formatStockQuantity(
+            row[field],
+            field == 'open_orders' ? null : row['stock_uom'],
+          ),
         ),
   ];
 }
@@ -69,3 +157,183 @@ String formatReportNumber(dynamic value) {
   }
   return value?.toString() ?? '';
 }
+
+/// Formats a stock figure using the unit supplied by the report.
+String formatStockQuantity(dynamic value, Object? stockUom) {
+  final quantity = formatReportNumber(value).trim();
+  final unit = stockUom?.toString().trim();
+  if (quantity.isEmpty ||
+      unit == null ||
+      unit.isEmpty ||
+      unit == '-' ||
+      unit == '—') {
+    return quantity;
+  }
+  return '$quantity $unit';
+}
+
+/// Sums variant quantities by stock UOM. Template subtotals, sales-order
+/// counts and rates are excluded.
+List<String> variantQuantitySummary(
+  Iterable<Map<String, dynamic>> rows,
+  List<Map<String, dynamic>> columns,
+) {
+  const quantityFields = ['current_stock', 'in_production'];
+  final totalsByUom = <String, Map<String, num>>{};
+  for (final row in rows) {
+    if (isTemplateRow(row)) continue;
+    final uom = row['stock_uom']?.toString() ?? '';
+    final totals = totalsByUom.putIfAbsent(uom, () => {});
+    for (final field in quantityFields) {
+      final value = row[field];
+      if (value is num) {
+        totals.update(field, (sum) => sum + value, ifAbsent: () => value);
+      }
+    }
+  }
+  final labels = {
+    for (final column in columns) column['fieldname']: column['label'],
+  };
+  return [
+    for (final entry in totalsByUom.entries)
+      for (final field in quantityFields)
+        if (entry.value.containsKey(field))
+          '${labels[field] ?? (field == 'current_stock' ? 'Current Stock' : 'In Production')} '
+              '${formatReportNumber(entry.value[field])}'
+              '${entry.key.isEmpty ? '' : ' ${entry.key}'}',
+  ];
+}
+
+String variantCode(Map<String, dynamic> row) =>
+    (row['variant_name'] ?? row['item'] ?? '').toString();
+
+typedef VariantRow = Map<String, dynamic>;
+
+class VariantGroup {
+  final VariantRow? heading;
+  final List<VariantRow> variants;
+
+  const VariantGroup(this.heading, this.variants);
+
+  String get variantCountLabel =>
+      '${variants.length} ${variants.length == 1 ? 'variant' : 'variants'}';
+
+  String collapsedSummary(int shown, {required bool filtered}) {
+    final count = filtered ? '$shown of ${variants.length}' : variantCountLabel;
+    final stock = formatStockQuantity(
+      heading?['current_stock'],
+      heading?['stock_uom'],
+    );
+    return stock.isEmpty ? count : '$count · Current Stock $stock';
+  }
+
+  String get code => heading == null ? '' : variantCode(heading!);
+}
+
+class VariantResults {
+  static const collapseAboveVariants = 200;
+
+  final groups = <VariantGroup>[];
+  final variants = <VariantRow>[];
+  final _searchText = <VariantRow, List<String>>{};
+  final _templateCodes = <VariantGroup, String>{};
+  final _overrides = <VariantGroup>{};
+  late final int templateCount;
+  late bool _collapsed;
+
+  VariantResults(
+    Iterable<VariantRow> rows,
+    List<VariantRow> columns, {
+    String? singleRequestedTemplate,
+  }) {
+    VariantGroup? group;
+    for (final row in rows) {
+      if (isTemplateRow(row)) {
+        group = VariantGroup(row, []);
+        groups.add(group);
+        _templateCodes[group] = group.code.toLowerCase();
+        continue;
+      }
+      if (group == null) {
+        group = VariantGroup(null, []);
+        groups.add(group);
+      }
+      group.variants.add(row);
+      variants.add(row);
+      _searchText[row] = [
+        variantCode(row),
+        if (row['item_name'] != null) row['item_name'].toString(),
+        if (row['template'] != null) row['template'].toString(),
+        if (row['variant_of'] != null) row['variant_of'].toString(),
+        if (group.heading == null && singleRequestedTemplate != null)
+          singleRequestedTemplate,
+        ...variantChips(row, columns).map((chip) => chip.value),
+      ].map((value) => value.toLowerCase()).toList();
+    }
+    templateCount = _templateCodes.length;
+    _collapsed = variants.length > collapseAboveVariants;
+  }
+
+  ({bool collapsed, Set<VariantGroup> overrides}) get expansion =>
+      (collapsed: _collapsed, overrides: _overrides.toSet());
+
+  void restoreExpansion(({bool collapsed, Set<VariantGroup> overrides}) state) {
+    _collapsed = state.collapsed;
+    _overrides
+      ..clear()
+      ..addAll(state.overrides);
+  }
+
+  bool isExpanded(VariantGroup group) =>
+      group.heading == null || _collapsed == _overrides.contains(group);
+
+  void toggle(VariantGroup group) {
+    if (!_overrides.add(group)) _overrides.remove(group);
+  }
+
+  void setAllExpanded(bool expanded) {
+    _collapsed = !expanded;
+    _overrides.clear();
+  }
+
+  List<({VariantGroup group, List<VariantRow> variants})> filter({
+    String query = '',
+    bool inStock = false,
+    Map<String, VariantRow> details = const {},
+    Map<String, String> names = const {},
+  }) {
+    final term = query.trim().toLowerCase();
+    final result = <({VariantGroup group, List<VariantRow> variants})>[];
+    for (final group in groups) {
+      if (term.isEmpty && !inStock) {
+        result.add((group: group, variants: group.variants));
+        continue;
+      }
+      final headingMatches =
+          term.isNotEmpty && (_templateCodes[group]?.contains(term) ?? false);
+      final matches = [
+        for (final row in group.variants)
+          if ((!inStock ||
+                  (num.tryParse('${row['current_stock']}') ?? 0) > 0) &&
+              (term.isEmpty ||
+                  headingMatches ||
+                  _searchText[row]!.any((value) => value.contains(term)) ||
+                  (names[variantCode(row)]?.toLowerCase().contains(term) ??
+                      false) ||
+                  (details[variantCode(row)]?['item_name']
+                          ?.toString()
+                          .toLowerCase()
+                          .contains(term) ??
+                      false)))
+            row,
+      ];
+      if (matches.isNotEmpty || (headingMatches && !inStock)) {
+        result.add((group: group, variants: matches));
+      }
+    }
+    return result;
+  }
+}
+
+bool canDragVariantScrollbar(int rowCount, {required bool collapsed}) =>
+    rowCount <= 500 || collapsed;

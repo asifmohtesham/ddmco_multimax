@@ -4,6 +4,7 @@ import 'package:get/get.dart' hide Response;
 import 'package:image_picker/image_picker.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/item_image.dart';
 
 /// Reusable image-field widget for any Frappe DocType.
 ///
@@ -61,7 +62,12 @@ class _DocTypeImageUploadState extends State<DocTypeImageUpload> {
           // ── Image or placeholder ────────────────────────────────────────
           if (widget.imageUrl != null)
             GestureDetector(
-              onTap: () => _openFullScreen(context, '${widget.baseUrl}${widget.imageUrl}'),
+              onTap: () => showItemImagePreview(
+                context,
+                Uri.parse(widget.baseUrl).resolve(widget.imageUrl!).toString(),
+                widget.docname,
+                '',
+              ),
               child: Image.network(
                 '${widget.baseUrl}${widget.imageUrl}',
                 fit: BoxFit.contain,
@@ -245,54 +251,4 @@ class _DocTypeImageUploadState extends State<DocTypeImageUpload> {
     return 'An unexpected error occurred.';
   }
 
-  void _openFullScreen(BuildContext context, String url) {
-    Get.dialog(
-      barrierDismissible: true,
-      barrierColor: Colors.black87,
-      Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.zero,
-        child: GestureDetector(
-          onVerticalDragEnd: (details) {
-            if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
-              Get.back();
-            }
-          },
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                child: Center(
-                  child: Image.network(
-                    url,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white54,
-                      size: 64,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 40,
-                right: 20,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: Get.back,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

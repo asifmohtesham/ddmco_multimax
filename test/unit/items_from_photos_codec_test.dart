@@ -1,37 +1,42 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:multimax/app/modules/stock_sheet/logic/stock_sheet_codec.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/logic/items_from_photos_codec.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 import 'package:multimax/app/shared/barcode/ean8.dart';
 
 void main() {
   test('valid EAN-8 → item code is first 7 digits', () {
-    expect(StockSheetCodec.classify('30003330'),
+    expect(ItemsFromPhotosCodec.classify('30003330'),
         const ClassifiedCode(itemCode: '3000333', barcode: '30003330', batchNo: null));
   });
-  test('bad checksum is ignored', () => expect(StockSheetCodec.classify('30003331'), isNull));
+  test('bad checksum is ignored',
+      () => expect(ItemsFromPhotosCodec.classify('30003331'), isNull));
   test('batch QR → item from prefix, batch kept', () {
-    expect(StockSheetCodec.classify(' 30003330-4CPIWR '),
+    expect(ItemsFromPhotosCodec.classify(' 30003330-4CPIWR '),
         const ClassifiedCode(itemCode: '3000333', barcode: '30003330', batchNo: '30003330-4CPIWR'));
   });
   test('batch QR with bad prefix checksum is ignored',
-      () => expect(StockSheetCodec.classify('30003331-4CPIWR'), isNull));
+      () => expect(ItemsFromPhotosCodec.classify('30003331-4CPIWR'), isNull));
   test('malformed batch suffix is ignored', () {
     for (final s in ['30003330-', '30003330-A-B', '30003330-ab_c']) {
-      expect(StockSheetCodec.classify(s), isNull, reason: s);
+      expect(ItemsFromPhotosCodec.classify(s), isNull, reason: s);
     }
   });
   test('EAN-13, Code 128 text and junk are ignored', () {
     for (final s in ['4006381333931', 'SHIPMENT-12', '', 'ABCDEFGH']) {
-      expect(StockSheetCodec.classify(s), isNull, reason: s);
+      expect(ItemsFromPhotosCodec.classify(s), isNull, reason: s);
     }
   });
   test('same item twice in one photo (EAN + its batch QR) → one entry with batch', () {
-    final items = StockSheetCodec.itemsInPhoto(['30003330', '30003330-4CPIWR', '20011369']);
+    final items = ItemsFromPhotosCodec.itemsInPhoto([
+      '30003330',
+      '30003330-4CPIWR',
+      '20011369',
+    ]);
     expect(items.map((e) => e.itemCode), ['3000333', '2001136']);
     expect(items.first.batchNo, '30003330-4CPIWR');
   });
   test('batch is kept when the batch QR is seen before the plain EAN', () {
-    final items = StockSheetCodec.itemsInPhoto(['30003330-4CPIWR', '30003330']);
+    final items = ItemsFromPhotosCodec.itemsInPhoto(['30003330-4CPIWR', '30003330']);
     expect(items, hasLength(1));
     expect(items.single.batchNo, '30003330-4CPIWR');
   });
@@ -51,18 +56,18 @@ void main() {
     }
   });
   test('resolveTyped trims, then accepts a seven-digit item code', () {
-    expect(StockSheetCodec.resolveTyped(' 2001136 '),
+    expect(ItemsFromPhotosCodec.resolveTyped(' 2001136 '),
         const ClassifiedCode(itemCode: '2001136', barcode: '20011369', batchNo: null));
   });
   test('resolveTyped accepts a valid EAN-8 and a batch QR through classify', () {
-    expect(StockSheetCodec.resolveTyped('20011369'),
+    expect(ItemsFromPhotosCodec.resolveTyped('20011369'),
         const ClassifiedCode(itemCode: '2001136', barcode: '20011369', batchNo: null));
-    expect(StockSheetCodec.resolveTyped('30003330-4CPIWR'),
+    expect(ItemsFromPhotosCodec.resolveTyped('30003330-4CPIWR'),
         const ClassifiedCode(itemCode: '3000333', barcode: '30003330', batchNo: '30003330-4CPIWR'));
   });
   test('resolveTyped rejects bad checksums, short, non-numeric and junk input', () {
     for (final s in ['20011362', 'ABC', '200113', '', '   ', '2001136A']) {
-      expect(StockSheetCodec.resolveTyped(s), isNull, reason: s);
+      expect(ItemsFromPhotosCodec.resolveTyped(s), isNull, reason: s);
     }
   });
 }
