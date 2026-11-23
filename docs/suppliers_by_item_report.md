@@ -1,14 +1,16 @@
 # Suppliers by Item — Report Implementation Guide
 
-> **Scope.** This read-only ERPNext Desk Script Report is live on
-> `erp-testing.multimax.cloud`. Production deployment is pending. The Report
-> record stores both scripts. The source below can recreate it in Desk.
+> **Scope.** This guide describes the v6 contract of the read-only ERPNext Desk
+> Script Report `Suppliers by Item`, live on `erp.multimax.cloud` and
+> `erp-testing.multimax.cloud` since 23 November 2026. The Report record stores
+> both scripts; the Python and JavaScript below are the deployed v6 source.
 
-The report finds suppliers linked to an enabled item. It combines Item Supplier,
-Item Default and buying Item Price records with submitted Purchase Orders,
-Purchase Receipts, Purchase Invoices, Supplier Quotations and Requests for
-Quotation. Each real supplier row represents one item and supplier pair, with
-its evidence sources, receipt history and latest qualifying rate.
+The report finds suppliers linked to an enabled item. Evidence sources include
+Item Supplier, Item Default, buying Item Price, Batch and submitted Purchase
+Orders, Purchase Receipts, Purchase Invoices, Supplier Quotations and Requests
+for Quotation. Draft Purchase Orders also supply evidence by default. Each
+supplier row represents one item and supplier pair, with its evidence sources,
+status, order quantities, receipt history and latest qualifying rate.
 
 ## 1. Prerequisites and access
 
@@ -25,13 +27,23 @@ its evidence sources, receipt history and latest qualifying rate.
 |---|---|---|---|
 | Items | `items` | MultiSelectList → Item | Matches the selected item codes. |
 | Variant Of | `variant_of` | MultiSelectList → Item | Offers template items and matches their variants. Selecting both Items and Variant Of returns the union. |
-| Suppliers | `suppliers` | MultiSelectList → Supplier | Limits supplier evidence to selected suppliers. Can be used on its own to find a supplier's items. |
-| Warehouses | `warehouses` | MultiSelectList → Warehouse | Limits sources to Purchase Order, Purchase Receipt and Purchase Invoice lines in the selected warehouses. |
-| From Date / To Date | `from_date` / `to_date` | Date | Inclusive bounds on transaction or posting dates. Either date excludes Item Supplier, Item Default and Item Price. Leaving both blank uses all history. |
+| Suppliers | `suppliers` | MultiSelectList → Supplier | Matches items with evidence for these suppliers and includes every supplier supported by the enabled sources for each matching item. Selected suppliers carry `matched_supplier: 1` on their rows. |
+| Warehouses | `warehouses` | MultiSelectList → Warehouse | Scopes balance, projected quantity, reorder level and reorder quantity to the selected warehouses and descendants of selected groups. An empty selection uses all warehouses. Supplier evidence and procurement history keep their full warehouse scope. |
+| Include Draft Purchase Orders | `include_drafts` | Check | Defaults to `1` (on), which includes draft Purchase Orders and batches linked to them as supplier evidence and includes draft order quantities. Set to `0` to exclude that evidence and those quantities. |
 
-When Items or Variant Of is set, every matching enabled item is retained,
-including items with zero suppliers under the active filters. With both item
-filters empty, the report returns only items with matching supplier evidence.
+With Suppliers selected, only items with evidence for a selected supplier
+qualify, and each qualifying item includes every supplier supported by the
+enabled evidence sources. With Suppliers
+empty and Items or Variant Of set, every matching enabled item is retained,
+including items without suppliers. With all three filters empty, the report
+returns enabled items with supplier evidence from the sources included by the
+drafts setting. Disabled and on-hold suppliers remain eligible.
+
+Batches linked to submitted Purchase Orders use `Batch`. With drafts enabled,
+draft Purchase Orders use `Purchase Order (Draft)` and batches linked to one
+use `Batch (draft PO)`. Batches linked to a cancelled Purchase Order use
+`Batch (cancelled PO)`. Batches with an empty or missing Purchase Order link use
+`Batch (no PO)`. Both of these batch sources are included with either drafts setting.
 
 ## 3. Columns
 
@@ -39,9 +51,20 @@ filters empty, the report returns only items with matching supplier evidence.
 |---|---|---|
 | Item / Supplier | `tree_label` | Item or Supplier link, or the placeholder label. |
 | Item Name | `item_name` | Item or template name. |
+| Balance Qty | `balance_qty` | Current stock on hand in stock UOM, scoped by Warehouses. |
+| Projected Qty | `projected_qty` | Current projected stock from Bin in stock UOM, scoped by Warehouses. |
+| Reorder Level | `reorder_level` | Sum of warehouse reorder levels from Item Reorder, scoped by Warehouses. |
+| Reorder Qty | `reorder_qty` | Sum of configured reorder quantities from Item Reorder when supplied, scoped by Warehouses. |
 | Supplier Name | `supplier_name` | Display name for the supplier. |
+| Supplier Status | `supplier_status` | `Active`, `Disabled` or `On Hold`. The on-hold label includes the hold type in parentheses and an `until <release_date>` suffix when available. |
 | Supplier Part Number | `supplier_part_number` | First populated value by source priority, then recency within that source. The priority is Item Supplier, Purchase Order, Supplier Quotation, Purchase Receipt. |
-| Sources | `sources` | Distinct matching source names. |
+| Sources | `sources` | Distinct supplier evidence labels, including the draft and batch labels described above. |
+| Open Order Qty | `open_order_qty` | Remaining quantity in stock UOM on submitted Purchase Orders with a status other than Closed or Completed. Each line contributes `max(qty - received_qty, 0) * conversion_factor`. |
+| Draft Order Qty | `draft_order_qty` | Same remaining quantity calculation for draft Purchase Orders when drafts are included. |
+| Lead Time Days | `lead_time_days` | Average days from Purchase Order transaction date to Purchase Receipt posting date, reported to one decimal place. Uses submitted receipt lines linked to a submitted order for the same item and supplier. Blank when no lines qualify. |
+| Lead Time Receipts | `lead_time_receipts` | Number of receipt lines used for the lead time average. |
+| PO Count | `po_count` | Distinct submitted Purchase Orders for the item and supplier. |
+| Receipt Count | `receipt_count` | Distinct submitted Purchase Receipts for the item and supplier. |
 | Last Purchase Date | `last_purchase_date` | Latest positive-quantity receipt event date. |
 | Last Purchase Receipt | `last_purchase_receipt` | Link to the receipt when it supplied the latest positive-quantity event. |
 | Last Rate | `last_rate` | Latest positive rate from a receipt event, with the latest positive rate from a submitted Purchase Order as fallback. Blank when both are absent. |
@@ -52,8 +75,13 @@ filters empty, the report returns only items with matching supplier evidence.
 | Rate UOM | `rate_uom` | Transaction UOM of the selected rate. |
 | Total Qty Received | `total_qty_received` | Net quantity from receipt events in stock UOM, including returns. |
 | Stock UOM | `stock_uom` | Item stock UOM, blank on template rows with mixed units. |
-| Last PO Date | `last_po_date` | Latest submitted Purchase Order date under the active filters, independent of the rate source. |
+| Last PO Date | `last_po_date` | Latest submitted Purchase Order date for the item and supplier pair, independent of the rate source. |
 | Supplier Count | `supplier_count` | Supplier count for an item or distinct supplier count across a template's variants. |
+
+Balance, projected quantity, reorder level and reorder quantity are item-row
+values. A template sums these values across shown variants that share one stock
+UOM. Mixed-UOM templates, supplier rows and placeholder rows leave these values
+blank. Item rows also sum open and draft order quantities across their suppliers.
 
 Receipt events include submitted Purchase Receipts and stock-updating Purchase
 Invoices that qualify as independent receipts. The script excludes invoice
@@ -72,7 +100,7 @@ children are one level deeper than their item.
 |---|---|---|---|
 | `template` | `template:<template_code>` | None | `template`, `link_doctype: Item` |
 | `item` | `item:<item_code>` | Template if grouped | `item_code`, `link_doctype: Item` |
-| `supplier` | `supplier:<len>:<item_code>:<supplier>` | Item | `item_code`, `supplier`, `link_doctype: Supplier`, `is_placeholder: 0` |
+| `supplier` | `supplier:<len>:<item_code>:<supplier>` | Item | `item_code`, `supplier`, `link_doctype: Supplier`, `is_placeholder: 0`, `matched_supplier: 1` for suppliers selected by the Suppliers filter |
 | `placeholder` | `none:<len>:<item_code>` | Item | `item_code`, `is_placeholder: 1`, `tree_label: No supplier recorded` |
 
 `<len>` is the length of the item code. The placeholder has blank cells in
@@ -86,12 +114,26 @@ For `variant_of=["ACP-25"]`, the template `template:ACP-25` contains
 
 ## 5. App screens
 
-- **Buying → Reports → Suppliers by Item** opens the full report. The footer
-  sums received quantities from supplier rows and groups them by stock UOM.
+- **Buying → Reports → Suppliers by Item** opens the full report. The filter
+  sheet has an **Include draft purchase orders** switch that defaults to on.
+  Its helper reads “Suppliers that appear only on draft purchase orders are
+  hidden when off.” Item and template rows show available balance and projected
+  quantities, and show positive reorder levels. When projected quantity is
+  below a positive reorder level, they show an orange **Below reorder level**
+  flag. Supplier rows show a red **Disabled** or orange **On Hold** chip when
+  applicable, positive open and draft quantities, available lead time and
+  receipt-line sample size, and available PO and receipt counts. Rows that match
+  the Suppliers filter remain emphasized. The footer groups balance, projected
+  and open order quantities by stock UOM, summing item rows only.
   [Report screen](../lib/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart)
 - **Item → Overview → Suppliers** runs with `items=[itemCode]` for an item or
-  `variant_of=[itemCode]` for a template. **View full report** opens the report
-  with the same selection.
+  `variant_of=[itemCode]` for a template. It shows available item balance and
+  projected quantities, and displays applicable status chips, positive open
+  order quantities and available lead times for each supplier. A template
+  groups each supplier's open orders by stock UOM and weights lead times by
+  the number of receipt lines. If a sample count is missing, it shows the
+  available lead times by variant. **View full report** opens the report with
+  the same item or template selection.
   [Item Overview](../lib/app/modules/item/form/item_form_screen.dart)
   [Suppliers card](../lib/app/modules/item/form/widgets/item_suppliers_card.dart)
 
@@ -99,11 +141,15 @@ The full report shows an available rate with its currency, source and date. Both
 use `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
 `/api/method/frappe.desk.query_report.run` with `report_name=Suppliers by Item`,
 a JSON `filters` field, `ignore_prepared_report=true` and
-`are_default_filters=false`. The parser reads the keyed rows in
-`message.result`.
+`are_default_filters=false`. The JSON carries selections from `items`,
+`variant_of`, `suppliers` and `warehouses`, plus numeric `include_drafts` (`1`
+on, `0` off). The parser reads the keyed rows in `message.result` and accepts
+null or missing v6 fields on results from older report versions.
 [API provider](../lib/app/data/providers/api_provider.dart)
 
 ## 6. Recreate the Report in Desk
+
+Follow these steps once the refreshed Python and JavaScript are available.
 
 1. Open **Report → New** and set the fields below.
 2. Leave the **Columns** and **Filters** child tables empty. The Python script
@@ -126,6 +172,8 @@ a JSON `filters` field, `ignore_prepared_report=true` and
 
 ## 7. Report Script (Python)
 
+Deployed v6 source (Report field `report_script`).
+
 ```python
 def build_report(filters):
     def selected_values(fieldname):
@@ -138,12 +186,7 @@ def build_report(filters):
     templates = selected_values("variant_of")
     suppliers = selected_values("suppliers")
     warehouses = selected_values("warehouses")
-    from_date = filters.get("from_date")
-    to_date = filters.get("to_date")
-    from_date = frappe.utils.getdate(from_date) if from_date else None
-    to_date = frappe.utils.getdate(to_date) if to_date else None
-    if from_date and to_date and from_date > to_date:
-        frappe.throw(_("From Date must be on or before To Date."))
+    include_drafts = int(filters.get("include_drafts") not in (0, "0"))
 
     parameters = {
         "selected_items": int(bool(items or templates)),
@@ -153,56 +196,71 @@ def build_report(filters):
         "suppliers": suppliers or (None,),
         "by_warehouse": int(bool(warehouses)),
         "warehouses": warehouses or (None,),
-        "by_date": int(bool(from_date or to_date)),
-        "from_date": from_date,
-        "to_date": to_date,
+        "include_drafts": include_drafts,
     }
 
     rows = frappe.db.sql(
         """
-        WITH target AS (
+        WITH warehouse_scope AS (
+            SELECT name FROM `tabWarehouse` WHERE name IN %(warehouses)s
+            UNION
+            SELECT w.name
+            FROM `tabWarehouse` selected
+            JOIN `tabWarehouse` w ON w.lft > selected.lft AND w.rgt < selected.rgt
+            WHERE selected.name IN %(warehouses)s AND selected.is_group = 1
+        ),
+        target AS (
             SELECT i.name AS item_code, i.item_name, i.stock_uom,
                    CASE WHEN t.disabled = 0 THEN t.name END AS template_code,
                    t.item_name AS template_name
             FROM `tabItem` i
             LEFT JOIN `tabItem` t ON t.name = i.variant_of AND t.has_variants = 1
             WHERE i.disabled = 0
-              AND (%(selected_items)s = 0 OR i.name IN %(items)s OR t.name IN %(templates)s)
+              AND (%(selected_items)s = 0 OR i.name IN %(items)s OR i.variant_of IN %(templates)s)
+        ),
+        balances AS (
+            SELECT b.item_code, SUM(b.actual_qty) AS balance_qty, SUM(b.projected_qty) AS projected_qty
+            FROM `tabBin` b
+            JOIN target t ON t.item_code = b.item_code
+            WHERE %(by_warehouse)s = 0 OR b.warehouse IN (SELECT name FROM warehouse_scope)
+            GROUP BY b.item_code
+        ),
+        reorder_levels AS (
+            SELECT r.parent AS item_code, SUM(r.warehouse_reorder_level) AS reorder_level,
+                   SUM(r.warehouse_reorder_qty) AS reorder_qty
+            FROM `tabItem Reorder` r
+            JOIN target t ON t.item_code = r.parent
+            WHERE r.parenttype = 'Item' AND r.parentfield = 'reorder_levels'
+              AND (%(by_warehouse)s = 0 OR r.warehouse IN (SELECT name FROM warehouse_scope))
+            GROUP BY r.parent
         ),
         item_suppliers AS (
             SELECT s.parent AS item_code, s.supplier, s.supplier_part_no,
                    s.creation, s.name, s.idx
             FROM `tabItem Supplier` s
             JOIN target t ON t.item_code = s.parent
-            WHERE %(by_warehouse)s = 0 AND %(by_date)s = 0 AND s.parenttype = 'Item'
+            WHERE s.parenttype = 'Item'
               AND s.parentfield = 'supplier_items' AND s.supplier <> ''
-              AND (%(by_supplier)s = 0 OR s.supplier IN %(suppliers)s)
         ),
         orders AS (
             SELECT d.item_code, h.supplier, h.transaction_date, h.creation,
                    h.name AS voucher, d.supplier_part_no, d.idx, d.name AS line_id,
-                   h.currency, d.rate, d.uom
+                   h.currency, d.rate, d.uom, h.docstatus, h.status,
+                   GREATEST(d.qty - COALESCE(d.received_qty, 0), 0) * d.conversion_factor AS remaining_qty
             FROM `tabPurchase Order Item` d
             JOIN `tabPurchase Order` h ON h.name = d.parent
             JOIN target t ON t.item_code = d.item_code
-            WHERE h.docstatus = 1 AND h.supplier <> ''
-              AND (%(by_supplier)s = 0 OR h.supplier IN %(suppliers)s)
-              AND (%(by_warehouse)s = 0 OR d.warehouse IN %(warehouses)s)
-              AND (%(from_date)s IS NULL OR h.transaction_date >= %(from_date)s)
-              AND (%(to_date)s IS NULL OR h.transaction_date <= %(to_date)s)
+            WHERE (h.docstatus = 1 OR (%(include_drafts)s = 1 AND h.docstatus = 0))
+              AND h.supplier <> ''
         ),
         receipts AS (
             SELECT d.item_code, h.supplier, h.name AS voucher, d.name AS line_id, d.idx,
                    h.posting_date, h.posting_time, h.currency, d.rate, d.uom, d.stock_qty,
-                   h.creation, d.supplier_part_no
+                   h.creation, d.supplier_part_no, d.purchase_order, d.purchase_order_item
             FROM `tabPurchase Receipt Item` d
             JOIN `tabPurchase Receipt` h ON h.name = d.parent
             JOIN target t ON t.item_code = d.item_code
             WHERE h.docstatus = 1 AND h.supplier <> ''
-              AND (%(by_supplier)s = 0 OR h.supplier IN %(suppliers)s)
-              AND (%(by_warehouse)s = 0 OR d.warehouse IN %(warehouses)s)
-              AND (%(from_date)s IS NULL OR h.posting_date >= %(from_date)s)
-              AND (%(to_date)s IS NULL OR h.posting_date <= %(to_date)s)
         ),
         invoices AS (
             SELECT d.item_code, h.supplier, h.name AS voucher, d.name AS line_id, d.idx,
@@ -212,10 +270,6 @@ def build_report(filters):
             JOIN `tabPurchase Invoice` h ON h.name = d.parent
             JOIN target t ON t.item_code = d.item_code
             WHERE h.docstatus = 1 AND h.supplier <> ''
-              AND (%(by_supplier)s = 0 OR h.supplier IN %(suppliers)s)
-              AND (%(by_warehouse)s = 0 OR d.warehouse IN %(warehouses)s)
-              AND (%(from_date)s IS NULL OR h.posting_date >= %(from_date)s)
-              AND (%(to_date)s IS NULL OR h.posting_date <= %(to_date)s)
         ),
         quotations AS (
             SELECT d.item_code, h.supplier, h.transaction_date, h.creation,
@@ -223,10 +277,25 @@ def build_report(filters):
             FROM `tabSupplier Quotation Item` d
             JOIN `tabSupplier Quotation` h ON h.name = d.parent
             JOIN target t ON t.item_code = d.item_code
-            WHERE %(by_warehouse)s = 0 AND h.docstatus = 1 AND h.supplier <> ''
-              AND (%(by_supplier)s = 0 OR h.supplier IN %(suppliers)s)
-              AND (%(from_date)s IS NULL OR h.transaction_date >= %(from_date)s)
-              AND (%(to_date)s IS NULL OR h.transaction_date <= %(to_date)s)
+            WHERE h.docstatus = 1 AND h.supplier <> ''
+        ),
+        batch_suppliers AS (
+            SELECT b.item AS item_code, COALESCE(supplier_id.name, supplier_label.name) AS supplier,
+                   CASE h.docstatus
+                       WHEN 1 THEN 'Batch'
+                       WHEN 0 THEN 'Batch (draft PO)'
+                       WHEN 2 THEN 'Batch (cancelled PO)'
+                       ELSE 'Batch (no PO)'
+                   END AS source
+            FROM `tabBatch` b
+            JOIN target t ON t.item_code = b.item
+            LEFT JOIN `tabPurchase Order` h ON h.name = b.custom_purchase_order
+            LEFT JOIN `tabSupplier` supplier_id ON supplier_id.name = TRIM(b.custom_supplier_name)
+            LEFT JOIN `tabSupplier` supplier_label ON supplier_id.name IS NULL
+                AND supplier_label.supplier_name = TRIM(b.custom_supplier_name)
+            WHERE b.docstatus <> 2 AND TRIM(b.custom_supplier_name) <> ''
+              AND (supplier_id.name IS NOT NULL OR supplier_label.name IS NOT NULL)
+              AND (%(include_drafts)s = 1 OR h.docstatus IS NULL OR h.docstatus <> 0)
         ),
         links AS (
             SELECT item_code, supplier, 'Item Supplier' AS source FROM item_suppliers
@@ -234,16 +303,17 @@ def build_report(filters):
             SELECT d.parent, d.default_supplier, 'Item Default'
             FROM `tabItem Default` d
             JOIN target t ON t.item_code = d.parent
-            WHERE %(by_warehouse)s = 0 AND %(by_date)s = 0 AND d.parenttype = 'Item'
+            WHERE d.parenttype = 'Item'
               AND d.parentfield = 'item_defaults' AND d.default_supplier <> ''
-              AND (%(by_supplier)s = 0 OR d.default_supplier IN %(suppliers)s)
             UNION ALL
             SELECT p.item_code, p.supplier, 'Item Price'
             FROM `tabItem Price` p
             JOIN target t ON t.item_code = p.item_code
-            WHERE %(by_warehouse)s = 0 AND %(by_date)s = 0 AND p.buying = 1 AND p.supplier <> ''
-              AND (%(by_supplier)s = 0 OR p.supplier IN %(suppliers)s)
-            UNION ALL SELECT item_code, supplier, 'Purchase Order' FROM orders
+            WHERE p.buying = 1 AND p.supplier <> ''
+            UNION ALL
+            SELECT item_code, supplier,
+                   CASE WHEN docstatus = 0 THEN 'Purchase Order (Draft)' ELSE 'Purchase Order' END
+            FROM orders
             UNION ALL SELECT item_code, supplier, 'Purchase Receipt' FROM receipts
             UNION ALL SELECT item_code, supplier, 'Purchase Invoice' FROM invoices
             UNION ALL SELECT item_code, supplier, 'Supplier Quotation' FROM quotations
@@ -253,10 +323,8 @@ def build_report(filters):
             JOIN `tabRequest for Quotation` h ON h.name = d.parent
             JOIN `tabRequest for Quotation Supplier` s ON s.parent = h.name
             JOIN target t ON t.item_code = d.item_code
-            WHERE %(by_warehouse)s = 0 AND h.docstatus = 1 AND s.supplier <> ''
-              AND (%(by_supplier)s = 0 OR s.supplier IN %(suppliers)s)
-              AND (%(from_date)s IS NULL OR h.transaction_date >= %(from_date)s)
-              AND (%(to_date)s IS NULL OR h.transaction_date <= %(to_date)s)
+            WHERE h.docstatus = 1 AND s.supplier <> ''
+            UNION ALL SELECT item_code, supplier, source FROM batch_suppliers
         ),
         part_numbers AS (
             SELECT item_code, supplier, supplier_part_no, 1 AS source_priority,
@@ -265,7 +333,7 @@ def build_report(filters):
             FROM item_suppliers
             UNION ALL
             SELECT item_code, supplier, supplier_part_no, 2, transaction_date, NULL,
-                   creation, voucher, idx, line_id FROM orders
+                   creation, voucher, idx, line_id FROM orders WHERE docstatus = 1
             UNION ALL
             SELECT item_code, supplier, supplier_part_no, 3, transaction_date, NULL,
                    creation, voucher, idx, line_id FROM quotations
@@ -313,7 +381,7 @@ def build_report(filters):
             UNION ALL
             SELECT item_code, supplier, rate, currency, uom, 'Purchase Order',
                    transaction_date, NULL, creation, voucher, idx, line_id, 2
-            FROM orders WHERE rate > 0
+            FROM orders WHERE docstatus = 1 AND rate > 0
         ),
         ranked_rates AS (
             SELECT c.*, ROW_NUMBER() OVER (PARTITION BY item_code, supplier
@@ -326,19 +394,54 @@ def build_report(filters):
                    GROUP_CONCAT(DISTINCT source ORDER BY source SEPARATOR ', ') AS sources
             FROM links GROUP BY item_code, supplier
         ),
-        last_orders AS (
-            SELECT item_code, supplier, MAX(transaction_date) AS last_po_date
+        order_stats AS (
+            SELECT item_code, supplier,
+                   MAX(CASE WHEN docstatus = 1 THEN transaction_date END) AS last_po_date,
+                   COUNT(DISTINCT CASE WHEN docstatus = 1 THEN voucher END) AS po_count,
+                   SUM(CASE WHEN docstatus = 1 AND COALESCE(status, '') NOT IN ('Closed', 'Completed')
+                       THEN remaining_qty ELSE 0 END) AS open_order_qty,
+                   SUM(CASE WHEN docstatus = 0 THEN remaining_qty ELSE 0 END) AS draft_order_qty
             FROM orders GROUP BY item_code, supplier
+        ),
+        receipt_stats AS (
+            SELECT r.item_code, r.supplier, COUNT(DISTINCT r.voucher) AS receipt_count,
+                   ROUND(AVG(DATEDIFF(r.posting_date, h.transaction_date)), 1) AS lead_time_days,
+                   COUNT(DATEDIFF(r.posting_date, h.transaction_date)) AS lead_time_receipts
+            FROM receipts r
+            LEFT JOIN `tabPurchase Order Item` d ON d.name = r.purchase_order_item
+                AND COALESCE(r.purchase_order, '') = ''
+            LEFT JOIN `tabPurchase Order` h ON h.name = COALESCE(NULLIF(r.purchase_order, ''), d.parent)
+                AND h.docstatus = 1 AND h.supplier = r.supplier
+            GROUP BY r.item_code, r.supplier
         )
         SELECT t.item_code, t.item_name, t.stock_uom, t.template_code, t.template_name,
+               COALESCE(b.balance_qty, 0) AS balance_qty,
+               COALESCE(b.projected_qty, 0) AS projected_qty,
+               COALESCE(reorder.reorder_level, 0) AS reorder_level,
+               COALESCE(reorder.reorder_qty, 0) AS reorder_qty,
                s.supplier, supplier.supplier_name,
+               CASE
+                   WHEN supplier.name IS NULL THEN NULL
+                   WHEN supplier.disabled = 1 THEN 'Disabled'
+                   WHEN supplier.on_hold = 1 THEN CONCAT('On Hold',
+                       COALESCE(CONCAT(' (', NULLIF(TRIM(supplier.hold_type), ''), ')'), ''),
+                       COALESCE(CONCAT(' until ', supplier.release_date), ''))
+                   ELSE 'Active'
+               END AS supplier_status,
+               CASE WHEN s.supplier IN %(suppliers)s THEN 1 ELSE 0 END AS matched_supplier,
                COALESCE(p.supplier_part_no, '') AS supplier_part_number, s.sources,
+               COALESCE(o.open_order_qty, 0) AS open_order_qty,
+               CASE WHEN %(include_drafts)s = 1 THEN COALESCE(o.draft_order_qty, 0) END AS draft_order_qty,
+               stats.lead_time_days, COALESCE(stats.lead_time_receipts, 0) AS lead_time_receipts,
+               COALESCE(o.po_count, 0) AS po_count, COALESCE(stats.receipt_count, 0) AS receipt_count,
                CASE WHEN r.stock_qty > 0 THEN r.posting_date END AS last_purchase_date,
                CASE WHEN r.stock_qty > 0 THEN r.receipt END AS last_purchase_receipt,
                rate.rate AS last_rate, rate.rate_source, rate.rate_date, rate.voucher AS rate_document,
                rate.currency, rate.uom AS rate_uom,
                COALESCE(r.net_qty, 0) AS total_qty_received, o.last_po_date
         FROM target t
+        LEFT JOIN balances b ON b.item_code = t.item_code
+        LEFT JOIN reorder_levels reorder ON reorder.item_code = t.item_code
         LEFT JOIN by_supplier s ON s.item_code = t.item_code
         LEFT JOIN `tabSupplier` supplier ON supplier.name = s.supplier
         LEFT JOIN ranked_part_numbers p
@@ -347,8 +450,12 @@ def build_report(filters):
             ON r.item_code = t.item_code AND r.supplier = s.supplier AND r.rn = 1
         LEFT JOIN ranked_rates rate
             ON rate.item_code = t.item_code AND rate.supplier = s.supplier AND rate.rn = 1
-        LEFT JOIN last_orders o ON o.item_code = t.item_code AND o.supplier = s.supplier
-        WHERE %(selected_items)s = 1 OR s.supplier IS NOT NULL
+        LEFT JOIN order_stats o ON o.item_code = t.item_code AND o.supplier = s.supplier
+        LEFT JOIN receipt_stats stats ON stats.item_code = t.item_code AND stats.supplier = s.supplier
+        WHERE (%(selected_items)s = 1 OR s.supplier IS NOT NULL)
+          AND (%(by_supplier)s = 0 OR t.item_code IN (
+              SELECT item_code FROM links WHERE supplier IN %(suppliers)s
+          ))
         ORDER BY COALESCE(t.template_code, t.item_code), t.template_code IS NOT NULL,
                  t.item_code, last_purchase_date DESC, s.supplier
         """,
@@ -359,9 +466,20 @@ def build_report(filters):
     fields = [
         ("tree_label", "Item / Supplier", "Dynamic Link", "link_doctype", 240),
         ("item_name", "Item Name", "Data", None, 220),
+        ("balance_qty", "Balance Qty", "Float", None, 110),
+        ("projected_qty", "Projected Qty", "Float", None, 115),
+        ("reorder_level", "Reorder Level", "Float", None, 115),
+        ("reorder_qty", "Reorder Qty", "Float", None, 110),
         ("supplier_name", "Supplier Name", "Data", None, 190),
+        ("supplier_status", "Supplier Status", "Data", None, 210),
         ("supplier_part_number", "Supplier Part Number", "Data", None, 165),
         ("sources", "Sources", "Data", None, 260),
+        ("open_order_qty", "Open Order Qty", "Float", None, 135),
+        ("draft_order_qty", "Draft Order Qty", "Float", None, 135),
+        ("lead_time_days", "Lead Time (Days)", "Float", None, 140),
+        ("lead_time_receipts", "Lead Time Receipts", "Int", None, 150),
+        ("po_count", "PO Count", "Int", None, 100),
+        ("receipt_count", "Receipt Count", "Int", None, 115),
         ("last_purchase_date", "Last Purchase Date", "Date", None, 130),
         ("last_purchase_receipt", "Last Purchase Receipt", "Link", "Purchase Receipt", 190),
         ("last_rate", "Last Rate", "Currency", "currency", 110),
@@ -384,18 +502,31 @@ def build_report(filters):
             "options": options,
             "width": width,
         }
+        if fieldname == "balance_qty":
+            column["description"] = _(
+                "Current stock on hand in stock UOM for the selected warehouses and their descendants, "
+                "or all warehouses when none are selected."
+            )
+        if fieldname == "projected_qty":
+            column["description"] = _(
+                "Current projected stock in stock UOM for the selected warehouses and their descendants, "
+                "or all warehouses when none are selected."
+            )
         if fieldname == "sources":
             column["description"] = _(
-                "With Warehouses selected, sources include only Purchase Order, Purchase Receipt, "
-                "and Purchase Invoice lines in those warehouses. With either date selected, "
-                "sources exclude Item Supplier, Item Default, and Item Price."
+                "Supplier links from item records, purchase documents, and batches. "
+                "Draft purchase orders and their batches are included when the drafts filter is checked."
             )
+        if fieldname == "lead_time_days":
+            column["precision"] = 1
         columns.append(column)
 
     result_rows = []
     template_rows = {}
     template_suppliers = {}
     item_rows = {}
+    stock_fields = ("balance_qty", "projected_qty", "reorder_level", "reorder_qty")
+    order_fields = ("open_order_qty", "draft_order_qty")
     for row in rows:
         item_code = row.item_code
         template_code = row.template_code
@@ -418,11 +549,17 @@ def build_report(filters):
                     "supplier_count": 0,
                     "total_qty_received": 0,
                 }
+                for fieldname in stock_fields + order_fields:
+                    template_rows[template_id][fieldname] = 0 if row.stock_uom else None
+                if not include_drafts:
+                    template_rows[template_id]["draft_order_qty"] = None
                 template_suppliers[template_id] = set()
                 result_rows.append(template_rows[template_id])
             template_row = template_rows[template_id]
             if template_row["stock_uom"] != row.stock_uom:
                 template_row["stock_uom"] = None
+                for fieldname in stock_fields + order_fields:
+                    template_row[fieldname] = None
         if item_id not in item_rows:
             item_rows[item_id] = {
                 "node_id": item_id,
@@ -434,10 +571,16 @@ def build_report(filters):
                 "item_code": item_code,
                 "item_name": row.item_name,
                 "stock_uom": row.stock_uom,
+                "open_order_qty": 0,
+                "draft_order_qty": 0 if include_drafts else None,
                 "supplier_count": 0,
                 "total_qty_received": 0,
             }
             item_row = item_rows[item_id]
+            for fieldname in stock_fields:
+                item_row[fieldname] = row[fieldname]
+                if template_row is not None and template_row[fieldname] is not None:
+                    template_row[fieldname] = template_row[fieldname] + row[fieldname]
             result_rows.append(item_row)
             if not row.supplier:
                 placeholder = {column["fieldname"]: None for column in columns}
@@ -456,6 +599,11 @@ def build_report(filters):
             qty = row.total_qty_received
             item_row["supplier_count"] = item_row["supplier_count"] + 1
             item_row["total_qty_received"] = item_row["total_qty_received"] + qty
+            for fieldname in order_fields:
+                if row[fieldname] is not None:
+                    item_row[fieldname] = item_row[fieldname] + row[fieldname]
+                    if template_row is not None and template_row[fieldname] is not None:
+                        template_row[fieldname] = template_row[fieldname] + row[fieldname]
             if template_row is not None:
                 suppliers = template_suppliers[template_id]
                 suppliers.add(row.supplier)
@@ -471,9 +619,21 @@ def build_report(filters):
                 "link_doctype": "Supplier",
                 "item_code": item_code,
                 "supplier": row.supplier,
+                "matched_supplier": row.matched_supplier,
+                "balance_qty": None,
+                "projected_qty": None,
+                "reorder_level": None,
+                "reorder_qty": None,
                 "supplier_name": row.supplier_name,
+                "supplier_status": row.supplier_status,
                 "supplier_part_number": row.supplier_part_number,
                 "sources": row.sources,
+                "open_order_qty": row.open_order_qty,
+                "draft_order_qty": row.draft_order_qty,
+                "lead_time_days": row.lead_time_days,
+                "lead_time_receipts": row.lead_time_receipts,
+                "po_count": row.po_count,
+                "receipt_count": row.receipt_count,
                 "last_purchase_date": row.last_purchase_date,
                 "last_purchase_receipt": row.last_purchase_receipt,
                 "last_rate": row.last_rate,
@@ -490,10 +650,11 @@ def build_report(filters):
 
 
 data = build_report(filters)
-
 ```
 
 ## 8. Report JavaScript
+
+Deployed v6 source (Report field `javascript`).
 
 ```javascript
 frappe.query_reports["Suppliers by Item"] = {
@@ -501,16 +662,51 @@ frappe.query_reports["Suppliers by Item"] = {
 	name_field: "node_id",
 	parent_field: "parent_id",
 	initial_depth: 0,
+	onload(report) {
+		const drafts = report.get_filter("include_drafts");
+		const getValue = drafts.get_value.bind(drafts);
+		drafts.get_value = () => {
+			const value = getValue();
+			// Frappe omits falsy report filters, so serialize unchecked as "0".
+			return value === 0 ? "0" : value;
+		};
+	},
 	formatter(value, row, column, data, default_formatter) {
 		if (data?.is_placeholder && column.fieldname === "tree_label") {
 			return `<em class="text-muted">${frappe.utils.escape_html(value)}</em>`;
 		}
-		return default_formatter(value, row, column, data);
+		if (
+			[
+				"balance_qty",
+				"projected_qty",
+				"reorder_level",
+				"reorder_qty",
+				"open_order_qty",
+				"draft_order_qty",
+				"lead_time_days",
+				"lead_time_receipts",
+				"po_count",
+				"receipt_count",
+			].includes(column.fieldname) && data?.[column.fieldname] == null
+		) {
+			return "";
+		}
+		if (column.fieldname === "supplier_status" && (value === "Disabled" || value?.startsWith("On Hold"))) {
+			return `<span class="indicator-pill orange">${frappe.utils.escape_html(value)}</span>`;
+		}
+		const formatted = default_formatter(value, row, column, data);
+		if (column.fieldname === "tree_label" && data?.row_type === "supplier" && data.matched_supplier) {
+			return `<strong>${formatted}</strong>`;
+		}
+		return formatted;
 	},
 	after_datatable_render(datatable) {
-		const sources = datatable.datamanager.getColumns().find((column) => column.id === "sources");
-		if (sources?.description) {
-			datatable.columnmanager.getHeaderCell$(sources.colIndex)?.setAttribute("title", sources.description);
+		const columns = datatable.datamanager.getColumns();
+		for (const fieldname of ["balance_qty", "projected_qty", "sources"]) {
+			const column = columns.find((column) => column.id === fieldname);
+			if (column?.description) {
+				datatable.columnmanager.getHeaderCell$(column.colIndex)?.setAttribute("title", column.description);
+			}
 		}
 	},
 	filters: [
@@ -537,6 +733,7 @@ frappe.query_reports["Suppliers by Item"] = {
 			label: __("Suppliers"),
 			fieldtype: "MultiSelectList",
 			options: "Supplier",
+			description: __("Shows items bought from these suppliers, with all of each item's suppliers."),
 			get_data(txt) {
 				return frappe.db.get_link_options("Supplier", txt);
 			},
@@ -547,27 +744,17 @@ frappe.query_reports["Suppliers by Item"] = {
 			fieldtype: "MultiSelectList",
 			options: "Warehouse",
 			description: __(
-				"Limits supplier links to Purchase Order, Purchase Receipt, and Purchase Invoice lines in the selected warehouses."
+				"Limits balance, projected quantity, and reorder settings to these warehouses. Group warehouses include their descendants."
 			),
 			get_data(txt) {
 				return frappe.db.get_link_options("Warehouse", txt);
 			},
 		},
 		{
-			fieldname: "from_date",
-			label: __("From Date"),
-			fieldtype: "Date",
-			description: __(
-				"Either date excludes Item Supplier, Item Default, and Item Price. Leave both dates blank for all history."
-			),
-		},
-		{
-			fieldname: "to_date",
-			label: __("To Date"),
-			fieldtype: "Date",
-			description: __(
-				"Either date excludes Item Supplier, Item Default, and Item Price. Leave both dates blank for all history."
-			),
+			fieldname: "include_drafts",
+			label: __("Include Draft Purchase Orders"),
+			fieldtype: "Check",
+			default: 1,
 		},
 	],
 };

@@ -10,6 +10,7 @@ import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/item/form/widgets/item_suppliers_card.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart';
@@ -52,6 +53,7 @@ const _acp25Rows = [
     'indent': 0,
     'supplier_count': 1,
     'total_qty_received': 0,
+    'balance_qty': 12.5,
     'stock_uom': 'Nos',
   },
   {
@@ -63,6 +65,7 @@ const _acp25Rows = [
     'indent': 1,
     'supplier_count': 0,
     'total_qty_received': 0,
+    'balance_qty': 0,
     'stock_uom': 'Nos',
   },
   {
@@ -86,6 +89,7 @@ const _acp25Rows = [
     'indent': 1,
     'supplier_count': 1,
     'total_qty_received': 0,
+    'balance_qty': 12.5,
     'stock_uom': 'Nos',
   },
   {
@@ -99,6 +103,7 @@ const _acp25Rows = [
     'supplier': 'KANG KAI',
     'supplier_name': 'KANG KAI',
     'supplier_part_number': '1234-B',
+    'sources': 'Purchase Order, Batch',
     'total_qty_received': 0,
     'stock_uom': 'Nos',
     'last_po_date': '2026-11-05',
@@ -174,6 +179,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('1 supplier'), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'ACP-25'),
+        matching: find.text('Balance: 12.5 Nos'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('2002492'), findsNothing);
     expect(find.text('2002506'), findsNothing);
     expect(find.text('KANG KAI'), findsNothing);
@@ -187,10 +199,24 @@ void main() {
       matching: find.text('No supplier recorded'),
     );
     expect(noSupplier, findsOneWidget);
+    expect(
+      find.descendant(
+        of: itemWithoutSupplier,
+        matching: find.text('Balance: 0 Nos'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.widget<ListTile>(itemWithoutSupplier).onTap, isNull);
     expect(find.byKey(const ValueKey('none:7:2002492')), findsNothing);
     expect(find.text('1 supplier'), findsNWidgets(3));
     expect(find.text('KANG KAI'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, '2002506'),
+        matching: find.text('Balance: 12.5 Nos'),
+      ),
+      findsOneWidget,
+    );
 
     final context = tester.element(noSupplier);
     final scheme = Theme.of(context).colorScheme;
@@ -214,6 +240,7 @@ void main() {
     expect(supplier, findsOneWidget);
     for (final detail in [
       '1234-B',
+      'Purchase Order, Batch',
       '0 Nos',
       '2026-11-05',
       'AED 0.00 from Purchase Order 2026-11-05',
@@ -223,6 +250,10 @@ void main() {
         findsOneWidget,
       );
     }
+    expect(
+      find.descendant(of: supplier, matching: find.textContaining('Balance:')),
+      findsNothing,
+    );
 
     await tester.tap(find.text('ACP-25'));
     await tester.pumpAndSettle();
@@ -236,6 +267,46 @@ void main() {
     expect(find.textContaining('Purchase Order'), findsNothing);
     expect(find.textContaining('USD'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('emphasizes the matched supplier and shows the other supplier', (
+    tester,
+  ) async {
+    api.load = () async => SuppliersByItemNode.parseRows([
+      {
+        ..._acp25Rows[3],
+        'parent_id': null,
+        'supplier_count': 2,
+        'balance_qty': 4,
+      },
+      {..._acp25Rows[4], 'matched_supplier': 1},
+      {
+        'node_id': 'supplier:2002506:OTHER',
+        'parent_id': 'item:2002506',
+        'supplier_name': 'Other Supplier',
+        'matched_supplier': 0,
+      },
+    ]);
+    await openReport(
+      tester,
+      filters: const SuppliersByItemFilters(
+        suppliers: ['KANG KAI'],
+        warehouses: ['Stores - MM'],
+      ),
+      themeMode: ThemeMode.dark,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2 suppliers'), findsOneWidget);
+    expect(find.text('Balance: 4 Nos'), findsOneWidget);
+
+    await tester.tap(find.text('2002506'));
+    await tester.pumpAndSettle();
+
+    final matched = tester.widget<Text>(find.text('KANG KAI'));
+    final other = tester.widget<Text>(find.text('Other Supplier'));
+    expect(matched.style?.fontWeight, FontWeight.bold);
+    expect(other.style?.fontWeight, isNot(FontWeight.bold));
+    expect(matched.style?.color, other.style?.color);
   });
 
   testWidgets('a placeholder-only report keeps the item visible', (
@@ -259,36 +330,158 @@ void main() {
     expect(find.byKey(const ValueKey('none:7:2002492')), findsNothing);
   });
 
-  testWidgets('Item Overview lists only real suppliers from the report', (
+  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('shows below reorder level in ${mode.name} mode', (
+      tester,
+    ) async {
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {..._acp25Rows[0], 'projected_qty': 7, 'reorder_level': 9},
+        {..._acp25Rows[1], 'projected_qty': 4, 'reorder_level': 4},
+        _acp25Rows[2],
+        {..._acp25Rows[3], 'projected_qty': 3, 'reorder_level': 5},
+        _acp25Rows[4],
+        {'node_id': 'item:LEGACY', 'reorder_level': 2},
+        {'node_id': 'item:ZERO', 'projected_qty': -1, 'reorder_level': 0},
+      ]);
+      await openReport(tester, themeMode: mode);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ACP-25'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Balance: 12.5 Nos'), findsNWidgets(2));
+      expect(find.text('Projected: 7 Nos'), findsOneWidget);
+      expect(find.text('Projected: 3 Nos'), findsOneWidget);
+      expect(find.text('Reorder level: 9 Nos'), findsOneWidget);
+      expect(find.text('Reorder level: 5 Nos'), findsOneWidget);
+      expect(find.text('Reorder level: 0'), findsNothing);
+      final warnings = tester.widgetList<Text>(
+        find.text('Below reorder level'),
+      );
+      expect(warnings, hasLength(2));
+      final ink = mode == ThemeMode.dark
+          ? AppColors.orange300
+          : AppColors.orange700;
+      expect(warnings.map((text) => text.style!.color), everyElement(ink));
+    });
+  }
+
+  testWidgets('supplier rows show procurement details and sources', (
     tester,
   ) async {
-    Future<void> showCard(
-      List<Map<String, Object?>> rows, {
-      required bool isTemplate,
-    }) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ItemSuppliersCard(
-              key: ValueKey(isTemplate),
-              isTemplate: isTemplate,
-              loadReport: () async => SuppliersByItemNode.parseRows(rows),
-              onViewReport: () {},
-            ),
+    const sources =
+        'Purchase Order (Draft), Batch (draft PO), '
+        'Batch (cancelled PO), Batch (no PO)';
+    api.load = () async => SuppliersByItemNode.parseRows([
+      {..._acp25Rows[3], 'parent_id': null},
+      {
+        ..._acp25Rows[4],
+        'supplier_status': 'On Hold (Orders) until 2027-01-01',
+        'open_order_qty': 1234.5,
+        'draft_order_qty': 2.5,
+        'lead_time_days': 4,
+        'lead_time_receipts': 3,
+        'po_count': 5,
+        'receipt_count': 2,
+        'sources': sources,
+      },
+      {
+        'node_id': 'supplier:2002506:ACTIVE',
+        'parent_id': 'item:2002506',
+        'supplier_name': 'Second Supplier',
+        'supplier_status': 'Active',
+        'open_order_qty': 0,
+        'draft_order_qty': 0,
+        'lead_time_days': null,
+      },
+    ]);
+    await openReport(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2002506'));
+    await tester.pumpAndSettle();
+
+    final supplier = find.widgetWithText(Card, 'KANG KAI');
+    for (final detail in [
+      'On Hold (Orders) until 2027-01-01',
+      'Open: 1,234.5 Nos',
+      'Draft: 2.5',
+      'Lead time: 4.0 days (3 receipts)',
+      '5 POs · 2 receipts',
+      sources,
+    ]) {
+      expect(
+        find.descendant(of: supplier, matching: find.text(detail)),
+        findsOneWidget,
+      );
+    }
+    final activeSupplier = find.widgetWithText(Card, 'Second Supplier');
+    expect(activeSupplier, findsOneWidget);
+    for (final detail in ['Active', 'Open:', 'Draft:', 'Lead time:']) {
+      expect(
+        find.descendant(
+          of: activeSupplier,
+          matching: find.textContaining(detail),
+        ),
+        findsNothing,
+      );
+    }
+  });
+
+  Future<void> showItemCard(
+    WidgetTester tester,
+    List<Map<String, Object?>> rows, {
+    required bool isTemplate,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ItemSuppliersCard(
+            key: ValueKey(rows),
+            isTemplate: isTemplate,
+            loadReport: () async => SuppliersByItemNode.parseRows(rows),
+            onViewReport: () {},
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-    }
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
 
-    await showCard(_acp25Rows, isTemplate: true);
+  testWidgets(
+    'Item Overview shows the item or template balance and suppliers',
+    (tester) async {
+      final rows = [
+        {..._acp25Rows[0], 'balance_qty': 1234.5},
+        {..._acp25Rows[1], 'balance_qty': 0},
+        ..._acp25Rows.skip(2),
+      ];
+
+      await showItemCard(tester, rows, isTemplate: true);
+      expect(find.text('Balance: 1,234.5 Nos'), findsOneWidget);
+      expect(find.text('KANG KAI'), findsOneWidget);
+      expect(find.text('No supplier recorded'), findsNothing);
+      expect(find.text('No suppliers recorded'), findsNothing);
+
+      await showItemCard(tester, rows.take(3).toList(), isTemplate: false);
+      expect(find.text('Balance: 0 Nos'), findsOneWidget);
+      expect(find.text('Balance: 1,234.5 Nos'), findsNothing);
+      expect(find.text('No suppliers recorded'), findsOneWidget);
+      expect(find.text('KANG KAI'), findsNothing);
+    },
+  );
+
+  testWidgets('Item Overview leaves mixed-UOM template balance blank', (
+    tester,
+  ) async {
+    await showItemCard(tester, [
+      {..._acp25Rows[0], 'stock_uom': null, 'balance_qty': null},
+      {..._acp25Rows[1], 'balance_qty': 4},
+      _acp25Rows[2],
+      {..._acp25Rows[3], 'stock_uom': 'Kg', 'balance_qty': 6.5},
+      _acp25Rows[4],
+    ], isTemplate: true);
+
+    expect(find.textContaining('Balance:'), findsNothing);
     expect(find.text('KANG KAI'), findsOneWidget);
-    expect(find.text('No supplier recorded'), findsNothing);
-    expect(find.text('No suppliers recorded'), findsNothing);
-
-    await showCard(_acp25Rows.sublist(1, 3), isTemplate: false);
-    expect(find.text('No suppliers recorded'), findsOneWidget);
-    expect(find.text('KANG KAI'), findsNothing);
   });
 
   testWidgets('refresh shows busy feedback and guards against re-entry', (
@@ -331,69 +524,107 @@ void main() {
     expect(find.text('No suppliers recorded'), findsOneWidget);
   });
 
-  testWidgets('footer sums received quantities per stock UOM', (tester) async {
-    const systemBottomPadding = 48.0;
-    tester.view.devicePixelRatio = 1;
-    tester.view.padding = const FakeViewPadding(bottom: systemBottomPadding);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPadding);
-    api.load = () async => SuppliersByItemNode.parseRows([
-      {..._acp25Rows[0], 'total_qty_received': 26.5},
-      _acp25Rows[1],
-      _acp25Rows[2],
-      {..._acp25Rows[3], 'supplier_count': 2, 'total_qty_received': 26.5},
-      {
-        ..._acp25Rows[4],
-        'last_rate': 110,
-        'rate_source': 'Purchase Receipt',
-        'total_qty_received': 20,
-      },
-      {
-        'node_id': 'supplier:7:2002506:OTHER',
-        'parent_id': 'item:2002506',
-        'supplier': 'OTHER',
-        'last_rate': 250,
-        'currency': 'AED',
-        'total_qty_received': 6.5,
-        'stock_uom': 'Nos',
-      },
-      {
-        'node_id': 'item:BULK',
-        'supplier_count': 1,
-        'total_qty_received': 4,
-        'stock_uom': 'Kg',
-      },
-      {
-        'node_id': 'supplier:4:BULK:WHOLESALE',
-        'parent_id': 'item:BULK',
-        'total_qty_received': 4,
-        'stock_uom': 'Kg',
-        'last_rate': 510,
-        'currency': 'AED',
-      },
-    ]);
-    await openReport(tester, size: const Size(390, 240));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'footer totals only item balance, projected, and open quantities by UOM',
+    (tester) async {
+      const systemBottomPadding = 48.0;
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(bottom: systemBottomPadding);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {
+          ..._acp25Rows[0],
+          'total_qty_received': 26.5,
+          'projected_qty': 15,
+          'open_order_qty': 3,
+        },
+        {..._acp25Rows[1], 'projected_qty': 5, 'open_order_qty': 1},
+        _acp25Rows[2],
+        {
+          ..._acp25Rows[3],
+          'supplier_count': 2,
+          'total_qty_received': 26.5,
+          'projected_qty': 10,
+          'open_order_qty': 2,
+        },
+        {
+          ..._acp25Rows[4],
+          'last_rate': 110,
+          'rate_source': 'Purchase Receipt',
+          'total_qty_received': 20,
+          'open_order_qty': 2,
+          'draft_order_qty': 11,
+          'po_count': 3,
+          'receipt_count': 4,
+        },
+        {
+          'node_id': 'supplier:7:2002506:OTHER',
+          'parent_id': 'item:2002506',
+          'supplier': 'OTHER',
+          'last_rate': 250,
+          'currency': 'AED',
+          'total_qty_received': 6.5,
+          'stock_uom': 'Nos',
+        },
+        {
+          'node_id': 'item:BULK',
+          'supplier_count': 1,
+          'total_qty_received': 4,
+          'balance_qty': 7.25,
+          'projected_qty': -1.5,
+          'open_order_qty': 8,
+          'stock_uom': 'Kg',
+        },
+        {
+          'node_id': 'supplier:4:BULK:WHOLESALE',
+          'parent_id': 'item:BULK',
+          'total_qty_received': 4,
+          'open_order_qty': 8,
+          'stock_uom': 'Kg',
+          'last_rate': 510,
+          'currency': 'AED',
+        },
+      ]);
+      await openReport(tester, size: const Size(390, 240));
+      await tester.pumpAndSettle();
 
-    final scrollView = find.byType(CustomScrollView);
-    final controller = tester.widget<CustomScrollView>(scrollView).controller!;
-    final scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
-    expect(scrollbar.controller, same(controller));
-    controller.jumpTo(controller.position.maxScrollExtent);
-    await tester.pumpAndSettle();
+      final scrollView = find.byType(CustomScrollView);
+      final controller = tester
+          .widget<CustomScrollView>(scrollView)
+          .controller!;
+      final scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
+      expect(scrollbar.controller, same(controller));
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
 
-    expect(find.text('End of list'), findsOneWidget);
-    expect(find.text('Total qty received'), findsOneWidget);
-    expect(find.text('26.5 Nos'), findsOneWidget);
-    final lastTotal = find.text('4 Kg');
-    expect(lastTotal, findsOneWidget);
-    expect(find.textContaining('AED'), findsNothing);
-    expect(find.textContaining('870'), findsNothing);
-    expect(
-      tester.getBottomLeft(scrollView).dy - tester.getBottomLeft(lastTotal).dy,
-      greaterThanOrEqualTo(systemBottomPadding),
-    );
-  });
+      expect(find.text('End of list'), findsOneWidget);
+      expect(find.text('Total qty received'), findsNothing);
+      expect(find.text('26.5 Nos'), findsNothing);
+      expect(find.text('Total balance qty'), findsOneWidget);
+      expect(find.text('12.5 Nos'), findsOneWidget);
+      expect(find.text('7.25 Kg'), findsOneWidget);
+      expect(find.text('25 Nos'), findsNothing);
+      expect(find.text('Total projected qty'), findsOneWidget);
+      expect(find.text('15 Nos'), findsOneWidget);
+      expect(find.text('-1.5 Kg'), findsOneWidget);
+      expect(find.text('30 Nos'), findsNothing);
+      expect(find.text('Total open order qty'), findsOneWidget);
+      expect(find.text('3 Nos'), findsOneWidget);
+      expect(find.text('6 Nos'), findsNothing);
+      expect(find.text('16 Kg'), findsNothing);
+      expect(find.text('11 Nos'), findsNothing);
+      final lastTotal = find.text('8 Kg');
+      expect(lastTotal, findsOneWidget);
+      expect(find.textContaining('AED'), findsNothing);
+      expect(find.textContaining('870'), findsNothing);
+      expect(
+        tester.getBottomLeft(scrollView).dy -
+            tester.getBottomLeft(lastTotal).dy,
+        greaterThanOrEqualTo(systemBottomPadding),
+      );
+    },
+  );
 
   testWidgets('shows a permission error and retries with the same filter', (
     tester,
@@ -410,6 +641,7 @@ void main() {
     expect(find.text('No suppliers recorded'), findsNothing);
     expect(api.requests.single.toJson(), {
       'items': ['BLUE'],
+      'include_drafts': 1,
     });
 
     api.load = () async => [];
@@ -420,10 +652,25 @@ void main() {
   });
 
   testWidgets('opens a template-only multi-select filter', (tester) async {
-    await openReport(tester, size: const Size(1024, 768));
+    await openReport(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Filter'));
     await tester.pumpAndSettle();
+
+    expect(find.text('From Date'), findsNothing);
+    expect(find.text('To Date'), findsNothing);
+    expect(
+      find.text(
+        "Shows items bought from these suppliers, with all of each item's suppliers.",
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Filters balance, projected stock, and reorder quantities.',
+      ),
+      findsOneWidget,
+    );
 
     final variant = find.text('Variant Of');
     expect(variant, findsOneWidget);
@@ -445,8 +692,52 @@ void main() {
 
     expect(api.requests.last.toJson(), {
       'variant_of': ['SHIRT', 'JACKET'],
+      'include_drafts': 1,
     });
     expect(find.text('Variant Of · 2 selected'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('draft switch defaults on and remembers the applied choice', (
+    tester,
+  ) async {
+    await openReport(tester);
+    await tester.pumpAndSettle();
+    expect(api.requests.single.includeDrafts, isTrue);
+    await tester.tap(find.byTooltip('Filter'));
+    await tester.pumpAndSettle();
+
+    final draftSwitch = find.widgetWithText(
+      SwitchListTile,
+      'Include draft purchase orders',
+    );
+    await tester.ensureVisible(draftSwitch);
+    expect(tester.widget<SwitchListTile>(draftSwitch).value, isTrue);
+    expect(
+      find.text(
+        'Suppliers that appear only on draft purchase orders are hidden when off.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(draftSwitch);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(draftSwitch).value, isFalse);
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(api.requests.last.includeDrafts, isFalse);
+
+    final chip = find.widgetWithText(FilterChipWidget, 'Draft POs · Off');
+    await tester.tap(find.text('Draft POs · Off'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(draftSwitch).value, isFalse);
+    Navigator.of(tester.element(draftSwitch)).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(of: chip, matching: find.byIcon(Icons.close)),
+    );
+    await tester.pumpAndSettle();
+    expect(api.requests.last.includeDrafts, isTrue);
+    expect(chip, findsNothing);
   });
 }

@@ -9,6 +9,8 @@ import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
+import 'package:multimax/app/modules/global_widgets/supplier_status_pill.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_controller.dart';
 
@@ -20,6 +22,7 @@ class SuppliersByItemScreen extends StatefulWidget {
 }
 
 class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
+  static const _includeDraftsKey = 'include_drafts';
   static const _filterFields = [
     ReportFilterField(
       key: 'items',
@@ -42,6 +45,8 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       type: ReportFilterType.doctypeMultiLink,
       linkDoctype: 'Supplier',
       prefixIcon: Icons.local_shipping_outlined,
+      helperText:
+          "Shows items bought from these suppliers, with all of each item's suppliers.",
     ),
     ReportFilterField(
       key: 'warehouses',
@@ -49,18 +54,18 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       type: ReportFilterType.doctypeMultiLink,
       linkDoctype: 'Warehouse',
       prefixIcon: Icons.warehouse_outlined,
+      helperText:
+          'Filters balance, projected stock, and reorder quantities. '
+          'Groups include child warehouses. '
+          'All warehouses are used when empty.',
     ),
     ReportFilterField(
-      key: 'from_date',
-      label: 'From Date',
-      type: ReportFilterType.datePicker,
-      prefixIcon: Icons.calendar_today_outlined,
-    ),
-    ReportFilterField(
-      key: 'to_date',
-      label: 'To Date',
-      type: ReportFilterType.datePicker,
-      prefixIcon: Icons.calendar_today_outlined,
+      key: _includeDraftsKey,
+      label: 'Include draft purchase orders',
+      type: ReportFilterType.switchToggle,
+      prefixIcon: Icons.edit_note_outlined,
+      helperText:
+          'Suppliers that appear only on draft purchase orders are hidden when off.',
     ),
   ];
 
@@ -82,14 +87,12 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
   }
 
   void _loadDraft() {
-    final filters = _controller.filters.value.toJson();
+    final filters = _controller.filters.value;
+    final links = filters.linkFilters;
     for (final entry in _draft.entries) {
-      final value = filters[entry.key];
-      entry.value.text = switch (value) {
-        List<String>() => joinMultiValue(value),
-        String() => value,
-        _ => '',
-      };
+      entry.value.text = entry.key == _includeDraftsKey
+          ? (filters.includeDrafts ? '1' : '')
+          : joinMultiValue(links[entry.key] ?? const []);
     }
   }
 
@@ -98,8 +101,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
     variantOf: splitMultiValue(_draft['variant_of']!.text),
     suppliers: splitMultiValue(_draft['suppliers']!.text),
     warehouses: splitMultiValue(_draft['warehouses']!.text),
-    fromDate: DateTime.tryParse(_draft['from_date']!.text),
-    toDate: DateTime.tryParse(_draft['to_date']!.text),
+    includeDrafts: _draft[_includeDraftsKey]!.text == '1',
   );
 
   void _openFilters(BuildContext context, {String? focusKey}) {
@@ -114,9 +116,6 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       onRun: () => _controller.run(filters: _draftFilters),
       runBusy: _controller.isLoading,
       onClear: _clearFilters,
-      validate: () => _draftFilters.hasInvalidDateRange
-          ? SuppliersByItemReportException.invalidDateRange
-          : null,
     );
   }
 
@@ -126,7 +125,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
 
   void _clearFilter(String key) {
     _loadDraft();
-    _draft[key]!.clear();
+    _draft[key]!.text = key == _includeDraftsKey ? '1' : '';
     _controller.run(filters: _draftFilters);
   }
 
@@ -135,7 +134,9 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       if (_controller.activeFilters[field.key] case final value?)
         FilterChipWidget(
           icon: field.prefixIcon!,
-          label: '${field.label} · $value',
+          label: field.key == _includeDraftsKey
+              ? 'Draft POs · $value'
+              : '${field.label} · $value',
           onTap: () => _openFilters(context, focusKey: field.key),
           onDeleted: () => _clearFilter(field.key),
         ),
@@ -252,6 +253,9 @@ class _ReportState extends StatelessWidget {
   }
 }
 
+String _quantity(num quantity, [String? uom]) =>
+    [FormattingHelper.formatQtyGrouped(quantity.toDouble()), ?uom].join(' ');
+
 class _ReportFooter extends StatelessWidget {
   const _ReportFooter({required this.nodes, required this.bottomPadding});
 
@@ -260,24 +264,24 @@ class _ReportFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totals = <String?, num>{};
-
-    void addTotals(List<SuppliersByItemNode> nodes) {
-      for (final node in nodes) {
-        final row = node.row;
-        if (row.totalQtyReceived case final quantity?
-            when row.kind == SuppliersByItemRowKind.supplier) {
-          totals.update(
-            row.stockUom,
-            (total) => total + quantity,
-            ifAbsent: () => quantity,
-          );
-        }
-        addTotals(node.children);
-      }
-    }
-
-    addTotals(nodes);
+    final totals = SuppliersByItemNode.quantityTotalsByUom(nodes);
+    final sections = {
+      'Total balance qty': [
+        for (final entry in totals.entries)
+          if (entry.value.balanceQty case final quantity?)
+            _quantity(quantity, entry.key),
+      ],
+      'Total projected qty': [
+        for (final entry in totals.entries)
+          if (entry.value.projectedQty case final quantity?)
+            _quantity(quantity, entry.key),
+      ],
+      'Total open order qty': [
+        for (final entry in totals.entries)
+          if (entry.value.openOrderQty case final quantity?)
+            _quantity(quantity, entry.key),
+      ],
+    };
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -288,16 +292,18 @@ class _ReportFooter extends StatelessWidget {
       child: Column(
         children: [
           Text('End of list', style: style),
-          Text('Total qty received', style: style),
-          if (totals.isEmpty) Text('0', style: style),
-          for (final MapEntry(key: uom, value: quantity) in totals.entries)
-            Text(
-              [
-                FormattingHelper.formatQtyGrouped(quantity.toDouble()),
-                ?uom,
-              ].join(' '),
-              style: style,
-            ),
+          for (final section in sections.entries)
+            if (section.value.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(section.key, style: style),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                children: [
+                  for (final total in section.value) Text(total, style: style),
+                ],
+              ),
+            ],
         ],
       ),
     );
@@ -390,6 +396,37 @@ class _GroupTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = row.supplierCount;
+    final supplierSummary = hasNoSupplier
+        ? 'No supplier recorded'
+        : switch (count) {
+            null => null,
+            1 => '1 supplier',
+            _ => '$count suppliers',
+          };
+    final quantities = [
+      if (row.balanceQty case final balance?)
+        'Balance: ${_quantity(balance, row.stockUom)}',
+      if (row.projectedQty case final projected?)
+        'Projected: ${_quantity(projected, row.stockUom)}',
+      if (row.reorderLevel case final level? when level > 0)
+        'Reorder level: ${_quantity(level, row.stockUom)}',
+    ];
+    final details = <Widget>[
+      if (supplierSummary != null) Text(supplierSummary),
+      if (quantities.isNotEmpty)
+        Wrap(
+          spacing: 12,
+          children: [for (final quantity in quantities) Text(quantity)],
+        ),
+      if (row.isBelowReorderLevel)
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: StatusPill(
+            status: 'Below reorder level',
+            colorStatus: 'On Hold',
+          ),
+        ),
+    ];
     final theme = Theme.of(context);
     return Card(
       margin: EdgeInsets.zero,
@@ -405,11 +442,13 @@ class _GroupTile extends StatelessWidget {
                 : Icons.category_outlined,
           ),
           title: Text(row.itemName ?? row.treeLabel),
-          subtitle: hasNoSupplier
-              ? const Text('No supplier recorded')
-              : count == null
+          subtitle: details.isEmpty
               ? null
-              : Text(count == 1 ? '1 supplier' : '$count suppliers'),
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: details,
+                ),
           trailing: onTap == null
               ? null
               : Icon(expanded ? Icons.expand_less : Icons.expand_more),
@@ -430,16 +469,30 @@ class _SupplierTile extends StatelessWidget {
     final quantity = row.totalQtyReceived;
     final rate = row.lastRate;
     final provenance = [?row.rateSource, ?row.rateDate].join(' ');
+    final nameStyle = theme.textTheme.titleSmall;
+    final receipts = row.leadTimeReceipts;
+    final counts = [
+      if (row.poCount case final count?) '$count POs',
+      if (row.receiptCount case final count?) '$count receipts',
+    ];
+    final procurementDetails = [
+      if (row.openOrderQty case final open? when open > 0)
+        'Open: ${_quantity(open, row.stockUom)}',
+      if (row.draftOrderQty case final draft? when draft > 0)
+        'Draft: ${_quantity(draft)}',
+      if (row.leadTimeDays case final days?)
+        'Lead time: ${days.toStringAsFixed(1)} days'
+            '${receipts == null ? '' : ' ($receipts receipts)'}',
+      if (counts.isNotEmpty) counts.join(' · '),
+    ];
 
     final details = {
       'Part number': row.supplierPartNumber,
+      'Sources': row.sources,
       'Last purchase': row.lastPurchaseDate,
       'Qty received': quantity == null
           ? null
-          : [
-              FormattingHelper.formatQtyGrouped(quantity.toDouble()),
-              ?row.stockUom,
-            ].join(' '),
+          : _quantity(quantity, row.stockUom),
       'Last PO': row.lastPoDate,
       if (rate != null)
         'Rate': [
@@ -458,10 +511,31 @@ class _SupplierTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              row.supplierName ?? row.supplier ?? row.treeLabel,
-              style: theme.textTheme.titleSmall,
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  row.supplierName ?? row.supplier ?? row.treeLabel,
+                  style: row.matchedSupplier
+                      ? nameStyle?.copyWith(fontWeight: FontWeight.bold)
+                      : nameStyle,
+                ),
+                SupplierStatusPill(status: row.supplierStatus),
+              ],
             ),
+            if (procurementDetails.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  for (final detail in procurementDetails)
+                    Text(detail, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ],
             if (details.values.any((value) => value != null)) ...[
               const SizedBox(height: 6),
               Wrap(

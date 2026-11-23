@@ -31,22 +31,15 @@ class SuppliersByItemController extends GetxController {
     try {
       final selected = filters ?? this.filters.value;
       this.filters.value = selected;
-      activeFilters.assignAll(
-        selected.toJson().map((key, value) {
-          return MapEntry(key, switch (value) {
-            [final String code] => code,
-            List<String> codes => '${codes.length} selected',
-            _ => value.toString(),
-          });
-        }),
-      );
+      activeFilters.assignAll({
+        for (final entry in selected.linkFilters.entries)
+          entry.key: entry.value.length == 1
+              ? entry.value.single
+              : '${entry.value.length} selected',
+        if (!selected.includeDrafts) 'include_drafts': 'Off',
+      });
       error.value = null;
       nodes.clear();
-      if (selected.hasInvalidDateRange) {
-        error.value = SuppliersByItemReportException.invalidDateRange;
-        return;
-      }
-
       final result = await _api.runSuppliersByItem(selected);
       if (!isClosed) nodes.assignAll(result);
     } on SuppliersByItemReportException catch (e) {

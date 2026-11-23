@@ -34,6 +34,9 @@ enum ReportFilterType {
   /// [kMultiValueSeparator] — read them back with [splitMultiValue].
   /// Requires [ReportFilterField.linkDoctype] to be set.
   doctypeMultiLink,
+
+  /// On/off switch. The controller holds '1' when on and is empty when off.
+  switchToggle,
 }
 
 /// Separator between values in a [ReportFilterType.doctypeMultiLink]
@@ -80,6 +83,9 @@ class ReportFilterField {
   /// Optional hint text.
   final String? hint;
 
+  /// Optional text below a multi-link field or switch.
+  final String? helperText;
+
   /// Whether the field is required (shows * in label, validated on Run).
   final bool required;
 
@@ -110,6 +116,7 @@ class ReportFilterField {
     this.type = ReportFilterType.text,
     this.prefixIcon,
     this.hint,
+    this.helperText,
     this.required = false,
     this.focusNode,
     this.linkDoctype,
@@ -644,6 +651,8 @@ class _FieldWidgetState extends State<_FieldWidget> {
       case ReportFilterType.doctypeLink:
       case ReportFilterType.doctypeMultiLink:
         await _openDoctypeSheet(context, field, widget.controller);
+      case ReportFilterType.switchToggle:
+        break;
       case ReportFilterType.text:
       case ReportFilterType.batchBrowse:
         _focusNode?.requestFocus();
@@ -667,6 +676,20 @@ class _FieldWidgetState extends State<_FieldWidget> {
   Widget build(BuildContext context) {
     final field      = widget.field;
     final controller = widget.controller;
+
+    if (field.type == ReportFilterType.switchToggle) {
+      final helperText = field.helperText;
+      return Material(
+        type: MaterialType.transparency,
+        child: SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(field.label),
+          subtitle: helperText == null ? null : Text(helperText),
+          value: controller.text == '1',
+          onChanged: (checked) => controller.text = checked ? '1' : '',
+        ),
+      );
+    }
 
     // ── datePicker ─────────────────────────────────────────────────────────
     if (field.type == ReportFilterType.datePicker) {
@@ -725,9 +748,19 @@ class _FieldWidgetState extends State<_FieldWidget> {
     // the controller so the sheet's controller contract stays text-only.
     if (field.type == ReportFilterType.doctypeMultiLink) {
       final values = splitMultiValue(controller.text);
+      final theme = Theme.of(context);
+      final helperText = field.helperText;
       return InputDecorator(
         decoration: InputDecoration(
           labelText:  field.label,
+          helper: helperText == null
+              ? null
+              : Text(
+                  helperText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
           border:     const OutlineInputBorder(),
           prefixIcon: Icon(field.prefixIcon ?? Icons.list_alt_outlined),
           contentPadding: const EdgeInsets.symmetric(

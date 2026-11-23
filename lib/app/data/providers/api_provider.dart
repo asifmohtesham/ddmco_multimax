@@ -1758,11 +1758,6 @@ class ApiProvider {
   Future<List<SuppliersByItemNode>> runSuppliersByItem(
     SuppliersByItemFilters filters,
   ) async {
-    if (filters.hasInvalidDateRange) {
-      throw const SuppliersByItemReportException(
-        SuppliersByItemReportException.invalidDateRange,
-      );
-    }
     if (!_dioInitialised) await _initDio();
 
     late final Response<dynamic> response;

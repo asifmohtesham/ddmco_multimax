@@ -1,41 +1,39 @@
-import 'package:multimax/app/data/utils/formatting_helper.dart';
-
 class SuppliersByItemFilters {
   const SuppliersByItemFilters({
     this.items = const [],
     this.variantOf = const [],
     this.suppliers = const [],
     this.warehouses = const [],
-    this.fromDate,
-    this.toDate,
+    this.includeDrafts = true,
   });
 
   final List<String> items;
   final List<String> variantOf;
   final List<String> suppliers;
   final List<String> warehouses;
-  final DateTime? fromDate;
-  final DateTime? toDate;
+  final bool includeDrafts;
 
-  bool get hasInvalidDateRange {
-    final from = fromDate;
-    final to = toDate;
-    if (from == null || to == null) return false;
-    return DateTime.utc(
-      from.year,
-      from.month,
-      from.day,
-    ).isAfter(DateTime.utc(to.year, to.month, to.day));
+  Map<String, List<String>> get linkFilters {
+    final links =
+        {
+          'items': items,
+          'variant_of': variantOf,
+          'suppliers': suppliers,
+          'warehouses': warehouses,
+        }.map((key, codes) {
+          final normalized = codes
+              .map((code) => code.trim())
+              .where((code) => code.isNotEmpty)
+              .toSet()
+              .toList();
+          return MapEntry(key, normalized);
+        });
+    return links..removeWhere((_, codes) => codes.isEmpty);
   }
 
   Map<String, Object> toJson() => {
-    if (items.isNotEmpty) 'items': items,
-    if (variantOf.isNotEmpty) 'variant_of': variantOf,
-    if (suppliers.isNotEmpty) 'suppliers': suppliers,
-    if (warehouses.isNotEmpty) 'warehouses': warehouses,
-    if (fromDate case final date?)
-      'from_date': FormattingHelper.formatDate(date),
-    if (toDate case final date?) 'to_date': FormattingHelper.formatDate(date),
+    ...linkFilters,
+    'include_drafts': includeDrafts ? 1 : 0,
   };
 }
 
@@ -45,7 +43,6 @@ class SuppliersByItemReportException implements Exception {
     this.permissionDenied = false,
   });
 
-  static const invalidDateRange = 'From date must be on or before To date.';
   static const denied =
       'You need the Purchase User or Stock User role to view Suppliers by Item.';
 
@@ -71,8 +68,15 @@ class SuppliersByItemRow {
     required Map row,
   }) : itemName = _text(row['item_name']),
        supplierName = _text(row['supplier_name']),
+       supplierStatus = _text(row['supplier_status']),
        supplierPartNumber = _text(row['supplier_part_number']),
        sources = _text(row['sources']),
+       openOrderQty = _number(row['open_order_qty']),
+       draftOrderQty = _number(row['draft_order_qty']),
+       leadTimeDays = _number(row['lead_time_days']),
+       leadTimeReceipts = _number(row['lead_time_receipts'])?.toInt(),
+       poCount = _number(row['po_count'])?.toInt(),
+       receiptCount = _number(row['receipt_count'])?.toInt(),
        lastPurchaseDate = _text(row['last_purchase_date']),
        lastPurchaseReceipt = _text(row['last_purchase_receipt']),
        lastRate = _number(row['last_rate']),
@@ -82,6 +86,21 @@ class SuppliersByItemRow {
        currency = _text(row['currency']),
        rateUom = _text(row['rate_uom']),
        totalQtyReceived = _number(row['total_qty_received']),
+       balanceQty = kind == SuppliersByItemRowKind.supplier
+           ? null
+           : _number(row['balance_qty']),
+       projectedQty = kind == SuppliersByItemRowKind.supplier
+           ? null
+           : _number(row['projected_qty']),
+       reorderLevel = kind == SuppliersByItemRowKind.supplier
+           ? null
+           : _number(row['reorder_level']),
+       reorderQty = kind == SuppliersByItemRowKind.supplier
+           ? null
+           : _number(row['reorder_qty']),
+       matchedSupplier =
+           kind == SuppliersByItemRowKind.supplier &&
+           _isChecked(row['matched_supplier']),
        stockUom = _text(row['stock_uom']),
        lastPoDate = _text(row['last_po_date']),
        supplierCount = _number(row['supplier_count'])?.toInt();
@@ -96,8 +115,15 @@ class SuppliersByItemRow {
   final String? supplier;
   final String? itemName;
   final String? supplierName;
+  final String? supplierStatus;
   final String? supplierPartNumber;
   final String? sources;
+  final num? openOrderQty;
+  final num? draftOrderQty;
+  final num? leadTimeDays;
+  final int? leadTimeReceipts;
+  final int? poCount;
+  final int? receiptCount;
   final String? lastPurchaseDate;
   final String? lastPurchaseReceipt;
   final num? lastRate;
@@ -107,12 +133,23 @@ class SuppliersByItemRow {
   final String? currency;
   final String? rateUom;
   final num? totalQtyReceived;
+  final num? balanceQty;
+  final num? projectedQty;
+  final num? reorderLevel;
+  final num? reorderQty;
+  final bool matchedSupplier;
   final String? stockUom;
   final String? lastPoDate;
   final int? supplierCount;
 
+  bool get isBelowReorderLevel {
+    final projected = projectedQty;
+    final level = reorderLevel;
+    return projected != null && level != null && level > 0 && projected < level;
+  }
+
   static SuppliersByItemRow? _parse(Map row) {
-    if (_number(row['is_placeholder']) == 1) return null;
+    if (_isChecked(row['is_placeholder'])) return null;
     final nodeId = _text(row['node_id']);
     if (nodeId == null) return null;
     final separator = nodeId.indexOf(':');
@@ -184,10 +221,24 @@ class SuppliersByItemRow {
     return text == null || text.isEmpty ? null : text;
   }
 
+  static bool _isChecked(Object? value) => value == true || _number(value) == 1;
+
   static num? _number(Object? value) {
     final number = value is num ? value : num.tryParse(_text(value) ?? '');
     return number != null && number.isFinite ? number : null;
   }
+}
+
+class SuppliersByItemQuantityTotals {
+  const SuppliersByItemQuantityTotals({
+    this.balanceQty,
+    this.projectedQty,
+    this.openOrderQty,
+  });
+
+  final num? balanceQty;
+  final num? projectedQty;
+  final num? openOrderQty;
 }
 
 class SuppliersByItemNode {
@@ -199,6 +250,38 @@ class SuppliersByItemNode {
   bool get hasSuppliers =>
       row.kind == SuppliersByItemRowKind.supplier ||
       children.any((child) => child.hasSuppliers);
+
+  /// Sums available quantity fields from item rows with a known stock UOM.
+  static Map<String, SuppliersByItemQuantityTotals> quantityTotalsByUom(
+    Iterable<SuppliersByItemNode> nodes,
+  ) {
+    final totals = <String, SuppliersByItemQuantityTotals>{};
+
+    num? add(num? total, num? quantity) =>
+        quantity == null ? total : (total ?? 0) + quantity;
+
+    void addQuantities(Iterable<SuppliersByItemNode> nodes) {
+      for (final node in nodes) {
+        final row = node.row;
+        if ((row.kind, row.stockUom)
+            case (SuppliersByItemRowKind.item, final uom?)
+            when row.balanceQty != null ||
+                row.projectedQty != null ||
+                row.openOrderQty != null) {
+          final previous = totals[uom];
+          totals[uom] = SuppliersByItemQuantityTotals(
+            balanceQty: add(previous?.balanceQty, row.balanceQty),
+            projectedQty: add(previous?.projectedQty, row.projectedQty),
+            openOrderQty: add(previous?.openOrderQty, row.openOrderQty),
+          );
+        }
+        addQuantities(node.children);
+      }
+    }
+
+    addQuantities(nodes);
+    return totals;
+  }
 
   /// Builds the report tree in server order using the explicit parent IDs.
   /// Desk-only placeholder rows and non-tree totals are skipped.

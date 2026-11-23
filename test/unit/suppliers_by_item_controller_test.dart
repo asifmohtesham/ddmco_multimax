@@ -75,30 +75,37 @@ void main() {
     addTearDown(() => api.dio.close(force: true));
   });
 
-  test('posts all six selected filters with date-only values', () async {
+  test('posts selected links and includes drafts by default', () async {
     await controller.run(
-      filters: SuppliersByItemFilters(
+      filters: const SuppliersByItemFilters(
         items: ['ITEM-1', 'ITEM-2'],
         variantOf: ['TEMPLATE-1'],
         suppliers: ['SUP-1', 'SUP-2'],
         warehouses: ['Stores - MM'],
-        fromDate: DateTime(2026, 11, 2, 18, 30),
-        toDate: DateTime(2026, 11, 20),
       ),
     );
 
     final request = adapter.requests.single;
     expect(request.method, 'POST');
     expect(request.path, '/api/method/frappe.desk.query_report.run');
+    expect(request.queryParameters, isEmpty);
     final body = adapter.bodies.single;
+    expect(
+      body.keys,
+      unorderedEquals([
+        'report_name',
+        'filters',
+        'ignore_prepared_report',
+        'are_default_filters',
+      ]),
+    );
     expect(body['report_name'], 'Suppliers by Item');
     expect(jsonDecode(body['filters']!), {
       'items': ['ITEM-1', 'ITEM-2'],
       'variant_of': ['TEMPLATE-1'],
       'suppliers': ['SUP-1', 'SUP-2'],
       'warehouses': ['Stores - MM'],
-      'from_date': '2026-11-02',
-      'to_date': '2026-11-20',
+      'include_drafts': 1,
     });
     expect(controller.error.value, isNull);
     expect(controller.activeFilters, {
@@ -106,37 +113,88 @@ void main() {
       'variant_of': 'TEMPLATE-1',
       'suppliers': '2 selected',
       'warehouses': 'Stores - MM',
-      'from_date': '2026-11-02',
-      'to_date': '2026-11-20',
     });
   });
 
-  test('runs without optional filters and with a one-sided date', () async {
+  test('posts only the draft setting when no links are selected', () async {
     await controller.run();
-    expect(jsonDecode(adapter.bodies.single['filters']!), isEmpty);
-
-    await controller.run(
-      filters: SuppliersByItemFilters(toDate: DateTime(2026, 11, 22)),
-    );
-    expect(jsonDecode(adapter.bodies.last['filters']!), {
-      'to_date': '2026-11-22',
+    expect(jsonDecode(adapter.bodies.single['filters']!), {
+      'include_drafts': 1,
     });
+    expect(controller.activeFilters, isEmpty);
   });
 
-  test('rejects a reversed date range before sending a request', () async {
+  test('posts drafts off and remembers it on refresh', () async {
     await controller.run(
-      filters: SuppliersByItemFilters(
-        fromDate: DateTime(2026, 11, 3),
-        toDate: DateTime(2026, 11, 2),
-      ),
+      filters: const SuppliersByItemFilters(includeDrafts: false),
     );
-    expect(adapter.requests, isEmpty);
-    expect(
-      controller.error.value,
-      SuppliersByItemReportException.invalidDateRange,
-    );
-    expect(controller.isLoading.value, isFalse);
+    await controller.run();
+
+    expect(adapter.bodies, hasLength(2));
+    for (final body in adapter.bodies) {
+      expect(jsonDecode(body['filters']!), {'include_drafts': 0});
+    }
+    expect(controller.activeFilters, {'include_drafts': 'Off'});
   });
+
+  test(
+    'warehouse-scoped balance keeps the same supplier rows and matches',
+    () async {
+      Map<String, Object> reportResponse(num balance) => {
+        'message': {
+          'result': [
+            {
+              'node_id': 'item:ITEM-1',
+              'balance_qty': balance,
+              'stock_uom': 'Nos',
+              'supplier_count': 2,
+            },
+            {
+              'node_id': 'supplier:ITEM-1:SUP-1',
+              'parent_id': 'item:ITEM-1',
+              'matched_supplier': 1,
+            },
+            {
+              'node_id': 'supplier:ITEM-1:SUP-2',
+              'parent_id': 'item:ITEM-1',
+              'matched_supplier': 0,
+            },
+          ],
+        },
+      };
+
+      const expectedSuppliers = [('SUP-1', true), ('SUP-2', false)];
+      List<(String?, bool)> supplierMatches(SuppliersByItemNode item) => [
+        for (final child in item.children)
+          (child.row.supplier, child.row.matchedSupplier),
+      ];
+
+      adapter.response = reportResponse(16.5);
+      await controller.run(
+        filters: const SuppliersByItemFilters(suppliers: ['SUP-1']),
+      );
+      final allWarehouses = controller.nodes.single;
+      expect(allWarehouses.row.balanceQty, 16.5);
+      expect(supplierMatches(allWarehouses), expectedSuppliers);
+
+      adapter.response = reportResponse(4);
+      await controller.run(
+        filters: const SuppliersByItemFilters(
+          suppliers: ['SUP-1'],
+          warehouses: ['Stores - MM'],
+        ),
+      );
+      final selectedWarehouses = controller.nodes.single;
+      expect(selectedWarehouses.row.balanceQty, 4);
+      expect(supplierMatches(selectedWarehouses), expectedSuppliers);
+      expect(jsonDecode(adapter.bodies.last['filters']!), {
+        'suppliers': ['SUP-1'],
+        'warehouses': ['Stores - MM'],
+        'include_drafts': 1,
+      });
+      expect(controller.error.value, isNull);
+    },
+  );
 
   test('uses its preset filters on the initial run', () async {
     adapter.response = {
@@ -166,6 +224,7 @@ void main() {
 
     expect(jsonDecode(adapter.bodies.single['filters']!), {
       'variant_of': ['TEMPLATE-1'],
+      'include_drafts': 1,
     });
     expect(preset.nodes.single.row.template, 'TEMPLATE-1');
     expect(preset.error.value, isNull);
