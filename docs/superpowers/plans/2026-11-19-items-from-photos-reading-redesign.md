@@ -20,7 +20,7 @@
 - Colours: no hard-coded surfaces or inks. Pills use the `AppColors` ramp: fill x500 at alpha 0.13, border x500 at alpha 0.35, text x700 in light and x300 in dark (green for In stock, red for Out of stock, orange for Zooming in). Spinners on the pill take the pill's text colour.
 - Server: standard methods only; never branch on the server version; v15 and v16 both. Stock Ageing uses the existing `ApiProvider.runStockAgeingCustom`.
 - List conventions hold: `Scrollbar` sharing the list's `ScrollController`, bottom nav-bar padding, "End of list".
-- CI runs no tests: run `flutter analyze` and the named tests locally in every task; run the full suite on sys6 at the end (three Windows-only failures are known: two in `stock_ageing_controller_test.dart`, one in `stock_sheet_controller_test.dart` "empty, relative and root folders are not clean-up roots").
+- CI runs no tests: run `flutter analyze` and the named tests locally in every task; run the full suite on sys6 at the end (three Windows-only failures are known: two in `stock_ageing_controller_test.dart`, one in `items_from_photos_controller_test.dart` "empty, relative and root folders are not clean-up roots").
 - On this machine call Flutter as `flutter` (snap); if the sandbox blocks it, use `~/snap/flutter/common/flutter/bin/flutter`. `flutter` runs may rewrite `linux/ macos/ windows/` generated plugin files: `git checkout --` them before committing.
 
 ## Review Focus
@@ -43,13 +43,13 @@ Conditions the spec implies and a person will meet; each has its test in the tas
 | `lib/app/modules/stock_sheet/model/review_models.dart` (modify) | `ReadStage`; `ReviewEntry.stage`, `.number`, `.codes` |
 | `lib/app/modules/stock_sheet/model/ageing_models.dart` (create) | `ItemAgeing`, `AgeingState` |
 | `lib/app/modules/stock_sheet/logic/reading_status.dart` (create) | The strip's label, tally and progress from the list (pure) |
-| `lib/app/data/providers/stock_sheet_provider.dart` (modify) | `fetchStockAgeing` |
-| `lib/app/modules/stock_sheet/stock_sheet_controller.dart` (modify) | The reading loop, the item and stock cache, removal while reading, card and ageing state |
+| `lib/app/data/providers/items_from_photos_provider.dart` (modify) | `fetchStockAgeing` |
+| `lib/app/modules/stock_sheet/items_from_photos_controller.dart` (modify) | The reading loop, the item and stock cache, removal while reading, card and ageing state |
 | `lib/app/modules/stock_sheet/widgets/review_list.dart` (modify) | Row stages, pills, the tap that opens a card |
 | `lib/app/modules/stock_sheet/widgets/reading_strip.dart` (create) | The strip under the title |
 | `lib/app/modules/stock_sheet/widgets/stock_card_details.dart` (create) | Rack-Wise Stock Balance and Stock Ageing inside an open card |
 | `lib/app/modules/stock_sheet/widgets/rack_chips.dart` (delete in Task 7) | Replaced by the card |
-| `lib/app/modules/stock_sheet/stock_sheet_screen.dart` (modify) | Phases, title, strip, footer |
+| `lib/app/modules/stock_sheet/items_from_photos_screen.dart` (modify) | Phases, title, strip, footer |
 | `docs/items_from_photos.md` (modify) | The as-built description |
 
 ---
@@ -58,8 +58,8 @@ Conditions the spec implies and a person will meet; each has its test in the tas
 
 **Files:**
 - Modify: `lib/app/modules/stock_sheet/logic/photo_decoder.dart`
-- Test: `test/unit/stock_sheet_photo_decoder_test.dart`
-- Modify (compile only): `test/unit/stock_sheet_controller_test.dart` (`_FakeDecoder`), `test/widget/stock_sheet_screen_test.dart` (its fake decoder, if it has one)
+- Test: `test/unit/items_from_photos_photo_decoder_test.dart`
+- Modify (compile only): `test/unit/items_from_photos_controller_test.dart` (`_FakeDecoder`), `test/widget/items_from_photos_screen_test.dart` (its fake decoder, if it has one)
 
 **Interfaces:**
 - Produces:
@@ -79,7 +79,7 @@ Conditions the spec implies and a person will meet; each has its test in the tas
   ```
   `PhotoDecoder` becomes a class to extend (it has a concrete `decode`); fakes change `implements` to `extends`.
 
-- [ ] **Step 1: Write the failing tests** in the `decode` group's set-up of `stock_sheet_photo_decoder_test.dart` (reuse `_FakeAnalyser`, `photo()`, `_tile`, `_at`, `_a`, `_b`):
+- [ ] **Step 1: Write the failing tests** in the `decode` group's set-up of `items_from_photos_photo_decoder_test.dart` (reuse `_FakeAnalyser`, `photo()`, `_tile`, `_at`, `_a`, `_b`):
 
 ```dart
 test('readWhole reads the photo once and nothing else', () async {
@@ -122,18 +122,18 @@ test('zoomIn stopped while the tiles were being written reads none', () async {
 });
 ```
 
-- [ ] **Step 2: Run** `flutter test test/unit/stock_sheet_photo_decoder_test.dart` — the new tests fail to compile (`readWhole`, `zoomIn`, `needsZoom` undefined).
+- [ ] **Step 2: Run** `flutter test test/unit/items_from_photos_photo_decoder_test.dart` — the new tests fail to compile (`readWhole`, `zoomIn`, `needsZoom` undefined).
 
 - [ ] **Step 3: Implement.** Move today's `decode` body into `readWhole` (the first `_analyse`, with the same `UnsupportedError` rethrow and null on other failures) and `zoomIn` (everything after `if (items == 1) return first;`, with `first` now `whole`). `_readTiles` takes `stopped` and asks it once after `Isolate.run` returns and before each `_analyseFound`; when it says stop, `_readTiles` signals it (distinct from "no tiles") so `zoomIn` returns null without the 2x copy. The existing `finally` already deletes the tile files. `decode` in the base class is `readWhole`, then `zoomIn` when `needsZoom`, falling back to `whole` when `zoomIn` gives null.
 
-- [ ] **Step 4: Make the fakes compile.** In `test/unit/stock_sheet_controller_test.dart` change `_FakeDecoder implements PhotoDecoder` to `extends PhotoDecoder`, keep its `decode` override as it is, and add `readWhole` (same body as its `decode`) and `zoomIn` (returns `whole`). Do the same for any other `PhotoDecoder` fake (`grep -rn "PhotoDecoder" test`).
+- [ ] **Step 4: Make the fakes compile.** In `test/unit/items_from_photos_controller_test.dart` change `_FakeDecoder implements PhotoDecoder` to `extends PhotoDecoder`, keep its `decode` override as it is, and add `readWhole` (same body as its `decode`) and `zoomIn` (returns `whole`). Do the same for any other `PhotoDecoder` fake (`grep -rn "PhotoDecoder" test`).
 
-- [ ] **Step 5: Run** `flutter test test/unit/stock_sheet_photo_decoder_test.dart test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_screen_test.dart` — all pass (the existing `decode` tests prove `readWhole` + `zoomIn` give what `decode` gave). `flutter analyze lib/app/modules/stock_sheet` shows nothing new.
+- [ ] **Step 5: Run** `flutter test test/unit/items_from_photos_photo_decoder_test.dart test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_screen_test.dart` — all pass (the existing `decode` tests prove `readWhole` + `zoomIn` give what `decode` gave). `flutter analyze lib/app/modules/stock_sheet` shows nothing new.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/app/modules/stock_sheet/logic/photo_decoder.dart test/unit/stock_sheet_photo_decoder_test.dart test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_screen_test.dart
+git add lib/app/modules/stock_sheet/logic/photo_decoder.dart test/unit/items_from_photos_photo_decoder_test.dart test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_screen_test.dart
 git commit -m "refactor(items-from-photos): read a photo in two steps that can be stopped"
 ```
 
@@ -226,16 +226,16 @@ git commit -m "feat(items-from-photos): row stages and the reading strip's text"
 ### Task 3: The reading loop (list opens at once, two rounds, stock by item)
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart`
-- Test: `test/unit/stock_sheet_controller_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart`
+- Test: `test/unit/items_from_photos_controller_test.dart`
 
 **Interfaces:**
-- Consumes: `PhotoDecoder.readWhole` / `zoomIn` / `needsZoom` (Task 1); `ReadStage`, `ReviewEntry.stage/number/codes` (Task 2); `ReviewBuilder.entriesFor(scan, items, stock)`; `StockSheetProvider.fetchItems`, `fetchFinishedGoodsStock`; `StockAggregator.racksByItem`.
+- Consumes: `PhotoDecoder.readWhole` / `zoomIn` / `needsZoom` (Task 1); `ReadStage`, `ReviewEntry.stage/number/codes` (Task 2); `ReviewBuilder.entriesFor(scan, items, stock)`; `ItemsFromPhotosProvider.fetchItems`, `fetchFinishedGoodsStock`; `StockAggregator.racksByItem`.
 - Produces (used by Tasks 4, 5, 8):
   ```dart
   final reading = false.obs;      // true while any row is not settled
   // start(paths): fingerprints (phase decoding), then phase reviewing with one placeholder per photo, then reads.
-  // StockSheetPhase.checkingStock is removed; decoding lasts only while photos are fingerprinted.
+  // ItemsFromPhotosPhase.checkingStock is removed; decoding lasts only while photos are fingerprinted.
   ```
   Private, named here so later tasks agree: `_pump(int generation)` (the single reading loop), `_requestStock()` (asks for what is not yet known and settles rows whose codes are known), `_knownCodes`, `_itemsByCode`, `_stockByCode`, and the one long-lived `_decoder` (made on first use from `_decoderFactory`, disposed in `onClose`).
 
@@ -259,7 +259,7 @@ test('the list opens with a row per photo before anything is read', () async {
   final c = make(decoder, _FakeProvider());
   unawaited(c.start(['p1', 'p2']));
   await pumpEventQueue();
-  expect(c.phase.value, StockSheetPhase.reviewing);
+  expect(c.phase.value, ItemsFromPhotosPhase.reviewing);
   expect(c.review.map((e) => e.number), [1, 2]);
   expect(c.review.map((e) => e.stage), [ReadStage.reading, ReadStage.notRead]);
   expect(c.reading.value, isTrue);
@@ -328,7 +328,7 @@ test('a stock batch that cannot reach the ERP leaves its rows unchecked and read
   final c = make(decoder, provider);
   await c.start(['p1', 'p2']);
   await settled(c);
-  expect(c.phase.value, StockSheetPhase.reviewing);
+  expect(c.phase.value, ItemsFromPhotosPhase.reviewing);
   expect(c.review.first.unchecked, isTrue);
   expect(decoder.zooms, ['p2']);
   provider.stockError = null;
@@ -341,25 +341,25 @@ test('no access to stock levels still ends in the error state', () async {
   final c = make(_FakeDecoder({'p1': [eanA]}), provider);
   await c.start(['p1']);
   await settled(c);
-  expect(c.phase.value, StockSheetPhase.error);
-  expect(c.errorMessage.value, StockSheetController.noAccessMessage);
+  expect(c.phase.value, ItemsFromPhotosPhase.error);
+  expect(c.errorMessage.value, ItemsFromPhotosController.noAccessMessage);
 });
 ```
 
   (Adapt fixture names to the file's own: check how `_FakeProvider.stockError` and `StockAccessDenied` are spelt there.)
 
-- [ ] **Step 3: Run** `flutter test test/unit/stock_sheet_controller_test.dart` — the new tests fail; note which existing tests fail too.
+- [ ] **Step 3: Run** `flutter test test/unit/items_from_photos_controller_test.dart` — the new tests fail; note which existing tests fail too.
 
-- [ ] **Step 4: Implement** the rules above in `start`, replacing `_decode`, `_checkStock` and the `decoding → checkingStock → reviewing` sequence. `retry()` (from the error state) asks `_requestStock()` again for rows not yet settled. Remove `StockSheetPhase.checkingStock`.
+- [ ] **Step 4: Implement** the rules above in `start`, replacing `_decode`, `_checkStock` and the `decoding → checkingStock → reviewing` sequence. `retry()` (from the error state) asks `_requestStock()` again for rows not yet settled. Remove `ItemsFromPhotosPhase.checkingStock`.
 
-- [ ] **Step 5: Bring the existing tests along.** Tests that asserted `StockSheetPhase.checkingStock`, or `decoding` for the whole read, or `decoded`/`total` counting up, now assert the stages or `reading`; tests that awaited `start(...)` for a finished review add `await settled(c)`. Do not weaken what a test proves about the final review, the file, sharing, duplicates, limits or clean-up. `addPhotos` still uses its own path until Task 4; keep its tests green.
+- [ ] **Step 5: Bring the existing tests along.** Tests that asserted `ItemsFromPhotosPhase.checkingStock`, or `decoding` for the whole read, or `decoded`/`total` counting up, now assert the stages or `reading`; tests that awaited `start(...)` for a finished review add `await settled(c)`. Do not weaken what a test proves about the final review, the file, sharing, duplicates, limits or clean-up. `addPhotos` still uses its own path until Task 4; keep its tests green.
 
-- [ ] **Step 6: Run** `flutter test test/unit/stock_sheet_controller_test.dart` and `flutter analyze lib/app/modules/stock_sheet` — all pass, nothing new.
+- [ ] **Step 6: Run** `flutter test test/unit/items_from_photos_controller_test.dart` and `flutter analyze lib/app/modules/stock_sheet` — all pass, nothing new.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add lib/app/modules/stock_sheet/stock_sheet_controller.dart test/unit/stock_sheet_controller_test.dart
+git add lib/app/modules/stock_sheet/items_from_photos_controller.dart test/unit/items_from_photos_controller_test.dart
 git commit -m "feat(items-from-photos): open the review at once and read in two rounds"
 ```
 
@@ -368,8 +368,8 @@ git commit -m "feat(items-from-photos): open the review at once and read in two 
 ### Task 4: Rows stay live (remove, Undo, reorder, add while reading)
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart`
-- Test: `test/unit/stock_sheet_controller_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart`
+- Test: `test/unit/items_from_photos_controller_test.dart`
 
 **Interfaces:**
 - Consumes: `_pump`, `_requestStock`, `reading` (Task 3).
@@ -489,7 +489,7 @@ test('photos added during reading join the list and get their quick pass before 
 });
 ```
 
-- [ ] **Step 2: Run** `flutter test test/unit/stock_sheet_controller_test.dart` — the new tests fail.
+- [ ] **Step 2: Run** `flutter test test/unit/items_from_photos_controller_test.dart` — the new tests fail.
 
 - [ ] **Step 3: Implement** the rules. `addPhotos` keeps its guards, duplicate and room checks and messages; after fingerprinting it appends placeholders and returns null without waiting for the reading. The clean-up test for temporary tile files is in Task 1; here the fake cannot leave files.
 
@@ -500,7 +500,7 @@ test('photos added during reading join the list and get their quick pass before 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/app/modules/stock_sheet/stock_sheet_controller.dart test/unit/stock_sheet_controller_test.dart
+git add lib/app/modules/stock_sheet/items_from_photos_controller.dart test/unit/items_from_photos_controller_test.dart
 git commit -m "feat(items-from-photos): remove, undo, reorder and add while photos are read"
 ```
 
@@ -510,8 +510,8 @@ git commit -m "feat(items-from-photos): remove, undo, reorder and add while phot
 
 **Files:**
 - Create: `lib/app/modules/stock_sheet/model/ageing_models.dart`
-- Modify: `lib/app/data/providers/stock_sheet_provider.dart`
-- Test: `test/unit/stock_sheet_provider_test.dart`
+- Modify: `lib/app/data/providers/items_from_photos_provider.dart`
+- Test: `test/unit/items_from_photos_provider_test.dart`
 
 **Interfaces:**
 - Consumes: `ApiProvider.runStockAgeingCustom({Map<String, dynamic>? filters})`; `StockAgeingLogic.applyRange`, `parseBuckets`, `parseRows`, `num_` (`lib/app/modules/stock/reports/stock_ageing/stock_ageing_logic.dart`).
@@ -531,17 +531,17 @@ git commit -m "feat(items-from-photos): remove, undo, reorder and add while phot
     final AgeingStatus status; final List<ItemAgeing> rows;
   }
 
-  // StockSheetProvider
+  // ItemsFromPhotosProvider
   static const String ageingRange = '90, 180, 360, 720';
   /// The item's rows in Stock Ageing as of today, Finished Goods; empty when the report has none.
   /// Throws StockAccessDenied on 403 and whatever else the call throws.
   Future<List<ItemAgeing>> fetchStockAgeing(String itemCode);
   ```
-  `StockSheetProvider` takes a new optional `String Function()? company` (default `Get.find<StorageService>().getCompany()`, as the Stock Ageing controller does).
+  `ItemsFromPhotosProvider` takes a new optional `String Function()? company` (default `Get.find<StorageService>().getCompany()`, as the Stock Ageing controller does).
 
 - [ ] **Step 1: Probe the server (read-only), before writing code.** With the dev credentials in memory `erp-dev-api-credentials.md`, run `frappe.desk.query_report.run` for `Stock Ageing - Custom` with the filters of Step 3 and an item known to be in stock (EAN `10039991` → item `1003999`). Record in the task's commit message: seconds taken, and whether one row or one row per warehouse comes back. The code below handles both; the number goes into the docs in Task 9. If the credentials are gone, ask the user; do not guess.
 
-- [ ] **Step 2: Write the failing tests** in `stock_sheet_provider_test.dart` (follow the file's fake `ApiProvider` pattern; add a `runStockAgeingCustom` override that records `filters` and returns a canned `Response`):
+- [ ] **Step 2: Write the failing tests** in `items_from_photos_provider_test.dart` (follow the file's fake `ApiProvider` pattern; add a `runStockAgeingCustom` override that records `filters` and returns a canned `Response`):
 
 ```dart
 test('fetchStockAgeing asks for one item with the report\'s saved filter values', () async {
@@ -603,12 +603,12 @@ test('a 403 is StockAccessDenied', () async {
 
 - [ ] **Step 3: Implement** `fetchStockAgeing` through the provider's existing `_guard`. Filters exactly as the first test (date `yyyy-MM-dd` from `_now()`). Columns go through `StockAgeingLogic.applyRange(columns, ageingRange)` then `parseBuckets`; rows through `parseRows`; keep rows whose `item_code` is the one asked for; `warehouse` is set only when more than one row is kept.
 
-- [ ] **Step 4: Run** `flutter test test/unit/stock_sheet_provider_test.dart` — pass.
+- [ ] **Step 4: Run** `flutter test test/unit/items_from_photos_provider_test.dart` — pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/app/modules/stock_sheet/model/ageing_models.dart lib/app/data/providers/stock_sheet_provider.dart test/unit/stock_sheet_provider_test.dart
+git add lib/app/modules/stock_sheet/model/ageing_models.dart lib/app/data/providers/items_from_photos_provider.dart test/unit/items_from_photos_provider_test.dart
 git commit -m "feat(items-from-photos): fetch one item's Stock Ageing"
 ```
 
@@ -619,7 +619,7 @@ git commit -m "feat(items-from-photos): fetch one item's Stock Ageing"
 **Files:**
 - Modify: `lib/app/modules/stock_sheet/widgets/review_list.dart`
 - Create: `lib/app/modules/stock_sheet/widgets/reading_strip.dart`
-- Test: `test/widget/stock_sheet_review_list_test.dart`
+- Test: `test/widget/items_from_photos_review_list_test.dart`
 
 **Interfaces:**
 - Consumes: `ReadStage`, `ReviewEntry.stage/number/codes`, `ReadingStatus.of` (Task 2).
@@ -679,7 +679,7 @@ testWidgets('the strip follows the list and goes when all is settled', (tester) 
 
   Plus, in the file's existing dark-mode contrast group, the six stage rows and both pills (same assertions the group already makes for text on its surface: at least 4.5:1).
 
-- [ ] **Step 2: Run** `flutter test test/widget/stock_sheet_review_list_test.dart` — the new tests fail.
+- [ ] **Step 2: Run** `flutter test test/widget/items_from_photos_review_list_test.dart` — the new tests fail.
 
 - [ ] **Step 3: Implement** the stages in `_ReviewRow`, the pills (one private `_StatusPill` with a colour ramp argument, per Global Constraints) and `ReadingStrip`. Leave `RackChips` in place but unused by the row (it goes in Task 7); move its "Out of stock" pill colours to the new pill.
 
@@ -690,7 +690,7 @@ testWidgets('the strip follows the list and goes when all is settled', (tester) 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/app/modules/stock_sheet/widgets/review_list.dart lib/app/modules/stock_sheet/widgets/reading_strip.dart test/widget/stock_sheet_review_list_test.dart
+git add lib/app/modules/stock_sheet/widgets/review_list.dart lib/app/modules/stock_sheet/widgets/reading_strip.dart test/widget/items_from_photos_review_list_test.dart
 git commit -m "feat(items-from-photos): show each row's reading stage and the reading strip"
 ```
 
@@ -699,16 +699,16 @@ git commit -m "feat(items-from-photos): show each row's reading stage and the re
 ### Task 7: The card (rack-wise balance and stock ageing)
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_controller.dart`, `lib/app/modules/stock_sheet/widgets/review_list.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_controller.dart`, `lib/app/modules/stock_sheet/widgets/review_list.dart`
 - Create: `lib/app/modules/stock_sheet/widgets/stock_card_details.dart`
-- Delete: `lib/app/modules/stock_sheet/widgets/rack_chips.dart` (and its tests in `stock_sheet_review_list_test.dart`)
-- Test: `test/unit/stock_sheet_controller_test.dart`, `test/widget/stock_sheet_review_list_test.dart`
+- Delete: `lib/app/modules/stock_sheet/widgets/rack_chips.dart` (and its tests in `items_from_photos_review_list_test.dart`)
+- Test: `test/unit/items_from_photos_controller_test.dart`, `test/widget/items_from_photos_review_list_test.dart`
 
 **Interfaces:**
-- Consumes: `StockSheetProvider.fetchStockAgeing`, `ItemAgeing`, `AgeingState`, `AgeingStatus` (Task 5); `ItemStock`, `RackQty`.
+- Consumes: `ItemsFromPhotosProvider.fetchStockAgeing`, `ItemAgeing`, `AgeingState`, `AgeingStatus` (Task 5); `ItemStock`, `RackQty`.
 - Produces:
   ```dart
-  // StockSheetController
+  // ItemsFromPhotosController
   final openCards = <String>{}.obs;                 // ReviewEntry.id of open cards
   final ageing = <String, AgeingState>{}.obs;       // by item code
   void toggleCard(String entryId);                  // opens or closes; first opening of an in-stock item fetches its ageing
@@ -837,12 +837,12 @@ testWidgets('a swipe or a drag by the handle does not open the card', (tester) a
 
 - [ ] **Step 4: Implement.** Controller: `toggleCard`, `retryAgeing`, the maps (`StockAccessDenied` → `denied`; an empty list → `missing`; any other error → `failed`; results ignored when `_stale`). `StockCardDetails`: the rack table (largest first, as `ItemStock.racks` already is; `rack == null` is "No rack"; a total line only when there is more than one line), then Stock Ageing (when several `ItemAgeing` rows come back, each under its warehouse name); bucket bars scaled to the largest bucket in the row, in `scheme.primary`. `ReviewList`: `InkWell`/tap on the row body and the arrow button call `onToggleCard`; `Obx`-free (the screen passes plain values). Delete `rack_chips.dart` and its tests.
 
-- [ ] **Step 5: Run** `flutter test test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_review_list_test.dart` and `flutter analyze` — pass, nothing new, no reference to `RackChips` left (`grep -rn RackChips lib test`).
+- [ ] **Step 5: Run** `flutter test test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_review_list_test.dart` and `flutter analyze` — pass, nothing new, no reference to `RackChips` left (`grep -rn RackChips lib test`).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A lib/app/modules/stock_sheet test/unit/stock_sheet_controller_test.dart test/widget/stock_sheet_review_list_test.dart
+git add -A lib/app/modules/stock_sheet test/unit/items_from_photos_controller_test.dart test/widget/items_from_photos_review_list_test.dart
 git commit -m "feat(items-from-photos): open a row to rack-wise balance and stock ageing"
 ```
 
@@ -851,8 +851,8 @@ git commit -m "feat(items-from-photos): open a row to rack-wise balance and stoc
 ### Task 8: The screen
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/stock_sheet_screen.dart`
-- Test: `test/widget/stock_sheet_screen_test.dart`
+- Modify: `lib/app/modules/stock_sheet/items_from_photos_screen.dart`
+- Test: `test/widget/items_from_photos_screen_test.dart`
 
 **Interfaces:**
 - Consumes: `controller.reading`, `openCards`, `ageing`, `toggleCard`, `retryAgeing`, `canRemove` (Tasks 3, 4, 7); `ReadingStrip` (Task 6).
@@ -895,18 +895,18 @@ testWidgets('a row swiped away during reading shows Undo', (tester) async {
 });
 ```
 
-- [ ] **Step 2: Run** `flutter test test/widget/stock_sheet_screen_test.dart` — the new tests fail; note the existing ones that fail.
+- [ ] **Step 2: Run** `flutter test test/widget/items_from_photos_screen_test.dart` — the new tests fail; note the existing ones that fail.
 
 - [ ] **Step 3: Implement** the changes above and pass the card state and callbacks to `ReviewList`.
 
 - [ ] **Step 4: Bring the existing screen tests along** (those that expected "Checking stock…" as a full-screen step, or the bar until the list, now expect the list; nothing about the start state, the dialogs, the footer formats, Download or the finished screen changes).
 
-- [ ] **Step 5: Run** `flutter test test/widget/stock_sheet_screen_test.dart test/widget/stock_sheet_review_list_test.dart test/unit/stock_sheet_controller_test.dart` and `flutter analyze` — pass.
+- [ ] **Step 5: Run** `flutter test test/widget/items_from_photos_screen_test.dart test/widget/items_from_photos_review_list_test.dart test/unit/items_from_photos_controller_test.dart` and `flutter analyze` — pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add lib/app/modules/stock_sheet/stock_sheet_screen.dart test/widget/stock_sheet_screen_test.dart
+git add lib/app/modules/stock_sheet/items_from_photos_screen.dart test/widget/items_from_photos_screen_test.dart
 git commit -m "feat(items-from-photos): the review opens at once, with the reading strip"
 ```
 
@@ -915,7 +915,7 @@ git commit -m "feat(items-from-photos): the review opens at once, with the readi
 ### Task 9: Tidy, document, verify
 
 **Files:**
-- Modify: `lib/app/modules/stock_sheet/logic/photo_decoder.dart` (remove `decode`), `test/unit/stock_sheet_photo_decoder_test.dart`, the test fakes
+- Modify: `lib/app/modules/stock_sheet/logic/photo_decoder.dart` (remove `decode`), `test/unit/items_from_photos_photo_decoder_test.dart`, the test fakes
 - Modify: `docs/items_from_photos.md`, `docs/superpowers/specs/2026-11-19-items-from-photos-reading-redesign-design.md` (an "As built" section)
 
 - [ ] **Step 1: Remove `PhotoDecoder.decode`.** Re-point the decoder tests that call `decoder.decode(path)` at a small test helper that does `readWhole` then `zoomIn` when `needsZoom` (they keep proving the same results); remove `decode` from the fakes. `grep -rn "\.decode(" lib/app/modules/stock_sheet test | grep -i decoder` is empty.
@@ -923,7 +923,7 @@ git commit -m "feat(items-from-photos): the review opens at once, with the readi
 - [ ] **Step 2: Update `docs/items_from_photos.md`:** the flow diagram and §3.2 (no separate reading and checking screens; the strip and its three lines), §3.3 (row stages, pills, the card and its two sections, what can be done while reading, the sheet-of-labels row), §4 (two rounds, zoom order follows the list, removal stops a zoom, stock asked once per item, Stock Ageing on first opening with its filters and the time measured in Task 5), §5 (the new copy), §7 (new files, removed `rack_chips`, phases without `checkingStock`), §8 (an unreleased row), §10 (what the device check showed; iPhone and Mac unchecked; the Telegram bot still to take the wording). Add "As built" to the spec with anything that differs from it.
 
 - [ ] **Step 3: Run everything locally that this change touches:** `flutter analyze` (nothing new against the branch's start), then
-  `flutter test test/unit/stock_sheet_controller_test.dart test/unit/stock_sheet_photo_decoder_test.dart test/unit/stock_sheet_provider_test.dart test/unit/reading_status_test.dart test/unit/review_builder_test.dart test/unit/sheet_reading_test.dart test/unit/grey_plane_test.dart test/widget/stock_sheet_review_list_test.dart test/widget/stock_sheet_screen_test.dart test/widget/items_from_photos_button_test.dart` — all pass.
+  `flutter test test/unit/items_from_photos_controller_test.dart test/unit/items_from_photos_photo_decoder_test.dart test/unit/items_from_photos_provider_test.dart test/unit/reading_status_test.dart test/unit/review_builder_test.dart test/unit/sheet_reading_test.dart test/unit/grey_plane_test.dart test/widget/items_from_photos_review_list_test.dart test/widget/items_from_photos_screen_test.dart test/widget/items_from_photos_button_test.dart` — all pass.
 
 - [ ] **Step 4: Full suite on sys6** (memory `sys6-windows-build-host.md`: bundle the branch, detached worktree, `flutter test`; wait if the host is busy). Expected: only the three known Windows-only failures.
 

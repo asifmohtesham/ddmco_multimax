@@ -147,7 +147,7 @@ A bottom sheet with:
 - **Use code**.
 
 Input is resolved in this order:
-1. Through `StockSheetCodec.classify` (an EAN-8 with a valid checksum, or the batch QR text) → item code.
+1. Through `ItemsFromPhotosCodec.classify` (an EAN-8 with a valid checksum, or the batch QR text) → item code.
 2. Otherwise, exactly 7 digits → used as the item code directly.
 3. Anything else → the inline error `Not a barcode or item code`.
 
@@ -190,7 +190,7 @@ The last **Generate file** choice is saved through `StorageService` under the ke
 - `#` is numbered 1…n in that order.
 - The out-of-stock question is asked only if a switched-on item is out of stock. Its count refers to switched-on items
   only.
-- **Balance Qty and rack are never passed to the writers.** `StockSheetRow` and `StockSheetDocument` stay unchanged.
+- **Balance Qty and rack are never passed to the writers.** `ItemsFromPhotosRow` and `ItemsFromPhotosDocument` stay unchanged.
   Quantity and rack live in a separate review-only model.
 - The result screen is unchanged, except that excluded photos appear in none of its lists.
 

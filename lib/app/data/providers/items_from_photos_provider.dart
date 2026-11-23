@@ -7,11 +7,11 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_logic.dart';
 import 'package:multimax/app/modules/stock_sheet/model/ageing_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 /// Item and Finished Goods stock lookups for the stock sheet.
-class StockSheetProvider {
-  StockSheetProvider({
+class ItemsFromPhotosProvider {
+  ItemsFromPhotosProvider({
     ApiProvider? api,
     DateTime Function()? now,
     String Function()? company,

@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/share_intake_service.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 
 /// Records [start] instead of running a job.
-class _SpyStockSheetController extends StockSheetController {
-  _SpyStockSheetController()
+class _SpyItemsFromPhotosController extends ItemsFromPhotosController {
+  _SpyItemsFromPhotosController()
     : super(fingerprint: (paths) async => {for (final p in paths) p: 'fp:$p'});
 
   int starts = 0;
@@ -32,7 +32,7 @@ void main() {
   late StreamController<void> resumes;
   late List<String> stranded;
   late int handled;
-  _SpyStockSheetController? sheet;
+  _SpyItemsFromPhotosController? sheet;
 
   setUp(() {
     warm = StreamController<List<String>>.broadcast();
@@ -66,8 +66,8 @@ void main() {
         resetShare: () => resets++,
         isAuthenticated: signedIn,
         currentRoute: () => route,
-        openStockSheet: opened.add,
-        activeStockSheet: () => sheet,
+        openItemsFromPhotos: opened.add,
+        activeItemsFromPhotos: () => sheet,
         notify: notices.add,
         drops: drops.stream,
         dropFailures: dropFailures.stream,
@@ -186,8 +186,8 @@ void main() {
     'a share while a sheet is being made is dropped with a message',
     () async {
       signedIn.value = true;
-      route = AppRoutes.STOCK_SHEET;
-      final busySheet = _SpyStockSheetController()
+      route = AppRoutes.ITEMS_FROM_PHOTOS;
+      final busySheet = _SpyItemsFromPhotosController()
         ..sharedPaths.assignAll(['first.jpg'])
         ..busy.value = true;
       sheet = busySheet;
@@ -209,10 +209,10 @@ void main() {
     'a share while the sheet is reviewing is held for the screen to ask',
     () async {
       signedIn.value = true;
-      route = AppRoutes.STOCK_SHEET;
-      final reviewingSheet = _SpyStockSheetController()
+      route = AppRoutes.ITEMS_FROM_PHOTOS;
+      final reviewingSheet = _SpyItemsFromPhotosController()
         ..sharedPaths.assignAll(['first.jpg'])
-        ..phase.value = StockSheetPhase.reviewing;
+        ..phase.value = ItemsFromPhotosPhase.reviewing;
       sheet = reviewingSheet;
       await make();
 
@@ -224,16 +224,16 @@ void main() {
       expect(reviewingSheet.pendingShare, ['second.jpg']);
       expect(reviewingSheet.sharedPaths, ['first.jpg']);
       expect(reviewingSheet.shareSerial.value, 0);
-      expect(reviewingSheet.phase.value, StockSheetPhase.reviewing);
+      expect(reviewingSheet.phase.value, ItemsFromPhotosPhase.reviewing);
     },
   );
 
   test('a share while the sheet screen is idle replaces its photos', () async {
     signedIn.value = true;
-    route = AppRoutes.STOCK_SHEET;
-    final idleSheet = _SpyStockSheetController()
+    route = AppRoutes.ITEMS_FROM_PHOTOS;
+    final idleSheet = _SpyItemsFromPhotosController()
       ..sharedPaths.assignAll(['first.jpg'])
-      ..phase.value = StockSheetPhase.done;
+      ..phase.value = ItemsFromPhotosPhase.done;
     sheet = idleSheet;
     await make();
 
@@ -243,7 +243,7 @@ void main() {
     expect(opened, isEmpty);
     expect(idleSheet.sharedPaths, ['second.jpg', 'third.jpg']);
     expect(idleSheet.shareSerial.value, 1);
-    expect(idleSheet.phase.value, StockSheetPhase.idle);
+    expect(idleSheet.phase.value, ItemsFromPhotosPhase.idle);
   });
 
   test('a drop is delivered like a share', () async {
@@ -261,8 +261,8 @@ void main() {
 
   test('a drop while a sheet is being made shows the busy message', () async {
     signedIn.value = true;
-    route = AppRoutes.STOCK_SHEET;
-    sheet = _SpyStockSheetController()
+    route = AppRoutes.ITEMS_FROM_PHOTOS;
+    sheet = _SpyItemsFromPhotosController()
       ..sharedPaths.assignAll(['first.jpg'])
       ..busy.value = true;
     await make();
@@ -310,8 +310,8 @@ void main() {
         resetShare: () => resets++,
         isAuthenticated: signedIn,
         currentRoute: () => route,
-        openStockSheet: opened.add,
-        activeStockSheet: () => sheet,
+        openItemsFromPhotos: opened.add,
+        activeItemsFromPhotos: () => sheet,
         notify: notices.add,
         drops: drops.stream,
         dropFailures: dropFailures.stream,

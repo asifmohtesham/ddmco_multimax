@@ -1,4 +1,4 @@
-import 'stock_sheet_models.dart';
+import 'items_from_photos_models.dart';
 
 /// One resolved item in a review entry: the code read from the photo, its Item
 /// details, its Finished Goods stock and whether it goes on the sheet. An item

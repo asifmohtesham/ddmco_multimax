@@ -3,9 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/stock_sheet/model/review_models.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_controller.dart';
-import 'package:multimax/app/modules/stock_sheet/stock_sheet_screen.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
+import 'package:multimax/app/modules/stock_sheet/items_from_photos_screen.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/out_of_stock_sheet.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/reading_strip.dart';
 import 'package:multimax/app/modules/stock_sheet/widgets/review_list.dart';
@@ -24,7 +24,7 @@ class _MemoryFormatStore implements SheetFormatStore {
 }
 
 /// Records the calls the screen makes instead of running a job.
-class _SpyController extends StockSheetController {
+class _SpyController extends ItemsFromPhotosController {
   _SpyController({SheetFormat remembered = SheetFormat.excel})
     : super(
         formatStore: _MemoryFormatStore(remembered),
@@ -76,7 +76,7 @@ class _SpyController extends StockSheetController {
   @override
   Future<void> chooseOutOfStock(OutOfStockChoice? choice) async {
     choices.add(choice);
-    if (choice == null) phase.value = StockSheetPhase.reviewing;
+    if (choice == null) phase.value = ItemsFromPhotosPhase.reviewing;
   }
 
   @override
@@ -128,11 +128,11 @@ List<ReviewEntry> _twoPhotos() => [
   ReviewEntry(path: 'b.jpg', items: [_item('76543210')]),
 ];
 
-StockSheetResult _result({int rows = 2, int outOfStock = 1}) =>
-    StockSheetResult(
+ItemsFromPhotosResult _result({int rows = 2, int outOfStock = 1}) =>
+    ItemsFromPhotosResult(
       rows: [
         for (var i = 0; i < rows; i++)
-          StockSheetRow(
+          ItemsFromPhotosRow(
             photoIndex: i,
             photoPath: 'p$i.jpg',
             barcode: '1000001$i',
@@ -207,12 +207,12 @@ void main() {
       ),
     );
     controller =
-        Get.put<StockSheetController>(
+        Get.put<ItemsFromPhotosController>(
               _SpyController(remembered: remembered)..retryable = retryable,
             )
             as _SpyController;
     Get.to<void>(
-      () => StockSheetScreen(
+      () => ItemsFromPhotosScreen(
         paths: paths ?? const [],
         pickCamera: pickCamera ?? () async => const [],
         pickGallery: pickGallery ?? () async => const [],
@@ -238,7 +238,7 @@ void main() {
   /// Puts [entries] on screen in the review phase.
   Future<void> review(WidgetTester tester, List<ReviewEntry> entries) async {
     controller.review.assignAll(entries);
-    controller.phase.value = StockSheetPhase.reviewing;
+    controller.phase.value = ItemsFromPhotosPhase.reviewing;
     await tester.pumpAndSettle();
   }
 
@@ -253,7 +253,7 @@ void main() {
     ]);
 
     controller.total.value = 2;
-    controller.phase.value = StockSheetPhase.decoding;
+    controller.phase.value = ItemsFromPhotosPhase.decoding;
     await tester.pump();
     expect(find.text('Reading photo 1 of 2'), findsOneWidget);
     expect(find.text('Items from Photos'), findsOneWidget);
@@ -327,14 +327,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Discard these photos?'), findsNothing);
-    expect(find.byType(StockSheetScreen), findsOneWidget);
+    expect(find.byType(ItemsFromPhotosScreen), findsOneWidget);
     expect(find.byType(ReviewList), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
-    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.byType(ItemsFromPhotosScreen), findsNothing);
     expect(find.text('home'), findsOneWidget);
   });
 
@@ -343,7 +343,7 @@ void main() {
   ) async {
     await open(tester, paths: ['a.jpg']);
     controller.total.value = 1;
-    controller.phase.value = StockSheetPhase.decoding;
+    controller.phase.value = ItemsFromPhotosPhase.decoding;
     await tester.pump();
     // The progress spinner never settles, so pump a fixed time.
     Future<void> settle() => tester.pump(const Duration(milliseconds: 500));
@@ -354,14 +354,14 @@ void main() {
     await tester.tap(find.text('Keep reviewing'));
     await settle();
     expect(find.text('Discard these photos?'), findsNothing);
-    expect(find.byType(StockSheetScreen), findsOneWidget);
+    expect(find.byType(ItemsFromPhotosScreen), findsOneWidget);
 
     await tester.pageBack();
     await settle();
     await tester.tap(find.text('Discard'));
     await settle();
     await settle();
-    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.byType(ItemsFromPhotosScreen), findsNothing);
     expect(find.text('home'), findsOneWidget);
   });
 
@@ -369,12 +369,12 @@ void main() {
     tester,
   ) async {
     await open(tester);
-    expect(controller.phase.value, StockSheetPhase.idle);
+    expect(controller.phase.value, ItemsFromPhotosPhase.idle);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Discard these photos?'), findsNothing);
-    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.byType(ItemsFromPhotosScreen), findsNothing);
   });
 
   testWidgets('a share during the review asks Add, Start again or Cancel', (
@@ -443,7 +443,7 @@ void main() {
         ReviewEntry(path: 'x1.jpg', decodeFailed: true),
         ReviewEntry(path: 'x2.jpg', decodeFailed: true),
       ]);
-      return StockSheetController.roomMessage(1);
+      return ItemsFromPhotosController.roomMessage(1);
     };
 
     controller.offerShare(['n1.jpg', 'n2.jpg']);
@@ -578,7 +578,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Item removed.'), findsOneWidget);
 
-    controller.phase.value = StockSheetPhase.building;
+    controller.phase.value = ItemsFromPhotosPhase.building;
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Item removed.'), findsNothing);
@@ -589,7 +589,7 @@ void main() {
   ) async {
     await open(tester);
     await review(tester, _twoPhotos());
-    controller.phase.value = StockSheetPhase.awaitingChoice;
+    controller.phase.value = ItemsFromPhotosPhase.awaitingChoice;
     await tester.pumpAndSettle();
 
     await tester.drag(find.text('Item 12345670'), const Offset(-600, 0));
@@ -627,7 +627,7 @@ void main() {
 
   testWidgets('a failed Retry check says why in a snackbar', (tester) async {
     await open(tester);
-    controller.recheckError = StockSheetController.offlineMessage;
+    controller.recheckError = ItemsFromPhotosController.offlineMessage;
     await review(tester, [
       ReviewEntry(path: 'a.jpg', items: [_item('12345670')]),
       ReviewEntry(
@@ -642,7 +642,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(controller.rechecks, 1);
-    expect(find.text(StockSheetController.offlineMessage), findsOneWidget);
+    expect(find.text(ItemsFromPhotosController.offlineMessage), findsOneWidget);
   });
 
   testWidgets(
@@ -657,7 +657,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       expect(
-        find.text(StockSheetController.alreadyListedMessage),
+        find.text(ItemsFromPhotosController.alreadyListedMessage),
         findsOneWidget,
       );
       expect(controller.pendingShare, isEmpty);
@@ -685,7 +685,7 @@ void main() {
     await open(tester);
     controller.review.assignAll(_twoPhotos());
     controller.result.value = _result();
-    controller.phase.value = StockSheetPhase.awaitingChoice;
+    controller.phase.value = ItemsFromPhotosPhase.awaitingChoice;
     await tester.pumpAndSettle();
     expect(find.text('1 item is out of stock'), findsOneWidget);
 
@@ -695,7 +695,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('1 item is out of stock'), findsNothing);
-    expect(controller.phase.value, StockSheetPhase.reviewing);
+    expect(controller.phase.value, ItemsFromPhotosPhase.reviewing);
     expect(controller.added, [
       ['n1.jpg'],
     ]);
@@ -920,7 +920,7 @@ void main() {
     await open(tester, remembered: SheetFormat.both);
     expect(controller.format.value, SheetFormat.both);
     controller.onSheet = 1;
-    controller.phase.value = StockSheetPhase.reviewing;
+    controller.phase.value = ItemsFromPhotosPhase.reviewing;
     await tester.pumpAndSettle();
 
     expect(find.text('Review photos'), findsOneWidget);
@@ -939,7 +939,7 @@ void main() {
   testWidgets('out-of-stock sheet offers the three choices', (tester) async {
     await open(tester);
     controller.result.value = _result(rows: 3, outOfStock: 2);
-    controller.phase.value = StockSheetPhase.awaitingChoice;
+    controller.phase.value = ItemsFromPhotosPhase.awaitingChoice;
     await tester.pumpAndSettle();
 
     expect(find.text('2 items are out of stock'), findsOneWidget);
@@ -949,7 +949,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.choices, [OutOfStockChoice.leaveOut]);
-    expect(find.byType(StockSheetScreen), findsOneWidget);
+    expect(find.byType(ItemsFromPhotosScreen), findsOneWidget);
   });
 
   testWidgets('dismissing the out-of-stock sheet goes back to the review', (
@@ -957,7 +957,7 @@ void main() {
   ) async {
     await open(tester);
     controller.result.value = _result();
-    controller.phase.value = StockSheetPhase.awaitingChoice;
+    controller.phase.value = ItemsFromPhotosPhase.awaitingChoice;
     await tester.pumpAndSettle();
     expect(find.text('1 item is out of stock'), findsOneWidget);
 
@@ -965,7 +965,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.choices, [null]);
-    expect(find.byType(StockSheetScreen), findsOneWidget);
+    expect(find.byType(ItemsFromPhotosScreen), findsOneWidget);
     expect(find.text('Review photos'), findsOneWidget);
   });
 
@@ -974,7 +974,7 @@ void main() {
   ) async {
     await open(tester, paths: ['a.jpg']);
     controller.result.value = _result();
-    controller.phase.value = StockSheetPhase.awaitingChoice;
+    controller.phase.value = ItemsFromPhotosPhase.awaitingChoice;
     await tester.pumpAndSettle();
     expect(find.text('1 item is out of stock'), findsOneWidget);
 
@@ -1002,7 +1002,7 @@ void main() {
   ) async {
     await open(tester);
     controller.total.value = 23;
-    controller.phase.value = StockSheetPhase.decoding;
+    controller.phase.value = ItemsFromPhotosPhase.decoding;
     await tester.pump();
 
     // Fingerprinting: indeterminate, and not tied to a stale count.
@@ -1021,7 +1021,7 @@ void main() {
     expect(find.text('0 read'), findsOneWidget);
     expect(find.text('Checking stock…'), findsNothing);
 
-    controller.phase.value = StockSheetPhase.building;
+    controller.phase.value = ItemsFromPhotosPhase.building;
     await tester.pump();
     expect(find.text('Generating the file…'), findsOneWidget);
   });
@@ -1140,7 +1140,7 @@ void main() {
       XFile('/tmp/Items-20261117-0905.xlsx'),
       XFile('/tmp/Items-20261117-0905.pdf'),
     ]);
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     await tester.pumpAndSettle();
 
     expect(find.text('Share files'), findsOneWidget);
@@ -1179,7 +1179,7 @@ void main() {
     await open(tester);
     controller.result.value = _result();
     controller.files.assignAll([XFile('/tmp/a.xlsx'), XFile('/tmp/a.pdf')]);
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     await tester.pumpAndSettle();
 
     expect(find.text('Download'), findsOneWidget);
@@ -1208,7 +1208,7 @@ void main() {
     await open(tester);
     controller.result.value = _result();
     controller.files.assignAll([XFile('/tmp/a.xlsx')]);
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     controller.downloadMessage = 'Saved a.xlsx.';
     await tester.pumpAndSettle();
 
@@ -1227,7 +1227,7 @@ void main() {
     await open(tester);
     controller.result.value = _result();
     controller.files.assignAll([XFile('/tmp/a.xlsx'), XFile('/tmp/a.pdf')]);
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -1242,7 +1242,7 @@ void main() {
     await open(tester);
     controller.result.value = _result();
     controller.files.assignAll([XFile('/tmp/a.xlsx')]);
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     await tester.pumpAndSettle();
     expect(find.text('Share file'), findsOneWidget);
 
@@ -1260,7 +1260,7 @@ void main() {
     controller.result.value = _result();
     controller.files.assignAll([XFile('/tmp/a.xlsx')]);
     controller.errorMessage.value = "Couldn't open the share sheet. Try again.";
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     await tester.pumpAndSettle();
 
     final message = find.text("Couldn't open the share sheet. Try again.");
@@ -1286,7 +1286,7 @@ void main() {
     controller.onSheet = 8;
     controller.result.value = _result(rows: 2, outOfStock: 1);
     controller.files.assignAll([XFile('/tmp/a.xlsx')]);
-    controller.phase.value = StockSheetPhase.done;
+    controller.phase.value = ItemsFromPhotosPhase.done;
     await tester.pumpAndSettle();
 
     expect(find.text('8 photos · 2 items · 1 out of stock'), findsOneWidget);
@@ -1313,7 +1313,7 @@ void main() {
   testWidgets('error view offers Retry only after decoding', (tester) async {
     await open(tester);
     controller.errorMessage.value = "Couldn't reach the ERP.";
-    controller.phase.value = StockSheetPhase.error;
+    controller.phase.value = ItemsFromPhotosPhase.error;
     await tester.pumpAndSettle();
 
     expect(find.text("Couldn't reach the ERP."), findsOneWidget);
@@ -1323,13 +1323,13 @@ void main() {
 
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-    expect(find.byType(StockSheetScreen), findsNothing);
+    expect(find.byType(ItemsFromPhotosScreen), findsNothing);
   });
 
   testWidgets('Retry reruns the ERP step and spins while busy', (tester) async {
     await open(tester, retryable: true);
     controller.errorMessage.value = "You don't have access to stock levels.";
-    controller.phase.value = StockSheetPhase.error;
+    controller.phase.value = ItemsFromPhotosPhase.error;
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Retry'));

@@ -4,7 +4,7 @@
 
 **Goal:** after a share, read the photos and check stock first, then show a reorderable review list. The list has include switches, the Balance Qty and full rack names, type-or-scan fixes and added photos. The file is made from what the user leaves switched on, in their order.
 
-**Architecture:** a new `reviewing` phase inside the existing `StockSheetController`. A pure review model (`ReviewEntry` / `ReviewItem`) and a pure builder turn the scans, Item info and dimension-wise Stock Balance rows into the list. The same builder turns the list back into `StockSheetRow`s and a `StockSheetResult`, so the writers and the result screen are reused unchanged. The UI is a `ReorderableListView` with drag handles.
+**Architecture:** a new `reviewing` phase inside the existing `ItemsFromPhotosController`. A pure review model (`ReviewEntry` / `ReviewItem`) and a pure builder turn the scans, Item info and dimension-wise Stock Balance rows into the list. The same builder turns the list back into `ItemsFromPhotosRow`s and a `ItemsFromPhotosResult`, so the writers and the result screen are reused unchanged. The UI is a `ReorderableListView` with drag handles.
 
 **Tech Stack:** Flutter 3.50, GetX, the existing `ApiProvider.getStockBalanceReport(showDimensionWise:)`, `image_picker` 1.2, the existing `CameraScanOverlay`, and `StorageService` (GetStorage).
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Files unchanged.** Excel/PDF columns, colours, names (`Items-<yyyyMMdd-HHmm>`) and the title `Items` stay as they are. `StockSheetRow` and `StockSheetDocument` get **no new fields**. Balance Qty and rack must never reach the writers.
+- **Files unchanged.** Excel/PDF columns, colours, names (`Items-<yyyyMMdd-HHmm>`) and the title `Items` stay as they are. `ItemsFromPhotosRow` and `ItemsFromPhotosDocument` get **no new fields**. Balance Qty and rack must never reach the writers.
 - **Racks in full.** Rack names are shown in full (e.g. `KA-WH-DXB1-21A`), never trimmed. Chips wrap onto a second line and are sorted by quantity, largest first. Three are shown, then `+n`. An empty rack shows `No rack`. Out of stock shows the pill `Out of stock · 0` and no chips.
 - **One stock call for the batch.** Stock comes from `getStockBalanceReport(..., showDimensionWise: true)` with `warehouses: ['Finished Goods - KA']`, today's date, and chunks of 100. Only a typed fix makes its own two calls (Item plus stock for one code).
 - **100-photo limit** across the whole list, including added photos.
@@ -48,28 +48,28 @@
 
 ```
 lib/app/modules/stock_sheet/
-  model/stock_sheet_models.dart      + RackQty, ItemStock (Task 1)
+  model/items_from_photos_models.dart      + RackQty, ItemStock (Task 1)
   model/review_models.dart           NEW ReviewItem, ReviewEntry (Task 2)
   logic/stock_aggregator.dart        + racksByItem (Task 1)
   logic/review_builder.dart          NEW build list / rows / result (Task 2)
-  logic/stock_sheet_codec.dart       + resolveTyped (Task 3)
-  stock_sheet_controller.dart        reviewing phase, makeSheet, fix, add, pending share, format store (Tasks 4–5)
+  logic/items_from_photos_codec.dart       + resolveTyped (Task 3)
+  items_from_photos_controller.dart        reviewing phase, makeSheet, fix, add, pending share, format store (Tasks 4–5)
   widgets/review_list.dart           NEW rows, switches, stock line, footer (Task 6)
   widgets/fix_code_sheet.dart        NEW (Task 6)
   widgets/rack_chips.dart            NEW (Task 6)
-  stock_sheet_screen.dart            wiring, PopScope, dialogs, add menu (Task 7)
+  items_from_photos_screen.dart            wiring, PopScope, dialogs, add menu (Task 7)
 lib/app/shared/barcode/ean8.dart     + withCheckDigit (Task 3)
-lib/app/data/providers/stock_sheet_provider.dart   showDimensionWise: true (Task 1)
+lib/app/data/providers/items_from_photos_provider.dart   showDimensionWise: true (Task 1)
 lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
 ```
 
-`widgets/format_sheet.dart` is no longer used to start a run. Task 7 deletes it if nothing else imports it. `StockSheetChoiceSheet` (in that file) is still used by the out-of-stock sheet, so it moves to `widgets/stock_sheet_choice_sheet.dart`.
+`widgets/format_sheet.dart` is no longer used to start a run. Task 7 deletes it if nothing else imports it. `ItemsFromPhotosChoiceSheet` (in that file) is still used by the out-of-stock sheet, so it moves to `widgets/items_from_photos_choice_sheet.dart`.
 
 ---
 
 ### Task 1: Rack-aware stock
 
-**Files:** modify `stock_sheet_provider.dart`, `stock_sheet_models.dart` and `stock_aggregator.dart`. Tests in `test/unit/stock_aggregator_test.dart` and `test/unit/stock_sheet_provider_test.dart`.
+**Files:** modify `items_from_photos_provider.dart`, `items_from_photos_models.dart` and `stock_aggregator.dart`. Tests in `test/unit/stock_aggregator_test.dart` and `test/unit/items_from_photos_provider_test.dart`.
 
 **Interfaces:**
 - Produces:
@@ -87,7 +87,7 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
     - 1001579 → total 14, racks `[RackQty(null,14)]`;
     - 1004765 → total −2, `outOfStock` true, racks empty.
   - The provider test asserts the report is called with `showDimensionWise: true`, the existing arguments unchanged.
-- [ ] **Step 2:** run `flutter test test/unit/stock_aggregator_test.dart test/unit/stock_sheet_provider_test.dart`. Expect it to fail.
+- [ ] **Step 2:** run `flutter test test/unit/stock_aggregator_test.dart test/unit/items_from_photos_provider_test.dart`. Expect it to fail.
 - [ ] **Step 3:** implement.
 - [ ] **Step 4:** run the same command. Expect it to pass.
 - [ ] **Step 5:** commit `feat(stock-sheet): rack-wise stock from the Stock Balance report`.
@@ -97,7 +97,7 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
 **Files:** create `model/review_models.dart` and `logic/review_builder.dart`. Test in `test/unit/review_builder_test.dart`.
 
 **Interfaces:**
-- Consumes: `PhotoScan`, `ClassifiedCode`, `ItemInfo`, `StockSheetRow`, `StockSheetResult`, `UnresolvedEntry` / `UnresolvedReason` (base), and `ItemStock` (Task 1).
+- Consumes: `PhotoScan`, `ClassifiedCode`, `ItemInfo`, `ItemsFromPhotosRow`, `ItemsFromPhotosResult`, `UnresolvedEntry` / `UnresolvedReason` (base), and `ItemStock` (Task 1).
 - Produces:
   - `class ReviewItem { final ClassifiedCode code; final ItemInfo info; final ItemStock? stock; final bool included; ReviewItem copyWith({bool? included}); }`. It is resolved, so `info` is non-null.
   - `class ReviewEntry`:
@@ -115,8 +115,8 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
     - `static List<ReviewEntry> setItemIncluded(List<ReviewEntry> list, int index, int itemIndex, bool on)`
     - `static List<ReviewEntry> reorder(List<ReviewEntry> list, int oldIndex, int newIndex)`: Flutter `ReorderableListView` semantics (when newIndex > oldIndex, decrement it).
     - `static int sheetPhotoCount(List<ReviewEntry> list)`: entries with ≥ 1 included item.
-    - `static StockSheetResult toResult(List<ReviewEntry> list)`:
-      - **rows:** one `StockSheetRow` per included item, in list order. `photoIndex` is the entry's position in the list. `outOfStock` is `stock == null || stock.outOfStock`.
+    - `static ItemsFromPhotosResult toResult(List<ReviewEntry> list)`:
+      - **rows:** one `ItemsFromPhotosRow` per included item, in list order. `photoIndex` is the entry's position in the list. `outOfStock` is `stock == null || stock.outOfStock`.
       - **unresolved:** for each **unresolved** entry still in the list, an `UnresolvedEntry` with reason `unreadable` (decodeFailed), `notInErp` (with the first barcode) or `noRecognisedCode`. A resolved entry's leftover `notInErp` codes and switched-off entries add nothing.
 
 - [ ] **Step 1: write the failing tests.**
@@ -140,11 +140,11 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
 
 ### Task 3: Typed-code resolution
 
-**Files:** modify `lib/app/shared/barcode/ean8.dart` and `logic/stock_sheet_codec.dart`. Tests in `test/unit/stock_sheet_codec_test.dart`.
+**Files:** modify `lib/app/shared/barcode/ean8.dart` and `logic/items_from_photos_codec.dart`. Tests in `test/unit/items_from_photos_codec_test.dart`.
 
 **Interfaces:**
 - `static String Ean8.withCheckDigit(String code7)` throws `ArgumentError` unless it gets exactly 7 digits.
-- `static ClassifiedCode? StockSheetCodec.resolveTyped(String input)`:
+- `static ClassifiedCode? ItemsFromPhotosCodec.resolveTyped(String input)`:
   - trims the input, then tries `classify`;
   - otherwise exactly 7 digits → `ClassifiedCode(itemCode: input, barcode: Ean8.withCheckDigit(input), batchNo: null)`;
   - anything else → null.
@@ -163,12 +163,12 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
 
 ### Task 4: Controller core: read, check, review, make sheet
 
-**Files:** modify `stock_sheet_controller.dart`. Test in `test/unit/stock_sheet_controller_test.dart`, updating the existing tests to the new API.
+**Files:** modify `items_from_photos_controller.dart`. Test in `test/unit/items_from_photos_controller_test.dart`, updating the existing tests to the new API.
 
 **Interfaces:**
 - Consumes Tasks 1–3.
-- Produces (all on `StockSheetController`):
-  - `enum StockSheetPhase` gains `reviewing`, placed after `checkingStock`.
+- Produces (all on `ItemsFromPhotosController`):
+  - `enum ItemsFromPhotosPhase` gains `reviewing`, placed after `checkingStock`.
   - `abstract class SheetFormatStore { SheetFormat read(); void write(SheetFormat f); }`. The default implementation is backed by `StorageService` with key `stock_sheet_last_format`. Add a constructor parameter `SheetFormatStore? formatStore`.
   - `final review = <ReviewEntry>[].obs;`
   - `final format = SheetFormat.excel.obs;`, initialised from the store in `onInit`.
@@ -202,12 +202,12 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
   - **Review focus 2** (the order part): reorder, then `setIncluded`, keeps the order.
 - [ ] **Step 2:** run, expecting a failure.
 - [ ] **Step 3:** implement. Then update the screen minimally so the app still compiles: call `start(paths)` and show a plain placeholder for `reviewing` (Task 7 replaces it).
-- [ ] **Step 4:** run `flutter test test/unit/ test/widget/stock_sheet_screen_test.dart`. Expect it to pass. Adjust the existing screen tests that assumed the format sheet comes first.
+- [ ] **Step 4:** run `flutter test test/unit/ test/widget/items_from_photos_screen_test.dart`. Expect it to pass. Adjust the existing screen tests that assumed the format sheet comes first.
 - [ ] **Step 5:** commit `feat(stock-sheet): review phase and make-sheet in the controller`.
 
 ### Task 5: Controller: fix, add, pending share
 
-**Files:** modify `stock_sheet_controller.dart` and `share_intake_service.dart`. Tests in `test/unit/stock_sheet_controller_test.dart` and `test/unit/share_intake_service_test.dart`.
+**Files:** modify `items_from_photos_controller.dart` and `share_intake_service.dart`. Tests in `test/unit/items_from_photos_controller_test.dart` and `test/unit/share_intake_service_test.dart`.
 
 **Interfaces:**
 - `Future<String?> fixCode(int index, String input, {String? noteBarcode})`:
@@ -260,7 +260,7 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
 
 ### Task 6: Review list widgets
 
-**Files:** create `widgets/review_list.dart`, `widgets/rack_chips.dart` and `widgets/fix_code_sheet.dart`. Test in `test/widget/stock_sheet_review_list_test.dart`.
+**Files:** create `widgets/review_list.dart`, `widgets/rack_chips.dart` and `widgets/fix_code_sheet.dart`. Test in `test/widget/items_from_photos_review_list_test.dart`.
 
 **Interfaces:**
 - `ReviewList({required List<ReviewEntry> entries, required Map<String, Uint8List> thumbnails, required void Function(int, int) onReorder, required void Function(int, bool) onToggle, required void Function(int, int, bool) onToggleItem, required void Function(int index, String? noteBarcode) onFix, required void Function(int) onRetryCheck})`:
@@ -298,7 +298,7 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
 
 ### Task 7: Screen wiring
 
-**Files:** modify `stock_sheet_screen.dart`; move `StockSheetChoiceSheet` to `widgets/stock_sheet_choice_sheet.dart`; delete `widgets/format_sheet.dart` if it is unused. Test in `test/widget/stock_sheet_screen_test.dart`.
+**Files:** modify `items_from_photos_screen.dart`; move `ItemsFromPhotosChoiceSheet` to `widgets/items_from_photos_choice_sheet.dart`; delete `widgets/format_sheet.dart` if it is unused. Test in `test/widget/items_from_photos_screen_test.dart`.
 
 **Interfaces:**
 - Constructor injection for tests: `pickCamera` and `pickGallery`, each a `Future<List<String>> Function()`. The defaults are `ImagePicker().pickImage(source: ImageSource.camera)` and `pickMultiImage()`, mapped to paths.
@@ -321,7 +321,7 @@ lib/app/data/services/share_intake_service.dart    offerShare (Task 5)
   - The ＋ menu → the gallery fake → `addPhotos` is called with its paths.
 - [ ] **Step 2:** run, expecting a failure.
 - [ ] **Step 3:** implement.
-- [ ] **Step 4:** run `flutter test test/widget/stock_sheet_screen_test.dart`, then the full `flutter test`, then `flutter analyze` on the changed files. Expect no new issues.
+- [ ] **Step 4:** run `flutter test test/widget/items_from_photos_screen_test.dart`, then the full `flutter test`, then `flutter analyze` on the changed files. Expect no new issues.
 - [ ] **Step 5:** commit `feat(stock-sheet): review screen wiring, add photos and guards`.
 
 ### Task 8: Device check (APK built on sys6)

@@ -153,13 +153,13 @@ chips on the row and the "Stock by rack · <total>" sheet, which go.
 - **`ReviewEntry`** (`model/review_models.dart`): a `stage` (not read, reading, waiting, zooming, checking
   stock, settled). A placeholder entry exists for each photo from the start and is replaced in place by its
   item rows; ids stay as documented (`<photo>:<item>`, `<photo>!<barcode>`, the photo's path).
-- **`StockSheetController`**: `start` and `addPhotos` share one reading queue; phase `reviewing` is entered
+- **`ItemsFromPhotosController`**: `start` and `addPhotos` share one reading queue; phase `reviewing` is entered
   as soon as the photos are fingerprinted, and `decoding` / `checkingStock` go. `canRemove` no longer
   depends on reading. New: the item-and-stock cache by item code, `openCard` / per-item ageing state, and a
   `reading` flag for the footer. Failures keep today's messages: no access to stock levels and an
   unsupported device still end in the error state; a failed stock batch leaves its rows "Stock not checked"
   with **Retry check**.
-- **`StockSheetProvider`**: `fetchStockAgeing(itemCode)` wrapping the report run.
+- **`ItemsFromPhotosProvider`**: `fetchStockAgeing(itemCode)` wrapping the report run.
 - **`ReviewList`** (`widgets/review_list.dart`): the row states above, the strip, the expandable card; rows
   keyed so a row that changes state is updated in place, not re-inserted. `RackChips` and its sheet are
   removed.

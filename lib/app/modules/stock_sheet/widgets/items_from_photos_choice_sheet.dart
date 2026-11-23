@@ -3,8 +3,8 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 
 /// The themed bottom-sheet frame for the stock sheet's questions: handle,
 /// title, muted subtitle, then the options.
-class StockSheetChoiceSheet extends StatelessWidget {
-  const StockSheetChoiceSheet({
+class ItemsFromPhotosChoiceSheet extends StatelessWidget {
+  const ItemsFromPhotosChoiceSheet({
     super.key,
     required this.title,
     required this.subtitle,

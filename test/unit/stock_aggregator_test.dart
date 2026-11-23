@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/stock_aggregator.dart';
-import 'package:multimax/app/modules/stock_sheet/model/stock_sheet_models.dart';
+import 'package:multimax/app/modules/stock_sheet/model/items_from_photos_models.dart';
 
 ClassifiedCode _code(String item, String barcode) =>
     ClassifiedCode(itemCode: item, barcode: barcode);
@@ -100,7 +100,7 @@ void main() {
     });
 
     test('negative total is out of stock; 0.5 is in stock', () {
-      StockSheetRow rowFor(double qty) => StockAggregator.build(
+      ItemsFromPhotosRow rowFor(double qty) => StockAggregator.build(
             [PhotoScan(index: 0, path: 'a', items: [_code('2001141', '20011414')])],
             {'2001141': _known},
             {'2001141': qty},
