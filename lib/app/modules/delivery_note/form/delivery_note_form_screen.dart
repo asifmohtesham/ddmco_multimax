@@ -1,3 +1,5 @@
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
@@ -93,10 +95,24 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
   // ── Banner helper ─────────────────────────────────────────────────────────────
 
   Widget _buildBanner() {
-    return Obx(() => InlineBanner(
-          visible: controller.bannerVisible.value,
-          message: controller.bannerMessage.value,
-          type:    controller.bannerType.value,
+    return Obx(() => Column(
+          children: [
+            InlineBanner(
+              visible: controller.bannerVisible.value,
+              message: controller.bannerMessage.value,
+              type: controller.bannerType.value,
+            ),
+            InlineBanner(
+              visible: controller.warehouseWarning.value.isNotEmpty,
+              message: controller.warehouseWarning.value,
+              type: BannerType.warning,
+            ),
+            InlineBanner(
+              visible: controller.savedRackWarning.value.isNotEmpty,
+              message: controller.savedRackWarning.value,
+              type: BannerType.warning,
+            ),
+          ],
         ));
   }
 
@@ -164,8 +180,15 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             context: context,
             title: 'Settings',
             children: [
-              Obx(() => DropdownButtonFormField<String>(
-                    value: controller.setWarehouse.value,
+              Obx(() {
+                final current = controller.setWarehouse.value;
+                final choices = {
+                  ...controller.warehouses,
+                  if (current != null && current.isNotEmpty) current,
+                };
+                return DropdownButtonFormField<String>(
+                    key: ValueKey(current),
+                    initialValue: current?.isEmpty == true ? null : current,
                     decoration: const InputDecoration(
                       labelText: 'Set Source Warehouse',
                       border: OutlineInputBorder(),
@@ -174,17 +197,22 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
                           horizontal: 12, vertical: 14),
                     ),
                     hint: const Text('Select Warehouse'),
-                    items: controller.warehouses.map((wh) {
-                      return DropdownMenuItem(
-                          value: wh,
-                          child: Text(wh,
-                              overflow: TextOverflow.ellipsis));
-                    }).toList(),
-                    onChanged: isEditable
-                        ? (value) =>
-                            controller.setWarehouse.value = value
+                    items: [
+                      const DropdownMenuItem(
+                        value: '',
+                        child: Text('No default warehouse'),
+                      ),
+                      for (final warehouse in choices)
+                        DropdownMenuItem(
+                          value: warehouse,
+                          child: Text(warehouse, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: isEditable && !controller.isSaving.value
+                        ? controller.changeHeaderWarehouse
                         : null,
-                  )),
+                  );
+              }),
             ],
           ),
           const SizedBox(height: 16),
@@ -280,6 +308,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
       // SO rows ship from their order line's warehouse, so the header
       // warehouse is optional there.
       if (!controller.isSoMode &&
+          controller.items.isEmpty &&
           (controller.setWarehouse.value == null ||
               controller.setWarehouse.value!.isEmpty)) {
         return Center(
@@ -550,11 +579,13 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
           // ── Scanner ───────────────────────────────────────────────────────
           Obx(() {
-            if (controller.deliveryNote.value?.docstatus != 0)
+            if (controller.deliveryNote.value?.docstatus != 0) {
               return const SizedBox.shrink();
+            }
             if (controller.isItemSheetOpen.value ||
-                controller.isLoadingItemEdit.value)
+                controller.isLoadingItemEdit.value) {
               return const SizedBox.shrink();
+            }
 
             if (controller.isScanning.value ||
                 controller.isAddingItem.value) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -41,6 +42,7 @@ class RackPickerEntry {
 
   /// Available quantity for the current item + batch in this rack.
   final double availableQty;
+  final String warehouseName;
 
   /// Quantity the operator is trying to pick (from the qty field).
   final double requestedQty;
@@ -50,6 +52,7 @@ class RackPickerEntry {
     required this.location,
     required this.availableQty,
     required this.requestedQty,
+    this.warehouseName = '',
   });
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -62,10 +65,6 @@ class RackPickerEntry {
   }
 
   bool get isSufficient => status == SufficiencyStatus.sufficient;
-
-  /// Warehouse name derived locally from the rack asset code.
-  /// Falls back to an empty string when [location] is null.
-  String get warehouseName => location?.warehouseName ?? '';
 
   /// Human-readable physical location label (e.g. `'Aisle 101 · Shelf A'`).
   /// Falls back to [rackName] when [location] is null.
@@ -221,61 +220,55 @@ class RackPickerController extends GetxController {
     isLoading.value         = true;
 
     try {
-      // ── 1. Primary: Stock Balance with Dimension (per-rack qty) ──────────
-      // getStockBalanceWithDimension sends show_variant_attributes=1 and
-      // show_dimension_wise_stock=1, and discards the trailing Total row.
-      // Returns rows: [{'rack': 'KA-WH-DXB1-101A', 'qty': 12.0}, ...]
+      final linkedRacks = warehouse.isEmpty
+          ? Future<List<String>>.value(const [])
+          : _api.getRacksByWarehouse(warehouse);
       final rows = await _api.getStockBalanceWithDimension(
-        itemCode:  itemCode,
+        itemCode: itemCode,
         warehouse: warehouse.isNotEmpty ? warehouse : null,
-        // batchNo:   batchNo.isNotEmpty   ? batchNo   : null,
+        batchNo: batchNo.isNotEmpty ? batchNo : null,
       );
-
-      // Collapse rows into a {rackId → qty} map (sum duplicate rack entries).
-      final liveMap = <String, double>{};
-      for (final row in rows.whereType<Map<String, dynamic>>()) {
+      final linked = (await linkedRacks).toSet();
+      final live = <String, double>{};
+      final reportedWarehouses = <String, Set<String>>{};
+      for (final row in rows) {
         final rack = (row['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
         final qty = (row['qty'] as num?)?.toDouble() ?? 0.0;
-        liveMap[rack] = (liveMap[rack] ?? 0.0) + qty;
+        live[rack] = (live[rack] ?? 0.0) + qty;
+        final reported = row['warehouse'];
+        if (reported is String && reported.isNotEmpty) {
+          (reportedWarehouses[rack] ??= {}).add(reported);
+        }
       }
 
-      // ── 2. Merge / fallback ───────────────────────────────────────────────
-      // If live fetch returned nothing, fall back to the pre-loaded
-      // rackStockMap (already fetched by preloadRackStockMap).
-      Map<String, double> stockMap;
-      if (liveMap.isEmpty) {
-        usedFallback.value = true;
-        stockMap = Map<String, double>.from(fallbackMap);
-      } else {
-        // Start with fallback (broader coverage), overwrite with live data.
-        stockMap = Map<String, double>.from(fallbackMap)..addAll(liveMap);
-      }
-
-      // ── 3. Build + sort entries ───────────────────────────────────────────
-      final built = stockMap.entries.map((e) {
+      usedFallback.value = live.isEmpty;
+      final stock = Map<String, double>.of(fallbackMap)..addAll(live);
+      final built = stock.entries.map((entry) {
+        final reported = reportedWarehouses[entry.key];
         return RackPickerEntry(
-          rackName:     e.key,
-          location:     RackLocation.tryParse(e.key),
-          availableQty: e.value,
+          rackName: entry.key,
+          location: RackLocation.tryParse(entry.key),
+          warehouseName: linked.contains(entry.key)
+              ? warehouse
+              : warehouse.isEmpty && reported?.length == 1
+                  ? reported!.single
+                  : '',
+          availableQty: entry.value,
           requestedQty: requestedQty,
         );
-      }).toList();
-
-      built.sort(_compareEntries);
+      }).toList()..sort(_compareEntries);
       entries.assignAll(built);
     } catch (_) {
-      // On any error, surface fallback data so the sheet is never fully empty.
       usedFallback.value = true;
-      final built = fallbackMap.entries.map((e) {
+      final built = fallbackMap.entries.map((entry) {
         return RackPickerEntry(
-          rackName:     e.key,
-          location:     RackLocation.tryParse(e.key),
-          availableQty: e.value,
+          rackName: entry.key,
+          location: RackLocation.tryParse(entry.key),
+          availableQty: entry.value,
           requestedQty: requestedQty,
         );
-      }).toList();
-      built.sort(_compareEntries);
+      }).toList()..sort(_compareEntries);
       entries.assignAll(built);
     } finally {
       isLoading.value = false;
@@ -313,6 +306,7 @@ class RackPickerController extends GetxController {
         return RackPickerEntry(
           rackName:     name,
           location:     RackLocation.tryParse(name),
+          warehouseName: warehouse,
           availableQty: 0.0,
           requestedQty: 0.0,
         );

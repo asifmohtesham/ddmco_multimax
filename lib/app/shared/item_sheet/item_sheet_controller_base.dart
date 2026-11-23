@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +23,10 @@ import 'package:multimax/app/shared/item_sheet/widgets/older_stock_sheet.dart';
 
 /// Drives the visual state of the animated Save button in the item sheet.
 enum SaveButtonState { idle, loading, success, error }
+
+class ItemSheetSubmissionCancelled implements Exception {
+  const ItemSheetSubmissionCancelled();
+}
 
 /// Base return type for batch-lookup results.
 class BatchResult {
@@ -82,7 +88,7 @@ class BatchResult {
 ///                      validateSheet(); SharedSerialField reads it on
 ///                      the base type.
 ///   editingItemName  — RxnString; null = add-mode, non-null = edit rowId.
-///   formKey          — shared GlobalKey<FormState>.
+///   formKey          — shared `GlobalKey<FormState>`.
 ///   itemName/Owner/Creation/Modified/ModifiedBy — shared metadata Rx fields.
 ///   qtyInfoText      — abstract String? getter (nullable); each controller
 ///                      supplies its own label or null (no chip).
@@ -123,13 +129,21 @@ abstract class ItemSheetControllerBase extends GetxController
         BatchNoFieldWithBrowseDelegate,
         QtyFieldWithPlusMinusDelegate {
   // ── Reactive state ────────────────────────────────────────────────────────
+  @override
   final RxBool   isBatchValid          = false.obs;
+  @override
   final RxBool   isValidatingBatch     = false.obs;
+  @override
   final RxBool   isBatchReadOnly       = false.obs;
+  @override
   final RxString batchError            = RxString('');
+  @override
   final RxnString batchInfoTooltip     = RxnString(null);
+  @override
   final RxBool   isRackValid           = false.obs;
+  @override
   final RxBool   isValidatingRack      = false.obs;
+  @override
   final RxString rackError             = RxString('');
 
   /// Why the last Add/Update was refused, shown above the save button.
@@ -154,6 +168,7 @@ abstract class ItemSheetControllerBase extends GetxController
   final RxBool   isSheetValid          = false.obs;
 
   /// Tooltip shown in the rack suffix when a rack is selected.
+  @override
   final RxnString rackStockTooltip     = RxnString(null);
 
   // ── QtyFieldWithPlusMinusDelegate concrete fields ────────────────────────
@@ -222,7 +237,9 @@ abstract class ItemSheetControllerBase extends GetxController
   bool isAddingItemFlag = false;
 
   // ── Text controllers ──────────────────────────────────────────────────────────
+  @override
   final TextEditingController batchController = TextEditingController();
+  @override
   final TextEditingController rackController  = TextEditingController();
 
   /// Backing text controller for the qty field.
@@ -235,6 +252,7 @@ abstract class ItemSheetControllerBase extends GetxController
   final TextEditingController qtyController   = TextEditingController();
 
   /// FocusNode for the rack text field.
+  @override
   final FocusNode rackFocusNode = FocusNode();
 
   /// ScrollController for the sheet's scrollable body.
@@ -244,6 +262,7 @@ abstract class ItemSheetControllerBase extends GetxController
   /// concrete subclass to declare its own field (Group B — B1 fix).
   final ScrollController sheetScrollController = ScrollController();
 
+  @override
   var itemCode = ''.obs;
   final RxString itemGroup = ''.obs;
   final RxString variantOf = ''.obs;
@@ -419,12 +438,16 @@ abstract class ItemSheetControllerBase extends GetxController
   }
 
   // ── submitWithFeedback ─────────────────────────────────────────────────────────
+  bool _submissionInFlight = false;
+
   Future<bool> submitWithFeedback() async {
+    if (_submissionInFlight) return false;
     // Wait for any in-flight batch/rack validation to settle first.
     if (isValidatingBatch.value || isValidatingRack.value) {
       GlobalSnackbar.warning(message: 'Validation in progress, please wait.');
       return false;
     }
+    _submissionInFlight = true;
     saveButtonState.value = SaveButtonState.loading;
     submitError.value = '';
     try {
@@ -432,6 +455,9 @@ abstract class ItemSheetControllerBase extends GetxController
       saveButtonState.value = SaveButtonState.success;
       await Future.delayed(const Duration(milliseconds: 700));
       return true;
+    } on ItemSheetSubmissionCancelled {
+      if (!isClosed) saveButtonState.value = SaveButtonState.idle;
+      return false;
     } catch (e) {
       log('[ItemSheet] submitWithFeedback error: $e', name: 'ItemSheet');
       // submit() throws user-facing reasons ("Choose the invoice serial…");
@@ -441,8 +467,10 @@ abstract class ItemSheetControllerBase extends GetxController
           : 'Could not save this item.';
       saveButtonState.value = SaveButtonState.error;
       await Future.delayed(const Duration(milliseconds: 1500));
-      saveButtonState.value = SaveButtonState.idle;
+      if (!isClosed) saveButtonState.value = SaveButtonState.idle;
       return false;
+    } finally {
+      _submissionInFlight = false;
     }
   }
 
@@ -558,14 +586,14 @@ abstract class ItemSheetControllerBase extends GetxController
   // ── setupAutoSubmit ──────────────────────────────────────────────────────────
   void setupAutoSubmit({required Future<void> Function() onValid}) {
     _autoSubmitWorker?.dispose();
-    bool _handling = false;
+    bool handling = false;
     _autoSubmitWorker = ever(
       saveButtonState,
       (state) async {
-        if (state == SaveButtonState.success && !_handling) {
-          _handling = true;
+        if (state == SaveButtonState.success && !handling) {
+          handling = true;
           await onValid();
-          _handling = false;
+          handling = false;
         }
       },
     );
@@ -598,6 +626,7 @@ abstract class ItemSheetControllerBase extends GetxController
     rackStockTooltip.value = null;
   }
 
+  @override
   void softResetRack() {
     isRackValid.value      = false;
     rackError.value        = '';
@@ -608,21 +637,18 @@ abstract class ItemSheetControllerBase extends GetxController
 
   @override
   void resetBatch() {
-    isBatchValid.value     = false;
+    invalidateBatchValidation();
     isBatchReadOnly.value  = false;
     batchError.value       = '';
     batchInfoTooltip.value = null;
-    batchBalance.value     = 0.0;
-    _clearBatchAgeRefusal();
     resetRack();
   }
 
   void softResetBatch() {
-    isBatchValid.value     = false;
+    invalidateBatchValidation();
     isBatchReadOnly.value  = false;
     batchError.value       = '';
     batchInfoTooltip.value = null;
-    _clearBatchAgeRefusal();
     softResetRack();
   }
 
@@ -663,6 +689,17 @@ abstract class ItemSheetControllerBase extends GetxController
   /// the batch was not refused.
   final RxList<OlderBatch> olderBatches = <OlderBatch>[].obs;
 
+  int _batchValidationGeneration = 0;
+
+  /// Supersedes pending lookups when a row, field, or warehouse changes.
+  void invalidateBatchValidation() {
+    _batchValidationGeneration++;
+    isValidatingBatch.value = false;
+    isBatchValid.value = false;
+    batchBalance.value = 0;
+    _clearBatchAgeRefusal();
+  }
+
   String? _batchAgeScope;
   String? _batchAgeRefusedWarehouse;
 
@@ -685,7 +722,10 @@ abstract class ItemSheetControllerBase extends GetxController
   /// refuses too: a hard rule must not vanish with the connection.
   ///
   /// Returns false silently when the field moved on while the lookup ran.
-  Future<bool> _passesBatchAge(String batch) async {
+  Future<bool> _passesBatchAge(
+    String batch, {
+    required bool Function() isCurrent,
+  }) async {
     if (!enforcesBatchAge) return true;
     final scanned   = batch.trim();
     final warehouse = batchAgePickWarehouse;
@@ -694,8 +734,6 @@ abstract class ItemSheetControllerBase extends GetxController
     final exempt = batchAgeExemptBatch?.trim() ?? '';
     if (exempt.isNotEmpty && exempt == scanned) return true;
     if (!batchAgeRuleApplies(warehouse)) return true;
-
-    bool superseded() => isClosed || batchController.text.trim() != scanned;
 
     final BatchAgeVerdict verdict;
     try {
@@ -709,12 +747,12 @@ abstract class ItemSheetControllerBase extends GetxController
       );
     } catch (e) {
       log('[ItemSheet] batch age check failed: $e', name: 'ItemSheet');
-      if (superseded()) return false;
+      if (!isCurrent()) return false;
       batchError.value = 'Could not check for older stock. '
           'Check the connection and scan the batch again.';
       return false;
     }
-    if (superseded()) return false;
+    if (!isCurrent()) return false;
     if (!verdict.isRefused) return true;
 
     olderBatches.assignAll(verdict.older);
@@ -735,16 +773,24 @@ abstract class ItemSheetControllerBase extends GetxController
       return;
     }
 
+    final generation = ++_batchValidationGeneration;
+    final code = itemCode.value;
+    final warehouse = batchAgePickWarehouse;
+    bool ownsCheck() => !isClosed && generation == _batchValidationGeneration;
+    bool sameBatch() => batchController.text.trim() == batch && itemCode.value == code;
+    bool isCurrent() => ownsCheck() && sameBatch() && batchAgePickWarehouse == warehouse;
+
     isValidatingBatch.value = true;
     try {
-      final allowed = await _passesBatchAge(batch);
-      if (!allowed && !isClosed && batchController.text.trim() == batch) {
-        isBatchValid.value = false;
-      }
+      final allowed = await _passesBatchAge(batch, isCurrent: isCurrent);
+      if (!allowed && isCurrent()) isBatchValid.value = false;
     } finally {
-      if (!isClosed) {
+      if (ownsCheck()) {
         isValidatingBatch.value = false;
         validateSheet();
+        if (sameBatch() && batchAgePickWarehouse != warehouse) {
+          unawaited(recheckBatchAge());
+        }
       }
     }
   }
@@ -783,6 +829,10 @@ abstract class ItemSheetControllerBase extends GetxController
   }
 
   // ── Fetch helpers ──────────────────────────────────────────────────────────────
+  ApiProvider get _batchApi => Get.isRegistered<ApiProvider>()
+      ? Get.find<ApiProvider>()
+      : ApiProvider();
+
   Future<void> fetchBatchBalance() async {
     final batch = batchController.text.trim();
     if (batch.isEmpty || itemCode.value.isEmpty) {
@@ -790,12 +840,21 @@ abstract class ItemSheetControllerBase extends GetxController
       return;
     }
     final wh = resolvedWarehouse;
+    final code = itemCode.value;
+    final generation = _batchValidationGeneration;
     try {
-      final rows = await ApiProvider().getBatchWiseBalance(
-        itemCode:  itemCode.value,
+      final rows = await _batchApi.getBatchWiseBalance(
+        itemCode: code,
         warehouse: wh,
-        batchNo:   batch,
+        batchNo: batch,
       );
+      if (isClosed ||
+          generation != _batchValidationGeneration ||
+          itemCode.value != code ||
+          batchController.text.trim() != batch ||
+          resolvedWarehouse != wh) {
+        return;
+      }
       batchBalance.value = rows.fold(0.0, (s, r) => s + (r['qty'] as num).toDouble());
     } catch (e) {
       log('[ItemSheet] fetchBatchBalance error: $e', name: 'ItemSheet');
@@ -843,10 +902,23 @@ abstract class ItemSheetControllerBase extends GetxController
     await validateBatch(selected);
   }
 
+  @override
   Future<void> validateBatch(String batch) async {
+    batch = batch.trim();
     if (batch.isEmpty) { resetBatch(); return; }
 
+    final generation = ++_batchValidationGeneration;
+    final code = itemCode.value;
+    final warehouse = resolvedWarehouse;
+    final ageWarehouse = batchAgePickWarehouse;
+    bool ownsCheck() => !isClosed && generation == _batchValidationGeneration;
+    bool sameBatch() => batchController.text.trim() == batch && itemCode.value == code;
+    bool sameWarehouse() =>
+        resolvedWarehouse == warehouse && batchAgePickWarehouse == ageWarehouse;
+    bool isCurrent() => ownsCheck() && sameBatch() && sameWarehouse();
+
     isValidatingBatch.value = true;
+    batchBalance.value = 0;
     batchError.value        = '';
     batchInfoTooltip.value  = null;
     isBatchValid.value      = false;
@@ -857,20 +929,22 @@ abstract class ItemSheetControllerBase extends GetxController
       // when the Batch doctype's item field differs from the DN item_code
       // (e.g. batch created against a template item while stock is under a
       // variant, causing a data mismatch in ERPNext).
-      var results = await ApiProvider().getList(
+      var results = await _batchApi.getList(
         'Batch',
         filters: {'name': batch, 'item': itemCode.value},
         fields:  ['name', 'expiry_date', 'manufacturing_date'],
       );
 
-      if (results.isEmpty && itemCode.value.isNotEmpty) {
-        results = await ApiProvider().getList(
+      if (!isCurrent()) return;
+      if (results.isEmpty && code.isNotEmpty) {
+        results = await _batchApi.getList(
           'Batch',
           filters: {'name': batch},
           fields:  ['name', 'expiry_date', 'manufacturing_date'],
         );
       }
 
+      if (!isCurrent()) return;
       if (results.isEmpty) {
         batchError.value = 'Batch "$batch" not found for this item.';
         return;
@@ -909,17 +983,20 @@ abstract class ItemSheetControllerBase extends GetxController
 
       // Oldest stock first: a hard stop, checked last so "not found" and
       // "expired" are reported ahead of it.
-      if (!await _passesBatchAge(batch)) return;
+      if (!await _passesBatchAge(batch, isCurrent: isCurrent) || !isCurrent()) {
+        return;
+      }
 
-      isBatchValid.value = true;
       await fetchBatchBalance();
+      if (isCurrent()) isBatchValid.value = true;
     } catch (e) {
-      batchError.value = 'Error validating batch: $e';
+      if (isCurrent()) batchError.value = 'Error validating batch: $e';
     } finally {
-      isValidatingBatch.value = false;
-      // A rack scanned while this was in flight may have changed the pick
-      // warehouse after the age check read it. No-op when it did not.
-      if (isBatchValid.value) unawaited(recheckBatchAge());
+      if (ownsCheck()) {
+        isValidatingBatch.value = false;
+        validateSheet();
+        if (sameBatch() && !sameWarehouse()) unawaited(validateBatch(batch));
+      }
     }
   }
 

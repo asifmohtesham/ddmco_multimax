@@ -41,6 +41,14 @@ void main() {
       expect(ctrl.isTargetMode.value, isTrue);
     });
 
+    test('linked warehouse controls visibility when the label disagrees', () async {
+      Get.put<ApiProvider>(_FakeApiProvider(['KA-WH-WIP1-1A']));
+      final ctrl = Get.put(RackPickerController());
+      await ctrl.loadForTarget(warehouse: 'WH-DXB1 - KA', currentRack: '');
+      expect(ctrl.visibleEntries.single.rackName, 'KA-WH-WIP1-1A');
+      expect(ctrl.visibleEntries.single.warehouseName, 'WH-DXB1 - KA');
+    });
+
     test('all entries have requestedQty == 0', () async {
       Get.put<ApiProvider>(_FakeApiProvider([
         'KA-WH-DXB1-101A',

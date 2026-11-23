@@ -1,3 +1,5 @@
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/core/utils/navigator_utils.dart';
@@ -62,6 +64,18 @@ class WarehousePicker {
                 },
               ),
               const SizedBox(height: 12),
+              if ((isSource ? controller.fromWarehouse : controller.toWarehouse)
+                  .value?.isNotEmpty == true)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () {
+                      controller.changeHeaderWarehouse(null, source: isSource);
+                      NavigatorUtils.popSheet(ctx);
+                    },
+                    child: const Text('Clear default warehouse'),
+                  ),
+                ),
               Expanded(
                 child: Obx(() {
                   if (controller.isFetchingWarehouses.value) {
@@ -88,23 +102,7 @@ class WarehousePicker {
                                 color: Theme.of(context).primaryColor)
                             : null,
                         onTap: () {
-                          if (isSource) {
-                            controller.fromWarehouse.value = wh;
-                          } else {
-                            controller.toWarehouse.value = wh;
-                          }
-                          // ── Commit 3: propagate to WO prefill items ──────────────────
-                          // When this SE was opened from executeWorkOrder() the items
-                          // list was pre-populated with per-item sWarehouse/tWarehouse
-                          // values from ERPNext.  If the operator overrides the header
-                          // warehouse here, those per-item fields must follow so the
-                          // Items tab, the item edit sheet, and the final save payload
-                          // all reflect the chosen warehouse consistently.
-                          if (controller.argWorkOrderName != null &&
-                              controller.argWorkOrderName!.isNotEmpty) {
-                            controller.propagateHeaderWarehouseToItems(
-                                source: isSource);
-                          }
+                          controller.changeHeaderWarehouse(wh, source: isSource);
                           NavigatorUtils.popSheet(ctx);
                         },
                       );

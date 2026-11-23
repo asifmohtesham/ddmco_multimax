@@ -1,3 +1,5 @@
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:multimax/app/modules/global_widgets/doc_picker_field.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
@@ -15,6 +17,7 @@ import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 /// placeholder.
 class EntryTypeCard extends StatelessWidget {
   final String type;
+  final String? purpose;
   final String helperText;
   final String? fromWarehouse;
   final String? toWarehouse;
@@ -26,6 +29,7 @@ class EntryTypeCard extends StatelessWidget {
   const EntryTypeCard({
     super.key,
     required this.type,
+    this.purpose,
     required this.helperText,
     required this.fromWarehouse,
     required this.toWarehouse,
@@ -37,12 +41,11 @@ class EntryTypeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMaterialIssue = type == 'Material Issue';
-    final isMaterialReceipt = type == 'Material Receipt';
-    final isMaterialTransfer = type == 'Material Transfer' ||
-        type == 'Material Transfer for Manufacture';
-    final fromActive = isMaterialIssue || isMaterialTransfer;
-    final toActive = isMaterialReceipt || isMaterialTransfer;
+    final movement = purpose ?? type;
+    final fromActive = movement.isNotEmpty && movement != 'Material Receipt';
+    final toActive = movement.isNotEmpty &&
+        movement != 'Material Issue' &&
+        movement != 'Material Consumption for Manufacture';
 
     return DocSectionCard(
       title: 'Entry',

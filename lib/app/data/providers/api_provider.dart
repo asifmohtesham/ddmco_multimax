@@ -4,7 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:get/get.dart' hide Response, FormData, MultipartFile;
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/models/batch_wise_balance_row.dart';
@@ -33,6 +33,10 @@ class ApiProvider {
   String _baseUrl = defaultBaseUrl;
 
   String get baseUrl => _baseUrl;
+
+  // Invalidates authenticated rack master reads when the login or site changes.
+  int _rackWarehouseSession = 0;
+  int get rackWarehouseSession => _rackWarehouseSession;
 
   /// Session hooks, set by AuthenticationController. ApiProvider is created
   /// first, so it cannot look the controller up itself.
@@ -183,6 +187,7 @@ class ApiProvider {
   }
 
   void setBaseUrl(String url) {
+    _rackWarehouseSession++;
     _baseUrl = url;
     _stockBalanceUsesListFilters = null;
     _erpNextVersion = null;
@@ -581,19 +586,19 @@ class ApiProvider {
   /// Returns a [List<Map<String, dynamic>>] of matching document rows so
   /// callers can read individual field values (e.g. expiry_date).
   ///
-  /// [_positional] is an OPTIONAL positional kept for backwards compat with
+  /// [positional] is an OPTIONAL positional kept for backwards compat with
   /// any legacy call-site that still passes the doctype positionally.
   /// New call-sites should use the named [doctype] parameter instead:
   ///
   ///   ApiProvider().getList(doctype: 'Batch', filters: {...}, fields: [...])
   ///
   /// Group D fix: the param was previously declared as a required positional
-  /// (String? _positional) with no default — callers that omitted it (i.e.
+  /// (String? positional) with no default — callers that omitted it (i.e.
   /// all named-only call-sites) produced a compile error.  Wrapping in
   /// square brackets makes it an optional positional with an implicit null
   /// default, so both calling styles compile correctly.
   Future<List<Map<String, dynamic>>> getList(
-    String? _positional, {
+    String? positional, {
     String? doctype,
     Map<String, dynamic>? filters,
     List<String>? fields,
@@ -602,7 +607,7 @@ class ApiProvider {
     String? groupBy = '',
     String? filterDoctype,
   }) async {
-    final dt = _positional ?? doctype;
+    final dt = positional ?? doctype;
     if (dt == null) return [];
 
     // Frappe supports filtering a parent doctype by a child-table field by
@@ -635,7 +640,7 @@ class ApiProvider {
             .toList();
       }
     } catch (e) {
-      print('Error fetching list for $dt: $e');
+      debugPrint('Error fetching list for $dt: $e');
     }
     return [];
   }
@@ -654,7 +659,7 @@ class ApiProvider {
         return (response.data['data'] as List).map((e) => e['name'] as String).toList();
       }
     } catch (e) {
-      print('Error fetching list for $doctype: $e');
+      debugPrint('Error fetching list for $doctype: $e');
     }
     return [];
   }
@@ -679,21 +684,26 @@ class ApiProvider {
     return result;
   }
 
-  /// Fetches all rack names in [warehouse] from the Rack DocType API.
-  ///
-  /// Calls `GET /api/resource/Rack?filters=[["Rack","warehouse","=",wh]]&fields=["name"]&limit_page_length=0`.
-  /// Returns an empty list when [warehouse] is empty or on any API error.
+  /// Fetches every Rack name linked to the exact [warehouse].
   Future<List<String>> getRacksByWarehouse(String warehouse) async {
     if (warehouse.isEmpty) return [];
     try {
-      if (!_dioInitialised) await _initDio();
-      final response = await _dio.get('/api/resource/Rack', queryParameters: {
-        'fields':            json.encode(['name']),
-        'filters':           json.encode([['Rack', 'warehouse', '=', warehouse]]),
-        'limit_page_length': 0,
-        'order_by':          'name asc',
-      });
-      return parseRacksByWarehouseResponse(response.data);
+      const pageSize = 100;
+      final racks = <String>[];
+      for (var start = 0; ; start += pageSize) {
+        final response = await getDocumentList(
+          'Rack',
+          fields: ['name'],
+          filters: {'warehouse': warehouse},
+          limit: pageSize,
+          limitStart: start,
+          orderBy: 'name asc',
+        );
+        final data = response.data;
+        if (data is! Map || data['data'] is! List) return [];
+        racks.addAll(parseRacksByWarehouseResponse(data));
+        if ((data['data'] as List).length < pageSize) return racks;
+      }
     } catch (_) {
       return [];
     }
@@ -709,19 +719,33 @@ class ApiProvider {
     return (wh is String && wh.isNotEmpty) ? wh : null;
   }
 
-  /// Resolves the authoritative warehouse of [rack] from the Rack DocType.
-  ///
-  /// Distinguishes "rack does not exist" (404 → notFound) from transient
-  /// failures (error) so callers can reject invalid racks while degrading
-  /// gracefully offline.
-  /// An empty [rack] resolves to [RackLookupStatus.notFound].
+  /// Distinguishes an existing Rack with an absent link from 404 and failures.
+  static RackWarehouseLookup parseRackLookupResponse(Object? data) {
+    if (data is! Map || data['data'] is! Map) {
+      return const RackWarehouseLookup.error();
+    }
+    final doc = data['data'] as Map;
+    final name = doc['name'];
+    final warehouse = doc['warehouse'];
+    if (name is! String || name.trim().isEmpty ||
+        (warehouse != null && warehouse is! String)) {
+      return const RackWarehouseLookup.error();
+    }
+    return RackWarehouseLookup.found(
+      parseRackWarehouseResponse(data),
+      name: name,
+    );
+  }
+
   Future<RackWarehouseLookup> getRackWarehouse(String rack) async {
     if (rack.isEmpty) return const RackWarehouseLookup.notFound();
     try {
-      final response = await getDocument('Rack', rack);
-      if (response.statusCode == 200 && response.data != null) {
-        return RackWarehouseLookup.found(
-            parseRackWarehouseResponse(response.data));
+      final response = await getDocument('Rack', Uri.encodeComponent(rack));
+      if (response.statusCode == 200) {
+        return parseRackLookupResponse(response.data);
+      }
+      if (response.statusCode == 404) {
+        return const RackWarehouseLookup.notFound();
       }
       return const RackWarehouseLookup.error();
     } on DioException catch (e) {
@@ -1427,9 +1451,7 @@ class ApiProvider {
   /// rows by rack dimension.
   ///
   /// Both Map rows (key-based) and List rows (positional) are handled.
-  /// Every returned row is normalised to {'rack': String, 'qty': double}
-  /// so callers can always read r['rack'] and r['qty'] regardless of the
-  /// ERP response format.
+  /// Each row supplies `rack` and `qty`, plus `warehouse` when present.
   Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
     required String itemCode,
     String? warehouse,
@@ -1493,7 +1515,11 @@ class ApiProvider {
             .map((r) {
               final rack = (r['rack'] ?? '').toString().trim();
               final qty  = _toDouble(r['bal_qty'] ?? r['qty'] ?? r['balance_qty']);
-              return <String, dynamic>{'rack': rack, 'qty': qty};
+              return <String, dynamic>{
+                'rack': rack,
+                'qty': qty,
+                if (r['warehouse'] is String) 'warehouse': r['warehouse'],
+              };
             })
             .where((r) => (r['rack'] as String).isNotEmpty)
             .toList();
@@ -1518,6 +1544,7 @@ class ApiProvider {
 
       final cols    = rawColumns.map(fn).toList();
       final rackIdx = cols.indexWhere((c) => c == 'rack');
+      final warehouseIdx = cols.indexOf('warehouse');
 
       // Prefer exact 'bal_qty' column; fall back to any column containing
       // 'balance' or the generic 'qty' column.
@@ -1534,7 +1561,13 @@ class ApiProvider {
           .map((r) {
             final rack = r[rackIdx]?.toString().trim() ?? '';
             final qty  = _toDouble(r[balIdx]);
-            return <String, dynamic>{'rack': rack, 'qty': qty};
+            return <String, dynamic>{
+              'rack': rack,
+              'qty': qty,
+              if (warehouseIdx >= 0 && warehouseIdx < r.length &&
+                  r[warehouseIdx] is String)
+                'warehouse': r[warehouseIdx],
+            };
           })
           .where((r) => (r['rack'] as String).isNotEmpty)
           .toList();
@@ -1977,7 +2010,7 @@ class ApiProvider {
       final response = await getDocTypeMeta(doctype);
       filter = activeFilterFromMeta(response.data, doctype);
     } catch (e) {
-      print('activeRecordFilter: meta fetch failed for $doctype: $e');
+      debugPrint('activeRecordFilter: meta fetch failed for $doctype: $e');
       return filter; // don't cache a transient failure
     }
     return _activeFilterCache[doctype] = filter;
@@ -2078,7 +2111,7 @@ class ApiProvider {
   ///   production_item — optional item code (empty list → no filter)
   ///
   /// Returns the raw [Response] so the controller can parse
-  /// message.result (List<dynamic>) and message.columns.
+  /// `message.result` (`List<dynamic>`) and `message.columns`.
   Future<Response> getJobCardSummary({
     required String fromDate,
     required String toDate,
@@ -2390,6 +2423,7 @@ class ApiProvider {
   Future<Response> createPurchaseOrder(Map<String, dynamic> data) async => createDocument('Purchase Order', data);
   Future<Response> updatePurchaseOrder(String name, Map<String, dynamic> data) async => updateDocument('Purchase Order', name, data);
   Future<Response> login(String email, String password) async {
+    _rackWarehouseSession++;
     clearDeskHtml();
     if (!_dioInitialised) await _initDio();
     try {
@@ -2404,6 +2438,7 @@ class ApiProvider {
     }
   }
   Future<Response> loginWithFrappe(String username, String password) async {
+    _rackWarehouseSession++;
     clearDeskHtml();
     if (!_dioInitialised) await _initDio();
     try {
@@ -2476,6 +2511,7 @@ class ApiProvider {
     return cookies.any((cookie) => cookie.name == 'sid');
   }
   Future<void> clearSessionCookies() async {
+    _rackWarehouseSession++;
     clearDeskHtml();
     if (!_dioInitialised) await _initDio();
     await _cookieJar.deleteAll();
@@ -2488,6 +2524,7 @@ class ApiProvider {
   }
 
   Future<Response> logoutApiCall({CancelToken? cancelToken}) async {
+    _rackWarehouseSession++;
     if (!_dioInitialised) await _initDio();
     return await _dio.post(
       '/api/method/logout',

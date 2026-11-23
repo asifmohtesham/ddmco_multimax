@@ -1,107 +1,143 @@
-// test/unit/dn_item_form_controller_warehouse_test.dart
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/delivery_note/form/delivery_note_item_form_controller.dart';
 
-void main() {
-  setUpAll(() {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    // Stub path_provider so ApiProvider._initDio() does not throw in
-    // the headless test environment (no platform plugins available).
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (MethodCall call) async => '/tmp/test_cookies',
-    );
-  });
+import '../support/delivery_note_fixture.dart';
 
-  tearDown(() => Get.deleteAll(force: true));
+void main() {
+  setUp(registerDeliveryNoteTestServices);
+  tearDown(Get.reset);
+
+  Future<DeliveryNoteItemFormController> openSheet(WidgetTester tester) async {
+    final parent = await openNewDeliveryNote(tester);
+    parent.setWarehouse.value = 'POS-Pick';
+    final controller = Get.put(DeliveryNoteItemFormController());
+    controller.initialise(parent: parent, code: 'ITEM-1', name: 'Test item');
+    controller.batchController.text = 'BATCH-1';
+    await controller.validateBatch('BATCH-1');
+    controller.qtyController.text = '1';
+    return controller;
+  }
+
+  Future<void> closeSheet(WidgetTester tester) async {
+    await Get.delete<DeliveryNoteItemFormController>();
+    await tester.pump(const Duration(milliseconds: 500));
+  }
 
   group('DeliveryNoteItemFormController.itemWarehouse', () {
-    test('T-1: applyRackScan sets itemWarehouse for a parseable rack code', () {
-      final ctrl = Get.put(DeliveryNoteItemFormController());
-      ctrl.applyRackScan('KA-WH-DXB1-101A');
-      expect(ctrl.itemWarehouse.value, equals('WH-DXB1 - KA'));
+    testWidgets('a fresh physical scan uses authoritative Rack metadata', (
+      tester,
+    ) async {
+      final controller = await openSheet(tester);
+
+      controller.applyRackScan('KA-WH-DXB1-101A');
+      expect(controller.isCheckingRackWarehouse.value, isTrue);
+      expect(controller.resolvedWarehouse, 'POS-Pick');
+      await tester.pump();
+
+      expect(controller.itemWarehouse.value, 'POS-Other');
+      expect(controller.isSheetValid.value, isTrue);
+      await closeSheet(tester);
     });
 
-    test('T-2: applyRackScan sets itemWarehouse to null for a non-parseable rack code', () {
-      final ctrl = Get.put(DeliveryNoteItemFormController());
-      ctrl.applyRackScan('BADRACK');
-      expect(ctrl.itemWarehouse.value, isNull);
-    });
+    testWidgets('an unknown rack keeps the previous warehouse visible', (
+      tester,
+    ) async {
+      final controller = await openSheet(tester);
+      controller.applyRackScan('RACK-POS-OTHER');
+      await tester.pump();
+      expect(controller.itemWarehouse.value, 'POS-Other');
 
-    test('T-3: clearAll resets itemWarehouse to null', () {
-      final ctrl = Get.put(DeliveryNoteItemFormController());
-      ctrl.applyRackScan('KA-WH-DXB1-101A');
-      expect(ctrl.itemWarehouse.value, isNotNull);
-      ctrl.clearAll();
-      expect(ctrl.itemWarehouse.value, isNull);
-    });
-  });
+      controller.applyRackScan('BADRACK');
+      await tester.pump();
 
-  // Regression (2026-10-10, found on device): choosing an invoice serial
-  // lowers the qty ceiling to that voucher line's qty, but nothing
-  // re-validated, so a stale "valid" sheet saved 4 onto a line of 1.
-  _rackGroup();
-
-  group('DeliveryNoteItemFormController serial change', () {
-    test('T-4: selecting a serial re-runs validateSheet', () async {
-      final ctrl = Get.put(_ValidateSpy());
-      ctrl.selectedSerial.value = '2';
-      await Future<void>.delayed(Duration.zero);
-      expect(ctrl.validations, 1);
-      ctrl.selectedSerial.value = '1';
-      await Future<void>.delayed(Duration.zero);
-      expect(ctrl.validations, 2);
-    });
-  });
-}
-
-// Desk enforces Delivery Note Item.rack via mandatory_depends_on
-// (eval:doc.item_code); the server does not for API saves, so the sheet must.
-void _rackGroup() {
-  group('DeliveryNoteItemFormController rack is required', () {
-    DeliveryNoteItemFormController ready({required String rack}) {
-      final ctrl = Get.put(DeliveryNoteItemFormController());
-      ctrl.qtyController.text = '1';
-      ctrl.isBatchValid.value = true;
-      ctrl.rackController.text = rack;
-      return ctrl;
-    }
-
-    test('T-5: blank rack refuses add/update with a reason', () async {
-      final ctrl = ready(rack: '  ');
-      await expectLater(
-        ctrl.submit(),
-        throwsA(isA<Exception>().having(
-            (e) => e.toString(), 'message', contains('Scan or choose a rack'))),
+      expect(controller.itemWarehouse.value, 'POS-Other');
+      expect(
+        controller.rackError.value,
+        'Rack BADRACK was not found. Scan or choose a Rack.',
       );
+      expect(controller.isSheetValid.value, isFalse);
+      await closeSheet(tester);
     });
 
-    test('T-7: the refusal reason reaches the sheet, not a hidden snackbar',
-        () async {
-      final ctrl = ready(rack: '');
-      final ok = await ctrl.submitWithFeedback();
-      expect(ok, isFalse);
-      expect(ctrl.submitError.value, 'Scan or choose a rack');
+    testWidgets('clearAll resets itemWarehouse to the document default', (
+      tester,
+    ) async {
+      final controller = await openSheet(tester);
+      controller.applyRackScan('RACK-POS-OTHER');
+      await tester.pump();
+
+      controller.clearAll();
+
+      expect(controller.itemWarehouse.value, isNull);
+      expect(controller.resolvedWarehouse, 'POS-Pick');
+      await closeSheet(tester);
+    });
+  });
+
+  // Choosing an invoice serial recalculates the voucher line quantity ceiling.
+  test('changing serial revalidates the sheet', () async {
+    final ctrl = Get.put(_ValidateSpy());
+    ctrl.selectedSerial.value = '2';
+    await Future<void>.delayed(Duration.zero);
+    expect(ctrl.validations, 1);
+    ctrl.selectedSerial.value = '1';
+    await Future<void>.delayed(Duration.zero);
+    expect(ctrl.validations, 2);
+  });
+
+  group('DeliveryNoteItemFormController rack is required', () {
+    testWidgets('blank rack refuses add or update with a reason', (
+      tester,
+    ) async {
+      final controller = await openSheet(tester);
+      controller.rackController.text = '  ';
+
+      await expectLater(
+        controller.submit(),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('Scan or choose a rack'),
+          ),
+        ),
+      );
+      expect(controller.parent.items, isEmpty);
+      await closeSheet(tester);
     });
 
-    test('T-6: a rack passes the rack check', () async {
-      final ctrl = ready(rack: 'KA-WH-DXB1-121D');
-      // Proceeds past the precondition (and then needs a parent form, which
-      // this unit test does not build) — so any failure must not be the rack.
-      try {
-        await ctrl.submit();
-      } catch (e) {
-        expect(e.toString(), isNot(contains('Scan or choose a rack')));
-      }
+    testWidgets('the refusal reason reaches the sheet', (tester) async {
+      final controller = await openSheet(tester);
+      final submission = controller.submitWithFeedback();
+      await tester.pump(const Duration(milliseconds: 1500));
+
+      expect(await submission, isFalse);
+      expect(controller.submitError.value, 'Scan or choose a rack');
+      await closeSheet(tester);
+    });
+
+    testWidgets('a matching rack passes the rack check and commits the row', (
+      tester,
+    ) async {
+      final controller = await openSheet(tester);
+      controller.rackController.text = 'RACK-POS-PICK';
+      await controller.validateRack('RACK-POS-PICK');
+
+      await controller.submit();
+
+      expect(controller.parent.items.single.rack, 'RACK-POS-PICK');
+      expect(controller.parent.items.single.warehouse, 'POS-Pick');
+      await tester.pump();
+      await closeSheet(tester);
+      await tester.pump(deliveryNoteAutoSaveDelay + const Duration(seconds: 3));
     });
   });
 }
 
 class _ValidateSpy extends DeliveryNoteItemFormController {
   int validations = 0;
+
   @override
   void validateSheet() => validations++;
 }

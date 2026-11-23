@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:developer';
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -15,8 +17,8 @@ import 'package:multimax/app/shared/item_sheet/item_sheet_mixin_autofill_rack.da
 // Picker
 import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_result.dart';
-import 'package:multimax/app/shared/item_sheet/rack_location.dart';
 import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
+import 'package:multimax/app/shared/item_sheet/rack_warehouse_rule.dart';
 
 // Data layer
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -47,7 +49,7 @@ import 'package:multimax/app/shared/item_sheet/serial_number_field_delegate.dart
 ///
 /// Group B fixes (on top of Commit 7):
 ///   B3 — deleteCurrentItem() called _parent.items.refresh() on a plain
-///        List<DeliveryNoteItem>.  .refresh() does not exist on List;
+///        `List<DeliveryNoteItem>`.  .refresh() does not exist on List;
 ///        replaced with _parent.deliveryNote.refresh() (the Rx wrapper).
 ///   B4 — submit() passed posQtyCap: _posQtyCap to the DeliveryNoteItem
 ///        constructor.  DeliveryNoteItem has no such field; argument removed.
@@ -100,6 +102,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   @override
   void onClose() {
     _serialWorker?.dispose();
+    disposeAutoFillListener();
+    endValidationSession();
+    Future.delayed(const Duration(milliseconds: 400), targetRackController.dispose);
     super.onClose();
   }
 
@@ -118,6 +123,24 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   final RxMap<String, double> rackStockMapRx = <String, double>{}.obs;
   final RxnString itemWarehouse = RxnString();
+  final rackWarehouseVerdict = Rxn<RackPairVerdict>();
+  final isCheckingRackWarehouse = false.obs;
+  final targetRackController = TextEditingController();
+  final targetWarehouse = RxnString();
+  bool targetRackHasFocus = false;
+  final targetRackVerdict = Rxn<RackPairVerdict>();
+  final isCheckingTargetRack = false.obs;
+
+  DeliveryNoteItem? _editedRow;
+  bool _warehousePinned = false;
+  bool _validationSessionClosed = false;
+  int _rackGeneration = 0;
+  int _targetRackGeneration = 0;
+  String _rackRequest = '';
+  String _targetRackRequest = '';
+  String _batchInput = '';
+  String? _batchCheckWarehouse;
+  ({String? warehouse, String batch})? _rackStockScope;
 
   // ── EAN-8 barcode context (for deprecated batch label reassembly) ──────────
   /// Stores the 8-digit EAN8 barcode of the current item, set at sheet-open
@@ -132,10 +155,40 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   // ── Base abstract overrides ────────────────────────────────────────────────
   @override
-  String? get resolvedWarehouse {
-    final header = _parent.setWarehouse.value;
-    return itemWarehouse.value ??
-        ((header != null && header.isNotEmpty) ? header : soLine?.warehouse);
+  String? get resolvedWarehouse => DeliveryNoteFormController.effectiveWarehouse(
+        row: itemWarehouse.value,
+        salesOrder: soLine?.warehouse,
+        header: _parent.setWarehouse.value,
+      );
+
+  bool get hasTargetSide => _editedRow != null &&
+      (targetWarehouse.value != null || (_editedRow?.toRack ?? '').isNotEmpty);
+
+  bool get targetRackApplicable => targetWarehouse.value != null;
+
+  bool get targetRackValid => targetRackVerdict.value?.isValid == true;
+
+  String get targetRackMessage {
+    if (isCheckingTargetRack.value) return 'Checking rack warehouse…';
+    final verdict = targetRackVerdict.value;
+    if (verdict == null) return '';
+    return _savedTargetException(verdict) ? verdict.savedMessage : verdict.message;
+  }
+
+  bool _savedTargetException(RackPairVerdict verdict) =>
+      !verdict.isValid &&
+      _editedRow?.toRack == targetRackController.text.trim() &&
+      _editedRow?.targetWarehouse == targetWarehouse.value;
+
+  void endValidationSession() {
+    if (_validationSessionClosed) return;
+    _validationSessionClosed = true;
+    _rackGeneration++;
+    _targetRackGeneration++;
+    invalidateBatchValidation();
+    rackController.removeListener(_rackInputChanged);
+    targetRackController.removeListener(_targetRackInputChanged);
+    batchController.removeListener(_batchInputChanged);
   }
 
   /// Sales Order line this row is picked against (SO mode only): the edited
@@ -178,9 +231,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
 
   /// The batch this row was opened with; never refused on re-open.
   String? _savedBatch;
+  String? _openedWarehouse;
 
   @override
-  String? get batchAgeExemptBatch => isExistingItem.value ? _savedBatch : null;
+  String? get batchAgeExemptBatch =>
+      _savedBatch != null && _openedWarehouse == resolvedWarehouse ? _savedBatch : null;
 
   /// This note's other rows for the item (the row being edited is left out).
   @override
@@ -203,9 +258,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (eff == double.infinity) return null;
     return 'Max: ${eff.toStringAsFixed(eff.truncateToDouble() == eff ? 0 : 2)}';
   }
-
-  @override
-  final RxnString qtyInfoTooltip = RxnString(null);
 
   // ── QtyFieldWithPlusMinusDelegate: effectiveMaxQty ────────────────────────
   // ── Private helper ────────────────────────────────────────────────────────
@@ -244,30 +296,35 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return ceil ?? double.infinity;
   }
 
-  /// Returns true when:
-  /// - No rack has been entered yet (permissive)
-  /// - Rack validation is still in progress (don't block while fetching)
-  /// - Rack has been validated and balance > 0
-  /// Returns false only when rack validation is COMPLETE and balance ≤ 0.
-  bool get _rackBalanceOk {
-    final rack = rackController.text.trim();
-    if (rack.isEmpty) return true;              // no rack entered
-    if (isValidatingRack.value) return true;    // still fetching — don't block yet
-    if (!isRackValid.value) return false;       // validation done, failed
-    return rackBalance.value > 0;              // validation done, check balance
+  bool get _rackBalanceOk =>
+      !isValidatingRack.value &&
+      (isRackValid.value && rackBalance.value > 0 || _canRetainOutbound());
+
+  bool get _batchBalanceOk =>
+      !isValidatingBatch.value && isBatchValid.value && batchBalance.value > 0;
+
+  bool get _isSavedOutboundPair =>
+      rackWarehouseVerdict.value?.isValid == false &&
+      _editedRow?.rack == rackController.text.trim() &&
+      _openedWarehouse == resolvedWarehouse;
+
+  bool _canRetainOutbound() {
+    if (!_isSavedOutboundPair) return false;
+    return _parent.canRetainSavedPair(
+      _buildItem(qty: double.tryParse(qtyController.text) ?? double.infinity),
+      RackSide.outbound,
+    );
   }
 
-  /// Returns true when:
-  /// - No batch has been entered yet (permissive)
-  /// - Batch validation is still in progress (don't block while fetching)
-  /// - Batch has been validated and balance > 0
-  /// Returns false only when batch validation is COMPLETE and balance ≤ 0.
-  bool get _batchBalanceOk {
-    final batch = batchController.text.trim();
-    if (batch.isEmpty) return true;              // no batch entered
-    if (isValidatingBatch.value) return true;    // still fetching — don't block yet
-    if (!isBatchValid.value) return false;       // validation done, failed
-    return batchBalance.value > 0;              // validation done, check balance
+  bool get _targetPairOk {
+    if (isCheckingTargetRack.value) return false;
+    final rack = targetRackController.text.trim();
+    if (rack.isEmpty || targetRackValid) return true;
+    return targetRackVerdict.value != null &&
+        _parent.canRetainSavedPair(
+          _buildItem(qty: double.tryParse(qtyController.text) ?? double.infinity),
+          RackSide.target,
+        );
   }
 
   // ── SerialFieldMixin: posItemQtyForSerial override ────────────────────────
@@ -427,9 +484,42 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   double  get mixinQty       => double.tryParse(qtyController.text) ?? 0.0;
   @override Map<String, double> get rackStockMap => Map<String, double>.from(rackStockMapRx);
 
-  void onRackAutoFilled(String rackId) {
-    rackController.text = rackId;
-    validateRack(rackId);
+  Future<void> pickRack() async {
+    final selected = await browseRacks();
+    if (selected != null && !_validationSessionClosed) {
+      _applySourceRackScan(selected.rackId);
+    }
+  }
+
+  Future<void> pickTargetRack() async {
+    final context = Get.context;
+    final warehouse = targetWarehouse.value;
+    if (context == null || warehouse == null || isCheckingTargetRack.value) {
+      return;
+    }
+    final tag = 'dn_target_rack_picker';
+    final picker = Get.put(RackPickerController(), tag: tag);
+    try {
+      unawaited(picker.loadForTarget(
+        warehouse: warehouse,
+        currentRack: targetRackController.text.trim(),
+      ));
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => RackPickerSheet(
+          pickerTag: tag,
+          onSelected: (rack) {
+            _applyTargetRackScan(rack);
+          },
+        ),
+      );
+    } finally {
+      if (Get.isRegistered<RackPickerController>(tag: tag)) {
+        Get.delete<RackPickerController>(tag: tag);
+      }
+    }
   }
 
   // ── RackBrowseDelegate ─────────────────────────────────────────────────────
@@ -527,6 +617,13 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     DeliveryNoteItem? editingItem,
   }) {
     _seedContext(parent: parent, scannedEan8: scannedEan8);
+    _editedRow = editingItem;
+    _warehousePinned = editingItem != null;
+    targetWarehouse.value = editingItem == null
+        ? null
+        : parent.targetWarehouseFor(editingItem);
+    targetRackController.text = editingItem?.toRack ?? '';
+    _targetRackRequest = targetRackController.text.trim();
     soLine = editingItem != null
         ? parent.salesOrder.value?.lineByDetail(editingItem.soDetail)
         : parent.pendingSoLine;
@@ -562,7 +659,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     String? variantOf,
   }) {
     final items = _parent.deliveryNote.value?.items ?? [];
-    final idx   = items.indexWhere((i) => i.name == item.name);
+    final idx   = items.indexWhere(
+      (i) => identical(i, item) || (item.name != null && i.name == item.name),
+    );
     initForEdit(
       index:     idx >= 0 ? idx : 0,
       item:      item,
@@ -667,6 +766,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     isSheetValid.value = false;
     isQtyValid.value   = false;
     qtyError.value     = '';
+    _batchCheckWarehouse = null;
+    _rackStockScope = null;
   }
 
   /// Responsibility: tear down any stale listeners, attach fresh ones,
@@ -677,6 +778,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     addSheetListeners();
     snapshotState();
     captureSerialSnapshot();
+    rackController.addListener(_rackInputChanged);
+    targetRackController.addListener(_targetRackInputChanged);
+    _batchInput = batchController.text.trim();
+    batchController.addListener(_batchInputChanged);
+    initAutoFillListener();
     // Seed the chip immediately with the correct remaining value so the
     // badge is accurate the moment the sheet opens — without waiting for
     // the user to change the qty field.
@@ -700,7 +806,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     // Re-seed rack text and itemWarehouse after _resetValidationState() which
     // calls resetRack() and clears both rackController and itemWarehouse.
     rackController.text = existingRack;
-    itemWarehouse.value = item.warehouse;
+    itemWarehouse.value =
+        _parent.outboundWarehouse(item, header: _parent.setWarehouse.value);
+    _openedWarehouse = itemWarehouse.value;
 
     _resolveAndSeedSerial(item: item);
     _wireListenersAndSnapshot();
@@ -733,11 +841,11 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     required DeliveryNoteItem item,
     required String variantOf,
   }) {
-    this.itemCode.value  = item.itemCode;
+    itemCode.value = item.itemCode;
     itemCodeRx.value     = item.itemCode;
     itemNameRx.value     = item.itemName  ?? '';
     itemUomRx.value      = item.uom       ?? '';
-    this.itemGroup.value = item.itemGroup ?? '';
+    itemGroup.value = item.itemGroup ?? '';
     this.variantOf.value = variantOf;
   }
 
@@ -809,11 +917,15 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     if (existingBatch.isNotEmpty) {
       validateBatchOnInit(existingBatch);
     }
-    if (existingRack.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!isClosed) validateRack(existingRack);
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_validationSessionClosed) return;
+      if (existingRack.isNotEmpty && existingBatch.isEmpty) {
+        unawaited(validateRack(existingRack));
+      }
+      if (targetRackController.text.trim().isNotEmpty) {
+        unawaited(validateTargetRack(targetRackController.text));
+      }
+    });
   }
 
   // ── Sheet validity ─────────────────────────────────────────────────────────
@@ -851,10 +963,9 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       return;
     }
 
-    // FIX: gate on rack balance first
-    if (!_rackBalanceOk) {
+    if (!_rackBalanceOk || !_targetPairOk) {
       isQtyValid.value = false;
-      qtyError.value   = 'No stock available in selected rack';
+      qtyError.value = '';
       return;
     }
 
@@ -880,9 +991,12 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// Responsibility: combine batch validity with the qty flags to decide
   /// whether the sheet as a whole may be submitted.
   void _evaluateSheetValidity({required bool qtyOk, required bool ceilOk}) {
-    // Added _batchBalanceOk alongside existing _rackBalanceOk gate.
-    isSheetValid.value =
-        isBatchValid.value && _batchBalanceOk && _rackBalanceOk && qtyOk && ceilOk;
+    isSheetValid.value = _batchBalanceOk &&
+        _rackBalanceOk &&
+        _targetPairOk &&
+        qtyOk &&
+        ceilOk &&
+        !_parent.isSaving.value;
   }
 
   /// Responsibility: recompute and publish the live-remaining badge so the
@@ -904,7 +1018,31 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   Future<void> submit() async {
     final qty = _assertSubmitPreconditions();
     final item = _buildItem(qty: qty);
+    final before = List<DeliveryNoteItem>.of(_parent.items);
+    final header = _parent.setWarehouse.value;
+    final generation = _rackGeneration;
+    final targetGeneration = _targetRackGeneration;
+    bool rowChanged() =>
+        _validationSessionClosed ||
+        generation != _rackGeneration ||
+        targetGeneration != _targetRackGeneration ||
+        _parent.setWarehouse.value != header ||
+        _parent.items.length != before.length ||
+        !_parent.items.asMap().entries.every((e) => identical(e.value, before[e.key]));
+
     await _assertBatchOrderKept(item);
+    if (rowChanged() ||
+        !await _parent.warehouseConfirmation.confirm(
+          _parent.warehouseDifferences(item, editingIndex: editingIndex.value),
+        )) {
+      throw const ItemSheetSubmissionCancelled();
+    }
+    if (rowChanged() ||
+        item.qty != _assertSubmitPreconditions() ||
+        item.customInvoiceSerialNumber !=
+            _buildItem(qty: qty).customInvoiceSerialNumber) {
+      throw const ItemSheetSubmissionCancelled();
+    }
     _commitToParent(item: item);
     _scheduleParentRefresh();
   }
@@ -942,9 +1080,18 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   double _assertSubmitPreconditions() {
     final qty = double.tryParse(qtyController.text);
     if (qty == null || qty <= 0) throw Exception('Enter a valid quantity');
-    if (!isBatchValid.value)     throw Exception('Batch validation required');
+    if (_parent.isSaving.value) {
+      throw Exception('The delivery note is saving.');
+    }
     if (requiresRack && rackController.text.trim().isEmpty) {
       throw Exception('Scan or choose a rack');
+    }
+    if (!_batchBalanceOk) throw Exception('Batch validation required');
+    if (!_rackBalanceOk) {
+      throw Exception(rackError.value.isEmpty ? 'Validate the source rack' : rackError.value);
+    }
+    if (!_targetPairOk) {
+      throw Exception(targetRackMessage.isEmpty ? 'Validate the target rack' : targetRackMessage);
     }
     // Hard ceiling (batch/rack/voucher line/SO line) — never trust a stale
     // isSheetValid alone.
@@ -967,15 +1114,27 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     final rack         = rackController.text.trim();
     final variantOfStr = variantOf.value.trim();
 
+    final saved = _editedRow;
     return DeliveryNoteItem(
+      name: saved?.name,
       itemCode:                  itemCode.value,
       itemName:                  itemNameRx.value,
       uom:                       itemUomRx.value,
       qty:                       qty,
-      rate:                      0.0,
+      rate:                      saved?.rate ?? 0.0,
       batchNo:                   batchController.text.trim(),
       rack:                      rack.isEmpty            ? null : rack,
-      warehouse:                 itemWarehouse.value ?? soLine?.warehouse,
+      warehouse: _isSavedOutboundPair
+          ? saved?.warehouse
+          : resolvedWarehouse,
+      targetWarehouse: targetRackVerdict.value != null &&
+              _savedTargetException(targetRackVerdict.value!)
+          ? saved?.targetWarehouse
+          : targetWarehouse.value,
+      toRack:                    hasTargetSide ? targetRackController.text.trim() : null,
+      againstSalesOrder:         saved?.againstSalesOrder,
+      soDetail:                  saved?.soDetail,
+      conversionFactor:          saved?.conversionFactor,
       itemGroup:                 itemGroup.value,
       customVariantOf:           variantOfStr.isEmpty    ? null : variantOfStr,
       customInvoiceSerialNumber: selectedSerial.value,
@@ -1002,7 +1161,8 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
       items[dupIndex] =
           items[dupIndex].copyWith(qty: items[dupIndex].qty + item.qty);
     } else {
-      items.add(item);
+      final localName = 'local_${DateTime.now().microsecondsSinceEpoch}';
+      items.add(item.copyWith(name: localName));
     }
   }
 
@@ -1015,7 +1175,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     return existing.itemCode.trim().toLowerCase() ==
             incoming.itemCode.trim().toLowerCase() &&
         (existing.batchNo ?? '') == (incoming.batchNo ?? '') &&
-        (existing.rack ?? '') == (incoming.rack ?? '') &&
+        (existing.rack ?? '').trim() == (incoming.rack ?? '').trim() &&
+        (existing.warehouse ?? '').trim() == (incoming.warehouse ?? '').trim() &&
+        (existing.targetWarehouse ?? '').trim() == (incoming.targetWarehouse ?? '').trim() &&
+        (existing.toRack ?? '').trim() == (incoming.toRack ?? '').trim() &&
         (existing.customInvoiceSerialNumber ?? '') ==
             (incoming.customInvoiceSerialNumber ?? '') &&
         (existing.soDetail ?? '') == (incoming.soDetail ?? '');
@@ -1038,86 +1201,286 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   }
 
   // ── Rack-map preload for AutoFillRack / RackPicker ─────────────────────────
-  Future<void> preloadRackStockMap() async {
-    final wh    = resolvedWarehouse;
-    final batch = batchController.text.trim();
-    if (itemCode.value.isEmpty || wh == null || wh.isEmpty || batch.isEmpty) return;
+  ({String? warehouse, String batch}) get _currentRackStockScope =>
+      (warehouse: resolvedWarehouse, batch: batchController.text.trim());
 
+  Future<void> preloadRackStockMap() async {
+    final scope = _currentRackStockScope;
+    final code = itemCode.value;
+    final warehouse = scope.warehouse;
+    if (code.isEmpty || warehouse == null) return;
     try {
-      final rows = await ApiProvider().getStockBalanceWithDimension(
-        itemCode:  itemCode.value,
-        warehouse: wh,
-        batchNo:   batch,
+      final rows = await Get.find<ApiProvider>().getStockBalanceWithDimension(
+        itemCode: code,
+        warehouse: warehouse,
+        batchNo: scope.batch.isEmpty ? null : scope.batch,
       );
-      final map = <String, double>{};
-      for (final raw in rows) {
-        final rack = (raw['rack'] ?? '').toString().trim();
+      if (_validationSessionClosed || scope != _currentRackStockScope) return;
+      final balances = <String, double>{};
+      for (final row in rows) {
+        final reportedWarehouse = warehouseValue(row['warehouse'] as String?);
+        if (reportedWarehouse != null && reportedWarehouse != warehouse) continue;
+        final rack = (row['rack'] ?? '').toString().trim();
         if (rack.isEmpty) continue;
-        final qty = (raw['qty'] as num?)?.toDouble() ?? 0.0;
-        map[rack] = (map[rack] ?? 0) + qty;
+        final qty = ((row['bal_qty'] ?? row['qty']) as num?)?.toDouble() ?? 0;
+        balances[rack] = (balances[rack] ?? 0) + qty;
       }
-      rackStockMapRx.assignAll(map);
+      _rackStockScope = scope;
+      rackStockMapRx.assignAll(balances);
     } catch (e) {
+      if (_validationSessionClosed || scope != _currentRackStockScope) return;
       log('[DN-Item] preloadRackStockMap error: $e', name: 'DN-Item');
+      _rackStockScope = null;
       rackStockMapRx.clear();
     }
   }
 
   Future<void> maybeAutoFillRack() async {
     await preloadRackStockMap();
+    if (_validationSessionClosed) return;
     final qty = double.tryParse(qtyController.text) ?? 0.0;
-    if (qty > 0) autoFillRackForQty(qty);
+    if (qty > 0) await autoFillRackForQty(qty);
+  }
+
+  Future<void> _checkBatch(String batch) async {
+    _batchCheckWarehouse = resolvedWarehouse;
+    await super.validateBatch(batch);
+    if (!_validationSessionClosed) validateSheet();
   }
 
   @override
   Future<void> validateBatch(String batch) async {
-    await super.validateBatch(batch);
-    // Like validateRack: re-evaluate once the balance has arrived. The sheet
-    // last validated while the lookup was in flight, so without this it kept
-    // "Batch has no available stock (balance: 0)" beside a Bal: 534 badge.
-    if (!isClosed) validateSheet();
-    if (!isBatchValid.value) return;
-    unawaited(maybeAutoFillRack());
+    if (_validationSessionClosed) return;
+    await _checkBatch(batch);
+    if (_validationSessionClosed || batchController.text.trim() != batch.trim()) return;
+    if (rackController.text.trim().isNotEmpty &&
+        !isValidatingRack.value &&
+        rackWarehouseVerdict.value == null) {
+      await _validateRack(
+        rackController.text,
+        allowInitialization: _rackMayInitialize,
+      );
+    }
+    if (!_validationSessionClosed && isBatchValid.value && rackController.text.isEmpty) {
+      unawaited(maybeAutoFillRack());
+    }
+  }
+
+  void _batchInputChanged() {
+    final batch = batchController.text.trim();
+    if (_batchInput == batch) return;
+    _batchInput = batch;
+    invalidateBatchValidation();
+    _rackGeneration++;
+    isCheckingRackWarehouse.value = false;
+    isValidatingRack.value = false;
+    isRackValid.value = false;
+    rackWarehouseVerdict.value = null;
+    rackError.value = '';
+    rackBalance.value = 0;
+    _rackStockScope = null;
+    rackStockMapRx.clear();
+    validateSheet();
+  }
+
+  void _rackInputChanged() {
+    if (rackController.text.trim() == _rackRequest) return;
+    _rackMayInitialize = false;
+    softResetRack();
+    validateSheet();
   }
 
   @override
-  Future<void> validateRack(String rack) async {
+  void softResetRack() {
+    _rackGeneration++;
+    _rackRequest = rackController.text.trim();
+    isCheckingRackWarehouse.value = false;
+    isValidatingRack.value = false;
+    rackWarehouseVerdict.value = null;
+    rackBalance.value = 0;
+    super.softResetRack();
+  }
+
+  @override
+  void resetRack() {
+    softResetRack();
+    super.resetRack();
+  }
+
+  bool _rackMayInitialize = false;
+
+  void retryRack() =>
+      unawaited(_validateRack(rackController.text, allowInitialization: _rackMayInitialize));
+
+  void useRackWarehouse() {
+    final warehouse = rackWarehouseVerdict.value?.warehouse;
+    if (warehouse != null) selectWarehouse(warehouse);
+  }
+
+  void selectWarehouse(String warehouse) {
+    _warehousePinned = true;
+    if (resolvedWarehouse == warehouse) {
+      itemWarehouse.value = warehouse;
+      return;
+    }
+    itemWarehouse.value = warehouse;
+    softResetBatch();
+    _batchCheckWarehouse = null;
+    _rackStockScope = null;
+    rackStockMapRx.clear();
+    final rack = rackController.text.trim();
+    final batch = batchController.text.trim();
+    if (rack.isNotEmpty) {
+      unawaited(validateRack(rack));
+    } else if (batch.isNotEmpty) {
+      unawaited(validateBatch(batch));
+    }
+    validateSheet();
+  }
+
+  @override
+  Future<void> validateRack(String rack) => _validateRack(rack);
+
+  Future<void> _validateRack(String rack, {bool allowInitialization = false}) async {
     final trimmed = rack.trim();
-    if (trimmed.isEmpty) { resetRack(); return; }
+    if (trimmed.isEmpty) {
+      resetRack();
+      validateSheet();
+      return;
+    }
+    if (_validationSessionClosed || rackController.text.trim() != trimmed) return;
 
+    final generation = ++_rackGeneration;
+    final batch = batchController.text.trim();
+    final code = itemCode.value;
+    var expectedWarehouse = resolvedWarehouse;
+    var expectedRack = trimmed;
+    bool current() =>
+        !_validationSessionClosed &&
+        generation == _rackGeneration &&
+        itemCode.value == code &&
+        rackController.text.trim() == expectedRack &&
+        batchController.text.trim() == batch &&
+        resolvedWarehouse == expectedWarehouse;
+
+    _rackRequest = trimmed;
+    _rackMayInitialize = allowInitialization;
     isValidatingRack.value = true;
-    rackError.value        = '';
-    isRackValid.value      = false;
-
+    isCheckingRackWarehouse.value = true;
+    isRackValid.value = false;
+    rackWarehouseVerdict.value = null;
+    rackError.value = '';
+    rackBalance.value = 0;
+    validateSheet();
     try {
-      double balance;
-      final mapQty = rackStockMapRx[trimmed];
-      debugPrint('mapQty: $mapQty');
-      if (mapQty != null) {
-        balance = mapQty;
-      } else {
-        await fetchRackBalance(trimmed);
-        // Read rackBalance.value (set by fetchRackBalance) instead of the
-        // stale map, which fetchRackBalance does not populate.
-        balance = rackBalance.value;
+      final verdict = await _parent.checkPair(
+        RackSide.outbound,
+        rack: trimmed,
+        warehouse: expectedWarehouse,
+        initializeWarehouse: !_warehousePinned &&
+            (allowInitialization || expectedWarehouse == null),
+      );
+      if (!current()) return;
+      rackWarehouseVerdict.value = verdict;
+      isCheckingRackWarehouse.value = false;
+      if (!verdict.isValid) {
+        rackError.value = _isSavedOutboundPair ? verdict.savedMessage : verdict.message;
+        return;
       }
-      // Sync map so subsequent calls hit the cache path (no double fetch).
-      if (balance > 0) rackStockMapRx[trimmed] = balance;
-      rackBalance.value = balance;
+      if (expectedWarehouse != verdict.warehouse) {
+        expectedWarehouse = verdict.warehouse;
+        itemWarehouse.value = verdict.warehouse;
+      }
+      expectedRack = verdict.rack;
+      _rackRequest = verdict.rack;
+      if (rackController.text.trim() != verdict.rack) rackController.text = verdict.rack;
 
-      debugPrint('trimmed: $trimmed');
-      debugPrint('rackBalance: $balance');
-      _applyRackValidationResult(rackName: trimmed, balance: balance);
+      if (batch.isNotEmpty && _batchCheckWarehouse != expectedWarehouse) {
+        await _checkBatch(batch);
+        if (!current()) return;
+      }
+      if (_rackStockScope != _currentRackStockScope) {
+        await preloadRackStockMap();
+        if (!current()) return;
+      }
+      final balance = rackStockMapRx[verdict.rack] ?? 0;
+      rackBalance.value = balance;
+      _applyRackValidationResult(rackName: verdict.rack, balance: balance);
     } catch (e) {
+      if (!current()) return;
       rackError.value = 'Error validating rack: $e';
       log('[DN-Item] validateRack error: $e', name: 'DN-Item');
     } finally {
-      isValidatingRack.value = false;
-      validateSheet();
-      // A rack scan can resolve or change the pick warehouse after the batch
-      // was validated; the oldest-stock-first check depends on it.
-      unawaited(recheckBatchAge());
+      if (current()) {
+        isCheckingRackWarehouse.value = false;
+        isValidatingRack.value = false;
+        validateSheet();
+      }
     }
+  }
+
+  void _targetRackInputChanged() {
+    if (targetRackController.text.trim() == _targetRackRequest) return;
+    unlockTargetRack();
+  }
+
+  void unlockTargetRack() {
+    _targetRackGeneration++;
+    _targetRackRequest = targetRackController.text.trim();
+    targetRackVerdict.value = null;
+    isCheckingTargetRack.value = false;
+    validateSheet();
+  }
+
+  void clearTargetRack() {
+    targetRackController.clear();
+    unlockTargetRack();
+  }
+
+  void selectTargetWarehouse(String warehouse) {
+    if (!targetRackApplicable || targetWarehouse.value == warehouse) return;
+    targetWarehouse.value = warehouse;
+    final rack = targetRackController.text.trim();
+    unlockTargetRack();
+    if (rack.isNotEmpty) unawaited(validateTargetRack(rack));
+  }
+
+  void useTargetRackWarehouse() {
+    final warehouse = targetRackVerdict.value?.warehouse;
+    if (warehouse != null) selectTargetWarehouse(warehouse);
+  }
+
+  Future<void> validateTargetRack(String rack) async {
+    final trimmed = rack.trim();
+    if (trimmed.isEmpty ||
+        _validationSessionClosed ||
+        targetRackController.text.trim() != trimmed) {
+      return;
+    }
+    final generation = ++_targetRackGeneration;
+    final warehouse = targetWarehouse.value;
+    _targetRackRequest = trimmed;
+    targetRackVerdict.value = null;
+    isCheckingTargetRack.value = true;
+    validateSheet();
+    final verdict = await _parent.checkPair(
+      RackSide.target,
+      rack: trimmed,
+      warehouse: warehouse,
+      applicable: targetRackApplicable,
+    );
+    if (_validationSessionClosed ||
+        generation != _targetRackGeneration ||
+        targetRackController.text.trim() != trimmed) {
+      return;
+    }
+    targetRackVerdict.value = verdict;
+    if (verdict.isValid && trimmed != verdict.rack) {
+      _targetRackRequest = verdict.rack;
+      targetRackController.text = verdict.rack;
+    }
+    isCheckingTargetRack.value = false;
+    validateSheet();
   }
 
   // ── SRP helpers ────────────────────────────────────────────────────────────
@@ -1149,7 +1512,6 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// The Batch ID is extracted and prepended with the stored _itemEan8 to
   /// form the correct Batch No ('20003609-ESU').
   @override
-  @override
   Future<void> handleScan(String raw) async {
     // Priority 1 — strict rack pattern (same gate as SE via isRackBarcode).
     if (BarcodeAwareMixin.isRackBarcode(raw)) {
@@ -1161,7 +1523,10 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
     // scan is treated as a rack scan.  Mirrors BarcodeAwareMixin._routeScan's
     // else-branch so rack names whose format doesn't satisfy the isRackBarcode
     // regex (e.g. KA-WH-DUBAI-SHELF1) still reach validateRack().
-    if (isBatchValid.value) {
+    final (:ean, :batchId) = BarcodeListenerMixin.splitEanBatch(raw);
+    final isExplicitBatch = (ean.isNotEmpty && batchId.isNotEmpty) ||
+        raw.toUpperCase().startsWith('SHIPMENT-');
+    if (isBatchValid.value && !isExplicitBatch) {
       applyRackScan(raw);
       return;
     }
@@ -1220,10 +1585,30 @@ class DeliveryNoteItemFormController extends ItemSheetControllerBase
   /// with the authoritative result.
   @override
   void applyRackScan(String code) {
-    itemWarehouse.value = RackLocation.tryParse(code)?.warehouseName;
-    softResetRack();
+    if (!_canApplyRackScan) return;
+    if (targetRackApplicable &&
+        (targetRackHasFocus ||
+            (rackController.text.trim().isNotEmpty &&
+                targetRackController.text.trim().isEmpty))) {
+      _applyTargetRackScan(code);
+      return;
+    }
+    _applySourceRackScan(code);
+  }
+
+  bool get _canApplyRackScan =>
+      !_validationSessionClosed && !_parent.warehouseConfirmation.isPending.value;
+
+  void _applySourceRackScan(String code) {
+    if (!_canApplyRackScan) return;
     rackController.text = code;
-    unawaited(validateRack(code));
+    unawaited(_validateRack(code, allowInitialization: true));
+  }
+
+  void _applyTargetRackScan(String code) {
+    if (!_canApplyRackScan) return;
+    targetRackController.text = code;
+    unawaited(validateTargetRack(code));
   }
 
   void clearAll() {

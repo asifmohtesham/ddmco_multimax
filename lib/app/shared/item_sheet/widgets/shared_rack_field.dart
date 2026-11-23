@@ -1,5 +1,7 @@
 // ignore_for_file: lines_longer_than_80_chars
 
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/balance_chip.dart';
@@ -87,6 +89,9 @@ class SharedRackField extends StatelessWidget {
   final String label;
   final String hint;
   final bool   editMode;
+  final String Function()? errorOverride;
+  final bool Function()? checkingWarehouse;
+  final ValueChanged<String>? onChanged;
 
   /// Optional balance override.
   ///
@@ -130,6 +135,9 @@ class SharedRackField extends StatelessWidget {
     this.editMode       = false,
     this.balanceOverride,
     this.onPickerTap,
+    this.errorOverride,
+    this.checkingWarehouse,
+    this.onChanged,
   });
 
   /// Returns the balance for the currently-typed rack via
@@ -165,17 +173,13 @@ class _SimpleRack extends StatelessWidget {
       // Commit 4: rackError is RxString (non-nullable, '' = no error).
       // Use isNotEmpty instead of != null to align with the standardised
       // RackFieldDelegate contract (both modes now consistent).
-      final hasError   = c.rackError.value.isNotEmpty;
+      final error = w.errorOverride?.call() ?? c.rackError.value;
+      final hasError = error.isNotEmpty;
+      final checkingWarehouse = w.checkingWarehouse?.call() ?? false;
       final isValid    = c.isRackValid.value;
       final validating = c.isValidatingRack.value;
       // DN-10: respect balanceOverride when supplied; fall back to rackBalanceFor.
       final rackBal    = w.balanceOverride?.call() ?? w._rackBalance(c);
-
-      final borderColor = hasError
-          ? theme.colorScheme.error
-          : isValid
-              ? Colors.green
-              : effectiveColor;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -185,8 +189,9 @@ class _SimpleRack extends StatelessWidget {
             focusNode:  c.rackFocusNode,
             style:      theme.textTheme.bodyMedium,
             textInputAction: TextInputAction.done,
+            onChanged: w.onChanged,
             onSubmitted: (v) {
-              if (v.isNotEmpty) c.validateRack(v);
+              if (v.isNotEmpty && !validating) c.validateRack(v);
             },
             decoration: InputDecoration(
               labelText:   w.label,
@@ -194,8 +199,8 @@ class _SimpleRack extends StatelessWidget {
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               isDense: true,
-              errorText:   hasError ? c.rackError.value : null,
-              errorMaxLines: 2,
+              errorText:   hasError ? error : null,
+              errorMaxLines: 5,
               suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -263,6 +268,7 @@ class _SimpleRack extends StatelessWidget {
               ),
             ),
           ),
+          if (checkingWarehouse) const _CheckingRackWarehouse(),
           // DN-9: forceShow: validating || isValid — chip stays visible after
           // validation completes even when rackBalance is momentarily 0.0.
           BalanceChip(
@@ -314,13 +320,9 @@ class _EditModeRack extends StatelessWidget {
       // Derive the border accent colour to match _SimpleRack behaviour:
       // green when valid, error colour on error, accent otherwise.
       final theme = Theme.of(context);
-      final hasError    = c.rackError.value.isNotEmpty;
-      final borderColor = hasError
-          ? theme.colorScheme.error
-          : isValid
-              ? Colors.green
-              : effectiveColor;
-
+      final error = w.errorOverride?.call() ?? c.rackError.value;
+      final hasError = error.isNotEmpty;
+      final checkingWarehouse = w.checkingWarehouse?.call() ?? false;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -341,15 +343,19 @@ class _EditModeRack extends StatelessWidget {
             onValidate:     () => c.validateRack(c.rackController.text),
             onSubmitted:    (val) => c.validateRack(val),
             onPickerTap:    w.onPickerTap,
+            onChanged:      w.onChanged,
           ),
           if (hasError && c.rackController.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 12),
               child: Text(
-                c.rackError.value,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+                error,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ),
+          if (checkingWarehouse) const _CheckingRackWarehouse(),
           // DN-9: forceShow: validating || isValid — chip stays visible after
           // validation completes even when rackBalance is momentarily 0.0.
           if (showChip)
@@ -364,4 +370,17 @@ class _EditModeRack extends StatelessWidget {
       );
     });
   }
+}
+
+class _CheckingRackWarehouse extends StatelessWidget {
+  const _CheckingRackWarehouse();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 4, left: 12),
+    child: Text(
+      'Checking rack warehouse…',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+  );
 }

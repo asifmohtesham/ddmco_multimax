@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:dio/dio.dart';
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Response;
@@ -17,6 +19,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/models/scan_result_model.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
@@ -29,9 +32,9 @@ import 'package:multimax/app/shared/item_sheet/batch_age_checker.dart';
 import 'package:multimax/app/shared/item_sheet/batch_age_rule.dart';
 import 'package:multimax/app/shared/item_sheet/universal_item_form_sheet.dart';
 import 'package:multimax/app/shared/item_sheet/widgets/item_sheet_widgets.dart';
-import 'package:multimax/app/shared/item_sheet/rack_picker_controller.dart';
-import 'package:multimax/app/shared/item_sheet/rack_picker_sheet.dart';
-import 'package:multimax/app/shared/item_sheet/derived_warehouse_label.dart';
+import 'package:multimax/app/shared/item_sheet/rack_warehouse_resolver.dart';
+import 'package:multimax/app/shared/item_sheet/rack_warehouse_rule.dart';
+import 'package:multimax/app/shared/item_sheet/widgets/rack_warehouse_controls.dart';
 
 // Child sheet controller
 import 'delivery_note_item_form_controller.dart';
@@ -117,7 +120,17 @@ class DeliveryNoteFormController extends GetxController
   var warehouses           = <String>[].obs;
   var isFetchingWarehouses = false.obs;
   var setWarehouse         = RxnString();
-  final _derivedWarehousePlaceholder = RxnString();
+  final warehouseWarning = ''.obs;
+  final savedRackWarning = ''.obs;
+  final warehouseConfirmation = WarehouseDivergenceConfirmation();
+  final _savedRows = <String, DeliveryNoteItem>{};
+  late final rackWarehouseResolver = RackWarehouseResolver(_apiProvider);
+
+  String get company {
+    final saved = deliveryNote.value?.company?.trim() ?? '';
+    if (saved.isNotEmpty) return saved;
+    return Get.find<StorageService>().getCompany();
+  }
 
   // ── Customer-level error ──────────────────────────────────────────────────
   var customerError = RxnString();
@@ -127,18 +140,21 @@ class DeliveryNoteFormController extends GetxController
 
   // ── Persistent scan worker ────────────────────────────────────────────────
   Worker? _scanWorker;
+  Worker? _warehouseWorker;
 
   // ── items convenience getter ──────────────────────────────────────────────
   List<DeliveryNoteItem> get items => deliveryNote.value?.items ?? [];
 
   @override
-  bool get canAutoSave => mode != 'new' || items.isNotEmpty;
+  bool get canAutoSave =>
+      !warehouseConfirmation.isPending.value &&
+      (mode != 'new' || items.isNotEmpty);
 
   @override
   void onInit() {
     super.onInit();
     fetchWarehouses();
-    ever(setWarehouse, (_) => checkForChanges());
+    _warehouseWorker = ever(setWarehouse, (_) => checkForChanges());
     _scanWorker = ever(_dataWedgeService.scannedCode, _onRawScan);
     log('[DN:onInit] _scanWorker registered on DataWedgeService.scannedCode',
         name: 'DN');
@@ -154,6 +170,7 @@ class DeliveryNoteFormController extends GetxController
   void onClose() {
     disposeRealtimeSync();
     _scanWorker?.dispose();
+    _warehouseWorker?.dispose();
     _saveResultTimer?.cancel();
     disposeFeedback();
     log('[DN:onClose] _scanWorker disposed', name: 'DN');
@@ -206,6 +223,8 @@ class DeliveryNoteFormController extends GetxController
       totalQty:     deliveryNote.value!.totalQty,
       docstatus:    deliveryNote.value!.docstatus,
       setWarehouse: setWarehouse.value,
+      setTargetWarehouse: deliveryNote.value!.setTargetWarehouse,
+      company: deliveryNote.value!.company,
     );
     isDirty.value = jsonEncode(tempNote.toJson()) != _originalJson;
     if (isDirty.value) scheduleAutoSave();
@@ -213,6 +232,11 @@ class DeliveryNoteFormController extends GetxController
 
   void _updateOriginalState(DeliveryNote note) {
     _originalJson = jsonEncode(note.toJson());
+    _savedRows
+      ..clear()
+      ..addEntries(note.items.where((row) => row.name != null).map(
+        (row) => MapEntry(row.name!, row),
+      ));
     isDirty.value = false;
   }
 
@@ -221,7 +245,7 @@ class DeliveryNoteFormController extends GetxController
     isFetchingWarehouses.value = true;
     try {
       final response = await _apiProvider.getDocumentList(
-          'Warehouse', filters: {'is_group': 0}, limit: 100);
+          'Warehouse', filters: {'is_group': 0, 'disabled': 0}, limit: 100);
       if (response.statusCode == 200 && response.data['data'] != null) {
         warehouses.value = (response.data['data'] as List)
             .map((e) => e['name'] as String)
@@ -275,6 +299,8 @@ class DeliveryNoteFormController extends GetxController
         deliveryNote.value  = note;
         setWarehouse.value  = note.setWarehouse;
         _updateOriginalState(note);
+        warehouseWarning.value = '';
+        savedRackWarning.value = '';
         final soName = note.items
             .map((i) => i.againstSalesOrder)
             .firstWhereOrNull((s) => s != null && s.isNotEmpty);
@@ -285,6 +311,7 @@ class DeliveryNoteFormController extends GetxController
           await fetchPosUpload(note.poNo!);
         }
         await _validateCustomerOnOpen();
+        if (note.docstatus == 0) unawaited(_inspectSavedWarehouses(note));
       } else {
         showBanner('Failed to fetch delivery note', type: BannerType.error);
       }
@@ -357,6 +384,7 @@ class DeliveryNoteFormController extends GetxController
       customer: so.customer,
       currency: (_soHeader['currency'] as String?) ?? deliveryNote.value?.currency,
       setWarehouse: wh,
+      company: _soHeader['company'] as String?,
     );
     await _resolveUploadLink();
   }
@@ -423,6 +451,7 @@ class DeliveryNoteFormController extends GetxController
   /// saves. Returns an error message instead when lines would be overfilled.
   Future<String?> applyVoucherAssignment(Map<int, int> assignment) async {
     if (isAssigningVoucher.value) return null;
+    if (isSaving.value) return 'Wait for the delivery note to finish saving.';
     final upload = orderUploadName;
     final note = deliveryNote.value;
     if (upload == null || note == null) return 'No POS Upload to link.';
@@ -553,6 +582,7 @@ class DeliveryNoteFormController extends GetxController
     String?  variantOf,
     DeliveryNoteItem? editingItem,
   }) async {
+    if (isSaving.value || checkStaleAndBlock()) return;
     if (editingItem != null) {
       if (editingItem.batchNo != null && editingItem.batchNo!.contains('-')) {
         currentScannedEan = editingItem.batchNo!.split('-').first;
@@ -575,8 +605,6 @@ class DeliveryNoteFormController extends GetxController
       editingItem: editingItem,
     );
 
-    const rackPickerTag = 'dn_rack_picker';
-
     isItemSheetOpen.value = true;
     child.initBarcodeListener();
     await Get.bottomSheet(
@@ -597,48 +625,27 @@ class DeliveryNoteFormController extends GetxController
             onPickerTap:     child.openBatchPicker,
             balanceOverride: () => child.batchBalance.value,
           ),
+          Obx(() => RowWarehouseField(
+                label: 'Warehouse',
+                value: child.resolvedWarehouse,
+                company: company,
+                onChanged: child.selectWarehouse,
+              )),
           SharedRackField(
-            c:               child,
-            editMode:        true,
+            c: child,
+            label: 'Source Rack',
+            editMode: true,
             balanceOverride: () => child.rackBalance.value,
-            onPickerTap: () async {
-              HapticFeedback.lightImpact();
-
-              final picker = Get.put(
-                RackPickerController(),
-                tag: rackPickerTag,
-              );
-
-              picker.load(
-                itemCode:     child.itemCode.value,
-                batchNo:      child.batchController.text,
-                warehouse:    child.resolvedWarehouse ?? '',
-                requestedQty: double.tryParse(child.qtyController.text) ?? 0.0,
-                currentRack:  child.rackController.text,
-                fallbackMap:  Map<String, double>.from(child.rackStockMap),
-              );
-
-              await Get.bottomSheet<void>(
-                RackPickerSheet(
-                  pickerTag:  rackPickerTag,
-                  onSelected: (rackId) => child.applyRackScan(rackId),
-                ),
-                isScrollControlled: true,
-              );
-
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (Get.isRegistered<RackPickerController>(
-                    tag: rackPickerTag)) {
-                  Get.delete<RackPickerController>(tag: rackPickerTag);
-                }
-              });
-            },
+            checkingWarehouse: () => child.isCheckingRackWarehouse.value,
+            onPickerTap: child.pickRack,
           ),
-          DerivedWarehouseLabel(
-            itemWarehouse:    child.itemWarehouse,
-            derivedWarehouse: _derivedWarehousePlaceholder,
-            headerWarehouse:  setWarehouse,
-          ),
+          Obx(() => RackWarehouseActions(
+                verdict: child.rackWarehouseVerdict.value,
+                onChooseRack: child.pickRack,
+                onUseRackWarehouse: child.useRackWarehouse,
+                onRetry: child.retryRack,
+              )),
+          if (child.hasTargetSide) ..._targetRackFields(child),
         ],
         onSubmit: () async {
           final ok = await child.submitWithFeedback();
@@ -651,6 +658,7 @@ class DeliveryNoteFormController extends GetxController
       backgroundColor:    Colors.transparent,
     );
     child.disposeBarcodeListener();
+    child.endValidationSession();
     isItemSheetOpen.value = false;
     pendingSoLine = null;
 
@@ -660,6 +668,70 @@ class DeliveryNoteFormController extends GetxController
       log('[DN:_openItemSheet] post-frame teardown complete', name: 'DN');
     });
   }
+
+  List<Widget> _targetRackFields(DeliveryNoteItemFormController child) => [
+    if (child.targetRackApplicable)
+      Obx(() => RowWarehouseField(
+            label: 'Target Warehouse',
+            value: child.targetWarehouse.value,
+            company: company,
+            onChanged: child.selectTargetWarehouse,
+          )),
+    Builder(
+      builder: (context) => Obx(() {
+        final message = child.targetRackMessage;
+        final checking = child.isCheckingTargetRack.value;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Focus(
+              onFocusChange: (focused) => child.targetRackHasFocus = focused,
+              child: ValidatedRackField(
+                textController: child.targetRackController,
+                isValid: child.targetRackValid,
+                isValidating: checking,
+                labelText: 'Target Rack',
+                hintText: 'Enter target rack ID',
+                color: Theme.of(context).colorScheme.primary,
+                onEdit: child.unlockTargetRack,
+                onReset: child.clearTargetRack,
+                onValidate: () => child.validateTargetRack(
+                  child.targetRackController.text,
+                ),
+                onSubmitted: child.validateTargetRack,
+                onPickerTap:
+                    child.targetRackApplicable ? child.pickTargetRack : null,
+              ),
+            ),
+            if (message.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, top: 4),
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: checking
+                        ? Theme.of(context).colorScheme.onSurfaceVariant
+                        : Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ),
+            if (child.targetRackVerdict.value?.issue == RackPairIssue.inapplicable)
+              TextButton(
+                onPressed: child.clearTargetRack,
+                child: const Text('Clear rack'),
+              ),
+            RackWarehouseActions(
+              verdict: child.targetRackVerdict.value,
+              onChooseRack: child.targetRackApplicable ? child.pickTargetRack : null,
+              onUseRackWarehouse:
+                  child.targetRackApplicable ? child.useTargetRackWarehouse : null,
+              onRetry: () => child.validateTargetRack(child.targetRackController.text),
+            ),
+          ],
+        );
+      }),
+    ),
+  ];
 
   void _handleCustomerNotFound(String customer) {
     customerError.value = 'Customer not found in the system';
@@ -705,22 +777,41 @@ class DeliveryNoteFormController extends GetxController
   // ── Save ──────────────────────────────────────────────────────────────────
   @override
   Future<void> saveDocument() async {
-    if (isSaving.value) return;
+    if (isSaving.value ||
+        warehouseConfirmation.isPending.value ||
+        checkStaleAndBlock()) {
+      return;
+    }
     final note = deliveryNote.value;
-    if (note == null) return;
+    if (note == null || note.docstatus != 0) return;
     if (!canAutoSave) {
       showBanner('Add an item before saving.', type: BannerType.error);
       return;
     }
 
+    final rows = List<DeliveryNoteItem>.of(note.items);
+    final header = setWarehouse.value;
     isSaving.value = true;
     try {
-      final payload = note.toJson();
+      final checkedRows = await _validateDocumentRows(note, rows, header);
+      if (isClosed) return;
+      if (!identical(deliveryNote.value, note) ||
+          setWarehouse.value != header ||
+          !const ListEquality<DeliveryNoteItem>().equals(note.items, rows)) {
+        _setSaveResult(SaveResult.error);
+        showBanner(
+          'The delivery note changed during validation. Save again.',
+          type: BannerType.error,
+        );
+        return;
+      }
+      final payload = note.copyWith(items: checkedRows).toJson();
       if (mode == 'new' && _soHeader.isNotEmpty) {
         payload.addAll(_soHeader);
         payload['customer'] = note.customer;
       }
-      payload['set_warehouse'] = setWarehouse.value ?? '';
+      payload['set_warehouse'] = header ?? '';
+      if (mode == 'new') payload['company'] = company;
 
       Response response;
       if (mode == 'new') {
@@ -729,11 +820,13 @@ class DeliveryNoteFormController extends GetxController
         response = await _apiProvider.updateDocument('Delivery Note', note.name, payload);
       }
 
+      if (isClosed) return;
       if (response.statusCode == 200 && response.data['data'] != null) {
         final saved = DeliveryNote.fromJson(response.data['data']);
         deliveryNote.value = saved;
         setWarehouse.value = saved.setWarehouse;
         _updateOriginalState(saved);
+        unawaited(_inspectSavedWarehouses(saved, includeMixed: false));
         customerError.value = null;
         if (mode == 'new') {
           mode = 'edit';
@@ -745,7 +838,9 @@ class DeliveryNoteFormController extends GetxController
         showBanner('Failed to save delivery note', type: BannerType.error);
       }
     } on DioException catch (e) {
+      if (isClosed) return;
       _setSaveResult(SaveResult.error);
+      if (handleVersionConflict(e)) return;
       final int? statusCode = e.response?.statusCode;
       final String rawError = (() {
         final data = e.response?.data;
@@ -770,12 +865,218 @@ class DeliveryNoteFormController extends GetxController
             : 'An unexpected error occurred.';
         showBanner(message.toString(), type: BannerType.error);
       }
+    } on FormatException catch (e) {
+      if (isClosed) return;
+      _setSaveResult(SaveResult.error);
+      showBanner(e.message, type: BannerType.error);
     } catch (e) {
+      if (isClosed) return;
       _setSaveResult(SaveResult.error);
       showBanner('An unexpected error occurred: $e', type: BannerType.error);
     } finally {
-      isSaving.value = false;
+      if (!isClosed) isSaving.value = false;
     }
+  }
+
+  static String? _warehouse(String? value) {
+    final cleaned = value?.trim() ?? '';
+    return cleaned.isEmpty ? null : cleaned;
+  }
+
+  static String? effectiveWarehouse({
+    String? row,
+    String? salesOrder,
+    String? header,
+  }) => _warehouse(row) ?? _warehouse(salesOrder) ?? _warehouse(header);
+
+  String? outboundWarehouse(DeliveryNoteItem row, {required String? header}) =>
+      effectiveWarehouse(
+        row: row.warehouse,
+        salesOrder: salesOrder.value?.lineByDetail(row.soDetail)?.warehouse,
+        header: header,
+      );
+
+  String? targetWarehouseFor(DeliveryNoteItem row) => effectiveWarehouse(
+        row: row.targetWarehouse,
+        header: deliveryNote.value?.setTargetWarehouse,
+      );
+
+  void changeHeaderWarehouse(String? warehouse) {
+    final note = deliveryNote.value;
+    final previous = setWarehouse.value;
+    if (note == null || previous == warehouse || isSaving.value) return;
+    final keptRows = [
+      for (final row in note.items)
+        row.copyWith(warehouse: outboundWarehouse(row, header: previous)),
+    ];
+    deliveryNote.value = note.copyWith(items: keptRows);
+    setWarehouse.value = warehouse;
+    final differences = keptRows.where(
+      (row) => _warehouse(row.warehouse) != null && row.warehouse != warehouse,
+    ).length;
+    warehouseWarning.value = warehouse == null || warehouse.isEmpty
+        ? (keptRows.isEmpty
+            ? ''
+            : 'Default warehouse cleared. Existing item rows keep their warehouses.')
+        : (differences > 0
+            ? 'Default warehouse changed to $warehouse. $differences existing rows use a different warehouse.'
+            : '');
+  }
+
+  List<WarehouseDivergence> warehouseDifferences(
+    DeliveryNoteItem row, {
+    required int editingIndex,
+  }) {
+    final soLine = salesOrder.value?.lineByDetail(row.soDetail);
+    final peers = [
+      for (var i = 0; i < items.length; i++)
+        if (i != editingIndex && items[i].itemCode.trim().isNotEmpty) items[i],
+    ];
+    return [
+      WarehouseDivergence(
+        side: RackSide.outbound,
+        warehouse: outboundWarehouse(row, header: setWarehouse.value),
+        header: setWarehouse.value,
+        peers: peers.map((peer) => outboundWarehouse(peer, header: setWarehouse.value)),
+        soWarehouse: soLine?.warehouse,
+        soLine: soLine?.idx.toString(),
+      ),
+      if (targetWarehouseFor(row) != null)
+        WarehouseDivergence(
+          side: RackSide.target,
+          warehouse: targetWarehouseFor(row),
+          header: deliveryNote.value?.setTargetWarehouse,
+          peers: peers.map(targetWarehouseFor),
+        ),
+    ];
+  }
+
+  bool canRetainSavedPair(DeliveryNoteItem row, RackSide side) {
+    final saved = _savedRows[row.name];
+    if (saved == null) return false;
+    return _rackSnapshot(saved, side).canRetain(_rackSnapshot(row, side));
+  }
+
+  RackRowSnapshot _rackSnapshot(DeliveryNoteItem row, RackSide side) {
+    final target = side == RackSide.target;
+    return RackRowSnapshot(
+      item: row.itemCode,
+      batch: row.batchNo,
+      rack: target ? row.toRack : row.rack,
+      warehouse: target ? row.targetWarehouse : row.warehouse,
+      applies: !target || targetWarehouseFor(row) != null,
+      quantity: row.qty * ((row.conversionFactor ?? 0) > 0 ? row.conversionFactor! : 1),
+    );
+  }
+
+  Future<RackPairVerdict> checkPair(
+    RackSide side, {
+    required String rack,
+    required String? warehouse,
+    bool applicable = true,
+    bool initializeWarehouse = false,
+  }) => rackWarehouseResolver.check(
+        rack: rack,
+        rowWarehouse: warehouse,
+        company: company,
+        side: side,
+        applicable: applicable,
+        initializeWarehouse: initializeWarehouse,
+      );
+
+  Future<List<DeliveryNoteItem>> _validateDocumentRows(
+    DeliveryNote note,
+    List<DeliveryNoteItem> rows,
+    String? header,
+  ) => Future.wait([
+    for (var i = 0; i < rows.length; i++)
+      _validateDocumentRow(rows[i], i + 1, header, note.setTargetWarehouse),
+  ]);
+
+  Future<DeliveryNoteItem> _validateDocumentRow(
+    DeliveryNoteItem row,
+    int index,
+    String? header,
+    String? targetHeader,
+  ) async {
+    final warehouse = outboundWarehouse(row, header: header);
+    final target = effectiveWarehouse(row: row.targetWarehouse, header: targetHeader);
+    final rack = row.rack?.trim() ?? '';
+    final toRack = row.toRack?.trim() ?? '';
+    if (rack.isEmpty && !canRetainSavedPair(row, RackSide.outbound)) {
+      throw FormatException('Row $index: Scan or choose a rack');
+    }
+    final checks = await Future.wait([
+      if (rack.isNotEmpty)
+        checkPair(RackSide.outbound, rack: rack, warehouse: warehouse),
+      if (toRack.isNotEmpty)
+        checkPair(RackSide.target, rack: toRack, warehouse: target, applicable: target != null),
+    ]);
+    for (final verdict in checks) {
+      if (!verdict.isValid && !canRetainSavedPair(row, verdict.side)) {
+        final reason = _savedRows.containsKey(row.name) &&
+                _rackSnapshot(_savedRows[row.name]!, verdict.side)
+                    .canRetain(_rackSnapshot(row.copyWith(qty: 0), verdict.side))
+            ? verdict.savedMessage
+            : verdict.message;
+        throw FormatException('Row $index: $reason');
+      }
+    }
+    final outboundVerdict = rack.isEmpty ? null : checks.first;
+    final targetVerdict = toRack.isEmpty ? null : checks.last;
+    return row.copyWith(
+      warehouse: outboundVerdict?.isValid == false ? null : warehouse,
+      rack: outboundVerdict?.isValid == true ? outboundVerdict!.rack : null,
+      targetWarehouse: targetVerdict?.isValid == false ? null : target,
+      toRack: targetVerdict?.isValid == true ? targetVerdict!.rack : null,
+    );
+  }
+
+  Future<void> _inspectSavedWarehouses(
+    DeliveryNote note, {
+    bool includeMixed = true,
+  }) async {
+    final warnings = <String>[];
+    for (final side in includeMixed ? [RackSide.outbound, RackSide.target] : <RackSide>[]) {
+      final target = side == RackSide.target;
+      final header = target ? note.setTargetWarehouse : note.setWarehouse;
+      if (_warehouse(header) != null) continue;
+      final warehouses = {
+        for (final row in note.items)
+          target ? targetWarehouseFor(row) : outboundWarehouse(row, header: header),
+      }.whereType<String>().toList()..sort();
+      if (warehouses.length > 1) {
+        warnings.add('Item rows use more than one ${side.label}. Review ${warehouses.join(', ')}.');
+      }
+    }
+    final exceptions = await Future.wait([
+      for (var i = 0; i < note.items.length; i++)
+        for (final side in [RackSide.outbound, RackSide.target])
+          _inspectSavedRack(note.items[i], i + 1, side),
+    ]);
+    if (isClosed || !identical(deliveryNote.value, note)) return;
+    if (includeMixed) warehouseWarning.value = warnings.join('\n');
+    savedRackWarning.value = exceptions.whereType<String>().join('\n');
+  }
+
+  Future<String?> _inspectSavedRack(
+    DeliveryNoteItem row,
+    int index,
+    RackSide side,
+  ) async {
+    final target = side == RackSide.target;
+    final rack = (target ? row.toRack : row.rack)?.trim() ?? '';
+    if (rack.isEmpty) return null;
+    final warehouse = target
+        ? targetWarehouseFor(row)
+        : outboundWarehouse(row, header: setWarehouse.value);
+    final verdict = await checkPair(
+      side,
+      rack: rack,
+      warehouse: warehouse,
+      applicable: !target || warehouse != null,
+    );
+    return verdict.isValid ? null : 'Row $index: ${verdict.savedMessage}';
   }
 
   bool _validateHeaderBeforeScan() {
@@ -914,6 +1215,7 @@ class DeliveryNoteFormController extends GetxController
   }
 
   Future<void> deleteItem(DeliveryNoteItem item) async {
+    if (isSaving.value || checkStaleAndBlock()) return;
     final confirmed = await GlobalDialog.confirm(
       title:        'Remove Item',
       message:      'Remove "${item.itemName}" from this delivery note?',
@@ -921,7 +1223,7 @@ class DeliveryNoteFormController extends GetxController
       confirmColor: AppColors.red700,
       icon:         Icons.delete_outline,
     );
-    if (confirmed != true) return;
+    if (confirmed != true || isSaving.value) return;
     final remaining = items.where((i) => i.name != item.name).toList();
     final reason = await batchOrderBreak(
       itemCode:     item.itemCode,
@@ -932,7 +1234,8 @@ class DeliveryNoteFormController extends GetxController
       GlobalSnackbar.error(message: reason);
       return;
     }
-    deliveryNote.value?.items.removeWhere((i) => i.name == item.name);
+    if (isClosed || isSaving.value || !items.contains(item)) return;
+    deliveryNote.value?.items.remove(item);
     deliveryNote.refresh();
     checkForChanges();
     if (mode == 'edit') await saveDocument();
@@ -959,9 +1262,7 @@ class DeliveryNoteFormController extends GetxController
             (r.batchNo ?? '').trim().isNotEmpty)
           BatchDraftLine(
             batchNo:   r.batchNo!.trim(),
-            warehouse: (r.warehouse ?? '').trim().isNotEmpty
-                ? r.warehouse!.trim()
-                : header,
+            warehouse: outboundWarehouse(r, header: header) ?? '',
             qty: r.qty *
                 ((r.conversionFactor ?? 0) > 0 ? r.conversionFactor! : 1),
           ),
@@ -982,8 +1283,7 @@ class DeliveryNoteFormController extends GetxController
     if ({for (final l in before) l.batchNo}.length < 2) return null;
 
     final header = setWarehouse.value;
-    final pickWarehouse =
-        (rowWarehouse ?? '').trim().isNotEmpty ? rowWarehouse : header;
+    final pickWarehouse = effectiveWarehouse(row: rowWarehouse, header: header);
     try {
       return await BatchAgeChecker.create().orderBreakReason(
         itemCode:      itemCode,
