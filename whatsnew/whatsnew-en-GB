@@ -1,1 +1,1 @@
-List screens remember your searches. Tap one to search again, use × to remove it, or choose Clear all and confirm. Item, rack and variant codes scanned on the Dashboard appear in search’s Recent list, including scans that found nothing. Recent holds up to 10 entries. Tap a scan to repeat it. Recent items and documents in Dashboard search now open their forms.
+Stock Entries and Delivery Notes now block racks that belong to a different warehouse from the row. If a row’s warehouse differs from the document’s warehouse, the app asks you to confirm before saving.
