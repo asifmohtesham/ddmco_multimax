@@ -1,124 +1,29 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart' hide Response;
+import 'package:get/get.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
-import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/services/data_wedge_service.dart';
-import 'package:multimax/app/data/services/scan_service.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
-import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_binding.dart';
-import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_controller.dart';
-import 'package:multimax/app/modules/delivery_note/form/delivery_note_form_screen.dart';
+import 'package:multimax/app/data/models/rack_warehouse_lookup.dart';
+import 'package:multimax/app/modules/delivery_note/form/delivery_note_item_form_controller.dart';
 
-const _autoSaveDelay = Duration(seconds: 1);
-
-class _FakeStorage extends Fake implements StorageService {
-  @override
-  int getAutoSaveDelay() => _autoSaveDelay.inSeconds;
-}
-
-class _FakeDataWedge extends GetxService implements DataWedgeService {
-  @override
-  final scannedCode = ''.obs;
-
-  @override
-  Future<String?> getVersion() async => null;
-
-  @override
-  void injectScan(String code) => scannedCode.value = code;
-}
-
-class _FakeApi extends Fake implements ApiProvider {
-  final creates = <Map<String, dynamic>>[];
-
-  @override
-  Future<Response> getDocumentList(
-    String doctype, {
-    int limit = 20,
-    int limitStart = 0,
-    List<String>? fields,
-    String? groupBy = '',
-    Map<String, dynamic>? filters,
-    List<List<dynamic>>? filterTuples,
-    Map<String, dynamic>? orFilters,
-    List<List<dynamic>>? orFilterTuples,
-    String orderBy = 'modified desc',
-  }) async {
-    expectSync(doctype, 'Warehouse');
-    return Response(
-      requestOptions: RequestOptions(),
-      statusCode: 200,
-      data: {
-        'data': [
-          {'name': 'WH-Pick'},
-        ],
-      },
-    );
-  }
-
-  @override
-  Future<Response> createDocument(
-    String doctype,
-    Map<String, dynamic> data,
-  ) async {
-    expectSync(doctype, 'Delivery Note');
-    creates.add(data);
-    return Response(
-      requestOptions: RequestOptions(),
-      statusCode: 200,
-      data: {
-        'data': {...data, 'name': 'DN-001'},
-      },
-    );
-  }
-}
+import '../support/delivery_note_fixture.dart';
 
 void main() {
-  late _FakeApi api;
+  late FakeDeliveryNoteApi api;
 
-  setUp(() {
-    api = _FakeApi();
-    Get.put<ApiProvider>(api);
-    Get.put<StorageService>(_FakeStorage());
-    Get.put<DataWedgeService>(_FakeDataWedge());
-    Get.put(ScanService());
-  });
+  setUp(() => api = registerDeliveryNoteTestServices());
   tearDown(Get.reset);
-
-  Future<DeliveryNoteFormController> openNewNote(
-    WidgetTester tester, {
-    bool renderForm = false,
-  }) async {
-    await tester.pumpWidget(
-      GetMaterialApp(
-        home: const SizedBox.shrink(),
-        getPages: [
-          GetPage(
-            name: '/note',
-            binding: DeliveryNoteFormBinding(),
-            page: () => renderForm
-                ? const DeliveryNoteFormScreen()
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-    Get.toNamed('/note', arguments: {'name': '', 'mode': 'new'});
-    await tester.pumpAndSettle();
-    final controller = Get.find<DeliveryNoteFormController>();
-    await tester.pump();
-    expect(controller.isLoading.value, isFalse);
-    return controller;
-  }
 
   testWidgets('choosing a warehouse on a new empty note creates nothing', (
     tester,
   ) async {
-    final controller = await openNewNote(tester);
+    final controller = await openNewDeliveryNote(tester);
     controller.setWarehouse.value = controller.warehouses.single;
     await tester.pump();
-    await tester.pump(_autoSaveDelay);
+    await tester.pump(deliveryNoteAutoSaveDelay);
 
     expect(api.creates, isEmpty);
     expect(controller.setWarehouse.value, 'WH-Pick');
@@ -128,7 +33,7 @@ void main() {
   testWidgets('manual Save on a new empty note shows the validation banner', (
     tester,
   ) async {
-    final controller = await openNewNote(tester, renderForm: true);
+    final controller = await openNewDeliveryNote(tester, renderForm: true);
     await tester.tap(find.byTooltip('Save'));
     await tester.pump();
 
@@ -139,21 +44,178 @@ void main() {
   });
 
   testWidgets('adding the first item auto-saves exactly once', (tester) async {
-    final controller = await openNewNote(tester);
+    final controller = await openNewDeliveryNote(tester);
     controller.setWarehouse.value = controller.warehouses.single;
     await tester.pump();
-    await tester.pump(_autoSaveDelay);
+    await tester.pump(deliveryNoteAutoSaveDelay);
     expect(api.creates, isEmpty);
 
     await controller.addItem(
-      DeliveryNoteItem(itemCode: 'ITEM-1', qty: 1, rate: 0),
+      DeliveryNoteItem(itemCode: 'ITEM-1', qty: 1, rate: 0, rack: 'RACK-PICK'),
     );
-    await tester.pump(_autoSaveDelay);
+    await tester.pump(deliveryNoteAutoSaveDelay);
     expect(controller.mode, 'edit', reason: controller.bannerMessage.value);
     await tester.pump(const Duration(seconds: 3));
 
     expect(api.creates, hasLength(1));
     expect(api.creates.single['set_warehouse'], 'WH-Pick');
-    expect(api.creates.single['items'], hasLength(1));
+    final rows = api.creates.single['items'] as List;
+    expect(rows, hasLength(1));
+    expect(rows.single['warehouse'], 'WH-Pick');
+    expect(rows.single['rack'], 'RACK-PICK');
+  });
+
+  testWidgets('autosave and direct save refuse a mismatched source pair', (
+    tester,
+  ) async {
+    final controller = await openNewDeliveryNote(tester);
+    controller.setWarehouse.value = 'WH-Pick';
+    await controller.addItem(
+      DeliveryNoteItem(
+        itemCode: 'ITEM-1',
+        qty: 1,
+        rate: 0,
+        warehouse: 'WH-Pick',
+        rack: 'RACK-TARGET',
+      ),
+    );
+    await tester.pump(deliveryNoteAutoSaveDelay);
+    await tester.pump();
+    expect(api.creates, isEmpty);
+    expect(
+      controller.bannerMessage.value,
+      'Row 1: Rack RACK-TARGET belongs to WH-Target. This row’s warehouse is WH-Pick.',
+    );
+
+    await controller.saveDocument();
+    expect(api.creates, isEmpty);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('direct save checks the internal target side independently', (
+    tester,
+  ) async {
+    final controller = await openNewDeliveryNote(tester);
+    controller.setWarehouse.value = 'WH-Pick';
+    await controller.addItem(
+      DeliveryNoteItem(
+        itemCode: 'ITEM-1',
+        qty: 1,
+        rate: 0,
+        warehouse: 'WH-Pick',
+        rack: 'RACK-PICK',
+        targetWarehouse: 'WH-Target',
+        toRack: 'RACK-PICK',
+      ),
+    );
+    await controller.saveDocument();
+    expect(api.creates, isEmpty);
+    expect(
+      controller.bannerMessage.value,
+      'Row 1: Rack RACK-PICK belongs to WH-Pick. This row’s target warehouse is WH-Target.',
+    );
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('saved sheet checks source and internal target fields', (
+    tester,
+  ) async {
+    final controller = await openNewDeliveryNote(tester);
+    controller.setWarehouse.value = 'POS-Pick';
+    final row = DeliveryNoteItem(
+      name: 'DN-ROW-1',
+      itemCode: 'ITEM-1',
+      qty: 1,
+      rate: 0,
+      batchNo: 'BATCH-1',
+      warehouse: 'POS-Pick',
+      rack: 'RACK-POS-PICK',
+      targetWarehouse: 'POS-Other',
+      toRack: 'RACK-POS-OTHER',
+    );
+    controller.items.add(row);
+    unawaited(controller.editItem(row));
+    await tester.pumpAndSettle();
+    final child = Get.find<DeliveryNoteItemFormController>();
+    expect(child.isSheetValid.value, isTrue);
+    expect(child.targetRackValid, isTrue);
+
+    child.rackController.text = 'RACK-POS-OTHER';
+    await child.validateRack('RACK-POS-OTHER');
+    await tester.pump();
+    expect(child.isSheetValid.value, isFalse);
+    const mismatch =
+        'Rack RACK-POS-OTHER belongs to POS-Other. This row’s warehouse is POS-Pick.';
+    expect(child.rackError.value, mismatch);
+    await tester.scrollUntilVisible(
+      find.text(mismatch),
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text(mismatch), findsOneWidget);
+    expect(controller.items.single.rack, 'RACK-POS-PICK');
+    expect(api.creates, isEmpty);
+
+    Get.back<void>();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets(
+    'a stale fresh scan cannot replace the newer warehouse and rack',
+    (tester) async {
+      final controller = await openNewDeliveryNote(tester);
+      controller.setWarehouse.value = 'POS-Pick';
+      final child = Get.put(DeliveryNoteItemFormController());
+      child.initialise(parent: controller, code: 'ITEM-1', name: 'Test item');
+      final slow = Completer<RackWarehouseLookup>();
+      api.pendingRacks['RACK-POS-PICK'] = slow;
+
+      child.applyRackScan('RACK-POS-PICK');
+      expect(child.isCheckingRackWarehouse.value, isTrue);
+      child.applyRackScan('RACK-POS-OTHER');
+      await tester.pump();
+      expect(child.resolvedWarehouse, 'POS-Other');
+      expect(child.isRackValid.value, isTrue);
+
+      slow.complete(
+        const RackWarehouseLookup.found('POS-Pick', name: 'RACK-POS-PICK'),
+      );
+      await tester.pump();
+      expect(child.rackController.text, 'RACK-POS-OTHER');
+      expect(child.resolvedWarehouse, 'POS-Other');
+      expect(child.isRackValid.value, isTrue);
+
+      await Get.delete<DeliveryNoteItemFormController>();
+      await tester.pump(const Duration(milliseconds: 500));
+    },
+  );
+
+  testWidgets('batch input preserves a pending fresh rack initialization', (
+    tester,
+  ) async {
+    final controller = await openNewDeliveryNote(tester);
+    controller.setWarehouse.value = 'POS-Pick';
+    final child = Get.put(DeliveryNoteItemFormController());
+    child.initialise(parent: controller, code: 'ITEM-1', name: 'Test item');
+    final slow = Completer<RackWarehouseLookup>();
+    api.pendingRacks['RACK-POS-OTHER'] = slow;
+
+    child.applyRackScan('RACK-POS-OTHER');
+    child.batchController.text = 'BATCH-1';
+    await child.validateBatch('BATCH-1');
+    child.qtyController.text = '1';
+    expect(child.resolvedWarehouse, 'POS-Other');
+    expect(child.isSheetValid.value, isTrue);
+
+    slow.complete(
+      const RackWarehouseLookup.found('POS-Other', name: 'RACK-POS-OTHER'),
+    );
+    await tester.pump();
+    expect(child.resolvedWarehouse, 'POS-Other');
+    expect(child.isSheetValid.value, isTrue);
+
+    await Get.delete<DeliveryNoteItemFormController>();
+    await tester.pump(const Duration(milliseconds: 500));
   });
 }

@@ -1,3 +1,7 @@
+import 'dart:async';
+
+// Keep the app's shared Material APIs until its Material migration.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/providers/batch_age_provider.dart';
@@ -26,6 +30,7 @@ class _FakeSource implements BatchAgeDataSource {
 
   /// When set, every call throws it.
   Object? failure;
+  Completer<String?>? parentLookup;
 
   final calls = <String>[];
   String? stockWarehouseAsked;
@@ -39,7 +44,7 @@ class _FakeSource implements BatchAgeDataSource {
   @override
   Future<String?> parentWarehouse(String warehouse) async {
     _record('parent');
-    return parents[warehouse];
+    return parentLookup?.future ?? parents[warehouse];
   }
 
   @override
@@ -397,6 +402,23 @@ void main() {
       await sheet.recheckBatchAge();
       expect(sheet.isBatchValid.value, isFalse);
       expect(sheet.olderBatches.single.batchNo, 'OLD');
+    });
+
+    test('a delayed refusal cannot invalidate a batch after the pick warehouse changes', () async {
+      final pendingParent = Completer<String?>();
+      source.parentLookup = pendingParent;
+      final sheet = sheetWith('NEW');
+
+      final oldCheck = sheet.recheckBatchAge();
+      sheet.warehouse = _shop;
+      pendingParent.complete(_group);
+      await oldCheck;
+      await Future<void>.delayed(Duration.zero);
+
+      expect(sheet.isBatchValid.value, isTrue);
+      expect(sheet.isValidatingBatch.value, isFalse);
+      expect(sheet.batchError.value, isEmpty);
+      expect(sheet.olderBatches, isEmpty);
     });
 
     test('the same batch and warehouse are not checked twice', () async {

@@ -11,6 +11,8 @@ class DeliveryNote {
   final double totalQty;
   final int docstatus;
   final String? setWarehouse;
+  final String? setTargetWarehouse;
+  final String? company;
   final String? owner;
   final String? modifiedBy;
   final List<DeliveryNoteItem> items;
@@ -28,6 +30,8 @@ class DeliveryNote {
     required this.totalQty,
     required this.docstatus,
     this.setWarehouse,
+    this.setTargetWarehouse,
+    this.company,
     this.owner,
     this.modifiedBy,
     required this.items,
@@ -51,6 +55,8 @@ class DeliveryNote {
       totalQty: _parseDouble(json['total_qty']),
       docstatus: _parseInt(json['docstatus']),
       setWarehouse: json['set_warehouse'],
+      setTargetWarehouse: json['set_target_warehouse'],
+      company: json['company'],
       owner: json['owner'],
       modifiedBy: json['modified_by'],
       items: items,
@@ -66,6 +72,9 @@ class DeliveryNote {
       'po_no': poNo,
       'docstatus': docstatus,
       'set_warehouse': setWarehouse,
+      if (setTargetWarehouse != null)
+        'set_target_warehouse': setTargetWarehouse,
+      if (company != null) 'company': company,
       'grand_total': grandTotal,
       'total_qty': totalQty,
       'items': items.map((e) => e.toJson()).toList(),
@@ -85,6 +94,8 @@ class DeliveryNote {
     double? totalQty,
     int? docstatus,
     String? setWarehouse,
+    String? setTargetWarehouse,
+    String? company,
     String? owner,
     String? modifiedBy,
     List<DeliveryNoteItem>? items,
@@ -102,6 +113,8 @@ class DeliveryNote {
       totalQty: totalQty ?? this.totalQty,
       docstatus: docstatus ?? this.docstatus,
       setWarehouse: setWarehouse ?? this.setWarehouse,
+      setTargetWarehouse: setTargetWarehouse ?? this.setTargetWarehouse,
+      company: company ?? this.company,
       owner: owner ?? this.owner,
       modifiedBy: modifiedBy ?? this.modifiedBy,
       items: items ?? this.items,
@@ -147,6 +160,8 @@ class DeliveryNoteItem {
   final double? companyTotalStock;
   final int docstatus;
   final String? warehouse;
+  final String? targetWarehouse;
+  final String? toRack;
 
   /// Sales Order link — ERPNext advances the SO's per_delivered only through
   /// these, so they must survive every save.
@@ -177,6 +192,8 @@ class DeliveryNoteItem {
     this.companyTotalStock,
     this.docstatus = 0,
     this.warehouse,
+    this.targetWarehouse,
+    this.toRack,
     this.againstSalesOrder,
     this.soDetail,
     this.conversionFactor,
@@ -208,6 +225,8 @@ class DeliveryNoteItem {
           DeliveryNote._parseDouble(json['company_total_stock']),
       docstatus: DeliveryNote._parseInt(json['docstatus']),
       warehouse: json['warehouse'] as String?,
+      targetWarehouse: json['target_warehouse'] as String?,
+      toRack: json['to_rack'] as String?,
       againstSalesOrder: json['against_sales_order'] as String?,
       soDetail: json['so_detail'] as String?,
       conversionFactor: json['conversion_factor'] == null
@@ -232,6 +251,8 @@ class DeliveryNoteItem {
     if (warehouse != null) {
       data['warehouse'] = warehouse;
     }
+    if (targetWarehouse != null) data['target_warehouse'] = targetWarehouse;
+    if (toRack != null) data['to_rack'] = toRack;
     if (againstSalesOrder != null && againstSalesOrder!.isNotEmpty) {
       data['against_sales_order'] = againstSalesOrder;
       data['so_detail'] = soDetail;
@@ -265,6 +286,8 @@ class DeliveryNoteItem {
     double? companyTotalStock,
     int? docstatus,
     String? warehouse,
+    String? targetWarehouse,
+    String? toRack,
     String? againstSalesOrder,
     String? soDetail,
     double? conversionFactor,
@@ -293,6 +316,8 @@ class DeliveryNoteItem {
       companyTotalStock: companyTotalStock ?? this.companyTotalStock,
       docstatus: docstatus ?? this.docstatus,
       warehouse: warehouse ?? this.warehouse,
+      targetWarehouse: targetWarehouse ?? this.targetWarehouse,
+      toRack: toRack ?? this.toRack,
       againstSalesOrder: againstSalesOrder ?? this.againstSalesOrder,
       soDetail: soDetail ?? this.soDetail,
       conversionFactor: conversionFactor ?? this.conversionFactor,
