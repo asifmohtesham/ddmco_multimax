@@ -13,6 +13,7 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
 
 import '../helpers/auth_fakes.dart';
 
@@ -159,6 +160,38 @@ void main() {
     expect(permissions.hasAccess(report.doctype, permType: report.permType),
         isTrue);
     expect(api.permissionChecks, isNot(contains(report.doctype)));
+  });
+
+  test('Suppliers by Item quick action follows the drawer report permissions',
+      () async {
+    final controller = auth(signedIn: true);
+    final report = kSuppliersByItemPermission.doctype;
+    final drawer = AppNavDrawerController.instance;
+
+    Future<void> loadDeskReports(Set<String> allowedReports) async {
+      drawer.clearSession();
+      final boot = jsonEncode({
+        'user': {'name': kTestEmail},
+        'allowed_reports': {
+          for (final name in allowedReports) name: <String, Object>{},
+        },
+      });
+      api.onGetDeskHtml = () async => '<script>frappe.boot = $boot;</script>';
+      await drawer.loadFor(kTestEmail);
+    }
+
+    expect(AppNavDrawerController.canOpenSuppliersByItem, isTrue);
+    await loadDeskReports({'Stock Balance'});
+    expect(AppNavDrawerController.canOpenSuppliersByItem, isFalse);
+    await loadDeskReports({report});
+    expect(AppNavDrawerController.canOpenSuppliersByItem, isTrue);
+
+    controller.currentUser.value = cachedUser().copyWith(roles: ['Sales User']);
+    expect(AppNavDrawerController.canOpenSuppliersByItem, isFalse);
+
+    controller.currentUser.value = cachedUser();
+    controller.isAuthenticated.value = false;
+    expect(AppNavDrawerController.canOpenSuppliersByItem, isFalse);
   });
 
   testWidgets('a guarded screen still on display during logout asks nothing',

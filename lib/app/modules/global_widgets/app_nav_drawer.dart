@@ -80,6 +80,26 @@ class AppNavDrawerController extends GetxController {
           ? Get.find<AppNavDrawerController>()
           : Get.put(AppNavDrawerController(), permanent: true);
 
+  /// Applies the drawer's role and Desk report checks to a quick action.
+  static bool get canOpenSuppliersByItem {
+    if (!Get.isRegistered<AuthenticationController>() ||
+        !Get.isRegistered<PermissionService>()) {
+      return false;
+    }
+    final auth = Get.find<AuthenticationController>();
+    final user = auth.currentUser.value;
+    if (!auth.isAuthenticated.value || user == null) return false;
+
+    const permission = kSuppliersByItemPermission;
+    final hasRole = Get.find<PermissionService>().hasAccess(
+      permission.doctype,
+      permType: permission.permType,
+    );
+    return hasRole == true &&
+        (instance._allowedReportsFor(user.id)?.contains(permission.doctype) ??
+            true);
+  }
+
   /// The endpoints that list the user's workspace pages as `{pages: [...]}`:
   /// Frappe v15's name first, then the one v16 renamed it to.
   static const workspaceMethods = [
@@ -248,13 +268,13 @@ class AppNavDrawerController extends GetxController {
     _reportAccess.value = null;
   }
 
-  List<NavGroup> visibleGroupsFor(String? user) {
+  Set<String>? _allowedReportsFor(String? user) {
     final access = _reportAccess.value;
-    return filterWorkspaceReports(
-      groups,
-      access?.user == user ? access?.names : null,
-    );
+    return access?.user == user ? access?.names : null;
   }
+
+  List<NavGroup> visibleGroupsFor(String? user) =>
+      filterWorkspaceReports(groups, _allowedReportsFor(user));
 
   bool isGroupExpanded(String title, {required bool defaultValue}) =>
       expandedGroups[title] ?? defaultValue;

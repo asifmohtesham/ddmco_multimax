@@ -8,6 +8,16 @@ class SuppliersByItemFilters {
     this.expandBom = false,
   });
 
+  factory SuppliersByItemFilters.forScannedItem({
+    required String itemCode,
+    String? variantOf,
+  }) {
+    final template = variantOf?.trim();
+    return template == null || template.isEmpty
+        ? SuppliersByItemFilters(items: [itemCode])
+        : SuppliersByItemFilters(variantOf: [template]);
+  }
+
   final List<String> items;
   final List<String> variantOf;
   final List<String> suppliers;

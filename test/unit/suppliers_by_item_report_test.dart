@@ -29,6 +29,30 @@ void main() {
     });
   });
 
+  test('prefilters a scanned variant by its template', () {
+    final filters = SuppliersByItemFilters.forScannedItem(
+      itemCode: 'SHIRT-BLUE',
+      variantOf: ' SHIRT ',
+    );
+
+    expect(filters.linkFilters, {
+      'variant_of': ['SHIRT'],
+    });
+  });
+
+  test('prefilters a scanned item without a template by its own code', () {
+    for (final variantOf in [null, '', ' ']) {
+      final filters = SuppliersByItemFilters.forScannedItem(
+        itemCode: 'BLUE',
+        variantOf: variantOf,
+      );
+
+      expect(filters.linkFilters, {
+        'items': ['BLUE'],
+      });
+    }
+  });
+
   test(
     'keeps supplierless variants and typed placeholders without counting them',
     () {
