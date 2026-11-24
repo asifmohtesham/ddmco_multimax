@@ -13,9 +13,12 @@ import 'package:multimax/app/shared/barcode/ean8.dart';
 ///   2. Batch       — SHIPMENT-* or plain alphanumeric when [contextItemCode] set
 ///   3. EAN-8 Item  — strict checksum match → ERPNext Item lookup
 ///   4. Variant-Of  — ERPNext variant_of filter fallback
-///   5. Error       — nothing matched
+///   5. Registered barcode or batch — exact lookup through ERPNext
 class ScanService extends GetxService {
-  final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  ScanService({ApiProvider? apiProvider})
+    : _apiProvider = apiProvider ?? Get.find<ApiProvider>();
+
+  final ApiProvider _apiProvider;
 
   // ── Public API ────────────────────────────────────────────────────────────
 
@@ -35,10 +38,35 @@ class ScanService extends GetxService {
     final batchResult = _detectBatch(cleanCode, contextItemCode);
     if (batchResult != null) return batchResult;
 
-    final itemResult = await _resolveEan8Item(cleanCode);
-    if (itemResult != null) return itemResult;
+    try {
+      final ean8 = _parseEan8(cleanCode);
+      final itemResult = await _resolveEan8Item(cleanCode, ean8);
+      if (itemResult != null) return itemResult;
 
-    return await _resolveVariantOf(cleanCode);
+      final variantResult = await _resolveVariantOf(cleanCode);
+      if (variantResult.failureOutcome != ScanOutcome.notFound) {
+        return variantResult;
+      }
+
+      return await _resolveRegisteredBarcode(cleanCode, ean8) ?? variantResult;
+    } on DioException catch (error) {
+      return ScanResult.error(cleanCode, 'Network Error: ${error.message}');
+    } catch (error) {
+      return ScanResult.error(cleanCode, 'Scan Error: $error');
+    }
+  }
+
+  /// Resolves the Item for an image or camera barcode. An unmatched code
+  /// returns null. Lookup failures propagate to the caller for retry.
+  Future<Item?> resolveItemBarcode(String barcode) async {
+    final code = barcode.trim();
+    if (code.isEmpty) return null;
+
+    final ean8 = _parseEan8(code);
+    final result =
+        await _resolveEan8Item(code, ean8) ??
+        await _resolveRegisteredBarcode(code, ean8);
+    return result?.itemData;
   }
 
   // ── Step 1: Rack detection ────────────────────────────────────────────────
@@ -96,57 +124,109 @@ class ScanService extends GetxService {
 
   // ── Step 3: EAN-8 item resolution ─────────────────────────────────────────
 
-  Future<ScanResult?> _resolveEan8Item(String code) async {
-    final ean8 = _parseEan8(code);
+  Future<ScanResult?> _resolveEan8Item(
+    String code,
+    _Ean8ParseResult? ean8,
+  ) async {
     if (ean8 == null) return null;
-
-    try {
-      final response = await _apiProvider.getDocument(
-        ScanConstants.doctypeItem,
-        ean8.itemCode,
-      );
-
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        final item = Item.fromJson(response.data['data']);
-        return ScanResult.item(
-          rawCode: code,
-          itemData: item,
-          batchNo: ean8.batchNo,
-        );
-      }
-    } on DioException catch (e) {
-      // 404 means no item found → fall through to variant_of check.
-      if (e.response?.statusCode != 404) {
-        return ScanResult.error(code, 'Network Error: ${e.message}');
-      }
-    } catch (e) {
-      return ScanResult.error(code, 'Scan Error: $e');
-    }
-
-    return null; // 404 → continue pipeline
+    final item = await _getItem(ean8.itemCode);
+    if (item == null) return null;
+    return ScanResult.item(
+      rawCode: code,
+      itemData: item,
+      batchNo: ean8.batchNo,
+    );
   }
 
-  /// Returns a `({itemCode, batchNo?})` record if [code] passes EAN-8
-  /// validation, otherwise `null`.
-  _Ean8ParseResult? _parseEan8(String code) {
-    if (code.contains('-')) {
-      // Hyphenated: `{EAN8}-{BatchID}`
-      final prefix = code.split('-').first;
-      if (_isValidEan8(prefix)) {
-        return _Ean8ParseResult(
-          itemCode: prefix.substring(0, 7),
-          batchNo: code,
-        );
+  Future<Item?> _getItem(String itemCode) async {
+    final data = await _getDocumentData(ScanConstants.doctypeItem, itemCode);
+    return data == null ? null : Item.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>?> _getDocumentData(
+    String doctype,
+    String name,
+  ) async {
+    try {
+      final response = await _apiProvider.getDocument(doctype, name);
+      final data = response.data;
+      if (response.statusCode == 200 &&
+          data is Map &&
+          data['data'] is Map<String, dynamic>) {
+        return data['data'] as Map<String, dynamic>;
       }
-    } else {
-      if (_isValidEan8(code)) {
-        return _Ean8ParseResult(
-          itemCode: code.substring(0, 7),
-          batchNo: null,
-        );
-      }
+    } on DioException catch (error) {
+      if (error.response?.statusCode != 404) rethrow;
     }
     return null;
+  }
+
+  _Ean8ParseResult? _parseEan8(String code) {
+    final separator = code.indexOf('-');
+    final barcode = separator < 0 ? code : code.substring(0, separator);
+    if (!Ean8.isValid(barcode)) return null;
+    return _Ean8ParseResult(
+      barcode: barcode,
+      batchNo: separator < 0 ? null : code,
+    );
+  }
+
+  Future<ScanResult?> _resolveRegisteredBarcode(
+    String code,
+    _Ean8ParseResult? ean8,
+  ) async {
+    var link = await _lookupStockBarcode(code);
+    if (link == null && ean8 != null && ean8.batchNo != null) {
+      link = await _lookupStockBarcode(ean8.barcode);
+    }
+    if (link == null) return null;
+
+    final item = await _getItem(link.itemCode);
+    if (item == null) return null;
+    return ScanResult.item(
+      rawCode: code,
+      itemData: item,
+      batchNo: link.batchNo ?? ean8?.batchNo,
+    );
+  }
+
+  /// Desk's barcode lookup resolves Item Barcode rows and Batch documents
+  /// without requiring direct access to the Item Barcode child table.
+  Future<({String itemCode, String? batchNo})?> _lookupStockBarcode(
+    String code,
+  ) async {
+    final Response response;
+    try {
+      response = await _apiProvider.callMethod(
+        'erpnext.stock.utils.scan_barcode',
+        params: {'search_value': code},
+      );
+    } on DioException catch (error) {
+      final failure = error.response;
+      final data = failure?.data;
+      if (failure?.statusCode == 417 &&
+          data is Map &&
+          data['exc_type'] == 'ValidationError') {
+        // Desk requires a serial for stock transactions on serialized Items.
+        // Looking up the Item can use the Batch document, like gallery scan.
+        final batch = await _getDocumentData(
+          'Batch',
+          Uri.encodeComponent(code),
+        );
+        final itemCode = batch?['item'];
+        if (itemCode is String && itemCode.isNotEmpty) {
+          return (itemCode: itemCode, batchNo: code);
+        }
+      }
+      rethrow;
+    }
+    final data = response.data;
+    final message = data is Map ? data['message'] : null;
+    if (message is! Map) return null;
+
+    final itemCode = message['item_code'];
+    if (itemCode is! String || itemCode.isEmpty) return null;
+    return (itemCode: itemCode, batchNo: message['batch_no'] as String?);
   }
 
   // ── Step 4: Variant-of fallback ───────────────────────────────────────────
@@ -183,17 +263,12 @@ class ScanService extends GetxService {
       outcome: ScanOutcome.notFound,
     );
   }
-
-  // ── EAN-8 checksum validation ─────────────────────────────────────────────
-
-  bool _isValidEan8(String code) => Ean8.isValid(code);
 }
 
-// ── Private value type ────────────────────────────────────────────────────────
-
-/// Carries the two values extracted from a validated EAN-8 scan.
 class _Ean8ParseResult {
-  const _Ean8ParseResult({required this.itemCode, this.batchNo});
-  final String itemCode;
+  const _Ean8ParseResult({required this.barcode, this.batchNo});
+  final String barcode;
   final String? batchNo;
+
+  String get itemCode => barcode.substring(0, 7);
 }
