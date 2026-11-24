@@ -1,1 +1,3 @@
-Stock Entries and Delivery Notes now block racks that belong to a different warehouse from the row. If a row’s warehouse differs from the document’s warehouse, the app asks you to confirm before saving.
+Share one photo of an item label to Multimax to open the item's quick actions. From there you can add a missing item photo at full quality, open Suppliers by Item for all its variants, or open Items from Photos.
+
+The new Suppliers by Item report is available under Buying > Reports and from the Suppliers card on the Item form.
