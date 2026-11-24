@@ -27,6 +27,42 @@ permission or connection message, with **Retry lookup** for the same barcode.
 Item lookup shares the camera's checked EAN-8 lookup and uses ERPNext's exact
 Item Barcode or Batch lookup when needed. A full Batch can identify its Item.
 
+## Cold launch and queued photos
+
+On Android, a share intent can carry a `content://` URI in `Intent.data`. The
+Flutter embedding treated that URI as a deep link and supplied it as the
+initial route, which took precedence over `/splash`. When GetX tried to
+construct the initial stack, the URI matched no app route and `PageRedirect`
+null-asserted its missing fallback. Flutter then hit the inactive-element
+assertion while rebuilding the failed navigator. Both errors happened before
+the splash-to-Home hand-over or the quick-actions sheet.
+
+```text
+SMOKE_DEFAULT_ROUTE: content://media/external/images/media/38
+Null check operator used on a null value
+#0 PageRedirect.page (package:get/get_navigation/src/routes/route_middleware.dart:200:49)
+#1 GetMaterialApp.initialRoutesGenerate (package:get/get_navigation/src/root/get_material_app.dart:352:9)
+#3 NavigatorState.restoreState (package:flutter/src/widgets/navigator.dart:3890:39)
+
+Failed assertion: '_elements.contains(element)'
+#2 _InactiveElements.remove (package:flutter/src/widgets/framework.dart:2175:12)
+#3 Element._retakeInactiveElement (package:flutter/src/widgets/framework.dart:4550:30)
+```
+
+Android's `MainActivity` now turns off Flutter's built-in deep-link handling.
+The activity still receives the original share intent. The share plugin reads
+its photos, and the navigator starts at `/splash`. The regression test models
+Flutter's response to the activity manifest and runs a real GetX navigator,
+splash session restoration, and the quick-actions sheet.
+
+Android can reclaim the share plugin's cache copy while a photo waits behind
+another sheet or for sign-in. Mobile intake now copies each incoming batch to
+the app support directory under `share-intake-photos` before queuing it. Each
+copy keeps its filename in a separate directory, so later shares of that
+filename use independent files. Closing the sheet or abandoning a share
+releases the copy. If **Items from Photos** takes the photos, it uses the copies
+until review ends. Startup clears leftovers from the previous app process.
+
 ## Item actions
 
 **Upload Item Image** appears only for an Item with an empty image field and
@@ -73,3 +109,28 @@ the Suppliers by Item report. Use mock ERP responses for automated tests.
    the upload action is absent.
 6. Repeat on a phone and tablet in portrait and landscape. Check that the sheet
    stays within the safe area and scrolls when the choice list is long.
+
+## Android smoke results
+
+On 2026-11-24, a debug build of the Play release baseline
+`origin/release/play-store` (`eb432d2d`, v2.55.1) opened **Review photos**
+with both photos and both Items from a cold `ACTION_SEND_MULTIPLE` intent.
+That intent carried its content URIs in `EXTRA_STREAM` and `ClipData`.
+The original feature build (`76e2f72a`) reproduced the navigator failure
+with a cold single-photo share carrying a content URI in `Intent.data`.
+
+The fixed `.smoke` builds came from `5b3c60fa`. Both devices used the Floor
+Test account on `erp-testing.multimax.cloud`. Screenshots are in `shots-fix/`
+in the smoke evidence folder.
+
+| Case | Pixel 7 emulator | Physical Pixel 7 |
+| --- | --- | --- |
+| Cold single-photo share | 3/3 opened Item `1003414` | 3/3 opened Item `1003414`, including Files → Share |
+| Cold two-photo share | Review opened with two photos and two Items | Files share opened review with two photos and two Items |
+| Warm single-photo share | Quick actions opened | Quick actions opened |
+| Queued second photo | The staged file survived deletion of the plugin cache copy. The sheet opened and released the staged file on dismissal. | The second photo waited in app support storage. It opened on dismissal of the first sheet, and both staged copies were removed. |
+| 1. Variant with image | Image and Item form opened. Suppliers by Item returned rows for `501CL`. | Image and Item form opened. Suppliers by Item returned rows for `501CL`. |
+| 5. No barcode | The sheet showed the no-barcode message and offered **Items from Photos**. | The sheet showed the no-barcode message and offered **Items from Photos**. |
+
+The emulator cache test removed only the queued photo's plugin cache file
+after the staged copy was verified. Upload was outside this verification run.
