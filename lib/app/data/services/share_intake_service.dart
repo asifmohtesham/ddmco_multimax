@@ -7,13 +7,15 @@ import 'package:get/get.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'package:multimax/app/data/routes/app_routes.dart';
+import 'package:multimax/app/data/services/intake_photo_cleanup.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/item/widgets/share_item_quick_actions.dart';
 import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
 
-/// Receives photos shared to Multimax from the gallery and opens the stock
-/// sheet for them.
+/// Receives photos shared to Multimax and opens Item quick actions or Items
+/// from Photos.
 ///
 /// The photos are held in [pendingPhotos] until the app can show the screen:
 /// signed in, and past the splash and login routes. Both of those finish with
@@ -28,6 +30,7 @@ class ShareIntakeService extends GetxService {
     RxBool? isAuthenticated,
     String Function()? currentRoute,
     void Function(List<String> paths)? openItemsFromPhotos,
+    Future<void> Function(String path)? openItemQuickActions,
     ItemsFromPhotosController? Function()? activeItemsFromPhotos,
     void Function(String message)? notify,
     Stream<List<String>>? drops,
@@ -42,6 +45,7 @@ class ShareIntakeService extends GetxService {
        _isAuthenticated = isAuthenticated,
        _currentRoute = currentRoute ?? (() => Get.currentRoute),
        _openItemsFromPhotos = openItemsFromPhotos ?? _defaultOpen,
+       _openItemQuickActions = openItemQuickActions,
        _activeItemsFromPhotos =
            activeItemsFromPhotos ?? _defaultActiveItemsFromPhotos,
        _notify =
@@ -72,6 +76,7 @@ class ShareIntakeService extends GetxService {
   final RxBool? _isAuthenticated;
   final String Function() _currentRoute;
   final void Function(List<String> paths) _openItemsFromPhotos;
+  final Future<void> Function(String path)? _openItemQuickActions;
   final ItemsFromPhotosController? Function() _activeItemsFromPhotos;
   final void Function(String message) _notify;
   final Stream<List<String>>? _drops;
@@ -96,6 +101,7 @@ class ShareIntakeService extends GetxService {
   AppLifecycleListener? _lifecycleListener;
   Timer? _strandedTimer;
   Worker? _authWorker;
+  bool _quickActionsOpen = false;
 
   RxBool get _signedIn =>
       _isAuthenticated ?? Get.find<AuthenticationController>().isAuthenticated;
@@ -140,24 +146,31 @@ class ShareIntakeService extends GetxService {
     super.onClose();
   }
 
-  /// Hands a share to the stock sheet, now or once the app is ready.
+  /// Routes a share now or once the app is ready.
   void deliver(List<String> paths) {
     if (paths.isEmpty) return;
     _resetShare();
 
-    final sheet = _currentRoute() == AppRoutes.ITEMS_FROM_PHOTOS
-        ? _activeItemsFromPhotos()
-        : null;
-    if (sheet != null) {
-      // A share held as pending is the screen's to ask about.
-      if (sheet.offerShare(paths) == ShareOffer.refusedBusy) {
-        _notify(busyMessage);
-      }
-      return;
-    }
-
     pendingPhotos.assignAll(paths);
     _openPending();
+  }
+
+  bool _offerToActiveSheet(List<String> paths, {bool protectReview = false}) {
+    if (_currentRoute() != AppRoutes.ITEMS_FROM_PHOTOS) return false;
+    final sheet = _activeItemsFromPhotos();
+    if (sheet == null) return false;
+    if (protectReview &&
+        !sheet.busy.value &&
+        sheet.phase.value != ItemsFromPhotosPhase.reviewing &&
+        sheet.phase.value != ItemsFromPhotosPhase.awaitingChoice) {
+      return false;
+    }
+    if (sheet.offerShare(paths) == ShareOffer.refusedBusy) _notify(busyMessage);
+    return true;
+  }
+
+  void _openPhotoSheet(List<String> paths) {
+    if (!_offerToActiveSheet(paths)) _openItemsFromPhotos(paths);
   }
 
   /// A share that arrived by URL: deliver it, then tell the native side so the
@@ -203,11 +216,53 @@ class ShareIntakeService extends GetxService {
   void onRouteChanged() => _openPending();
 
   void _openPending() {
-    if (pendingPhotos.isEmpty || !_signedIn.value) return;
+    if (_quickActionsOpen || pendingPhotos.isEmpty || !_signedIn.value) return;
     if (_handOverRoutes.contains(_currentRoute())) return;
     final paths = pendingPhotos.toList();
     pendingPhotos.clear();
-    _openItemsFromPhotos(paths);
+    if (paths.length > 1) {
+      _openPhotoSheet(paths);
+    } else if (!_offerToActiveSheet(paths, protectReview: true)) {
+      _quickActionsOpen = true;
+      unawaited(_showQuickActions(paths.single));
+    }
+  }
+
+  Future<void> _showQuickActions(String path) async {
+    try {
+      final open = _openItemQuickActions;
+      if (open != null) {
+        await open(path);
+        return;
+      }
+
+      // The route observer runs with the navigator locked.
+      await Future<void>.delayed(Duration.zero);
+      final showCamera =
+          _sharingSupported && !await NativeIntake.instance.isRunningOnMac();
+      if (isClosed) return;
+      if (!_signedIn.value || _handOverRoutes.contains(_currentRoute())) {
+        if (pendingPhotos.isEmpty) pendingPhotos.add(path);
+        return;
+      }
+      final context = Get.key.currentState?.overlay?.context;
+      if (context == null || !context.mounted) return;
+      final usePhotos = await showShareItemQuickActions(
+        context,
+        photoPath: path,
+        showCamera: showCamera,
+      );
+      if (usePhotos && !isClosed && _signedIn.value) {
+        _openPhotoSheet([path]);
+      } else if (!pendingPhotos.contains(path)) {
+        await deleteIntakePhotoCopies([path], log: _log);
+      }
+    } catch (e, st) {
+      _log('opening Item quick actions failed', e, st);
+    } finally {
+      _quickActionsOpen = false;
+      if (!isClosed) _openPending();
+    }
   }
 
   Future<void> _takeInitialShare() async {

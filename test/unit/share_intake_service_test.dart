@@ -26,6 +26,7 @@ void main() {
   late RxBool signedIn;
   late String route;
   late List<List<String>> opened;
+  late List<String> quickActions;
   late List<String> notices;
   late StreamController<List<String>> drops;
   late StreamController<int> dropFailures;
@@ -41,6 +42,7 @@ void main() {
     signedIn = false.obs;
     route = AppRoutes.SPLASH;
     opened = [];
+    quickActions = [];
     notices = [];
     sheet = null;
     drops = StreamController<List<String>>.broadcast();
@@ -58,7 +60,9 @@ void main() {
     await resumes.close();
   });
 
-  Future<ShareIntakeService> make() async {
+  Future<ShareIntakeService> make({
+    Future<void> Function(String)? openQuickActions,
+  }) async {
     final service = Get.put(
       ShareIntakeService(
         warmShares: warm.stream,
@@ -67,6 +71,8 @@ void main() {
         isAuthenticated: signedIn,
         currentRoute: () => route,
         openItemsFromPhotos: opened.add,
+        openItemQuickActions:
+            openQuickActions ?? (path) async => quickActions.add(path),
         activeItemsFromPhotos: () => sheet,
         notify: notices.add,
         drops: drops.stream,
@@ -129,13 +135,12 @@ void main() {
 
     expect(service.pendingPhotos, ['cold.jpg']);
     expect(opened, isEmpty);
+    expect(quickActions, isEmpty);
     expect(resets, 1);
 
     route = AppRoutes.HOME;
     service.onRouteChanged();
-    expect(opened, [
-      ['cold.jpg'],
-    ]);
+    expect(quickActions, ['cold.jpg']);
   });
 
   test(
@@ -145,30 +150,73 @@ void main() {
       final service = await make();
       await share(['x.jpg']);
       expect(opened, isEmpty);
+      expect(quickActions, isEmpty);
+      expect(service.pendingPhotos, ['x.jpg']);
 
       signedIn.value = true;
       await Future<void>.delayed(Duration.zero);
-      expect(opened, [
-        ['x.jpg'],
-      ]);
+      expect(quickActions, ['x.jpg']);
       expect(service.pendingPhotos, isEmpty);
     },
   );
 
-  test('signed in: each share opens the screen and is reset once', () async {
+  test(
+    'signed in: routes one and several photos and resets once each',
+    () async {
+      signedIn.value = true;
+      route = AppRoutes.HOME;
+      await make();
+
+      await share(['1.jpg']);
+      route = AppRoutes.STOCK_ENTRY; // any signed-in screen will do
+      await share(['2.jpg', '3.jpg']);
+
+      expect(quickActions, ['1.jpg']);
+      expect(opened, [
+        ['2.jpg', '3.jpg'],
+      ]);
+      expect(resets, 2);
+    },
+  );
+
+  test('one photo while signed out waits for login to hand over', () async {
+    route = AppRoutes.LOGIN;
+    final service = await make();
+    await share(['one.jpg']);
+    signedIn.value = true;
+    await pumpEventQueue();
+    expect(quickActions, isEmpty);
+    expect(service.pendingPhotos, ['one.jpg']);
+
+    route = AppRoutes.HOME;
+    service.onRouteChanged();
+    service.onRouteChanged();
+    expect(quickActions, ['one.jpg']);
+    expect(opened, isEmpty);
+  });
+
+  test('a share received during quick actions opens when they close', () async {
     signedIn.value = true;
     route = AppRoutes.HOME;
-    await make();
+    final closeQuickActions = Completer<void>();
+    final service = await make(
+      openQuickActions: (path) {
+        quickActions.add(path);
+        return closeQuickActions.future;
+      },
+    );
+    await share(['one.jpg']);
+    await share(['two.jpg', 'three.jpg']);
+    expect(quickActions, ['one.jpg']);
+    expect(service.pendingPhotos, ['two.jpg', 'three.jpg']);
+    expect(opened, isEmpty);
 
-    await share(['1.jpg']);
-    route = AppRoutes.STOCK_ENTRY; // any signed-in screen will do
-    await share(['2.jpg']);
-
+    closeQuickActions.complete();
+    await pumpEventQueue();
     expect(opened, [
-      ['1.jpg'],
-      ['2.jpg'],
+      ['two.jpg', 'three.jpg'],
     ]);
-    expect(resets, 2);
+    expect(service.pendingPhotos, isEmpty);
   });
 
   test('an empty share is ignored', () async {
@@ -178,6 +226,7 @@ void main() {
 
     await share([]);
     expect(opened, isEmpty);
+    expect(quickActions, isEmpty);
     expect(resets, 0);
     expect(service.pendingPhotos, isEmpty);
   });
@@ -200,6 +249,7 @@ void main() {
       expect(busySheet.sharedPaths, ['first.jpg']);
       expect(busySheet.shareSerial.value, 0);
       expect(opened, isEmpty);
+      expect(quickActions, isEmpty);
       expect(service.pendingPhotos, isEmpty);
       expect(resets, 1);
     },
@@ -221,6 +271,7 @@ void main() {
 
       expect(notices, isEmpty);
       expect(opened, isEmpty);
+      expect(quickActions, isEmpty);
       expect(reviewingSheet.pendingShare, ['second.jpg']);
       expect(reviewingSheet.sharedPaths, ['first.jpg']);
       expect(reviewingSheet.shareSerial.value, 0);
@@ -246,6 +297,22 @@ void main() {
     expect(idleSheet.phase.value, ItemsFromPhotosPhase.idle);
   });
 
+  test(
+    'one photo can open quick actions above an idle Items from Photos',
+    () async {
+      signedIn.value = true;
+      route = AppRoutes.ITEMS_FROM_PHOTOS;
+      sheet = _SpyItemsFromPhotosController()
+        ..sharedPaths.assignAll(['first.jpg'])
+        ..phase.value = ItemsFromPhotosPhase.done;
+      await make();
+      await share(['second.jpg']);
+
+      expect(quickActions, ['second.jpg']);
+      expect(sheet?.sharedPaths, ['first.jpg']);
+    },
+  );
+
   test('a drop is delivered like a share', () async {
     signedIn.value = true;
     route = AppRoutes.HOME;
@@ -254,9 +321,7 @@ void main() {
     drops.add(['/d/a.jpg']);
     await pumpEventQueue();
 
-    expect(opened, [
-      ['/d/a.jpg'],
-    ]);
+    expect(quickActions, ['/d/a.jpg']);
   });
 
   test('a drop while a sheet is being made shows the busy message', () async {
@@ -311,6 +376,7 @@ void main() {
         isAuthenticated: signedIn,
         currentRoute: () => route,
         openItemsFromPhotos: opened.add,
+        openItemQuickActions: (path) async => quickActions.add(path),
         activeItemsFromPhotos: () => sheet,
         notify: notices.add,
         drops: drops.stream,
@@ -332,12 +398,10 @@ void main() {
 
     resumes.add(null);
     await Future<void>.delayed(Duration.zero);
-    expect(opened, isEmpty, reason: 'still inside the delay');
+    expect(quickActions, isEmpty, reason: 'still inside the delay');
 
     await Future<void>.delayed(delay * 3);
-    expect(opened, [
-      ['/g/a.jpg'],
-    ]);
+    expect(quickActions, ['/g/a.jpg']);
   });
 
   test('a stranded share is picked up at start-up without a resume', () async {
@@ -347,9 +411,7 @@ void main() {
     expect(opened, isEmpty, reason: 'still inside the delay');
 
     await Future<void>.delayed(delay * 3);
-    expect(opened, [
-      ['/g/cold.jpg'],
-    ]);
+    expect(quickActions, ['/g/cold.jpg']);
   });
 
   test('a share delivered by URL is not picked up again on resume', () async {
@@ -368,9 +430,7 @@ void main() {
     resumes.add(null);
     await Future<void>.delayed(delay * 3);
 
-    expect(opened, [
-      ['/g/a.jpg'],
-    ]);
+    expect(quickActions, ['/g/a.jpg']);
     expect(handled, 1);
   });
 

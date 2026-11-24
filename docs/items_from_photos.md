@@ -17,9 +17,9 @@ Staff photograph the labels on items (each label carries an EAN-8 barcode and/or
 list of those items with their stock, as an **Excel** and/or **PDF** titled **Items**, to send on (WhatsApp,
 e-mail, Drive) or save.
 
-- **On a phone (Android, iPhone):** select the photos in the gallery or Photos → Share → **Multimax**. The app
-  shows the list at once, reads every label and checks stock while the user watches, lets the user review the list,
-  then generates the file.
+- **On a phone (Android, iPhone):** select the photos in the gallery or Photos → Share → **Multimax**. With one
+  photo, choose **Items from Photos** from [Item quick actions](share_item_quick_actions.md). The list reads every
+  label and checks stock while the user watches, then lets the user review the list and generate the file.
 - **At a Mac (office staff):** the photos were taken on phones and synced into **OneDrive**. Staff work folder by
   folder: share or drag photos from one Finder folder, add more from another, then generate and **Download** the
   file. On the Mac, Multimax is the **iPad app** running on Apple silicon (from the App Store or TestFlight); there
@@ -31,7 +31,7 @@ e-mail, Drive) or save.
 
 | Route | Platforms | What happens |
 |---|---|---|
-| **Share** from the gallery / Photos | Android, iPhone | Photos arrive through `receive_sharing_intent`; the screen opens on them. |
+| **Share** from the gallery / Photos | Android, iPhone | Photos arrive through `receive_sharing_intent`; one opens Item quick actions and several open the list. |
 | **Share** from Finder | Mac | Our own share screen copies the files into the App Group and opens Multimax. |
 | **Drag and drop** onto the window | Mac (and iPad) | The Runner's drop handler copies the files and hands them over like a share. |
 | **Item list** icon (photo-stack, tooltip "Items from Photos") | all | Opens the screen's start state. |
@@ -41,9 +41,8 @@ e-mail, Drive) or save.
 Both icons are shown only to users who can run the Stock Balance report (`DocTypeGuard(doctype: 'Stock Entry',
 permType: 'report')`, the same guard as the side menu's Stock Balance entry).
 
-A share or drop that arrives while signed out is held, and the screen opens after sign-in with the same photos.
-A share that arrives on any screen opens Items from Photos on top; one that arrives while the list is open asks
-first (§3.6).
+A share or drop that arrives while signed out is held, then routed after sign-in with the same photos.
+When a review is open, it asks how to handle new photos (§3.6).
 
 ## 3. The flow and every screen
 
