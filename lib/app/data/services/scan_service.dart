@@ -148,7 +148,10 @@ class ScanService extends GetxService {
     String name,
   ) async {
     try {
-      final response = await _apiProvider.getDocument(doctype, name);
+      final response = await _apiProvider.getDocument(
+        doctype,
+        Uri.encodeComponent(name),
+      );
       final data = response.data;
       if (response.statusCode == 200 &&
           data is Map &&
@@ -209,10 +212,7 @@ class ScanService extends GetxService {
           data['exc_type'] == 'ValidationError') {
         // Desk requires a serial for stock transactions on serialized Items.
         // Looking up the Item can use the Batch document, like gallery scan.
-        final batch = await _getDocumentData(
-          'Batch',
-          Uri.encodeComponent(code),
-        );
+        final batch = await _getDocumentData('Batch', code);
         final itemCode = batch?['item'];
         if (itemCode is String && itemCode.isNotEmpty) {
           return (itemCode: itemCode, batchNo: code);

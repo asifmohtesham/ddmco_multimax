@@ -17,6 +17,9 @@ import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 ///     [Get.bottomSheet], **before** deleting [ItemFormController].
 class ItemTabController extends GetxController
     with GetSingleTickerProviderStateMixin {
+  ItemTabController({this.formTag});
+
+  final String? formTag;
   late final TabController tabController;
 
   /// The Prices tab is the last tab, so dropping it needs no index remapping.
@@ -38,7 +41,8 @@ class ItemTabController extends GetxController
       // indexIsChanging is true during the animation; we only want the
       // settled index after the user has fully committed to a tab.
       if (!tabController.indexIsChanging) {
-        Get.find<ItemFormController>().onTabChanged(tabController.index);
+        Get.find<ItemFormController>(tag: formTag)
+            .onTabChanged(tabController.index);
       }
     });
   }

@@ -22,6 +22,10 @@ import 'package:multimax/app/modules/item/form/reorder_rules.dart';
 import 'package:dio/dio.dart';
 
 class ItemFormController extends GetxController with OptimisticLockingMixin {
+  ItemFormController({Object? Function()? readArguments})
+      : _readArguments = readArguments ?? (() => Get.arguments);
+
+  final Object? Function() _readArguments;
   final String docType = 'Item';
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -139,7 +143,7 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
   @override
   void onInit() {
     super.onInit();
-    final args = Get.arguments;
+    final args = _readArguments();
     if (args != null) {
       if (args is Map && args['itemCode'] != null) {
         itemCode = args['itemCode'];
@@ -215,7 +219,10 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     if (itemCode.isEmpty) return;
     isLoading.value = true;
     try {
-      final response = await _apiProvider.getDocument('Item', itemCode);
+      final response = await _apiProvider.getDocument(
+        'Item',
+        Uri.encodeComponent(itemCode),
+      );
       if (response.statusCode == 200 && response.data['data'] != null) {
         item.value = Item.fromJson(response.data['data']);
         _seedReorderRows();

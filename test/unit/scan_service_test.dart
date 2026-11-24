@@ -52,6 +52,16 @@ void main() {
     },
   );
 
+  test('encodes an Item name returned by the barcode lookup', () async {
+    const itemName = 'SKU/26 #1';
+    const encoded = 'SKU%2F26%20%231';
+    api.stockBarcodes[externalCode] = {'item_code': itemName};
+    api.items[encoded] = {'name': itemName, 'item_code': itemName};
+
+    expect((await service.resolveItemBarcode(externalCode))?.name, itemName);
+    expect(api.calls, ['barcode:$externalCode', 'Item:$encoded']);
+  });
+
   test('a Batch whose EAN prefix misses uses the linked Item', () async {
     const batch = '$ean-ABCDEF';
     api.stockBarcodes[batch] = {'batch_no': batch, 'item_code': externalItem};

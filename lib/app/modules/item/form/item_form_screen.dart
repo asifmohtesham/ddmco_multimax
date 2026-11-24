@@ -3,12 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_form_header.dart';
+import 'package:multimax/app/modules/item/form/item_form_binding.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_tab_controller.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/item/form/widgets/stock_balance_chart.dart';
 import 'package:multimax/app/data/models/item_model.dart';
-import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_image_upload.dart';
@@ -30,14 +30,23 @@ import 'package:multimax/app/modules/global_widgets/global_dialog.dart';
 import 'package:multimax/app/modules/global_widgets/file_download_button.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 
-class ItemFormScreen extends GetView<ItemFormController> {
+class ItemFormScreen extends StatefulWidget {
   const ItemFormScreen({super.key});
 
   @override
+  State<ItemFormScreen> createState() => _ItemFormScreenState();
+}
+
+class _ItemFormScreenState extends State<ItemFormScreen> {
+  late final _tag = ItemFormBinding.tagForRoute(ModalRoute.of(context));
+  late final controller = Get.find<ItemFormController>(tag: _tag);
+  late final _tabController = Get.find<ItemTabController>(tag: _tag);
+
+  @override
   Widget build(BuildContext context) {
-    final bool isModal = Get.currentRoute != AppRoutes.ITEM_FORM;
+    final isModal = _tag == null;
     final cs = Theme.of(context).colorScheme;
-    final tabCtrl = Get.find<ItemTabController>();
+    final tabCtrl = _tabController;
 
     return Obx(() {
       final item      = controller.item.value;
