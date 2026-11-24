@@ -426,6 +426,238 @@ void main() {
     }
   });
 
+  testWidgets('expands BOMs and keeps the direct supplier rows first', (
+    tester,
+  ) async {
+    const item = 'item:3000339';
+    const bom = 'bom:12:item:3000339|BOM-3000339-001';
+    const component = 'component:$bom|1|2002400';
+    const missing = 'none:$component';
+    const draft = 'bom:12:item:3000339|BOM-3000339-002';
+    api.load = () async => SuppliersByItemNode.parseRows([
+      {
+        'row_type': 'item',
+        'node_id': item,
+        'item_code': '3000339',
+        'supplier_count': 1,
+      },
+      {
+        'row_type': 'supplier',
+        'node_id': 'supplier:3000339:DIRECT',
+        'parent_id': item,
+        'item_code': '3000339',
+        'supplier': 'DIRECT',
+        'supplier_name': 'Direct Supplier',
+      },
+      {
+        'row_type': 'bom',
+        'node_id': bom,
+        'parent_id': item,
+        'is_component': 1,
+        'bom_no': 'BOM-3000339-001',
+        'bom_status': 'Submitted',
+        'bom_is_default': 1,
+        'component_count': 1,
+      },
+      {
+        'row_type': 'component',
+        'node_id': component,
+        'parent_id': bom,
+        'is_component': 1,
+        'item_code': '2002400',
+        'item_name': 'Component with a descriptive name',
+        'bom_qty_per_unit': 2.5,
+        'stock_uom': 'Nos',
+        'balance_qty': 4,
+        'used_in_bom_count': 3,
+        'include_in_manufacturing': 0,
+        'supplier_count': 0,
+        'bom_cycle': 1,
+      },
+      {
+        'row_type': 'placeholder',
+        'node_id': missing,
+        'parent_id': component,
+        'is_component': 1,
+      },
+      {
+        'row_type': 'bom',
+        'node_id': draft,
+        'parent_id': item,
+        'is_component': 1,
+        'bom_no': 'BOM-3000339-002',
+        'bom_status': 'Draft',
+        'component_count': 0,
+      },
+    ]);
+    await openReport(
+      tester,
+      themeMode: ThemeMode.dark,
+      filters: const SuppliersByItemFilters(expandBom: true),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 supplier'), findsOneWidget);
+    await tester.tap(find.text('3000339'));
+    await tester.pumpAndSettle();
+
+    final title = find.text('BOM-3000339-001 · default · 1 component');
+    expect(
+      tester.getTopLeft(find.text('Direct Supplier')).dy,
+      lessThan(tester.getTopLeft(title).dy),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey(draft)),
+        matching: find.text('Draft'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey(component)), findsNothing);
+
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    final componentTile = find.widgetWithText(ListTile, '2002400');
+    for (final detail in [
+      'Component with a descriptive name',
+      '2.5 Nos per unit',
+      'Balance: 4 Nos',
+      'Used in 3 BOMs',
+      'Not used in manufacturing',
+      'BOM cycle detected',
+    ]) {
+      expect(
+        find.descendant(of: componentTile, matching: find.text(detail)),
+        findsOneWidget,
+      );
+    }
+    final manufacturingNote = tester.widget<Text>(
+      find.text('Not used in manufacturing'),
+    );
+    expect(manufacturingNote.style?.color, AppScheme.dark.textMuted);
+    await tester.tap(componentTile);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey(missing)),
+        matching: find.text('No supplier recorded'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(title);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey(component)), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('caps the visual indent across ten BOM levels on a phone', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    var parentId = 'item:3000338';
+    final rows = <Map<String, Object?>>[
+      {'row_type': 'item', 'node_id': parentId, 'item_code': '3000338'},
+    ];
+    for (var level = 1; level <= 10; level++) {
+      final bomId = 'bom:$parentId|$level';
+      final componentId = 'component:$bomId|1|COMPONENT-$level';
+      rows.addAll([
+        {
+          'row_type': 'bom',
+          'node_id': bomId,
+          'parent_id': parentId,
+          'is_component': 1,
+          'bom_no': 'BOM-LONG-COMPONENT-$level',
+          'bom_status': 'Draft',
+          'component_count': 1,
+        },
+        {
+          'row_type': 'component',
+          'node_id': componentId,
+          'parent_id': bomId,
+          'is_component': 1,
+          'item_code': 'COMPONENT-$level',
+          'item_name': 'A component description that wraps on a narrow phone',
+          'bom_qty_per_unit': 1250.5,
+          'stock_uom': 'Nos',
+          'balance_qty': 25000,
+          'used_in_bom_count': 11,
+          'include_in_manufacturing': 0,
+          'bom_depth_limit': level == 10 ? 1 : 0,
+        },
+      ]);
+      parentId = componentId;
+    }
+    const supplierName = 'Long supplier name that needs to wrap';
+    rows.add({
+      'row_type': 'supplier',
+      'node_id': 'supplier:$parentId|EDGE',
+      'parent_id': parentId,
+      'is_component': 1,
+      'supplier': 'EDGE',
+      'supplier_name': supplierName,
+      'supplier_status': 'On Hold (Orders) until 2027-01-01',
+      'matched_supplier': 1,
+      'sources': 'Purchase Order (Draft), Batch (draft PO)',
+    });
+    api.load = () async => SuppliersByItemNode.parseRows(rows);
+    await openReport(
+      tester,
+      filters: const SuppliersByItemFilters(expandBom: true),
+      size: const Size(300, 620),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find
+        .descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    Future<void> reveal(Finder finder) async {
+      if (finder.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(finder, 100, scrollable: scrollable);
+      }
+      await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+      await tester.pumpAndSettle();
+      expect(finder.hitTestable(), findsOneWidget);
+    }
+
+    Future<void> expand(Finder finder) async {
+      await reveal(finder);
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
+    await expand(find.text('3000338'));
+    double? cappedIndent;
+    for (var level = 1; level <= 10; level++) {
+      await expand(find.text('BOM-LONG-COMPONENT-$level · 1 component'));
+      final component = find.widgetWithText(ListTile, 'COMPONENT-$level');
+      await expand(find.text('COMPONENT-$level'));
+      if (level == 2) cappedIndent = tester.getTopLeft(component).dx;
+      if (level == 10) {
+        expect(tester.getTopLeft(component).dx, cappedIndent);
+        expect(find.text('Depth 20'), findsOneWidget);
+        expect(find.text('BOM depth limit reached'), findsOneWidget);
+      }
+    }
+    final supplier = find.widgetWithText(Card, supplierName);
+    await reveal(find.text(supplierName));
+    expect(
+      find.descendant(of: supplier, matching: find.text('Depth 21')),
+      findsOneWidget,
+    );
+    expect(find.text('On Hold (Orders) until 2027-01-01'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text(supplierName)).style?.fontWeight,
+      FontWeight.bold,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   Future<void> showItemCard(
     WidgetTester tester,
     List<Map<String, Object?>> rows, {
@@ -436,9 +668,10 @@ void main() {
         home: Scaffold(
           body: ItemSuppliersCard(
             key: ValueKey(rows),
+            itemCode: isTemplate ? 'ACP-25' : '2002492',
             isTemplate: isTemplate,
             loadReport: () async => SuppliersByItemNode.parseRows(rows),
-            onViewReport: () {},
+            onViewReport: (_) {},
           ),
         ),
       ),
@@ -642,6 +875,7 @@ void main() {
     expect(api.requests.single.toJson(), {
       'items': ['BLUE'],
       'include_drafts': 1,
+      'expand_bom': 0,
     });
 
     api.load = () async => [];
@@ -693,6 +927,7 @@ void main() {
     expect(api.requests.last.toJson(), {
       'variant_of': ['SHIRT', 'JACKET'],
       'include_drafts': 1,
+      'expand_bom': 0,
     });
     expect(find.text('Variant Of · 2 selected'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -738,6 +973,47 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(api.requests.last.includeDrafts, isTrue);
+    expect(chip, findsNothing);
+  });
+
+  testWidgets('BOM switch starts off, applies, and clears', (tester) async {
+    await openReport(tester);
+    await tester.pumpAndSettle();
+    expect(api.requests.single.toJson()['expand_bom'], 0);
+    await tester.tap(find.byTooltip('Filter'));
+    await tester.pumpAndSettle();
+
+    final bomSwitch = find.widgetWithText(
+      SwitchListTile,
+      'Expand BOM components',
+    );
+    await tester.ensureVisible(bomSwitch);
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(bomSwitch).value, isFalse);
+    expect(
+      find.text(
+        'Shows what each item is made from and who supplies those components.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(bomSwitch);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    expect(api.requests.last.toJson()['expand_bom'], 1);
+
+    final chip = find.widgetWithText(FilterChipWidget, 'BOM components · On');
+    await tester.tap(find.text('BOM components · On'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(bomSwitch).value, isTrue);
+    Navigator.of(tester.element(bomSwitch)).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(of: chip, matching: find.byIcon(Icons.close)),
+    );
+    await tester.pumpAndSettle();
+    expect(api.requests.last.toJson()['expand_bom'], 0);
     expect(chip, findsNothing);
   });
 }

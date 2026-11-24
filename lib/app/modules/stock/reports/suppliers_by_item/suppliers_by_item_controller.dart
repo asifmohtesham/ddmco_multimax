@@ -37,6 +37,7 @@ class SuppliersByItemController extends GetxController {
               ? entry.value.single
               : '${entry.value.length} selected',
         if (!selected.includeDrafts) 'include_drafts': 'Off',
+        if (selected.expandBom) 'expand_bom': 'On',
       });
       error.value = null;
       nodes.clear();

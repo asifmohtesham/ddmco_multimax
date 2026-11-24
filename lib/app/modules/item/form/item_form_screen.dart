@@ -226,12 +226,13 @@ class ItemFormScreen extends GetView<ItemFormController> {
   }
 
   Widget _buildSuppliersCard(Item item) {
-    final filters = controller.suppliersFiltersFor(item);
     return ItemSuppliersCard(
       key: ValueKey((item.itemCode, item.hasVariants)),
+      itemCode: item.itemCode,
       isTemplate: item.hasVariants,
-      loadReport: () => controller.loadSuppliers(filters),
-      onViewReport: () => controller.openSuppliersReport(filters),
+      loadReport: () => controller.loadSuppliers(item),
+      onViewReport: (expandBom) =>
+          controller.openSuppliersReport(item, expandBom: expandBom),
     );
   }
 

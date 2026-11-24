@@ -2,104 +2,112 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 
 void main() {
-  test(
-    'serializes drafts as a check value and keeps link filters separate',
-    () {
-      const defaults = SuppliersByItemFilters();
-      expect(defaults.includeDrafts, isTrue);
-      expect(defaults.linkFilters, isEmpty);
-      expect(defaults.toJson(), {'include_drafts': 1});
+  test('serializes check values and keeps link filters separate', () {
+    const defaults = SuppliersByItemFilters();
+    expect(defaults.includeDrafts, isTrue);
+    expect(defaults.expandBom, isFalse);
+    expect(defaults.linkFilters, isEmpty);
+    expect(defaults.toJson(), {'include_drafts': 1, 'expand_bom': 0});
 
-      const filters = SuppliersByItemFilters(
-        items: [' ITEM-1 ', 'ITEM-1', '', 'ITEM-2'],
-        variantOf: [' SHIRT '],
-        suppliers: ['  '],
-        warehouses: ['WAREHOUSE-1'],
-        includeDrafts: false,
-      );
-      expect(filters.linkFilters, {
-        'items': ['ITEM-1', 'ITEM-2'],
-        'variant_of': ['SHIRT'],
-        'warehouses': ['WAREHOUSE-1'],
-      });
-      expect(filters.toJson(), {...filters.linkFilters, 'include_drafts': 0});
+    const filters = SuppliersByItemFilters(
+      items: [' ITEM-1 ', 'ITEM-1', '', 'ITEM-2'],
+      variantOf: [' SHIRT '],
+      suppliers: ['  '],
+      warehouses: ['WAREHOUSE-1'],
+      includeDrafts: false,
+      expandBom: true,
+    );
+    expect(filters.linkFilters, {
+      'items': ['ITEM-1', 'ITEM-2'],
+      'variant_of': ['SHIRT'],
+      'warehouses': ['WAREHOUSE-1'],
+    });
+    expect(filters.toJson(), {
+      ...filters.linkFilters,
+      'include_drafts': 0,
+      'expand_bom': 1,
+    });
+  });
+
+  test(
+    'keeps supplierless variants and typed placeholders without counting them',
+    () {
+      final tree = SuppliersByItemNode.parseRows([
+        {
+          'node_id': 'template:ACP-25',
+          'indent': 0,
+          'template': 'ACP-25',
+          'tree_label': 'ACP-25',
+          'supplier_count': 1,
+        },
+        {
+          'node_id': 'item:2002492',
+          'parent_id': 'template:ACP-25',
+          'indent': 1,
+          'item_code': '2002492',
+          'tree_label': '2002492',
+          'supplier_count': 0,
+          'total_qty_received': 0,
+          'stock_uom': 'Nos',
+        },
+        {
+          'node_id': 'none:7:2002492',
+          'parent_id': 'item:2002492',
+          'row_type': 'placeholder',
+          'indent': 2,
+          'tree_label': 'No supplier recorded',
+          'item_code': '2002492',
+          'is_placeholder': 1,
+        },
+        {
+          'node_id': 'item:2002506',
+          'parent_id': 'template:ACP-25',
+          'indent': 1,
+          'item_code': '2002506',
+          'tree_label': '2002506',
+          'supplier_count': 1,
+        },
+        {
+          'node_id': 'supplier:7:2002506:KANG KAI',
+          'parent_id': 'item:2002506',
+          'row_type': 'supplier',
+          'indent': 2,
+          'tree_label': 'KANG KAI',
+          'item_code': '2002506',
+          'supplier': 'KANG KAI',
+          'is_placeholder': 0,
+          'total_qty_received': 0,
+          'last_rate': 14,
+          'currency': 'AED',
+          'rate_source': 'Purchase Order',
+          'rate_date': '2026-11-05',
+          'rate_document': 'PUR-ORD-2026-00001',
+        },
+      ]);
+
+      final template = tree.single;
+      expect(template.row.template, 'ACP-25');
+      expect(template.hasSuppliers, isTrue);
+      expect(template.row.supplierCount, 1);
+      final [withoutSupplier, withSupplier] = template.children;
+      expect(withoutSupplier.row.itemCode, '2002492');
+      expect(withoutSupplier.row.supplierCount, 0);
+      expect(withoutSupplier.hasSuppliers, isFalse);
+      final placeholder = withoutSupplier.children.single.row;
+      expect(placeholder.kind, SuppliersByItemRowKind.placeholder);
+      expect(placeholder.treeLabel, 'No supplier recorded');
+      expect(withSupplier.row.itemCode, '2002506');
+      expect(withSupplier.hasSuppliers, isTrue);
+      final supplier = withSupplier.children.single.row;
+      expect(supplier.supplier, 'KANG KAI');
+      expect(supplier.totalQtyReceived, 0);
+      expect(supplier.lastRate, 14);
+      expect(supplier.currency, 'AED');
+      expect(supplier.rateSource, 'Purchase Order');
+      expect(supplier.rateDate, '2026-11-05');
+      expect(supplier.rateDocument, 'PUR-ORD-2026-00001');
     },
   );
-
-  test('keeps supplierless variants and skips Desk placeholder rows', () {
-    final tree = SuppliersByItemNode.parseRows([
-      {
-        'node_id': 'template:ACP-25',
-        'indent': 0,
-        'template': 'ACP-25',
-        'tree_label': 'ACP-25',
-        'supplier_count': 1,
-      },
-      {
-        'node_id': 'item:2002492',
-        'parent_id': 'template:ACP-25',
-        'indent': 1,
-        'item_code': '2002492',
-        'tree_label': '2002492',
-        'supplier_count': 0,
-        'total_qty_received': 0,
-        'stock_uom': 'Nos',
-      },
-      {
-        'node_id': 'none:7:2002492',
-        'parent_id': 'item:2002492',
-        'row_type': 'placeholder',
-        'indent': 2,
-        'tree_label': 'No supplier recorded',
-        'item_code': '2002492',
-        'is_placeholder': 1,
-      },
-      {
-        'node_id': 'item:2002506',
-        'parent_id': 'template:ACP-25',
-        'indent': 1,
-        'item_code': '2002506',
-        'tree_label': '2002506',
-        'supplier_count': 1,
-      },
-      {
-        'node_id': 'supplier:7:2002506:KANG KAI',
-        'parent_id': 'item:2002506',
-        'row_type': 'supplier',
-        'indent': 2,
-        'tree_label': 'KANG KAI',
-        'item_code': '2002506',
-        'supplier': 'KANG KAI',
-        'is_placeholder': 0,
-        'total_qty_received': 0,
-        'last_rate': 14,
-        'currency': 'AED',
-        'rate_source': 'Purchase Order',
-        'rate_date': '2026-11-05',
-        'rate_document': 'PUR-ORD-2026-00001',
-      },
-    ]);
-
-    final template = tree.single;
-    expect(template.row.template, 'ACP-25');
-    expect(template.hasSuppliers, isTrue);
-    expect(template.row.supplierCount, 1);
-    final [withoutSupplier, withSupplier] = template.children;
-    expect(withoutSupplier.row.itemCode, '2002492');
-    expect(withoutSupplier.row.supplierCount, 0);
-    expect(withoutSupplier.hasSuppliers, isFalse);
-    expect(withoutSupplier.children, isEmpty);
-    expect(withSupplier.row.itemCode, '2002506');
-    expect(withSupplier.hasSuppliers, isTrue);
-    final supplier = withSupplier.children.single.row;
-    expect(supplier.supplier, 'KANG KAI');
-    expect(supplier.totalQtyReceived, 0);
-    expect(supplier.lastRate, 14);
-    expect(supplier.currency, 'AED');
-    expect(supplier.rateSource, 'Purchase Order');
-    expect(supplier.rateDate, '2026-11-05');
-    expect(supplier.rateDocument, 'PUR-ORD-2026-00001');
-  });
 
   test('builds template and standalone item branches in server order', () {
     final tree = SuppliersByItemNode.parseRows([
@@ -373,6 +381,255 @@ void main() {
     );
   });
 
+  test('parses the production v7 BOM trees for 3000338 and 3000339', () {
+    final rows = <Map<String, Object?>>[];
+    void add(
+      String type,
+      String id,
+      String? parent,
+      int indent,
+      Map<String, Object?> fields,
+    ) {
+      rows.add({
+        'row_type': type,
+        'node_id': id,
+        'parent_id': parent,
+        'indent': indent,
+        'is_component': switch (type) {
+          'bom' || 'component' => 1,
+          _ => parent?.startsWith('component:') == true ? 1 : 0,
+        },
+        ...fields,
+      });
+    }
+
+    String path(String type, String parent, String key) =>
+        '$type:${parent.length}:$parent|$key';
+
+    String bom(
+      String parent,
+      String item,
+      int count,
+      int indent, {
+      bool draft = false,
+      required int suppliers,
+    }) {
+      final code = 'BOM-$item-001';
+      final id = path('bom', parent, code);
+      add('bom', id, parent, indent, {
+        'bom_no': code,
+        'bom_is_default': 1,
+        'bom_status': draft ? 'Draft' : 'Submitted',
+        'component_count': count,
+        'component_supplier_count': suppliers,
+        'tree_label': draft
+            ? '$code · $count components · draft'
+            : '$code · default · $count components',
+      });
+      return id;
+    }
+
+    String component(
+      String parent,
+      String bomItem,
+      String item,
+      int index,
+      int indent,
+      num quantity, {
+      String? supplier,
+      bool matched = false,
+    }) {
+      final id = path(
+        'component',
+        parent,
+        '$index|${item.length}:$item|line-$index',
+      );
+      add('component', id, parent, indent, {
+        'item_code': item,
+        'item_name': 'Component $item',
+        'bom_no': 'BOM-$bomItem-001',
+        'bom_qty_per_unit': quantity,
+        'stock_uom': 'Nos',
+        'include_in_manufacturing': supplier == 'JOAP' ? 0 : 1,
+        'used_in_bom_count': 2,
+        'balance_qty': 50,
+        'projected_qty': '60.5',
+        'last_purchase_date': supplier == null ? null : '2026-11-01',
+        'supplier_count': supplier == null ? 0 : 1,
+      });
+      if (supplier == null) {
+        add('placeholder', 'none:$id', id, indent + 1, {
+          'item_code': item,
+          'is_placeholder': 1,
+        });
+      } else {
+        add('supplier', path('supplier', id, supplier), id, indent + 1, {
+          'item_code': item,
+          'supplier': supplier,
+          'matched_supplier': matched ? 1 : 0,
+        });
+      }
+      return id;
+    }
+
+    // Production topology and quantities with representative stock values.
+    const template = 'template:GQP-BELTS';
+    add('item', 'item:3000338', null, 0, {
+      'item_code': '3000338',
+      'stock_uom': 'Nos',
+      'balance_qty': 4,
+      'projected_qty': 5,
+      'supplier_count': 0,
+    });
+    add('placeholder', 'none:7:3000338', 'item:3000338', 1, {
+      'item_code': '3000338',
+      'is_placeholder': 1,
+    });
+    final bom338 = bom('item:3000338', '3000338', 4, 1, suppliers: 3);
+    component(bom338, '3000338', '3000329', 1, 2, 12);
+    final assembly = component(bom338, '3000338', '3000281', 2, 2, 12);
+    final draft281 = bom(assembly, '3000281', 2, 3, draft: true, suppliers: 2);
+    component(draft281, '3000281', '1004879', 1, 4, 1, supplier: 'EDGE');
+    component(draft281, '3000281', '1004722', 2, 4, 1, supplier: 'BOVIS');
+    component(bom338, '3000338', '1004774', 3, 2, 12, supplier: 'KOL-FACTORY');
+    component(bom338, '3000338', '1003590', 4, 2, 12);
+
+    add('template', template, null, 0, {'template': 'GQP-BELTS'});
+    add('item', 'item:3000339', template, 1, {
+      'item_code': '3000339',
+      'stock_uom': 'Nos',
+      'balance_qty': 6,
+      'projected_qty': 7,
+      'open_order_qty': 2,
+      'supplier_count': 0,
+    });
+    add('placeholder', 'none:7:3000339', 'item:3000339', 2, {
+      'item_code': '3000339',
+      'is_placeholder': 1,
+    });
+    final bom339 = bom('item:3000339', '3000339', 2, 2, suppliers: 2);
+    component(
+      bom339,
+      '3000339',
+      '2002999',
+      1,
+      3,
+      360,
+      supplier: 'JOAP',
+      matched: true,
+    );
+    component(bom339, '3000339', '2002906', 2, 3, 360, supplier: 'PING HAI');
+
+    final tree = SuppliersByItemNode.parseRows(rows);
+    final [item338, belts] = tree;
+    final item339 = belts.children.single;
+    for (final item in [item338, item339]) {
+      expect(item.row.supplierCount, 0);
+      expect(item.hasSuppliers, isFalse);
+      expect(item.children.map((child) => child.row.kind), [
+        SuppliersByItemRowKind.placeholder,
+        SuppliersByItemRowKind.bom,
+      ]);
+      expect(item.children.first.row.treeLabel, 'No supplier recorded');
+      expect(item.children.first.row.isComponent, isFalse);
+    }
+    expect(belts.hasSuppliers, isFalse);
+    final mainBom = item338.children.last;
+    expect(mainBom.row.bomNo, 'BOM-3000338-001');
+    expect(mainBom.row.bomIsDefault, isTrue);
+    expect(mainBom.row.bomStatus, 'Submitted');
+    expect(mainBom.row.componentCount, 4);
+    expect(mainBom.row.componentSupplierCount, 3);
+    expect(mainBom.children.map((child) => child.row.itemCode), [
+      '3000329',
+      '3000281',
+      '1004774',
+      '1003590',
+    ]);
+    final subassembly = mainBom.children[1];
+    expect(subassembly.row.bomQtyPerUnit, 12);
+    expect(
+      subassembly.children.first.row.kind,
+      SuppliersByItemRowKind.placeholder,
+    );
+    expect(subassembly.children.first.row.isComponent, isTrue);
+    final draftBom = subassembly.children.last;
+    expect(draftBom.row.bomNo, 'BOM-3000281-001');
+    expect(draftBom.row.bomIsDefault, isTrue);
+    expect(draftBom.row.bomStatus, 'Draft');
+    expect(draftBom.children.map((child) => child.row.itemCode), [
+      '1004879',
+      '1004722',
+    ]);
+    expect(
+      draftBom.children.map((child) => child.children.single.row.supplier),
+      ['EDGE', 'BOVIS'],
+    );
+
+    final beltBom = item339.children.last;
+    expect(beltBom.row.treeLabel, 'BOM-3000339-001 · default · 2 components');
+    final [firstBeltPart, secondBeltPart] = beltBom.children;
+    expect(firstBeltPart.row.itemCode, '2002999');
+    expect(firstBeltPart.row.itemName, 'Component 2002999');
+    expect(firstBeltPart.row.bomNo, 'BOM-3000339-001');
+    expect(firstBeltPart.row.bomQtyPerUnit, 360);
+    expect(firstBeltPart.row.stockUom, 'Nos');
+    expect(firstBeltPart.row.balanceQty, 50);
+    expect(firstBeltPart.row.projectedQty, 60.5);
+    expect(firstBeltPart.row.usedInBomCount, 2);
+    expect(firstBeltPart.row.lastPurchaseDate, '2026-11-01');
+    expect(firstBeltPart.row.includeInManufacturing, isFalse);
+    expect(firstBeltPart.row.supplierCount, 1);
+    final joap = firstBeltPart.children.single.row;
+    expect(joap.itemCode, '2002999');
+    expect(joap.supplier, 'JOAP');
+    expect(joap.matchedSupplier, isTrue);
+    expect(joap.isComponent, isTrue);
+    expect(secondBeltPart.row.itemCode, '2002906');
+    expect(secondBeltPart.children.single.row.supplier, 'PING HAI');
+
+    final totals = SuppliersByItemNode.quantityTotalsByUom(tree)['Nos']!;
+    expect(totals.balanceQty, 10);
+    expect(totals.projectedQty, 12);
+    expect(totals.openOrderQty, 2);
+  });
+
+  test('uses explicit row kinds and never infers component identities', () {
+    final item = SuppliersByItemNode.parseRows([
+      {'node_id': 'item:ROOT'},
+      {
+        'row_type': 'bom',
+        'node_id': 'other:ROOT|BOM-ID',
+        'parent_id': 'item:ROOT',
+        'is_component': 1,
+      },
+      {
+        'row_type': 'component',
+        'node_id': 'item:ROOT|1|COMPONENT-ID',
+        'parent_id': 'other:ROOT|BOM-ID',
+        'is_component': 1,
+        'bom_cycle': 1,
+        'bom_depth_limit': '1',
+      },
+      {
+        'row_type': 'supplier',
+        'node_id': 'supplier:item:ROOT|1|COMPONENT-ID|SUPPLIER-ID',
+        'parent_id': 'item:ROOT|1|COMPONENT-ID',
+        'is_component': 1,
+      },
+    ]).single;
+    final bom = item.children.single;
+    expect(bom.row.kind, SuppliersByItemRowKind.bom);
+    expect(bom.row.bomNo, isNull);
+    final component = bom.children.single;
+    expect(component.row.kind, SuppliersByItemRowKind.component);
+    expect(component.row.itemCode, isNull);
+    expect(component.row.bomCycle, isTrue);
+    expect(component.row.bomDepthLimit, isTrue);
+    expect(component.children.single.row.itemCode, isNull);
+    expect(component.children.single.row.supplier, isNull);
+  });
+
   test('preserves null and missing v6 fields on older report rows', () {
     const missing = <String, Object?>{};
     const blank = {
@@ -503,6 +760,15 @@ void main() {
         'projected_qty': 100,
         'open_order_qty': 100,
         'stock_uom': '',
+      },
+      {
+        'node_id': 'item:COMPONENT-ONLY',
+        'row_type': 'item',
+        'is_component': 1,
+        'balance_qty': 500,
+        'projected_qty': 500,
+        'open_order_qty': 500,
+        'stock_uom': 'Nos',
       },
       {'node_id': 'item:LEATHER', 'projected_qty': -4, 'stock_uom': 'Kg'},
     ]);

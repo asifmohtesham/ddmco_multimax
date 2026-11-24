@@ -2,6 +2,7 @@
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
@@ -23,6 +24,7 @@ class SuppliersByItemScreen extends StatefulWidget {
 
 class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
   static const _includeDraftsKey = 'include_drafts';
+  static const _expandBomKey = 'expand_bom';
   static const _filterFields = [
     ReportFilterField(
       key: 'items',
@@ -67,6 +69,14 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       helperText:
           'Suppliers that appear only on draft purchase orders are hidden when off.',
     ),
+    ReportFilterField(
+      key: _expandBomKey,
+      label: 'Expand BOM components',
+      type: ReportFilterType.switchToggle,
+      prefixIcon: Icons.account_tree_outlined,
+      helperText:
+          'Shows what each item is made from and who supplies those components.',
+    ),
   ];
 
   late final _controller = Get.find<SuppliersByItemController>(
@@ -90,9 +100,11 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
     final filters = _controller.filters.value;
     final links = filters.linkFilters;
     for (final entry in _draft.entries) {
-      entry.value.text = entry.key == _includeDraftsKey
-          ? (filters.includeDrafts ? '1' : '')
-          : joinMultiValue(links[entry.key] ?? const []);
+      entry.value.text = switch (entry.key) {
+        _includeDraftsKey => filters.includeDrafts ? '1' : '',
+        _expandBomKey => filters.expandBom ? '1' : '',
+        _ => joinMultiValue(links[entry.key] ?? const []),
+      };
     }
   }
 
@@ -102,6 +114,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
     suppliers: splitMultiValue(_draft['suppliers']!.text),
     warehouses: splitMultiValue(_draft['warehouses']!.text),
     includeDrafts: _draft[_includeDraftsKey]!.text == '1',
+    expandBom: _draft[_expandBomKey]!.text == '1',
   );
 
   void _openFilters(BuildContext context, {String? focusKey}) {
@@ -134,9 +147,11 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       if (_controller.activeFilters[field.key] case final value?)
         FilterChipWidget(
           icon: field.prefixIcon!,
-          label: field.key == _includeDraftsKey
-              ? 'Draft POs · $value'
-              : '${field.label} · $value',
+          label: switch (field.key) {
+            _includeDraftsKey => 'Draft POs · $value',
+            _expandBomKey => 'BOM components · $value',
+            _ => '${field.label} · $value',
+          },
           onTap: () => _openFilters(context, focusKey: field.key),
           onDeleted: () => _clearFilter(field.key),
         ),
@@ -196,7 +211,10 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                     ),
                   )
                 else ...[
-                  _SuppliersTree(nodes: nodes),
+                  _SuppliersTree(
+                    nodes: nodes,
+                    showPlaceholders: _controller.filters.value.expandBom,
+                  ),
                   SliverToBoxAdapter(
                     child: _ReportFooter(
                       nodes: nodes,
@@ -311,16 +329,22 @@ class _ReportFooter extends StatelessWidget {
 }
 
 class _SuppliersTree extends StatefulWidget {
-  const _SuppliersTree({required this.nodes});
+  const _SuppliersTree({required this.nodes, required this.showPlaceholders});
 
   final List<SuppliersByItemNode> nodes;
+  final bool showPlaceholders;
 
   @override
   State<_SuppliersTree> createState() => _SuppliersTreeState();
 }
 
 class _SuppliersTreeState extends State<_SuppliersTree> {
+  static const _maxIndentDepth = 3;
   final _expanded = <String>{};
+
+  bool _isVisible(SuppliersByItemNode node) =>
+      widget.showPlaceholders ||
+      node.row.kind != SuppliersByItemRowKind.placeholder;
 
   @override
   Widget build(BuildContext context) {
@@ -328,6 +352,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
 
     void addVisible(List<SuppliersByItemNode> nodes, int depth) {
       for (final node in nodes) {
+        if (!_isVisible(node)) continue;
         visible.add((node: node, depth: depth));
         if (_expanded.contains(node.row.nodeId)) {
           addVisible(node.children, depth + 1);
@@ -342,6 +367,16 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
         final (node: node, depth: depth) = visible[index];
         final row = node.row;
         final expanded = _expanded.contains(row.nodeId);
+        final depthLabel = depth > _maxIndentDepth ? 'Depth $depth' : null;
+        final VoidCallback? onTap = node.children.any(_isVisible)
+            ? () => setState(() {
+                if (expanded) {
+                  _expanded.remove(row.nodeId);
+                } else {
+                  _expanded.add(row.nodeId);
+                }
+              })
+            : null;
         return Align(
           key: ValueKey(row.nodeId),
           alignment: Alignment.topCenter,
@@ -349,61 +384,192 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
             constraints: const BoxConstraints(maxWidth: 960),
             child: Padding(
               padding: EdgeInsetsDirectional.fromSTEB(
-                12.0 + depth * 16.0,
+                12.0 + depth.clamp(0, _maxIndentDepth) * 16.0,
                 0,
                 12,
                 6,
               ),
-              child: row.kind == SuppliersByItemRowKind.supplier
-                  ? _SupplierTile(row: row)
-                  : _GroupTile(
-                      row: row,
-                      hasNoSupplier:
-                          row.kind == SuppliersByItemRowKind.item &&
-                          !node.hasSuppliers,
-                      expanded: expanded,
-                      onTap: node.children.isEmpty
-                          ? null
-                          : () => setState(() {
-                              if (expanded) {
-                                _expanded.remove(row.nodeId);
-                              } else {
-                                _expanded.add(row.nodeId);
-                              }
-                            }),
-                    ),
+              child: switch (row.kind) {
+                SuppliersByItemRowKind.supplier => _SupplierTile(
+                  row: row,
+                  depthLabel: depthLabel,
+                ),
+                SuppliersByItemRowKind.placeholder => _PlaceholderTile(
+                  row: row,
+                  depthLabel: depthLabel,
+                ),
+                SuppliersByItemRowKind.bom => _BomTile(
+                  row: row,
+                  depthLabel: depthLabel,
+                  expanded: expanded,
+                  onTap: onTap,
+                ),
+                _ => _GroupTile(
+                  row: row,
+                  supplierSummary: _supplierSummary(node),
+                  depthLabel: depthLabel,
+                  expanded: expanded,
+                  onTap: onTap,
+                ),
+              },
             ),
           ),
         );
       },
     );
   }
+
+  String? _supplierSummary(SuppliersByItemNode node) {
+    final row = node.row;
+    if (row.kind != SuppliersByItemRowKind.template && !node.hasSuppliers) {
+      if (widget.showPlaceholders &&
+          node.children.any(
+            (child) => child.row.kind == SuppliersByItemRowKind.placeholder,
+          )) {
+        return null;
+      }
+      return 'No supplier recorded';
+    }
+    return switch (row.supplierCount) {
+      null => null,
+      1 => '1 supplier',
+      final count => '$count suppliers',
+    };
+  }
 }
 
-class _GroupTile extends StatelessWidget {
-  const _GroupTile({
+class _BomTile extends StatelessWidget {
+  const _BomTile({
     required this.row,
-    required this.hasNoSupplier,
+    required this.depthLabel,
     required this.expanded,
     this.onTap,
   });
 
   final SuppliersByItemRow row;
-  final bool hasNoSupplier;
+  final String? depthLabel;
   final bool expanded;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final count = row.supplierCount;
-    final supplierSummary = hasNoSupplier
-        ? 'No supplier recorded'
-        : switch (count) {
-            null => null,
-            1 => '1 supplier',
-            _ => '$count suppliers',
-          };
+    final theme = Theme.of(context);
+    final isDraft = row.bomStatus == 'Draft';
+    final title = row.bomNo == null
+        ? row.treeLabel
+        : [
+            row.bomNo,
+            if (row.bomIsDefault && !isDraft) 'default',
+            if (row.componentCount case final count?)
+              '$count ${count == 1 ? 'component' : 'components'}',
+          ].join(' · ');
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: context.scheme.subtle,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        side: BorderSide(color: context.scheme.border),
+      ),
+      child: Semantics(
+        expanded: onTap == null ? null : expanded,
+        child: ListTile(
+          dense: true,
+          onTap: onTap,
+          leading: const Icon(Icons.account_tree_outlined),
+          title: Text(title, style: theme.textTheme.titleSmall),
+          subtitle: isDraft || depthLabel != null
+              ? Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (isDraft)
+                      const StatusPill(status: 'Draft', compact: true),
+                    if (depthLabel case final label?) _DepthLabel(label),
+                  ],
+                )
+              : null,
+          trailing: onTap == null
+              ? null
+              : Icon(expanded ? Icons.expand_less : Icons.expand_more),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaceholderTile extends StatelessWidget {
+  const _PlaceholderTile({required this.row, required this.depthLabel});
+
+  final SuppliersByItemRow row;
+  final String? depthLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            row.treeLabel,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: context.scheme.textMuted),
+          ),
+          if (depthLabel case final label?) _DepthLabel(label),
+        ],
+      ),
+    );
+  }
+}
+
+class _DepthLabel extends StatelessWidget {
+  const _DepthLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    label,
+    style: Theme.of(
+      context,
+    ).textTheme.labelSmall?.copyWith(color: context.scheme.textMuted),
+  );
+}
+
+class _GroupTile extends StatelessWidget {
+  const _GroupTile({
+    required this.row,
+    required this.supplierSummary,
+    required this.depthLabel,
+    required this.expanded,
+    this.onTap,
+  });
+
+  final SuppliersByItemRow row;
+  final String? supplierSummary;
+  final String? depthLabel;
+  final bool expanded;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: context.scheme.textMuted,
+    );
+    final isComponent = row.kind == SuppliersByItemRowKind.component;
+    final title = isComponent
+        ? row.itemCode ?? row.treeLabel
+        : row.itemName ?? row.treeLabel;
     final quantities = [
+      if (row.bomQtyPerUnit case final perUnit? when isComponent)
+        '${_quantity(perUnit, row.stockUom)} per unit',
       if (row.balanceQty case final balance?)
         'Balance: ${_quantity(balance, row.stockUom)}',
       if (row.projectedQty case final projected?)
@@ -412,12 +578,21 @@ class _GroupTile extends StatelessWidget {
         'Reorder level: ${_quantity(level, row.stockUom)}',
     ];
     final details = <Widget>[
-      if (supplierSummary != null) Text(supplierSummary),
+      if (isComponent && row.itemName != null && row.itemName != title)
+        Text(row.itemName!, style: muted),
+      if (supplierSummary case final summary?) Text(summary),
       if (quantities.isNotEmpty)
         Wrap(
           spacing: 12,
           children: [for (final quantity in quantities) Text(quantity)],
         ),
+      if (row.usedInBomCount case final count?)
+        Text('Used in $count ${count == 1 ? 'BOM' : 'BOMs'}'),
+      if (row.includeInManufacturing == false)
+        Text('Not used in manufacturing', style: muted),
+      if (row.bomCycle) Text('BOM cycle detected', style: muted),
+      if (row.bomDepthLimit) Text('BOM depth limit reached', style: muted),
+      if (depthLabel case final label?) _DepthLabel(label),
       if (row.isBelowReorderLevel)
         const Padding(
           padding: EdgeInsets.only(top: 4),
@@ -427,7 +602,6 @@ class _GroupTile extends StatelessWidget {
           ),
         ),
     ];
-    final theme = Theme.of(context);
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
@@ -441,7 +615,7 @@ class _GroupTile extends StatelessWidget {
                 ? Icons.account_tree_outlined
                 : Icons.category_outlined,
           ),
-          title: Text(row.itemName ?? row.treeLabel),
+          title: Text(title),
           subtitle: details.isEmpty
               ? null
               : Column(
@@ -459,9 +633,10 @@ class _GroupTile extends StatelessWidget {
 }
 
 class _SupplierTile extends StatelessWidget {
-  const _SupplierTile({required this.row});
+  const _SupplierTile({required this.row, required this.depthLabel});
 
   final SuppliersByItemRow row;
+  final String? depthLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -523,6 +698,7 @@ class _SupplierTile extends StatelessWidget {
                       : nameStyle,
                 ),
                 SupplierStatusPill(status: row.supplierStatus),
+                if (depthLabel case final label?) _DepthLabel(label),
               ],
             ),
             if (procurementDetails.isNotEmpty) ...[

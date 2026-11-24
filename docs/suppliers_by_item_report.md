@@ -1,9 +1,9 @@
 # Suppliers by Item — Report Implementation Guide
 
-> **Scope.** This guide describes the v6 contract of the read-only ERPNext Desk
-> Script Report `Suppliers by Item`, live on `erp.multimax.cloud` and
-> `erp-testing.multimax.cloud` since 23 November 2026. The Report record stores
-> both scripts; the Python and JavaScript below are the deployed v6 source.
+> **Scope.** This guide describes the v7 contract of the read-only ERPNext Desk
+> Script Report `Suppliers by Item`. The Python and JavaScript below match the
+> sources deployed on `erp.multimax.cloud` and `erp-testing.multimax.cloud`,
+> including the v7.1 fix for nested draft BOMs in Frappe's script sandbox.
 
 The report finds suppliers linked to an enabled item. Evidence sources include
 Item Supplier, Item Default, buying Item Price, Batch and submitted Purchase
@@ -27,17 +27,17 @@ status, order quantities, receipt history and latest qualifying rate.
 |---|---|---|---|
 | Items | `items` | MultiSelectList → Item | Matches the selected item codes. |
 | Variant Of | `variant_of` | MultiSelectList → Item | Offers template items and matches their variants. Selecting both Items and Variant Of returns the union. |
-| Suppliers | `suppliers` | MultiSelectList → Supplier | Matches items with evidence for these suppliers and includes every supplier supported by the enabled sources for each matching item. Selected suppliers carry `matched_supplier: 1` on their rows. |
+| Suppliers | `suppliers` | MultiSelectList → Supplier | Matches items with evidence for these suppliers. BOM expansion also matches through components at every shown depth. A match retains the full tree and marks each occurrence of a selected supplier with `matched_supplier: 1`. |
 | Warehouses | `warehouses` | MultiSelectList → Warehouse | Scopes balance, projected quantity, reorder level and reorder quantity to the selected warehouses and descendants of selected groups. An empty selection uses all warehouses. Supplier evidence and procurement history keep their full warehouse scope. |
-| Include Draft Purchase Orders | `include_drafts` | Check | Defaults to `1` (on), which includes draft Purchase Orders and batches linked to them as supplier evidence and includes draft order quantities. Set to `0` to exclude that evidence and those quantities. |
+| Include Draft Purchase Orders | `include_drafts` | Check | Defaults to `1` (on). Includes draft Purchase Orders and batches linked to them as supplier evidence, draft order quantities, and active draft BOMs when BOM expansion is enabled. Set to `0` to exclude those drafts. |
+| Expand BOM components | `expand_bom` | Check | Defaults to `0` (off) for the v6 result. Set to `1` to add active BOMs and their components. |
 
-With Suppliers selected, only items with evidence for a selected supplier
-qualify, and each qualifying item includes every supplier supported by the
-enabled evidence sources. With Suppliers
-empty and Items or Variant Of set, every matching enabled item is retained,
-including items without suppliers. With all three filters empty, the report
-returns enabled items with supplier evidence from the sources included by the
-drafts setting. Disabled and on-hold suppliers remain eligible.
+With Suppliers empty and Items or Variant Of set, every matching enabled item
+is retained, including items without suppliers. With all three selection
+filters empty, an enabled item qualifies if it has supplier evidence or, while
+BOM expansion is on, an active BOM covered by the drafts setting. Disabled and
+on-hold suppliers remain eligible. Warehouse selection scopes the stock columns
+without changing the items, BOMs, components, or suppliers shown.
 
 Batches linked to submitted Purchase Orders use `Batch`. With drafts enabled,
 draft Purchase Orders use `Purchase Order (Draft)` and batches linked to one
@@ -49,8 +49,9 @@ use `Batch (draft PO)`. Batches linked to a cancelled Purchase Order use
 
 | Column | Field | Value |
 |---|---|---|
-| Item / Supplier | `tree_label` | Item or Supplier link, or the placeholder label. |
-| Item Name | `item_name` | Item or template name. |
+| Item / Supplier | `tree_label` | Item, component, or Supplier link, BOM group label, or placeholder label. |
+| Item Name | `item_name` | Item, component, or template name. |
+| BOM Qty per Unit | `bom_qty_per_unit` | Shown with BOM expansion. Component stock quantity divided by the parent BOM's output quantity. |
 | Balance Qty | `balance_qty` | Current stock on hand in stock UOM, scoped by Warehouses. |
 | Projected Qty | `projected_qty` | Current projected stock from Bin in stock UOM, scoped by Warehouses. |
 | Reorder Level | `reorder_level` | Sum of warehouse reorder levels from Item Reorder, scoped by Warehouses. |
@@ -76,12 +77,14 @@ use `Batch (draft PO)`. Batches linked to a cancelled Purchase Order use
 | Total Qty Received | `total_qty_received` | Net quantity from receipt events in stock UOM, including returns. |
 | Stock UOM | `stock_uom` | Item stock UOM, blank on template rows with mixed units. |
 | Last PO Date | `last_po_date` | Latest submitted Purchase Order date for the item and supplier pair, independent of the rate source. |
-| Supplier Count | `supplier_count` | Supplier count for an item or distinct supplier count across a template's variants. |
+| Supplier Count | `supplier_count` | Direct supplier count for an item or component, or distinct direct supplier count across a template's variants. |
 
-Balance, projected quantity, reorder level and reorder quantity are item-row
-values. A template sums these values across shown variants that share one stock
-UOM. Mixed-UOM templates, supplier rows and placeholder rows leave these values
-blank. Item rows also sum open and draft order quantities across their suppliers.
+Item rows carry balance, projected quantity, reorder level and reorder quantity.
+Component rows carry balance and projected quantity under the same warehouse scope.
+A template sums stock quantities across shown variants that share one stock UOM.
+Mixed-UOM templates, supplier rows and placeholder rows leave the stock quantities
+blank. Item rows sum received, open order, and draft order quantities across
+their own suppliers. Template counts and quantities also exclude components.
 
 Receipt events include submitted Purchase Receipts and stock-updating Purchase
 Invoices that qualify as independent receipts. The script excludes invoice
@@ -89,67 +92,98 @@ lines that reference a receipt or are already covered by a submitted receipt
 line. It selects the rate independently of net received quantity, so an item
 with zero net quantity after returns can still have a receipt rate.
 
-## 4. Tree and placeholder contract
+## 4. Tree and row contract
 
-Desk uses `node_id` as the tree key and `parent_id` as the parent. Rows arrive
-parent-first. Template groups and standalone items start at `indent: 0`.
-Variants under an enabled template use `indent: 1`. Supplier and placeholder
-children are one level deeper than their item.
+Rows arrive parent-first. `node_id` and `parent_id` identify tree positions.
+Template groups and standalone items start at `indent: 0`. Variants under an
+enabled template use `indent: 1`. Each child increments `indent` by one.
+Consumers should use `row_type` first and fall back to the `node_id` prefix for
+older results that omit it. Read record identities from `item_code`, `supplier`,
+`bom_no`, or `template` as applicable, treating node IDs as opaque tree keys.
 
-| `row_type` | `node_id` | Parent | Additional fields |
-|---|---|---|---|
-| `template` | `template:<template_code>` | None | `template`, `link_doctype: Item` |
-| `item` | `item:<item_code>` | Template if grouped | `item_code`, `link_doctype: Item` |
-| `supplier` | `supplier:<len>:<item_code>:<supplier>` | Item | `item_code`, `supplier`, `link_doctype: Supplier`, `is_placeholder: 0`, `matched_supplier: 1` for suppliers selected by the Suppliers filter |
-| `placeholder` | `none:<len>:<item_code>` | Item | `item_code`, `is_placeholder: 1`, `tree_label: No supplier recorded` |
+| `row_type` | Parent | Fields |
+|---|---|---|
+| `template` | None | `template`, `link_doctype: Item` |
+| `item` | Template if grouped | `item_code`, `link_doctype: Item` |
+| `supplier` | Item or component | `item_code`, `supplier`, `link_doctype: Supplier`, `is_placeholder: 0`, `matched_supplier` |
+| `placeholder` | Item or component | `item_code`, `is_placeholder: 1`, `tree_label: No supplier recorded` |
+| `bom` | Item or component | `bom_no`, `bom_is_default` (0/1), `bom_status` (`Submitted` or `Draft`), `component_count`, `component_supplier_count`, `tree_label` |
+| `component` | BOM | `item_code`, `item_name`, `bom_no` (parent BOM), `bom_item_idx`, `bom_item_id`, `bom_qty_per_unit`, `stock_uom`, `include_in_manufacturing` (0/1), `used_in_bom_count`, `balance_qty`, `projected_qty`, `last_purchase_date`, `supplier_count` |
 
-`<len>` is the length of the item code. The placeholder has blank cells in
-the other report columns. Desk styles its label as muted text so the item
-still has an expandable child. The app skips the child and shows **No supplier
-recorded** on the item itself.
+An item or component lists its own suppliers first, or one **No supplier
+recorded** placeholder, then its BOM groups. The default submitted BOM comes
+first, followed by other submitted BOMs by name, then active draft BOMs by name
+when drafts are included. Inactive and cancelled BOMs are excluded. A BOM row's
+`component_count` counts its direct lines, including duplicate items, and
+`component_supplier_count` counts distinct suppliers across the full branch.
+`used_in_bom_count` counts distinct active BOMs using the component under the
+current drafts setting. Expansion stops at a repeated item on the current path
+(`bom_cycle: 1`) or after 10 BOM levels (`bom_depth_limit: 1` when the component
+has a further qualifying BOM).
 
-For `variant_of=["ACP-25"]`, the template `template:ACP-25` contains
-`item:2002492` with placeholder `none:7:2002492` and `item:2002506` with supplier
-`supplier:7:2002506:KANG KAI`.
+Top-level keys retain the v6 formats `template:<template_code>`,
+`item:<item_code>`, `supplier:<len>:<item_code>:<supplier>`, and
+`none:<len>:<item_code>`, where `<len>` is the length of the item code. BOM and
+component supplier keys include the parent node and their own key. Component
+keys also include the BOM line position and ID so repeated items each have a
+unique tree position. Component placeholder keys use `none:<component_node>`.
+BOM groups and every descendant carry `is_component: 1`. With expansion on,
+top-level rows carry `is_component: 0`. With expansion off, rows preserve the
+v6 payload and omit `is_component`.
+
+For example, the production result for `items=["3000339"]` with expansion on
+includes `BOM-3000339-001` under Item `3000339`, after the item's supplier
+placeholder. Its two components are `2002999` (JOAP) and `2002906` (PING HAI),
+each with a quantity of 360 Nos per unit. With drafts enabled, Item `3000338`
+has `BOM-3000338-001` with a component `3000281` that expands draft
+`BOM-3000281-001` to show `1004879` (EDGE) and `1004722` (BOVIS).
 
 ## 5. App screens
 
 - **Buying → Reports → Suppliers by Item** opens the full report. The filter
-  sheet has an **Include draft purchase orders** switch that defaults to on.
-  Its helper reads “Suppliers that appear only on draft purchase orders are
-  hidden when off.” Item and template rows show available balance and projected
-  quantities, and show positive reorder levels. When projected quantity is
-  below a positive reorder level, they show an orange **Below reorder level**
-  flag. Supplier rows show a red **Disabled** or orange **On Hold** chip when
-  applicable, positive open and draft quantities, available lead time and
-  receipt-line sample size, and available PO and receipt counts. Rows that match
-  the Suppliers filter remain emphasized. The footer groups balance, projected
-  and open order quantities by stock UOM, summing item rows only.
+  sheet shows **Include draft purchase orders** (on by default) and **Expand
+  BOM components** (off by default). The BOM switch helper reads “Shows what
+  each item is made from and who supplies those components.” BOM groups expand
+  to show their components. Draft BOMs carry a **Draft** chip. Component rows
+  show the item code and name, quantity per unit, balance, BOM usage and a muted
+  **Not used in manufacturing** note when applicable. The list caps visual
+  indentation on deep branches and labels their depth. Supplier rows use the
+  same status, purchase history, and selected-supplier treatment at every depth.
+  Item and template rows show available balance and projected quantities and
+  positive reorder levels. They flag projected quantities below a positive
+  reorder level. Supplier rows show applicable **Disabled** or **On Hold**
+  chips, positive open and draft quantities, available lead time and receipt-line
+  sample size, and available PO and receipt counts.
+  The footer totals balance, projected and open order quantities by stock UOM
+  using top-level item rows, with component activity excluded from totals and
+  direct item supplier counts.
   [Report screen](../lib/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart)
-- **Item → Overview → Suppliers** runs with `items=[itemCode]` for an item or
-  `variant_of=[itemCode]` for a template. It shows available item balance and
+- **Item → Overview → Suppliers** runs with `items=[itemCode]` and
+  `expand_bom=1`. For a template it also sends `variant_of=[itemCode]` to
+  collect its variants' suppliers. The card shows available item balance and
   projected quantities, and displays applicable status chips, positive open
   order quantities and available lead times for each supplier. A template
   groups each supplier's open orders by stock UOM and weights lead times by
   the number of receipt lines. If a sample count is missing, it shows the
-  available lead times by variant. **View full report** opens the report with
-  the same item or template selection.
+  available lead times by variant. When the current item has BOMs, **Made from
+  (BOM)** shows direct components and their supplier names under each BOM.
+  **View full report** opens with `items=[itemCode]` and `expand_bom=1` when
+  the card shows BOMs. Otherwise it opens with the item or template selection
+  and expansion off.
   [Item Overview](../lib/app/modules/item/form/item_form_screen.dart)
   [Suppliers card](../lib/app/modules/item/form/widgets/item_suppliers_card.dart)
 
-The full report shows an available rate with its currency, source and date. Both screens
-use `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
+The full report shows an available rate with its currency, source and date. Both
+screens use `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
 `/api/method/frappe.desk.query_report.run` with `report_name=Suppliers by Item`,
 a JSON `filters` field, `ignore_prepared_report=true` and
 `are_default_filters=false`. The JSON carries selections from `items`,
-`variant_of`, `suppliers` and `warehouses`, plus numeric `include_drafts` (`1`
-on, `0` off). The parser reads the keyed rows in `message.result` and accepts
-null or missing v6 fields on results from older report versions.
+`variant_of`, `suppliers` and `warehouses`, plus numeric `include_drafts` and
+`expand_bom` (`1` on, `0` off). The parser reads the keyed rows in
+`message.result` and accepts missing BOM fields on v6 and older responses.
 [API provider](../lib/app/data/providers/api_provider.dart)
 
 ## 6. Recreate the Report in Desk
-
-Follow these steps once the refreshed Python and JavaScript are available.
 
 1. Open **Report → New** and set the fields below.
 2. Leave the **Columns** and **Filters** child tables empty. The Python script
@@ -172,7 +206,7 @@ Follow these steps once the refreshed Python and JavaScript are available.
 
 ## 7. Report Script (Python)
 
-Deployed v6 source (Report field `report_script`).
+Deployed v7 source (Report field `report_script`).
 
 ```python
 def build_report(filters):
@@ -187,9 +221,40 @@ def build_report(filters):
     suppliers = selected_values("suppliers")
     warehouses = selected_values("warehouses")
     include_drafts = int(filters.get("include_drafts") not in (0, "0"))
+    expand_bom = int(filters.get("expand_bom") in (1, "1"))
+    selected_items = int(bool(items or templates))
+
+    boms_by_item = {}
+    bom_lines = {}
+    used_in_boms = {}
+    if expand_bom:
+        bom_records = frappe.db.sql(
+            """
+            SELECT b.name AS bom_no, b.item AS output_item, b.is_default, b.docstatus,
+                   d.name AS line_id, d.idx, d.item_code, d.item_name, d.stock_uom,
+                   d.stock_qty / NULLIF(b.quantity, 0) AS qty_per_unit,
+                   COALESCE(d.include_item_in_manufacturing, 0) AS include_in_manufacturing
+            FROM `tabBOM` b
+            LEFT JOIN `tabBOM Item` d ON d.parent = b.name
+                AND d.parenttype = 'BOM' AND d.parentfield = 'items'
+            WHERE b.is_active = 1 AND (b.docstatus = 1 OR (%(include_drafts)s = 1 AND b.docstatus = 0))
+            ORDER BY b.item, b.docstatus DESC,
+                     CASE WHEN b.docstatus = 1 THEN b.is_default ELSE 0 END DESC,
+                     b.name, d.idx, d.name
+            """,
+            {"include_drafts": include_drafts},
+            as_dict=True,
+        )
+        for record in bom_records:
+            if record.bom_no not in bom_lines:
+                bom_lines[record.bom_no] = []
+                boms_by_item.setdefault(record.output_item, []).append(record)
+            if record.line_id is not None:
+                bom_lines[record.bom_no].append(record)
+                used_in_boms.setdefault(record.item_code, set()).add(record.bom_no)
 
     parameters = {
-        "selected_items": int(bool(items or templates)),
+        "selected_items": selected_items,
         "items": items or (None,),
         "templates": templates or (None,),
         "by_supplier": int(bool(suppliers)),
@@ -197,6 +262,9 @@ def build_report(filters):
         "by_warehouse": int(bool(warehouses)),
         "warehouses": warehouses or (None,),
         "include_drafts": include_drafts,
+        "expand_bom": expand_bom,
+        "bom_items": tuple(boms_by_item) or (None,),
+        "component_items": tuple(used_in_boms) or (None,),
     }
 
     rows = frappe.db.sql(
@@ -212,11 +280,14 @@ def build_report(filters):
         target AS (
             SELECT i.name AS item_code, i.item_name, i.stock_uom,
                    CASE WHEN t.disabled = 0 THEN t.name END AS template_code,
-                   t.item_name AS template_name
+                   t.item_name AS template_name,
+                   (i.disabled = 0 AND (%(selected_items)s = 0 OR i.name IN %(items)s
+                       OR i.variant_of IN %(templates)s)) AS is_top_level
             FROM `tabItem` i
             LEFT JOIN `tabItem` t ON t.name = i.variant_of AND t.has_variants = 1
-            WHERE i.disabled = 0
-              AND (%(selected_items)s = 0 OR i.name IN %(items)s OR i.variant_of IN %(templates)s)
+            WHERE (i.disabled = 0
+              AND (%(selected_items)s = 0 OR i.name IN %(items)s OR i.variant_of IN %(templates)s))
+               OR i.name IN %(component_items)s
         ),
         balances AS (
             SELECT b.item_code, SUM(b.actual_qty) AS balance_qty, SUM(b.projected_qty) AS projected_qty
@@ -414,7 +485,7 @@ def build_report(filters):
                 AND h.docstatus = 1 AND h.supplier = r.supplier
             GROUP BY r.item_code, r.supplier
         )
-        SELECT t.item_code, t.item_name, t.stock_uom, t.template_code, t.template_name,
+        SELECT t.item_code, t.item_name, t.stock_uom, t.template_code, t.template_name, t.is_top_level,
                COALESCE(b.balance_qty, 0) AS balance_qty,
                COALESCE(b.projected_qty, 0) AS projected_qty,
                COALESCE(reorder.reorder_level, 0) AS reorder_level,
@@ -452,8 +523,9 @@ def build_report(filters):
             ON rate.item_code = t.item_code AND rate.supplier = s.supplier AND rate.rn = 1
         LEFT JOIN order_stats o ON o.item_code = t.item_code AND o.supplier = s.supplier
         LEFT JOIN receipt_stats stats ON stats.item_code = t.item_code AND stats.supplier = s.supplier
-        WHERE (%(selected_items)s = 1 OR s.supplier IS NOT NULL)
-          AND (%(by_supplier)s = 0 OR t.item_code IN (
+        WHERE (%(selected_items)s = 1 OR s.supplier IS NOT NULL
+               OR t.item_code IN %(bom_items)s OR t.item_code IN %(component_items)s)
+          AND (%(expand_bom)s = 1 OR %(by_supplier)s = 0 OR t.item_code IN (
               SELECT item_code FROM links WHERE supplier IN %(suppliers)s
           ))
         ORDER BY COALESCE(t.template_code, t.item_code), t.template_code IS NOT NULL,
@@ -464,7 +536,7 @@ def build_report(filters):
     )
 
     fields = [
-        ("tree_label", "Item / Supplier", "Dynamic Link", "link_doctype", 240),
+        ("tree_label", "Item / Supplier", "Dynamic Link", "link_doctype", 390 if expand_bom else 240),
         ("item_name", "Item Name", "Data", None, 220),
         ("balance_qty", "Balance Qty", "Float", None, 110),
         ("projected_qty", "Projected Qty", "Float", None, 115),
@@ -493,14 +565,17 @@ def build_report(filters):
         ("last_po_date", "Last PO Date", "Date", None, 120),
         ("supplier_count", "Supplier Count", "Int", None, 115),
     ]
+    if expand_bom:
+        fields.insert(2, ("bom_qty_per_unit", "BOM Qty per Unit", "Float", None, 135))
     columns = []
-    for fieldname, label, fieldtype, options, width in fields:
+    for field in fields:
+        fieldname = field[0]
         column = {
             "fieldname": fieldname,
-            "label": _(label),
-            "fieldtype": fieldtype,
-            "options": options,
-            "width": width,
+            "label": _(field[1]),
+            "fieldtype": field[2],
+            "options": field[3],
+            "width": field[4],
         }
         if fieldname == "balance_qty":
             column["description"] = _(
@@ -520,6 +595,167 @@ def build_report(filters):
         if fieldname == "lead_time_days":
             column["precision"] = 1
         columns.append(column)
+
+    def make_placeholder(item_code, node_id, parent_id, indent):
+        placeholder = {column["fieldname"]: None for column in columns}
+        placeholder.update({
+            "node_id": node_id,
+            "parent_id": parent_id,
+            "row_type": "placeholder",
+            "indent": indent,
+            "tree_label": _("No supplier recorded"),
+            "item_code": item_code,
+            "is_placeholder": 1,
+        })
+        return placeholder
+
+    def make_supplier(row, node_id, parent_id, indent):
+        return {
+            "node_id": node_id,
+            "parent_id": parent_id,
+            "row_type": "supplier",
+            "indent": indent,
+            "is_placeholder": 0,
+            "tree_label": row.supplier,
+            "link_doctype": "Supplier",
+            "item_code": row.item_code,
+            "supplier": row.supplier,
+            "matched_supplier": row.matched_supplier,
+            "balance_qty": None,
+            "projected_qty": None,
+            "reorder_level": None,
+            "reorder_qty": None,
+            "supplier_name": row.supplier_name,
+            "supplier_status": row.supplier_status,
+            "supplier_part_number": row.supplier_part_number,
+            "sources": row.sources,
+            "open_order_qty": row.open_order_qty,
+            "draft_order_qty": row.draft_order_qty,
+            "lead_time_days": row.lead_time_days,
+            "lead_time_receipts": row.lead_time_receipts,
+            "po_count": row.po_count,
+            "receipt_count": row.receipt_count,
+            "last_purchase_date": row.last_purchase_date,
+            "last_purchase_receipt": row.last_purchase_receipt,
+            "last_rate": row.last_rate,
+            "rate_source": row.rate_source,
+            "rate_date": row.rate_date,
+            "rate_document": row.rate_document,
+            "currency": row.currency,
+            "rate_uom": row.rate_uom,
+            "total_qty_received": row.total_qty_received,
+            "stock_uom": row.stock_uom,
+            "last_po_date": row.last_po_date,
+        }
+
+    def path_node(row_type, parent_id, key):
+        return row_type + ":" + str(len(parent_id)) + ":" + parent_id + "|" + key
+
+    def append_boms(item_code, item_id, indent, path, depth, output):
+        all_suppliers = set()
+        matched = False
+        for bom in boms_by_item.get(item_code, ()):
+            bom_id = path_node("bom", item_id, bom.bom_no)
+            lines = bom_lines[bom.bom_no]
+            label = bom.bom_no
+            if bom.docstatus == 1 and bom.is_default:
+                label = label + " · " + _("default")
+            label = label + " · " + str(len(lines)) + " " + _("component" if len(lines) == 1 else "components")
+            if bom.docstatus == 0:
+                label = label + " · " + _("draft")
+            bom_row = {
+                "node_id": bom_id,
+                "parent_id": item_id,
+                "row_type": "bom",
+                "is_component": 1,
+                "indent": indent + 1,
+                "tree_label": label,
+                "bom_no": bom.bom_no,
+                "bom_is_default": int(bool(bom.is_default)),
+                "bom_status": "Submitted" if bom.docstatus == 1 else "Draft",
+                "component_count": len(lines),
+            }
+            output.append(bom_row)
+            bom_suppliers = set()
+            for line in lines:
+                code = line.item_code or ""
+                line_key = str(line.idx) + "|" + str(len(code)) + ":" + code + "|" + line.line_id
+                component_id = path_node("component", bom_id, line_key)
+                detail = rows_by_item.get(code, ())
+                first = detail[0] if detail else None
+                supplier_rows = detail if first and first.supplier else ()
+                component = {
+                    "node_id": component_id,
+                    "parent_id": bom_id,
+                    "row_type": "component",
+                    "is_component": 1,
+                    "indent": indent + 2,
+                    "tree_label": code,
+                    "link_doctype": "Item",
+                    "item_code": code,
+                    "item_name": first.item_name if first else line.item_name,
+                    "bom_no": bom.bom_no,
+                    "bom_item_idx": line.idx,
+                    "bom_item_id": line.line_id,
+                    "bom_qty_per_unit": line.qty_per_unit,
+                    "stock_uom": line.stock_uom or (first.stock_uom if first else None),
+                    "include_in_manufacturing": int(bool(line.include_in_manufacturing)),
+                    "used_in_bom_count": len(used_in_boms[line.item_code]),
+                    "balance_qty": first.balance_qty if first else 0,
+                    "projected_qty": first.projected_qty if first else 0,
+                    "last_purchase_date": first.last_purchase_date if first else None,
+                    "supplier_count": len(supplier_rows),
+                }
+                output.append(component)
+                if supplier_rows:
+                    for detail_row in supplier_rows:
+                        supplier_id = path_node("supplier", component_id, detail_row.supplier)
+                        child = make_supplier(detail_row, supplier_id, component_id, indent + 3)
+                        child["is_component"] = 1
+                        output.append(child)
+                        bom_suppliers.add(detail_row.supplier)
+                        matched = matched or bool(detail_row.matched_supplier)
+                else:
+                    child = make_placeholder(code, "none:" + component_id, component_id, indent + 3)
+                    child["is_component"] = 1
+                    output.append(child)
+                if code in path:
+                    component["bom_cycle"] = 1
+                elif depth >= 10:
+                    if code in boms_by_item:
+                        component["bom_depth_limit"] = 1
+                elif code in boms_by_item:
+                    nested_result = append_boms(
+                        code, component_id, indent + 2, path + (code,), depth + 1, output
+                    )
+                    bom_suppliers.update(nested_result[0])
+                    matched = matched or nested_result[1]
+            bom_row["component_supplier_count"] = len(bom_suppliers)
+            all_suppliers.update(bom_suppliers)
+        return all_suppliers, matched
+
+    rows_by_item = {}
+    bom_rows_by_item = {}
+    if expand_bom:
+        for row in rows:
+            rows_by_item.setdefault(row.item_code, []).append(row)
+        shown_items = set()
+        for code in rows_by_item:
+            detail = rows_by_item[code]
+            first = detail[0]
+            if not first.is_top_level or not (selected_items or first.supplier or code in boms_by_item):
+                continue
+            matched = any(row.matched_supplier for row in detail)
+            if code in boms_by_item:
+                bom_rows = []
+                component_match = append_boms(
+                    code, "item:" + code, int(bool(first.template_code)), (code,), 1, bom_rows
+                )[1]
+                matched = matched or component_match
+                bom_rows_by_item[code] = bom_rows
+            if not suppliers or matched:
+                shown_items.add(code)
+        rows = [row for row in rows if row.item_code in shown_items]
 
     result_rows = []
     template_rows = {}
@@ -583,17 +819,8 @@ def build_report(filters):
                     template_row[fieldname] = template_row[fieldname] + row[fieldname]
             result_rows.append(item_row)
             if not row.supplier:
-                placeholder = {column["fieldname"]: None for column in columns}
-                placeholder.update({
-                    "node_id": "none:" + str(len(item_code)) + ":" + item_code,
-                    "parent_id": item_id,
-                    "row_type": "placeholder",
-                    "indent": item_row["indent"] + 1,
-                    "tree_label": _("No supplier recorded"),
-                    "item_code": item_code,
-                    "is_placeholder": 1,
-                })
-                result_rows.append(placeholder)
+                placeholder_id = "none:" + str(len(item_code)) + ":" + item_code
+                result_rows.append(make_placeholder(item_code, placeholder_id, item_id, item_row["indent"] + 1))
         if row.supplier:
             item_row = item_rows[item_id]
             qty = row.total_qty_received
@@ -605,56 +832,33 @@ def build_report(filters):
                     if template_row is not None and template_row[fieldname] is not None:
                         template_row[fieldname] = template_row[fieldname] + row[fieldname]
             if template_row is not None:
-                suppliers = template_suppliers[template_id]
-                suppliers.add(row.supplier)
-                template_row["supplier_count"] = len(suppliers)
+                supplier_set = template_suppliers[template_id]
+                supplier_set.add(row.supplier)
+                template_row["supplier_count"] = len(supplier_set)
                 template_row["total_qty_received"] = template_row["total_qty_received"] + qty
-            result_rows.append({
-                "node_id": "supplier:" + str(len(item_code)) + ":" + item_code + ":" + row.supplier,
-                "parent_id": item_id,
-                "row_type": "supplier",
-                "indent": item_row["indent"] + 1,
-                "is_placeholder": 0,
-                "tree_label": row.supplier,
-                "link_doctype": "Supplier",
-                "item_code": item_code,
-                "supplier": row.supplier,
-                "matched_supplier": row.matched_supplier,
-                "balance_qty": None,
-                "projected_qty": None,
-                "reorder_level": None,
-                "reorder_qty": None,
-                "supplier_name": row.supplier_name,
-                "supplier_status": row.supplier_status,
-                "supplier_part_number": row.supplier_part_number,
-                "sources": row.sources,
-                "open_order_qty": row.open_order_qty,
-                "draft_order_qty": row.draft_order_qty,
-                "lead_time_days": row.lead_time_days,
-                "lead_time_receipts": row.lead_time_receipts,
-                "po_count": row.po_count,
-                "receipt_count": row.receipt_count,
-                "last_purchase_date": row.last_purchase_date,
-                "last_purchase_receipt": row.last_purchase_receipt,
-                "last_rate": row.last_rate,
-                "rate_source": row.rate_source,
-                "rate_date": row.rate_date,
-                "rate_document": row.rate_document,
-                "currency": row.currency,
-                "rate_uom": row.rate_uom,
-                "total_qty_received": qty,
-                "stock_uom": row.stock_uom,
-                "last_po_date": row.last_po_date,
-            })
+            supplier_id = "supplier:" + str(len(item_code)) + ":" + item_code + ":" + row.supplier
+            result_rows.append(make_supplier(row, supplier_id, item_id, item_row["indent"] + 1))
+    if expand_bom:
+        expanded_rows = []
+        pending_boms = ()
+        for row in result_rows:
+            if row["row_type"] in ("template", "item"):
+                expanded_rows.extend(pending_boms)
+                pending_boms = bom_rows_by_item.get(row.get("item_code"), ())
+            row["is_component"] = 0
+            expanded_rows.append(row)
+        expanded_rows.extend(pending_boms)
+        result_rows = expanded_rows
     return columns, result_rows
 
 
 data = build_report(filters)
+
 ```
 
 ## 8. Report JavaScript
 
-Deployed v6 source (Report field `javascript`).
+Deployed v7 source (Report field `javascript`).
 
 ```javascript
 frappe.query_reports["Suppliers by Item"] = {
@@ -675,6 +879,14 @@ frappe.query_reports["Suppliers by Item"] = {
 		if (data?.is_placeholder && column.fieldname === "tree_label") {
 			return `<em class="text-muted">${frappe.utils.escape_html(value)}</em>`;
 		}
+		if (data?.row_type === "bom" && column.fieldname === "tree_label") {
+			const label = frappe.utils.escape_html(value);
+			const hasPrefix = label.startsWith("BOM-");
+			const prefix = hasPrefix ? "BOM" : __("BOM");
+			const name = hasPrefix ? label.slice(3) : ` · ${label}`;
+			const emphasis = data.bom_status === "Draft" ? ' class="text-muted"' : "";
+			return `<strong${emphasis}><span class="text-muted">${prefix}</span>${name}</strong>`;
+		}
 		if (
 			[
 				"balance_qty",
@@ -687,6 +899,7 @@ frappe.query_reports["Suppliers by Item"] = {
 				"lead_time_receipts",
 				"po_count",
 				"receipt_count",
+				"bom_qty_per_unit",
 			].includes(column.fieldname) && data?.[column.fieldname] == null
 		) {
 			return "";
@@ -695,6 +908,13 @@ frappe.query_reports["Suppliers by Item"] = {
 			return `<span class="indicator-pill orange">${frappe.utils.escape_html(value)}</span>`;
 		}
 		const formatted = default_formatter(value, row, column, data);
+		if (column.fieldname === "tree_label" && data?.row_type === "component") {
+			const notes = [];
+			if (data.include_in_manufacturing === 0) notes.push(__("not used in manufacturing"));
+			if (data.bom_cycle) notes.push(__("cycle"));
+			if (data.bom_depth_limit) notes.push(__("BOM depth limit reached"));
+			if (notes.length) return `${formatted} <span class="text-muted">· ${notes.join(" · ")}</span>`;
+		}
 		if (column.fieldname === "tree_label" && data?.row_type === "supplier" && data.matched_supplier) {
 			return `<strong>${formatted}</strong>`;
 		}
@@ -733,7 +953,9 @@ frappe.query_reports["Suppliers by Item"] = {
 			label: __("Suppliers"),
 			fieldtype: "MultiSelectList",
 			options: "Supplier",
-			description: __("Shows items bought from these suppliers, with all of each item's suppliers."),
+			description: __(
+				"Matches suppliers linked to the item and, when BOM expansion is enabled, its components. All suppliers are shown."
+			),
 			get_data(txt) {
 				return frappe.db.get_link_options("Supplier", txt);
 			},
@@ -755,6 +977,12 @@ frappe.query_reports["Suppliers by Item"] = {
 			label: __("Include Draft Purchase Orders"),
 			fieldtype: "Check",
 			default: 1,
+		},
+		{
+			fieldname: "expand_bom",
+			label: __("Expand BOM components"),
+			fieldtype: "Check",
+			default: 0,
 		},
 	],
 };

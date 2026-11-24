@@ -11,14 +11,16 @@ import 'package:multimax/app/modules/global_widgets/supplier_status_pill.dart';
 class ItemSuppliersCard extends StatefulWidget {
   const ItemSuppliersCard({
     super.key,
+    required this.itemCode,
     required this.isTemplate,
     required this.loadReport,
     required this.onViewReport,
   });
 
+  final String itemCode;
   final bool isTemplate;
   final Future<List<SuppliersByItemNode>> Function() loadReport;
-  final VoidCallback onViewReport;
+  final ValueChanged<bool> onViewReport;
 
   @override
   State<ItemSuppliersCard> createState() => _ItemSuppliersCardState();
@@ -44,10 +46,13 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
           return const SizedBox.shrink();
         }
 
+        final isLoading = snapshot.connectionState != ConnectionState.done;
+        final nodes = snapshot.data ?? const [];
+        final boms = _itemBoms(nodes).toList();
         return DocSectionCard(
           title: 'Suppliers',
           children: [
-            if (snapshot.connectionState != ConnectionState.done)
+            if (isLoading)
               const LinearProgressIndicator()
             else if (snapshot.hasError)
               FormEmptyState(
@@ -59,15 +64,98 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
                   child: const Text('Retry'),
                 ),
               )
-            else
-              ..._buildReportRows(context, snapshot.data ?? const []),
+            else ...[
+              ..._buildReportRows(context, nodes),
+              if (boms.isNotEmpty) ..._buildBomSection(context, boms),
+            ],
             TextButton(
-              onPressed: widget.onViewReport,
+              onPressed: isLoading
+                  ? null
+                  : () => widget.onViewReport(boms.isNotEmpty),
               child: const Text('View full report'),
             ),
           ],
         );
       },
+    );
+  }
+
+  Iterable<SuppliersByItemNode> _itemBoms(List<SuppliersByItemNode> nodes) =>
+      nodes
+          .expand(
+            (node) => node.row.kind == SuppliersByItemRowKind.template
+                ? node.children
+                : [node],
+          )
+          .where(
+            (node) =>
+                node.row.kind == SuppliersByItemRowKind.item &&
+                node.row.itemCode == widget.itemCode,
+          )
+          .expand((node) => node.children)
+          .where((node) => node.row.kind == SuppliersByItemRowKind.bom);
+
+  List<Widget> _buildBomSection(
+    BuildContext context,
+    List<SuppliersByItemNode> boms,
+  ) {
+    final textTheme = Theme.of(context).textTheme;
+    return [
+      const Divider(),
+      Text('Made from (BOM)', style: textTheme.titleSmall),
+      for (final bom in boms) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            [
+              bom.row.bomNo ?? bom.row.treeLabel,
+              if (bom.row.bomIsDefault && bom.row.bomStatus != 'Draft')
+                'default',
+              if (bom.row.bomStatus == 'Draft') 'Draft',
+            ].join(' · '),
+            style: textTheme.labelLarge,
+          ),
+        ),
+        for (final component in bom.children)
+          if (component.row.kind == SuppliersByItemRowKind.component)
+            _buildBomComponent(context, component),
+      ],
+    ];
+  }
+
+  Widget _buildBomComponent(
+    BuildContext context,
+    SuppliersByItemNode component,
+  ) {
+    final row = component.row;
+    final itemCode = row.itemCode ?? row.treeLabel;
+    final componentLabel = [
+      itemCode,
+      if (row.itemName != itemCode) ?row.itemName,
+    ].join(' · ');
+    final textTheme = Theme.of(context).textTheme;
+    final supplierNames = {
+      for (final child in component.children)
+        if (child.row.kind == SuppliersByItemRowKind.supplier)
+          if ((child.row.supplierName ?? child.row.supplier) case final name?)
+            name,
+    };
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: 12, top: 4, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(componentLabel),
+          Text(
+            supplierNames.isEmpty
+                ? 'No supplier recorded'
+                : supplierNames.join(', '),
+            style: textTheme.bodySmall?.copyWith(
+              color: context.scheme.textMuted,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -80,7 +168,7 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
         : SuppliersByItemRowKind.item;
     SuppliersByItemRow? stockRow;
     final suppliers = <String, List<SuppliersByItemRow>>{};
-    for (final row in _reportRows(nodes)) {
+    for (final row in _summaryRows(nodes)) {
       if (row.kind == stockKind) {
         stockRow ??= row;
       } else if (row.kind == SuppliersByItemRowKind.supplier) {
@@ -196,12 +284,22 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
       'Lead time: ${days.toStringAsFixed(1)} days'
       '${receipts == null ? '' : ' ($receipts receipts)'}';
 
-  Iterable<SuppliersByItemRow> _reportRows(
+  Iterable<SuppliersByItemRow> _summaryRows(
     List<SuppliersByItemNode> nodes,
   ) sync* {
     for (final node in nodes) {
-      yield node.row;
-      yield* _reportRows(node.children);
+      final row = node.row;
+      final isTemplateItem =
+          widget.isTemplate &&
+          row.kind == SuppliersByItemRowKind.item &&
+          row.itemCode == widget.itemCode;
+      if (row.isComponent ||
+          row.kind == SuppliersByItemRowKind.bom ||
+          isTemplateItem) {
+        continue;
+      }
+      yield row;
+      yield* _summaryRows(node.children);
     }
   }
 }

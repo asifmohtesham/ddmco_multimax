@@ -229,16 +229,19 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     }
   }
 
-  SuppliersByItemFilters suppliersFiltersFor(Item item) => item.hasVariants
-      ? SuppliersByItemFilters(variantOf: [item.itemCode])
-      : SuppliersByItemFilters(items: [item.itemCode]);
+  Future<List<SuppliersByItemNode>> loadSuppliers(Item item) =>
+      _apiProvider.runSuppliersByItem(
+        SuppliersByItemFilters(
+          items: [item.itemCode],
+          variantOf: item.hasVariants ? [item.itemCode] : const [],
+          expandBom: true,
+        ),
+      );
 
-  Future<List<SuppliersByItemNode>> loadSuppliers(
-    SuppliersByItemFilters filters,
-  ) =>
-      _apiProvider.runSuppliersByItem(filters);
-
-  void openSuppliersReport(SuppliersByItemFilters filters) {
+  void openSuppliersReport(Item item, {required bool expandBom}) {
+    final filters = item.hasVariants && !expandBom
+        ? SuppliersByItemFilters(variantOf: [item.itemCode])
+        : SuppliersByItemFilters(items: [item.itemCode], expandBom: expandBom);
     Get.toNamed(AppRoutes.SUPPLIERS_BY_ITEM, arguments: filters);
   }
 

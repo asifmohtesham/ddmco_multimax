@@ -75,66 +75,80 @@ void main() {
     addTearDown(() => api.dio.close(force: true));
   });
 
-  test('posts selected links and includes drafts by default', () async {
-    await controller.run(
-      filters: const SuppliersByItemFilters(
-        items: ['ITEM-1', 'ITEM-2'],
-        variantOf: ['TEMPLATE-1'],
-        suppliers: ['SUP-1', 'SUP-2'],
-        warehouses: ['Stores - MM'],
-      ),
-    );
+  test(
+    'posts selected links with drafts on and BOM expansion off by default',
+    () async {
+      await controller.run(
+        filters: const SuppliersByItemFilters(
+          items: ['ITEM-1', 'ITEM-2'],
+          variantOf: ['TEMPLATE-1'],
+          suppliers: ['SUP-1', 'SUP-2'],
+          warehouses: ['Stores - MM'],
+        ),
+      );
 
-    final request = adapter.requests.single;
-    expect(request.method, 'POST');
-    expect(request.path, '/api/method/frappe.desk.query_report.run');
-    expect(request.queryParameters, isEmpty);
-    final body = adapter.bodies.single;
-    expect(
-      body.keys,
-      unorderedEquals([
-        'report_name',
-        'filters',
-        'ignore_prepared_report',
-        'are_default_filters',
-      ]),
-    );
-    expect(body['report_name'], 'Suppliers by Item');
-    expect(jsonDecode(body['filters']!), {
-      'items': ['ITEM-1', 'ITEM-2'],
-      'variant_of': ['TEMPLATE-1'],
-      'suppliers': ['SUP-1', 'SUP-2'],
-      'warehouses': ['Stores - MM'],
-      'include_drafts': 1,
-    });
-    expect(controller.error.value, isNull);
-    expect(controller.activeFilters, {
-      'items': '2 selected',
-      'variant_of': 'TEMPLATE-1',
-      'suppliers': '2 selected',
-      'warehouses': 'Stores - MM',
-    });
-  });
+      final request = adapter.requests.single;
+      expect(request.method, 'POST');
+      expect(request.path, '/api/method/frappe.desk.query_report.run');
+      expect(request.queryParameters, isEmpty);
+      final body = adapter.bodies.single;
+      expect(
+        body.keys,
+        unorderedEquals([
+          'report_name',
+          'filters',
+          'ignore_prepared_report',
+          'are_default_filters',
+        ]),
+      );
+      expect(body['report_name'], 'Suppliers by Item');
+      expect(jsonDecode(body['filters']!), {
+        'items': ['ITEM-1', 'ITEM-2'],
+        'variant_of': ['TEMPLATE-1'],
+        'suppliers': ['SUP-1', 'SUP-2'],
+        'warehouses': ['Stores - MM'],
+        'include_drafts': 1,
+        'expand_bom': 0,
+      });
+      expect(controller.error.value, isNull);
+      expect(controller.activeFilters, {
+        'items': '2 selected',
+        'variant_of': 'TEMPLATE-1',
+        'suppliers': '2 selected',
+        'warehouses': 'Stores - MM',
+      });
+    },
+  );
 
-  test('posts only the draft setting when no links are selected', () async {
+  test('posts only the check filters when no links are selected', () async {
     await controller.run();
     expect(jsonDecode(adapter.bodies.single['filters']!), {
       'include_drafts': 1,
+      'expand_bom': 0,
     });
     expect(controller.activeFilters, isEmpty);
   });
 
-  test('posts drafts off and remembers it on refresh', () async {
+  test('posts drafts off and BOM expansion on, and remembers both', () async {
     await controller.run(
-      filters: const SuppliersByItemFilters(includeDrafts: false),
+      filters: const SuppliersByItemFilters(
+        includeDrafts: false,
+        expandBom: true,
+      ),
     );
     await controller.run();
 
     expect(adapter.bodies, hasLength(2));
     for (final body in adapter.bodies) {
-      expect(jsonDecode(body['filters']!), {'include_drafts': 0});
+      expect(jsonDecode(body['filters']!), {
+        'include_drafts': 0,
+        'expand_bom': 1,
+      });
     }
-    expect(controller.activeFilters, {'include_drafts': 'Off'});
+    expect(controller.activeFilters, {
+      'include_drafts': 'Off',
+      'expand_bom': 'On',
+    });
   });
 
   test(
@@ -191,6 +205,7 @@ void main() {
         'suppliers': ['SUP-1'],
         'warehouses': ['Stores - MM'],
         'include_drafts': 1,
+        'expand_bom': 0,
       });
       expect(controller.error.value, isNull);
     },
@@ -225,6 +240,7 @@ void main() {
     expect(jsonDecode(adapter.bodies.single['filters']!), {
       'variant_of': ['TEMPLATE-1'],
       'include_drafts': 1,
+      'expand_bom': 0,
     });
     expect(preset.nodes.single.row.template, 'TEMPLATE-1');
     expect(preset.error.value, isNull);
@@ -282,7 +298,10 @@ void main() {
     unawaited(
       Get.toNamed<void>(
         AppRoutes.SUPPLIERS_BY_ITEM,
-        arguments: const SuppliersByItemFilters(items: ['ITEM-1']),
+        arguments: const SuppliersByItemFilters(
+          items: ['ITEM-1'],
+          expandBom: true,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -290,7 +309,9 @@ void main() {
     expect(controllers, hasLength(2));
     final second = controllers.last;
     expect(second.filters.value.items, ['ITEM-1']);
+    expect(second.filters.value.expandBom, isTrue);
     expect(first.filters.value.items, isEmpty);
+    expect(first.filters.value.expandBom, isFalse);
 
     Get.back<void>();
     await tester.pumpAndSettle();

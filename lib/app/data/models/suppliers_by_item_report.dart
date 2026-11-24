@@ -5,6 +5,7 @@ class SuppliersByItemFilters {
     this.suppliers = const [],
     this.warehouses = const [],
     this.includeDrafts = true,
+    this.expandBom = false,
   });
 
   final List<String> items;
@@ -12,6 +13,7 @@ class SuppliersByItemFilters {
   final List<String> suppliers;
   final List<String> warehouses;
   final bool includeDrafts;
+  final bool expandBom;
 
   Map<String, List<String>> get linkFilters {
     final links =
@@ -34,6 +36,7 @@ class SuppliersByItemFilters {
   Map<String, Object> toJson() => {
     ...linkFilters,
     'include_drafts': includeDrafts ? 1 : 0,
+    'expand_bom': expandBom ? 1 : 0,
   };
 }
 
@@ -53,7 +56,14 @@ class SuppliersByItemReportException implements Exception {
   String toString() => message;
 }
 
-enum SuppliersByItemRowKind { template, item, supplier }
+enum SuppliersByItemRowKind {
+  template,
+  item,
+  supplier,
+  placeholder,
+  bom,
+  component,
+}
 
 class SuppliersByItemRow {
   SuppliersByItemRow._({
@@ -65,6 +75,8 @@ class SuppliersByItemRow {
     required this.template,
     required this.itemCode,
     required this.supplier,
+    required this.bomNo,
+    required this.isComponent,
     required Map row,
   }) : itemName = _text(row['item_name']),
        supplierName = _text(row['supplier_name']),
@@ -103,7 +115,20 @@ class SuppliersByItemRow {
            _isChecked(row['matched_supplier']),
        stockUom = _text(row['stock_uom']),
        lastPoDate = _text(row['last_po_date']),
-       supplierCount = _number(row['supplier_count'])?.toInt();
+       supplierCount = _number(row['supplier_count'])?.toInt(),
+       bomIsDefault = _isChecked(row['bom_is_default']),
+       bomStatus = _text(row['bom_status']),
+       componentCount = _number(row['component_count'])?.toInt(),
+       componentSupplierCount = _number(
+         row['component_supplier_count'],
+       )?.toInt(),
+       bomQtyPerUnit = _number(row['bom_qty_per_unit']),
+       includeInManufacturing = row['include_in_manufacturing'] == null
+           ? null
+           : _isChecked(row['include_in_manufacturing']),
+       usedInBomCount = _number(row['used_in_bom_count'])?.toInt(),
+       bomCycle = _isChecked(row['bom_cycle']),
+       bomDepthLimit = _isChecked(row['bom_depth_limit']);
 
   final SuppliersByItemRowKind kind;
   final String nodeId;
@@ -141,6 +166,17 @@ class SuppliersByItemRow {
   final String? stockUom;
   final String? lastPoDate;
   final int? supplierCount;
+  final bool isComponent;
+  final String? bomNo;
+  final bool bomIsDefault;
+  final String? bomStatus;
+  final int? componentCount;
+  final int? componentSupplierCount;
+  final num? bomQtyPerUnit;
+  final bool? includeInManufacturing;
+  final int? usedInBomCount;
+  final bool bomCycle;
+  final bool bomDepthLimit;
 
   bool get isBelowReorderLevel {
     final projected = projectedQty;
@@ -149,57 +185,77 @@ class SuppliersByItemRow {
   }
 
   static SuppliersByItemRow? _parse(Map row) {
-    if (_isChecked(row['is_placeholder'])) return null;
     final nodeId = _text(row['node_id']);
     if (nodeId == null) return null;
+    final rowType = _text(row['row_type']);
+    if (rowType == null && _isChecked(row['is_placeholder'])) return null;
     final separator = nodeId.indexOf(':');
-    if (separator < 0) return null;
-    final kind = switch (nodeId.substring(0, separator)) {
+    final kind = switch (rowType ??
+        (separator < 0 ? null : nodeId.substring(0, separator))) {
       'template' => SuppliersByItemRowKind.template,
       'item' => SuppliersByItemRowKind.item,
       'supplier' => SuppliersByItemRowKind.supplier,
+      'placeholder' || 'none' => SuppliersByItemRowKind.placeholder,
+      'bom' => SuppliersByItemRowKind.bom,
+      'component' => SuppliersByItemRowKind.component,
       _ => null,
     };
     if (kind == null) return null;
 
-    final identifier = _text(nodeId.substring(separator + 1));
     final parentId = _text(row['parent_id']);
+    final isComponent = _isChecked(row['is_component']);
+    final hasPathId =
+        isComponent ||
+        kind == SuppliersByItemRowKind.bom ||
+        kind == SuppliersByItemRowKind.component ||
+        (parentId?.startsWith('component:') ?? false);
     final template =
         _text(row['template']) ??
-        (kind == SuppliersByItemRowKind.template
-            ? identifier
-            : _identifier(parentId, 'template:'));
+        (hasPathId
+            ? null
+            : _identifier(
+                kind == SuppliersByItemRowKind.template ? nodeId : parentId,
+                'template:',
+              ));
     final itemCode =
         _text(row['item_code']) ??
-        (kind == SuppliersByItemRowKind.item
-            ? identifier
-            : _identifier(parentId, 'item:'));
+        (hasPathId
+            ? null
+            : _identifier(
+                kind == SuppliersByItemRowKind.item ? nodeId : parentId,
+                'item:',
+              ));
     final supplier =
         _text(row['supplier']) ??
-        (kind == SuppliersByItemRowKind.supplier
-            ? _supplierIdentifier(identifier, itemCode)
+        (!hasPathId && kind == SuppliersByItemRowKind.supplier
+            ? _supplierIdentifier(_identifier(nodeId, 'supplier:'), itemCode)
             : null);
+    final bomNo = _text(row['bom_no']);
+    final fallbackLabel = switch (kind) {
+      SuppliersByItemRowKind.placeholder => 'No supplier recorded',
+      SuppliersByItemRowKind.bom => bomNo ?? 'BOM',
+      SuppliersByItemRowKind.component => itemCode ?? 'Component',
+      SuppliersByItemRowKind.supplier when hasPathId => supplier ?? 'Supplier',
+      _ => supplier ?? itemCode ?? template ?? nodeId,
+    };
     final indent =
         _number(row['indent'])?.toInt() ??
         switch (kind) {
           SuppliersByItemRowKind.template => 0,
           SuppliersByItemRowKind.item => parentId == null ? 0 : 1,
-          SuppliersByItemRowKind.supplier => 1,
+          _ => 1,
         };
     return SuppliersByItemRow._(
       kind: kind,
       nodeId: nodeId,
       parentId: parentId,
       indent: indent,
-      treeLabel:
-          _text(row['tree_label']) ??
-          supplier ??
-          itemCode ??
-          template ??
-          nodeId,
+      treeLabel: _text(row['tree_label']) ?? fallbackLabel,
       template: template,
       itemCode: itemCode,
       supplier: supplier,
+      bomNo: bomNo,
+      isComponent: isComponent,
       row: row,
     );
   }
@@ -247,11 +303,18 @@ class SuppliersByItemNode {
   final SuppliersByItemRow row;
   final List<SuppliersByItemNode> children;
 
+  /// Checks the item's own suppliers, or its variants for a template.
   bool get hasSuppliers =>
       row.kind == SuppliersByItemRowKind.supplier ||
-      children.any((child) => child.hasSuppliers);
+      children.any(
+        (child) =>
+            child.row.kind != SuppliersByItemRowKind.bom &&
+            (row.kind == SuppliersByItemRowKind.component ||
+                !child.row.isComponent) &&
+            child.hasSuppliers,
+      );
 
-  /// Sums available quantity fields from item rows with a known stock UOM.
+  /// Sums available quantity fields from top-level items and variants by UOM.
   static Map<String, SuppliersByItemQuantityTotals> quantityTotalsByUom(
     Iterable<SuppliersByItemNode> nodes,
   ) {
@@ -263,6 +326,7 @@ class SuppliersByItemNode {
     void addQuantities(Iterable<SuppliersByItemNode> nodes) {
       for (final node in nodes) {
         final row = node.row;
+        if (row.isComponent) continue;
         if ((row.kind, row.stockUom)
             case (SuppliersByItemRowKind.item, final uom?)
             when row.balanceQty != null ||
@@ -284,7 +348,7 @@ class SuppliersByItemNode {
   }
 
   /// Builds the report tree in server order using the explicit parent IDs.
-  /// Desk-only placeholder rows and non-tree totals are skipped.
+  /// Untyped legacy placeholder rows and non-tree totals are skipped.
   /// Rows with missing parents stay visible.
   static List<SuppliersByItemNode> parseRows(List<dynamic> result) {
     final rows = <String, SuppliersByItemRow>{};
@@ -299,7 +363,13 @@ class SuppliersByItemNode {
       final parent = rows[row.parentId];
       switch ((parent?.kind, row.kind)) {
         case (SuppliersByItemRowKind.template, SuppliersByItemRowKind.item):
-        case (SuppliersByItemRowKind.item, SuppliersByItemRowKind.supplier):
+        case (
+          SuppliersByItemRowKind.item || SuppliersByItemRowKind.component,
+          SuppliersByItemRowKind.supplier ||
+              SuppliersByItemRowKind.placeholder ||
+              SuppliersByItemRowKind.bom,
+        ):
+        case (SuppliersByItemRowKind.bom, SuppliersByItemRowKind.component):
           (children[parent!.nodeId] ??= []).add(row);
         default:
           roots.add(row);
