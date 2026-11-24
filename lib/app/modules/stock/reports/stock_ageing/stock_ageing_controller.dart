@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_cache.dart';
@@ -376,7 +377,7 @@ class StockAgeingController extends GetxController {
       }
     } catch (e) {
       if (isClosed) return;
-      final text = _describe(e);
+      final text = readableReportError(e, reportName: 'Stock Ageing');
       // Keep whatever is on screen; only an empty screen shows the error.
       if (rows.isEmpty) errorMessage.value = text;
       GlobalSnackbar.error(title: 'Report Error', message: text);
@@ -406,17 +407,5 @@ class StockAgeingController extends GetxController {
     fetchedAt.value = snapshot.fetchedAt;
     asOn.value = _defaults['to_date']?.toString() ?? '';
     _rebuildActiveFilters();
-  }
-
-  String _describe(Object e) {
-    if (e is DioException) {
-      final data = e.response?.data;
-      if (data is Map && data['exception'] != null) {
-        return data['exception'].toString().split('\n').first;
-      }
-      return e.message ?? 'Could not reach the server.';
-    }
-    if (e is FormatException) return e.message;
-    return e.toString();
   }
 }

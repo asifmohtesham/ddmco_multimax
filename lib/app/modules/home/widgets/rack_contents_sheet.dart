@@ -118,8 +118,7 @@ class _RackContentsSheetState extends State<RackContentsSheet> {
         _entries = snapshot.entries;
         _itemDetailsFailed = snapshot.itemDetailsFailed;
       });
-    } catch (e, st) {
-      debugPrint('Rack contents for ${widget.rackId} on $date failed: $e\n$st');
+    } catch (e) {
       if (!mounted) return;
       final failure = rackLookupFailure(e);
       setState(() => _loadError =

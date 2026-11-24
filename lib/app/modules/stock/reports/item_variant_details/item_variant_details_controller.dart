@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
@@ -355,13 +356,9 @@ class ItemVariantDetailsController extends GetxController {
       );
     } on FormatException catch (error) {
       reportError.value = error.message;
-    } on DioException catch (error) {
-      final status = error.response?.statusCode;
-      reportError.value = status == null
-          ? 'Could not reach the report server.'
-          : 'The server could not run the report (HTTP $status).';
-    } catch (_) {
-      reportError.value = 'Could not load Item Variant Details.';
+    } catch (error) {
+      reportError.value =
+          readableReportError(error, reportName: 'Item Variant Details');
     } finally {
       hasRun.value = true;
       isLoading.value = false;

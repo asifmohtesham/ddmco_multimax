@@ -1,6 +1,6 @@
-import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_grouping.dart';
 
@@ -139,20 +139,10 @@ class PosDnItemRateController extends GetxController {
         hasRun.value = true;
         errorMessage.value = null;
       }
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      final body = e.response?.data?.toString() ?? '';
-      errorMessage.value = code == 403
-          ? 'You do not have access to this report.'
-          : (code == 404 || body.contains('DoesNotExistError'))
-              ? 'Report not deployed on this instance.'
-              : 'Failed to run report.';
-      GlobalSnackbar.error(
-          title: 'Report Error', message: errorMessage.value!);
     } catch (e) {
-      errorMessage.value = 'Failed to run report.';
-      GlobalSnackbar.error(
-          title: 'Report Error', message: 'POS & DN Item Rate: $e');
+      final message = readableReportError(e, reportName: 'POS & DN Item Rate');
+      errorMessage.value = message;
+      GlobalSnackbar.error(title: 'Report Error', message: message);
     } finally {
       isRunning.value = false;
     }

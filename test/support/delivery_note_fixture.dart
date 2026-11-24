@@ -39,6 +39,17 @@ class _FakeDataWedge extends GetxService implements DataWedgeService {
 class FakeDeliveryNoteApi extends Fake implements ApiProvider {
   final creates = <Map<String, dynamic>>[];
   final pendingRacks = <String, Completer<RackWarehouseLookup>>{};
+  Map<String, dynamic>? existingNote;
+
+  @override
+  Future<Response> getDeliveryNote(String name) async {
+    expectSync(name, existingNote?['name']);
+    return Response(
+      requestOptions: RequestOptions(),
+      statusCode: 200,
+      data: {'data': existingNote},
+    );
+  }
 
   @override
   int get rackWarehouseSession => 0;

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
 import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_logic.dart';
@@ -233,7 +234,7 @@ class EmployeeHoursUtilizationController extends GetxController {
     } catch (e) {
       rows.clear();
       summary.clear();
-      errorMessage.value = readableReportError(e);
+      errorMessage.value = readableReportError(e, reportName: reportName);
     } finally {
       hasRun.value = true;
       isRunning.value = false;

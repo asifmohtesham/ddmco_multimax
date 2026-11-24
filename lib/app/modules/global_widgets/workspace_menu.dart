@@ -214,8 +214,8 @@ Map<String, List<String>> moduleWorkspacesFromRows(List<dynamic> rows) {
   return out;
 }
 
-/// The parts of Desk's boot data (`frappe.boot`) that decide which group
-/// Desk's breadcrumb names for a screen.
+/// The parts of Desk's boot data (`frappe.boot`) used for drawer layout and
+/// report visibility.
 class DeskBoot {
   /// `module_wise_workspaces`: module → public workspaces, oldest first.
   /// The v15 breadcrumb takes the first one.
@@ -242,6 +242,10 @@ class DeskBoot {
   /// User `roles` table is permlevel 1).
   final List<String> roles;
 
+  /// Report names that Desk allows for [userId]. Null means Desk did not
+  /// supply a usable permission map. An empty map explicitly permits none.
+  final Set<String>? allowedReports;
+
   const DeskBoot({
     this.moduleWorkspaces = const {},
     this.sidebars = const {},
@@ -249,6 +253,7 @@ class DeskBoot {
     this.pages = const [],
     this.userId,
     this.roles = const [],
+    this.allowedReports,
   });
 }
 
@@ -340,6 +345,17 @@ Map<String, List<String>> _bootModuleWorkspaces(Map boot) {
   }..removeWhere((_, v) => v.isEmpty);
 }
 
+Set<String>? _reportNames(dynamic reports) {
+  if (reports is! Map) return null;
+  final names = <String>{};
+  for (final e in reports.entries) {
+    final name = e.key;
+    if (name is! String || name.isEmpty || e.value is! Map) return null;
+    names.add(name);
+  }
+  return names;
+}
+
 /// [DeskBoot] from the page Desk serves (`/app` on v15, `/desk` on v16).
 /// `null` when the page carries no boot data (e.g. a login page).
 DeskBoot? deskBootFromHtml(String html) {
@@ -364,6 +380,9 @@ DeskBoot? deskBootFromHtml(String html) {
           for (final r in user['roles'] as List)
             if (r is String && r.isNotEmpty) r,
       ],
+      // Newer Desk builds put the same name-keyed map at the top level.
+      allowedReports: _reportNames(boot['allowed_reports']) ??
+          _reportNames(user is Map ? user['all_reports'] : null),
     );
   } catch (_) {
     return null;
@@ -583,6 +602,28 @@ List<NavGroup> _toGroups(Map<String, Map<String?, List<NavLink>>> groups) => [
               if (s.value.isNotEmpty) NavSection(s.key, s.value),
           ]),
     ];
+
+/// Applies Desk's per-report permissions to the layout for the current session.
+List<NavGroup> filterWorkspaceReports(
+    List<NavGroup> menu, Set<String>? allowedReports) {
+  if (allowedReports == null) return menu;
+  final visible = <NavGroup>[];
+  for (final group in menu) {
+    final sections = <NavSection>[];
+    for (final section in group.sections) {
+      final links = [
+        for (final link in section.links)
+          if (link.linkType != 'Report' || allowedReports.contains(link.linkTo))
+            link,
+      ];
+      if (links.isNotEmpty) sections.add(NavSection(section.label, links));
+    }
+    if (sections.isNotEmpty) {
+      visible.add(NavGroup(group.title, group.icon, sections));
+    }
+  }
+  return visible;
+}
 
 /// Compact, storable form of a menu: `[{t: title, s: [{l: label, k: [keys]}]}]`.
 List<Map<String, dynamic>> menuToJson(List<NavGroup> menu) => [

@@ -118,7 +118,7 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
 
   // ── Details tab ───────────────────────────────────────────────────────────────
 
-  Widget _buildDetailsView(BuildContext context, dynamic note) {
+  Widget _buildDetailsView(BuildContext context, DeliveryNote note) {
     final cs = Theme.of(context).colorScheme;
     final bool isEditable = note.docstatus == 0;
 
@@ -263,6 +263,8 @@ class DeliveryNoteFormScreen extends GetView<DeliveryNoteFormController> {
             title: 'Schedule',
             children: [
               TextFormField(
+                key: ValueKey(note.postingDate),
+                initialValue: note.postingDate,
                 readOnly: true,
                 decoration: const InputDecoration(
                   labelText: 'Posting Date',

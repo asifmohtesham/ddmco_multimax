@@ -3,8 +3,8 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BomSearchController extends GetxController {
   final ApiProvider      _api  = Get.find<ApiProvider>();
@@ -196,7 +196,7 @@ class BomSearchController extends GetxController {
     } catch (e) {
       GlobalSnackbar.error(
         title:   'BOM Search Error',
-        message: 'Failed to run BOM Search: $e',
+        message: readableReportError(e, reportName: 'BOM Search'),
       );
     } finally {
       isLoading.value = false;

@@ -168,7 +168,7 @@ class AuthenticationController extends GetxController {
       }
 
       // Lay the drawer out from this user's Frappe workspaces.
-      unawaited(AppNavDrawerController.instance.loadFor(user.email));
+      unawaited(AppNavDrawerController.instance.loadFor(user.id));
       return SessionCheck.valid;
     } catch (e) {
       printError(info: 'Failed to fetch user details: $e');
@@ -365,6 +365,9 @@ class AuthenticationController extends GetxController {
     // DocTypeGuard, and they must find no session to probe.
     currentUser.value = null;
     isAuthenticated.value = false;
+    if (Get.isRegistered<AppNavDrawerController>()) {
+      Get.find<AppNavDrawerController>().clearSession();
+    }
     if (Get.isRegistered<PermissionService>()) {
       Get.find<PermissionService>().clearCache();
     }

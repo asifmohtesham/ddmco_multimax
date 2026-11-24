@@ -235,7 +235,7 @@ void main() {
     },
   );
 
-  testWidgets('Employee Hours shows the server permission error', (
+  testWidgets('Employee Hours shows a plain permission error', (
     tester,
   ) async {
     _phone(tester);
@@ -251,9 +251,13 @@ void main() {
       'Employee Hours Utilization Based On Timesheet',
     );
     expect(
-      find.text("You don't have permission to get a report on: Timesheet"),
+      find.text(
+        "You don't have permission to run Employee Hours Utilization "
+        'Based On Timesheet. Ask your administrator.',
+      ),
       findsOneWidget,
     );
+    expect(find.textContaining('get a report on:'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

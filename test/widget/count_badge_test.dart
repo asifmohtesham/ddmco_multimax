@@ -12,11 +12,11 @@ void main() {
     expect(find.text('3'), findsOneWidget);
   });
 
-  testWidgets('default variant uses red500 background', (tester) async {
+  testWidgets('default variant uses red700 background', (tester) async {
     await tester.pumpWidget(_host(const CountBadge(count: 1)));
     final box = tester.widget<Container>(
       find.ancestor(of: find.text('1'), matching: find.byType(Container)).first);
-    expect((box.decoration as BoxDecoration).color, AppColors.red500);
+    expect((box.decoration as BoxDecoration).color, AppColors.red700);
   });
 
   testWidgets('muted variant uses scheme.textSubtle background', (tester) async {

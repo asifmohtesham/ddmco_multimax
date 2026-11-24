@@ -108,14 +108,15 @@ class HomeController extends GetxController {
   var userList = <User>[].obs;
   Rx<User?> selectedFilterUser = Rx<User?>(null);
 
-  var activeWorkOrdersCount = 0.obs;
+  // A null count means the statistic is unavailable.
+  final activeWorkOrdersCount = RxnInt();
   final int targetWorkOrders = 12;
 
-  var activeJobCardsCount = 0.obs;
+  final activeJobCardsCount = RxnInt();
   final int targetJobCards = 40;
 
   /// Count of active (is_active = 1) BOMs fetched on dashboard load.
-  var activeBomCount = 0.obs;
+  final activeBomCount = RxnInt();
 
   /// Active WIP Job Card for the session employee (null if none).
   final activeWipJcName      = RxnString();
@@ -621,18 +622,23 @@ class HomeController extends GetxController {
       // BOM count is company-wide (is_active only — not user-scoped).
       const Map<String, dynamic> bomFilters = {'is_active': 1, 'docstatus': 1};
 
-      final results = await Future.wait([
-        _apiProvider.getDocumentCount('Work Order', filters: woFilters),
-        _apiProvider.getDocumentCount('Job Card',   filters: jcFilters),
-        _apiProvider.getDocumentCount('BOM',        filters: bomFilters),
+      final counts = await Future.wait([
+        _fetchDashboardCount('Work Order', woFilters),
+        _fetchDashboardCount('Job Card', jcFilters),
+        _fetchDashboardCount('BOM', bomFilters),
       ]);
 
-      activeWorkOrdersCount.value = _extractCount(results[0]);
-      activeJobCardsCount.value   = _extractCount(results[1]);
-      activeBomCount.value        = _extractCount(results[2]);
+      activeWorkOrdersCount.value = counts[0];
+      activeJobCardsCount.value = counts[1];
+      activeBomCount.value = counts[2];
+
+      if (activeJobCardsCount.value == null) {
+        activeWipJcName.value = null;
+        activeWipJcOperation.value = null;
+      }
 
       await Future.wait([
-        _fetchActiveWipJc(),
+        if (activeJobCardsCount.value != null) _fetchActiveWipJc(),
         fetchUpcomingTodos(),
         fetchActionableCounts(force: true),
       ]);
@@ -642,6 +648,22 @@ class HomeController extends GetxController {
     } finally {
       isLoadingStats.value = false;
       await attendance;
+    }
+  }
+
+  Future<int?> _fetchDashboardCount(
+    String doctype,
+    Map<String, dynamic> filters,
+  ) async {
+    try {
+      final response =
+          await _apiProvider.getDocumentCount(doctype, filters: filters);
+      return _extractCount(response);
+    } catch (e) {
+      if (e is! DioException || e.response?.statusCode != 403) {
+        debugPrint('Error fetching Dashboard count for $doctype: $e');
+      }
+      return null;
     }
   }
 
@@ -716,7 +738,7 @@ class HomeController extends GetxController {
       final responses = await Future.wait(requests);
       final counts = <String, int>{};
       for (var i = 0; i < doctypes.length; i++) {
-        counts[doctypes[i]] = _extractCount(responses[i]);
+        counts[doctypes[i]] = _extractCount(responses[i]) ?? 0;
       }
       _actionableCountCache[key] = counts;
       // Guard against a scope flip landing before this fetch returns.
@@ -1171,8 +1193,7 @@ class HomeController extends GetxController {
         backgroundColor: Colors.transparent,
       );
       return ScanOutcome.ok;
-    } catch (e, st) {
-      debugPrint('Rack look-up for $rackCode failed: $e\n$st');
+    } catch (e) {
       final failure = rackLookupFailure(e);
       GlobalSnackbar.error(title: failure.title, message: failure.message);
       return ScanOutcome.error;
@@ -1573,13 +1594,11 @@ class HomeController extends GetxController {
     }
     return [];
   }
-  int _extractCount(dynamic response) {
-    if (response is Response &&
-        response.statusCode == 200 &&
-        response.data?['message'] is int) {
-      return response.data['message'] as int;
-    }
-    return 0;
+  int? _extractCount(Response response) {
+    final data = response.data;
+    if (response.statusCode != 200 || data is! Map) return null;
+    final count = data['message'];
+    return count is int ? count : null;
   }
 
   void updateActiveScreen(String route) { _updateActiveScreenForRoute(route); }

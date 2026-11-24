@@ -112,12 +112,7 @@ class HomeScreen extends GetView<HomeController> {
                   // 6 ── Today's pulse ────────────────────────────────────────
                   _buildSectionHeader(context, "Today's pulse"),
                   const SizedBox(height: 12),
-                  Obx(() {
-                    if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
-                      return const PulseSkeleton();
-                    }
-                    return _buildPulse(context);
-                  }),
+                  DashboardPulse(controller: controller),
                   const SizedBox(height: 80),
                 ]),
               ),
@@ -259,7 +254,7 @@ class HomeScreen extends GetView<HomeController> {
           operation: controller.activeWipJcOperation.value,
         ));
       }
-      if (wo > 0) {
+      if (wo != null && wo > 0) {
         rows.add(AttentionRow(
           icon: Icons.precision_manufacturing_outlined,
           color: Colors.indigo,
@@ -269,7 +264,7 @@ class HomeScreen extends GetView<HomeController> {
           onTap: controller.goToWorkOrder,
         ));
       }
-      if (jc > 0) {
+      if (jc != null && jc > 0) {
         rows.add(AttentionRow(
           icon: Icons.assignment_ind_outlined,
           color: Colors.deepOrange,
@@ -484,63 +479,6 @@ class HomeScreen extends GetView<HomeController> {
       ));
     }
     return chips;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Today's pulse
-  // ---------------------------------------------------------------------------
-
-  Widget _buildPulse(BuildContext context) {
-    return Column(
-      children: [
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: PulseStat(
-                  title: 'Work Orders',
-                  icon: Icons.precision_manufacturing_outlined,
-                  actual: controller.activeWorkOrdersCount.value,
-                  target: controller.targetWorkOrders,
-                  onTap: controller.goToWorkOrder,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: PulseStat(
-                  title: 'Job Cards',
-                  icon: Icons.assignment_ind_outlined,
-                  actual: controller.activeJobCardsCount.value,
-                  target: controller.targetJobCards,
-                  onTap: controller.goToJobCard,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Obx(() => PerformanceTimelineCard(
-              viewMode: controller.timelineViewMode.value,
-              onToggleView: controller.toggleTimelineView,
-              data: controller.timelineData,
-              isLoading: controller.isLoadingTimeline.value,
-              selectedDate: controller.timelineViewMode.value != 'Weekly'
-                  ? controller.selectedDailyDate.value
-                  : null,
-              selectedRange: controller.timelineViewMode.value == 'Weekly'
-                  ? controller.selectedWeeklyRange.value
-                  : null,
-              onDateChanged: controller.onDailyDateChanged,
-              onRangeChanged: controller.onWeeklyRangeChanged,
-            )),
-        const SizedBox(height: 12),
-        BomCountCard(
-          count: controller.activeBomCount.value,
-          onTap: controller.goToBOM,
-        ),
-      ],
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1463,7 +1401,7 @@ class AttentionRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: color,
+                    color: scheme.text,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -1475,6 +1413,85 @@ class AttentionRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Today's pulse, including the statistics available to the signed-in user.
+class DashboardPulse extends StatelessWidget {
+  const DashboardPulse({super.key, required this.controller});
+
+  final HomeController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (controller.isLoadingStats.value || controller.isLoadingUsers.value) {
+        return const PulseSkeleton();
+      }
+
+      final workOrders = controller.activeWorkOrdersCount.value;
+      final jobCards = controller.activeJobCardsCount.value;
+      final boms = controller.activeBomCount.value;
+      return Column(
+        children: [
+          if (workOrders != null || jobCards != null) ...[
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (workOrders != null)
+                    Expanded(
+                      key: const ValueKey('work-orders'),
+                      child: PulseStat(
+                        title: 'Work Orders',
+                        icon: Icons.precision_manufacturing_outlined,
+                        actual: workOrders,
+                        target: controller.targetWorkOrders,
+                        onTap: controller.goToWorkOrder,
+                      ),
+                    ),
+                  if (workOrders != null && jobCards != null)
+                    const SizedBox(width: 10),
+                  if (jobCards != null)
+                    Expanded(
+                      key: const ValueKey('job-cards'),
+                      child: PulseStat(
+                        title: 'Job Cards',
+                        icon: Icons.assignment_ind_outlined,
+                        actual: jobCards,
+                        target: controller.targetJobCards,
+                        onTap: controller.goToJobCard,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          Obx(() {
+            final viewMode = controller.timelineViewMode.value;
+            return PerformanceTimelineCard(
+              viewMode: viewMode,
+              onToggleView: controller.toggleTimelineView,
+              data: controller.timelineData,
+              isLoading: controller.isLoadingTimeline.value,
+              selectedDate: viewMode != 'Weekly'
+                  ? controller.selectedDailyDate.value
+                  : null,
+              selectedRange: viewMode == 'Weekly'
+                  ? controller.selectedWeeklyRange.value
+                  : null,
+              onDateChanged: controller.onDailyDateChanged,
+              onRangeChanged: controller.onWeeklyRangeChanged,
+            );
+          }),
+          if (boms != null) ...[
+            const SizedBox(height: 12),
+            BomCountCard(count: boms, onTap: controller.goToBOM),
+          ],
+        ],
+      );
+    });
   }
 }
 
@@ -1501,10 +1518,16 @@ class PulseStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final pct = target > 0 ? (actual / target).clamp(0.0, 1.0) : 0.0;
-    final stateColor = pct < 0.4
-        ? AppColors.red500
-        : (pct < 0.8 ? AppColors.orange500 : AppColors.green500);
+    final (stateColor, stateTextColor) = switch (pct) {
+      < 0.4 => (AppColors.red500, isDark ? AppColors.red300 : AppColors.red700),
+      < 0.8 => (
+          AppColors.orange500,
+          isDark ? AppColors.orange300 : AppColors.orange700,
+        ),
+      _ => (AppColors.green500, isDark ? AppColors.green300 : AppColors.green700),
+    };
 
     return Material(
       color: scheme.fg,
@@ -1604,7 +1627,7 @@ class PulseStat extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: stateColor,
+                        color: stateTextColor,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1696,10 +1719,10 @@ class BomCountCard extends StatelessWidget {
                   curve: Curves.easeOutCubic,
                   builder: (context, value, child) => Text(
                     '$value',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.teal,
+                      color: scheme.text,
                     ),
                   ),
                 ),

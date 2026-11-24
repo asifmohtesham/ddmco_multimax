@@ -158,8 +158,17 @@ The fix does not depend on the answer.
 - The request now passes the rack as the `rack` inventory-dimension filter
   (`ItemProvider.getWarehouseStock(warehouse, rack: …)`), a list on v15 and
   v16, so the reply is the one rack and not the whole warehouse.
-- A failure is reported as what it is: a code that is not a rack code, a server
-  error with its status and text, a network failure, or an unrecognised reply.
+- Rack look-up distinguishes invalid codes, report refusals, connection
+  failures and unrecognised replies.
+
+**Tablet smoke follow-up.** Reports share one error message mapper. HTTP 403
+and Frappe `PermissionError` replies name the report and direct the user to
+their administrator. Connection failures give a retry hint. Server failures
+use plain text. For validation feedback the app reads the actual message
+field and removes HTML. Frappe metadata and exception IDs remain in debug
+logs. The same API v1 error fields are available on v15 and v16.
+[Frappe v15 response source](https://github.com/frappe/frappe/blob/version-15/frappe/utils/response.py#L31-L64),
+[Frappe v16 response source](https://github.com/frappe/frappe/blob/v16.60.0/frappe/utils/response.py#L36-L60).
 
 The fix was checked against live replies from the audited server by the session
 that wrote it. It has not been confirmed on a device as part of this audit.
@@ -242,6 +251,31 @@ version check.
 The live checks used the privileged API account. Ordinary-user permissions,
 the new device UI and a live v15 server remain unverified.
 
+## Drawer report visibility (23 November 2026)
+
+Desk sends a map of report names allowed for the signed-in user. Frappe v15
+and early v16 put it in `frappe.boot.user.all_reports`. Later v16 releases
+such as 16.56 and 16.60 publish the same map at `frappe.boot.allowed_reports`.
+Frappe uses the map to show Report links in Desk, with the Report's roles,
+custom role overrides, disabled status, and Report list permissions taken
+into account. The `user.can_get_report` list contains DocType names and
+cannot identify which named reports the user may open.
+[Frappe v15 user boot](https://github.com/frappe/frappe/blob/version-15/frappe/utils/user.py#L225-L253),
+[Frappe v15 report map](https://github.com/frappe/frappe/blob/version-15/frappe/boot.py#L177-L285),
+[Frappe v16 Desk boot](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/desk_views.py#L24-L36),
+[Frappe v16 report map](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/desk_views.py#L152-L279).
+
+The mobile drawer reads either shape from the existing Desk request and
+matches exact report names once the boot user matches the signed-in Frappe
+User. Missing or malformed data keeps the default visibility. A valid empty
+map hides all report links. The cached workspace layout stays available
+offline. Report permissions stay in memory until sign-out. The existing
+DocType checks also apply. Frappe still checks access when the report runs,
+including permissions for the chosen filters, so a visible link can still
+lead to a permission message.
+[Frappe v15 report execution](https://github.com/frappe/frappe/blob/version-15/frappe/desk/query_report.py#L248-L268),
+[Frappe v16 report execution](https://github.com/frappe/frappe/blob/v16.60.0/frappe/desk/query_report.py#L262-L283).
+
 ## How both versions are served
 
 No fix depends on knowing the server version. Each one either uses a form both
@@ -297,6 +331,18 @@ purposes for subcontracting. `StatusPill` handles `To Pay`.
 
 ## Behaviour changes worth knowing
 
+- Dashboard Work Order, Job Card and BOM counts use the standard
+  GET method `frappe.client.get_count`. Both versions build the count through
+  the permission-checked list query. The standard Job Card grants are for
+  System Manager, Manufacturing User and Manufacturing Manager. Stock User
+  has read access to Work Order and BOM in upstream metadata. A refused count
+  hides its card quietly. Successful counts (including zero), tasks, actionable
+  drafts and attendance still load. The Dashboard skips the optional Job Card
+  resume lookup when the Job Card count is unavailable.
+  [Frappe v15 query](https://github.com/frappe/frappe/blob/version-15/frappe/model/db_query.py#L835-L854)
+  · [Frappe v16 query](https://github.com/frappe/frappe/blob/v16.60.0/frappe/model/db_query.py#L578-L597)
+  · [ERPNext v15 Job Card](https://github.com/frappe/erpnext/blob/version-15/erpnext/manufacturing/doctype/job_card/job_card.json#L522-L568)
+  · [ERPNext v16 Job Card](https://github.com/frappe/erpnext/blob/v16.60.0/erpnext/manufacturing/doctype/job_card/job_card.json#L692-L738)
 - `get_item_details` now authorises the pricing context: `doctype` must be a
   transaction DocType, the customer needs `select` permission, the price list
   must be a selling one, and the resolved warehouse must be within the user's

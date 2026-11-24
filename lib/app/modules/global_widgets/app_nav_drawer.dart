@@ -48,8 +48,10 @@ class AppNavDrawerController extends GetxController {
   /// Module groups, laid out by the user's Frappe workspaces. Starts as (and
   /// falls back to) the built-in layout until [loadFor] succeeds.
   final groups = buildWorkspaceMenu(const [], const {}).obs;
+  final _reportAccess = Rxn<({String user, Set<String> names})>();
   String? _loadedFor;
   DateTime? _loadedAt;
+  Object? _activeLoad;
   AppLifecycleListener? _lifecycle;
 
   /// Workspace edits made in Desk show up on the next resume after this.
@@ -144,23 +146,33 @@ class AppNavDrawerController extends GetxController {
     }
   }
 
-  /// Loads [user]'s workspaces once (sidebar + each page's links, both
-  /// permission-filtered by Frappe). Failure keeps the current menu and
-  /// retries on the next call.
+  /// Loads workspaces and report visibility for the Frappe User document
+  /// named [user]. Failure keeps the current layout and retries on the next
+  /// call.
   Future<void> loadFor(String? user) async {
     if (user == null || user == _loadedFor) return;
+    final load = _activeLoad = Object();
     _loadedFor = user;
+    _reportAccess.value = null;
     final storage =
         Get.isRegistered<StorageService>() ? Get.find<StorageService>() : null;
     // Last session's layout first, so the drawer never reshuffles on start
     // (or offline); the fetch below refreshes it.
     groups.value = menuFromJson(storage?.getNavMenu(user)) ??
         buildWorkspaceMenu(const [], const {});
+    Future<DeskBoot>? bootLoad;
     try {
       final api = Get.find<ApiProvider>();
       // Started once: it is both the grouping data and, on Frappe 16.56,
       // the only place the pages can be read from.
-      final deskBoot = _fetchDeskBoot(api);
+      final deskBoot = _fetchDeskBoot(api).then((boot) {
+        final names = boot.allowedReports;
+        if (_activeLoad == load && boot.userId == user && names != null) {
+          _reportAccess.value = (user: user, names: names);
+        }
+        return boot;
+      });
+      bootLoad = deskBoot;
       final pages = (await _fetchPages(api, deskBoot))
           .where((p) => p['is_hidden'] != 1)
           .toList();
@@ -216,15 +228,32 @@ class AppNavDrawerController extends GetxController {
           } catch (_) {}
         }(),
       ]);
-      if (_loadedFor == user) {
+      if (_activeLoad == load) {
         groups.value = buildWorkspaceMenu(pages, desktop, modules, desk);
         _loadedAt = DateTime.now();
         await storage?.saveNavMenu(user, menuToJson(groups));
       }
     } catch (e) {
-      if (_loadedFor == user) _loadedFor = null;
+      // Desk can supply report permissions even if workspace layout failed.
+      if (bootLoad != null) await bootLoad;
+      if (_activeLoad == load) _loadedFor = null;
       debugPrint('AppNavDrawer: workspace load failed — $e');
     }
+  }
+
+  void clearSession() {
+    _activeLoad = null;
+    _loadedFor = null;
+    _loadedAt = null;
+    _reportAccess.value = null;
+  }
+
+  List<NavGroup> visibleGroupsFor(String? user) {
+    final access = _reportAccess.value;
+    return filterWorkspaceReports(
+      groups,
+      access?.user == user ? access?.names : null,
+    );
   }
 
   bool isGroupExpanded(String title, {required bool defaultValue}) =>
@@ -247,7 +276,7 @@ class AppNavDrawer extends StatelessWidget {
     final drawerController = AppNavDrawerController.instance;
     // Retry path (e.g. offline at login); a no-op once loaded for this user.
     WidgetsBinding.instance.addPostFrameCallback((_) => drawerController
-        .loadFor(authController.currentUser.value?.email));
+        .loadFor(authController.currentUser.value?.id));
 
     final String currentRoute = Get.currentRoute;
     final s = context.scheme;
@@ -371,8 +400,10 @@ class AppNavDrawer extends StatelessWidget {
                         height: 1, color: s.border),
                   ),
 
-                  for (final g in drawerController.groups)
+                  for (final g in drawerController.visibleGroupsFor(
+                      authController.currentUser.value?.id))
                     _ModuleGroup(
+                      key: ValueKey(g.title),
                       title: g.title,
                       icon: g.icon,
                       currentRoute: currentRoute,
@@ -509,6 +540,7 @@ class _ModuleGroup extends StatelessWidget {
   final List<PermEntry> guardEntries;
 
   const _ModuleGroup({
+    super.key,
     required this.title,
     required this.icon,
     required this.children,

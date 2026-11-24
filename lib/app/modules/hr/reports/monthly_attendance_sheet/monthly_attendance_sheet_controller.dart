@@ -1,10 +1,10 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_logic.dart';
 
@@ -325,7 +325,7 @@ class MonthlyAttendanceSheetController extends GetxController {
       errorMessage.value = null;
     } catch (e) {
       _clearResults();
-      errorMessage.value = _readableError(e);
+      errorMessage.value = readableReportError(e, reportName: reportName);
     } finally {
       hasRun.value = true;
       isRunning.value = false;
@@ -368,30 +368,6 @@ class MonthlyAttendanceSheetController extends GetxController {
           : '$label: $value';
     });
     if (isSummarized) activeFilters['summarized_view'] = 'Summarized';
-  }
-
-  /// Frappe puts the useful part of a script-report failure in the response
-  /// body, not the status line.
-  String _readableError(Object error) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map) {
-        final messages = data['_server_messages'];
-        if (messages is String && messages.isNotEmpty) {
-          // A JSON array of JSON strings; the human text is the last one.
-          final text = messages
-              .replaceAll(RegExp(r'[\[\]\\"]'), '')
-              .replaceAll(RegExp(r'\{.*?:\s*'), '')
-              .replaceAll('}', '')
-              .trim();
-          if (text.isNotEmpty) return text;
-        }
-        final exception = data['exception']?.toString();
-        if (exception != null && exception.isNotEmpty) return exception;
-      }
-      return error.message ?? 'Could not run the report.';
-    }
-    return error.toString();
   }
 
   String _fmt(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
