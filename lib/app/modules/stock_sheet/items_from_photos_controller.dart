@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:multimax/app/data/providers/items_from_photos_provider.dart';
+import 'package:multimax/app/data/services/intake_photo_cleanup.dart';
 import 'package:multimax/app/data/services/native_intake.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/stock_sheet/logic/photo_decoder.dart';
@@ -982,7 +983,14 @@ class ItemsFromPhotosController extends GetxController {
     // A read in flight finishes first; the reading loop then disposes it.
     if (!_pumping) unawaited(_disposeDecoder());
     _deleteCreatedFiles();
-    unawaited(_deleteSharedCopies(_givenPhotos.toList()));
+    unawaited(
+      deleteIntakePhotoCopies(
+        _givenPhotos.toList(),
+        tempDir: _tempDir,
+        extraCleanupRoots: _extraCleanupRoots,
+        log: _log,
+      ),
+    );
     _givenPhotos.clear();
     _fingerprintOf.clear();
     unawaited(_clearPickerTemporaryFiles());
@@ -1044,45 +1052,6 @@ class ItemsFromPhotosController extends GetxController {
       }
     }
     _created.clear();
-  }
-
-  /// Deletes the photos in [paths] that lie inside the app's temporary
-  /// (cache) folder or one of the native intake folders (on iOS the App Group,
-  /// for a share, and `NSTemporaryDirectory()`, for drops, "Choose files…"
-  /// and gallery copies). Anything outside them, such as the gallery original,
-  /// is never touched.
-  Future<void> _deleteSharedCopies(List<String> paths) async {
-    if (paths.isEmpty) return;
-    final roots = <String>[];
-    try {
-      roots.add(p.normalize(p.absolute((await _tempDir()).path)));
-    } catch (e, st) {
-      _log('temporary folder lookup failed', e, st);
-    }
-    try {
-      for (final folder in await _extraCleanupRoots()) {
-        // Native input is not trusted: an empty, relative or filesystem-root
-        // folder would make every given path deletable.
-        if (folder.isEmpty ||
-            !p.isAbsolute(folder) ||
-            p.normalize(folder) == p.rootPrefix(folder)) {
-          continue;
-        }
-        roots.add(p.normalize(p.absolute(folder)));
-      }
-    } catch (e, st) {
-      _log('intake folder lookup failed', e, st);
-    }
-    for (final path in paths) {
-      final full = p.normalize(p.absolute(path));
-      if (!roots.any((root) => p.isWithin(root, full))) continue;
-      try {
-        final file = File(full);
-        if (await file.exists()) await file.delete();
-      } catch (e, st) {
-        _log('could not delete $full', e, st);
-      }
-    }
   }
 
   void _log(String what, Object e, StackTrace st) {

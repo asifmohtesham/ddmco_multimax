@@ -8,10 +8,18 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 class StatusPill extends StatelessWidget {
   final String status;
 
+  /// Use the colour of another status while keeping [status] as the label.
+  final String? colorStatus;
+
   /// Compact 14dp-high variant for collapsed toolbars.
   final bool compact;
 
-  const StatusPill({super.key, required this.status, this.compact = false});
+  const StatusPill({
+    super.key,
+    required this.status,
+    this.colorStatus,
+    this.compact = false,
+  });
 
   /// The status ramp triple `(base500, text700, text300)` for a status string.
   static (Color, Color, Color) _ramp(String status) {
@@ -99,8 +107,12 @@ class StatusPill extends StatelessWidget {
 
   Widget _buildPill(BuildContext context) {
     final brightness = Theme.of(context).brightness;
-    final (bg, textColour) = colourForStatus(status, brightness: brightness);
-    final dot = dotColorForStatus(status);
+    final effectiveStatus = colorStatus ?? status;
+    final (bg, textColour) = colourForStatus(
+      effectiveStatus,
+      brightness: brightness,
+    );
+    final dot = dotColorForStatus(effectiveStatus);
     final dotSize = compact ? 6.0 : 7.0;
 
     return Container(

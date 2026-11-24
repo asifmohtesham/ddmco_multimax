@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:developer';
 import 'package:flutter/foundation.dart';
+// Keep the shared Flutter Material API until the app migrates to material_ui.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -8,6 +10,7 @@ import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/models/item_model.dart';
 import 'package:multimax/app/data/models/item_price_model.dart';
 import 'package:multimax/app/data/models/pricing_rule_model.dart';
+import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
@@ -19,6 +22,10 @@ import 'package:multimax/app/modules/item/form/reorder_rules.dart';
 import 'package:dio/dio.dart';
 
 class ItemFormController extends GetxController with OptimisticLockingMixin {
+  ItemFormController({Object? Function()? readArguments})
+      : _readArguments = readArguments ?? (() => Get.arguments);
+
+  final Object? Function() _readArguments;
   final String docType = 'Item';
   final ItemProvider _provider = Get.find<ItemProvider>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -136,7 +143,7 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
   @override
   void onInit() {
     super.onInit();
-    final args = Get.arguments;
+    final args = _readArguments();
     if (args != null) {
       if (args is Map && args['itemCode'] != null) {
         itemCode = args['itemCode'];
@@ -212,7 +219,10 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     if (itemCode.isEmpty) return;
     isLoading.value = true;
     try {
-      final response = await _apiProvider.getDocument('Item', itemCode);
+      final response = await _apiProvider.getDocument(
+        'Item',
+        Uri.encodeComponent(itemCode),
+      );
       if (response.statusCode == 200 && response.data['data'] != null) {
         item.value = Item.fromJson(response.data['data']);
         _seedReorderRows();
@@ -224,6 +234,22 @@ class ItemFormController extends GetxController with OptimisticLockingMixin {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  Future<List<SuppliersByItemNode>> loadSuppliers(Item item) =>
+      _apiProvider.runSuppliersByItem(
+        SuppliersByItemFilters(
+          items: [item.itemCode],
+          variantOf: item.hasVariants ? [item.itemCode] : const [],
+          expandBom: true,
+        ),
+      );
+
+  void openSuppliersReport(Item item, {required bool expandBom}) {
+    final filters = item.hasVariants && !expandBom
+        ? SuppliersByItemFilters(variantOf: [item.itemCode])
+        : SuppliersByItemFilters(items: [item.itemCode], expandBom: expandBom);
+    Get.toNamed(AppRoutes.SUPPLIERS_BY_ITEM, arguments: filters);
   }
 
   Future<void> fetchAttachments() async {

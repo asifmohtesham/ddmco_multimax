@@ -111,6 +111,8 @@ import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_bin
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_screen.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_binding.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_screen.dart';
+import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
+import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart';
 import 'package:multimax/app/modules/stock_sheet/items_from_photos_binding.dart';
 import 'package:multimax/app/modules/stock_sheet/items_from_photos_screen.dart';
 
@@ -417,6 +419,12 @@ class AppPages {
       name:       AppRoutes.STOCK_BALANCE,
       page:       () => const StockBalanceScreen(),
       binding:    StockBalanceBinding(),
+      transition: Transition.rightToLeftWithFade,
+    ),
+    GetPage(
+      name:       AppRoutes.SUPPLIERS_BY_ITEM,
+      page:       () => const SuppliersByItemScreen(),
+      binding:    SuppliersByItemBinding(),
       transition: Transition.rightToLeftWithFade,
     ),
     GetPage(

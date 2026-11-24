@@ -204,6 +204,19 @@ void main() {
       expect(analyser.calls, hasLength(1));
     });
 
+    test('all-format zoom keeps a registered barcode from a tile', () async {
+      const registered = 'CUSTOM:CODE';
+      analyser.holds.add((_tile(0, 's'), [_plain(registered)]));
+      final quickDecoder = MlKitPhotoDecoder(
+        analyser: analyser.call,
+        temporaryPath: () async => temp.path,
+        scanAllFormats: true,
+      );
+      addTearDown(quickDecoder.dispose);
+
+      expect(await quickDecoder.zoomIn(photo(), whole: const []), [registered]);
+    });
+
     test('needsZoom: no item or several, never exactly one', () {
       expect(PhotoDecoder.needsZoom(const []), isTrue);
       expect(PhotoDecoder.needsZoom(const [_ean13]), isTrue);

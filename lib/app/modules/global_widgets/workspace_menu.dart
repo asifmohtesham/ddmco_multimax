@@ -130,6 +130,7 @@ final List<NavLink> kNavCatalog = [
       null, AppRoutes.PURCHASE_ORDER_FORM, Colors.brown),
   NavLink('DocType', 'Purchase Receipt', 'Purchase Receipt', Icons.receipt_long_rounded, AppRoutes.PURCHASE_RECEIPT, _r('Purchase Receipt'), 'Buying',
       null, AppRoutes.PURCHASE_RECEIPT_FORM, Colors.green),
+  NavLink('Report', 'Suppliers by Item', 'Suppliers by Item', Icons.local_shipping_outlined, AppRoutes.SUPPLIERS_BY_ITEM, kSuppliersByItemPermission, 'Buying', 'Reports'),
 
   // ── Manufacturing ──
   NavLink('DocType', 'BOM', 'Bill of Materials', Icons.account_tree_rounded, AppRoutes.BOM, _r('BOM'), 'Manufacturing',

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/data/constants/permission_entries.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
@@ -27,6 +28,9 @@ class PermissionService extends GetxService {
   /// is `false` and nothing is fetched: clearing the cache on logout rebuilds
   /// every mounted [DocTypeGuard], and those must not probe a dead session.
   bool? hasAccess(String doctype, {String permType = 'read'}) {
+    if ((doctype: doctype, permType: permType) == kSuppliersByItemPermission) {
+      return canViewSuppliersByItem;
+    }
     final key = '$doctype:$permType';
     // Read the cache before the session check so an enclosing Obx always
     // subscribes to it.
@@ -40,14 +44,23 @@ class PermissionService extends GetxService {
   /// Fires all [entries] in parallel and awaits completion.
   ///
   /// Call this after the user is confirmed logged in, before navigating
-  /// to the home screen. After this returns every entry in [entries] is
-  /// present in the cache — [hasAccess] will never return `null` for them.
+  /// to the home screen. After this returns [hasAccess] can decide each
+  /// entry without waiting for another request.
   Future<void> prefetchAll(
-    List<({String doctype, String permType})> entries,
+    List<PermEntry> entries,
   ) async {
     await Future.wait(
-      entries.map((e) => _fetchPermission(e.doctype, e.permType)),
+      entries
+          .where((entry) => entry != kSuppliersByItemPermission)
+          .map((entry) => _fetchPermission(entry.doctype, entry.permType)),
     );
+  }
+
+  /// This named report checks session roles independently of Item access.
+  bool get canViewSuppliersByItem {
+    if (!_hasSession) return false;
+    final roles = _currentUserRoles();
+    return roles.contains('Purchase User') || roles.contains('Stock User');
   }
 
   /// Clears all cached results and any in-flight tracking.

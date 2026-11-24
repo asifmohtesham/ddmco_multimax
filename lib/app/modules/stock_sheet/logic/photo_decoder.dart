@@ -50,14 +50,20 @@ class MlKitPhotoDecoder extends PhotoDecoder {
   MlKitPhotoDecoder({
     PhotoAnalyser? analyser,
     Future<String> Function()? temporaryPath,
-  }) : _temporaryPath = temporaryPath ?? _systemTemporaryPath {
+    bool scanAllFormats = false,
+  }) : _temporaryPath = temporaryPath ?? _systemTemporaryPath,
+       _scanAllFormats = scanAllFormats {
     if (analyser != null) {
       _scanner = null;
       _analyser = analyser;
     } else {
       final scanner = MobileScannerController(autoStart: false);
       _scanner = scanner;
-      _analyser = (path) => _analyseWithMlKit(scanner, path);
+      _analyser = (path) => _analyseWithMlKit(
+        scanner,
+        path,
+        scanAllFormats ? const [BarcodeFormat.all] : _formats,
+      );
     }
   }
 
@@ -75,6 +81,7 @@ class MlKitPhotoDecoder extends PhotoDecoder {
   late final MobileScannerController? _scanner;
   late final PhotoAnalyser _analyser;
   final Future<String> Function() _temporaryPath;
+  final bool _scanAllFormats;
 
   static Future<String> _systemTemporaryPath() async =>
       (await getTemporaryDirectory()).path;
@@ -82,8 +89,9 @@ class MlKitPhotoDecoder extends PhotoDecoder {
   static Future<List<AnalysedCode>> _analyseWithMlKit(
     MobileScannerController scanner,
     String path,
+    List<BarcodeFormat> formats,
   ) async {
-    final capture = await scanner.analyzeImage(path, formats: _formats);
+    final capture = await scanner.analyzeImage(path, formats: formats);
     if (capture == null) return const [];
     return [
       for (final barcode in capture.barcodes)
@@ -127,7 +135,7 @@ class MlKitPhotoDecoder extends PhotoDecoder {
           ...tiled,
           for (final value in whole) FoundCode(value),
         ]);
-        if (items >= 2 || _anyClassifies(all)) return all;
+        if (items >= 2 || _hasUsableCode(all)) return all;
       }
       if (items >= 2) return whole;
       // Asked once more before the 2x copy is made and read.
@@ -135,7 +143,7 @@ class MlKitPhotoDecoder extends PhotoDecoder {
       // Last resort for a small photo: one label larger than a tile (over
       // 40% of the photo) that only reads enlarged.
       final retry = await _retryUpscaled(path);
-      return retry != null && _anyClassifies(retry) ? retry : whole;
+      return retry != null && _hasUsableCode(retry) ? retry : whole;
     } on UnsupportedError {
       rethrow;
     } on MobileScannerBarcodeException {
@@ -213,8 +221,9 @@ class MlKitPhotoDecoder extends PhotoDecoder {
     }
   }
 
-  bool _anyClassifies(List<String> values) =>
-      values.any((raw) => ItemsFromPhotosCodec.classify(raw) != null);
+  bool _hasUsableCode(List<String> values) => _scanAllFormats
+      ? values.isNotEmpty
+      : values.any((raw) => ItemsFromPhotosCodec.classify(raw) != null);
 
   /// The pixel size from the image header alone, without decoding the
   /// pixels; `null` when the bytes are not an image the package reads.
