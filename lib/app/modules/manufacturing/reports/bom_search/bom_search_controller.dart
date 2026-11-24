@@ -5,7 +5,6 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
-import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 
 class BomSearchController extends GetxController {
   final ApiProvider      _api  = Get.find<ApiProvider>();
