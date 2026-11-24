@@ -23,9 +23,9 @@ import java.io.File
  *   is lost.
  *
  * Plain `content://` URIs (gallery apps, Google Photos, My Files, WhatsApp)
- * are left alone: the plugin already copies those into the cache. The copies
- * made here also live in the cache, so the stock sheet deletes them when it
- * closes, as it does the plugin's.
+ * are left alone: the plugin already copies those into the cache. Both
+ * paths use the cache for the initial transfer. ShareIntakeService stages
+ * its own copy in app support storage before dispatching the share.
  *
  * A document URI that cannot be copied is dropped, never passed on, because
  * the plugin would throw on it. Copying runs on the main thread, as the

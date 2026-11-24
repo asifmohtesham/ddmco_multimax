@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:path/path.dart' as p;
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/share_intake_service.dart';
 import 'package:multimax/app/modules/stock_sheet/items_from_photos_controller.dart';
@@ -62,6 +64,7 @@ void main() {
 
   Future<ShareIntakeService> make({
     Future<void> Function(String)? openQuickActions,
+    Future<Directory> Function()? intakeSupportDir,
   }) async {
     final service = Get.put(
       ShareIntakeService(
@@ -87,6 +90,7 @@ void main() {
           handled++;
           stranded = [];
         },
+        intakeSupportDir: intakeSupportDir,
       ),
     );
     // Let the initial-share future and stream listeners settle.
@@ -217,6 +221,146 @@ void main() {
       ['two.jpg', 'three.jpg'],
     ]);
     expect(service.pendingPhotos, isEmpty);
+  });
+
+  group('app-owned shared photos', () {
+    late Directory root;
+    late Directory cache;
+    late Directory support;
+    late Directory intake;
+
+    setUp(() async {
+      root = await Directory.systemTemp.createTemp('share_intake_test');
+      cache = await Directory(p.join(root.path, 'cache')).create();
+      support = await Directory(p.join(root.path, 'support')).create();
+      intake = Directory(p.join(support.path, 'share-intake-photos'));
+    });
+
+    tearDown(() => root.delete(recursive: true));
+
+    Future<File> cachePhoto(String name, List<int> bytes) =>
+        File(p.join(cache.path, name)).writeAsBytes(bytes);
+
+    Future<void> waitForCleanup(List<String> paths) async {
+      // Register before dismissal so a fast deletion cannot be missed.
+      await for (final _ in intake.watch().timeout(
+        const Duration(seconds: 5),
+      )) {
+        if (paths.every((path) => !Directory(p.dirname(path)).existsSync())) {
+          return;
+        }
+      }
+    }
+
+    test(
+      'a queued photo survives a cache purge and is deleted on dismissal',
+      () async {
+        signedIn.value = true;
+        route = AppRoutes.HOME;
+        final closeFirst = Completer<void>();
+        final closeSecond = Completer<void>();
+        final secondOpened = Completer<String>();
+        final service = await make(
+          intakeSupportDir: () async => support,
+          openQuickActions: (path) {
+            quickActions.add(path);
+            if (quickActions.length == 1) return closeFirst.future;
+            secondOpened.complete(path);
+            return closeSecond.future;
+          },
+        );
+        final first = await cachePhoto('first.jpg', [1, 2, 3]);
+        final second = await cachePhoto('second.jpg', [4, 5, 6]);
+        await service.deliver([first.path]);
+        final firstCopy = quickActions.single;
+        await service.deliver([second.path]);
+        final secondCopy = service.pendingPhotos.single;
+        expect(p.isWithin(intake.path, secondCopy), isTrue);
+        expect(p.basename(secondCopy), 'second.jpg');
+        await second.delete();
+
+        // Both owned photo directories should disappear on dismissal.
+        final cleanup = waitForCleanup([firstCopy, secondCopy]);
+        closeFirst.complete();
+        expect(await secondOpened.future, secondCopy);
+        expect(await File(secondCopy).readAsBytes(), [4, 5, 6]);
+        expect(service.pendingPhotos, isEmpty);
+        closeSecond.complete();
+        await cleanup;
+      },
+    );
+
+    test(
+      'splash and sign-in keep only the newest share after startup cleanup',
+      () async {
+        final staleFolder = await Directory(
+          p.join(intake.path, 'photo-stale'),
+        ).create(recursive: true);
+        await File(p.join(staleFolder.path, 'stale.jpg')).writeAsBytes([1]);
+        final unrelated = await File(
+          p.join(support.path, 'keep.jpg'),
+        ).writeAsBytes([2]);
+        final first = await cachePhoto('same.jpg', [3]);
+        initial = [first.path];
+        final shareReady = Completer<String>();
+        final close = Completer<void>();
+        final service = await make(
+          intakeSupportDir: () async => support,
+          openQuickActions: (path) {
+            shareReady.complete(path);
+            return close.future;
+          },
+        );
+        if (service.pendingPhotos.isEmpty) {
+          await service.pendingPhotos.stream.firstWhere(
+            (paths) => paths.isNotEmpty,
+          );
+        }
+        final oldCopy = service.pendingPhotos.single;
+        expect(await File(oldCopy).readAsBytes(), [3]);
+        expect(await staleFolder.exists(), isFalse);
+        expect(await unrelated.exists(), isTrue);
+
+        route = AppRoutes.LOGIN;
+        final second = await cachePhoto('same.jpg', [4]);
+        await service.deliver([second.path]);
+        final nextCopy = service.pendingPhotos.single;
+        expect(nextCopy, isNot(oldCopy));
+        expect(await File(oldCopy).exists(), isFalse);
+        await second.delete();
+
+        signedIn.value = true;
+        route = AppRoutes.HOME;
+        service.onRouteChanged();
+        expect(await shareReady.future, nextCopy);
+        expect(await File(nextCopy).readAsBytes(), [4]);
+        final cleanup = waitForCleanup([nextCopy]);
+        close.complete();
+        await cleanup;
+      },
+    );
+
+    test(
+      'a failed copy keeps the other photos in a multi-photo share',
+      () async {
+        final original = await cachePhoto('readable.jpg', [1, 2, 3]);
+        final missing = p.join(cache.path, 'missing.jpg');
+        final service = await make(intakeSupportDir: () async => support);
+
+        await service.deliver([original.path, missing]);
+
+        final copies = service.pendingPhotos.toList();
+        expect(copies, hasLength(2));
+        expect(copies.every((path) => p.isWithin(intake.path, path)), isTrue);
+        expect(await File(copies.first).readAsBytes(), [1, 2, 3]);
+        expect(await File(copies.last).exists(), isFalse);
+        expect(await original.readAsBytes(), [1, 2, 3]);
+
+        final cleanup = waitForCleanup(copies);
+        await Get.delete<ShareIntakeService>(force: true);
+        await cleanup;
+      },
+    );
   });
 
   test('an empty share is ignored', () async {
