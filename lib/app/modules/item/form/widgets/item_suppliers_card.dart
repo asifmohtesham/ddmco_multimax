@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/data/utils/suppliers_by_item_labels.dart';
 import 'package:multimax/app/modules/global_widgets/doc_section_card.dart';
 import 'package:multimax/app/modules/global_widgets/form_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/supplier_status_pill.dart';
@@ -128,12 +129,9 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
     SuppliersByItemNode component,
   ) {
     final row = component.row;
-    final itemCode = row.itemCode ?? row.treeLabel;
-    final componentLabel = [
-      itemCode,
-      if (row.itemName != itemCode) ?row.itemName,
-    ].join(' · ');
-    final textTheme = Theme.of(context).textTheme;
+    final muted = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: context.scheme.textMuted);
     final supplierNames = {
       for (final child in component.children)
         if (child.row.kind == SuppliersByItemRowKind.supplier)
@@ -145,14 +143,13 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(componentLabel),
+          Text(row.itemTitle),
+          if (row.distinctItemName case final name?) Text(name, style: muted),
           Text(
             supplierNames.isEmpty
                 ? 'No supplier recorded'
                 : supplierNames.join(', '),
-            style: textTheme.bodySmall?.copyWith(
-              color: context.scheme.textMuted,
-            ),
+            style: muted,
           ),
         ],
       ),
@@ -265,7 +262,7 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
       for (final row in samples) {
         yield [
           if (samples.length > 1) ?row.itemCode,
-          _formatLeadTime(row.leadTimeDays!, row.leadTimeReceipts),
+          leadTimeLabel(row.leadTimeDays!, row.leadTimeReceipts),
         ].join(' · ');
       }
       return;
@@ -277,12 +274,8 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
       totalDays += row.leadTimeDays! * row.leadTimeReceipts!;
       receipts += row.leadTimeReceipts!;
     }
-    yield _formatLeadTime(totalDays / receipts, receipts);
+    yield leadTimeLabel(totalDays / receipts, receipts);
   }
-
-  String _formatLeadTime(num days, int? receipts) =>
-      'Lead time: ${days.toStringAsFixed(1)} days'
-      '${receipts == null ? '' : ' ($receipts receipts)'}';
 
   Iterable<SuppliersByItemRow> _summaryRows(
     List<SuppliersByItemNode> nodes,

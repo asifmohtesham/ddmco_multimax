@@ -56,17 +56,29 @@ Future<void> _showCard(
     MaterialApp(
       theme: ThemeData(brightness: brightness),
       home: Scaffold(
-        body: ItemSuppliersCard(
-          itemCode: itemCode,
-          isTemplate: isTemplate,
-          loadReport: () async => SuppliersByItemNode.parseRows(rows),
-          onViewReport: (_) {},
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: ItemSuppliersCard(
+            itemCode: itemCode,
+            isTemplate: isTemplate,
+            loadReport: () async => SuppliersByItemNode.parseRows(rows),
+            onViewReport: (_) {},
+          ),
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+Map<String, Object?> _component(String bomId, String code, {String? name}) => {
+  'node_id': 'component:$bomId|$code',
+  'parent_id': bomId,
+  'row_type': 'component',
+  'item_code': code,
+  'item_name': name,
+  'is_component': 1,
+};
 
 void _expectPill(
   WidgetTester tester,
@@ -176,6 +188,21 @@ void main() {
     expect(find.text('Lead time: 6.3 days (4 receipts)'), findsOneWidget);
     expect(find.text('Lead time: 0.0 days'), findsOneWidget);
     expect(find.text('Made from (BOM)'), findsNothing);
+  });
+
+  testWidgets('Item card uses singular and plural lead time labels', (
+    tester,
+  ) async {
+    await _showCard(tester, [
+      _item('ITEM'),
+      _supplier('ITEM', 'Supplier A', days: 0, receipts: 0),
+      _supplier('ITEM', 'Supplier B', days: 1, receipts: 1),
+      _supplier('ITEM', 'Supplier C', days: 2, receipts: 2),
+    ]);
+
+    expect(find.text('Lead time: 0.0 days (0 receipts)'), findsOneWidget);
+    expect(find.text('Lead time: 1.0 day (1 receipt)'), findsOneWidget);
+    expect(find.text('Lead time: 2.0 days (2 receipts)'), findsOneWidget);
   });
 
   testWidgets('Item card previews direct BOMs and opens the expanded report', (
@@ -291,7 +318,11 @@ void main() {
     expect(find.text('Made from (BOM)'), findsOneWidget);
     expect(find.text('BOM-ITEM-001 · default'), findsOneWidget);
     expect(find.text('BOM-ITEM-002 · Draft'), findsOneWidget);
-    expect(find.text('ASSEMBLY · Subassembly'), findsOneWidget);
+    final code = find.text('ASSEMBLY');
+    final name = find.text('Subassembly');
+    expect(code, findsOneWidget);
+    expect(name, findsOneWidget);
+    expect(tester.getTopLeft(code).dy, lessThan(tester.getTopLeft(name).dy));
     expect(find.text('ALTERNATE'), findsOneWidget);
     expect(find.text('Component Supplier'), findsOneWidget);
     expect(find.text('No supplier recorded'), findsOneWidget);
@@ -305,6 +336,45 @@ void main() {
     expect(find.text('Full report'), findsOneWidget);
     expect(openedFilters?.toJson(), expectedFilters);
   });
+
+  for (final scale in [0.85, 1.3]) {
+    testWidgets('Item card fits component labels at phone text scale $scale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.625;
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+      const bomId = 'bom:item:ITEM|1';
+      final longCode = 'LONG-COMPONENT-CODE-' * 5;
+      final longName = 'Long component name with multiple words ' * 4 + 'end';
+      await _showCard(tester, [
+        _item('ITEM'),
+        {
+          'node_id': bomId,
+          'parent_id': 'item:ITEM',
+          'row_type': 'bom',
+          'bom_no': 'BOM-ITEM-001',
+          'is_component': 1,
+        },
+        _component(bomId, longCode, name: longName),
+        _component(bomId, 'SAME', name: 'SAME'),
+        _component(bomId, 'DASH', name: '-'),
+        _component(bomId, 'BLANK', name: ' '),
+      ]);
+
+      for (final label in [longCode, longName, 'SAME', 'DASH', 'BLANK']) {
+        final text = find.text(label);
+        expect(text, findsOneWidget);
+        expect(tester.getRect(text).right, lessThanOrEqualTo(1080 / 2.625));
+      }
+      expect(find.text('-'), findsNothing);
+      expect(find.text(' '), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('Template combines quantities by UOM and weights lead times', (
     tester,
@@ -374,7 +444,7 @@ void main() {
 
     expect(find.text('Projected: 9 Nos'), findsOneWidget);
     expect(find.text('Supplier'), findsOneWidget);
-    expect(find.text('A · Lead time: 2.0 days (1 receipts)'), findsOneWidget);
+    expect(find.text('A · Lead time: 2.0 days (1 receipt)'), findsOneWidget);
     expect(find.text('B · Lead time: 6.0 days'), findsOneWidget);
   });
 }

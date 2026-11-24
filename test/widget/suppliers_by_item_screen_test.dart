@@ -260,7 +260,7 @@ void main() {
     expect(find.text('KANG KAI'), findsNothing);
     expect(find.text('2002506'), findsNothing);
 
-    await tester.tap(find.text('Gloves'));
+    await tester.tap(find.text('GLOVES'));
     await tester.pumpAndSettle();
     expect(find.text('Leather Shop'), findsOneWidget);
     expect(find.text('Rate'), findsNothing);
@@ -268,6 +268,129 @@ void main() {
     expect(find.textContaining('USD'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('shows variant codes above shared names under the template', (
+    tester,
+  ) async {
+    api.load = () async => SuppliersByItemNode.parseRows([
+      {
+        'node_id': 'template:ALS',
+        'item_name': 'Automatic watches',
+        'tree_label': 'Automatic watches',
+      },
+      for (final (code, name) in [
+        ('2002906', 'AUTO'),
+        ('2002907', 'AUTO'),
+        ('SAME', 'SAME'),
+        ('BLANK', '  '),
+        ('DASH', '-'),
+      ])
+        {
+          'node_id': 'item:$code',
+          'parent_id': 'template:ALS',
+          'item_name': name,
+          'tree_label': name,
+        },
+    ]);
+    await openReport(
+      tester,
+      filters: const SuppliersByItemFilters(variantOf: ['ALS']),
+    );
+    await tester.pumpAndSettle();
+
+    final template = find.widgetWithText(ListTile, 'ALS');
+    final templateName = find.descendant(
+      of: template,
+      matching: find.text('Automatic watches'),
+    );
+    expect(templateName, findsOneWidget);
+    expect(
+      tester.getTopLeft(templateName).dy,
+      greaterThan(tester.getTopLeft(find.text('ALS')).dy),
+    );
+    await tester.tap(template);
+    await tester.pumpAndSettle();
+
+    for (final code in ['2002906', '2002907']) {
+      final tile = find.widgetWithText(ListTile, code);
+      final name = find.descendant(of: tile, matching: find.text('AUTO'));
+      expect(name, findsOneWidget);
+      expect(
+        tester.getTopLeft(name).dy,
+        greaterThan(tester.getTopLeft(find.text(code)).dy),
+      );
+    }
+    for (final code in ['SAME', 'BLANK', 'DASH']) {
+      final tile = find.widgetWithText(ListTile, code);
+      expect(
+        tester
+            .widgetList<Text>(
+              find.descendant(of: tile, matching: find.byType(Text)),
+            )
+            .map((text) => text.data),
+        [code, 'No supplier recorded'],
+      );
+    }
+  });
+
+  for (final textScale in [0.85, 1.3]) {
+    testWidgets('fits long item labels on a Pixel 7 at scale $textScale', (
+      tester,
+    ) async {
+      const viewport = Size(1080 / 2.625, 2400 / 2.625);
+      const code =
+          'UNBROKENITEMCODE0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const name =
+          'Long descriptive item name with enough words to wrap to several '
+          'lines on the report screen when the phone text scale is increased';
+      tester.view.devicePixelRatio = 2.625;
+      tester.view.physicalSize = const Size(1080, 2400);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {'node_id': 'item:$code', 'item_name': name},
+      ]);
+      await openReport(
+        tester,
+        size: viewport,
+        filters: const SuppliersByItemFilters(items: [code]),
+      );
+      await tester.pumpAndSettle();
+
+      final tile = find.widgetWithText(ListTile, code);
+      final title = find.descendant(of: tile, matching: find.text(code));
+      final description = find.descendant(of: tile, matching: find.text(name));
+      for (final text in [title, description]) {
+        final bounds = tester.getRect(text);
+        expect(bounds.left, greaterThanOrEqualTo(0));
+        expect(bounds.right, lessThanOrEqualTo(viewport.width));
+      }
+      expect(
+        tester.getTopLeft(description).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(title).dy),
+      );
+
+      final chip = find.widgetWithText(FilterChipWidget, 'Items · $code');
+      expect(tester.getSize(chip).width, lessThanOrEqualTo(viewport.width));
+      final delete = find.descendant(
+        of: chip,
+        matching: find.byIcon(Icons.close),
+      );
+      expect(delete.hitTestable(), findsOneWidget);
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+
+      final selected = find.widgetWithText(InputChip, code);
+      expect(selected, findsOneWidget);
+      expect(tester.getSize(selected).width, lessThan(viewport.width));
+      final selectedLabel = tester.widget<InputChip>(selected).label as Text;
+      expect(selectedLabel.maxLines, 1);
+      expect(selectedLabel.overflow, TextOverflow.ellipsis);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('emphasizes the matched supplier and shows the other supplier', (
     tester,
@@ -425,6 +548,82 @@ void main() {
       );
     }
   });
+
+  for (final (count, suppliers, components, boms, procurement, leadTime) in [
+    (
+      0,
+      '0 suppliers',
+      '0 components',
+      '0 BOMs',
+      '0 POs · 0 receipts',
+      'Lead time: 0.0 days (0 receipts)',
+    ),
+    (
+      1,
+      '1 supplier',
+      '1 component',
+      '1 BOM',
+      '1 PO · 1 receipt',
+      'Lead time: 1.0 day (1 receipt)',
+    ),
+    (
+      2,
+      '2 suppliers',
+      '2 components',
+      '2 BOMs',
+      '2 POs · 2 receipts',
+      'Lead time: 2.0 days (2 receipts)',
+    ),
+  ]) {
+    testWidgets('uses the correct count labels for $count', (tester) async {
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {'node_id': 'template:STYLE', 'supplier_count': count},
+        {'node_id': 'item:KIT'},
+        {
+          'node_id': 'supplier:KIT:VENDOR',
+          'parent_id': 'item:KIT',
+          'po_count': count,
+          'receipt_count': count,
+          'lead_time_days': count,
+          'lead_time_receipts': count,
+        },
+        {
+          'node_id': 'bom:kit',
+          'parent_id': 'item:KIT',
+          'bom_no': 'BOM-KIT',
+          'component_count': count,
+        },
+        {
+          'node_id': 'bom:usage',
+          'parent_id': 'item:KIT',
+          'bom_no': 'BOM-USAGE',
+          'component_count': 1,
+        },
+        {
+          'node_id': 'component:usage:PART',
+          'parent_id': 'bom:usage',
+          'item_code': 'PART',
+          'used_in_bom_count': count,
+        },
+      ]);
+      await openReport(
+        tester,
+        filters: const SuppliersByItemFilters(expandBom: true),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(suppliers), findsOneWidget);
+      await tester.tap(find.text('KIT'));
+      await tester.pumpAndSettle();
+      expect(find.text(procurement), findsOneWidget);
+      expect(find.text(leadTime), findsOneWidget);
+      expect(find.text('BOM-KIT · $components'), findsOneWidget);
+
+      await tester.tap(find.text('BOM-USAGE · 1 component'));
+      await tester.pumpAndSettle();
+      expect(find.text('Used in $boms'), findsOneWidget);
+    });
+  }
 
   testWidgets('expands BOMs and keeps the direct supplier rows first', (
     tester,

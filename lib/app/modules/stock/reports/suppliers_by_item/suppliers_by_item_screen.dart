@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/data/utils/suppliers_by_item_labels.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
@@ -31,6 +32,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       label: 'Items',
       type: ReportFilterType.doctypeMultiLink,
       linkDoctype: 'Item',
+      selectedChipOverflow: TextOverflow.ellipsis,
       prefixIcon: Icons.category_outlined,
     ),
     ReportFilterField(
@@ -39,6 +41,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
       type: ReportFilterType.doctypeMultiLink,
       linkDoctype: 'Item',
       linkFilters: {'has_variants': 1},
+      selectedChipOverflow: TextOverflow.ellipsis,
       prefixIcon: Icons.account_tree_outlined,
     ),
     ReportFilterField(
@@ -151,6 +154,10 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
             _includeDraftsKey => 'Draft POs · $value',
             _expandBomKey => 'BOM components · $value',
             _ => '${field.label} · $value',
+          },
+          maxLabelWidth: switch (field.key) {
+            'items' || 'variant_of' => MediaQuery.sizeOf(context).width * 0.7,
+            _ => null,
           },
           onTap: () => _openFilters(context, focusKey: field.key),
           onDeleted: () => _clearFilter(field.key),
@@ -430,11 +437,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       }
       return 'No supplier recorded';
     }
-    return switch (row.supplierCount) {
-      null => null,
-      1 => '1 supplier',
-      final count => '$count suppliers',
-    };
+    final count = row.supplierCount;
+    return count == null ? null : countLabel(count, 'supplier');
   }
 }
 
@@ -461,7 +465,7 @@ class _BomTile extends StatelessWidget {
             row.bomNo,
             if (row.bomIsDefault && !isDraft) 'default',
             if (row.componentCount case final count?)
-              '$count ${count == 1 ? 'component' : 'components'}',
+              countLabel(count, 'component'),
           ].join(' · ');
 
     return Card(
@@ -564,9 +568,6 @@ class _GroupTile extends StatelessWidget {
       color: context.scheme.textMuted,
     );
     final isComponent = row.kind == SuppliersByItemRowKind.component;
-    final title = isComponent
-        ? row.itemCode ?? row.treeLabel
-        : row.itemName ?? row.treeLabel;
     final quantities = [
       if (row.bomQtyPerUnit case final perUnit? when isComponent)
         '${_quantity(perUnit, row.stockUom)} per unit',
@@ -578,8 +579,7 @@ class _GroupTile extends StatelessWidget {
         'Reorder level: ${_quantity(level, row.stockUom)}',
     ];
     final details = <Widget>[
-      if (isComponent && row.itemName != null && row.itemName != title)
-        Text(row.itemName!, style: muted),
+      if (row.distinctItemName case final name?) Text(name, style: muted),
       if (supplierSummary case final summary?) Text(summary),
       if (quantities.isNotEmpty)
         Wrap(
@@ -587,7 +587,7 @@ class _GroupTile extends StatelessWidget {
           children: [for (final quantity in quantities) Text(quantity)],
         ),
       if (row.usedInBomCount case final count?)
-        Text('Used in $count ${count == 1 ? 'BOM' : 'BOMs'}'),
+        Text('Used in ${countLabel(count, 'BOM')}'),
       if (row.includeInManufacturing == false)
         Text('Not used in manufacturing', style: muted),
       if (row.bomCycle) Text('BOM cycle detected', style: muted),
@@ -615,7 +615,7 @@ class _GroupTile extends StatelessWidget {
                 ? Icons.account_tree_outlined
                 : Icons.category_outlined,
           ),
-          title: Text(title),
+          title: Text(row.itemTitle),
           subtitle: details.isEmpty
               ? null
               : Column(
@@ -645,10 +645,9 @@ class _SupplierTile extends StatelessWidget {
     final rate = row.lastRate;
     final provenance = [?row.rateSource, ?row.rateDate].join(' ');
     final nameStyle = theme.textTheme.titleSmall;
-    final receipts = row.leadTimeReceipts;
     final counts = [
-      if (row.poCount case final count?) '$count POs',
-      if (row.receiptCount case final count?) '$count receipts',
+      if (row.poCount case final count?) countLabel(count, 'PO'),
+      if (row.receiptCount case final count?) countLabel(count, 'receipt'),
     ];
     final procurementDetails = [
       if (row.openOrderQty case final open? when open > 0)
@@ -656,8 +655,7 @@ class _SupplierTile extends StatelessWidget {
       if (row.draftOrderQty case final draft? when draft > 0)
         'Draft: ${_quantity(draft)}',
       if (row.leadTimeDays case final days?)
-        'Lead time: ${days.toStringAsFixed(1)} days'
-            '${receipts == null ? '' : ' ($receipts receipts)'}',
+        leadTimeLabel(days, row.leadTimeReceipts),
       if (counts.isNotEmpty) counts.join(' · '),
     ];
 

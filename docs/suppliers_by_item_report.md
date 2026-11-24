@@ -144,10 +144,12 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
   sheet shows **Include draft purchase orders** (on by default) and **Expand
   BOM components** (off by default). The BOM switch helper reads “Shows what
   each item is made from and who supplies those components.” BOM groups expand
-  to show their components. Draft BOMs carry a **Draft** chip. Component rows
-  show the item code and name, quantity per unit, balance, BOM usage and a muted
-  **Not used in manufacturing** note when applicable. The list caps visual
-  indentation on deep branches and labels their depth. Supplier rows use the
+  to show their components. Draft BOMs carry a **Draft** chip. Item, template
+  and component rows show the item code as the title, with a distinct name
+  beneath when available. Component rows also show quantity per unit, balance,
+  BOM usage and a muted **Not used in manufacturing** note when applicable.
+  The list caps visual indentation on deep branches and labels their depth.
+  Supplier rows use the
   same status, purchase history, and selected-supplier treatment at every depth.
   Item and template rows show available balance and projected quantities and
   positive reorder levels. They flag projected quantities below a positive
@@ -166,7 +168,8 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
   groups each supplier's open orders by stock UOM and weights lead times by
   the number of receipt lines. If a sample count is missing, it shows the
   available lead times by variant. When the current item has BOMs, **Made from
-  (BOM)** shows direct components and their supplier names under each BOM.
+  (BOM)** shows direct components under each BOM, with the component code first,
+  any distinct name beneath it, and then the supplier names.
   **View full report** opens with `items=[itemCode]` and `expand_bom=1` when
   the card shows BOMs. Otherwise it opens with the item or template selection
   and expansion off.

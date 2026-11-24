@@ -110,6 +110,9 @@ class ReportFilterField {
   /// the title; the controller — and the report filter — still hold the ID.
   final String? linkTitleField;
 
+  /// Text overflow for the selected values in a multi-link field.
+  final TextOverflow? selectedChipOverflow;
+
   const ReportFilterField({
     required this.key,
     required this.label,
@@ -122,6 +125,7 @@ class ReportFilterField {
     this.linkDoctype,
     this.linkFilters,
     this.linkTitleField,
+    this.selectedChipOverflow,
   });
 }
 
@@ -773,7 +777,11 @@ class _FieldWidgetState extends State<_FieldWidget> {
           children: [
             for (final v in values)
               InputChip(
-                label: Text(v),
+                label: Text(
+                  v,
+                  maxLines: field.selectedChipOverflow == null ? null : 1,
+                  overflow: field.selectedChipOverflow,
+                ),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 onDeleted: () => controller.text = joinMultiValue(

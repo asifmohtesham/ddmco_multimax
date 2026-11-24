@@ -9,6 +9,9 @@ class FilterChipWidget extends StatelessWidget {
   final String label;
   final VoidCallback onDeleted;
 
+  /// When set, long labels are ellipsized at this width.
+  final double? maxLabelWidth;
+
   /// Called when the chip itself (not its ×) is tapped — typically to edit
   /// that filter. Null leaves the chip body inert, as before.
   final VoidCallback? onTap;
@@ -19,6 +22,7 @@ class FilterChipWidget extends StatelessWidget {
     required this.label,
     required this.onDeleted,
     this.onTap,
+    this.maxLabelWidth,
   });
 
   @override
@@ -40,12 +44,19 @@ class FilterChipWidget extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: s.primary),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: s.primary,
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxLabelWidth ?? double.infinity,
+            ),
+            child: Text(
+              label,
+              maxLines: maxLabelWidth == null ? null : 1,
+              overflow: maxLabelWidth == null ? null : TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: s.primary,
+              ),
             ),
           ),
           const SizedBox(width: 6),
