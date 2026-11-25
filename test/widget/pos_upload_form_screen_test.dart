@@ -16,6 +16,7 @@ class _FakePosUploadProvider extends PosUploadProvider {
 
   final String status;
   String? returnReason;
+  Map<String, dynamic>? deliveryDocinfo;
   final updates = <Map<String, dynamic>>[];
 
   @override
@@ -38,7 +39,8 @@ class _FakePosUploadProvider extends PosUploadProvider {
   Future<List<PosDeliveryAction>> getDeliveryActions(String name) async => [];
 
   @override
-  Future<Map<String, dynamic>?> getDeliveryDocinfo(String name) async => null;
+  Future<Map<String, dynamic>?> getDeliveryDocinfo(String name) async =>
+      deliveryDocinfo;
 
   @override
   Future<bool> canWriteStatusField(Set<String> userRoles) async => true;
@@ -68,10 +70,12 @@ void main() {
 
   Future<void> pumpForm(
     WidgetTester tester,
-    _FakePosUploadProvider provider,
-  ) async {
-    tester.view.physicalSize = const Size(800, 1000);
-    tester.view.devicePixelRatio = 1;
+    _FakePosUploadProvider provider, {
+    Size physicalSize = const Size(800, 1000),
+    double devicePixelRatio = 1,
+  }) async {
+    tester.view.physicalSize = physicalSize;
+    tester.view.devicePixelRatio = devicePixelRatio;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -168,5 +172,60 @@ void main() {
     await controller.fetchPosUpload();
     await tester.pumpAndSettle();
     expect(reason, findsNothing);
+  });
+
+  testWidgets('last delivery event scrolls above the Android navigation bar', (
+    tester,
+  ) async {
+    const physicalSize = Size(1080, 2408);
+    const devicePixelRatio = 2.8125;
+    const navigationBar = 48 * devicePixelRatio;
+    tester.view.padding = const FakeViewPadding(bottom: navigationBar);
+    tester.view.viewPadding = const FakeViewPadding(bottom: navigationBar);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+
+    final provider = _FakePosUploadProvider('Delivered')
+      ..deliveryDocinfo = {
+        'versions': [
+          for (final (index, action) in [
+            'Out for Delivery',
+            'Delivery Return',
+            'Out for Delivery',
+            'Delivered',
+          ].indexed)
+            {
+              'creation': '2026-11-25 23:0$index:02',
+              'data': {
+                'updater_reference': {
+                  'pos_delivery': {
+                    'action': action,
+                    'driver_name': action == 'Delivered' ? 'Driver A' : 'Driver B',
+                    'recorded_by_name': 'Dispatcher',
+                    'dn': 'MAT-DN-2026-01199',
+                  },
+                },
+              },
+            },
+        ],
+      };
+    await pumpForm(
+      tester,
+      provider,
+      physicalSize: physicalSize,
+      devicePixelRatio: devicePixelRatio,
+    );
+
+    final details = find.byType(SingleChildScrollView);
+    await tester.drag(details, const Offset(0, -1000));
+    await tester.pumpAndSettle();
+
+    final recorder = find.text('Driver: Driver A\nRecorded by: Dispatcher');
+    final position = Scrollable.of(tester.element(recorder)).position;
+    expect(position.maxScrollExtent, greaterThan(0));
+    expect(position.extentAfter, 0);
+    final navigationBarTop =
+        (physicalSize.height - navigationBar) / devicePixelRatio;
+    expect(tester.getRect(recorder).bottom, lessThan(navigationBarTop));
   });
 }
