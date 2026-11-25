@@ -1,5 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:multimax/app/core/utils/html_text.dart';
+import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/data/models/pos_upload_delivery.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 /// Visual state of a single timeline checkpoint node.
 enum CheckpointState {
@@ -16,9 +23,7 @@ enum CheckpointState {
 /// A single node on the POS Upload progress timeline.
 ///
 /// [timestamp] is the raw server creation string (or null when [state] is not
-/// [CheckpointState.reached]); the widget renders it via
-/// [FormattingHelper.getRelativeTime] so this object stays pure and the unit
-/// tests are not time-dependent.
+/// [CheckpointState.reached]); the widget formats it for display.
 class TimelineCheckpoint {
   final String title;
   final String? docName;
@@ -26,6 +31,7 @@ class TimelineCheckpoint {
   final String? timestamp;
   final String? detail;
   final CheckpointState state;
+  final bool isDeliveryEvent;
 
   /// 0..1 completion ratio for the Delivery Note checkpoint; null when not
   /// applicable (other checkpoints, or ordered qty is zero/unknown).
@@ -39,6 +45,7 @@ class TimelineCheckpoint {
     this.timestamp,
     this.detail,
     this.progress,
+    this.isDeliveryEvent = false,
   });
 }
 
@@ -70,6 +77,7 @@ List<TimelineCheckpoint> buildPosUploadTimeline({
   required String? earliestPackingSlipCreation,
   required int packedItems,
   required int totalSerials,
+  Map<String, dynamic>? deliveryDocInfo,
 }) {
   final node1 = TimelineCheckpoint(
     title: 'POS Upload Created',
@@ -79,8 +87,20 @@ List<TimelineCheckpoint> buildPosUploadTimeline({
     detail: '$itemCount items',
   );
 
+  final deliveryHistory = buildPosUploadDeliveryHistory(deliveryDocInfo);
   if (isStockEntryUpload) {
-    return [node1, _linkedNode('Stock Entry', 'Linked', isLoadingLinked, hasLinkedDoc, linkedDocName, linkedDocCreation)];
+    return [
+      node1,
+      _linkedNode(
+        'Stock Entry',
+        'Linked',
+        isLoadingLinked,
+        hasLinkedDoc,
+        linkedDocName,
+        linkedDocCreation,
+      ),
+      ...deliveryHistory,
+    ];
   }
 
   // ── Delivery Note node (#2) ──────────────────────────────────────────────
@@ -115,21 +135,22 @@ List<TimelineCheckpoint> buildPosUploadTimeline({
   final CheckpointState psState = isLoadingPackingSlips
       ? CheckpointState.loading
       : (packingSlipCount > 0
-          ? CheckpointState.reached
-          : CheckpointState.upcoming);
+            ? CheckpointState.reached
+            : CheckpointState.upcoming);
 
   final node3 = TimelineCheckpoint(
     title: 'Packing Slips',
     statusLabel: 'Packing',
     state: psState,
-    timestamp:
-        psState == CheckpointState.reached ? earliestPackingSlipCreation : null,
+    timestamp: psState == CheckpointState.reached
+        ? earliestPackingSlipCreation
+        : null,
     detail: psState == CheckpointState.reached
         ? '$packingSlipCount slip${packingSlipCount == 1 ? '' : 's'} · $packedItems / $totalSerials items packed'
         : null,
   );
 
-  return [node1, node2, node3];
+  return [node1, node2, node3, ...deliveryHistory];
 }
 
 TimelineCheckpoint _linkedNode(
@@ -149,6 +170,182 @@ TimelineCheckpoint _linkedNode(
     state: state,
     docName: state == CheckpointState.reached ? linkedDocName : null,
     timestamp: state == CheckpointState.reached ? linkedDocCreation : null,
+  );
+}
+
+/// Pairs each audited Version with its Workflow summary by Comment name.
+/// Summaries whose Versions have rolled out of docinfo keep their own rows.
+List<TimelineCheckpoint> buildPosUploadDeliveryHistory(
+  Map<String, dynamic>? docinfo,
+) {
+  if (docinfo == null) return const [];
+
+  final history = <TimelineCheckpoint>[];
+  final summaries = <String, _DeliverySummary>{};
+  for (final field in ['workflow_logs', 'comments']) {
+    for (final comment in _docinfoRows(docinfo[field])) {
+      final summary = _readSummary(comment);
+      if (summary == null) continue;
+      final id = _nonBlank(comment['name']);
+      if (id == null) {
+        history.add(_summaryCheckpoint(summary));
+      } else {
+        summaries.putIfAbsent(id, () => summary);
+      }
+    }
+  }
+
+  for (final version in _docinfoRows(docinfo['versions'])) {
+    final data = _readVersionData(version['data']);
+    final reference = data?['updater_reference'];
+    final audit = reference is Map ? reference['pos_delivery'] : null;
+    if (audit is! Map) continue;
+    final action = _nonBlank(audit['action']);
+    if (action == null) continue;
+
+    final summary = summaries.remove(_nonBlank(audit['comment_id']));
+    history.add(
+      _deliveryCheckpoint(
+        action,
+        _nonBlank(version['creation']) ??
+            _nonBlank(audit['modified']) ??
+            summary?.timestamp,
+        stage: _changedStatus(data?['changed']),
+        driver:
+            _nonBlank(audit['driver_name']) ??
+            summary?.driver ??
+            _nonBlank(audit['driver']),
+        recorder:
+            _nonBlank(audit['recorded_by_name']) ??
+            summary?.recorder ??
+            _nonBlank(audit['recorded_by']),
+        reason: _nonBlank(audit['reason']) ?? summary?.reason,
+        deliveryNote: _nonBlank(audit['dn']) ?? summary?.deliveryNote,
+        stockEntry: reference is Map && reference['doctype'] == 'Stock Entry'
+            ? _nonBlank(reference['docname'])
+            : summary?.stockEntry,
+      ),
+    );
+  }
+  history.addAll(summaries.values.map(_summaryCheckpoint));
+
+  return history..sort(
+    (a, b) => (a.timestamp ?? '')
+        .replaceFirst('T', ' ')
+        .compareTo((b.timestamp ?? '').replaceFirst('T', ' ')),
+  );
+}
+
+typedef _DeliverySummary = ({
+  String action,
+  String? timestamp,
+  String? driver,
+  String? recorder,
+  String? reason,
+  String? deliveryNote,
+  String? stockEntry,
+});
+
+const _summaryPrefix = 'POS delivery · ';
+final _summaryField = RegExp(
+  r' · (Driver: |recorded by |Reason: |Delivery Note: |Stock Entry: )',
+);
+
+_DeliverySummary? _readSummary(Map comment) {
+  final content = _nonBlank(comment['content']);
+  if (content == null) return null;
+  final text = htmlToPlainText(content);
+  if (!text.startsWith(_summaryPrefix)) return null;
+
+  final fields = _summaryField.allMatches(text).toList();
+  final action = _nonBlank(
+    text.substring(
+      _summaryPrefix.length,
+      fields.isEmpty ? text.length : fields.first.start,
+    ),
+  );
+  if (action == null) return null;
+  final values = <String, String?>{};
+  for (var i = 0; i < fields.length; i++) {
+    final field = fields[i];
+    final end = i + 1 == fields.length ? text.length : fields[i + 1].start;
+    values[field.group(1)!] = _nonBlank(text.substring(field.end, end));
+  }
+  return (
+    action: action,
+    timestamp: _nonBlank(comment['creation']),
+    driver: values['Driver: '],
+    recorder: values['recorded by '],
+    reason: values['Reason: '],
+    deliveryNote: values['Delivery Note: '],
+    stockEntry: values['Stock Entry: '],
+  );
+}
+
+Iterable<Map> _docinfoRows(Object? rows) =>
+    rows is List ? rows.whereType<Map>() : const [];
+
+Map? _readVersionData(Object? data) {
+  if (data is String) {
+    try {
+      data = jsonDecode(data);
+    } on FormatException {
+      return null;
+    }
+  }
+  return data is Map ? data : null;
+}
+
+String? _changedStatus(Object? changes) {
+  if (changes is! List) return null;
+  for (final row in changes.whereType<List>()) {
+    if (row.length >= 3 && row[0] == 'status' && row[1] != row[2]) {
+      return _nonBlank(row[2]);
+    }
+  }
+  return null;
+}
+
+String? _nonBlank(Object? text) =>
+    text is String && text.trim().isNotEmpty ? text.trim() : null;
+
+TimelineCheckpoint _summaryCheckpoint(_DeliverySummary summary) =>
+    _deliveryCheckpoint(
+      summary.action,
+      summary.timestamp,
+      driver: summary.driver,
+      recorder: summary.recorder,
+      reason: summary.reason,
+      deliveryNote: summary.deliveryNote,
+      stockEntry: summary.stockEntry,
+    );
+
+TimelineCheckpoint _deliveryCheckpoint(
+  String action,
+  String? timestamp, {
+  String? stage,
+  String? driver,
+  String? recorder,
+  String? reason,
+  String? deliveryNote,
+  String? stockEntry,
+}) {
+  final reasonLabel =
+      PosDeliveryReason.fromLabel(reason)?.description ?? reason;
+  final details = [
+    if (driver != null) 'Driver: $driver',
+    if (recorder != null) 'Recorded by: $recorder',
+    if (reasonLabel != null) 'Reason: $reasonLabel',
+    if (stockEntry != null) 'Stock Entry: $stockEntry',
+  ];
+  return TimelineCheckpoint(
+    title: action,
+    statusLabel: stage ?? action,
+    state: CheckpointState.reached,
+    timestamp: timestamp,
+    docName: deliveryNote,
+    detail: details.isEmpty ? null : details.join('\n'),
+    isDeliveryEvent: true,
   );
 }
 
@@ -184,6 +381,8 @@ class _TimelineRow extends StatelessWidget {
   final TimelineCheckpoint checkpoint;
   final bool isLast;
   const _TimelineRow({required this.checkpoint, required this.isLast});
+
+  static final _eventTimeFormat = DateFormat('dd MMM yyyy, HH:mm:ss');
 
   @override
   Widget build(BuildContext context) {
@@ -226,50 +425,100 @@ class _TimelineRow extends StatelessWidget {
     final cs = theme.colorScheme;
     final reached = checkpoint.state == CheckpointState.reached;
     final loading = checkpoint.state == CheckpointState.loading;
-    final muted = cs.onSurfaceVariant;
+    final muted = context.scheme.textMuted;
+    final isDeliveryEvent = checkpoint.isDeliveryEvent;
+    final eventAction = PosDeliveryAction.fromLabel(checkpoint.title);
 
     final rows = <Widget>[
-      Text(
-        checkpoint.title,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: (reached || loading) ? null : muted,
+      if (isDeliveryEvent && eventAction != null)
+        StatusPill(status: eventAction.label)
+      else
+        Text(
+          checkpoint.title,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: (reached || loading) ? null : muted,
+          ),
         ),
-      ),
     ];
 
     if (reached) {
-      final rel = FormattingHelper.getRelativeTime(checkpoint.timestamp);
-      rows.add(Text(
-        '${checkpoint.statusLabel} · $rel',
-        style: theme.textTheme.labelSmall
-            ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600),
-      ));
-      if (checkpoint.docName != null && checkpoint.docName!.isNotEmpty) {
-        rows.add(Text(checkpoint.docName!, style: theme.textTheme.bodySmall));
+      final timestamp = checkpoint.timestamp;
+      final docName = checkpoint.docName;
+      if (isDeliveryEvent) {
+        final time = timestamp == null ? null : DateTime.tryParse(timestamp);
+        final label = [
+          if (eventAction == null && checkpoint.statusLabel != checkpoint.title)
+            checkpoint.statusLabel,
+          if (time != null)
+            _eventTimeFormat.format(time)
+          else if (timestamp != null)
+            timestamp,
+        ].join(' · ');
+        if (label.isNotEmpty) {
+          rows.add(
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(color: muted),
+            ),
+          );
+        }
+      } else {
+        final rel = FormattingHelper.getRelativeTime(timestamp);
+        rows.add(
+          Text(
+            '${checkpoint.statusLabel} · $rel',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: cs.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
+      if (docName != null && docName.isNotEmpty) {
+        rows.add(
+          Text(
+            isDeliveryEvent ? 'Delivery Note: $docName' : docName,
+            style: theme.textTheme.bodySmall,
+          ),
+        );
       }
       if (checkpoint.detail != null) {
-        rows.add(Text(
-          checkpoint.detail!,
-          style: theme.textTheme.labelSmall?.copyWith(color: muted),
-        ));
+        rows.add(
+          Text(
+            checkpoint.detail!,
+            style: theme.textTheme.labelSmall?.copyWith(color: muted),
+          ),
+        );
       }
       if (checkpoint.progress != null) {
-        rows.add(Padding(
-          padding: const EdgeInsets.only(top: 4, right: 8),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-                value: checkpoint.progress, minHeight: 4),
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 4, right: 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: checkpoint.progress,
+                minHeight: 4,
+              ),
+            ),
           ),
-        ));
+        );
       }
     } else if (loading) {
-      rows.add(Text('${checkpoint.statusLabel}…',
-          style: theme.textTheme.labelSmall?.copyWith(color: muted)));
+      rows.add(
+        Text(
+          '${checkpoint.statusLabel}…',
+          style: theme.textTheme.labelSmall?.copyWith(color: muted),
+        ),
+      );
     } else {
-      rows.add(Text('Awaiting',
-          style: theme.textTheme.labelSmall?.copyWith(color: muted)));
+      rows.add(
+        Text(
+          'Awaiting',
+          style: theme.textTheme.labelSmall?.copyWith(color: muted),
+        ),
+      );
     }
 
     return Column(

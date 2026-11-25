@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
+import 'package:multimax/app/data/models/pos_upload_delivery.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
@@ -32,6 +33,12 @@ class _FakePosUploadProvider extends PosUploadProvider {
 
   @override
   Future<bool> canWrite(String name) async => true;
+
+  @override
+  Future<List<PosDeliveryAction>> getDeliveryActions(String name) async => [];
+
+  @override
+  Future<Map<String, dynamic>?> getDeliveryDocinfo(String name) async => null;
 
   @override
   Future<bool> canWriteStatusField(Set<String> userRoles) async => true;

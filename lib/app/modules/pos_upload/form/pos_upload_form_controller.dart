@@ -1,15 +1,19 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
+import 'package:dio/dio.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:multimax/app/data/mixins/dio_error_mixin.dart';
 import 'package:multimax/app/data/mixins/optimistic_locking_mixin.dart';
 import 'package:multimax/app/data/mixins/realtime_sync_mixin.dart';
 import 'package:multimax/app/data/models/delivery_note_model.dart';
 import 'package:multimax/app/data/models/packing_slip_model.dart';
+import 'package:multimax/app/data/models/pos_upload_delivery.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/models/stock_entry_model.dart';
 import 'package:multimax/app/data/providers/delivery_note_provider.dart';
@@ -27,11 +31,7 @@ class PackingSlipInfo {
   final String psName;
   final int? fromCaseNo;
   final int? toCaseNo;
-  const PackingSlipInfo({
-    required this.psName,
-    this.fromCaseNo,
-    this.toCaseNo,
-  });
+  const PackingSlipInfo({required this.psName, this.fromCaseNo, this.toCaseNo});
 }
 
 /// Represents a selectable case-range option in the case filter.
@@ -49,7 +49,8 @@ class CaseOption {
   });
 
   String get label {
-    if (fromCaseNo != null && toCaseNo != null) return 'Cases $fromCaseNo – $toCaseNo';
+    if (fromCaseNo != null && toCaseNo != null)
+      return 'Cases $fromCaseNo – $toCaseNo';
     if (fromCaseNo != null) return 'Case $fromCaseNo';
     return psName;
   }
@@ -82,14 +83,14 @@ class PsItemEntry {
 // sharePackingSlipExcel and _rowComparator.
 typedef _PSRow = ({
   CellValue caseCell,
-  String    caseKey,
-  int       serial,
-  String    refCode,
-  String    variantOf,
-  String    itemCode,
-  String    itemName,
-  double    qty,
-  String    country,
+  String caseKey,
+  int serial,
+  String refCode,
+  String variantOf,
+  String itemCode,
+  String itemName,
+  double qty,
+  String country,
 });
 
 typedef _PSCol = (String, CellValue Function(_PSRow));
@@ -97,7 +98,7 @@ typedef _PSCol = (String, CellValue Function(_PSRow));
 /// Public record for a single Delivery Note export row.
 /// Public (unlike _PSRow) so unit tests can call buildDnRows directly.
 typedef DnRow = ({
-  int    serial,
+  int serial,
   String refCode,
   String variantOf,
   String itemCode,
@@ -138,36 +139,36 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
 
   var columns = p.compact
       ? <_PSCol>[
-          ('Case #',            (r) => r.caseCell),
-          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
-          ('Ref Code',          (r) => TextCellValue(r.refCode)),
-          ('Item Name',         (r) => TextCellValue(r.itemName)),
-          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Case #', (r) => r.caseCell),
+          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
+          ('Ref Code', (r) => TextCellValue(r.refCode)),
+          ('Item Name', (r) => TextCellValue(r.itemName)),
+          ('Qty', (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ]
       : <_PSCol>[
-          ('Case #',            (r) => r.caseCell),
-          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
-          ('Ref Code',          (r) => TextCellValue(r.refCode)),
-          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
-          ('Item Code',         (r) => TextCellValue(r.itemCode)),
-          ('Item Name',         (r) => TextCellValue(r.itemName)),
-          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Case #', (r) => r.caseCell),
+          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
+          ('Ref Code', (r) => TextCellValue(r.refCode)),
+          ('Variant Of', (r) => TextCellValue(r.variantOf)),
+          ('Item Code', (r) => TextCellValue(r.itemCode)),
+          ('Item Name', (r) => TextCellValue(r.itemName)),
+          ('Qty', (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ];
 
   final rowMap = <String, _PSRow>{};
   for (final ps in p.packingSlips) {
     final caseCell = PosUploadFormController.psCaseCell(ps);
-    final caseKey  = PosUploadFormController._psCaseKey(ps);
+    final caseKey = PosUploadFormController._psCaseKey(ps);
     for (final psItem in ps.items) {
       final posItemName =
           p.itemNameByIdx[psItem.customInvoiceSerialNumber] ?? psItem.itemName;
-      final serial    = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
-      final refCode   = p.refCodeByIdx[psItem.customInvoiceSerialNumber] ?? '';
+      final serial = int.tryParse(psItem.customInvoiceSerialNumber ?? '') ?? 0;
+      final refCode = p.refCodeByIdx[psItem.customInvoiceSerialNumber] ?? '';
       final variantOf = psItem.customVariantOf ?? '';
-      final itemCode  = psItem.itemCode;
-      final country   = psItem.customCountryOfOrigin ?? '';
+      final itemCode = psItem.itemCode;
+      final country = psItem.customCountryOfOrigin ?? '';
 
       final key = p.compact
           ? '$caseKey\x00$serial\x00$posItemName\x00$country'
@@ -176,26 +177,26 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
       final existing = rowMap[key];
       rowMap[key] = existing == null
           ? (
-              caseCell:  caseCell,
-              caseKey:   caseKey,
-              serial:    serial,
-              refCode:   refCode,
+              caseCell: caseCell,
+              caseKey: caseKey,
+              serial: serial,
+              refCode: refCode,
               variantOf: variantOf,
-              itemCode:  itemCode,
-              itemName:  posItemName,
-              qty:       psItem.qty,
-              country:   country,
+              itemCode: itemCode,
+              itemName: posItemName,
+              qty: psItem.qty,
+              country: country,
             )
           : (
-              caseCell:  existing.caseCell,
-              caseKey:   existing.caseKey,
-              serial:    existing.serial,
-              refCode:   existing.refCode,
+              caseCell: existing.caseCell,
+              caseKey: existing.caseKey,
+              serial: existing.serial,
+              refCode: existing.refCode,
               variantOf: existing.variantOf,
-              itemCode:  existing.itemCode,
-              itemName:  existing.itemName,
-              qty:       existing.qty + psItem.qty,
-              country:   existing.country,
+              itemCode: existing.itemCode,
+              itemName: existing.itemName,
+              qty: existing.qty + psItem.qty,
+              country: existing.country,
             );
     }
   }
@@ -205,7 +206,8 @@ List<int> _buildPackingSlipExcel(_PackingSlipExcelParams p) {
     final sortIdx = columns.indexWhere((c) => c.$1 == p.sortByColumn);
     if (sortIdx >= 0) {
       sortedRows.sort(
-          (a, b) => PosUploadFormController._rowComparator(p.sortByColumn!, a, b));
+        (a, b) => PosUploadFormController._rowComparator(p.sortByColumn!, a, b),
+      );
       if (sortIdx > 0) {
         final col = columns.removeAt(sortIdx);
         columns.insert(0, col);
@@ -309,19 +311,19 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
 
   var columns = p.compact
       ? <_DnCol>[
-          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
-          ('Ref Code',          (r) => TextCellValue(r.refCode)),
-          ('Item Name',         (r) => TextCellValue(r.itemName)),
-          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
+          ('Ref Code', (r) => TextCellValue(r.refCode)),
+          ('Item Name', (r) => TextCellValue(r.itemName)),
+          ('Qty', (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ]
       : <_DnCol>[
-          ('Invoice Serial #',  (r) => IntCellValue(r.serial)),
-          ('Ref Code',          (r) => TextCellValue(r.refCode)),
-          ('Variant Of',        (r) => TextCellValue(r.variantOf)),
-          ('Item Code',         (r) => TextCellValue(r.itemCode)),
-          ('Item Name',         (r) => TextCellValue(r.itemName)),
-          ('Qty',               (r) => DoubleCellValue(r.qty)),
+          ('Invoice Serial #', (r) => IntCellValue(r.serial)),
+          ('Ref Code', (r) => TextCellValue(r.refCode)),
+          ('Variant Of', (r) => TextCellValue(r.variantOf)),
+          ('Item Code', (r) => TextCellValue(r.itemCode)),
+          ('Item Name', (r) => TextCellValue(r.itemName)),
+          ('Qty', (r) => DoubleCellValue(r.qty)),
           ('Country of Origin', (r) => TextCellValue(r.country)),
         ];
 
@@ -409,7 +411,7 @@ List<int> buildDeliveryNoteExcelBytes(DeliveryNoteExcelParams p) {
 }
 
 class PosUploadFormController extends GetxController
-    with OptimisticLockingMixin, RealtimeSyncMixin {
+    with OptimisticLockingMixin, RealtimeSyncMixin, DioErrorMixin {
   static const manualStatusOptions = [
     'Pending',
     'In Progress',
@@ -425,10 +427,14 @@ class PosUploadFormController extends GetxController
   final String mode = Get.arguments['mode'];
 
   // ── RealtimeSyncMixin requirements ─────────────────────────────────────────
-  @override String get realtimeDoctype => 'POS Upload';
-  @override String get realtimeDocname => name;
-  @override var isDirty = false.obs;
-  @override var isSaving = false.obs;
+  @override
+  String get realtimeDoctype => 'POS Upload';
+  @override
+  String get realtimeDocname => name;
+  @override
+  var isDirty = false.obs;
+  @override
+  var isSaving = false.obs;
 
   /// Status changes commit immediately via [updateStatus]; nothing else on
   /// this screen is editable, so auto-save has nothing to do.
@@ -438,6 +444,16 @@ class PosUploadFormController extends GetxController
   // ── Core state ─────────────────────────────────────────────────────────────
   var isLoading = true.obs;
   var posUpload = Rx<PosUpload?>(null);
+
+  final deliveryActions = <PosDeliveryAction>[].obs;
+  final deliveryActionBusy = false.obs;
+  final deliveryActionDiscoveryFailed = false.obs;
+  final posDeliveryDocinfo = Rxn<Map<String, dynamic>>();
+  final _deliveryActionsReady = false.obs;
+  int _documentGeneration = 0;
+
+  bool _isCurrentDocument(int generation) =>
+      !isClosed && generation == _documentGeneration;
 
   /// Server-confirmed write permission on this document (fail-closed:
   /// stays `false` until the probe succeeds).
@@ -460,10 +476,13 @@ class PosUploadFormController extends GetxController
   // ── Linked document (DN or SE) ─────────────────────────────────────────────
   var linkedDocType = LinkedDocType.none.obs;
   var linkedDocName = ''.obs;
+
   /// Server `creation` timestamp of the linked DN/SE — drives the timeline's
   /// relative-time for that checkpoint. Empty until the linked doc loads.
   var linkedDocCreation = ''.obs;
   var isLoadingLinked = false.obs;
+  final linkedDeliveryNote = Rxn<PosUploadDeliveryNoteLink>();
+  int _linkedDocumentRequest = 0;
 
   /// The full linked Delivery Note, retained for the DN Excel export.
   final deliveryNote = Rxn<DeliveryNote>();
@@ -489,8 +508,7 @@ class PosUploadFormController extends GetxController
   // ── Number formatter ───────────────────────────────────────────────────────
   static final _numFmt = NumberFormat('#,##0.00');
 
-  static String fmtAmount(double? v) =>
-      v == null ? '0.00' : _numFmt.format(v);
+  static String fmtAmount(double? v) => v == null ? '0.00' : _numFmt.format(v);
 
   static String fmtQty(double? v) =>
       v == null ? '0' : v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 2);
@@ -505,12 +523,14 @@ class PosUploadFormController extends GetxController
       if (ps.customPoNo != posUploadName) continue;
       for (final psItem in ps.items) {
         if (psItem.customInvoiceSerialNumber == itemIdx.toString()) {
-          entries.add(PsItemEntry(
-            psName: ps.name,
-            fromCaseNo: ps.fromCaseNo,
-            toCaseNo: ps.toCaseNo,
-            item: psItem,
-          ));
+          entries.add(
+            PsItemEntry(
+              psName: ps.name,
+              fromCaseNo: ps.fromCaseNo,
+              toCaseNo: ps.toCaseNo,
+              item: psItem,
+            ),
+          );
         }
       }
     }
@@ -578,11 +598,11 @@ class PosUploadFormController extends GetxController
       final serialStr = dnItem.customInvoiceSerialNumber ?? '';
       final itemName =
           itemNameByIdx[serialStr] ?? dnItem.itemName ?? dnItem.itemCode;
-      final serial    = int.tryParse(serialStr) ?? 0;
-      final refCode   = refCodeByIdx[serialStr] ?? '';
+      final serial = int.tryParse(serialStr) ?? 0;
+      final refCode = refCodeByIdx[serialStr] ?? '';
       final variantOf = dnItem.customVariantOf ?? '';
-      final itemCode  = dnItem.itemCode;
-      final country   = dnItem.countryOfOrigin ?? '';
+      final itemCode = dnItem.itemCode;
+      final country = dnItem.countryOfOrigin ?? '';
 
       final key = compact
           ? '$serial\x00$itemName\x00$country'
@@ -591,22 +611,22 @@ class PosUploadFormController extends GetxController
       final existing = rowMap[key];
       rowMap[key] = existing == null
           ? (
-              serial:    serial,
-              refCode:   refCode,
+              serial: serial,
+              refCode: refCode,
               variantOf: variantOf,
-              itemCode:  itemCode,
-              itemName:  itemName,
-              qty:       dnItem.qty,
-              country:   country,
+              itemCode: itemCode,
+              itemName: itemName,
+              qty: dnItem.qty,
+              country: country,
             )
           : (
-              serial:    existing.serial,
-              refCode:   existing.refCode,
+              serial: existing.serial,
+              refCode: existing.refCode,
               variantOf: existing.variantOf,
-              itemCode:  existing.itemCode,
-              itemName:  existing.itemName,
-              qty:       existing.qty + dnItem.qty,
-              country:   existing.country,
+              itemCode: existing.itemCode,
+              itemName: existing.itemName,
+              qty: existing.qty + dnItem.qty,
+              country: existing.country,
             );
     }
 
@@ -641,7 +661,7 @@ class PosUploadFormController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    _loadData();
+    unawaited(fetchPosUpload());
   }
 
   @override
@@ -650,119 +670,320 @@ class PosUploadFormController extends GetxController
     super.onClose();
   }
 
-  // ── Initialisation ─────────────────────────────────────────────────────────
-
-  Future<void> _loadData() async {
-    isLoading.value = true;
-    await fetchPosUpload().then((_) => initRealtimeSync());
-    isLoading.value = false;
-    refreshWritePermission();
-    fetchLinkedDocument();
-  }
-
   // ── POS Upload ─────────────────────────────────────────────────────────────
 
   Future<void> fetchPosUpload() async {
+    await _refreshDocument();
+  }
+
+  Future<bool> _refreshDocument({PosUpload? savedUpload}) async {
+    final generation = ++_documentGeneration;
+    _deliveryActionsReady.value = false;
+    deliveryActionDiscoveryFailed.value = false;
+    canWriteStatus.value = false;
+    if (savedUpload == null) {
+      deliveryActions.clear();
+    } else {
+      _showUpload(savedUpload);
+    }
+
+    var fetched = false;
     try {
       final response = await _provider.getPosUpload(name);
-      if (response.statusCode == 200 && response.data['data'] != null) {
-        posUpload.value = PosUpload.fromJson(response.data['data']);
-        _applyFilters();
-      } else {
-        GlobalSnackbar.error(message: 'Failed to fetch POS upload');
+      if (!_isCurrentDocument(generation)) return false;
+      if (response.statusCode == 200 &&
+          response.data['data'] is Map<String, dynamic>) {
+        _showUpload(PosUpload.fromJson(response.data['data']));
+        fetched = true;
       }
-    } catch (e) {
-      GlobalSnackbar.error(message: e.toString());
+    } catch (_) {
+      if (!_isCurrentDocument(generation)) return false;
     }
+    if (isLoading.value) {
+      isLoading.value = false;
+      unawaited(initRealtimeSync());
+    }
+    if (!fetched && savedUpload == null) {
+      isLoadingLinked.value = false;
+      isLoadingPackingSlips.value = false;
+      GlobalSnackbar.error(message: 'Failed to fetch POS upload');
+      return false;
+    }
+    isStale.value = false;
+    await Future.wait([
+      _discoverDeliveryActions(generation),
+      _refreshDeliveryDocinfo(generation),
+      fetchLinkedDocument(),
+      refreshWritePermission(),
+    ]);
+    return _isCurrentDocument(generation);
+  }
+
+  void _showUpload(PosUpload upload) {
+    posUpload.value = upload;
+    _applyFilters();
+  }
+
+  Future<void> _discoverDeliveryActions(int generation) async {
+    try {
+      final actions = await _provider.getDeliveryActions(name);
+      if (!_isCurrentDocument(generation)) return;
+      deliveryActions.assignAll(actions);
+      deliveryActionDiscoveryFailed.value = false;
+      _deliveryActionsReady.value = true;
+    } catch (_) {
+      if (!_isCurrentDocument(generation)) return;
+      deliveryActions.clear();
+      deliveryActionDiscoveryFailed.value = true;
+    }
+  }
+
+  Future<void> _refreshDeliveryDocinfo(int generation) async {
+    try {
+      final docinfo = await _provider.getDeliveryDocinfo(name);
+      if (_isCurrentDocument(generation)) posDeliveryDocinfo.value = docinfo;
+    } catch (_) {
+      if (_isCurrentDocument(generation)) posDeliveryDocinfo.value = null;
+    }
+  }
+
+  Future<void> retryDeliveryActions() async {
+    if (deliveryActionBusy.value || !deliveryActionDiscoveryFailed.value)
+      return;
+    deliveryActionBusy.value = true;
+    try {
+      await _discoverDeliveryActions(_documentGeneration);
+    } finally {
+      deliveryActionBusy.value = false;
+    }
+  }
+
+  Future<void> runDeliveryAction(
+    PosDeliveryAction action,
+    Future<PosDeliverySelection?> Function(PosDeliveryDriverOptions) select, {
+    bool Function()? isFormCurrent,
+  }) async {
+    final upload = posUpload.value;
+    if (deliveryActionBusy.value ||
+        isSaving.value ||
+        isStale.value ||
+        !_deliveryActionsReady.value ||
+        !deliveryActions.contains(action) ||
+        upload == null ||
+        upload.modified.isEmpty) {
+      return;
+    }
+
+    final generation = _documentGeneration;
+    bool isCurrent() =>
+        _isCurrentDocument(generation) && (isFormCurrent?.call() ?? true);
+    if (!isCurrent()) return;
+    deliveryActionBusy.value = true;
+    var submitted = false;
+    try {
+      final options = await _provider.getDeliveryDrivers(upload.name, action);
+      if (!isCurrent()) return;
+      final selection = await select(options);
+      if (!isCurrent() || selection == null) return;
+      if (!options.drivers.any((driver) => driver.name == selection.driver) ||
+          (action.requiresReason && selection.reason == null)) {
+        return;
+      }
+
+      submitted = true;
+      final saved = await _provider.applyDeliveryAction(
+        upload,
+        action,
+        selection,
+      );
+      if (!isCurrent()) return;
+      if (await _refreshDocument(savedUpload: saved) &&
+          (isFormCurrent?.call() ?? true)) {
+        GlobalSnackbar.success(message: 'Delivery action recorded');
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (!submitted) {
+        GlobalSnackbar.error(message: 'Unable to load delivery drivers');
+        return;
+      }
+      await _handleDeliveryActionFailure(error, isFormCurrent);
+    } finally {
+      deliveryActionBusy.value = false;
+    }
+  }
+
+  Future<void> _handleDeliveryActionFailure(
+    Object error,
+    bool Function()? isFormCurrent,
+  ) async {
+    final response = error is DioException ? error.response : null;
+    final status = response?.statusCode;
+    final message = error is DioException
+        ? _deliveryServerMessage(error)
+        : null;
+    final changed = message?.contains('This POS Upload changed.') == true;
+    final deadlock =
+        response?.data.toString().contains('QueryDeadlockError') == true;
+    if (changed || deadlock || status == null || status >= 500) {
+      final refreshGeneration = _documentGeneration + 1;
+      await _refreshDocument();
+      if (!_isCurrentDocument(refreshGeneration) ||
+          !(isFormCurrent?.call() ?? true)) {
+        return;
+      }
+      if (changed || deadlock) {
+        GlobalSnackbar.warning(
+          message: changed
+              ? '$message Try again.'
+              : 'The POS Upload was being updated. Try the action again.',
+        );
+      } else {
+        GlobalSnackbar.error(
+          message:
+              'Unable to confirm the delivery action. Check the POS Upload before trying again.',
+        );
+      }
+    } else {
+      GlobalSnackbar.error(
+        message: status == 417 && message != null
+            ? message
+            : 'Failed to apply delivery action',
+      );
+    }
+  }
+
+  String? _deliveryServerMessage(DioException error) {
+    final data = error.response?.data;
+    if (data is Map) {
+      try {
+        final raw = data['_server_messages'];
+        final messages = raw is String ? jsonDecode(raw) : raw;
+        if (messages is List) {
+          for (final entry in messages.reversed) {
+            final detail = entry is String ? jsonDecode(entry) : entry;
+            final message = detail is Map ? detail['message'] : null;
+            if (message is String && message.trim().isNotEmpty) {
+              return message.trim();
+            }
+          }
+        }
+      } on FormatException {
+        // Frappe also reports the exception on the outer response.
+      }
+    }
+    final message = extractDioError(error, '');
+    return message.isEmpty ? null : message;
   }
 
   // ── Linked document ────────────────────────────────────────────────────────
 
   Future<void> fetchLinkedDocument() async {
     final upload = posUpload.value;
-    if (upload == null) return;
-    final prefix =
-        name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
+    if (upload == null || isClosed) return;
+    final generation = _documentGeneration;
+    final request = ++_linkedDocumentRequest;
+    bool isCurrent() =>
+        _isCurrentDocument(generation) && request == _linkedDocumentRequest;
+    final prefix = name.length >= 2 ? name.substring(0, 2).toUpperCase() : '';
     if (prefix == 'ML' || prefix == 'KA') {
-      await _fetchDeliveryNote(upload);
+      await _fetchDeliveryNote(upload, isCurrent);
     } else if (prefix == 'MX' || prefix == 'KX') {
-      await _fetchStockEntry(upload);
+      await _fetchStockEntry(upload, isCurrent);
     }
   }
 
-  Future<void> _fetchDeliveryNote(PosUpload upload) async {
+  Future<void> _fetchDeliveryNote(
+    PosUpload upload,
+    bool Function() isCurrent,
+  ) async {
     isLoadingLinked.value = true;
     linkedDocType.value = LinkedDocType.deliveryNote;
+    linkedDocName.value = '';
+    linkedDocCreation.value = '';
+    linkedDeliveryNote.value = null;
+    deliveryNote.value = null;
+    resolvedSerials.clear();
+    resolvedDnQty.clear();
+    packingSlips.clear();
+    resolvedPackingSlips.clear();
+    resolvedPsItems.clear();
+    caseOptions.clear();
+    isLoadingPackingSlips.value = false;
+    _applyFilters();
     try {
-      final listResp = await _dnProvider.getDeliveryNotes(
-          limit: 1, filters: {'po_no': name});
-      if (listResp.statusCode == 200 &&
-          (listResp.data['data'] as List?)?.isNotEmpty == true) {
-        final dnName =
-            (listResp.data['data'] as List).first['name'].toString();
-        linkedDocName.value = dnName;
-        final detailResp = await _dnProvider.getDeliveryNote(dnName);
-        if (detailResp.statusCode == 200 &&
-            detailResp.data['data'] != null) {
-          final dn = DeliveryNote.fromJson(detailResp.data['data']);
-          deliveryNote.value = dn;
-          linkedDocCreation.value = dn.creation;
-          _buildSerialMap(
-            posItems: upload.items,
-            matchSerial: (idx) => dn.items
-                .firstWhereOrNull(
-                    (i) => i.customInvoiceSerialNumber == idx.toString())
-                ?.customInvoiceSerialNumber,
-          );
-          _buildDnQtyMap(
-            posItems: upload.items,
-            matchQty: (idx) {
-              final serial = idx.toString();
-              final matches = dn.items
-                  .where((i) => i.customInvoiceSerialNumber == serial)
-                  .toList();
-              if (matches.isEmpty) return null;
-              return matches.fold<double>(0, (sum, i) => sum + i.qty);
-            },
-          );
-        } else {
-          // Detail fetch failed — clear any DN retained from a previous
-          // fetch so the export UI can't act on stale data.
-          deliveryNote.value = null;
-          linkedDocCreation.value = '';
-        }
-        isLoadingLinked.value = false;
-        await _fetchPackingSlips(upload, dnName);
-      } else {
-        linkedDocName.value = '';
+      final link = await _dnProvider.resolvePosUploadDeliveryNote(upload);
+      if (!isCurrent()) return;
+      final dnName = link.name;
+      if (dnName == null) {
+        linkedDeliveryNote.value = link;
         linkedDocType.value = LinkedDocType.none;
-        deliveryNote.value = null;
-        linkedDocCreation.value = '';
-        isLoadingLinked.value = false;
+        activeCaseFilter.value = null;
+        return;
       }
-    } catch (_) {
-      linkedDocType.value = LinkedDocType.none;
-      deliveryNote.value = null;
-      linkedDocCreation.value = '';
+
+      final response = await _dnProvider.getDeliveryNote(dnName);
+      if (!isCurrent()) return;
+      final data = response.data is Map ? response.data['data'] : null;
+      if (response.statusCode != 200 || data is! Map<String, dynamic>) {
+        throw const FormatException('Unable to read Delivery Note');
+      }
+      final dn = DeliveryNote.fromJson(data);
+      linkedDeliveryNote.value = link;
+      linkedDocName.value = dnName;
+      deliveryNote.value = dn;
+      linkedDocCreation.value = dn.creation;
+      _buildSerialMap(
+        posItems: upload.items,
+        matchSerial: (idx) => dn.items
+            .firstWhereOrNull(
+              (i) => i.customInvoiceSerialNumber == idx.toString(),
+            )
+            ?.customInvoiceSerialNumber,
+      );
+      _buildDnQtyMap(
+        posItems: upload.items,
+        matchQty: (idx) {
+          final serial = idx.toString();
+          final matches = dn.items
+              .where((i) => i.customInvoiceSerialNumber == serial)
+              .toList();
+          if (matches.isEmpty) return null;
+          return matches.fold<double>(0, (sum, i) => sum + i.qty);
+        },
+      );
       isLoadingLinked.value = false;
+      await _fetchPackingSlips(upload, dnName, isCurrent);
+    } catch (_) {
+      if (!isCurrent()) return;
+      linkedDeliveryNote.value = const PosUploadDeliveryNoteLink.unavailable();
+      linkedDocType.value = LinkedDocType.none;
+      activeCaseFilter.value = null;
+    } finally {
+      if (isCurrent()) isLoadingLinked.value = false;
     }
   }
 
-  Future<void> _fetchStockEntry(PosUpload upload) async {
+  Future<void> _fetchStockEntry(
+    PosUpload upload,
+    bool Function() isCurrent,
+  ) async {
     isLoadingLinked.value = true;
     // resolvedDnQty and resolvedPsItems are not applicable to Stock Entry linked uploads.
     linkedDocType.value = LinkedDocType.stockEntry;
     try {
       final listResp = await _seProvider.getStockEntries(
-          limit: 1, filters: {'custom_reference_no': name});
+        limit: 1,
+        filters: {'custom_reference_no': name},
+      );
+      if (!isCurrent()) return;
       if (listResp.statusCode == 200 &&
           (listResp.data['data'] as List?)?.isNotEmpty == true) {
-        final seName =
-            (listResp.data['data'] as List).first['name'].toString();
+        final seName = (listResp.data['data'] as List).first['name'].toString();
         linkedDocName.value = seName;
         final detailResp = await _seProvider.getStockEntry(seName);
-        if (detailResp.statusCode == 200 &&
-            detailResp.data['data'] != null) {
+        if (!isCurrent()) return;
+        if (detailResp.statusCode == 200 && detailResp.data['data'] != null) {
           final se = StockEntry.fromJson(detailResp.data['data']);
           linkedDocCreation.value =
               detailResp.data['data']['creation']?.toString() ?? '';
@@ -779,16 +1000,21 @@ class PosUploadFormController extends GetxController
         linkedDocCreation.value = '';
       }
     } catch (_) {
+      if (!isCurrent()) return;
       linkedDocType.value = LinkedDocType.none;
       linkedDocCreation.value = '';
     } finally {
-      isLoadingLinked.value = false;
+      if (isCurrent()) isLoadingLinked.value = false;
     }
   }
 
   // ── Packing Slip layer ─────────────────────────────────────────────────────
 
-  Future<void> _fetchPackingSlips(PosUpload upload, String dnName) async {
+  Future<void> _fetchPackingSlips(
+    PosUpload upload,
+    String dnName,
+    bool Function() isCurrent,
+  ) async {
     isLoadingPackingSlips.value = true;
     try {
       final listResp = await _psProvider.getPackingSlips(
@@ -796,13 +1022,14 @@ class PosUploadFormController extends GetxController
         filters: {'delivery_note': dnName},
         orderBy: 'from_case_no asc',
       );
-      if (listResp.statusCode != 200) return;
+      if (!isCurrent() || listResp.statusCode != 200) return;
       final psList = listResp.data['data'] as List? ?? [];
       if (psList.isEmpty) return;
 
       final responses = await Future.wait(
-          psList.map((ps) =>
-              _psProvider.getPackingSlip(ps['name'].toString())));
+        psList.map((ps) => _psProvider.getPackingSlip(ps['name'].toString())),
+      );
+      if (!isCurrent()) return;
 
       final slips = <PackingSlip>[];
       for (final resp in responses) {
@@ -810,7 +1037,7 @@ class PosUploadFormController extends GetxController
           slips.add(PackingSlip.fromJson(resp.data['data']));
         }
       }
-      slips.removeWhere((ps) => ps.docstatus == 2);   // exclude Cancelled
+      slips.removeWhere((ps) => ps.docstatus == 2); // exclude Cancelled
       packingSlips.assignAll(slips);
 
       // Build idx → PackingSlipInfo.
@@ -854,25 +1081,28 @@ class PosUploadFormController extends GetxController
       // of the PS's own item quantities so the chip shows how many units are
       // packed in that case.
       caseOptions.assignAll(
-        slips
-            .map((ps) {
-              final psQty = ps.items
-                  .fold<double>(0, (s, psItem) => s + psItem.qty);
-              return CaseOption(
-                psName: ps.name,
-                fromCaseNo: ps.fromCaseNo,
-                toCaseNo: ps.toCaseNo,
-                totalQty: psQty,
-              );
-            })
-            .toList(),
+        slips.map((ps) {
+          final psQty = ps.items.fold<double>(0, (s, psItem) => s + psItem.qty);
+          return CaseOption(
+            psName: ps.name,
+            fromCaseNo: ps.fromCaseNo,
+            toCaseNo: ps.toCaseNo,
+            totalQty: psQty,
+          );
+        }).toList(),
       );
-
-      // Re-apply any active case filter now that PS data is available.
-      _applyFilters();
     } catch (_) {
     } finally {
-      isLoadingPackingSlips.value = false;
+      if (isCurrent()) {
+        final selected = activeCaseFilter.value;
+        if (selected != null) {
+          activeCaseFilter.value = caseOptions.firstWhereOrNull(
+            (option) => option.psName == selected.psName,
+          );
+        }
+        _applyFilters();
+        isLoadingPackingSlips.value = false;
+      }
     }
   }
 
@@ -949,10 +1179,9 @@ class PosUploadFormController extends GetxController
 
   @override
   Future<void> reloadDocument() async {
-    await fetchPosUpload();
-    await fetchLinkedDocument();
-    refreshWritePermission();
-    GlobalSnackbar.success(message: 'Document reloaded successfully');
+    if (await _refreshDocument()) {
+      GlobalSnackbar.success(message: 'Document reloaded successfully');
+    }
   }
 
   // ── Status update (write-gated) ────────────────────────────────────────────
@@ -965,19 +1194,16 @@ class PosUploadFormController extends GetxController
   /// permlevel-1 access (e.g. plain Sales User) open the dropdown, pick a
   /// value, and have the server silently discard it.
   Future<void> refreshWritePermission() async {
-    if (!await _provider.canWrite(name)) {
-      canWriteStatus.value = false;
-      return;
-    }
-    canWriteStatus.value = await _provider.canWriteStatusField(_userRoles());
+    final generation = _documentGeneration;
+    final granted =
+        await _provider.canWrite(name) &&
+        await _provider.canWriteStatusField(_userRoles());
+    if (_isCurrentDocument(generation)) canWriteStatus.value = granted;
   }
 
   Set<String> _userRoles() {
     if (!Get.isRegistered<AuthenticationController>()) return const {};
-    return Get.find<AuthenticationController>()
-            .currentUser
-            .value
-            ?.roles
+    return Get.find<AuthenticationController>().currentUser.value?.roles
             .toSet() ??
         const {};
   }
@@ -988,11 +1214,12 @@ class PosUploadFormController extends GetxController
     required bool canWritePerm,
     required bool isSaving,
     required bool isStale,
-  }) =>
-      canWritePerm && !isSaving && !isStale;
+  }) => canWritePerm && !isSaving && !isStale;
 
   bool get canEditStatus =>
       manualStatusOptions.contains(posUpload.value?.status) &&
+      _deliveryActionsReady.value &&
+      !deliveryActionBusy.value &&
       computeCanEditStatus(
         canWritePerm: canWriteStatus.value,
         isSaving: isSaving.value,
@@ -1015,15 +1242,18 @@ class PosUploadFormController extends GetxController
       statusEditRevision.value++;
       return;
     }
+    if (!canEditStatus) return;
 
+    final generation = _documentGeneration;
     isSaving.value = true;
     try {
       final response = await _provider.updatePosUpload(name, {
         'status': newStatus,
         'modified': upload.modified,
       });
+      if (!_isCurrentDocument(generation)) return;
       if (response.statusCode == 200) {
-        await fetchPosUpload();
+        if (!await _refreshDocument()) return;
         // A 200 does not guarantee the change stuck: Frappe silently resets
         // permlevel-gated fields for users without write access at that
         // level. Trust only the refetched document.
@@ -1032,13 +1262,15 @@ class PosUploadFormController extends GetxController
         } else {
           statusEditRevision.value++;
           GlobalSnackbar.error(
-              message: 'Status change was rejected by the server');
+            message: 'Status change was rejected by the server',
+          );
         }
       } else {
         statusEditRevision.value++;
         GlobalSnackbar.error(message: 'Failed to update status');
       }
     } catch (e) {
+      if (!_isCurrentDocument(generation)) return;
       statusEditRevision.value++;
       if (!handleVersionConflict(e)) {
         GlobalSnackbar.error(message: 'Failed to update status: $e');
@@ -1070,8 +1302,9 @@ class PosUploadFormController extends GetxController
       refCodeByIdx: {
         for (final item in upload.items) item.idx.toString(): item.refCode,
       },
-      packingSlips:
-          packingSlips.where((p) => p.customPoNo == upload.name).toList(),
+      packingSlips: packingSlips
+          .where((p) => p.customPoNo == upload.name)
+          .toList(),
       compact: compact,
       sortByColumn: sortByColumn,
     );
@@ -1080,10 +1313,10 @@ class PosUploadFormController extends GetxController
     final fileBytes = await compute(_buildPackingSlipExcel, params);
 
     final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
-    final safeName  = upload.name.replaceAll('/', '_');
-    final fileName  = 'POS Upload - $safeName - Packing Slip - $timestamp';
-    final tempDir   = await getTemporaryDirectory();
-    final filePath  = '${tempDir.path}/$fileName.xlsx';
+    final safeName = upload.name.replaceAll('/', '_');
+    final fileName = 'POS Upload - $safeName - Packing Slip - $timestamp';
+    final tempDir = await getTemporaryDirectory();
+    final filePath = '${tempDir.path}/$fileName.xlsx';
     await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
     return filePath;
@@ -1119,10 +1352,10 @@ class PosUploadFormController extends GetxController
     final fileBytes = await compute(buildDeliveryNoteExcelBytes, params);
 
     final timestamp = DateFormat('yyyyMMdd HHmmss').format(DateTime.now());
-    final safeName  = upload.name.replaceAll('/', '_');
-    final fileName  = 'POS Upload - $safeName - Delivery Note - $timestamp';
-    final tempDir   = await getTemporaryDirectory();
-    final filePath  = '${tempDir.path}/$fileName.xlsx';
+    final safeName = upload.name.replaceAll('/', '_');
+    final fileName = 'POS Upload - $safeName - Delivery Note - $timestamp';
+    final tempDir = await getTemporaryDirectory();
+    final filePath = '${tempDir.path}/$fileName.xlsx';
     await File(filePath).writeAsBytes(Uint8List.fromList(fileBytes));
 
     return filePath;
@@ -1159,7 +1392,8 @@ class PosUploadFormController extends GetxController
     final lastDataRow = tableStartRow + 1 + dataRowCount;
     sheet.cell(idx(qtyCol, totalsRow))
       ..value = FormulaCellValue(
-          'SUBTOTAL(109,$colLetter$firstDataRow:$colLetter$lastDataRow)')
+        'SUBTOTAL(109,$colLetter$firstDataRow:$colLetter$lastDataRow)',
+      )
       ..cellStyle = style;
   }
 
@@ -1179,7 +1413,8 @@ class PosUploadFormController extends GetxController
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
     final colCount = columnNames.length;
     final lastCol = _excelColLetter(colCount - 1);
-    final hasTotals = sumColumnName != null &&
+    final hasTotals =
+        sumColumnName != null &&
         dataRowCount > 0 &&
         columnNames.contains(sumColumnName);
     // tableStartRow is 0-based; Excel refs are 1-based.
@@ -1194,7 +1429,8 @@ class PosUploadFormController extends GetxController
     final colsBuffer = StringBuffer();
     for (int i = 0; i < colCount; i++) {
       colsBuffer.write(
-          '<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"');
+        '<tableColumn id="${i + 1}" name="${_xmlEscape(columnNames[i])}"',
+      );
       if (hasTotals && columnNames[i] == sumColumnName) {
         colsBuffer.write(' totalsRowFunction="sum"');
       } else if (hasTotals && i == 0) {
@@ -1203,7 +1439,8 @@ class PosUploadFormController extends GetxController
       colsBuffer.write('/>');
     }
 
-    final tableXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    final tableXml =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
         ' id="1" name="$tableName" displayName="$tableName"'
         ' ref="$ref" ${hasTotals ? 'totalsRowCount="1"' : 'totalsRowShown="0"'}>'
@@ -1213,7 +1450,8 @@ class PosUploadFormController extends GetxController
         ' showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>'
         '</table>';
 
-    const relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    const relsXml =
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1"'
         ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table"'
@@ -1247,8 +1485,9 @@ class PosUploadFormController extends GetxController
     }
 
     archive.addFile(ArchiveFile.string('xl/tables/table1.xml', tableXml));
-    archive.addFile(ArchiveFile.string(
-        'xl/worksheets/_rels/sheet1.xml.rels', relsXml));
+    archive.addFile(
+      ArchiveFile.string('xl/worksheets/_rels/sheet1.xml.rels', relsXml),
+    );
 
     return ZipEncoder().encode(archive) ?? xlsxBytes;
   }

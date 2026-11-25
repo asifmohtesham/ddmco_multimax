@@ -47,6 +47,7 @@ class StatusPill extends StatelessWidget {
       case 'Expired':
       case 'Overdue':
       case 'Absent':
+      case 'Delivery Return':
         return (AppColors.red500, AppColors.red700, AppColors.red300);
       case 'Submitted':
       case 'Enabled':
@@ -186,10 +187,7 @@ class StatusPill extends StatelessWidget {
         opacity: animation,
         child: ScaleTransition(scale: animation, child: child),
       ),
-      child: KeyedSubtree(
-        key: ValueKey(status),
-        child: _buildPill(context),
-      ),
+      child: KeyedSubtree(key: ValueKey(status), child: _buildPill(context)),
     );
   }
 }
