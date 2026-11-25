@@ -16,6 +16,7 @@ import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/app_nav_drawer.dart';
+import 'package:multimax/app/modules/global_widgets/workspace_menu.dart';
 
 import '../helpers/auth_fakes.dart';
 
@@ -42,24 +43,14 @@ String deskPage([Map<String, dynamic> boot = const {}]) =>
       },
     })};</script>';
 
-const _reports = {
-  'Batch-Wise Balance History': (module: 'Stock', refDoctype: 'Batch'),
-  'Item Variant Details': (module: 'Stock', refDoctype: 'Item'),
-  'Stock Balance': (module: 'Stock', refDoctype: 'Stock Entry'),
-  'Stock Ageing - Custom': (module: 'Stock', refDoctype: 'Item'),
-  'BOM Search': (module: 'Stock', refDoctype: 'BOM'),
-  'Job Card Summary': (module: 'Manufacturing', refDoctype: 'Job Card'),
-  'BOM Stock with Customer Code': (module: 'Manufacturing', refDoctype: 'BOM'),
-  'POS and Delivery Note Item Rate': (
-    module: 'Stock',
-    refDoctype: 'POS Upload',
-  ),
-  'Monthly Attendance Sheet': (module: 'HR', refDoctype: 'Attendance'),
-  'Shift Attendance': (module: 'HR', refDoctype: 'Attendance'),
-  'Employee Hours Utilization Based On Timesheet': (
-    module: 'HR',
-    refDoctype: 'Timesheet',
-  ),
+const _suppliersByItem = 'Suppliers by Item';
+
+final _reports = {
+  for (final link in kNavCatalog)
+    if (link.showInDrawer && link.linkType == 'Report')
+      link.linkTo: link.linkTo == _suppliersByItem
+          ? (module: 'Buying', refDoctype: 'Purchase Receipt')
+          : (module: link.group, refDoctype: link.guard.doctype),
 };
 
 String _itemDeskPage(User user, List<String> modules) =>
@@ -528,8 +519,13 @@ void main() {
           expect(server.desktopRequests, isEmpty);
           expectReportModuleRequest(server.reportModuleRequests.single);
           expect(groupTitles(drawer), isNot(contains('Shift & Attendance')));
+          final loadedReports = reportPlacements(drawer, user);
           expect(
-            reportPlacements(drawer, user),
+            loadedReports,
+            contains((_suppliersByItem, 'Buying', 'Reports')),
+          );
+          expect(
+            loadedReports,
             unorderedEquals([
               for (final report in _reports.entries)
                 (report.key, report.value.module, 'Reports'),
