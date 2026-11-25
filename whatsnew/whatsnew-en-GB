@@ -1,1 +1,1 @@
-Suppliers by Item is easier to scan with compact rows. Group by supplier, sort the results, and choose which fields to show. Labels now match the ERPNext report.
+Every report now has a Fields button. Choose which details each report shows, and your choice is kept for your account on this server. Report labels now match the ERPNext column headers.
