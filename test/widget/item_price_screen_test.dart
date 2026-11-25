@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
@@ -7,6 +8,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/item_price_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_controller.dart';
 import 'package:multimax/app/modules/pricing/item_price/item_price_screen.dart';
 
@@ -108,5 +110,20 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('No item prices'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsNothing);
+  });
+
+  testWidgets('the price-list bar fits its incoming 200% caption', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pump(tester, rows: const [], grant: false);
+    final chip = find.byType(SelectableFilterChip).first;
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(of: chip, matching: find.byType(RichText)),
+    );
+    expect(paragraph.textScaler.scale(14), 28);
+    final line = paragraph.getDryLayout(
+      BoxConstraints.tightFor(width: paragraph.size.width),
+    );
+    expect(paragraph.size.height, greaterThanOrEqualTo(line.height));
   });
 }

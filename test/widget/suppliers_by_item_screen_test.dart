@@ -4,6 +4,7 @@ import 'dart:ui' show CheckedState, SemanticsAction, Tristate;
 // Keep the shared Flutter Material API until the app migrates to material_ui.
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,6 +27,7 @@ import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/theme/theme_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/widgets/item_suppliers_card.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
@@ -536,6 +538,7 @@ void main() {
     Widget home = const Scaffold(),
     Future<void> Function()? enterFromHome,
     String? fontFamily,
+    ValueListenable<TextDirection>? rootDirection,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -553,6 +556,20 @@ void main() {
         theme: theme(AppScheme.light, Brightness.light),
         darkTheme: theme(AppScheme.dark, Brightness.dark),
         themeMode: themeMode,
+        builder: rootDirection == null
+            ? null
+            : (context, child) => ValueListenableBuilder<TextDirection>(
+                valueListenable: rootDirection,
+                builder: (context, direction, _) => Directionality(
+                  textDirection: direction,
+                  child: MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: TextScaler.noScaling),
+                    child: child!,
+                  ),
+                ),
+              ),
         home: home,
         getPages: [
           GetPage(
@@ -1758,6 +1775,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(
+      tester.renderObject(
+        find.byKey(
+          tester
+              .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
+              .sliverKey!,
+        ),
+      ),
+      isA<RenderSliverPersistentHeader>(),
+    );
     final chipRow = find
         .ancestor(of: viewButton, matching: find.byType(SingleChildScrollView))
         .first;
@@ -1774,6 +1801,20 @@ void main() {
       tester.getSemantics(viewButton).getSemanticsData().value,
       'Item, Balance Qty, High to low',
     );
+
+    final viewBounds = tester.getRect(viewButton);
+    final viewSemantics = tester.getSemantics(viewButton).rect;
+    for (final size in [viewBounds.size, viewSemantics.size]) {
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    }
+    for (final y in [viewBounds.top + 1, viewBounds.bottom - 1]) {
+      await tester.tapAt(Offset(viewBounds.center.dx, y));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextButton, 'Done'), findsOneWidget);
+      await doneWithView(tester);
+      expect(tester.widget<ActionChip>(viewButton).focusNode!.hasFocus, isTrue);
+    }
   });
 
   testWidgets('standard filter row scrolls at 411 dp and hides while busy', (
@@ -1837,7 +1878,7 @@ void main() {
     expect(tester.widget<CountBadge>(badge).muted, isFalse);
     expect(
       tester.widget<IconButton>(toolbarFilter).tooltip,
-      '1 filter active — tap to edit',
+      'Filters, 1 active',
     );
     expect(tester.widget<IconButton>(toolbarFilter).onPressed, isNotNull);
     expect(tester.widget<AddFilterChip>(addFilter).onTap, isNotNull);
@@ -2013,8 +2054,8 @@ void main() {
           find.byWidgetPredicate(
             (widget) =>
                 widget is IconButton &&
-                (widget.tooltip == 'Filter' ||
-                    (widget.tooltip?.contains('filter active') ?? false)),
+                (widget.tooltip == 'Filters' ||
+                    (widget.tooltip?.startsWith('Filters, ') ?? false)),
           ),
           findsOneWidget,
         );
@@ -2255,6 +2296,65 @@ void main() {
     Navigator.of(tester.element(find.byType(DraggableScrollableSheet))).pop();
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'shared header keeps keyed sliver, View and scroll anchor at 320 dp and 2x',
+    (tester) async {
+      const size = Size(320, 780);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = size;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final direction = ValueNotifier(TextDirection.ltr);
+      addTearDown(direction.dispose);
+      Get.put(
+        ThemeController(persist: (_, _) async {}, restore: (_) async => null),
+      );
+      loadAnchorRows((index) => 'Item $index');
+      await openReport(
+        tester,
+        filters: const SuppliersByItemFilters(variantOf: ['ALS']),
+        size: size,
+        fontFamily: reportFont,
+        rootDirection: direction,
+      );
+      await tester.pumpAndSettle();
+
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      direction.value = TextDirection.rtl;
+      await tester.pumpAndSettle();
+      final header = find.byType(DocTypeListHeader);
+      final sliverKey = tester.widget<DocTypeListHeader>(header).sliverKey!;
+      expect(
+        tester.renderObject(find.byKey(sliverKey)),
+        isA<RenderSliverPersistentHeader>(),
+      );
+      final caption = find.text('Variant Of: ALS');
+      final add = find.byType(AddFilterChip);
+      for (final control in [caption, add, viewButton]) {
+        await tester.ensureVisible(control);
+        await tester.pumpAndSettle();
+        expect(control.hitTestable(), findsOneWidget);
+      }
+      expect(find.byTooltip('Fields').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Refresh report').hitTestable(), findsOneWidget);
+
+      await scrollIntoRow(tester, 12, 10);
+      expectFirstVisibleRow(tester, 12);
+      final offset =
+          tester.getTopLeft(anchorRow(12)).dy - toolbarBottom(tester);
+      await tester.enterText(find.byType(TextField), 'ROW-30 SUP');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Clear search query'));
+      await tester.pumpAndSettle();
+      expectFirstVisibleRow(tester, 12);
+      expect(
+        tester.getTopLeft(anchorRow(12)).dy - toolbarBottom(tester),
+        closeTo(offset, 0.5),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('anchors a shrinking row with its top below the toolbar', (
     tester,
@@ -2563,7 +2663,7 @@ void main() {
     tester,
   ) async {
     loadAnchorRows((index) => 'Item $index');
-    await openReport(tester);
+    await openReport(tester, fontFamily: reportFont);
     await tester.pumpAndSettle();
     final scroll = reportScroll(tester);
     final first = anchorRow(0);
@@ -2690,7 +2790,11 @@ void main() {
         ],
       ]);
       const height = 640.0;
-      await openReport(tester, size: const Size(390, height));
+      await openReport(
+        tester,
+        size: const Size(390, height),
+        fontFamily: reportFont,
+      );
       await tester.pumpAndSettle();
       final scroll = await scrollIntoRow(tester, 15, 0);
       final branch = anchorRow(15);
@@ -4724,7 +4828,7 @@ void main() {
   testWidgets('opens a template-only multi-select filter', (tester) async {
     await openReport(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Filter'));
+    await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
 
     expect(find.text('From Date'), findsNothing);
@@ -4781,7 +4885,7 @@ void main() {
     await openReport(tester);
     await tester.pumpAndSettle();
     expect(api.requests.single.includeDrafts, isTrue);
-    await tester.tap(find.byTooltip('Filter'));
+    await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
 
     final draftSwitch = find.widgetWithText(
@@ -4829,7 +4933,7 @@ void main() {
     await openReport(tester);
     await tester.pumpAndSettle();
     expect(api.requests.single.toJson()['expand_bom'], 0);
-    await tester.tap(find.byTooltip('Filter'));
+    await tester.tap(find.byTooltip('Filters'));
     await tester.pumpAndSettle();
 
     final bomSwitch = find.widgetWithText(

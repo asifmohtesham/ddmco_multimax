@@ -9,7 +9,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:multimax/app/modules/global_widgets/add_filter_chip.dart';
+import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 
 List<Widget> _chips(RxMap<String, String> filters) => [
       for (final label in filters.values) Chip(label: Text(label)),
@@ -118,4 +121,151 @@ void main() {
     expect(identical(first, second), isFalse);
     expect(second.shouldRebuild(first), isFalse);
   });
+
+  testWidgets('same field twice rebuilds earlier changed chip with no scroll', (
+    tester,
+  ) async {
+    final conditions = ['Item: A', 'Item: B'].obs;
+    final filters = <String, dynamic>{'item': 'Item: B'}.obs;
+    final log = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CustomScrollView(
+            slivers: [
+              DocTypeListHeader(
+                title: 'Item',
+                activeFilters: filters,
+                onFilterTap: () {},
+                filterChipsBuilder: (_) => [
+                  for (final condition in conditions)
+                    FilterChipWidget(
+                      icon: Icons.label_outline,
+                      label: condition,
+                      onDeleted: () {
+                        log.add(condition);
+                        conditions.remove(condition);
+                      },
+                      onTap: () => log.add('Edit $condition'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    conditions[0] = 'Item: C';
+    await tester.pumpAndSettle();
+    expect(find.text('Item: A'), findsNothing);
+    expect(find.text('Item: C'), findsOneWidget);
+    expect(
+      tester.getCenter(find.text('Item: C')).dx,
+      lessThan(tester.getCenter(find.text('Item: B')).dx),
+    );
+    expect(find.byTooltip('Filters, 1 active'), findsOneWidget);
+
+    final earlier = find.widgetWithText(FilterChipWidget, 'Item: C');
+    final reset = find.descendant(
+      of: earlier,
+      matching: find.byIcon(Icons.close),
+    );
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    expect(log, ['Item: C']);
+    expect(filters, {'item': 'Item: B'});
+    expect(find.text('Item: C'), findsNothing);
+    await tester.tap(find.text('Item: B'));
+    expect(log, ['Item: C', 'Edit Item: B']);
+  });
+
+  testWidgets(
+    'header invalidates live slots, callbacks and the search source',
+    (tester) async {
+      final first = 'bolts'.obs;
+      final second = 'bolts'.obs;
+      final version = ValueNotifier<int>(0);
+      addTearDown(version.dispose);
+      final calls = <int>[];
+      final filters = <String, dynamic>{'group': 'Fasteners'}.obs;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<int>(
+              valueListenable: version,
+              builder: (context, value, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(value >= 4 ? 2 : 1)),
+                child: CustomScrollView(
+                  slivers: [
+                    DocTypeListHeader(
+                      title: 'Item',
+                      activeFilters: filters,
+                      searchDoctype: 'Item',
+                      searchQuery: value >= 2 ? second : first,
+                      onSearchChanged: (_) {},
+                      onFilterTap: value >= 3 ? null : () => calls.add(value),
+                      filtersEnabled: value < 2,
+                      bottom: PreferredSize(
+                        preferredSize: Size.fromHeight(value < 2 ? 48 : 52),
+                        child: const SizedBox.expand(key: ValueKey('bottom')),
+                      ),
+                      quickChips: [
+                        if (value < 2)
+                          const Chip(label: Text('Previous'))
+                        else
+                          const Chip(label: Text('Updated')),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final add = find.byType(AddFilterChip);
+      await tester.tap(add);
+      version.value = 1;
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      expect(calls, [0, 1]);
+
+      version.value = 2;
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      expect(calls, [0, 1]);
+      expect(find.text('Updated'), findsOneWidget);
+      expect(find.text('Previous'), findsNothing);
+      expect(tester.getSize(find.byKey(const ValueKey('bottom'))).height, 52);
+      expect(
+        find.byTooltip('Search Item, current query: bolts'),
+        findsOneWidget,
+      );
+      first.value = 'stale';
+      second.value = 'fresh';
+      await tester.pumpAndSettle();
+      expect(
+        find.byTooltip('Search Item, current query: fresh'),
+        findsOneWidget,
+      );
+
+      version.value = 3;
+      await tester.pumpAndSettle();
+      expect(add, findsNothing);
+      expect(find.byType(CountBadge), findsNothing);
+      final old = tester
+          .widget<SliverPersistentHeader>(find.byType(SliverPersistentHeader))
+          .delegate;
+      version.value = 4;
+      await tester.pumpAndSettle();
+      final updated = tester
+          .widget<SliverPersistentHeader>(find.byType(SliverPersistentHeader))
+          .delegate;
+      expect(updated.minExtent, greaterThan(old.minExtent));
+    },
+  );
 }

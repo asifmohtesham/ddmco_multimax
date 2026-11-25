@@ -201,7 +201,10 @@ void main() {
 
       // The chip opens the sheet straight into the range picker, and the
       // sheet shows the applied range.
-      await _tap(tester, _chip(label));
+      await _tap(
+        tester,
+        find.descendant(of: _chip(label), matching: find.text(label)),
+      );
       await _closeDatePicker(tester);
       expect(find.byType(MaterialRequestFilterBottomSheet), findsOneWidget);
       expect(find.text('2024-01-01 - 2024-01-10'), findsOneWidget);
@@ -249,7 +252,20 @@ void main() {
       expect(_chip('Status: Cancelled'), findsOneWidget);
 
       // Reopening reads `docstatus` back (it used to read `status`).
-      await _tap(tester, _chip('Status: Cancelled'));
+      final label = find.descendant(
+        of: _chip('Status: Cancelled'),
+        matching: find.text('Status: Cancelled'),
+      );
+      final close = find.descendant(
+        of: _chip('Status: Cancelled'),
+        matching: find.byIcon(Icons.close),
+      );
+      final edit = find.ancestor(of: label, matching: find.byType(TextButton));
+      final reset = find.ancestor(of: close, matching: find.byType(TextButton));
+      expect(tester.getSize(edit).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(reset).height, greaterThanOrEqualTo(48));
+      expect(tester.getRect(edit).overlaps(tester.getRect(reset)), isFalse);
+      await _tap(tester, edit);
       expect(find.byType(PackingSlipFilterBottomSheet), findsOneWidget);
       expect(_selected(tester, 'Cancelled'), isTrue);
       await _closeSheet(tester);
@@ -284,7 +300,10 @@ void main() {
       const label = '2024-01-01  →  2024-01-10';
       expect(_chip(label), findsOneWidget);
 
-      await _tap(tester, _chip(label));
+      await _tap(
+        tester,
+        find.descendant(of: _chip(label), matching: find.text(label)),
+      );
       await _closeDatePicker(tester);
       expect(find.byType(PackingSlipFilterBottomSheet), findsOneWidget);
       expect(find.text('2024-01-01 - 2024-01-10'), findsOneWidget);

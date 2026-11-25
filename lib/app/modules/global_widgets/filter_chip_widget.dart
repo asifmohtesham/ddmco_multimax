@@ -1,21 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:multimax/app/data/constants/app_theme.dart';
 
-/// An applied-filter chip (ERPNext v15 `.chip.active`): maroon-tinted fill,
-/// maroon border + text, with a trailing × to clear the filter. Used by every
-/// DocType list screen via [DocTypeListHeader]'s `filterChipsBuilder`.
+import 'list_header_accessibility.dart';
+
+/// An applied filter with independent Edit and Reset targets.
 class FilterChipWidget extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onDeleted;
-
-  /// When set, long labels are ellipsized at this width.
-  final double? maxLabelWidth;
-
-  /// Called when the chip itself (not its ×) is tapped — typically to edit
-  /// that filter. Null leaves the chip body inert, as before.
-  final VoidCallback? onTap;
-
   const FilterChipWidget({
     super.key,
     required this.icon,
@@ -23,67 +13,187 @@ class FilterChipWidget extends StatelessWidget {
     required this.onDeleted,
     this.onTap,
     this.maxLabelWidth,
+    this.enabled = true,
+    this.editSemanticLabel,
+    this.resetSemanticLabel,
+    this.dismissesChip = false,
+    this.editFocusNode,
+    this.resetFocusNode,
+    this.onResetInvoked,
   });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onDeleted;
+
+  /// A width cap opts the caption into one line with an ellipsis.
+  final double? maxLabelWidth;
+
+  /// A null callback keeps the caption readable without making it a command.
+  final VoidCallback? onTap;
+
+  final bool enabled;
+  final String? editSemanticLabel;
+  final String? resetSemanticLabel;
+  final bool dismissesChip;
+  final FocusNode? editFocusNode;
+  final FocusNode? resetFocusNode;
+
+  /// Records the current focus before the filter owner can mutate the row.
+  final VoidCallback? onResetInvoked;
+
+  static const _labelStyle = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w500,
+  );
+  static const _editInset = 13.0;
+  static const _iconSize = 16.0;
+  static const _labelGap = 6.0;
+  static const _contourEndClearance = 4.0;
+  static const _contourVerticalClearance = 5.0;
+  static const _resetWidth = 48.0;
+  static const _endGutter = 6.0;
+
+  HeaderTextMetrics _measure(BuildContext context) => measureHeaderText(
+    context,
+    label,
+    _labelStyle,
+    maxWidth: maxLabelWidth ?? double.infinity,
+    maxLines: maxLabelWidth == null ? null : 1,
+    ellipsis: maxLabelWidth == null ? null : '…',
+  );
+
+  double _paintHeight(Size caption) => math.max(34, caption.height.ceil() + 2);
+
+  double _hitHeight(Size caption) => math.max(
+    48,
+    onTap == null
+        ? _paintHeight(caption)
+        : caption.height.ceil() + 2 * _contourVerticalClearance,
+  );
+
+  double requiredHeight(BuildContext context) =>
+      _hitHeight(_measure(context).size);
+
+  FilterChipWidget withHeaderFocus({
+    required FocusNode editFocusNode,
+    required FocusNode resetFocusNode,
+    required VoidCallback onResetInvoked,
+  }) => FilterChipWidget(
+    key: key,
+    icon: icon,
+    label: label,
+    onDeleted: onDeleted,
+    maxLabelWidth: maxLabelWidth,
+    onTap: onTap,
+    enabled: enabled,
+    editSemanticLabel: editSemanticLabel,
+    resetSemanticLabel: resetSemanticLabel,
+    dismissesChip: dismissesChip,
+    editFocusNode: this.editFocusNode ?? editFocusNode,
+    resetFocusNode: this.resetFocusNode ?? resetFocusNode,
+    onResetInvoked: () {
+      onResetInvoked();
+      this.onResetInvoked?.call();
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
-    final s = context.scheme;
-    final fill = Color.alphaBlend(s.primary.withValues(alpha: 0.12), s.fg);
-    final border = Color.alphaBlend(s.primary.withValues(alpha: 0.40), s.border);
+    final palette = HeaderPalette.of(context);
+    final available = enabled && ListHeaderFilterScope.enabledOf(context);
+    final ink = palette.appliedInkFor(available);
+    final caption = _measure(context).size;
+    final pillHeight = _paintHeight(caption);
+    final hitHeight = _hitHeight(caption);
+    final endInset = onTap == null ? 0.0 : _contourEndClearance;
+    final editWidth = math.max(
+      48.0,
+      _editInset + _iconSize + _labelGap + caption.width + endInset,
+    );
 
-    final chip = Container(
-      height: 34,
-      padding: const EdgeInsets.fromLTRB(12, 0, 10, 0),
-      decoration: BoxDecoration(
-        color: fill,
-        border: Border.all(color: border),
-        borderRadius: BorderRadius.circular(AppRadius.full),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: s.primary),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: maxLabelWidth ?? double.infinity,
-            ),
-            child: Text(
-              label,
-              maxLines: maxLabelWidth == null ? null : 1,
-              overflow: maxLabelWidth == null ? null : TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: s.primary,
+    final content = SizedBox(
+      width: editWidth,
+      height: hitHeight,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(start: _editInset, end: endInset),
+        child: Row(
+          children: [
+            Icon(icon, size: _iconSize, color: ink),
+            const SizedBox(width: _labelGap),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: maxLabelWidth ?? double.infinity,
+                ),
+                child: Text(
+                  label,
+                  maxLines: maxLabelWidth == null ? null : 1,
+                  overflow: maxLabelWidth == null
+                      ? null
+                      : TextOverflow.ellipsis,
+                  style: DefaultTextStyle.of(context).style
+                      .merge(_labelStyle)
+                      .copyWith(color: ink, inherit: false),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onDeleted,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-              child: Opacity(
-                opacity: 0.7,
-                child: Icon(Icons.close, size: 15, color: s.primary),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 
-    if (onTap == null) return chip;
-    return Semantics(
-      button: true,
-      hint: 'Edit filter',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: chip,
-      ),
+    void reset() {
+      onResetInvoked?.call();
+      onDeleted();
+    }
+
+    return Stack(
+      alignment: AlignmentDirectional.centerStart,
+      children: [
+        PositionedDirectional(
+          start: 0,
+          end: _endGutter,
+          height: pillHeight,
+          child: IgnorePointer(
+            child: HeaderPill(
+              fill: palette.appliedFillFor(available),
+              perimeter: palette.appliedPerimeterFor(available),
+              disabled: !available,
+            ),
+          ),
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (onTap == null)
+              content
+            else
+              HeaderChipButton(
+                label: editSemanticLabel ?? 'Edit $label',
+                onPressed: available ? onTap : null,
+                paint: HeaderChipPaint.split,
+                focusNode: editFocusNode,
+                width: editWidth,
+                height: hitHeight,
+                child: content,
+              ),
+            HeaderChipButton(
+              label: resetSemanticLabel ?? 'Reset $label',
+              onPressed: available ? reset : null,
+              paint: HeaderChipPaint.split,
+              focusNode: resetFocusNode,
+              semanticDismiss: dismissesChip ? reset : null,
+              width: _resetWidth,
+              height: hitHeight,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(end: _endGutter),
+                child: Icon(Icons.close, size: 15, color: ink),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

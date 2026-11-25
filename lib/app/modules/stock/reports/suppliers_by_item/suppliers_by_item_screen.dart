@@ -295,7 +295,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   DocTypeListHeader(
-                    key: _toolbarKey,
+                    sliverKey: _toolbarKey,
                     title: 'Suppliers by Item',
                     automaticallyImplyLeading: fromItem,
                     activeFilters: _controller.activeFilters,
@@ -1267,10 +1267,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
           .dy;
     }
 
-    final toolbarSliver = widget.toolbarKey.currentContext?.findRenderObject();
-    final toolbarBottom = toolbarSliver is RenderSliverPersistentHeader
-        ? bottomOf(toolbarSliver.child)
-        : 0.0;
+    final toolbarBottom =
+        DocTypeListHeader.extentInViewport(widget.toolbarKey, viewport) ?? 0.0;
     final searchSliver = widget.searchHeaderKey.currentContext
         ?.findRenderObject();
     final base = searchSliver is _RenderResultsHeader && searchSliver.pinned

@@ -20,6 +20,10 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 typedef _OccurrenceId = (VariantGroup, String, int);
 typedef _TrackOccurrence = Widget Function(VariantGroup, String, int, Widget);
 
+class _VariantHeaderKey extends GlobalObjectKey {
+  const _VariantHeaderKey(super.value);
+}
+
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   const ItemVariantDetailsScreen({super.key});
 
@@ -179,6 +183,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                 slivers: [
                   anchors.header(
                     DocTypeListHeader(
+                      sliverKey: _VariantHeaderKey(controller),
                       title: 'Item Variant Details',
                       automaticallyImplyLeading: false,
                       activeFilters: controller.activeFilters,
@@ -404,31 +409,27 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                 children: [
                   results,
                   if (lazyGroups)
-                    Positioned(
-                      top:
-                          MediaQuery.paddingOf(context).top +
-                          kToolbarHeight +
-                          DocTypeListHeader.chipRowHeight,
-                      left: 12,
-                      right: 12,
-                      height: headingExtent,
-                      child: ValueListenableBuilder(
-                        valueListenable: controller.stickyHeading,
-                        builder: (context, sticky, _) {
-                          if (sticky == null ||
-                              !data!.isExpanded(sticky.group)) {
-                            return const SizedBox.shrink();
-                          }
-                          return ClipRect(
+                    ValueListenableBuilder(
+                      valueListenable: controller.stickyHeading,
+                      builder: (context, sticky, _) {
+                        if (sticky == null || !data!.isExpanded(sticky.group)) {
+                          return const SizedBox.shrink();
+                        }
+                        return Positioned(
+                          top: sticky.headerBottom,
+                          left: 12,
+                          right: 12,
+                          height: headingExtent,
+                          child: ClipRect(
                             child: Transform.translate(
                               offset: Offset(0, sticky.offset),
                               child: anchors.topObstruction(
                                 _groupTitle(sticky.group),
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
                 ],
               );
@@ -443,18 +444,16 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
 
   static void _preserveVariantAnchor(
     BuildContext context,
-    ScrollController scroll,
+    ItemVariantDetailsController controller,
   ) {
+    final scroll = controller.scrollController;
     if (!scroll.hasClients) return;
     final position = scroll.position;
     if (_pendingAnchors[position] == true) return;
     final pixels = position.pixels;
     _RenderVisibleVariant? anchor;
     double originalOffset = 0;
-    final toolbarExtent =
-        MediaQuery.paddingOf(context).top +
-        kToolbarHeight +
-        DocTypeListHeader.chipRowHeight;
+    final headerKey = _VariantHeaderKey(controller);
 
     void findAnchor(Element element) {
       if (anchor != null) return;
@@ -462,8 +461,14 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
         final box = element.renderObject! as _RenderVisibleVariant;
         final viewport = RenderAbstractViewport.maybeOf(box);
         if (box.hasSize && viewport != null) {
+          final toolbarExtent = DocTypeListHeader.extentInViewport(
+            headerKey,
+            viewport,
+          );
+          if (toolbarExtent == null) return;
           final offset = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-          if (offset + box.size.height > toolbarExtent &&
+          if (offset + box.size.height >
+                  toolbarExtent.clamp(0.0, double.infinity) &&
               offset < position.viewportDimension) {
             anchor = box;
             originalOffset = offset;
@@ -574,6 +579,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       sliver: _StickyGroupList(
         sticky: controller.stickyHeading,
         headingExtent: headingExtent,
+        headerKey: _VariantHeaderKey(controller),
         groupAt: (index) {
           final entry = entries[index];
           return (
@@ -802,11 +808,13 @@ typedef _GroupAt =
 
 class _StickyGroupList extends SliverList {
   final ValueNotifier<StickyVariantHeading?> sticky;
+  final GlobalKey headerKey;
   final _GroupAt groupAt;
   final double headingExtent;
 
   const _StickyGroupList({
     required this.sticky,
+    required this.headerKey,
     required this.groupAt,
     required this.headingExtent,
     required super.delegate,
@@ -817,6 +825,7 @@ class _StickyGroupList extends SliverList {
       _RenderStickyGroupList(
         childManager: context as SliverMultiBoxAdaptorElement,
         sticky: sticky,
+        headerKey: headerKey,
         groupAt: groupAt,
         headingExtent: headingExtent,
       );
@@ -835,14 +844,16 @@ class _StickyGroupList extends SliverList {
 
 class _RenderStickyGroupList extends RenderSliverList {
   final ValueNotifier<StickyVariantHeading?> sticky;
+  final GlobalKey headerKey;
   _GroupAt groupAt;
   double headingExtent;
-  StickyVariantHeading? _next;
+  ({VariantGroup group, double offset})? _next;
   bool _scheduled = false;
 
   _RenderStickyGroupList({
     required super.childManager,
     required this.sticky,
+    required this.headerKey,
     required this.groupAt,
     required this.headingExtent,
   });
@@ -875,11 +886,24 @@ class _RenderStickyGroupList extends RenderSliverList {
       }
     }
     _next = active == null ? null : (group: active, offset: offset);
-    if (_scheduled || sticky.value == _next) return;
+    if (_scheduled || (_next == null && sticky.value == null)) return;
     _scheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduled = false;
-      if (attached) sticky.value = _next;
+      if (!attached) return;
+      final next = _next;
+      final viewport = RenderAbstractViewport.maybeOf(this);
+      // The preceding header can only be measured after the viewport's layout.
+      final headerBottom = viewport != null && next != null
+          ? DocTypeListHeader.extentInViewport(headerKey, viewport)
+          : null;
+      sticky.value = next == null || headerBottom == null
+          ? null
+          : (
+              group: next.group,
+              offset: next.offset,
+              headerBottom: headerBottom.clamp(0.0, double.infinity),
+            );
     });
   }
 }
@@ -1448,7 +1472,7 @@ class _VariantTileState extends State<_VariantTile> {
                       _lastDisplayedImage = imageUrl;
                       ItemVariantDetailsScreen._preserveVariantAnchor(
                         Scrollable.of(context).context,
-                        controller.scrollController,
+                        controller,
                       );
                     }
                     return card(

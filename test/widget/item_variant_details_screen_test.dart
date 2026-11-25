@@ -20,6 +20,7 @@ import 'package:multimax/app/modules/stock/reports/item_variant_details/item_var
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_fields.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
+import 'package:multimax/app/modules/theme/theme_controller.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
 
 import '../support/report_fields_test_kit.dart';
@@ -255,6 +256,17 @@ Rect groupRect(WidgetTester tester, Finder finder) {
       Size(sliver.constraints.crossAxisExtent, sliver.geometry!.scrollExtent);
 }
 
+double listHeaderBottom(WidgetTester tester) {
+  final sliver = tester.renderObject<RenderSliverPersistentHeader>(
+    find.descendant(
+      of: find.byType(DocTypeListHeader),
+      matching: find.byType(SliverPersistentHeader),
+    ),
+  );
+  final box = sliver.child!;
+  return box.localToGlobal(Offset(0, box.size.height)).dy;
+}
+
 class _FakeApi extends ApiProvider {
   late final report = Completer<ItemVariantDetailsResult>();
   ItemVariantDetailsResult? reportOverride;
@@ -351,7 +363,11 @@ class _FakeApi extends ApiProvider {
 void main() {
   late _FakeApi api;
 
-  setUpAll(() {
+  const reportFont = 'ItemVariantTestInter';
+  setUpAll(() async {
+    final loader = FontLoader(reportFont)
+      ..addFont(rootBundle.load('lib/assets/fonts/Inter-Regular.ttf'));
+    await loader.load();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -373,14 +389,39 @@ void main() {
     ThemeMode mode = ThemeMode.dark,
     double width = 390,
     double height = 850,
+    String? fontFamily,
+    double? headerScale,
   }) async {
     await tester.binding.setSurfaceSize(Size(width, height));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    if (headerScale != null) {
+      tester.platformDispatcher.textScaleFactorTestValue = headerScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      Get.put(
+        ThemeController(persist: (_, _) async {}, restore: (_) async => null),
+      );
+    }
+    ThemeData theme(Brightness brightness) {
+      final theme = buildAppTheme(AppScheme.of(brightness), brightness);
+      if (fontFamily == null) return theme;
+      return theme.copyWith(
+        textTheme: theme.textTheme.apply(fontFamily: fontFamily),
+      );
+    }
+
     await tester.pumpWidget(
       GetMaterialApp(
-        theme: buildAppTheme(AppScheme.light, Brightness.light),
-        darkTheme: buildAppTheme(AppScheme.dark, Brightness.dark),
+        theme: theme(Brightness.light),
+        darkTheme: theme(Brightness.dark),
         themeMode: mode,
+        builder: headerScale == null
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.noScaling,
+                ),
+                child: child!,
+              ),
         home: const Scaffold(),
         getPages: [
           GetPage(
@@ -914,10 +955,7 @@ void main() {
     scroll.jumpTo(tester.getSize(card).height * 3 + 42);
     await tester.pumpAndSettle();
 
-    final toolbarBottom =
-        MediaQuery.paddingOf(tester.element(card)).top +
-        kToolbarHeight +
-        DocTypeListHeader.chipRowHeight;
+    final toolbarBottom = listHeaderBottom(tester);
     final anchor = find.byType(Card).evaluate().firstWhere((element) {
       final box = element.renderObject! as RenderBox;
       return box.localToGlobal(Offset.zero).dy + box.size.height >
@@ -934,6 +972,57 @@ void main() {
 
     expect(scroll.offset, greaterThan(pixels));
     expect(tester.getTopLeft(anchorFinder).dy, closeTo(before, 0.01));
+  });
+
+  testWidgets('image expansion anchors below the scaled pinned header', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      preset: 'ACP-25',
+      width: 320,
+      fontFamily: reportFont,
+      headerScale: 2,
+    );
+    api.detailGate = Completer<void>();
+    api.details['Row 0'] = {'image': 'https://example.invalid/belt.png'};
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: [
+        for (var i = 0; i < 30; i++) {'variant_name': 'Row $i'},
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    Finder card(String code) => find.ancestor(
+      of: find.text(code),
+      matching: find.byType(Card),
+    );
+    final first = card('Row 0');
+    final next = card('Row 1');
+    await cacheImage(
+      (tester.getSize(first).width - 8) * tester.view.devicePixelRatio,
+    );
+    final scroll = Get.find<ItemVariantDetailsController>().scrollController;
+    scroll.jumpTo(400);
+    await tester.pumpAndSettle();
+    final header = listHeaderBottom(tester);
+    expect(header, greaterThan(104));
+    final hiddenBottom = (header + 104) / 2;
+    scroll.jumpTo(scroll.offset + tester.getRect(first).bottom - hiddenBottom);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(first).bottom, closeTo(hiddenBottom, 0.01));
+    final before = tester.getTopLeft(next).dy;
+    expect(tester.getRect(next).bottom, greaterThan(header));
+    final pixels = scroll.offset;
+
+    api.detailGate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(scroll.offset, greaterThan(pixels));
+    expect(tester.getTopLeft(next).dy, closeTo(before, 0.01));
   });
 
   testWidgets('dark report keeps preset and shows loading in the body', (
@@ -1044,14 +1133,15 @@ void main() {
     expect(scrollbar.interactive, isFalse);
     expect(find.text('Swipe the list to scroll long results'), findsOneWidget);
 
-    final filter = find.byTooltip('1 filter active — tap to edit');
+    final filter = find.byTooltip('Filters, 1 active');
     final results = find.byType(CustomScrollView);
     await tester.drag(results, const Offset(0, -300));
     await tester.pumpAndSettle();
     final scrolledOffset = controller.scrollController.offset;
     expect(scrolledOffset, greaterThan(0));
     final filterTop = tester.getTopLeft(filter).dy;
-    expect(filterTop, inInclusiveRange(0, kToolbarHeight));
+    final toolbar = tester.getRect(find.byType(NavigationToolbar));
+    expect(filterTop, inInclusiveRange(toolbar.top, toolbar.bottom));
 
     await tester.drag(results, const Offset(0, -300));
     await tester.pumpAndSettle();
@@ -1099,12 +1189,23 @@ void main() {
         scheme.onSurfaceVariant,
       );
       expect(find.text('1 variant'), findsOneWidget);
-      await tester.ensureVisible(find.text('In stock'));
+      final stock = find.widgetWithText(FilterChip, 'In stock');
+      await tester.ensureVisible(stock);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('In stock'));
+      final stockBounds = tester.getRect(stock);
+      final stockSemantics = tester.getSemantics(stock).rect;
+      for (final size in [stockBounds.size, stockSemantics.size]) {
+        expect(size.width, greaterThanOrEqualTo(48));
+        expect(size.height, greaterThanOrEqualTo(48));
+      }
+      await tester.tapAt(Offset(stockBounds.center.dx, stockBounds.top + 1));
       await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(stock).selected, isTrue);
       expect(find.text('1 of 2 · Current Stock 3 Nos'), findsOneWidget);
       expect(tester.getSize(heading).height, 52);
+      await tester.tapAt(Offset(stockBounds.center.dx, stockBounds.bottom - 1));
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(stock).selected, isFalse);
     },
   );
 
@@ -1656,11 +1757,54 @@ void main() {
     expect(api.requests, hasLength(1));
   });
 
+  testWidgets('a sticky group leaves Fields tappable at 200% system text', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      preset: 'ACP-25',
+      width: 320,
+      fontFamily: reportFont,
+      headerScale: 2,
+    );
+    api.report.complete((
+      columns: [
+        {'fieldname': 'variant_name', 'label': 'Variant'},
+      ],
+      rows: [
+        for (var g = 0; g < 25; g++) ...[
+          {'variant_name': 'Template $g', 'indent': 0},
+          for (var v = 0; v < 8; v++)
+            {'variant_name': 'Variant $g/$v', 'indent': 1},
+        ],
+      ],
+    ));
+    await tester.tap(find.text('Run Report'));
+    await tester.pumpAndSettle();
+    final controller = Get.find<ItemVariantDetailsController>();
+    controller.setAllExpanded(true);
+    controller.scrollController.jumpTo(460);
+    await tester.pumpAndSettle();
+    final sticky = controller.stickyHeading.value;
+    expect(sticky?.group.code, 'Template 0');
+    final group = find.text('Template 0').hitTestable();
+    expect(group, findsOneWidget);
+    final groupTop = tester.getTopLeft(group).dy;
+    final headerBottom = listHeaderBottom(tester);
+
+    await tester.tap(find.byTooltip('Fields'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reset to defaults'), findsOneWidget);
+    expect(controller.results.value!.isExpanded(sticky!.group), isTrue);
+    expect(groupTop, greaterThanOrEqualTo(headerBottom));
+  });
+
   for (final size in [2, 205]) {
     testWidgets('sticky heading switches in a $size-group report', (
       tester,
     ) async {
-      await open(tester, preset: 'ACP-25');
+      await open(tester, preset: 'ACP-25', fontFamily: reportFont);
       api.report.complete((
         columns: <Map<String, dynamic>>[],
         rows: [
@@ -1700,11 +1844,9 @@ void main() {
         );
       }
       final scroll = Get.find<ItemVariantDetailsController>().scrollController;
-      final toolbar = tester
-          .getBottomLeft(find.text('Item Variant Details'))
-          .dy;
       scroll.jumpTo(460);
       await tester.pumpAndSettle();
+      final toolbar = listHeaderBottom(tester);
       final first = tester.getCenter(find.text('Template 0').hitTestable());
       expect(first.dy, inInclusiveRange(toolbar, toolbar + 75));
       for (var n = 0; n < 8; n++) {

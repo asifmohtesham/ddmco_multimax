@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'list_header_accessibility.dart';
+
 /// A selectable (toggle) filter chip for *in-screen* segmentation — e.g. the
 /// All / Pending / Completed item filters on form Items tabs, or a single-select
 /// warehouse picker.
@@ -38,7 +40,7 @@ class SelectableFilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Text(count != null ? '$label ($count)' : label);
-    return ChoiceChip(
+    final chip = ChoiceChip(
       label: dotColor == null
           ? text
           : Row(
@@ -48,7 +50,9 @@ class SelectableFilterChip extends StatelessWidget {
                   width: 7,
                   height: 7,
                   decoration: BoxDecoration(
-                      color: dotColor, shape: BoxShape.circle),
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 6),
                 text,
@@ -58,5 +62,8 @@ class SelectableFilterChip extends StatelessWidget {
       onSelected: onSelected,
       visualDensity: VisualDensity.compact,
     );
+    return ListHeaderBottomScope.contains(context)
+        ? ListHeaderQuickChipTheme(child: chip)
+        : chip;
   }
 }

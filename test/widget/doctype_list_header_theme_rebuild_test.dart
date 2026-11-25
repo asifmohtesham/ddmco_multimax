@@ -13,10 +13,10 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/main.dart';
 
-Widget _host(Brightness brightness) {
+Widget _host(Brightness brightness, {AppAccent accent = AppAccent.brand}) {
   final theme = brightness == Brightness.dark
-      ? buildAppTheme(AppScheme.dark, Brightness.dark)
-      : buildAppTheme(AppScheme.light, Brightness.light);
+      ? buildAppTheme(AppScheme.dark, Brightness.dark, accent: accent)
+      : buildAppTheme(AppScheme.light, Brightness.light, accent: accent);
   return MaterialApp(
     theme: theme,
     home: Scaffold(
@@ -56,5 +56,21 @@ void main() {
       reason: 'a pure brightness change must invalidate the cached header — '
           'otherwise SliverPersistentHeader keeps painting the old theme colour',
     );
+  });
+
+  testWidgets('accent-only changes invalidate the header on the same surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_host(Brightness.light));
+    await tester.pumpAndSettle();
+    final previous = _delegateOf(tester);
+    final header = find.byType(DocTypeListHeader);
+    final original = Theme.of(tester.element(header)).colorScheme;
+    await tester.pumpWidget(_host(Brightness.light, accent: AppAccent.blue));
+    await tester.pumpAndSettle();
+    final updated = Theme.of(tester.element(header)).colorScheme;
+    expect(original.surface, updated.surface);
+    expect(original.primary, isNot(updated.primary));
+    expect(_delegateOf(tester).shouldRebuild(previous), isTrue);
   });
 }

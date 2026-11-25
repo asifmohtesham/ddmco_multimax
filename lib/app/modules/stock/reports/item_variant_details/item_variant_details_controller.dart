@@ -12,7 +12,11 @@ import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_fields.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
-typedef StickyVariantHeading = ({VariantGroup group, double offset});
+typedef StickyVariantHeading = ({
+  VariantGroup group,
+  double offset,
+  double headerBottom,
+});
 
 class ItemVariantDetailsController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
