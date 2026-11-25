@@ -14,11 +14,15 @@ class StatusPill extends StatelessWidget {
   /// Compact 14dp-high variant for collapsed toolbars.
   final bool compact;
 
+  /// Use readable, wrapping text when space is constrained.
+  final bool wrapLabel;
+
   const StatusPill({
     super.key,
     required this.status,
     this.colorStatus,
     this.compact = false,
+    this.wrapLabel = false,
   });
 
   /// The status ramp triple `(base500, text700, text300)` for a status string.
@@ -140,10 +144,11 @@ class StatusPill extends StatelessWidget {
               style: TextStyle(
                 color: textColour,
                 fontWeight: compact ? FontWeight.w700 : FontWeight.w600,
-                fontSize: compact ? 9 : 11,
+                fontSize: compact && !wrapLabel ? 9 : 11,
                 height: 1.0,
               ),
-              overflow: TextOverflow.ellipsis,
+              softWrap: wrapLabel ? true : null,
+              overflow: wrapLabel ? TextOverflow.clip : TextOverflow.ellipsis,
             ),
           ),
         ],

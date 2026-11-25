@@ -792,19 +792,29 @@ void main() {
         'balance_qty': 500,
         'projected_qty': 500,
         'open_order_qty': 500,
+        'draft_order_qty': 500,
+        'total_qty_received': 500,
         'stock_uom': 'Nos',
       },
       {'node_id': 'item:LEATHER', 'projected_qty': -4, 'stock_uom': 'Kg'},
+      {'node_id': 'item:DRAFT', 'draft_order_qty': '2.5', 'stock_uom': 'Day'},
+      {
+        'node_id': 'item:RECEIVED',
+        'total_qty_received': 0,
+        'stock_uom': 'Roll',
+      },
     ]);
 
     expect(tree[1].row.balanceQty, isNull);
     expect(tree[3].row.balanceQty, 0);
     expect(tree[5].row.balanceQty, isNull);
     final totals = SuppliersByItemNode.quantityTotalsByUom(tree);
-    expect(totals.keys, ['Nos', 'Box', 'Meter', 'Kg']);
+    expect(totals.keys, ['Nos', 'Box', 'Meter', 'Kg', 'Day', 'Roll']);
     expect(totals['Nos']!.balanceQty, 13.5);
     expect(totals['Nos']!.projectedQty, 21);
     expect(totals['Nos']!.openOrderQty, 5);
+    expect(totals['Nos']!.draftOrderQty, isNull);
+    expect(totals['Nos']!.totalQtyReceived, isNull);
     expect(totals['Box']!.balanceQty, 4);
     expect(totals['Box']!.projectedQty, isNull);
     expect(totals['Box']!.openOrderQty, 0);
@@ -813,5 +823,167 @@ void main() {
     expect(totals['Kg']!.balanceQty, isNull);
     expect(totals['Kg']!.projectedQty, -4);
     expect(totals['Kg']!.openOrderQty, isNull);
+    expect(totals['Day']!.draftOrderQty, 2.5);
+    expect(totals['Day']!.totalQtyReceived, isNull);
+    expect(totals['Roll']!.draftOrderQty, isNull);
+    expect(totals['Roll']!.totalQtyReceived, 0);
+  });
+
+  test('sums reorder quantities once per item and stock UOM', () {
+    final tree = SuppliersByItemNode.parseRows([
+      {'node_id': 'template:SHIRT', 'reorder_qty': 50, 'stock_uom': 'Nos'},
+      {
+        'node_id': 'item:SHIRT-BLUE',
+        'parent_id': 'template:SHIRT',
+        'reorder_qty': 2,
+        'stock_uom': 'Nos',
+      },
+      {'node_id': 'item:SHIRT-BLUE', 'reorder_qty': 50, 'stock_uom': 'Nos'},
+      {
+        'node_id': 'supplier:SHIRT-BLUE:SUP-1',
+        'parent_id': 'item:SHIRT-BLUE',
+        'reorder_qty': 50,
+        'stock_uom': 'Nos',
+      },
+      {'node_id': 'item:GLOVES', 'reorder_qty': 3, 'stock_uom': 'Nos'},
+      {'node_id': 'bom:GLOVES', 'parent_id': 'item:GLOVES'},
+      {
+        'node_id': 'component:GLOVES:THREAD',
+        'parent_id': 'bom:GLOVES',
+        'reorder_qty': 50,
+        'stock_uom': 'Nos',
+      },
+      {'node_id': 'item:LEATHER', 'reorder_qty': '4.5', 'stock_uom': 'Kg'},
+      {'node_id': 'item:FABRIC', 'reorder_qty': 0, 'stock_uom': 'Meter'},
+      {'node_id': 'item:LEGACY', 'reorder_qty': null, 'stock_uom': 'Set'},
+    ]);
+
+    final totals = SuppliersByItemNode.quantityTotalsByUom(tree);
+    expect(totals.map((uom, total) => MapEntry(uom, total.reorderQty)), {
+      'Nos': 5,
+      'Kg': 4.5,
+      'Meter': 0,
+    });
+  });
+
+  test('sums six signed quantities from canonical item records only', () {
+    final tree = SuppliersByItemNode.parseRows([
+      {
+        'node_id': 'row:opaque|a',
+        'row_type': 'item',
+        'item_code': ' A ',
+        'stock_uom': ' Nos ',
+        'balance_qty': -2,
+        'projected_qty': 0,
+        'open_order_qty': -3,
+        'reorder_qty': 0,
+        'draft_order_qty': -5,
+        'total_qty_received': -6,
+        'last_rate': 999999,
+      },
+      {
+        'node_id': 'supplier:opaque|first',
+        'row_type': 'supplier',
+        'parent_id': 'row:opaque|a',
+        'supplier': 'FIRST',
+        'stock_uom': 'Nos',
+        'open_order_qty': 30,
+        'total_qty_received': 100,
+      },
+      {
+        'node_id': 'supplier:opaque|second',
+        'row_type': 'supplier',
+        'parent_id': 'row:opaque|a',
+        'supplier': 'SECOND',
+        'stock_uom': 'Nos',
+        'draft_order_qty': 50,
+      },
+      {
+        'node_id': 'row:duplicate|a',
+        'row_type': 'item',
+        'item_code': 'A',
+        'stock_uom': 'Nos',
+        'projected_qty': 999,
+        'balance_qty': 999,
+      },
+      {'node_id': 'bom:b', 'parent_id': 'item:B', 'bom_no': 'BOM-B'},
+      {
+        'node_id': 'component:b|a',
+        'parent_id': 'bom:b',
+        'item_code': 'A',
+        'stock_uom': 'Nos',
+        'balance_qty': 100,
+        'draft_order_qty': 100,
+      },
+      {'node_id': 'item:B', 'stock_uom': 'Nos', 'balance_qty': 5},
+      {'node_id': 'item:C', 'stock_uom': 'Kg', 'balance_qty': 1},
+      {'node_id': 'item:NULL', 'stock_uom': 'Pack', 'last_rate': 10000},
+      {'node_id': 'item:UNIT-UNKNOWN', 'stock_uom': ' ', 'balance_qty': 80},
+      {'node_id': 'opaque|identity', 'row_type': 'item', 'stock_uom': 'Set'},
+      {'node_id': 'item:opaque|identity', 'stock_uom': 'Set'},
+    ]);
+
+    expect(
+      SuppliersByItemNode.topLevelItems(tree).map((node) => node.row.nodeId),
+      [
+        'row:opaque|a',
+        'item:B',
+        'item:C',
+        'item:NULL',
+        'item:UNIT-UNKNOWN',
+        'opaque|identity',
+        'item:opaque|identity',
+      ],
+    );
+    final totals = SuppliersByItemNode.quantityTotalsByUom(tree);
+    expect(totals.keys, ['Nos', 'Kg']);
+    expect(totals['Nos']!.balanceQty, 3);
+    expect(totals['Nos']!.projectedQty, 0);
+    expect(totals['Nos']!.openOrderQty, -3);
+    expect(totals['Nos']!.reorderQty, 0);
+    expect(totals['Nos']!.draftOrderQty, -5);
+    expect(totals['Nos']!.totalQtyReceived, -6);
+    expect(totals['Kg']!.balanceQty, 1);
+    expect(totals['Kg']!.projectedQty, isNull);
+    expect(totals['Kg']!.openOrderQty, isNull);
+    expect(totals['Kg']!.reorderQty, isNull);
+    expect(totals['Kg']!.draftOrderQty, isNull);
+    expect(totals['Kg']!.totalQtyReceived, isNull);
+  });
+
+  test('cancels decimal quantities while preserving real small totals', () {
+    final tree = SuppliersByItemNode.parseRows([
+      for (final (index, quantity) in [0.1, 0.2, -0.3].indexed)
+        {
+          'node_id': 'item:KG-$index',
+          'stock_uom': 'Kg',
+          'balance_qty': quantity,
+          'projected_qty': quantity,
+          'open_order_qty': quantity,
+          'reorder_qty': quantity,
+          'draft_order_qty': quantity,
+          'total_qty_received': quantity,
+        },
+      {
+        'node_id': 'item:KG-small',
+        'stock_uom': 'Kg',
+        'projected_qty': '5e-17',
+        'total_qty_received': '-2e-9',
+      },
+      {'node_id': 'item:M-small', 'stock_uom': 'M', 'balance_qty': 4e-9},
+      {'node_id': 'item:M-large', 'stock_uom': 'M', 'balance_qty': 3},
+      {'node_id': 'item:M-return', 'stock_uom': 'M', 'balance_qty': -3},
+    ]);
+
+    final totals = SuppliersByItemNode.quantityTotalsByUom(tree);
+    final kg = totals['Kg']!;
+    expect(kg.balanceQty, 0);
+    expect(kg.projectedQty, 5e-17);
+    expect(kg.openOrderQty, 0);
+    expect(kg.reorderQty, 0);
+    expect(kg.draftOrderQty, 0);
+    expect(kg.totalQtyReceived, -2e-9);
+    expect(totals['M']!.balanceQty, 4e-9);
+    expect(totals['M']!.projectedQty, isNull);
   });
 }

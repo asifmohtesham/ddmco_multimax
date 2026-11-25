@@ -1,15 +1,181 @@
+import 'dart:convert';
+
+import 'package:multimax/app/data/models/suppliers_by_item_view.dart';
 import 'package:multimax/app/data/models/user_model.dart';
+import 'package:multimax/app/data/services/database_service.dart';
 import 'package:multimax/app/data/services/recent_searches.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
+typedef SuppliersByItemFieldsScope = ({String site, String user});
+
+enum SuppliersByItemFieldsFailure { load, save }
+
+class SuppliersByItemFieldsSnapshot {
+  const SuppliersByItemFieldsSnapshot({
+    required this.overrides,
+    required this.revision,
+    required this.loaded,
+    required this.saving,
+    required this.failure,
+  });
+
+  final Map<String, bool> overrides;
+  final int revision;
+  final bool loaded;
+  final bool saving;
+  final SuppliersByItemFieldsFailure? failure;
+}
+
+class SuppliersByItemViewSnapshot {
+  const SuppliersByItemViewSnapshot({
+    required this.view,
+    required this.revision,
+    required this.loaded,
+    required this.saving,
+    required this.failure,
+  });
+
+  final SuppliersByItemView view;
+  final int revision;
+  final bool loaded;
+  final bool saving;
+  final SuppliersByItemFieldsFailure? failure;
+}
+
+/// Produces the active ERP site identity used in preference keys.
+String? normalizeSuppliersByItemSite(String? configuredUrl) {
+  final value = configuredUrl?.trim() ?? '';
+  if (value.isEmpty) return null;
+  final hasScheme = RegExp(r'^[a-z][a-z\d+.-]*:', caseSensitive: false);
+  final isHostWithPort = RegExp(r'^[^:/?#]+:\d+(?:[/#?]|$)');
+  final isWebUrl = RegExp(r'^https?://', caseSensitive: false);
+  if (hasScheme.hasMatch(value) &&
+      !isWebUrl.hasMatch(value) &&
+      !isHostWithPort.hasMatch(value)) {
+    return null;
+  }
+  final uri = Uri.tryParse(isWebUrl.hasMatch(value) ? value : 'https://$value');
+  if (uri == null || uri.host.isEmpty || uri.host.contains('%')) return null;
+  final origin = uri.origin;
+  return origin + uri.path.replaceFirst(RegExp(r'/+$'), '');
+}
+
+abstract class _SuppliersByItemRecord<T, S> {
+  _SuppliersByItemRecord(this.value);
+
+  T value;
+  int revision = 0;
+  int writeRevision = 0;
+  bool loaded = false;
+  int pendingWrites = 0;
+  SuppliersByItemFieldsFailure? failure;
+  Future<void>? loading;
+  Future<void> writes = Future.value();
+  final listeners = <void Function(S)>{};
+
+  S get snapshot;
+
+  void publish() {
+    revision++;
+    final current = snapshot;
+    for (final listener in listeners.toList()) {
+      listener(current);
+    }
+  }
+
+  void Function() watch(void Function(S) onChange) {
+    listeners.add(onChange);
+    return () => listeners.remove(onChange);
+  }
+
+  Future<void> save(T next, Future<void> Function() writeValue) async {
+    final revision = ++writeRevision;
+    value = next;
+    pendingWrites++;
+    final write = writes.then((_) async {
+      try {
+        await writeValue();
+        if (revision == writeRevision) failure = null;
+      } catch (_) {
+        if (revision == writeRevision) {
+          failure = SuppliersByItemFieldsFailure.save;
+        }
+        rethrow;
+      } finally {
+        pendingWrites--;
+        publish();
+      }
+    });
+    writes = write.then((_) {}, onError: (Object _) {});
+    publish();
+    await write;
+  }
+}
+
+class _SuppliersByItemFieldsRecord
+    extends
+        _SuppliersByItemRecord<
+          Map<String, bool>,
+          SuppliersByItemFieldsSnapshot
+        > {
+  _SuppliersByItemFieldsRecord() : super(const {});
+
+  @override
+  SuppliersByItemFieldsSnapshot get snapshot => SuppliersByItemFieldsSnapshot(
+    overrides: value,
+    revision: revision,
+    loaded: loaded,
+    saving: pendingWrites > 0,
+    failure: failure,
+  );
+}
+
+class _SuppliersByItemViewRecord
+    extends
+        _SuppliersByItemRecord<
+          SuppliersByItemView,
+          SuppliersByItemViewSnapshot
+        > {
+  _SuppliersByItemViewRecord() : super(const SuppliersByItemView());
+
+  @override
+  SuppliersByItemViewSnapshot get snapshot => SuppliersByItemViewSnapshot(
+    view: value,
+    revision: revision,
+    loaded: loaded,
+    saving: pendingWrites > 0,
+    failure: failure,
+  );
+}
+
+class _SuppliersByItemMigration {
+  Future<void> operation = Future.value();
+  String? pendingClaimSite;
+}
+
 class StorageService {
   final dynamic _box;
+  final DatabaseService? _database;
+  final _suppliersByItemFields =
+      <SuppliersByItemFieldsScope, _SuppliersByItemFieldsRecord>{};
+  final _suppliersByItemViews =
+      <SuppliersByItemFieldsScope, _SuppliersByItemViewRecord>{};
+  final _suppliersByItemMigrations = <String, _SuppliersByItemMigration>{};
 
-  StorageService() : _box = GetStorage();
+  StorageService({DatabaseService? database})
+    : _box = GetStorage(),
+      _database = database;
 
   // Internal constructor for testing - allows injection of a custom storage instance
-  StorageService.withStorage(this._box);
+  StorageService.withStorage(this._box, {DatabaseService? database})
+    : _database = database;
+
+  DatabaseService? get _configStore =>
+      _database ??
+      (Get.isRegistered<DatabaseService>()
+          ? Get.find<DatabaseService>()
+          : null);
 
   // Keys
   static const String _userKey = 'currentUser';
@@ -30,9 +196,11 @@ class StorageService {
   static const String _defaultWarehouseKey = 'session_default_warehouse';
 
   // Stock Balance view preferences
-  static const String _sbHideEmptyKey  = 'sb_hide_empty';
+  static const String _sbHideEmptyKey = 'sb_hide_empty';
   static const String _sbShowImagesKey = 'sb_show_images';
   static const String _saCardFieldsKey = 'sa_card_columns';
+  static const String _suppliersByItemFieldsKey = 'suppliers_by_item_fields';
+  static const String _suppliersByItemViewKey = 'suppliers_by_item_view';
 
   // Dashboard view preferences
   static const String _dashboardColumnsKey = 'dashboard_columns';
@@ -184,8 +352,7 @@ class StorageService {
   Future<void> saveAutoSaveDelay(int seconds) async =>
       _box.write(_autoSaveDelayKey, seconds);
 
-  int getAutoSaveDelay() =>
-      _box.read<int>(_autoSaveDelayKey) ?? 5;
+  int getAutoSaveDelay() => _box.read<int>(_autoSaveDelayKey) ?? 5;
 
   // --- Stock Balance view preferences ---
   // Persisted so the "Hide empty" / "Images" toggles survive navigation,
@@ -210,8 +377,11 @@ class StorageService {
     return v is List ? v.map((e) => e.toString()).toList() : null;
   }
 
-  Map<String, bool> getItemVariantFields() {
-    final saved = _box.read('ivd_fields');
+  Map<String, bool> _readFieldOverrides(String key) {
+    return _fieldOverrides(_box.read(key));
+  }
+
+  Map<String, bool> _fieldOverrides(Object? saved) {
     if (saved is! Map) return {};
     return {
       for (final entry in saved.entries)
@@ -220,8 +390,235 @@ class StorageService {
     };
   }
 
+  Map<String, bool> getItemVariantFields() => _readFieldOverrides('ivd_fields');
+
   Future<void> saveItemVariantFields(Map<String, bool> fields) async =>
       _box.write('ivd_fields', fields);
+
+  // --- Suppliers by Item report: optional row fields, per site and user ---
+  bool get hasSuppliersByItemFieldsStore => _configStore != null;
+
+  Future<String?> getSuppliersByItemSite() async {
+    final mirror = getBaseUrl();
+    if (mirror != null && mirror.trim().isNotEmpty) return mirror;
+    return _configStore?.getConfig(DatabaseService.serverUrlKey);
+  }
+
+  void Function()? watchSuppliersByItemFieldsOwner(void Function() onChange) {
+    final box = _box;
+    if (box is! GetStorage) return null;
+    return box.listen(() {
+      if (box.changes.containsKey(_baseUrlKey) ||
+          box.changes.containsKey(_userKey)) {
+        onChange();
+      }
+    });
+  }
+
+  String _scopedSuppliersByItemKey(
+    String prefix,
+    SuppliersByItemFieldsScope scope,
+  ) =>
+      '$prefix::${Uri.encodeComponent(scope.site)}'
+      '::${Uri.encodeComponent(scope.user)}';
+
+  _SuppliersByItemFieldsRecord _fieldsRecord(
+    SuppliersByItemFieldsScope scope,
+  ) => _suppliersByItemFields.putIfAbsent(
+    scope,
+    _SuppliersByItemFieldsRecord.new,
+  );
+
+  SuppliersByItemFieldsSnapshot getSuppliersByItemFields(
+    SuppliersByItemFieldsScope scope,
+  ) => _fieldsRecord(scope).snapshot;
+
+  /// Route controllers on the same scope receive optimistic edits immediately.
+  void Function() watchSuppliersByItemFields(
+    SuppliersByItemFieldsScope scope,
+    void Function(SuppliersByItemFieldsSnapshot) onChange,
+  ) => _fieldsRecord(scope).watch(onChange);
+
+  Future<void> loadSuppliersByItemFields(
+    SuppliersByItemFieldsScope scope, {
+    required String rawUser,
+  }) {
+    final record = _fieldsRecord(scope);
+    if (record.loaded) return Future.value();
+    final pending = record.loading;
+    if (pending != null) return pending;
+
+    final migration = _suppliersByItemMigrations.putIfAbsent(
+      scope.user,
+      _SuppliersByItemMigration.new,
+    );
+    final operation = migration.operation.then(
+      (_) => _loadFields(scope, rawUser, record, migration),
+    );
+    late final Future<void> cleanup;
+    cleanup = operation.whenComplete(() {
+      record.loading = null;
+      if (identical(migration.operation, cleanup) &&
+          migration.pendingClaimSite == null) {
+        _suppliersByItemMigrations.remove(scope.user);
+      }
+    });
+    record.loading = cleanup;
+    migration.operation = cleanup;
+    return cleanup;
+  }
+
+  Future<void> _loadFields(
+    SuppliersByItemFieldsScope scope,
+    String rawUser,
+    _SuppliersByItemFieldsRecord record,
+    _SuppliersByItemMigration migration,
+  ) async {
+    final database = _configStore!;
+    final key = _scopedSuppliersByItemKey(_suppliersByItemFieldsKey, scope);
+    final claimKey =
+        '${_suppliersByItemFieldsKey}_legacy_owner::${Uri.encodeComponent(scope.user)}';
+    String? stored;
+    String? claim;
+    Object? legacy;
+    try {
+      stored = await database.getConfig(key);
+      legacy = _box.read<Object>('$_suppliersByItemFieldsKey::$rawUser');
+      if (legacy is Map) claim = await database.getConfig(claimKey);
+    } catch (_) {
+      record.failure = SuppliersByItemFieldsFailure.load;
+      record.publish();
+      return;
+    }
+
+    if (claim != null) migration.pendingClaimSite = null;
+    final owner = claim ?? migration.pendingClaimSite;
+    final eligible = legacy is Map && (owner == null || owner == scope.site);
+    final overrides = stored == null && eligible
+        ? _fieldOverrides(legacy)
+        : _decodeFields(stored);
+    try {
+      if (eligible && claim == null) {
+        // Keep this site eligible for retry even if storage rejects the claim.
+        migration.pendingClaimSite = scope.site;
+        await database.saveConfig(claimKey, scope.site);
+        migration.pendingClaimSite = null;
+      }
+      if (eligible && stored == null) {
+        await database.saveConfig(key, jsonEncode(overrides));
+      }
+      record.loaded = true;
+      record.failure = null;
+    } catch (_) {
+      record.failure = SuppliersByItemFieldsFailure.save;
+    }
+    record.value = Map.unmodifiable(overrides);
+    record.publish();
+  }
+
+  Map<String, bool> _decodeFields(String? stored) {
+    if (stored == null) return const {};
+    try {
+      return _fieldOverrides(jsonDecode(stored));
+    } on FormatException {
+      return const {};
+    }
+  }
+
+  /// Merge an edit into the newest optimistic snapshot before enqueueing its
+  /// acknowledged write. A reset replaces that snapshot with an empty map.
+  Future<void> updateSuppliersByItemFields(
+    SuppliersByItemFieldsScope scope,
+    Map<String, bool>? Function(Map<String, bool>) edit,
+  ) {
+    final updated = edit(_fieldsRecord(scope).value);
+    return updated == null
+        ? Future.value()
+        : saveSuppliersByItemFields(scope, updated);
+  }
+
+  Future<void> saveSuppliersByItemFields(
+    SuppliersByItemFieldsScope scope,
+    Map<String, bool> fields,
+  ) async {
+    final record = _fieldsRecord(scope);
+    if (!record.loaded) throw StateError('Fields have not loaded');
+    final database = _configStore!;
+    final key = _scopedSuppliersByItemKey(_suppliersByItemFieldsKey, scope);
+    final overrides = Map<String, bool>.unmodifiable(fields);
+    await record.save(
+      overrides,
+      () => database.saveConfig(key, jsonEncode(overrides)),
+    );
+  }
+
+  // --- Suppliers by Item report: independent grouping and sort preferences ---
+  _SuppliersByItemViewRecord _viewRecord(SuppliersByItemFieldsScope scope) =>
+      _suppliersByItemViews.putIfAbsent(scope, _SuppliersByItemViewRecord.new);
+
+  SuppliersByItemViewSnapshot getSuppliersByItemView(
+    SuppliersByItemFieldsScope scope,
+  ) => _viewRecord(scope).snapshot;
+
+  void Function() watchSuppliersByItemView(
+    SuppliersByItemFieldsScope scope,
+    void Function(SuppliersByItemViewSnapshot) onChange,
+  ) => _viewRecord(scope).watch(onChange);
+
+  Future<void> loadSuppliersByItemView(SuppliersByItemFieldsScope scope) {
+    final record = _viewRecord(scope);
+    if (record.loaded) return Future.value();
+    return record.loading ??= _loadView(scope, record).whenComplete(() {
+      record.loading = null;
+    });
+  }
+
+  Future<void> _loadView(
+    SuppliersByItemFieldsScope scope,
+    _SuppliersByItemViewRecord record,
+  ) async {
+    final key = _scopedSuppliersByItemKey(_suppliersByItemViewKey, scope);
+    try {
+      final stored = await _configStore!.getConfig(key);
+      record.value = _decodeView(stored);
+      record.loaded = true;
+      record.failure = null;
+    } catch (_) {
+      record.failure = SuppliersByItemFieldsFailure.load;
+    }
+    record.publish();
+  }
+
+  SuppliersByItemView _decodeView(String? stored) {
+    if (stored == null) return const SuppliersByItemView();
+    try {
+      return SuppliersByItemView.fromJson(jsonDecode(stored));
+    } on FormatException {
+      return const SuppliersByItemView();
+    }
+  }
+
+  Future<void> updateSuppliersByItemView(
+    SuppliersByItemFieldsScope scope,
+    SuppliersByItemView? Function(SuppliersByItemView) edit,
+  ) {
+    final next = edit(_viewRecord(scope).value);
+    return next == null ? Future.value() : saveSuppliersByItemView(scope, next);
+  }
+
+  Future<void> saveSuppliersByItemView(
+    SuppliersByItemFieldsScope scope,
+    SuppliersByItemView view,
+  ) async {
+    final record = _viewRecord(scope);
+    if (!record.loaded) throw StateError('View has not loaded');
+    final database = _configStore!;
+    final key = _scopedSuppliersByItemKey(_suppliersByItemViewKey, scope);
+    await record.save(
+      view,
+      () => database.saveConfig(key, jsonEncode(view.toJson())),
+    );
+  }
 
   // --- Dashboard view preferences ---
   // Quick Create card layout: 1 or 2 columns. Anything else clamps to the
@@ -290,8 +687,10 @@ class StorageService {
       _box.read<String>('$_digestAlarmStyleKey::$user') ?? 'standard';
 
   // --- Drawer layout (per user) ---
-  Future<void> saveNavMenu(String user, List<Map<String, dynamic>> menu) async =>
-      _box.write('$_navMenuKey::$user', menu);
+  Future<void> saveNavMenu(
+    String user,
+    List<Map<String, dynamic>> menu,
+  ) async => _box.write('$_navMenuKey::$user', menu);
 
   List<dynamic>? getNavMenu(String user) =>
       _box.read<List<dynamic>>('$_navMenuKey::$user');
@@ -303,8 +702,8 @@ class StorageService {
 
   String getDashboardActionableScope() =>
       _box.read<String>(_dashboardActionableScopeKey) == 'everyone'
-          ? 'everyone'
-          : 'mine';
+      ? 'everyone'
+      : 'mine';
 
   // --- Attendance notification preferences ---
   Future<void> saveAttendanceRemindersEnabled(String user, bool value) async =>
@@ -341,5 +740,6 @@ class StorageService {
       _box.write(_itemsFromPhotosFormatKey, value);
 
   /// Null until the first Make sheet.
-  String? getItemsFromPhotosFormat() => _box.read<String>(_itemsFromPhotosFormatKey);
+  String? getItemsFromPhotosFormat() =>
+      _box.read<String>(_itemsFromPhotosFormatKey);
 }

@@ -147,7 +147,7 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
           if (row.distinctItemName case final name?) Text(name, style: muted),
           Text(
             supplierNames.isEmpty
-                ? 'No supplier recorded'
+                ? SuppliersByItemColumnLabels.noSupplierRecorded
                 : supplierNames.join(', '),
             style: muted,
           ),
@@ -182,15 +182,21 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
           runSpacing: 4,
           children: [
             if (stock.balanceQty case final qty?)
-              Text('Balance: ${_formatStockQty(qty, stock.stockUom)}'),
+              Text(
+                '${SuppliersByItemColumnLabels.balanceQty} '
+                '${_formatStockQty(qty, stock.stockUom)}',
+              ),
             if (stock.projectedQty case final qty?)
-              Text('Projected: ${_formatStockQty(qty, stock.stockUom)}'),
+              Text(
+                '${SuppliersByItemColumnLabels.projectedQty} '
+                '${_formatStockQty(qty, stock.stockUom)}',
+              ),
           ],
         ),
       if (suppliers.isEmpty)
         const FormEmptyState(
           icon: Icons.local_shipping_outlined,
-          message: 'No suppliers recorded',
+          message: SuppliersByItemColumnLabels.noSupplierRecorded,
         ),
       for (final rows in suppliers.values) _buildSupplierTile(context, rows),
     ];
@@ -216,11 +222,13 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
 
     final details = [
       if (!widget.isTemplate && supplier.supplierPartNumber != null)
-        'Part no. ${supplier.supplierPartNumber}',
+        '${SuppliersByItemColumnLabels.supplierPartNumber} '
+            '${supplier.supplierPartNumber}',
       for (final entry in openOrders.entries)
         [
           ?entry.key.itemCode,
-          'Open: ${_formatStockQty(entry.value, entry.key.uom)}',
+          '${SuppliersByItemColumnLabels.openOrderQty} '
+              '${_formatStockQty(entry.value, entry.key.uom)}',
         ].join(' · '),
       ..._leadTimeDetails(rows),
     ];
@@ -237,7 +245,7 @@ class _ItemSuppliersCardState extends State<ItemSuppliersCard> {
           Text(
             supplier.supplierName ?? supplier.supplier ?? supplier.treeLabel,
           ),
-          SupplierStatusPill(status: status),
+          SupplierStatusPill(status: status, wrapLabel: true),
         ],
       ),
       subtitle: details.isEmpty

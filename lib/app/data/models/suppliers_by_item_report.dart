@@ -188,6 +188,18 @@ class SuppliersByItemRow {
   final bool bomCycle;
   final bool bomDepthLimit;
 
+  bool get hasStockQuantities =>
+      balanceQty != null ||
+      projectedQty != null ||
+      openOrderQty != null ||
+      reorderQty != null ||
+      draftOrderQty != null ||
+      totalQtyReceived != null;
+
+  ({String? code, String? nodeId}) get itemIdentity => itemCode == null
+      ? (code: null, nodeId: nodeId)
+      : (code: itemCode, nodeId: null);
+
   bool get isBelowReorderLevel {
     final projected = projectedQty;
     final level = reorderLevel;
@@ -299,12 +311,98 @@ class SuppliersByItemQuantityTotals {
   const SuppliersByItemQuantityTotals({
     this.balanceQty,
     this.projectedQty,
+    this.reorderQty,
     this.openOrderQty,
+    this.draftOrderQty,
+    this.totalQtyReceived,
   });
 
   final num? balanceQty;
   final num? projectedQty;
+  final num? reorderQty;
   final num? openOrderQty;
+  final num? draftOrderQty;
+  final num? totalQtyReceived;
+}
+
+/// Adds base-10 quantities exactly, including cancellation at very small scales.
+/// The shortest decimal representation of each parsed number is used, since
+/// binary floating-point addition can leave a residual after an exact return.
+class _QuantitySum {
+  static final _ten = BigInt.from(10);
+  BigInt? _units;
+  int _exponent = 0;
+
+  void add(num? quantity) {
+    if (quantity == null) return;
+    if (quantity == 0) {
+      _units ??= BigInt.zero;
+      return;
+    }
+    if (quantity is int) {
+      _addUnits(BigInt.from(quantity), 0);
+      return;
+    }
+
+    final parts = quantity.toString().split('e');
+    final mantissa = parts.first;
+    final point = mantissa.indexOf('.');
+    final fractionDigits = point < 0 ? 0 : mantissa.length - point - 1;
+    final exponent = parts.length == 1 ? 0 : int.parse(parts.last);
+    _addUnits(
+      BigInt.parse(mantissa.replaceAll('.', '')),
+      exponent - fractionDigits,
+    );
+  }
+
+  void _addUnits(BigInt units, int exponent) {
+    final previous = _units;
+    if (previous == null || previous == BigInt.zero) {
+      _units = units;
+      _exponent = exponent;
+    } else if (exponent == _exponent) {
+      _units = previous + units;
+    } else if (exponent < _exponent) {
+      _units = previous * _ten.pow(_exponent - exponent) + units;
+      _exponent = exponent;
+    } else {
+      _units = previous + units * _ten.pow(exponent - _exponent);
+    }
+  }
+
+  num? get value {
+    final units = _units;
+    if (units == null) return null;
+    if (_exponent == 0) return num.parse(units.toString());
+    return double.parse('${units}e$_exponent');
+  }
+}
+
+class _QuantityTotalsAccumulator {
+  final _balance = _QuantitySum();
+  final _projected = _QuantitySum();
+  final _reorder = _QuantitySum();
+  final _openOrder = _QuantitySum();
+  final _draftOrder = _QuantitySum();
+  final _received = _QuantitySum();
+
+  void add(SuppliersByItemRow row) {
+    _balance.add(row.balanceQty);
+    _projected.add(row.projectedQty);
+    _reorder.add(row.reorderQty);
+    _openOrder.add(row.openOrderQty);
+    _draftOrder.add(row.draftOrderQty);
+    _received.add(row.totalQtyReceived);
+  }
+
+  SuppliersByItemQuantityTotals finish() => SuppliersByItemQuantityTotals(
+    balanceQty: _balance.value,
+    projectedQty: _projected.value,
+    reorderQty: _reorder.value,
+    openOrderQty: _openOrder.value,
+    draftOrderQty: _draftOrder.value,
+    totalQtyReceived: _received.value,
+  );
 }
 
 class SuppliersByItemNode {
@@ -324,37 +422,38 @@ class SuppliersByItemNode {
             child.hasSuppliers,
       );
 
-  /// Sums available quantity fields from top-level items and variants by UOM.
-  static Map<String, SuppliersByItemQuantityTotals> quantityTotalsByUom(
-    Iterable<SuppliersByItemNode> nodes,
-  ) {
-    final totals = <String, SuppliersByItemQuantityTotals>{};
-
-    num? add(num? total, num? quantity) =>
-        quantity == null ? total : (total ?? 0) + quantity;
-
-    void addQuantities(Iterable<SuppliersByItemNode> nodes) {
-      for (final node in nodes) {
-        final row = node.row;
-        if (row.isComponent) continue;
-        if ((row.kind, row.stockUom)
-            case (SuppliersByItemRowKind.item, final uom?)
-            when row.balanceQty != null ||
-                row.projectedQty != null ||
-                row.openOrderQty != null) {
-          final previous = totals[uom];
-          totals[uom] = SuppliersByItemQuantityTotals(
-            balanceQty: add(previous?.balanceQty, row.balanceQty),
-            projectedQty: add(previous?.projectedQty, row.projectedQty),
-            openOrderQty: add(previous?.openOrderQty, row.openOrderQty),
-          );
+  /// Lists returned items and variants once, taking the first source occurrence.
+  static Iterable<SuppliersByItemNode> topLevelItems(
+    Iterable<SuppliersByItemNode> roots,
+  ) sync* {
+    final seen = <({String? code, String? nodeId})>{};
+    for (final root in roots) {
+      final candidates = root.row.kind == SuppliersByItemRowKind.template
+          ? root.children
+          : [root];
+      for (final candidate in candidates) {
+        final row = candidate.row;
+        if (row.kind == SuppliersByItemRowKind.item &&
+            !row.isComponent &&
+            seen.add(row.itemIdentity)) {
+          yield candidate;
         }
-        addQuantities(node.children);
       }
     }
+  }
 
-    addQuantities(nodes);
-    return totals;
+  /// Sums available quantity fields from canonical top-level items by UOM.
+  static Map<String, SuppliersByItemQuantityTotals> quantityTotalsByUom(
+    Iterable<SuppliersByItemNode> roots,
+  ) {
+    final totals = <String, _QuantityTotalsAccumulator>{};
+    for (final node in topLevelItems(roots)) {
+      final row = node.row;
+      final uom = row.stockUom;
+      if (uom == null || !row.hasStockQuantities) continue;
+      totals.putIfAbsent(uom, _QuantityTotalsAccumulator.new).add(row);
+    }
+    return totals.map((uom, total) => MapEntry(uom, total.finish()));
   }
 
   /// Builds the report tree in server order using the explicit parent IDs.

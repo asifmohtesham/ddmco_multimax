@@ -2,9 +2,16 @@ import 'package:flutter/widgets.dart';
 import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 
 class SupplierStatusPill extends StatelessWidget {
-  const SupplierStatusPill({super.key, required this.status});
+  const SupplierStatusPill({
+    super.key,
+    required this.status,
+    this.compact = false,
+    this.wrapLabel = false,
+  });
 
   final String? status;
+  final bool compact;
+  final bool wrapLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -16,6 +23,11 @@ class SupplierStatusPill extends StatelessWidget {
       String status when status.startsWith('On Hold ') => 'On Hold',
       _ => label,
     };
-    return StatusPill(status: label, colorStatus: colorStatus);
+    return StatusPill(
+      status: label,
+      colorStatus: colorStatus,
+      compact: compact,
+      wrapLabel: wrapLabel,
+    );
   }
 }

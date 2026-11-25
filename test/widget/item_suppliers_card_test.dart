@@ -1,6 +1,7 @@
 // Keep the shared Flutter Material API until the app migrates to material_ui.
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -161,6 +162,34 @@ void main() {
     });
   }
 
+  testWidgets('Item card wraps the supplier hold date at 2x phone text', (
+    tester,
+  ) async {
+    const status = 'On Hold (Payments) until 2027-01-01';
+    tester.view.physicalSize = const Size(411, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _showCard(tester, [
+      _item('ITEM'),
+      _supplier('ITEM', 'Supplier A', status: status),
+    ]);
+
+    final paragraph = tester.renderObject<RenderParagraph>(find.text(status));
+    final firstWord = paragraph.getBoxesForSelection(
+      const TextSelection(baseOffset: 0, extentOffset: 2),
+    );
+    final lastDigit = paragraph.getBoxesForSelection(
+      TextSelection(baseOffset: status.length - 1, extentOffset: status.length),
+    );
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(lastDigit.single.top, greaterThan(firstWord.single.top));
+    expect(lastDigit.single.right, lessThanOrEqualTo(paragraph.size.width));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Item card shows stock and supplier procurement details', (
     tester,
   ) async {
@@ -176,34 +205,48 @@ void main() {
           receipts: 4,
         ),
         'supplier_part_number': 'P-123',
+        'receipt_count': 1,
       },
       _supplier('ITEM', 'Supplier B', uom: 'Nos', open: 0, days: 0),
     ]);
 
-    expect(find.text('Balance: 1,234.5 Nos'), findsOneWidget);
-    expect(find.text('Projected: -5.25 Nos'), findsOneWidget);
-    expect(find.text('Part no. P-123'), findsOneWidget);
-    expect(find.text('Open: 12.5 Nos'), findsOneWidget);
-    expect(find.text('Open: 0 Nos'), findsNothing);
-    expect(find.text('Lead time: 6.3 days (4 receipts)'), findsOneWidget);
-    expect(find.text('Lead time: 0.0 days'), findsOneWidget);
+    expect(find.text('Balance Qty 1,234.5 Nos'), findsOneWidget);
+    expect(find.text('Projected Qty -5.25 Nos'), findsOneWidget);
+    expect(find.text('Supplier Part Number P-123'), findsOneWidget);
+    expect(find.text('Open Order Qty 12.5 Nos'), findsOneWidget);
+    expect(find.text('Open Order Qty 0 Nos'), findsNothing);
+    expect(
+      find.text('Lead Time (Days) 6.3 · Lead Time Receipts 4'),
+      findsOneWidget,
+    );
+    expect(find.text('Lead Time (Days) 0.0'), findsOneWidget);
     expect(find.text('Made from (BOM)'), findsNothing);
   });
 
-  testWidgets('Item card uses singular and plural lead time labels', (
-    tester,
-  ) async {
-    await _showCard(tester, [
-      _item('ITEM'),
-      _supplier('ITEM', 'Supplier A', days: 0, receipts: 0),
-      _supplier('ITEM', 'Supplier B', days: 1, receipts: 1),
-      _supplier('ITEM', 'Supplier C', days: 2, receipts: 2),
-    ]);
+  testWidgets(
+    'Item card uses the column label for every Lead Time Receipts count',
+    (tester) async {
+      await _showCard(tester, [
+        _item('ITEM'),
+        _supplier('ITEM', 'Supplier A', days: 0, receipts: 0),
+        _supplier('ITEM', 'Supplier B', days: 1, receipts: 1),
+        _supplier('ITEM', 'Supplier C', days: 2, receipts: 2),
+      ]);
 
-    expect(find.text('Lead time: 0.0 days (0 receipts)'), findsOneWidget);
-    expect(find.text('Lead time: 1.0 day (1 receipt)'), findsOneWidget);
-    expect(find.text('Lead time: 2.0 days (2 receipts)'), findsOneWidget);
-  });
+      expect(
+        find.text('Lead Time (Days) 0.0 · Lead Time Receipts 0'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Lead Time (Days) 1.0 · Lead Time Receipts 1'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Lead Time (Days) 2.0 · Lead Time Receipts 2'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('Item card previews direct BOMs and opens the expanded report', (
     tester,
@@ -372,6 +415,7 @@ void main() {
       }
       expect(find.text('-'), findsNothing);
       expect(find.text(' '), findsNothing);
+      expect(find.text('No supplier recorded'), findsNWidgets(5));
       expect(tester.takeException(), isNull);
     });
   }
@@ -413,10 +457,13 @@ void main() {
 
     expect(find.text('Supplier'), findsOneWidget);
     expect(find.text('Template supplier'), findsNothing);
-    expect(find.text('Open: 7 Nos'), findsOneWidget);
-    expect(find.text('Open: 8 Kg'), findsOneWidget);
-    expect(find.text('Lead time: 5.0 days (4 receipts)'), findsOneWidget);
-    expect(find.textContaining('Projected:'), findsNothing);
+    expect(find.text('Open Order Qty 7 Nos'), findsOneWidget);
+    expect(find.text('Open Order Qty 8 Kg'), findsOneWidget);
+    expect(
+      find.text('Lead Time (Days) 5.0 · Lead Time Receipts 4'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Projected Qty'), findsNothing);
     expect(find.text('BOM-TEMPLATE-001'), findsOneWidget);
     expect(find.text('BOM-A-001'), findsNothing);
   });
@@ -442,9 +489,12 @@ void main() {
       isTemplate: true,
     );
 
-    expect(find.text('Projected: 9 Nos'), findsOneWidget);
+    expect(find.text('Projected Qty 9 Nos'), findsOneWidget);
     expect(find.text('Supplier'), findsOneWidget);
-    expect(find.text('A · Lead time: 2.0 days (1 receipt)'), findsOneWidget);
-    expect(find.text('B · Lead time: 6.0 days'), findsOneWidget);
+    expect(
+      find.text('A · Lead Time (Days) 2.0 · Lead Time Receipts 1'),
+      findsOneWidget,
+    );
+    expect(find.text('B · Lead Time (Days) 6.0'), findsOneWidget);
   });
 }

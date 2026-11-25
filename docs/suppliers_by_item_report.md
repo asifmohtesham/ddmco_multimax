@@ -28,8 +28,8 @@ status, order quantities, receipt history and latest qualifying rate.
 | Items | `items` | MultiSelectList → Item | Matches the selected item codes. |
 | Variant Of | `variant_of` | MultiSelectList → Item | Offers template items and matches their variants. Selecting both Items and Variant Of returns the union. |
 | Suppliers | `suppliers` | MultiSelectList → Supplier | Matches items with evidence for these suppliers. BOM expansion also matches through components at every shown depth. A match retains the full tree and marks each occurrence of a selected supplier with `matched_supplier: 1`. |
-| Warehouses | `warehouses` | MultiSelectList → Warehouse | Scopes balance, projected quantity, reorder level and reorder quantity to the selected warehouses and descendants of selected groups. An empty selection uses all warehouses. Supplier evidence and procurement history keep their full warehouse scope. |
-| Include Draft Purchase Orders | `include_drafts` | Check | Defaults to `1` (on). Includes draft Purchase Orders and batches linked to them as supplier evidence, draft order quantities, and active draft BOMs when BOM expansion is enabled. Set to `0` to exclude those drafts. |
+| Warehouses | `warehouses` | MultiSelectList → Warehouse | Scopes Balance Qty, Projected Qty, Reorder Level and Reorder Qty to the selected warehouses and descendants of selected groups. An empty selection uses all warehouses. Supplier evidence and procurement history keep their full warehouse scope. |
+| Include Draft Purchase Orders | `include_drafts` | Check | Defaults to `1` (on). Includes draft Purchase Orders and batches linked to them as supplier evidence, Draft Order Qty, and active draft BOMs when BOM expansion is enabled. Set to `0` to exclude those drafts. |
 | Expand BOM components | `expand_bom` | Check | Defaults to `0` (off) for the v6 result. Set to `1` to add active BOMs and their components. |
 
 With Suppliers empty and Items or Variant Of set, every matching enabled item
@@ -52,7 +52,7 @@ use `Batch (draft PO)`. Batches linked to a cancelled Purchase Order use
 | Item / Supplier | `tree_label` | Item, component, or Supplier link, BOM group label, or placeholder label. |
 | Item Name | `item_name` | Item, component, or template name. |
 | BOM Qty per Unit | `bom_qty_per_unit` | Shown with BOM expansion. Component stock quantity divided by the parent BOM's output quantity. |
-| Balance Qty | `balance_qty` | Current stock on hand in stock UOM, scoped by Warehouses. |
+| Balance Qty | `balance_qty` | Current quantity in Stock UOM, scoped by Warehouses. |
 | Projected Qty | `projected_qty` | Current projected stock from Bin in stock UOM, scoped by Warehouses. |
 | Reorder Level | `reorder_level` | Sum of warehouse reorder levels from Item Reorder, scoped by Warehouses. |
 | Reorder Qty | `reorder_qty` | Sum of configured reorder quantities from Item Reorder when supplied, scoped by Warehouses. |
@@ -62,7 +62,7 @@ use `Batch (draft PO)`. Batches linked to a cancelled Purchase Order use
 | Sources | `sources` | Distinct supplier evidence labels, including the draft and batch labels described above. |
 | Open Order Qty | `open_order_qty` | Remaining quantity in stock UOM on submitted Purchase Orders with a status other than Closed or Completed. Each line contributes `max(qty - received_qty, 0) * conversion_factor`. |
 | Draft Order Qty | `draft_order_qty` | Same remaining quantity calculation for draft Purchase Orders when drafts are included. |
-| Lead Time Days | `lead_time_days` | Average days from Purchase Order transaction date to Purchase Receipt posting date, reported to one decimal place. Uses submitted receipt lines linked to a submitted order for the same item and supplier. Blank when no lines qualify. |
+| Lead Time (Days) | `lead_time_days` | Average days from Purchase Order transaction date to Purchase Receipt posting date, reported to one decimal place. Uses submitted receipt lines linked to a submitted order for the same item and supplier. Blank when no lines qualify. |
 | Lead Time Receipts | `lead_time_receipts` | Number of receipt lines used for the lead time average. |
 | PO Count | `po_count` | Distinct submitted Purchase Orders for the item and supplier. |
 | Receipt Count | `receipt_count` | Distinct submitted Purchase Receipts for the item and supplier. |
@@ -77,14 +77,14 @@ use `Batch (draft PO)`. Batches linked to a cancelled Purchase Order use
 | Total Qty Received | `total_qty_received` | Net quantity from receipt events in stock UOM, including returns. |
 | Stock UOM | `stock_uom` | Item stock UOM, blank on template rows with mixed units. |
 | Last PO Date | `last_po_date` | Latest submitted Purchase Order date for the item and supplier pair, independent of the rate source. |
-| Supplier Count | `supplier_count` | Direct supplier count for an item or component, or distinct direct supplier count across a template's variants. |
+| Supplier Count | `supplier_count` | Number of suppliers linked to an item or component, or the number of distinct suppliers linked to a template's variants. |
 
-Item rows carry balance, projected quantity, reorder level and reorder quantity.
-Component rows carry balance and projected quantity under the same warehouse scope.
-A template sums stock quantities across shown variants that share one stock UOM.
+Item rows carry Balance Qty, Projected Qty, Reorder Level and Reorder Qty.
+Component rows carry Balance Qty and Projected Qty under the same warehouse scope.
+A template sums stock quantities across shown variants that share one Stock UOM.
 Mixed-UOM templates, supplier rows and placeholder rows leave the stock quantities
-blank. Item rows sum received, open order, and draft order quantities across
-their own suppliers. Template counts and quantities also exclude components.
+blank. Item rows sum Total Qty Received, Open Order Qty and Draft Order Qty across
+their own suppliers. Template counts and quantities also exclude BOM components.
 
 Receipt events include submitted Purchase Receipts and stock-updating Purchase
 Invoices that qualify as independent receipts. The script excludes invoice
@@ -123,10 +123,10 @@ has a further qualifying BOM).
 
 Top-level keys retain the v6 formats `template:<template_code>`,
 `item:<item_code>`, `supplier:<len>:<item_code>:<supplier>`, and
-`none:<len>:<item_code>`, where `<len>` is the length of the item code. BOM and
-component supplier keys include the parent node and their own key. Component
-keys also include the BOM line position and ID so repeated items each have a
-unique tree position. Component placeholder keys use `none:<component_node>`.
+`none:<len>:<item_code>`, where `<len>` is the length of the item code. BOM keys
+and supplier row keys inside BOM branches include the parent node and their own
+key. Component keys also include the BOM line position and ID so repeated
+items each have a unique tree position. Component placeholder keys use `none:<component_node>`.
 BOM groups and every descendant carry `is_component: 1`. With expansion on,
 top-level rows carry `is_component: 0`. With expansion off, rows preserve the
 v6 payload and omit `is_component`.
@@ -140,44 +140,86 @@ has `BOM-3000338-001` with a component `3000281` that expands draft
 
 ## 5. App screens
 
-- **Buying → Reports → Suppliers by Item** opens the full report. The filter
-  sheet shows **Include draft purchase orders** (on by default) and **Expand
-  BOM components** (off by default). The BOM switch helper reads “Shows what
-  each item is made from and who supplies those components.” BOM groups expand
-  to show their components. Draft BOMs carry a **Draft** chip. Item, template
-  and component rows show the item code as the title, with a distinct name
-  beneath when available. Component rows also show quantity per unit, balance,
-  BOM usage and a muted **Not used in manufacturing** note when applicable.
-  The list caps visual indentation on deep branches and labels their depth.
-  Supplier rows use the
-  same status, purchase history, and selected-supplier treatment at every depth.
-  Item and template rows show available balance and projected quantities and
-  positive reorder levels. They flag projected quantities below a positive
-  reorder level. Supplier rows show applicable **Disabled** or **On Hold**
-  chips, positive open and draft quantities, available lead time and receipt-line
-  sample size, and available PO and receipt counts.
-  The footer totals balance, projected and open order quantities by stock UOM
-  using top-level item rows, with component activity excluded from totals and
-  direct item supplier counts.
+- **Buying → Reports → Suppliers by Item** opens the full report with the
+  standard report header. Use **+ Filter** or the filter icon to open the
+  filter sheet. **Include Draft Purchase Orders** defaults to on and **Expand
+  BOM components** defaults to off. Its helper reads “Shows what each item
+  is made from and who supplies those components.” The **View** chip opens
+  the grouping, sort, direction, **Expand all** and **Collapse all** controls.
+  The Fields icon opens **Fields**.
+
+  **Item** grouping follows the **Item / Supplier** tree. A template with one
+  returned variant starts at that variant and can show its **Variant Of**.
+  Item and BOM component rows align **Balance Qty** and **Supplier Count**.
+  Supplier rows compare **Last Purchase Date** and can expand to show purchase
+  history and evidence. **Lead Time (Days)**, **Lead Time Receipts** and
+  **Receipt Count** have separate Fields switches. Positive order quantities
+  can show **Open Order Qty** and **Draft Order Qty** badges. **Supplier Status**
+  controls **Disabled** and **On Hold**.
+
+  **Supplier** grouping shows an item under each supplier linked to that
+  item, with their pair's **Last Purchase Date** and evidence. BOM components
+  can also appear with their owning item and full BOM path. **No supplier
+  recorded** groups items with no supplier of their own, including items
+  whose BOM components have suppliers. Items in both kinds of groups can
+  reveal their loaded BOM branches. The **Items** and **BOM components** group counts and the
+  BOM path have separate Fields switches.
+
+  Both groupings offer **Balance Qty**, **Supplier Count** and **Last Purchase
+  Date** in either direction. The default is **Item**, **Balance Qty** and
+  **High to low**. **Balance Qty** is compared within each **Stock UOM**, with
+  unavailable amounts last. For **Last Purchase Date**, **Item** grouping uses
+  the latest date for the suppliers linked to the item or its variants.
+  **Supplier** grouping uses the date for the displayed item or BOM component
+  and supplier pair. View choices are saved per ERP site and user. Fields reset leaves the
+  saved View selection in place. Failed saves keep the current choices for the
+  session and offer **Retry**.
+
+  The summary shows **Items**, **Suppliers**, **No supplier recorded** and
+  **Balance Qty**. **No supplier recorded** counts loaded items with no
+  supplier link. **Balance Qty by Stock UOM** opens the separate totals when at least
+  two known units have a **Balance Qty**. **Search within results** matches
+  words across a single item, template, supplier or BOM trail and opens the
+  matching branches locally. The **Items** search count includes each matching
+  owner once. Both groupings retain its other suppliers. Changing grouping
+  keeps the query and reveals the matching branches in the new view. Clearing
+  the query restores the active grouping's expansion and reading position.
+  Search, expansion and position belong to the open report.
+
+  **Fields** controls optional row details, badges, summary cells and the
+  search match count. **Currency** and **Rate UOM** keep their selections
+  while **Last Rate** is off. Choices apply immediately and are saved per
+  ERP site and signed-in user. The first eligible site claims existing
+  user-only choices. **Reset to defaults** restores the original selection.
+  The report keeps session choices and offers **Retry** if saving fails.
+  **Item / Supplier**, **No supplier recorded**, navigation and the footer
+  remain available with every Field off.
+
+  **End of list** includes signed **Balance Qty**, **Projected Qty**, **Open
+  Order Qty**, **Reorder Qty**, **Draft Order Qty** and **Total Qty Received**
+  by **Stock UOM** for all loaded items. Each distinct item or variant
+  contributes once. The footer excludes BOM components, rates and quantities
+  without a **Stock UOM**. Both groupings share these loaded-result totals.
   [Report screen](../lib/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_screen.dart)
 - **Item → Overview → Suppliers** runs with `items=[itemCode]` and
   `expand_bom=1`. For a template it also sends `variant_of=[itemCode]` to
-  collect its variants' suppliers. The card shows available item balance and
-  projected quantities, and displays applicable status chips, positive open
-  order quantities and available lead times for each supplier. A template
-  groups each supplier's open orders by stock UOM and weights lead times by
-  the number of receipt lines. If a sample count is missing, it shows the
-  available lead times by variant. When the current item has BOMs, **Made from
-  (BOM)** shows direct components under each BOM, with the component code first,
-  any distinct name beneath it, and then the supplier names.
+  collect its variants' suppliers. The card previews the available **Balance
+  Qty** and **Projected Qty** for the item and the applicable **Supplier Status**,
+  **Supplier Part Number** for a single item, positive **Open Order Qty** and
+  available **Lead Time (Days)** with its **Lead Time Receipts**. A template
+  groups **Open Order Qty** by **Stock UOM** and weights **Lead Time (Days)**
+  using **Lead Time Receipts**. If **Lead Time Receipts** is missing or zero for
+  a variant with **Lead Time (Days)**, the card shows the available durations by
+  variant. When the current item has BOMs, **Made from (BOM)** shows the
+  immediate components under each BOM, with the component code first, any
+  distinct **Item Name** beneath it and then the supplier names.
   **View full report** opens with `items=[itemCode]` and `expand_bom=1` when
   the card shows BOMs. Otherwise it opens with the item or template selection
   and expansion off.
   [Item Overview](../lib/app/modules/item/form/item_form_screen.dart)
   [Suppliers card](../lib/app/modules/item/form/widgets/item_suppliers_card.dart)
 
-The full report shows an available rate with its currency, source and date. Both
-screens use `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
+Both screens use `ApiProvider.runSuppliersByItem`, which sends a form-encoded POST to
 `/api/method/frappe.desk.query_report.run` with `report_name=Suppliers by Item`,
 a JSON `filters` field, `ignore_prepared_report=true` and
 `are_default_filters=false`. The JSON carries selections from `items`,
