@@ -32,6 +32,7 @@ class _DeliveryProvider extends PosUploadProvider {
   );
 
   String status = 'Out for Delivery';
+  String modified = '2026-11-25 19:20:11.123456';
   bool discoveryFails = false;
   List<PosDeliveryAction> actions = [
     PosDeliveryAction.deliveryReturn,
@@ -45,12 +46,13 @@ class _DeliveryProvider extends PosUploadProvider {
   int auditReads = 0;
   final driverRequests = <PosDeliveryAction>[];
   final applied = <(PosDeliveryAction, PosDeliverySelection)>[];
+  final appliedRevisions = <String>[];
 
   Map<String, dynamic> _pos(String name) => {
     'doctype': 'POS Upload',
     'name': name,
     'status': status,
-    'modified': '2026-11-25 19:20:11.123456',
+    'modified': modified,
   };
 
   @override
@@ -87,6 +89,7 @@ class _DeliveryProvider extends PosUploadProvider {
     PosDeliverySelection selection,
   ) async {
     applied.add((action, selection));
+    appliedRevisions.add(upload.modified);
     if (applyError case final error?) throw error;
     if (pendingApply case final pending?) return pending.future;
     status = action.requiresReason ? 'To Deliver' : action.label;
@@ -282,6 +285,55 @@ void main() {
     expect(provider.applied, isEmpty);
     expect(controller.deliveryActionBusy.value, isFalse);
   });
+
+  for (final revisionChanged in [false, true]) {
+    testWidgets(
+      revisionChanged
+          ? 'a changed revision is validated by the server after confirmation'
+          : 'the driver sheet can confirm after a same-revision reload',
+      (tester) async {
+        const action = PosDeliveryAction.outForDelivery;
+        const changedMessage =
+            'This POS Upload changed. Reload it and use Actions again.';
+        final provider = _DeliveryProvider()
+          ..status = 'To Deliver'
+          ..actions = [action];
+        final controller = await pumpForm(tester, provider);
+        final originalRevision = provider.modified;
+
+        await tester.tap(_action(action));
+        await _animateOverlay(tester);
+        await tester.tap(find.byType(DropdownButton<String>));
+        await _animateOverlay(tester);
+        await tester.tap(find.text('Driver Two').last);
+        await _animateOverlay(tester);
+
+        if (revisionChanged) {
+          provider.modified = '2026-11-25 19:20:12.654321';
+          provider.applyError = _applyFailure(
+            417,
+            _serverMessage(changedMessage),
+          );
+        }
+        await controller.fetchPosUpload();
+        await _animateOverlay(tester);
+        expect(controller.posUpload.value?.modified, provider.modified);
+        expect(find.byType(BottomSheet), findsOneWidget);
+
+        await tester.tap(_confirm);
+        await tester.pumpAndSettle();
+
+        expect(provider.appliedRevisions, [originalRevision]);
+        expect(provider.applied.single.$1, action);
+        expect(provider.applied.single.$2.driver, 'DRV-2');
+        final notice = revisionChanged
+            ? '$changedMessage Try again.'
+            : 'Delivery action recorded';
+        expect(find.text(notice), findsOneWidget);
+        expect(controller.deliveryActionBusy.value, isFalse);
+      },
+    );
+  }
 
   testWidgets('a 417 validation failure shows the server message', (
     tester,

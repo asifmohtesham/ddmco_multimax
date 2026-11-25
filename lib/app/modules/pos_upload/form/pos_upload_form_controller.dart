@@ -770,39 +770,40 @@ class PosUploadFormController extends GetxController
       return;
     }
 
-    final generation = _documentGeneration;
-    bool isCurrent() =>
-        _isCurrentDocument(generation) && (isFormCurrent?.call() ?? true);
-    if (!isCurrent()) return;
+    bool isActiveForm() => !isClosed && (isFormCurrent?.call() ?? true);
+    if (!isActiveForm()) return;
     deliveryActionBusy.value = true;
-    var submitted = false;
+    int? applyGeneration;
     try {
       final options = await _provider.getDeliveryDrivers(upload.name, action);
-      if (!isCurrent()) return;
+      if (!isActiveForm()) return;
       final selection = await select(options);
-      if (!isCurrent() || selection == null) return;
+      if (!isActiveForm() || selection == null) return;
       if (!options.drivers.any((driver) => driver.name == selection.driver) ||
           (action.requiresReason && selection.reason == null)) {
         return;
       }
 
-      submitted = true;
+      // A reload while the sheet is open can leave the revision unchanged.
+      // Submit the original revision and fence replies from before a later reload.
+      final generation = _documentGeneration;
+      applyGeneration = generation;
       final saved = await _provider.applyDeliveryAction(
         upload,
         action,
         selection,
       );
-      if (!isCurrent()) return;
-      if (await _refreshDocument(savedUpload: saved) &&
-          (isFormCurrent?.call() ?? true)) {
+      if (!_isCurrentDocument(generation) || !isActiveForm()) return;
+      if (await _refreshDocument(savedUpload: saved) && isActiveForm()) {
         GlobalSnackbar.success(message: 'Delivery action recorded');
       }
     } catch (error) {
-      if (!isCurrent()) return;
-      if (!submitted) {
+      if (!isActiveForm()) return;
+      if (applyGeneration == null) {
         GlobalSnackbar.error(message: 'Unable to load delivery drivers');
         return;
       }
+      if (!_isCurrentDocument(applyGeneration)) return;
       await _handleDeliveryActionFailure(error, isFormCurrent);
     } finally {
       deliveryActionBusy.value = false;
