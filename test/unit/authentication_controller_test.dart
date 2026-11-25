@@ -4,14 +4,16 @@ import 'dart:io' show Directory, File, FileSystemException;
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get/get.dart' hide Response;
+import 'package:get/get.dart' hide FormData, Response;
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/services/session_cookie_jar.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 
@@ -30,6 +32,31 @@ class _FailingClearCookiesApi extends FakeApiProvider {
     clearCookieCalls++;
     throw const FileSystemException('cookie files are read only');
   }
+}
+
+class _LoginServer implements HttpClientAdapter {
+  final requests = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options);
+    await requestStream?.drain<void>();
+    return ResponseBody.fromString(
+      '{"message":"Logged In"}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+        'set-cookie': ['sid=new-session; Path=/; HttpOnly'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 void main() {
@@ -329,10 +356,10 @@ void main() {
     const baseUrl = 'https://$host';
     const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
     late Directory dir;
+    late PersistCookieJar seededJar;
     late File hostFile;
     late List<int> originalHostBytes;
     late StorageService realStorage;
-    late FakeStorageBox box;
 
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('multimax_auth_cookies_');
@@ -342,55 +369,36 @@ void main() {
       messenger.setMockMethodCallHandler(pathProvider, (_) async => dir.path);
       addTearDown(() => messenger.setMockMethodCallHandler(pathProvider, null));
 
-      box = FakeStorageBox();
-      realStorage = useStorageBox(box);
+      realStorage = useStorageBox(FakeStorageBox());
       await realStorage.saveBaseUrl(baseUrl);
       await realStorage.saveToken('saved token');
 
-      final jar = PersistCookieJar(
+      seededJar = PersistCookieJar(
         ignoreExpires: true,
         storage: FileStorage('${dir.path}/.cookies/'),
       );
-      await jar.saveFromResponse(Uri.parse(baseUrl), [Cookie('sid', 'saved')]);
+      await seededJar.saveFromResponse(
+        Uri.parse(baseUrl),
+        [Cookie('sid', 'saved')],
+      );
       hostFile = File('${dir.path}/.cookies/ie1_ps1/$host');
       originalHostBytes = await hostFile.readAsBytes();
     });
 
-    final corruptionCases = [
-      (
-        file: host,
-        bytes: [0xff],
-        error: 'a host read error',
-        withProfile: false,
-      ),
-      (
-        file: host,
-        bytes: '['.codeUnits,
-        error: 'a malformed host file',
-        withProfile: true,
-      ),
-      (
-        file: '.index',
-        bytes: '{'.codeUnits,
-        error: 'a malformed cookie index',
-        withProfile: true,
-      ),
-      (
-        file: '.domains',
-        bytes: '['.codeUnits,
-        error: 'malformed domain cookies',
-        withProfile: true,
-      ),
-    ];
-    for (final corruption in corruptionCases) {
-      test('preserves the session data after ${corruption.error}', () async {
-        if (corruption.withProfile) await realStorage.saveUser(cachedUser());
-        final unreadableFile =
-            File('${hostFile.parent.path}/${corruption.file}');
-        final originalBytes = await unreadableFile.exists()
-            ? await unreadableFile.readAsBytes()
-            : '{}'.codeUnits;
-        await unreadableFile.writeAsBytes(corruption.bytes);
+    for (final fileName in [host, '.index', '.domains']) {
+      test('signs out when the only SID depends on malformed $fileName',
+          () async {
+        if (fileName == '.domains') {
+          await seededJar.deleteAll();
+          await seededJar.saveFromResponse(
+            Uri.parse(baseUrl),
+            [Cookie('sid', 'saved')..domain = host],
+          );
+        }
+        await realStorage.saveUser(cachedUser());
+        final malformedFile = File('${hostFile.parent.path}/$fileName');
+        expect(await malformedFile.exists(), isTrue);
+        await malformedFile.writeAsString('{');
         final realApi = ApiProvider();
         await realApi.initDio();
         Get.replace<ApiProvider>(realApi);
@@ -399,20 +407,102 @@ void main() {
 
         await auth.checkAuthenticationStatus();
 
-        final expectedEmail = corruption.withProfile ? kTestEmail : null;
-        expect(auth.isAuthenticated.value, corruption.withProfile);
-        expect(auth.isSessionVerificationPending.value, !corruption.withProfile);
-        expect(auth.currentUser.value?.email, expectedEmail);
-        expect(await unreadableFile.readAsBytes(), corruption.bytes);
-        if (corruption.file != host) {
-          expect(await hostFile.readAsBytes(), originalHostBytes);
-        }
-        expect(box.removedKeys, isEmpty);
-        expect(realStorage.getUser()?.email, expectedEmail);
-        expect(realStorage.getToken(), 'saved token');
+        expect(auth.isAuthenticated.value, isFalse);
+        expect(auth.isSessionVerificationPending.value, isFalse);
+        expect(auth.currentUser.value, isNull);
+        expect(await malformedFile.exists(), isFalse);
+        expect(realStorage.getUser(), isNull);
+        expect(realStorage.getToken(), isNull);
+        expect(await realApi.hasSessionCookies(), isFalse);
+      });
+    }
 
-        await unreadableFile.writeAsBytes(originalBytes);
-        expect(await realApi.hasSessionCookies(), isTrue);
+    CookieManager cookieManager(ApiProvider provider) =>
+        provider.dio.interceptors.whereType<CookieManager>().single;
+
+    PersistCookieJar unreadableIndex(String path) =>
+        createSessionCookieJar(path, readFile: (file) async {
+          if (file.path.endsWith('.index')) {
+            throw FileSystemException('Cookie index is locked', file.path);
+          }
+          return file.readAsBytes();
+        });
+
+    test('falls back to deleting the directory when deleteAll cannot read it',
+        () async {
+      var jarsCreated = 0;
+      final realApi = ApiProvider(
+        cookieJarFactory: (path) => ++jarsCreated == 1
+            ? unreadableIndex(path)
+            : createSessionCookieJar(path),
+      );
+      await realApi.initDio();
+      final originalManager = cookieManager(realApi);
+      final cookieDirectory = Directory('${dir.path}/.cookies');
+
+      await expectLater(
+        realApi.hasSessionCookies(),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(await hostFile.readAsBytes(), originalHostBytes);
+      await Future.wait([
+        realApi.clearSessionCookies(),
+        realApi.clearSessionCookies(),
+      ]);
+
+      expect(await cookieDirectory.exists(), isFalse);
+      expect(jarsCreated, 2);
+      expect(cookieManager(realApi), isNot(same(originalManager)));
+      expect(await realApi.hasSessionCookies(), isFalse);
+      await cookieManager(realApi).cookieJar.saveFromResponse(
+        Uri.parse(baseUrl),
+        [Cookie('sid', 'replacement')],
+      );
+      expect(await realApi.getSessionCookieHeader(), 'sid=replacement');
+    });
+
+    for (final replacementReadable in [true, false]) {
+      test('retries login once when the cookie index is unreadable '
+          '(replacement readable: $replacementReadable)', () async {
+        var jarsCreated = 0;
+        final realApi = ApiProvider(cookieJarFactory: (path) {
+          if (++jarsCreated > 1 && replacementReadable) {
+            return createSessionCookieJar(path);
+          }
+          return unreadableIndex(path);
+        });
+        await realApi.initDio();
+        final network = _LoginServer();
+        realApi.dio.httpClientAdapter = network;
+        var attempts = 0;
+        realApi.dio.interceptors.insert(0, InterceptorsWrapper(
+          onRequest: (request, handler) {
+            attempts++;
+            handler.next(request);
+          },
+        ));
+
+        final login = realApi.loginWithFrappe(kTestEmail, ' password ');
+        if (replacementReadable) {
+          expect((await login).data['message'], 'Logged In');
+          final sent = network.requests.single;
+          expect(sent.path, '/api/method/login');
+          expect(sent.headers['cookie'], isNull);
+          expect(Map.fromEntries((sent.data as FormData).fields), {
+            'usr': kTestEmail,
+            'pwd': ' password ',
+          });
+          expect(await realApi.getSessionCookieHeader(), 'sid=new-session');
+        } else {
+          await expectLater(
+            login,
+            throwsA(isA<DioException>().having((e) => e.error, 'cause',
+                isA<CookieManagerLoadException>())),
+          );
+          expect(network.requests, isEmpty);
+        }
+        expect(jarsCreated, 2);
+        expect(attempts, 2);
       });
     }
 

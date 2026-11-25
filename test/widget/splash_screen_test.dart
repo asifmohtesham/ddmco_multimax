@@ -1,8 +1,11 @@
 // test/widget/splash_screen_test.dart
 import 'dart:async';
+import 'dart:io' show Directory, File, FileSystemException;
 
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:multimax/app/data/constants/app_theme.dart';
@@ -11,12 +14,23 @@ import 'package:multimax/app/data/providers/user_provider.dart';
 import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
+import 'package:multimax/app/data/services/session_cookie_jar.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/auth/splash/splash_screen.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
+import 'package:path/path.dart' as p;
 
 import '../helpers/auth_fakes.dart';
+
+class _CookieCheckingApi extends FakeApiProvider {
+  _CookieCheckingApi(this._cookieApi);
+
+  final ApiProvider _cookieApi;
+
+  @override
+  Future<bool> hasSessionCookies() => _cookieApi.hasSessionCookies();
+}
 
 void main() {
   late FakeApiProvider api;
@@ -142,6 +156,79 @@ void main() {
     // The background re-check keeps running by design; stop it so the
     // test can end.
     auth.onClose();
+  });
+
+  testWidgets('retries a cookie read error and opens Home with the saved SID',
+      (tester) async {
+    const host = 'erp.example.com';
+    const baseUrl = 'https://$host';
+    const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+    final directory = Directory.systemTemp.createTempSync('splash_cookies_');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final cookiePath = p.join(directory.path, '.cookies');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      pathProvider,
+      (_) async => directory.path,
+    );
+    addTearDown(() => messenger.setMockMethodCallHandler(pathProvider, null));
+
+    await tester.runAsync(() async {
+      final jar = createSessionCookieJar(cookiePath);
+      await jar.saveFromResponse(Uri.parse(baseUrl), [Cookie('sid', 'saved')]);
+    });
+    Map<String, List<int>> cookieFiles() => {
+          for (final file in Directory(p.join(cookiePath, 'ie1_ps1'))
+              .listSync()
+              .whereType<File>())
+            p.basename(file.path): file.readAsBytesSync(),
+        };
+    final savedFiles = cookieFiles();
+    expect(savedFiles.keys, unorderedEquals(['.index', host]));
+
+    final profileStorage = StorageService.withStorage(FakeStorageBox());
+    await profileStorage.saveBaseUrl(baseUrl);
+    Get.replace<StorageService>(profileStorage);
+    var locked = true;
+    var hostReads = 0;
+    final cookieApi = ApiProvider(
+      cookieJarFactory: (directory) => createSessionCookieJar(
+        directory,
+        readFile: (file) async {
+          if (p.basename(file.path) == host) {
+            hostReads++;
+            if (locked) throw FileSystemException('File is locked', file.path);
+          }
+          return file.readAsBytesSync();
+        },
+      ),
+    );
+    api = _CookieCheckingApi(cookieApi);
+    Get.replace<ApiProvider>(api);
+    auth = AuthenticationController();
+    Get.replace<AuthenticationController>(auth);
+
+    await launch(tester);
+    await tester.pumpAndSettle();
+
+    expect(auth.isSessionVerificationPending.value, isTrue);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('login screen'), findsNothing);
+    expect(api.identityChecks, 0);
+    expect(api.clearCookieCalls, 0);
+    expect(hostReads, 1);
+    expect(cookieFiles(), savedFiles);
+
+    locked = false;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(hostReads, 2);
+    expect(api.identityChecks, 1);
+    expect(auth.isSessionVerificationPending.value, isFalse);
+    expect(find.text('home screen'), findsOneWidget);
+    expect(profileStorage.getUser()?.email, kTestEmail);
+    expect(cookieFiles(), savedFiles);
   });
 
   final inconclusiveAnswers = <String, Future<Response> Function()>{

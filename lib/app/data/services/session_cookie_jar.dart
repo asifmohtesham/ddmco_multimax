@@ -1,17 +1,39 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:path/path.dart' as p;
 
 /// Opens the same persisted session in the app and in its background workers.
-PersistCookieJar createSessionCookieJar(String directory) => PersistCookieJar(
-      ignoreExpires: true,
-      storage: _SessionCookieStorage(directory),
-      deleteHostCookiesWhenLoadFailed: false,
-    );
+PersistCookieJar createSessionCookieJar(
+  String directory, {
+  Future<List<int>> Function(File file)? readFile,
+}) =>
+    _SessionCookieJar(_SessionCookieStorage(directory, readFile));
+
+class _SessionCookieJar extends PersistCookieJar {
+  _SessionCookieJar(Storage storage)
+      : super(ignoreExpires: true, storage: storage);
+
+  @override
+  Future<List<Cookie>> loadForRequest(Uri uri) async {
+    try {
+      return await super.loadForRequest(uri);
+    } on FileSystemException {
+      rethrow;
+    } catch (_) {
+      // PersistCookieJar deletes malformed host content before rethrowing its
+      // parse error. Load again so other cookies (such as domain cookies) can
+      // still be used and a missing SID is visible on this attempt.
+      return super.loadForRequest(uri);
+    }
+  }
+}
 
 class _SessionCookieStorage extends FileStorage {
-  _SessionCookieStorage(String super.dir);
+  _SessionCookieStorage(String super.dir, this._readFile);
+
+  final Future<List<int>> Function(File file)? _readFile;
 
   late String _cookieDirectory;
 
@@ -29,22 +51,19 @@ class _SessionCookieStorage extends FileStorage {
   Future<String?> read(String key) async {
     // Opening directly distinguishes filesystem failures from an absent file.
     final file = File(p.join(_cookieDirectory, key));
+    final List<int> bytes;
     try {
-      final contents = await file.readAsString();
-      if (contents.isEmpty) throw const FormatException('Empty cookie file');
-      return contents;
+      bytes = await (_readFile?.call(file) ?? file.readAsBytes());
     } on PathNotFoundException {
       return null;
     }
-  }
 
-  @override
-  Future<void> delete(String key) async {
-    // The jar calls delete on these keys after a parse failure. Reject that
-    // recovery so the caller can retry. Explicit sign-out uses deleteAll.
-    if (key == '.index' || key == '.domains') {
-      throw const FormatException('Unreadable cookie metadata');
+    // Decode separately so invalid UTF-8 is treated as malformed content.
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      await delete(key);
+      return null;
     }
-    await super.delete(key);
   }
 }
