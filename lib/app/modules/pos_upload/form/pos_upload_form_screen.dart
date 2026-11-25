@@ -58,6 +58,8 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                     }
                     return AsyncIconButton(
                       busy: controller.deliveryActionBusy,
+                      showSpinnerWhenBusy: () =>
+                          controller.isRetryingDeliveryActions,
                       onPressed: controller.retryDeliveryActions,
                       icon: const Icon(Icons.refresh),
                       tooltip: 'Retry delivery actions',
@@ -134,6 +136,8 @@ class PosUploadFormScreen extends GetView<PosUploadFormController> {
                     padding: const EdgeInsetsDirectional.only(end: 8),
                     child: AsyncFilledButton(
                       busy: controller.deliveryActionBusy,
+                      showSpinnerWhenBusy: () =>
+                          controller.isApplyingDeliveryAction(action),
                       label: action.label,
                       icon: const Icon(Icons.local_shipping_outlined, size: 18),
                       style: style,

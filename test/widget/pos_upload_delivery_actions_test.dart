@@ -192,6 +192,11 @@ Finder _actionButton(PosDeliveryAction action) => find.descendant(
   matching: find.byWidgetPredicate((widget) => widget is FilledButton),
 );
 
+Finder _actionSpinner(PosDeliveryAction action) => find.descendant(
+  of: _action(action),
+  matching: find.byType(CircularProgressIndicator),
+);
+
 final _confirm = find.widgetWithText(FilledButton, 'Confirm');
 
 Future<void> _animateOverlay(WidgetTester tester) async {
@@ -566,46 +571,65 @@ void main() {
     expect(controller.deliveryActionBusy.value, isFalse);
   });
 
-  testWidgets('the header spinner repaints and two taps start one request', (
+  testWidgets('only the confirmed action spins and taps share one guard', (
     tester,
   ) async {
+    final pending = Completer<PosUpload>();
     final provider = _DeliveryProvider()
-      ..pendingDrivers = Completer<PosDeliveryDriverOptions>();
+      ..pendingDrivers = Completer<PosDeliveryDriverOptions>()
+      ..pendingApply = pending;
     final controller = await pumpForm(tester, provider);
-    const action = PosDeliveryAction.deliveryReturn;
-    final spinner = find.descendant(
-      of: _action(action),
-      matching: find.byType(CircularProgressIndicator),
-    );
-
-    expect(spinner, findsNothing);
-    controller.deliveryActionBusy.value = true;
-    await _animateOverlay(tester);
-    expect(spinner, findsOneWidget);
-    expect(
-      tester.widget<FilledButton>(_actionButton(action)).onPressed,
-      isNull,
-    );
-    expect(
-      tester.widget<CircularProgressIndicator>(spinner).color,
-      AppScheme.light.onPrimary,
-    );
-    controller.deliveryActionBusy.value = false;
-    await tester.pumpAndSettle();
-    expect(spinner, findsNothing);
+    const action = PosDeliveryAction.delivered;
+    const other = PosDeliveryAction.deliveryReturn;
 
     // Invoke both controls before their disabled state can repaint.
-    final sendReturn = tester.widget<AsyncFilledButton>(_action(action));
-    final sendDelivered = tester.widget<AsyncFilledButton>(
-      _action(PosDeliveryAction.delivered),
-    );
-    sendReturn.onPressed();
-    sendDelivered.onPressed();
+    final sendSelected = tester.widget<FilledButton>(_actionButton(action));
+    final sendOther = tester.widget<FilledButton>(_actionButton(other));
+    sendSelected.onPressed!();
+    sendOther.onPressed!();
     expect(provider.driverRequests, [action]);
     provider.pendingDrivers!.complete(_DeliveryProvider.driverOptions);
     await _animateOverlay(tester);
     expect(find.byType(BottomSheet), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
+    expect(provider.applied, isEmpty);
+    for (final headerAction in [action, other]) {
+      expect(_actionSpinner(headerAction), findsNothing);
+      expect(
+        tester.widget<FilledButton>(_actionButton(headerAction)).onPressed,
+        isNull,
+      );
+    }
+
+    await tester.tap(_confirm);
+    await _animateOverlay(tester);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(_actionSpinner(action), findsOneWidget);
+    expect(_actionSpinner(other), findsNothing);
+    for (final headerAction in [action, other]) {
+      expect(
+        tester.widget<FilledButton>(_actionButton(headerAction)).onPressed,
+        isNull,
+      );
+    }
+    expect(
+      tester.widget<CircularProgressIndicator>(_actionSpinner(action)).color,
+      AppScheme.light.onPrimary,
+    );
+    sendOther.onPressed!();
+    expect(provider.driverRequests, [action]);
+    expect(provider.applied.single.$1, action);
+
+    pending.completeError(_applyFailure(417, _serverMessage('Try again.')));
+    await tester.pump();
+    await tester.pump();
+    expect(controller.deliveryActionBusy.value, isFalse);
+    for (final headerAction in [action, other]) {
+      expect(_actionSpinner(headerAction), findsNothing);
+      expect(
+        tester.widget<FilledButton>(_actionButton(headerAction)).onPressed,
+        isNotNull,
+      );
+    }
     await tester.pumpAndSettle();
   });
 
@@ -613,7 +637,8 @@ void main() {
     testWidgets('header and sheet use readable ${brightness.name} colors', (
       tester,
     ) async {
-      final provider = _DeliveryProvider();
+      final pending = Completer<PosUpload>();
+      final provider = _DeliveryProvider()..pendingApply = pending;
       await pumpForm(tester, provider, brightness: brightness);
       const action = PosDeliveryAction.deliveryReturn;
       final scheme = AppScheme.of(brightness);
@@ -626,16 +651,8 @@ void main() {
 
       await tester.tap(_action(action));
       await _animateOverlay(tester);
-      final spinner = tester.widget<CircularProgressIndicator>(
-        find.descendant(
-          of: _action(action),
-          matching: find.byType(CircularProgressIndicator),
-        ),
-      );
-      expect(
-        _contrast(spinner.color!, scheme.primary),
-        greaterThanOrEqualTo(4.5),
-      );
+      expect(_actionSpinner(action), findsNothing);
+      expect(_actionSpinner(PosDeliveryAction.delivered), findsNothing);
 
       final sheet = find.byType(BottomSheet);
       final sheetFill = tester.widget<BottomSheet>(sheet).backgroundColor!;
@@ -672,7 +689,24 @@ void main() {
         greaterThanOrEqualTo(4.5),
       );
 
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.byType(DropdownButton<PosDeliveryReason>));
+      await _animateOverlay(tester);
+      await tester.tap(find.text('Rejected').last);
+      await _animateOverlay(tester);
+      await tester.tap(_confirm);
+      await _animateOverlay(tester);
+      final spinner = tester.widget<CircularProgressIndicator>(
+        _actionSpinner(action),
+      );
+      expect(
+        _contrast(spinner.color!, scheme.primary),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(_actionSpinner(PosDeliveryAction.delivered), findsNothing);
+
+      provider.status = 'To Deliver';
+      provider.actions = [PosDeliveryAction.outForDelivery];
+      pending.complete(PosUpload.fromJson(provider._pos('PU-0001')));
       await tester.pumpAndSettle();
     });
   }

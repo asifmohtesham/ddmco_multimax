@@ -446,6 +446,8 @@ class PosUploadFormController extends GetxController
 
   final deliveryActions = <PosDeliveryAction>[].obs;
   final deliveryActionBusy = false.obs;
+  final _deliveryActionRequest =
+      Rxn<({PosDeliveryAction action, bool confirmed})>();
   final deliveryActionDiscoveryFailed = false.obs;
   final posDeliveryDocinfo = Rxn<Map<String, dynamic>>();
   final _deliveryActionsReady = false.obs;
@@ -453,6 +455,14 @@ class PosUploadFormController extends GetxController
 
   bool _isCurrentDocument(int generation) =>
       !isClosed && generation == _documentGeneration;
+
+  bool get isRetryingDeliveryActions =>
+      deliveryActionBusy.value && _deliveryActionRequest.value == null;
+
+  bool isApplyingDeliveryAction(PosDeliveryAction action) {
+    final request = _deliveryActionRequest.value;
+    return request?.action == action && request?.confirmed == true;
+  }
 
   /// Server-confirmed write permission on this document (fail-closed:
   /// stays `false` until the probe succeeds).
@@ -773,6 +783,7 @@ class PosUploadFormController extends GetxController
 
     bool isActiveForm() => !isClosed && (isFormCurrent?.call() ?? true);
     if (!isActiveForm()) return;
+    _deliveryActionRequest.value = (action: action, confirmed: false);
     deliveryActionBusy.value = true;
     int? applyGeneration;
     try {
@@ -789,6 +800,7 @@ class PosUploadFormController extends GetxController
       // Submit the original revision and fence replies from before a later reload.
       final generation = _documentGeneration;
       applyGeneration = generation;
+      _deliveryActionRequest.value = (action: action, confirmed: true);
       final saved = await _provider.applyDeliveryAction(
         upload,
         action,
@@ -814,6 +826,7 @@ class PosUploadFormController extends GetxController
       await _handleDeliveryActionFailure(error, isFormCurrent);
     } finally {
       deliveryActionBusy.value = false;
+      _deliveryActionRequest.value = null;
     }
   }
 

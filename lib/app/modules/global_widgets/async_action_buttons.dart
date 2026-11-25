@@ -12,6 +12,10 @@ import 'package:get/get.dart';
 /// icon→spinner swap). Drive them with a controller's `RxBool` busy flag;
 /// the controller still owns setting/clearing it (in a `finally`) and any
 /// cross-surface re-entrancy guard.
+/// [AsyncIconButton.showSpinnerWhenBusy] and
+/// [AsyncFilledButton.showSpinnerWhenBusy] let controls share a busy flag
+/// while limiting loading feedback to the control doing the work. A gated
+/// spinner disappears immediately when its predicate or busy flag clears.
 
 /// [IconButton] that shows a spinner and disables itself while [busy] is true.
 ///
@@ -20,6 +24,7 @@ import 'package:get/get.dart';
 /// on a white toolbar), so it stays visible without per-call contrast handling.
 class AsyncIconButton extends StatelessWidget {
   final RxBool busy;
+  final bool Function()? showSpinnerWhenBusy;
   final VoidCallback onPressed;
   final Widget icon;
   final String? tooltip;
@@ -29,6 +34,7 @@ class AsyncIconButton extends StatelessWidget {
   const AsyncIconButton({
     super.key,
     required this.busy,
+    this.showSpinnerWhenBusy,
     required this.onPressed,
     required this.icon,
     this.tooltip,
@@ -40,14 +46,16 @@ class AsyncIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final isBusy = busy.value;
+      final showSpinner = isBusy && (showSpinnerWhenBusy?.call() ?? true);
       return IconButton(
         tooltip: tooltip,
         onPressed: isBusy ? null : onPressed,
         icon: AnimatedSwitcher(
           duration: const Duration(milliseconds: 150),
+          reverseDuration: showSpinnerWhenBusy == null ? null : Duration.zero,
           transitionBuilder: (child, animation) =>
               FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
-          child: isBusy
+          child: showSpinner
               ? SizedBox(
                   key: const ValueKey('spinner'),
                   width: spinnerSize,
@@ -71,6 +79,7 @@ class AsyncIconButton extends StatelessWidget {
 /// foreground on its primary-coloured background.
 class AsyncFilledButton extends StatelessWidget {
   final RxBool busy;
+  final bool Function()? showSpinnerWhenBusy;
   final VoidCallback onPressed;
   final Widget icon;
   final String label;
@@ -82,6 +91,7 @@ class AsyncFilledButton extends StatelessWidget {
   const AsyncFilledButton({
     super.key,
     required this.busy,
+    this.showSpinnerWhenBusy,
     required this.onPressed,
     required this.icon,
     required this.label,
@@ -95,13 +105,15 @@ class AsyncFilledButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       final isBusy = busy.value;
+      final showSpinner = isBusy && (showSpinnerWhenBusy?.call() ?? true);
       return FilledButton.icon(
         onPressed: isBusy ? null : onPressed,
         icon: AnimatedSwitcher(
           duration: const Duration(milliseconds: 150),
+          reverseDuration: showSpinnerWhenBusy == null ? null : Duration.zero,
           transitionBuilder: (child, animation) =>
               FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
-          child: isBusy
+          child: showSpinner
               ? SizedBox(
                   key: const ValueKey('spinner'),
                   width: spinnerSize,
@@ -114,7 +126,7 @@ class AsyncFilledButton extends StatelessWidget {
                 )
               : KeyedSubtree(key: const ValueKey('icon'), child: icon),
         ),
-        label: Text(isBusy ? (loadingLabel ?? label) : label),
+        label: Text(showSpinner ? (loadingLabel ?? label) : label),
         style: style,
       );
     });
