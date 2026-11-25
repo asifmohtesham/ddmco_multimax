@@ -1082,6 +1082,87 @@ class _SummaryCell extends StatelessWidget {
   }
 }
 
+class _ReportRowList extends SliverList {
+  _ReportRowList({
+    super.key,
+    required super.itemBuilder,
+    required super.itemCount,
+    required super.findChildIndexCallback,
+  }) : super.builder();
+
+  @override
+  RenderSliverList createRenderObject(BuildContext context) =>
+      _RenderReportRowList(
+        childManager: context as SliverMultiBoxAdaptorElement,
+      );
+}
+
+class _RenderReportRowList extends RenderSliverList {
+  _RenderReportRowList({required super.childManager});
+
+  int? _seekIndex;
+  int? _previousFirstIndex;
+
+  void clearPendingSeek() {
+    _seekIndex = null;
+    _previousFirstIndex = null;
+  }
+
+  void rememberViewport() {
+    final first = firstChild;
+    _previousFirstIndex = first == null ? null : indexOf(first);
+  }
+
+  void seekToIndex(int index) {
+    _seekIndex = index;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    var index = _seekIndex;
+    final previousIndex = _previousFirstIndex;
+    clearPendingSeek();
+    var layoutOffset = constraints.scrollOffset + constraints.overlap;
+    final cacheStart = constraints.scrollOffset + constraints.cacheOrigin;
+    final firstOffset = firstChild == null
+        ? null
+        : childScrollOffset(firstChild!);
+    final viewport = constraints.viewportMainAxisExtent;
+    // Regrouping can evict the entire old cache. At a deep scroll offset,
+    // walking from row zero would stall before anchor resolution even runs.
+    if (index == null &&
+        previousIndex != null &&
+        previousIndex > 0 &&
+        cacheStart > viewport &&
+        (firstOffset == null || (firstOffset - cacheStart).abs() > viewport)) {
+      final lastIndex = childManager.childCount - 1;
+      if (lastIndex >= 0) {
+        index = math.min(previousIndex, lastIndex);
+        layoutOffset = cacheStart * index / previousIndex;
+      }
+    }
+    // Returning to the top has an exact starting row even if a distant
+    // indexed seek placed the old cache at an estimated content offset.
+    if (constraints.scrollOffset == 0 &&
+        firstChild != null &&
+        (indexOf(firstChild!) > 0 || (firstOffset ?? 0) > 0)) {
+      index = 0;
+    }
+    if (index != null) {
+      // A variable-height SliverList normally measures every child between
+      // its old cache and the new scroll offset. Start this layout at the
+      // known occurrence and let the list measure its neighbors in both
+      // directions. At the leading edge, row zero has an exact offset.
+      collectGarbage(childCount, 0);
+      if (index > 0 && cacheStart > 0 && index < childManager.childCount) {
+        addInitialChild(index: index, layoutOffset: layoutOffset);
+      }
+    }
+    super.performLayout();
+  }
+}
+
 class _ReadingAnchor {
   _ReadingAnchor({
     required this.key,
@@ -1109,9 +1190,7 @@ class _ReadingAnchor {
   bool hasAligned = false;
   bool returningFromSearch = false;
   bool resolveOccurrence = false;
-  int estimatedSeeksLeft = 0;
-  ({int index, double offset})? seekBefore;
-  ({int index, double offset})? seekAfter;
+  bool seekByIndex = false;
   SuppliersByItemRowKey? resolvedKey;
   final seekFrames = <({int first, int last, int pixels})>{};
 }
@@ -1160,6 +1239,16 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
   static const _rowGap = 4.0;
   static const _precision = 0.5;
   final _listKey = GlobalKey();
+  final _groupColumns =
+      <
+        SuppliersByItemGroup,
+        ({
+          SuppliersByItemVisibleRows? visible,
+          Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> runs,
+        })
+      >{};
+  (SuppliersByItemController, int, SuppliersByItemFieldVisibility, Locale)?
+  _columnInputs;
   SuppliersByItemVisibleRows? _laidOut;
   _ReadingAnchor? _anchor;
   final _browsePositions = <SuppliersByItemGroup, _BrowsePosition>{};
@@ -1176,6 +1265,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
   @override
   void didUpdateWidget(covariant _SuppliersTree oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible != widget.visible) _renderList?.clearPendingSeek();
     if (oldWidget.filterRevision != widget.filterRevision) {
       _browsePositions.clear();
       _beforeSearch.clear();
@@ -1185,6 +1275,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       });
     } else if (oldWidget.query == widget.query) {
       final viewChanged = oldWidget.view != widget.view;
+      if (viewChanged) _renderList?.rememberViewport();
       if (viewChanged &&
           oldWidget.view.group != widget.view.group &&
           widget.query.trim().isEmpty &&
@@ -1204,15 +1295,14 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
         anchor.resolveOccurrence = true;
         anchor.resolvedKey = null;
         anchor.hasAligned = false;
-        anchor.estimatedSeeksLeft = 4;
-        anchor.seekBefore = null;
-        anchor.seekAfter = null;
+        anchor.seekByIndex = true;
         anchor.seekFrames.clear();
       }
     }
   }
 
   void cancelAnchor() {
+    _renderList?.clearPendingSeek();
     _anchor = null;
     _restoreBrowseOffset = null;
     _supplierReveal = null;
@@ -1238,7 +1328,7 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       _anchor = saved?.anchor;
       _anchor?.returningFromSearch = true;
       _anchor?.hasAligned = false;
-      _anchor?.estimatedSeeksLeft = 0;
+      _anchor?.seekByIndex = false;
       _anchor?.seekFrames.clear();
       _restoreBrowseOffset = saved?.offset;
       _goToTop = _anchor == null && _restoreBrowseOffset == null;
@@ -1258,8 +1348,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     return (anchor: captured, offset: scroll.hasClients ? scroll.offset : null);
   }
 
-  RenderSliverList? get _renderList =>
-      _listKey.currentContext?.findRenderObject() as RenderSliverList?;
+  _RenderReportRowList? get _renderList =>
+      _listKey.currentContext?.findRenderObject() as _RenderReportRowList?;
 
   double _headerBottom(
     RenderAbstractViewport viewport, {
@@ -1528,25 +1618,18 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
           (topOf(last) + last.size.height - topOf(first)) /
           (lastIndex - firstIndex + 1);
       final double delta;
-      if (anchor.estimatedSeeksLeft > 0 &&
-          distance * measuredExtent > 2 * window) {
-        anchor.estimatedSeeksLeft--;
-        final sample = index < firstIndex
-            ? (index: firstIndex, offset: pixels + topOf(first) - headerBottom)
-            : (index: lastIndex, offset: pixels + topOf(last) - headerBottom);
-        if (sample.index < index) {
-          anchor.seekBefore = sample;
-        } else {
-          anchor.seekAfter = sample;
-        }
-        // Sample a second area when rows farther away are taller or shorter.
-        // If a jump crossed the target, interpolate from both sides.
-        final before = anchor.seekBefore;
-        final after = anchor.seekAfter;
-        final extent = before != null && after != null
-            ? (after.offset - before.offset) / (after.index - before.index)
-            : measuredExtent;
-        delta = sample.offset - pixels + (index - sample.index) * extent;
+      final indexedSeek =
+          anchor.seekByIndex && distance * measuredExtent > 2 * window;
+      if (indexedSeek) {
+        // Only the scrollbar position needs an estimate. The sliver already
+        // knows which row to build, and the next pass aligns its actual box.
+        anchor.seekByIndex = false;
+        list.seekToIndex(index);
+        delta =
+            list.constraints.precedingScrollExtent +
+            index * measuredExtent -
+            headerBottom -
+            pixels;
       } else {
         delta = index < firstIndex
             ? (topOf(first) - headerBottom - 48).clamp(-window, -48.0)
@@ -1561,6 +1644,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
       );
       if ((target - pixels).abs() > _precision) {
         scroll.jumpTo(target);
+        _scheduleCorrection();
+      } else if (indexedSeek) {
         _scheduleCorrection();
       } else {
         cancelAnchor();
@@ -1706,12 +1791,29 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     final view = widget.controller;
     final filters = view.filters.value;
     final indexByKey = visible?.indexByKey ?? const {};
-    final columnRuns = suppliersByItemColumnRuns(
-      rows,
-      widget.fields.shows,
-      view.fieldLabel,
+    // The report revision includes the source rows and ERPNext captions.
+    final inputs = (
+      view,
+      view.loadedRevision.value,
+      widget.fields,
+      Localizations.localeOf(context),
     );
-    final list = SliverList.builder(
+    if (visible == null || inputs != _columnInputs) {
+      _groupColumns.clear();
+      _columnInputs = inputs;
+    }
+    final group = widget.view.group;
+    final previous = _groupColumns[group];
+    final columnRuns = previous != null && identical(previous.visible, visible)
+        ? previous.runs
+        : suppliersByItemColumnRuns(
+            rows,
+            widget.fields.shows,
+            view.fieldLabel,
+            previous?.runs ?? const {},
+          );
+    _groupColumns[group] = (visible: visible, runs: columnRuns);
+    final list = _ReportRowList(
       key: _listKey,
       itemCount: rows.length,
       findChildIndexCallback: (key) =>

@@ -1057,6 +1057,165 @@ void main() {
   );
 
   testWidgets(
+    'deep collapsed Supplier to Item regroup builds only the anchor viewport',
+    (tester) async {
+      const count = 3696;
+      const target = 3236;
+      const firstCode = 1004178 - target;
+      const source = 'supplier:1004178:AMARNY';
+      api.load = () async {
+        final rows = <Map<String, dynamic>>[];
+        for (var i = 0; i < count; i++) {
+          final code = '${firstCode + i}';
+          final suppliers = [
+            if (i == target) 'AMARNY' else 'Vendor ${i % 76}',
+            if (i != target && i % 5 == 0) 'Vendor ${(i + 1) % 76}',
+          ];
+          rows.add({
+            'node_id': 'item:$code',
+            'item_code': code,
+            if (i == target || (i > 50 && i.isOdd))
+              'item_name': i == target ? 'CROSS BAG PU' : 'Stock item $code',
+            'balance_qty': (count - i) ~/ 10,
+            'supplier_count': suppliers.length,
+            'stock_uom': 'Nos',
+          });
+          for (final supplier in suppliers) {
+            rows.add({
+              'node_id': 'supplier:$code:$supplier',
+              'parent_id': 'item:$code',
+              'item_code': code,
+              'supplier': supplier,
+            });
+          }
+        }
+        return SuppliersByItemNode.parseRows(rows);
+      };
+      tester.platformDispatcher.textScaleFactorTestValue = .85;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openReport(
+        tester,
+        size: const Size(411, 890),
+        fontFamily: reportFont,
+      );
+      await tester.pumpAndSettle();
+      final controller = currentReport();
+      final scroll = reportScroll(tester);
+      expect(scroll.offset, 0);
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      expect(scroll.offset, 0);
+      // Preserve several open groups so the return trip also has hundreds
+      // of rows between the old scroll offset and AMARNY.
+      final groups = controller.visibleRows.rows.where(
+        (row) => row.group != null,
+      );
+      for (final group in groups.skip(1).take(8)) {
+        controller.toggleBranchKey(group.key);
+      }
+      await tester.pumpAndSettle();
+      final occurrence = pairOccurrence(source);
+      // Collapse the toolbar and place the only AMARNY item at the reading edge.
+      scroll.jumpTo(120);
+      await tester.pumpAndSettle();
+      scroll.jumpTo(
+        scroll.offset +
+            tester.getTopLeft(occurrence).dy -
+            pinnedBottom(tester) +
+            4,
+      );
+      await tester.pumpAndSettle();
+      final toolbar = tester.renderObject<RenderSliverPersistentHeader>(
+        find.byKey(
+          tester
+              .widget<DocTypeListHeader>(find.byType(DocTypeListHeader))
+              .sliverKey!,
+        ),
+      );
+      expect(toolbar.geometry!.paintExtent, closeTo(toolbar.minExtent, .5));
+      expect(
+        tester.getBottomLeft(occurrence).dy,
+        greaterThan(pinnedBottom(tester)),
+      );
+      expect(
+        tester.getTopLeft(occurrence).dy,
+        lessThanOrEqualTo(pinnedBottom(tester)),
+      );
+      expect(viewButton.hitTestable(), findsOneWidget);
+      await openView(tester);
+
+      var tileBuilds = 0;
+      final previous = debugOnRebuildDirtyWidget;
+      debugOnRebuildDirtyWidget = (element, builtOnce) {
+        previous?.call(element, builtOnce);
+        if (element.widget is SuppliersByItemDisplayTile) tileBuilds++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = previous);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+      expect(
+        controller.visibleRows.indexByKey[(nodeId: source)],
+        greaterThan(3000),
+      );
+      expect(
+        tester.getTopLeft(reportRow(source)).dy,
+        closeTo(pinnedBottom(tester), .5),
+      );
+      expect(tileBuilds, lessThan(128));
+      final itemPixels = scroll.offset;
+      final nextItem = reportRow('item:${firstCode + target + 1}');
+      final nextTop = tester.getTopLeft(nextItem).dy;
+      scroll.jumpTo(itemPixels + 100);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(nextItem).dy, closeTo(nextTop - 100, .5));
+      scroll.jumpTo(itemPixels);
+      await tester.pumpAndSettle();
+
+      await openView(tester);
+      tileBuilds = 0;
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      expect(
+        tester.getTopLeft(pairOccurrence(source)).dy,
+        closeTo(pinnedBottom(tester), .5),
+      );
+      expect(tileBuilds, lessThan(128));
+      final supplierPixels = scroll.offset;
+      final supplierTop = tester.getTopLeft(pairOccurrence(source)).dy;
+      scroll.jumpTo(supplierPixels + 80);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(pairOccurrence(source)).dy,
+        closeTo(supplierTop - 80, .5),
+      );
+      scroll.jumpTo(supplierPixels);
+      await tester.pumpAndSettle();
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+      expect(
+        tester.getTopLeft(reportRow(source)).dy,
+        closeTo(pinnedBottom(tester), .5),
+      );
+      tileBuilds = 0;
+      scroll.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(scroll.offset, 0);
+      expect(reportRow('item:$firstCode').hitTestable(), findsOneWidget);
+      expect(tileBuilds, lessThan(128));
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.supplier);
+      await doneWithView(tester);
+      await openView(tester);
+      await selectView(tester, SuppliersByItemGroup.template);
+      await doneWithView(tester);
+      expect(scroll.offset, 0);
+      expect(reportRow('item:$firstCode').hitTestable(), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'regroup and sort restore the same pair below the painted header',
     (tester) async {
       api.load = () async => SuppliersByItemNode.parseRows([
@@ -3239,6 +3398,61 @@ void main() {
     expect(find.textContaining('Purchase Order'), findsNothing);
     expect(find.textContaining('USD'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('regroup reuses measured sibling columns until inputs change', (
+    tester,
+  ) async {
+    api.load = () async => SuppliersByItemNode.parseRows([
+      for (final code in ['A', 'B', 'C']) ...[
+        {
+          'node_id': 'item:$code',
+          'item_code': code,
+          'balance_qty': 46,
+          'stock_uom': 'Nos',
+        },
+        {
+          'node_id': 'supplier:$code:S',
+          'parent_id': 'item:$code',
+          'supplier': 'S',
+        },
+      ],
+    ]);
+    await openReport(
+      tester,
+      size: const Size(600, 900),
+      fontFamily: reportFont,
+    );
+    await tester.pumpAndSettle();
+    final view = currentReport();
+    SuppliersByItemColumnRun run() => tester
+        .widget<SuppliersByItemDisplayTile>(
+          find.descendant(
+            of: reportRow('item:A'),
+            matching: find.byType(SuppliersByItemDisplayTile),
+          ),
+        )
+        .columnRun!;
+
+    final original = run();
+    await view.setGroup(SuppliersByItemGroup.supplier);
+    await tester.pumpAndSettle();
+    await view.setGroup(SuppliersByItemGroup.template);
+    await tester.pumpAndSettle();
+    expect(run(), same(original));
+    view.toggleBranchKey((nodeId: 'item:B'));
+    await tester.pumpAndSettle();
+    expect(run(), same(original));
+
+    await view.setFieldVisible(SuppliersByItemField.itemSupplierCount, false);
+    await tester.pumpAndSettle();
+    final changedFields = run();
+    expect(changedFields, isNot(same(original)));
+    api.columns = const [(fieldname: 'balance_qty', label: 'Available Stock')];
+    await view.run();
+    await tester.pumpAndSettle();
+    expect(run(), isNot(same(changedFields)));
+    expect(within(reportRow('item:A'), 'Available Stock'), findsOneWidget);
   });
 
   testWidgets(

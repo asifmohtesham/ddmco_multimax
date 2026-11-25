@@ -1,5 +1,7 @@
 import 'dart:math' show max;
 
+import 'package:flutter/foundation.dart' show listEquals;
+
 // Keep the shared Flutter Material API until the app migrates to material_ui.
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
@@ -60,6 +62,7 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   Iterable<SuppliersByItemLayoutRow> rows,
   bool Function(SuppliersByItemField) shows, [
   SuppliersByItemFieldCaption label = _defaultCaption,
+  Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> previous = const {},
 ]) {
   final runs = <List<SuppliersByItemLayoutRow>>[];
   final active = <SuppliersByItemRowKey?, List<SuppliersByItemLayoutRow>>{};
@@ -97,7 +100,15 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   final byRow = <SuppliersByItemRowKey, SuppliersByItemColumnRun>{};
   for (final siblings in [...runs, ...suppliersByParent.values]) {
     if (siblings.length < 2) continue;
-    final run = SuppliersByItemColumnRun._(siblings, shows, label);
+    final existing = previous[siblings.first.key];
+    // Expanding an interleaved descendant preserves its parents' columns.
+    final run =
+        existing != null &&
+            existing._shows == shows &&
+            existing._label == label &&
+            listEquals(existing._rows, siblings)
+        ? existing
+        : SuppliersByItemColumnRun._(siblings, shows, label);
     for (final row in siblings) {
       byRow[row.key] = run;
     }
