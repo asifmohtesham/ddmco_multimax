@@ -22,6 +22,7 @@ import 'package:multimax/app/data/providers/pos_upload_provider.dart';
 import 'package:multimax/app/data/providers/stock_entry_provider.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
 
 enum LinkedDocType { deliveryNote, stockEntry, none }
 
@@ -793,6 +794,12 @@ class PosUploadFormController extends GetxController
         action,
         selection,
       );
+      if (Get.isRegistered<PosUploadController>() &&
+          !Get.isPrepared<PosUploadController>()) {
+        unawaited(
+          Get.find<PosUploadController>().refreshAfterDeliveryAction(upload.name),
+        );
+      }
       if (!_isCurrentDocument(generation) || !isActiveForm()) return;
       if (await _refreshDocument(savedUpload: saved) && isActiveForm()) {
         GlobalSnackbar.success(message: 'Delivery action recorded');

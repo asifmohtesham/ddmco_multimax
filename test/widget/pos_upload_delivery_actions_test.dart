@@ -9,13 +9,28 @@ import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/models/pos_upload_delivery.dart';
 import 'package:multimax/app/data/models/pos_upload_model.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
+import 'package:multimax/app/data/providers/customer_provider.dart';
 import 'package:multimax/app/data/providers/pos_upload_provider.dart';
+import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
+import 'package:multimax/app/modules/global_widgets/status_pill.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_binding.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_controller.dart';
 import 'package:multimax/app/modules/pos_upload/form/pos_upload_form_screen.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_controller.dart';
+import 'package:multimax/app/modules/pos_upload/pos_upload_screen.dart';
 
 class _UnusedApiProvider extends Fake implements ApiProvider {}
+
+class _EmptyCustomerProvider extends Fake implements CustomerProvider {
+  @override
+  Future<Response> getCustomers({int limit = 0, String? searchTerm}) async =>
+      Response(
+        requestOptions: RequestOptions(),
+        statusCode: 200,
+        data: {'data': []},
+      );
+}
 
 class _OfflineFormController extends PosUploadFormController {
   @override
@@ -93,6 +108,7 @@ class _DeliveryProvider extends PosUploadProvider {
     if (applyError case final error?) throw error;
     if (pendingApply case final pending?) return pending.future;
     status = action.requiresReason ? 'To Deliver' : action.label;
+    modified = '2026-11-25 19:20:13.000001';
     actions = [];
     return PosUpload.fromJson(_pos(upload.name));
   }
@@ -108,6 +124,42 @@ class _DeliveryProvider extends PosUploadProvider {
 
   @override
   Future<bool> canWriteStatusField(Set<String> userRoles) async => true;
+}
+
+class _PagedDeliveryProvider extends _DeliveryProvider {
+  static const uploadName = 'PU-0001';
+  final listRequests =
+      <({int limit, int start, Map<String, dynamic>? filters, String orderBy})>[];
+
+  @override
+  Future<Response> getPosUploads({
+    int limit = 50,
+    int limitStart = 0,
+    Map<String, dynamic>? filters,
+    List<List<dynamic>>? orFilterTuples,
+    String orderBy = 'modified desc',
+  }) async {
+    listRequests.add((
+      limit: limit,
+      start: limitStart,
+      filters: filters,
+      orderBy: orderBy,
+    ));
+    final rows = [
+      _pos(uploadName),
+      for (var i = 2; i <= 41; i++)
+        {
+          'name': 'PU-$i',
+          'status': 'To Deliver',
+          'modified': '2026-11-25 19:19:00',
+        },
+    ];
+    return Response(
+      requestOptions: RequestOptions(),
+      statusCode: 200,
+      data: {'data': rows.skip(limitStart).take(limit).toList()},
+    );
+  }
 }
 
 DioException _applyFailure(int status, Map<String, dynamic> body) {
@@ -209,6 +261,69 @@ void main() {
     await tester.pumpAndSettle();
     return Get.find<PosUploadFormController>();
   }
+
+  testWidgets('a delivery write refreshes the paged POS list on return', (
+    tester,
+  ) async {
+    const action = PosDeliveryAction.outForDelivery;
+    final provider = _PagedDeliveryProvider()
+      ..status = 'To Deliver'
+      ..actions = [action];
+    Get.put<PosUploadProvider>(provider);
+    Get.put<CustomerProvider>(_EmptyCustomerProvider());
+    final list = Get.put(PosUploadController());
+    Get.lazyPut<PosUploadFormController>(_OfflineFormController.new);
+
+    await tester.pumpWidget(
+      GetMaterialApp(
+        home: const PosUploadScreen(),
+        getPages: [
+          GetPage(
+            name: AppRoutes.POS_UPLOAD_FORM,
+            page: () => const PosUploadFormScreen(),
+            binding: PosUploadFormBinding(),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    list.applyFilters({'customer': 'CUST-A'});
+    list.setSort('date', 'asc');
+    await tester.pumpAndSettle();
+    await list.fetchPosUploads(isLoadMore: true);
+    expect(list.posUploads, hasLength(40));
+    final previousRevision = list.posUploads.first.modified;
+
+    final row = find.widgetWithText(ListTile, _PagedDeliveryProvider.uploadName);
+    Finder rowStatus(String status) => find.descendant(
+      of: row,
+      matching: find.widgetWithText(StatusPill, status),
+    );
+    expect(rowStatus('To Deliver'), findsOneWidget);
+    await tester.tap(find.text(_PagedDeliveryProvider.uploadName));
+    await tester.pumpAndSettle();
+    await tester.tap(_action(action));
+    await _animateOverlay(tester);
+    await tester.tap(_confirm);
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(rowStatus('Out for Delivery'), findsOneWidget);
+    expect(rowStatus('To Deliver'), findsNothing);
+    expect(list.posUploads.first.modified, isNot(previousRevision));
+    expect(list.posUploads, hasLength(40));
+    final refresh = provider.listRequests.last;
+    expect(refresh.limit, 40);
+    expect(refresh.start, 0);
+    expect(refresh.filters, {'customer': 'CUST-A'});
+    expect(refresh.orderBy, 'date asc');
+
+    await list.fetchPosUploads(isLoadMore: true);
+    expect(provider.listRequests.last.start, 40);
+    expect(list.posUploads, hasLength(41));
+  });
 
   testWidgets('failed action discovery leaves status read-only with a retry', (
     tester,
