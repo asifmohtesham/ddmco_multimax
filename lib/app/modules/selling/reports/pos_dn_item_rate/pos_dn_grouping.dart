@@ -6,7 +6,7 @@ enum PosDnGroupField {
   customer('customer', 'Customer', false),
   customerGroup('customer_group', 'Customer Group', false),
   posItemName('upload_item', 'POS Item Name', false),
-  rate('upload_rate', 'Rate', true);
+  rate('upload_rate', 'POS Rate', true);
 
   const PosDnGroupField(this.key, this.label, this.numeric);
 
@@ -117,7 +117,9 @@ void _sortNodes(List<GroupNode> nodes, PosDnGroupField field) {
 
 /// Returns null when [secondary] would duplicate [primary]; else [secondary].
 PosDnGroupField? sanitizeSecondary(
-    PosDnGroupField? primary, PosDnGroupField? secondary) {
+  PosDnGroupField? primary,
+  PosDnGroupField? secondary,
+) {
   if (secondary == null) return null;
   return secondary == primary ? null : secondary;
 }
@@ -135,48 +137,60 @@ enum DisplayKind { primaryHeader, secondaryHeader, row }
 /// A flattened render item: a primary/secondary header (carrying its
 /// [GroupNode] and its [collapseKey]) or a leaf [row].
 class DisplayItem {
-  const DisplayItem._(this.kind, {this.node, this.row, this.collapseKey});
+  const DisplayItem._(
+    this.kind, {
+    this.node,
+    this.row,
+    this.collapseKey,
+    this.parentKey,
+  });
 
   final DisplayKind kind;
   final GroupNode? node;
   final Map<String, dynamic>? row;
   final String? collapseKey;
+  final String? parentKey;
 
   factory DisplayItem.primaryHeader(GroupNode n) => DisplayItem._(
-        DisplayKind.primaryHeader,
-        node: n,
-        collapseKey: primaryCollapseKey(n.key),
-      );
+    DisplayKind.primaryHeader,
+    node: n,
+    collapseKey: primaryCollapseKey(n.key),
+  );
 
   factory DisplayItem.secondaryHeader(GroupNode parent, GroupNode child) =>
       DisplayItem._(
         DisplayKind.secondaryHeader,
         node: child,
         collapseKey: secondaryCollapseKey(parent.key, child.key),
+        parentKey: primaryCollapseKey(parent.key),
       );
 
-  factory DisplayItem.row(Map<String, dynamic> r) =>
-      DisplayItem._(DisplayKind.row, row: r);
+  factory DisplayItem.row(Map<String, dynamic> r, {String? parentKey}) =>
+      DisplayItem._(DisplayKind.row, row: r, parentKey: parentKey);
 }
 
 /// Flattens [nodes] into render order, skipping the children of any header
 /// whose collapse key is in [collapsed].
 List<DisplayItem> flattenForDisplay(
-    List<GroupNode> nodes, Set<String> collapsed) {
+  List<GroupNode> nodes,
+  Set<String> collapsed,
+) {
   final out = <DisplayItem>[];
   for (final p in nodes) {
     out.add(DisplayItem.primaryHeader(p));
     if (collapsed.contains(primaryCollapseKey(p.key))) continue;
     if (p.children.isEmpty) {
       for (final r in p.rows) {
-        out.add(DisplayItem.row(r));
+        out.add(DisplayItem.row(r, parentKey: primaryCollapseKey(p.key)));
       }
     } else {
       for (final c in p.children) {
         out.add(DisplayItem.secondaryHeader(p, c));
         if (collapsed.contains(secondaryCollapseKey(p.key, c.key))) continue;
         for (final r in c.rows) {
-          out.add(DisplayItem.row(r));
+          out.add(
+            DisplayItem.row(r, parentKey: secondaryCollapseKey(p.key, c.key)),
+          );
         }
       }
     }

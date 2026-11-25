@@ -7,7 +7,9 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_fields.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
 typedef StickyVariantHeading = ({VariantGroup group, double offset});
@@ -15,43 +17,12 @@ typedef StickyVariantHeading = ({VariantGroup group, double offset});
 class ItemVariantDetailsController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
 
-  ItemVariantDetailsController({StorageService? storage})
-    : _storage = storage ?? StorageService();
+  ItemVariantDetailsController({ReportFieldsController? fields})
+    : fields =
+          fields ?? ScopedReportFieldsController.forReport(itemVariantFields());
 
-  final StorageService _storage;
-  final _fieldOverrides = <String, bool>{}.obs;
-  Future<void> _fieldWrites = Future.value();
-
-  bool showsField(String field) =>
-      isFixedVariantField(field) ||
-      (_fieldOverrides[field] ?? defaultVariantField(field));
-
-  void toggleField(String field) {
-    if (isFixedVariantField(field)) return;
-    final next = !showsField(field);
-    if (next == defaultVariantField(field)) {
-      _fieldOverrides.remove(field);
-    } else {
-      _fieldOverrides[field] = next;
-    }
-    _saveFields();
-  }
-
-  void resetFields() {
-    _fieldOverrides.clear();
-    _saveFields();
-  }
-
-  void _saveFields() {
-    final snapshot = Map<String, bool>.of(_fieldOverrides);
-    _fieldWrites = _fieldWrites.then((_) async {
-      try {
-        await _storage.saveItemVariantFields(snapshot);
-      } catch (_) {
-        // Keep the current selection available for this session.
-      }
-    });
-  }
+  final ReportFieldsController fields;
+  Worker? _fieldsOwner;
 
   static const filterLabels = {
     'item': 'Items',
@@ -225,6 +196,8 @@ class ItemVariantDetailsController extends GetxController {
   final itemDetails = <String, Map<String, dynamic>>{};
   final stockBalances = <String, List<Map<String, dynamic>>>{}.obs;
   final loadingStock = <String, bool>{}.obs;
+  final stockErrors = <String, String>{}.obs;
+  final stockBalanceLabels = <String, String>{}.obs;
   List<String> _reportWarehouses = const [];
   int _reportGeneration = 0;
 
@@ -244,11 +217,14 @@ class ItemVariantDetailsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    try {
-      _fieldOverrides.assignAll(_storage.getItemVariantFields());
-    } catch (_) {
-      // Storage may be unavailable. Use the report defaults.
-    }
+    var ownerGeneration = fields.ownerGeneration;
+    _fieldsOwner = ever(fields.state, (_) {
+      if (ownerGeneration == fields.ownerGeneration) return;
+      ownerGeneration = fields.ownerGeneration;
+      _clearReport();
+      isLoading.value = false;
+    });
+    unawaited(fields.bind());
     final args = Get.arguments;
     final preset = args is Map
         ? args['item'] ?? args['item_code'] ?? args['itemCode']
@@ -267,6 +243,8 @@ class ItemVariantDetailsController extends GetxController {
 
   @override
   void onClose() {
+    _fieldsOwner?.dispose();
+    fields.dispose();
     for (final controller in filterControllers.values) {
       controller.dispose();
     }
@@ -319,9 +297,12 @@ class ItemVariantDetailsController extends GetxController {
     reportError.value = null;
     reportData.clear();
     reportColumns.clear();
+    fields.replaceDefinition(itemVariantFields());
     itemDetails.clear();
     stockBalances.clear();
     loadingStock.clear();
+    stockErrors.clear();
+    stockBalanceLabels.clear();
   }
 
   Future<void> runReport() async {
@@ -348,6 +329,9 @@ class ItemVariantDetailsController extends GetxController {
       if (!_isCurrent(generation)) return;
       _reportWarehouses = warehouses;
       reportColumns.assignAll(result.columns);
+      fields.replaceDefinition(
+        itemVariantFields(decodeDeskColumns(result.columns)),
+      );
       reportData.assignAll(result.rows);
       results.value = VariantResults(
         result.rows,
@@ -355,13 +339,19 @@ class ItemVariantDetailsController extends GetxController {
         singleRequestedTemplate: items.length == 1 ? items.single : null,
       );
     } on FormatException catch (error) {
-      reportError.value = error.message;
+      if (_isCurrent(generation)) reportError.value = error.message;
     } catch (error) {
-      reportError.value =
-          readableReportError(error, reportName: 'Item Variant Details');
+      if (_isCurrent(generation)) {
+        reportError.value = readableReportError(
+          error,
+          reportName: 'Item Variant Details',
+        );
+      }
     } finally {
-      hasRun.value = true;
-      isLoading.value = false;
+      if (_isCurrent(generation)) {
+        hasRun.value = true;
+        isLoading.value = false;
+      }
     }
   }
 
@@ -374,14 +364,33 @@ class ItemVariantDetailsController extends GetxController {
     }
     final generation = _reportGeneration;
     loadingStock[itemCode] = true;
+    stockErrors.remove(itemCode);
     try {
-      final rows = await _api.getStockBalanceWithDimension(
+      final result = await _api.getStockBalanceDimensionResult(
         itemCode: itemCode,
         warehouses: _reportWarehouses,
       );
-      if (_isCurrent(generation)) stockBalances[itemCode] = rows;
-    } catch (_) {
-      if (_isCurrent(generation)) stockBalances[itemCode] = [];
+      if (_isCurrent(generation)) {
+        final labels = {
+          for (final column in result.columns)
+            if (column.label.trim().isNotEmpty) column.fieldname: column.label,
+        };
+        final label =
+            labels['bal_qty'] ?? labels['balance_qty'] ?? labels['qty'];
+        if (label == null) {
+          stockBalanceLabels.remove(itemCode);
+        } else {
+          stockBalanceLabels[itemCode] = label;
+        }
+        stockBalances[itemCode] = result.rows;
+      }
+    } catch (error) {
+      if (_isCurrent(generation)) {
+        stockErrors[itemCode] = readableReportError(
+          error,
+          reportName: 'Stock Balance',
+        );
+      }
     } finally {
       if (_isCurrent(generation)) loadingStock[itemCode] = false;
     }

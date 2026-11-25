@@ -14,14 +14,19 @@ String suppliersByItemGroupLabel(SuppliersByItemGroup group) => switch (group) {
   SuppliersByItemGroup.supplier => 'Supplier',
 };
 
-String suppliersByItemSortLabel(SuppliersByItemSortField field) =>
-    switch (field) {
-      SuppliersByItemSortField.stock => SuppliersByItemField.itemBalance.label,
-      SuppliersByItemSortField.supplierCount =>
-        SuppliersByItemField.itemSupplierCount.label,
-      SuppliersByItemSortField.lastPurchase =>
-        SuppliersByItemField.supplierLastPurchase.label,
-    };
+String suppliersByItemSortLabel(
+  SuppliersByItemSortField field, [
+  String Function(SuppliersByItemField)? label,
+]) {
+  final selected = switch (field) {
+    SuppliersByItemSortField.stock => SuppliersByItemField.itemBalance,
+    SuppliersByItemSortField.supplierCount =>
+      SuppliersByItemField.itemSupplierCount,
+    SuppliersByItemSortField.lastPurchase =>
+      SuppliersByItemField.supplierLastPurchase,
+  };
+  return label?.call(selected) ?? selected.label;
+}
 
 String suppliersByItemDirectionLabel(
   SuppliersByItemSortField field,
@@ -74,6 +79,10 @@ class _ViewSheet extends StatelessWidget {
               child: Obx(() {
                 final view = controller.view.value;
                 final editable = controller.viewEditable;
+                final visibility = controller.fieldVisibility;
+                final displayEditable =
+                    controller.fieldsEditable &&
+                    !controller.viewDisplayResetting.value;
                 final canExpand = controller.canExpandAll;
                 final canCollapse = controller.canCollapseAll;
                 return Column(
@@ -90,7 +99,10 @@ class _ViewSheet extends StatelessWidget {
                       title: 'Sort',
                       values: SuppliersByItemSortField.values,
                       selection: view.sortField,
-                      label: suppliersByItemSortLabel,
+                      label: (value) => suppliersByItemSortLabel(
+                        value,
+                        controller.fieldLabel,
+                      ),
                       onChanged: editable ? controller.setSortField : null,
                     ),
                     _ViewOptions(
@@ -125,6 +137,60 @@ class _ViewSheet extends StatelessWidget {
                             }
                           : null,
                     ),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(
+                        12,
+                        8,
+                        12,
+                        4,
+                      ),
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Semantics(
+                            header: true,
+                            child: const Text('Display options'),
+                          ),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(48, 48),
+                            ),
+                            onPressed: displayEditable
+                                ? () => unawaited(
+                                    controller.resetViewDisplayOptions(),
+                                  )
+                                : null,
+                            child: const Text('Reset display options'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    for (final field in SuppliersByItemField.values)
+                      if (field.movedToView)
+                        CheckboxListTile(
+                          key: ValueKey(field),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(
+                            field == SuppliersByItemField.summaryStockByUom
+                                ? controller.fieldLabel(
+                                    SuppliersByItemField.itemBalance,
+                                  )
+                                : field.label,
+                          ),
+                          subtitle: field.qualifier == null
+                              ? null
+                              : Text(field.qualifier!),
+                          value: visibility.shows(field),
+                          minTileHeight: 48,
+                          onChanged:
+                              displayEditable &&
+                                  !controller.isSavingField(field)
+                              ? (value) => unawaited(
+                                  controller.setFieldVisible(field, value!),
+                                )
+                              : null,
+                        ),
                   ],
                 );
               }),
@@ -210,13 +276,21 @@ class SuppliersByItemViewFeedback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Obx(() {
-    final error =
+    final viewError =
         (showSessionStatus ? controller.settingsScopeLoadError.value : null) ??
         controller.viewLoadError.value ??
         controller.viewSaveError.value;
+    final displayError = !showSessionStatus
+        ? null
+        : controller.fieldsLoadError.value ?? controller.fieldsSaveError.value;
+    final error = viewError ?? displayError;
     final loading = controller.fieldsScopeLoading.value;
     final busy =
-        loading || controller.viewSaving.value || controller.viewRetrying.value;
+        loading ||
+        controller.viewSaving.value ||
+        controller.viewRetrying.value ||
+        (showSessionStatus &&
+            (controller.fieldsSaving.value || controller.fieldsRetrying.value));
     final message =
         error ??
         (!showSessionStatus
@@ -255,7 +329,13 @@ class SuppliersByItemViewFeedback extends StatelessWidget {
           if (error != null)
             TextButton(
               style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-              onPressed: busy ? null : () => unawaited(controller.retryView()),
+              onPressed: busy
+                  ? null
+                  : () => unawaited(
+                      viewError == null
+                          ? controller.retryFields()
+                          : controller.retryView(),
+                    ),
               child: const Text('Retry'),
             ),
         ],

@@ -5,8 +5,11 @@ import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
 import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_logic.dart';
+import 'employee_hours_utilization_fields.dart';
 
 /// Controller for the HRMS **Employee Hours Utilization Based On Timesheet**
 /// script report, run server-side through `frappe.desk.query_report.run`.
@@ -46,10 +49,14 @@ class EmployeeHoursUtilizationController extends GetxController {
   final summary = <ReportSummaryItem>[].obs;
   final activeFilters = <String, String>{}.obs;
 
-  /// Mirrors the date controllers so the period bar repaints on change.
-  final period = ''.obs;
+  /// Dates associated with the displayed response, including empty results.
+  late final Rx<({String from, String to})> _resultPeriod;
 
   final scrollController = ScrollController();
+  final fields = ScopedReportFieldsController.forReport(utilizationFields);
+  final resultRevision = 0.obs;
+  List<DeskColumn> reportColumns = const [];
+  late final Worker _fieldsOwnerWorker;
 
   bool _rerunRequested = false;
 
@@ -58,10 +65,15 @@ class EmployeeHoursUtilizationController extends GetxController {
   String get fromDate => fromDateController.text.trim();
   String get toDate => toDateController.text.trim();
 
-  String get periodText => periodLabel(fromDate, toDate);
+  String get periodText {
+    final (:from, :to) = _resultPeriod.value;
+    return periodLabel(from, to);
+  }
 
-  ReportPeriod? get selectedPeriod =>
-      matchingPeriod(periods, fromDate, toDate, DateTime.now());
+  ReportPeriod? get selectedPeriod {
+    final (:from, :to) = _resultPeriod.value;
+    return matchingPeriod(periods, from, to, DateTime.now());
+  }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -70,6 +82,7 @@ class EmployeeHoursUtilizationController extends GetxController {
     super.onInit();
     companyController.text = Get.find<StorageService>().getCompany();
     _setPeriod(ReportPeriod.last30Days);
+    _resultPeriod = (from: fromDate, to: toDate).obs;
     filterControllers = {
       'company': companyController,
       'from_date': fromDateController,
@@ -78,6 +91,19 @@ class EmployeeHoursUtilizationController extends GetxController {
       'department': departmentController,
       'project': projectController,
     };
+    var owner = fields.ownerGeneration;
+    var scope = fields.scope;
+    _fieldsOwnerWorker = ever(fields.state, (_) {
+      if (owner != fields.ownerGeneration) {
+        owner = fields.ownerGeneration;
+        _clearOwnerResults();
+      }
+      if (scope != fields.scope) {
+        scope = fields.scope;
+        _refreshEmployeeFilter();
+      }
+    });
+    fields.bind();
     _rebuildActiveFilters();
   }
 
@@ -89,6 +115,8 @@ class EmployeeHoursUtilizationController extends GetxController {
 
   @override
   void onClose() {
+    _fieldsOwnerWorker.dispose();
+    fields.dispose();
     for (final controller in filterControllers.values) {
       controller.dispose();
     }
@@ -208,7 +236,8 @@ class EmployeeHoursUtilizationController extends GetxController {
     }
 
     final filters = buildFilters();
-    period.value = '$fromDate|$toDate';
+    final owner = fields.ownerGeneration;
+    resultRevision.value++;
     _rebuildActiveFilters();
 
     final invalid = validate(filters);
@@ -223,21 +252,42 @@ class EmployeeHoursUtilizationController extends GetxController {
     isRunning.value = true;
     try {
       final response = await _api.getReport(reportName, filters: filters);
+      if (isClosed || owner != fields.ownerGeneration) return;
       final message = response.data is Map ? response.data['message'] : null;
-      rows.assignAll(
-        parseUtilization(message is Map ? message['result'] : null),
+      if (message is! Map) throw StateError('Missing report response');
+      final rawColumns = message['columns'];
+      reportColumns = decodeDeskColumns(rawColumns);
+      fields.replaceDefinition(
+        utilizationFields.withColumns(
+          rawColumns is List ? reportColumns : null,
+          aliases: utilizationFieldsAliases,
+        ),
       );
-      summary.assignAll(
-        parseReportSummary(message is Map ? message['report_summary'] : null),
+      rows.assignAll(
+        parseUtilization(
+          decodeHrReportRows(
+            message['result'],
+            reportColumns,
+            aliases: utilizationFieldsAliases,
+          ),
+        ),
+      );
+      summary.assignAll(parseReportSummary(message['report_summary']));
+      _resultPeriod.value = (
+        from: filters['from_date'] as String,
+        to: filters['to_date'] as String,
       );
       errorMessage.value = null;
     } catch (e) {
+      if (isClosed || owner != fields.ownerGeneration) return;
       rows.clear();
       summary.clear();
       errorMessage.value = readableReportError(e, reportName: reportName);
     } finally {
-      hasRun.value = true;
-      isRunning.value = false;
+      if (!isClosed && owner == fields.ownerGeneration) {
+        hasRun.value = true;
+        isRunning.value = false;
+      }
     }
 
     if (_rerunRequested) {
@@ -248,11 +298,22 @@ class EmployeeHoursUtilizationController extends GetxController {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  void _clearOwnerResults() {
+    _rerunRequested = false;
+    reportColumns = const [];
+    rows.clear();
+    summary.clear();
+    _resultPeriod.value = (from: fromDate, to: toDate);
+    errorMessage.value = null;
+    hasRun.value = false;
+    isRunning.value = false;
+    resultRevision.value++;
+  }
+
   void _setPeriod(ReportPeriod preset) {
     final (from, to) = preset.rangeFor(DateTime.now());
     fromDateController.text = kReportDate.format(from);
     toDateController.text = kReportDate.format(to);
-    period.value = '$fromDate|$toDate';
   }
 
   static const _filterLabels = {
@@ -264,23 +325,38 @@ class EmployeeHoursUtilizationController extends GetxController {
 
   void _rebuildActiveFilters() {
     activeFilters.clear();
-    _resolveEmployeeTitle();
     _filterLabels.forEach((key, label) {
+      if (key == 'employee') {
+        _refreshEmployeeFilter();
+        return;
+      }
       final value = filterControllers[key]?.text.trim() ?? '';
       if (value.isEmpty) return;
-      activeFilters[key] = key == 'employee'
-          ? '$label: ${linkChipValue('Employee', value)}'
-          : '$label: $value';
+      activeFilters[key] = '$label: $value';
     });
   }
 
   /// An employee set without the picker (e.g. kept from an earlier run) has
   /// no remembered name yet: look it up once, then relabel the chip.
-  void _resolveEmployeeTitle() {
+  void _refreshEmployeeFilter() {
     final id = employeeController.text.trim();
-    if (id.isEmpty || LinkTitleCache.peek('Employee', id) != null) return;
-    LinkTitleCache.resolve('Employee', 'employee_name', id, _api).then((title) {
-      if (title == null || isClosed) return;
+    if (id.isEmpty) {
+      activeFilters.remove('employee');
+      return;
+    }
+    final scope = fields.scope;
+    final title = LinkTitleCache.peek('Employee', id, scope: scope);
+    activeFilters['employee'] = 'Employee: ${title ?? id}';
+    if (scope == null || title != null) return;
+    final owner = fields.ownerGeneration;
+    LinkTitleCache.resolve(
+      'Employee',
+      'employee_name',
+      id,
+      _api,
+      scope: scope,
+    ).then((title) {
+      if (title == null || isClosed || owner != fields.ownerGeneration) return;
       if (employeeController.text.trim() == id) {
         activeFilters['employee'] = 'Employee: $title';
       }

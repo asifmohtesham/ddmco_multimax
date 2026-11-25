@@ -6,11 +6,13 @@ import 'package:multimax/app/data/models/suppliers_by_item_report.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_fields.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_layout.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_rows.dart';
 
-typedef _FieldsOwner = ({String? rawUser, String? mirror});
+typedef _ReportColumns = ({List<DeskColumn> raw, Map<String, String> labels});
 
 class _HierarchyExpansion {
   Set<SuppliersByItemRowKey> known = const {};
@@ -36,16 +38,17 @@ class SuppliersByItemController extends GetxController {
   final ApiProvider _api;
   final StorageService? _storage;
   final FutureOr<String?> Function()? _siteResolver;
-  Worker? _fieldUserWorker;
+  late final ReportOwnerSource? _ownerSource = _createOwnerSource();
   void Function()? _stopWatchingFields;
   void Function()? _stopWatchingView;
   void Function()? _stopWatchingFieldsOwner;
-  _FieldsOwner? _lastFieldsOwner;
+  FieldsScope? _resolvedOwner;
+  bool _hasResolvedOwner = false;
   SuppliersByItemFieldsScope? _fieldsScope;
   SuppliersByItemFieldsSnapshot? _fieldsSnapshot;
   SuppliersByItemViewSnapshot? _viewSnapshot;
   Future<void>? _pendingFieldsLoad;
-  int _fieldsGeneration = 0;
+  int _ownerGeneration = 0;
   int _fieldsActionRevision = 0;
   bool _disposing = false;
   final _fieldVisibility = const SuppliersByItemFieldVisibility.defaults().obs;
@@ -53,6 +56,7 @@ class SuppliersByItemController extends GetxController {
   final settingsScopeLoadError = RxnString();
   final fieldsSaving = false.obs;
   final fieldsResetting = false.obs;
+  final viewDisplayResetting = false.obs;
   final fieldsRetrying = false.obs;
   final fieldsSessionOnly = false.obs;
   final fieldsLoadError = RxnString();
@@ -74,6 +78,7 @@ class SuppliersByItemController extends GetxController {
   final nodes = <SuppliersByItemNode>[].obs;
   final isLoading = false.obs;
   final error = RxnString();
+  final _reportColumns = Rxn<_ReportColumns>();
 
   final query = ''.obs;
   final loadedRevision = 0.obs;
@@ -403,6 +408,7 @@ class SuppliersByItemController extends GetxController {
 
   void _clearResult() {
     _resultsLoaded.value = false;
+    _reportColumns.value = null;
     _index = indexReport(const []);
     _projection = const [];
     _summary = summarize(_index);
@@ -412,6 +418,24 @@ class SuppliersByItemController extends GetxController {
   }
 
   SuppliersByItemFieldVisibility get fieldVisibility => _fieldVisibility.value;
+
+  String columnLabel(String name, String fallback) {
+    final label = _reportColumns.value?.labels[name];
+    return label == null || label.trim().isEmpty ? fallback : label;
+  }
+
+  String fieldLabel(SuppliersByItemField field) {
+    final column = field.column;
+    return column == null ? field.label : columnLabel(column, field.label);
+  }
+
+  bool hasFieldTile(SuppliersByItemField field) {
+    final name = field.column;
+    if (name == null) return false;
+    final labels = _reportColumns.value?.labels;
+    if (labels == null) return true;
+    return labels[name]?.trim().isNotEmpty == true;
+  }
 
   bool get fieldsEditable =>
       !fieldsScopeLoading.value &&
@@ -428,54 +452,69 @@ class SuppliersByItemController extends GetxController {
   bool isSavingField(SuppliersByItemField field) =>
       _pendingFieldEdits.contains(field);
 
-  String? get _fieldUser {
-    if (Get.isRegistered<AuthenticationController>()) {
-      final id = Get.find<AuthenticationController>().currentUser.value?.id;
-      if (id != null && id.trim().isNotEmpty) return id;
-    }
-    final id = _storage?.getUser()?.id;
-    return id != null && id.trim().isNotEmpty ? id : null;
+  bool get _hasCurrentScope {
+    final source = _ownerSource;
+    final scope = _fieldsScope;
+    return _pendingFieldsLoad == null &&
+        scope != null &&
+        source is StorageReportOwnerSource &&
+        source.matchesCurrentScope(scope);
   }
 
-  _FieldsOwner get _fieldsOwner =>
-      (rawUser: _fieldUser, mirror: _storage?.getBaseUrl());
+  ReportOwnerSource? _createOwnerSource() {
+    if (_siteResolver == null && Get.isRegistered<ReportOwnerSource>()) {
+      return Get.find<ReportOwnerSource>();
+    }
+    final storage = _storage;
+    if (storage == null || !Get.isRegistered<AuthenticationController>()) {
+      return null;
+    }
+    return StorageReportOwnerSource(
+      auth: Get.find<AuthenticationController>(),
+      storage: storage,
+      siteResolver: _siteResolver,
+    );
+  }
 
   @override
   void onInit() {
     super.onInit();
-    _stopWatchingFieldsOwner = _storage?.watchSuppliersByItemFieldsOwner(() {
-      if (_lastFieldsOwner != _fieldsOwner) unawaited(refreshFieldsScope());
+    _stopWatchingFieldsOwner = _ownerSource?.watch(() {
+      _pendingFieldsLoad = null;
+      _invalidateOwner();
+      unawaited(refreshFieldsScope());
     });
-    if (Get.isRegistered<AuthenticationController>()) {
-      _fieldUserWorker = ever(
-        Get.find<AuthenticationController>().currentUser,
-        (_) {
-          if (_lastFieldsOwner != _fieldsOwner) unawaited(refreshFieldsScope());
-        },
-      );
-    }
+    fieldsScopeLoading.value = true;
     unawaited(refreshFieldsScope());
     unawaited(run());
   }
 
+  void _invalidateOwner() {
+    _ownerGeneration++;
+    _resolvedOwner = null;
+    _hasResolvedOwner = false;
+    fieldsScopeLoading.value = true;
+    fieldsSessionOnly.value = false;
+    _clearResult();
+    _modeExpansion.clear();
+    _browseDetails.clear();
+    _searchDetails.clear();
+    isLoading.value = false;
+    error.value = null;
+    _switchFieldsScope(null);
+  }
+
   Future<void> refreshFieldsScope() {
     if (_disposing) return Future.value();
-    final owner = _fieldsOwner;
     final pending = _pendingFieldsLoad;
-    if (_lastFieldsOwner == owner && pending != null) return pending;
-
-    final generation = ++_fieldsGeneration;
-    if (_lastFieldsOwner != owner) {
-      _lastFieldsOwner = owner;
-      fieldsScopeLoading.value = true;
-      _switchFieldsScope(null);
-      fieldsSessionOnly.value = false;
-    } else if (settingsScopeLoadError.value != null) {
+    if (pending != null) return pending;
+    if (settingsScopeLoadError.value != null) {
       fieldsScopeLoading.value = true;
     }
 
-    final operation = _resolveFieldsScope(owner, generation).whenComplete(() {
-      if (_fieldsGeneration == generation) {
+    late final Future<void> operation;
+    operation = _resolveFieldsScope(_ownerGeneration).whenComplete(() {
+      if (identical(_pendingFieldsLoad, operation)) {
         _pendingFieldsLoad = null;
         fieldsScopeLoading.value = false;
       }
@@ -484,45 +523,38 @@ class SuppliersByItemController extends GetxController {
     return operation;
   }
 
-  Future<void> _resolveFieldsScope(_FieldsOwner owner, int generation) async {
-    final storage = _storage;
-    final rawUser = owner.rawUser;
-    if (rawUser == null ||
-        storage == null ||
-        !storage.hasSuppliersByItemFieldsStore) {
-      fieldsSessionOnly.value = true;
-      fieldsScopeLoading.value = false;
-      return;
-    }
-
-    String? site;
+  Future<void> _resolveFieldsScope(int generation) async {
+    FieldsOwner? owner;
     try {
-      final resolver = _siteResolver;
-      final configured = resolver != null
-          ? await resolver()
-          : owner.mirror?.trim().isNotEmpty == true
-          ? owner.mirror
-          : await storage.getSuppliersByItemSite();
-      site = normalizeSuppliersByItemSite(configured);
+      owner = await _ownerSource?.resolve();
     } catch (_) {
-      if (_fieldsGeneration == generation) {
+      if (_ownerGeneration == generation) {
         settingsScopeLoadError.value = _loadError;
         fieldsSessionOnly.value = false;
       }
       return;
     }
 
-    if (_fieldsGeneration != generation) return;
+    if (_ownerGeneration != generation) return;
+    final scope = owner?.scope;
+    if (_hasResolvedOwner && _resolvedOwner != scope) {
+      _invalidateOwner();
+    }
+    _resolvedOwner = scope;
+    _hasResolvedOwner = true;
+
     settingsScopeLoadError.value = null;
-    if (site == null) {
-      if (_fieldsScope != null) _switchFieldsScope(null);
+    final storage = _storage;
+    if (owner == null ||
+        scope == null ||
+        storage == null ||
+        !storage.hasSuppliersByItemFieldsStore) {
       fieldsLoadError.value = null;
       viewLoadError.value = null;
       fieldsSessionOnly.value = true;
       return;
     }
     fieldsSessionOnly.value = false;
-    final scope = (site: site, user: rawUser.trim());
     if (_fieldsScope != scope) {
       _switchFieldsScope(scope);
       final revision = _fieldsActionRevision;
@@ -544,7 +576,7 @@ class SuppliersByItemController extends GetxController {
       fieldsScopeLoading.value = true;
       await Future.wait([
         if (!snapshot.loaded)
-          storage.loadSuppliersByItemFields(scope, rawUser: rawUser),
+          storage.loadSuppliersByItemFields(scope, rawUser: owner.rawUser),
         if (!viewSnapshot.loaded) storage.loadSuppliersByItemView(scope),
       ]);
     }
@@ -554,6 +586,7 @@ class SuppliersByItemController extends GetxController {
     _fieldsActionRevision++;
     _pendingFieldEdits.clear();
     fieldsResetting.value = false;
+    viewDisplayResetting.value = false;
     fieldsRetrying.value = false;
     _stopWatchingFields?.call();
     _stopWatchingFields = null;
@@ -611,8 +644,7 @@ class SuppliersByItemController extends GetxController {
   @override
   void onClose() {
     _disposing = true;
-    _fieldsGeneration++;
-    _fieldUserWorker?.dispose();
+    _ownerGeneration++;
     _stopWatchingFields?.call();
     _stopWatchingView?.call();
     _stopWatchingFieldsOwner?.call();
@@ -620,7 +652,7 @@ class SuppliersByItemController extends GetxController {
   }
 
   Future<void> setFieldVisible(SuppliersByItemField field, bool visible) async {
-    if (!_pendingFieldEdits.add(field)) return;
+    if (field.fixed || !_pendingFieldEdits.add(field)) return;
     final revision = _fieldsActionRevision;
     try {
       await _editFields(
@@ -635,15 +667,37 @@ class SuppliersByItemController extends GetxController {
     }
   }
 
-  Future<void> resetFields() async {
-    if (fieldsResetting.value) return;
+  Future<void> resetFields() => _resetOptions(
+    fieldsResetting,
+    (key) => SuppliersByItemField.values.any(
+      (field) => field.movedToView && field.name == key,
+    ),
+  );
+
+  Future<void> resetViewDisplayOptions() => _resetOptions(
+    viewDisplayResetting,
+    (key) => !SuppliersByItemField.values.any(
+      (field) => field.movedToView && field.name == key,
+    ),
+  );
+
+  Future<void> _resetOptions(
+    RxBool resetting,
+    bool Function(String key) retain,
+  ) async {
+    if (resetting.value) return;
     final revision = _fieldsActionRevision;
-    fieldsResetting.value = true;
+    resetting.value = true;
     try {
-      await _editFields((_) => const SuppliersByItemFieldVisibility.defaults());
+      await _editFields(
+        (selection) => SuppliersByItemFieldVisibility({
+          for (final entry in selection.overrides.entries)
+            if (retain(entry.key)) entry.key: entry.value,
+        }),
+      );
     } finally {
       if (!_disposing && _fieldsActionRevision == revision) {
-        fieldsResetting.value = false;
+        resetting.value = false;
       }
     }
   }
@@ -653,14 +707,9 @@ class SuppliersByItemController extends GetxController {
     edit,
   ) async {
     if (_disposing) return;
-    final owner = _fieldsOwner;
-    if (owner != _lastFieldsOwner ||
-        fieldsScopeLoading.value ||
-        _siteResolver != null ||
-        (owner.rawUser != null && owner.mirror?.trim().isNotEmpty != true)) {
-      await refreshFieldsScope();
-    }
-    if (_disposing || owner != _fieldsOwner || !fieldsEditable) return;
+    final owner = _ownerGeneration;
+    if (!_hasCurrentScope) await refreshFieldsScope();
+    if (_disposing || owner != _ownerGeneration || !fieldsEditable) return;
     if ((_storage, _fieldsScope) case (final storage?, final scope?)) {
       try {
         await storage.updateSuppliersByItemFields(
@@ -719,14 +768,9 @@ class SuppliersByItemController extends GetxController {
     bool resave = false,
   }) async {
     if (_disposing) return;
-    final owner = _fieldsOwner;
-    if (owner != _lastFieldsOwner ||
-        fieldsScopeLoading.value ||
-        _siteResolver != null ||
-        (owner.rawUser != null && owner.mirror?.trim().isNotEmpty != true)) {
-      await refreshFieldsScope();
-    }
-    if (_disposing || owner != _fieldsOwner || !viewEditable) return;
+    final owner = _ownerGeneration;
+    if (!_hasCurrentScope) await refreshFieldsScope();
+    if (_disposing || owner != _ownerGeneration || !viewEditable) return;
     if ((_storage, _fieldsScope) case (final storage?, final scope?)) {
       try {
         await storage.updateSuppliersByItemView(scope, (current) {
@@ -765,6 +809,7 @@ class SuppliersByItemController extends GetxController {
   Future<void> run({SuppliersByItemFilters? filters}) async {
     if (_disposing || isClosed || isLoading.value) return;
 
+    final owner = _ownerGeneration;
     isLoading.value = true;
     try {
       _clearResult();
@@ -788,14 +833,27 @@ class SuppliersByItemController extends GetxController {
         if (selected.expandBom) 'expand_bom': 'On',
       });
       error.value = null;
-      final result = await _api.runSuppliersByItem(selected);
-      if (!_disposing) _applyResult(result, selected.expandBom);
+      final result = await _api.runSuppliersByItemReport(selected);
+      if (!_disposing && owner == _ownerGeneration) {
+        final columns = result.columns;
+        _reportColumns.value = columns == null
+            ? null
+            : (
+                raw: List<DeskColumn>.unmodifiable(columns),
+                labels: Map<String, String>.unmodifiable({
+                  for (final column in columns) column.fieldname: column.label,
+                }),
+              );
+        _applyResult(result.nodes, selected.expandBom);
+      }
     } on SuppliersByItemReportException catch (e) {
-      if (!_disposing) error.value = e.message;
+      if (!_disposing && owner == _ownerGeneration) error.value = e.message;
     } catch (_) {
-      if (!_disposing) error.value = 'Could not load Suppliers by Item.';
+      if (!_disposing && owner == _ownerGeneration) {
+        error.value = 'Could not load Suppliers by Item.';
+      }
     } finally {
-      if (!_disposing) isLoading.value = false;
+      if (!_disposing && owner == _ownerGeneration) isLoading.value = false;
     }
   }
 }

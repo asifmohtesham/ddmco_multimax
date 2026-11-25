@@ -22,7 +22,7 @@ void main() {
     expect(find.text('STRAPS T/X PRINT 40mm'), findsOneWidget);
     expect(find.textContaining('2001272'), findsWidgets);
     expect(find.text('5052483'), findsOneWidget);
-    expect(find.text('In Stock'), findsOneWidget);
+    expect(find.text('In Stock Qty'), findsOneWidget);
     expect(find.text('816'), findsOneWidget);
   });
 
@@ -30,8 +30,8 @@ void main() {
     await tester.pumpWidget(_wrap(const {
       'sl_no': '1', 'item_name': 'X', 'item_code': 'X1', 'in_stock_qty': 10,
     }));
-    expect(find.text('Need'), findsNothing);
-    expect(find.text('Short'), findsNothing);
+    expect(find.text('Required Qty'), findsNothing);
+    expect(find.text('Shortage Qty'), findsNothing);
     expect(find.text('Covered'), findsNothing);
   });
 
@@ -41,8 +41,8 @@ void main() {
       'sl_no': '2', 'item_name': 'STRAPS', 'item_code': '2001272',
       'in_stock_qty': 816, 'required_qty': 36, 'shortage_qty': 0,
     }));
-    expect(find.text('Need'), findsOneWidget);
-    expect(find.text('Short'), findsOneWidget);
+    expect(find.text('Required Qty'), findsOneWidget);
+    expect(find.text('Shortage Qty'), findsOneWidget);
     expect(find.text('Covered'), findsOneWidget);
   });
 
@@ -61,7 +61,7 @@ void main() {
       'sl_no': '4', 'item_name': 'SUB', 'item_code': 'S1',
       'in_stock_qty': 5, 'enough_parts_to_build': 12, 'bom': 'BOM-S1-001',
     }));
-    expect(find.text('Build'), findsOneWidget);
+    expect(find.text('Enough Parts to Build'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
   });
 

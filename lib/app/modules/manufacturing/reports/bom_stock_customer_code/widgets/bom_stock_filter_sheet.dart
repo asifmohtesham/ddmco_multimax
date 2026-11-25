@@ -79,11 +79,16 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
       );
 
   Future<void> _addWarehouse() async {
+    c.loadWarehouseOptions();
     await Get.bottomSheet(
       Obx(() => WarehousePickerSheet(
             warehouses: c.warehouseOptions.toList(),
             isLoading: c.isLoadingWarehouses.value,
-            onSelected: c.addWarehouse,
+            onSelected: (warehouse) {
+              if (c.warehouseOptions.contains(warehouse)) {
+                c.addWarehouse(warehouse);
+              }
+            },
           )),
       isScrollControlled: true,
     );
@@ -259,20 +264,28 @@ class _BomStockFilterSheetState extends State<_BomStockFilterSheet> {
                 // ── Switches ────────────────────────────────────────────
                 FilterFocusTarget(
                   filterKey: 'show_exploded_view',
-                  child: Obx(() => SwitchListTile(
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: Obx(() => SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Show Exploded View'),
                       value: c.showExplodedView.value,
                       onChanged: (v) => c.showExplodedView.value = v,
-                    ))),
+                    )),
+                  ),
+                ),
                 FilterFocusTarget(
                   filterKey: 'hide_out_of_stock',
-                  child: Obx(() => SwitchListTile(
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: Obx(() => SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Hide Out of Stock'),
                       value: c.hideOutOfStock.value,
                       onChanged: (v) => c.hideOutOfStock.value = v,
-                    ))),
+                    )),
+                  ),
+                ),
               ],
             ),
             ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
@@ -21,12 +23,16 @@ import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/common/services/awesome_bar_recent_store.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/home/widgets/rack_contents_sheet.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/item_form_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../support/report_fields_test_kit.dart';
 
 const _rackCode = 'KA-WH-DXB1-121D';
 const _itemJson = {
@@ -49,6 +55,9 @@ class _FakeApiProvider implements ApiProvider {
 
   @override
   String get baseUrl => 'https://example.test';
+
+  @override
+  int get rackWarehouseSession => 0;
 
   @override
   Future<Response> getDocument(String doctype, String name) async {
@@ -84,7 +93,12 @@ class _FakeScanService extends ScanService {
 class _FakeRackLoader extends ItemProvider {
   final queries = <({String warehouse, String? rack})>[];
   var rows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>>? columns;
+  final detailQueries = <List<String>>[];
+  List<Map<String, dynamic>> details = [];
+  Object? detailError;
   Object? error;
+  Future<void>? pending;
 
   @override
   Future<Response> getWarehouseStock(
@@ -93,9 +107,10 @@ class _FakeRackLoader extends ItemProvider {
     DateTime? asOf,
   }) async {
     queries.add((warehouse: warehouse, rack: rack));
+    await pending;
     if (error case final failure?) throw failure;
     return _response({
-      'message': {'result': rows},
+      'message': {'result': rows, if (columns != null) 'columns': columns},
     });
   }
 
@@ -103,7 +118,26 @@ class _FakeRackLoader extends ItemProvider {
   Future<Response> getItemFieldsByCodes(
     List<String> itemCodes,
     List<String> fields,
-  ) async => _response({'data': []});
+  ) async {
+    detailQueries.add(itemCodes);
+    if (detailError case final failure?) throw failure;
+    return _response({'data': details});
+  }
+}
+
+class _TrackingRackOwner extends ReportFieldsTestOwner {
+  int watched = 0;
+  int stopped = 0;
+
+  @override
+  Unsubscribe watch(void Function() onChange) {
+    watched++;
+    final stop = super.watch(onChange);
+    return () {
+      stopped++;
+      stop();
+    };
+  }
 }
 
 void main() {
@@ -202,21 +236,139 @@ void main() {
     });
   }
 
-  testWidgets('rack opens its contents and records once', (tester) async {
+  for (final detailsFailed in [false, true]) {
+    testWidgets('rack scan keeps batch rows when Item details '
+        '${detailsFailed ? 'fail' : 'load'}', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(470, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      scans.resolve = ScanResult.rack;
+      rackLoader.rows = [
+        for (final (batch, qty) in [('B-01', 4), ('B-02', 6)])
+          {
+            ..._itemJson,
+            'rack': _rackCode,
+            'stock_uom': 'Each',
+            'batch_no': batch,
+            'bal_qty': qty,
+          },
+      ];
+      rackLoader.columns = [
+        {'fieldname': 'bal_qty', 'label': 'Bilanzmenge'},
+        {'fieldname': 'batch_no', 'label': 'Charge'},
+      ];
+      rackLoader.details = [
+        {..._itemJson, 'disabled': 1},
+      ];
+      if (detailsFailed) {
+        rackLoader.detailError = StateError('Item unavailable');
+      }
+      await mount(tester);
+      await home.onScan(_rackCode);
+      await tester.pumpAndSettle();
+
+      expect(rackLoader.queries, [
+        (warehouse: 'WH-DXB1 - KA', rack: _rackCode),
+      ]);
+      expect(rackLoader.detailQueries, [
+        ['1004883'],
+      ]);
+      expect(find.byType(RackContentsSheet), findsOneWidget);
+      expect(
+        (await expectRecorded(_rackCode, ScanType.rack, ScanOutcome.ok)).label,
+        'Rack $_rackCode',
+      );
+      for (final (batch, qty) in [('B-01', '4'), ('B-02', '6')]) {
+        final card = find
+            .ancestor(of: find.text(batch), matching: find.byType(InkWell))
+            .first;
+        for (final text in [
+          'POUCH LEATHER',
+          '1004883',
+          'Charge',
+          'Bilanzmenge',
+          qty,
+        ]) {
+          expect(
+            find.descendant(of: card, matching: find.text(text)),
+            findsOneWidget,
+          );
+        }
+        expect(
+          find.descendant(of: card, matching: find.text('Disabled')),
+          detailsFailed ? findsNothing : findsOneWidget,
+        );
+      }
+      expect(
+        find.text('Item details could not be loaded.'),
+        detailsFailed ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.text('End of list · 2 items · Bilanzmenge 10 Each'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Fields'));
+      await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(CheckboxListTile, 'Bilanzmenge'),
+        findsOneWidget,
+      );
+      expect(rackLoader.queries, hasLength(1));
+    });
+  }
+
+  testWidgets('rack drops results when its owner changes before modal mount', (
+    tester,
+  ) async {
+    final owner = _TrackingRackOwner()..change('https://a.example', 'reader');
+    Get.put<ReportOwnerSource>(owner);
+    addTearDown(home.onClose);
+    scans.resolve = ScanResult.rack;
+    rackLoader.rows = [
+      {..._itemJson, 'rack': _rackCode, 'bal_qty': 4},
+    ];
+    rackLoader.columns = [
+      {'fieldname': 'bal_qty', 'label': 'Site A balance'},
+    ];
+    await mount(tester);
+    await home.onScan(_rackCode);
+    expect(find.byType(RackContentsSheet), findsNothing);
+
+    owner.change('https://b.example', 'reader');
+    await tester.pumpAndSettle();
+    expect(find.byType(RackContentsSheet), findsOneWidget);
+    expect(find.text('POUCH LEATHER'), findsNothing);
+    expect(find.text('Reload rack contents'), findsOneWidget);
+    await tester.tap(find.byTooltip('Fields'));
+    await tester.pumpAndSettle();
+    expect(find.text('Site A balance'), findsNothing);
+  });
+
+  testWidgets('Home stops listening while a rack scan is still pending', (
+    tester,
+  ) async {
+    final owner = _TrackingRackOwner()..change('https://a.example', 'reader');
+    Get.put<ReportOwnerSource>(owner);
+    final pending = Completer<void>();
+    rackLoader.pending = pending.future;
     scans.resolve = ScanResult.rack;
     rackLoader.rows = [
       {..._itemJson, 'rack': _rackCode, 'bal_qty': 4},
     ];
     await mount(tester);
-    await home.onScan(_rackCode);
-    await tester.pumpAndSettle();
+    final scan = home.onScan(_rackCode);
+    await tester.pump();
+    expect(rackLoader.queries, hasLength(1));
+    expect(owner.watched, 1);
+    expect(owner.stopped, 0);
 
-    expect(rackLoader.queries, [(warehouse: 'WH-DXB1 - KA', rack: _rackCode)]);
-    expect(find.byType(RackContentsSheet), findsOneWidget);
-    expect(
-      (await expectRecorded(_rackCode, ScanType.rack, ScanOutcome.ok)).label,
-      'Rack $_rackCode',
-    );
+    home.onDelete();
+    expect(owner.stopped, 1);
+    owner.change('https://b.example', 'reader');
+    pending.complete();
+    await scan;
+    await tester.pumpAndSettle();
+    expect(owner.stopped, 1);
+    expect(find.byType(RackContentsSheet), findsNothing);
   });
 
   testWidgets('variant opens the filtered list and records once', (

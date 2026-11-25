@@ -395,6 +395,15 @@ class StorageService {
   Future<void> saveItemVariantFields(Map<String, bool> fields) async =>
       _box.write('ivd_fields', fields);
 
+  Object? readLegacyReportFields(String reportId) => switch (reportId) {
+    'item_variant_details' => _box.read('ivd_fields'),
+    'stock_ageing' => _box.read(_saCardFieldsKey),
+    _ => null,
+  };
+
+  void Function() watchReportFieldsOwner(void Function() onChange) =>
+      watchSuppliersByItemFieldsOwner(onChange) ?? () {};
+
   // --- Suppliers by Item report: optional row fields, per site and user ---
   bool get hasSuppliersByItemFieldsStore => _configStore != null;
 

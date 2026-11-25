@@ -36,6 +36,14 @@ class _FieldsSheet extends StatelessWidget {
         final visibility = controller.fieldVisibility;
         final showsRate = visibility.shows(SuppliersByItemField.supplierRate);
         final editable = controller.fieldsEditable;
+        final available = {
+          for (final group in SuppliersByItemFieldGroup.values)
+            group: [
+              for (final field in SuppliersByItemField.values)
+                if (field.group == group && controller.hasFieldTile(field))
+                  field,
+            ],
+        };
         return Column(
           children: [
             Padding(
@@ -67,39 +75,42 @@ class _FieldsSheet extends StatelessWidget {
               showSessionStatus: true,
             ),
             Expanded(
-              child: ListView(
+              child: Scrollbar(
                 controller: scroll,
-                padding: EdgeInsets.only(
-                  bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
-                ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                    child: Text(
-                      'Item / Supplier, No supplier recorded, navigation '
-                      'and footer totals always show.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: context.scheme.textMuted,
-                      ),
-                    ),
+                child: ListView(
+                  controller: scroll,
+                  padding: EdgeInsets.only(
+                    bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
                   ),
-                  for (final group in SuppliersByItemFieldGroup.values) ...[
+                  children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                      child: Semantics(
-                        header: true,
-                        child: Text(
-                          group.label,
-                          style: theme.textTheme.titleSmall,
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                      child: Text(
+                        'Item and supplier identities, statuses, No supplier '
+                        'recorded and footer totals always show.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: context.scheme.textMuted,
                         ),
                       ),
                     ),
-                    for (final field in SuppliersByItemField.values.where(
-                      (field) => field.group == group,
-                    ))
-                      _fieldTile(field, visibility, showsRate, editable),
+                    for (final MapEntry(key: group, value: fields)
+                        in available.entries)
+                      if (fields.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                          child: Semantics(
+                            header: true,
+                            child: Text(
+                              group.label,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                          ),
+                        ),
+                        for (final field in fields)
+                          _fieldTile(field, visibility, showsRate, editable),
+                      ],
                   ],
-                ],
+                ),
               ),
             ),
           ],
@@ -118,18 +129,26 @@ class _FieldsSheet extends StatelessWidget {
         !showsRate &&
         (field == SuppliersByItemField.supplierRateCurrency ||
             field == SuppliersByItemField.supplierRateUom);
-    final enabled = editable && !needsRate && !controller.isSavingField(field);
+    final enabled =
+        editable &&
+        !field.fixed &&
+        !needsRate &&
+        !controller.fieldsResetting.value &&
+        !controller.isSavingField(field);
+    final label = controller.fieldLabel(field);
     return CheckboxListTile(
       key: ValueKey(field),
       minTileHeight: 48,
       controlAffinity: ListTileControlAffinity.leading,
       title: Semantics(
-        label: '${field.group.label}, ${field.label}',
+        label: '${field.group.label}, $label',
         excludeSemantics: true,
-        child: Text(field.label),
+        child: Text(label),
       ),
       subtitle: needsRate
-          ? Text('Needs ${SuppliersByItemField.supplierRate.label}')
+          ? Text(
+              'Needs ${controller.fieldLabel(SuppliersByItemField.supplierRate)}',
+            )
           : field.qualifier == null
           ? null
           : Text(field.qualifier!),

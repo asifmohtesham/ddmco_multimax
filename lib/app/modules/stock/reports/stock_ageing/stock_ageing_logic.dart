@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import '../../../global_widgets/report_fields/report_field.dart';
 
 /// One age bucket of the Stock Ageing report, read from the returned columns
 /// (`range1` / `range1value`, labelled e.g. "Age (0 - 90)").
@@ -6,12 +7,21 @@ class AgeBucket {
   final String qtyKey;
   final String valueKey;
   final String label;
+  final String? reportLabel;
+  final String? rangeHint;
 
   const AgeBucket({
     required this.qtyKey,
     required this.valueKey,
     required this.label,
+    this.reportLabel,
+    this.rangeHint,
   });
+
+  String get displayLabel => reportLabel ?? label;
+
+  String get qualifiedLabel =>
+      rangeHint == null ? displayLabel : '$displayLabel · $rangeHint';
 }
 
 /// One column of the report, exactly as the server describes it. Cards and
@@ -22,11 +32,17 @@ class ReportColumn {
   /// The column title, verbatim (e.g. "Variant Of", "Age (0 - 90)").
   final String label;
   final String fieldtype;
+  final bool listed;
+  final String? interval;
+  final String? rangeHint;
 
   const ReportColumn({
     required this.fieldname,
     required this.label,
     required this.fieldtype,
+    this.listed = true,
+    this.interval,
+    this.rangeHint,
   });
 
   bool get isImage => fieldtype == 'Attach Image' || fieldtype == 'Attach';
@@ -39,11 +55,17 @@ class StockAgeingTotals {
 
   /// Quantity per bucket, in bucket order.
   final List<double> bucketQty;
+  final int qtyCount;
+  final int valueCount;
+  final List<int> bucketQtyCount;
 
   const StockAgeingTotals({
     required this.qty,
     required this.value,
     required this.bucketQty,
+    required this.qtyCount,
+    required this.valueCount,
+    required this.bucketQtyCount,
   });
 }
 
@@ -52,6 +74,35 @@ class StockAgeingTotals {
 abstract final class StockAgeingLogic {
   static final _rangeField = RegExp(r'^range\d+$');
   static final _ageLabel = RegExp(r'^Age \((.*)\)$');
+  static final _labelInterval = RegExp(r'\(([^()]*)\)\s*$');
+  static final _rangeLimit = RegExp(r'^\d+$');
+
+  static const fixedLabels = {
+    'item_code': 'Item Code',
+    'item_name': 'Item Name',
+    'warehouse': 'Warehouse',
+    'qty': 'Available Qty',
+    'uom': 'UOM',
+    'variant_of': 'Variant Of',
+    'average_age': 'Average Age',
+    'image': 'Item Image',
+    'country_of_origin': 'Country of Origin',
+    'description': 'Description',
+    'item_group': 'Item Group',
+    'brand': 'Brand',
+    'earliest': 'Earliest',
+    'latest': 'Latest',
+    'range1': 'Age (0 - 90)',
+    'range1value': 'Value (0 - 90)',
+    'range2': 'Age (91 - 180)',
+    'range2value': 'Value (91 - 180)',
+    'range3': 'Age (181 - 360)',
+    'range3value': 'Value (181 - 360)',
+    'range4': 'Age (361 - 720)',
+    'range4value': 'Value (361 - 720)',
+    'range5': 'Age (721 - Above)',
+    'range5value': 'Value (721 - Above)',
+  };
 
   /// Coerces a report cell to a number; null and non-numeric cells are 0.
   static double num_(dynamic v) {
@@ -60,7 +111,39 @@ abstract final class StockAgeingLogic {
     return 0;
   }
 
+  static double? measurement(Object? cell) {
+    final value = cell is num
+        ? cell.toDouble()
+        : double.tryParse(cell?.toString().trim() ?? '');
+    return value?.isFinite == true ? value : null;
+  }
+
   static final _bucketField = RegExp(r'^range\d+(value)?$');
+  static final _legacyBucket = RegExp(
+    r'^(Age|Value) \(\s*\d+\s*[-–—]\s*(?:\d+|Above)\s*\)$',
+  );
+
+  static List<DeskColumn> deskColumns(List<dynamic> rawColumns) {
+    final columns = decodeDeskColumns(rawColumns);
+    var ages = 0;
+    var values = 0;
+    return List.unmodifiable([
+      for (final (index, column) in columns.indexed)
+        if (rawColumns[index] is String)
+          if (_legacyBucket.firstMatch(column.label)?.group(1) == 'Age')
+            (fieldname: 'range${++ages}', label: column.label)
+          else if (_legacyBucket.firstMatch(column.label)?.group(1) == 'Value')
+            (fieldname: 'range${++values}value', label: column.label)
+          else if (column.fieldname == 'available_qty')
+            (fieldname: 'qty', label: column.label)
+          else if (column.fieldname == 'item_image')
+            (fieldname: 'image', label: column.label)
+          else
+            column
+        else
+          column,
+    ]);
+  }
 
   /// Rebuilds the bucket columns of [columns] for the ageing [range] the
   /// data was calculated with (e.g. "360, 720").
@@ -77,14 +160,12 @@ abstract final class StockAgeingLogic {
   static List<dynamic> applyRange(List<dynamic> columns, String? range) {
     final limits = <int>[];
     for (final part in (range ?? '').split(',')) {
-      final n = int.tryParse(part.trim());
-      if (n == null) {
-        if (part.trim().isNotEmpty) return columns;
-        continue;
-      }
-      limits.add(n);
+      final token = part.trim();
+      final limit = _rangeLimit.hasMatch(token) ? int.tryParse(token) : null;
+      if (limit != null) limits.add(limit);
     }
     if (limits.isEmpty) return columns;
+    limits.sort();
 
     final titles = [
       '0 - ${limits.first}',
@@ -107,14 +188,12 @@ abstract final class StockAgeingLogic {
       ],
     ];
 
-    bool isBucket(dynamic c) =>
-        c is Map && _bucketField.hasMatch(c['fieldname']?.toString() ?? '');
-
     // Keep the buckets where the report has them; append if it has none.
     final out = <dynamic>[];
+    final descriptors = deskColumns(columns);
     var placed = false;
-    for (final c in columns) {
-      if (!isBucket(c)) {
+    for (final (index, c) in columns.indexed) {
+      if (!_bucketField.hasMatch(descriptors[index].fieldname)) {
         out.add(c);
       } else if (!placed) {
         out.addAll(generated);
@@ -125,32 +204,100 @@ abstract final class StockAgeingLogic {
     return out;
   }
 
+  /// Keeps the returned header apart from the interval the server calculated.
+  /// Additional calculated buckets remain readable without a Fields tile.
+  static List<ReportColumn> effectiveColumns(
+    List<dynamic> columns,
+    String? range,
+  ) {
+    final raw = parseColumns(columns);
+    final ranged = applyRange(columns, range);
+    if (identical(ranged, columns)) return raw;
+    final byKey = {for (final column in raw) column.fieldname: column};
+    return [
+      for (final generated in parseColumns(ranged))
+        if (_bucketField.hasMatch(generated.fieldname))
+          _effectiveBucketColumn(generated, byKey[generated.fieldname])
+        else
+          generated,
+    ];
+  }
+
+  static ReportColumn _effectiveBucketColumn(
+    ReportColumn generated,
+    ReportColumn? raw,
+  ) {
+    final interval = _labelInterval.firstMatch(generated.label)!.group(1)!;
+    final rawInterval = _labelInterval.firstMatch(raw?.label ?? '')?.group(1);
+    String normalize(String value) => value
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll('–', '-')
+        .replaceAll('—', '-');
+    final differs =
+        raw?.listed == true &&
+        (rawInterval == null || normalize(rawInterval) != normalize(interval));
+    return ReportColumn(
+      fieldname: generated.fieldname,
+      label: raw?.listed == true ? raw!.label : generated.label,
+      fieldtype: raw?.fieldtype == 'Currency'
+          ? 'Currency'
+          : generated.fieldtype,
+      listed: raw?.listed == true,
+      interval: interval,
+      rangeHint: differs
+          ? 'Range for this run: ${interval.replaceAll(' - ', '–')}'
+          : null,
+    );
+  }
+
   /// Reads the age buckets from `message.columns`, so the ranges are defined
   /// only on the Desk and never hard-coded here.
   static List<AgeBucket> parseBuckets(List<dynamic> columns) {
     final out = <AgeBucket>[];
-    for (final c in columns) {
-      if (c is! Map) continue;
-      final field = c['fieldname']?.toString() ?? '';
-      if (!_rangeField.hasMatch(field)) continue;
-      final label = c['label']?.toString() ?? field;
-      out.add(AgeBucket(
-        qtyKey: field,
-        valueKey: '${field}value',
-        label: _ageLabel.firstMatch(label)?.group(1) ?? label,
-      ));
+    for (final raw in columns) {
+      final column = raw is ReportColumn
+          ? raw
+          : parseColumns([raw]).firstOrNull;
+      if (column == null || !_rangeField.hasMatch(column.fieldname)) continue;
+      out.add(
+        AgeBucket(
+          qtyKey: column.fieldname,
+          valueKey: '${column.fieldname}value',
+          label:
+              column.interval ??
+              _ageLabel.firstMatch(column.label)?.group(1) ??
+              column.label,
+          reportLabel: column.listed ? column.label : null,
+          rangeHint: column.rangeHint,
+        ),
+      );
     }
     return out;
   }
 
-  /// Keeps only dict rows from `message.result` (a total row arrives as a
-  /// list on some report configurations).
-  static List<Map<String, dynamic>> parseRows(dynamic result) {
+  static List<Map<String, dynamic>> parseRows(
+    dynamic result, {
+    List<DeskColumn> columns = const [],
+    bool addTotalRow = false,
+  }) {
     if (result is! List) return [];
-    return [
-      for (final r in result)
-        if (r is Map) Map<String, dynamic>.from(r),
-    ];
+    final rows = <Map<String, dynamic>>[];
+    for (final (index, raw) in result.indexed) {
+      if (raw is List &&
+          (columns.isEmpty || (addTotalRow && index == result.length - 1))) {
+        continue;
+      }
+      final row = decodeDeskRow(raw, columns);
+      if (row == null ||
+          row['_is_total_row'] == true ||
+          row['is_total_row'] == true ||
+          (row['item_code']?.toString().trim().isEmpty ?? true)) {
+        continue;
+      }
+      rows.add(row);
+    }
+    return rows;
   }
 
   /// Applies the on-phone search and sort and returns a new list.
@@ -170,20 +317,22 @@ abstract final class StockAgeingLogic {
     final out = q.isEmpty
         ? List<Map<String, dynamic>>.of(rows)
         : rows
-            .where((r) =>
-                hit(r, 'item_code') ||
-                hit(r, 'item_name') ||
-                hit(r, 'variant_of') ||
-                hit(r, 'warehouse'))
-            .toList();
+              .where(
+                (r) =>
+                    hit(r, 'item_code') ||
+                    hit(r, 'item_name') ||
+                    hit(r, 'variant_of') ||
+                    hit(r, 'warehouse'),
+              )
+              .toList();
 
     String code(Map<String, dynamic> r) => r['item_code']?.toString() ?? '';
     double metric(Map<String, dynamic> r) => switch (sort) {
-          'qty' => num_(r['qty']),
-          'old' => buckets.isEmpty ? 0 : num_(r[buckets.last.qtyKey]),
-          'code' => 0,
-          _ => num_(r['average_age']),
-        };
+      'qty' => num_(r['qty']),
+      'old' => buckets.isEmpty ? 0 : num_(r[buckets.last.qtyKey]),
+      'code' => 0,
+      _ => num_(r['average_age']),
+    };
 
     out.sort((a, b) {
       final byMetric = metric(b).compareTo(metric(a));
@@ -199,14 +348,33 @@ abstract final class StockAgeingLogic {
     var qty = 0.0;
     var value = 0.0;
     final bucketQty = List<double>.filled(buckets.length, 0);
+    var qtyCount = 0;
+    var valueCount = 0;
+    final bucketQtyCount = List<int>.filled(buckets.length, 0);
     for (final r in rows) {
-      qty += num_(r['qty']);
+      if (measurement(r['qty']) case final measured?) {
+        qty += measured;
+        qtyCount++;
+      }
       for (var i = 0; i < buckets.length; i++) {
-        bucketQty[i] += num_(r[buckets[i].qtyKey]);
-        value += num_(r[buckets[i].valueKey]);
+        if (measurement(r[buckets[i].qtyKey]) case final measured?) {
+          bucketQty[i] += measured;
+          bucketQtyCount[i]++;
+        }
+        if (measurement(r[buckets[i].valueKey]) case final measured?) {
+          value += measured;
+          valueCount++;
+        }
       }
     }
-    return StockAgeingTotals(qty: qty, value: value, bucketQty: bucketQty);
+    return StockAgeingTotals(
+      qty: qty,
+      value: value,
+      bucketQty: bucketQty,
+      qtyCount: qtyCount,
+      valueCount: valueCount,
+      bucketQtyCount: bucketQtyCount,
+    );
   }
 
   /// Whether two filter maps mean the same thing to the server: blank, null
@@ -215,15 +383,14 @@ abstract final class StockAgeingLogic {
   /// filters?" check.
   static bool sameFilters(Map<String, dynamic> a, Map<String, dynamic> b) {
     Map<String, String> norm(Map<String, dynamic> m) => {
-          for (final e in m.entries)
-            if (e.value != null &&
-                e.value.toString().trim().isNotEmpty &&
-                e.value.toString().trim() != '0')
-              e.key: e.value.toString().trim(),
-        };
+      for (final e in m.entries)
+        if (e.value != null &&
+            e.value.toString().trim().isNotEmpty &&
+            e.value.toString().trim() != '0')
+          e.key: e.value.toString().trim(),
+    };
     final x = norm(a), y = norm(b);
-    return x.length == y.length &&
-        x.entries.every((e) => y[e.key] == e.value);
+    return x.length == y.length && x.entries.every((e) => y[e.key] == e.value);
   }
 
   /// Absolute URL for a row's `image` cell: relative Frappe paths
@@ -244,7 +411,13 @@ abstract final class StockAgeingLogic {
   static const ageBarField = '_age_bar';
 
   /// Columns that are always on the card and so are not offered as choices.
-  static const fixedCardFields = {'item_code', 'qty', 'uom'};
+  static const fixedCardFields = {
+    'item_code',
+    'item_name',
+    'warehouse',
+    'qty',
+    'uom',
+  };
 
   /// The card before the user changes anything.
   static const defaultCardFields = {
@@ -255,19 +428,28 @@ abstract final class StockAgeingLogic {
     ageBarField,
   };
 
-  /// Reads `message.columns` in report order; entries without a fieldname
-  /// are skipped and a missing label falls back to the fieldname.
-  static List<ReportColumn> parseColumns(List<dynamic> columns) => [
-        for (final c in columns)
-          if (c is Map && (c['fieldname']?.toString() ?? '').isNotEmpty)
-            ReportColumn(
-              fieldname: c['fieldname'].toString(),
-              label: (c['label']?.toString().trim().isNotEmpty ?? false)
-                  ? c['label'].toString().trim()
-                  : c['fieldname'].toString(),
-              fieldtype: c['fieldtype']?.toString() ?? 'Data',
-            ),
-      ];
+  static List<ReportColumn> parseColumns(List<dynamic> columns) {
+    final parsed = <ReportColumn>[];
+    for (final (index, column) in deskColumns(columns).indexed) {
+      if (column.fieldname.isEmpty) continue;
+      final raw = columns[index];
+      final listed = column.label.trim().isNotEmpty;
+      final parts = raw is String ? raw.split(':') : const <String>[];
+      parsed.add(
+        ReportColumn(
+          fieldname: column.fieldname,
+          label: listed ? column.label : fixedLabels[column.fieldname] ?? '',
+          fieldtype: raw is Map
+              ? raw['fieldtype']?.toString() ?? 'Data'
+              : parts.length > 1
+              ? parts[1].split('/').first
+              : 'Data',
+          listed: listed,
+        ),
+      );
+    }
+    return parsed;
+  }
 
   static final _floatFormat = NumberFormat('#,##0.##', 'en_GB');
   static final _valueFormat = NumberFormat('#,##0.00', 'en_GB');
@@ -281,13 +463,15 @@ abstract final class StockAgeingLogic {
       case 'Float':
       case 'Currency':
       case 'Percent':
-        final f = column.fieldtype == 'Currency' ||
-                column.fieldname.endsWith('value')
+        final f =
+            column.fieldtype == 'Currency' || column.fieldname.endsWith('value')
             ? _valueFormat
             : _floatFormat;
-        return f.format(num_(v));
+        final number = measurement(v);
+        return number == null ? '—' : f.format(number);
       case 'Int':
-        return _intFormat.format(num_(v));
+        final number = measurement(v);
+        return number == null ? '—' : _intFormat.format(number);
       default:
         return v.toString().trim();
     }
@@ -354,7 +538,8 @@ abstract final class StockAgeingLogic {
     // A fetch time ahead of the clock means the device time changed.
     if (fetchedAt.isAfter(now)) return true;
     // Ages are whole days as on a date, so a new day shifts every row.
-    final newDay = fetchedAt.year != now.year ||
+    final newDay =
+        fetchedAt.year != now.year ||
         fetchedAt.month != now.month ||
         fetchedAt.day != now.day;
     // Within a day, pick up stock movements without refetching on every open.

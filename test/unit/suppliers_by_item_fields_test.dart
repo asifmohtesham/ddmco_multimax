@@ -96,11 +96,11 @@ class _ReportApi extends Fake implements ApiProvider {
   void Function() onSessionExpired = () {};
 
   @override
-  Future<List<SuppliersByItemNode>> runSuppliersByItem(
+  Future<SuppliersByItemReport> runSuppliersByItemReport(
     SuppliersByItemFilters filters,
   ) async {
     runs++;
-    return [];
+    return const SuppliersByItemReport(nodes: []);
   }
 }
 
@@ -113,6 +113,7 @@ void main() {
   late _ConfigStore database;
   late StorageService storage;
   late _ReportApi api;
+  late AuthenticationController authentication;
 
   SuppliersByItemFieldsScope scope(String user, [String normalized = site]) =>
       (site: normalized, user: user);
@@ -150,10 +151,14 @@ void main() {
   }
 
   AuthenticationController setCurrentUser(String id) {
-    Get.testMode = true;
-    addTearDown(Get.reset);
-    Get.put<ApiProvider>(api);
-    return Get.put(AuthenticationController()..currentUser.value = _user(id));
+    authentication.currentUser.value = _user(id);
+    authentication.isAuthenticated.value = true;
+    return authentication;
+  }
+
+  Future<void> signIn(String id) async {
+    await storage.saveUser(_user(id));
+    setCurrentUser(id);
   }
 
   setUp(() async {
@@ -161,8 +166,12 @@ void main() {
     database = _ConfigStore();
     storage = StorageService.withStorage(box, database: database);
     api = _ReportApi();
+    Get.testMode = true;
+    Get.put<ApiProvider>(api);
+    authentication = Get.put(AuthenticationController());
     await storage.saveBaseUrl(site);
   });
+  tearDown(Get.reset);
 
   test('manufacturing and projected reorder warnings default on', () {
     const visibility = SuppliersByItemFieldVisibility.defaults();
@@ -181,7 +190,7 @@ void main() {
     const itemBalance = SuppliersByItemField.itemBalance;
     const componentBalance = SuppliersByItemField.componentBalance;
     const sources = SuppliersByItemField.supplierSources;
-    await storage.saveUser(_user('buyer-a@example.com'));
+    await signIn('buyer-a@example.com');
     final first = await openReport();
 
     expect(first.fieldVisibility.shows(itemBalance), isTrue);
@@ -198,14 +207,14 @@ void main() {
     expect(api.runs, 1);
     await Future.wait(writes);
 
-    await storage.saveUser(_user('buyer-b@example.com'));
+    await signIn('buyer-b@example.com');
     final second = await openReport();
     expect(second.fieldVisibility.shows(itemBalance), isTrue);
     expect(second.fieldVisibility.shows(componentBalance), isFalse);
     expect(second.fieldVisibility.shows(sources), isFalse);
     await second.setFieldVisible(SuppliersByItemField.itemProjected, true);
 
-    await storage.saveUser(_user('buyer-a@example.com'));
+    await signIn('buyer-a@example.com');
     final reopened = await openReport();
     expect(reopened.fieldVisibility.shows(itemBalance), isFalse);
     expect(reopened.fieldVisibility.shows(componentBalance), isTrue);
@@ -227,7 +236,7 @@ void main() {
   test('stacked reports share field choices without rerunning', () async {
     const balance = SuppliersByItemField.itemBalance;
     const sources = SuppliersByItemField.supplierSources;
-    await storage.saveUser(_user('buyer-a@example.com'));
+    await signIn('buyer-a@example.com');
     final first = await openReport();
     final second = await openReport();
 
@@ -261,21 +270,34 @@ void main() {
     },
   );
 
-  test('resolves the current preference owner again when saving', () async {
-    const cachedId = 'cached@example.com';
-    const signedInId = 'buyer@example.com';
-    final auth = setCurrentUser(cachedId);
-    await storage.saveUser(_user(cachedId));
-    seed(cachedId, {'itemBalance': false});
-    seed(signedInId, {'itemProjected': true});
-    final report = await openReport();
+  test(
+    'keeps edits local until the preference owner is synchronized',
+    () async {
+      const cachedId = 'cached@example.com';
+      const signedInId = 'buyer@example.com';
+      final auth = setCurrentUser(cachedId);
+      await signIn(cachedId);
+      seed(cachedId, {'itemBalance': false});
+      seed(signedInId, {'itemProjected': true});
+      final report = await openReport();
 
-    auth.currentUser.value = _user(signedInId);
-    await report.setFieldVisible(SuppliersByItemField.supplierSources, true);
+      auth.currentUser.value = _user(signedInId);
+      await report.setFieldVisible(SuppliersByItemField.supplierSources, true);
+      expect(report.fieldsSessionOnly.value, isTrue);
+      expect(database.records[key(signedInId)], '{"itemProjected":true}');
+      expect(database.writes, isEmpty);
 
-    expect(read(cachedId), {'itemBalance': false});
-    expect(read(signedInId), {'itemProjected': true, 'supplierSources': true});
-  });
+      await storage.saveUser(_user(signedInId));
+      await report.refreshFieldsScope();
+      await report.setFieldVisible(SuppliersByItemField.supplierSources, true);
+
+      expect(read(cachedId), {'itemBalance': false});
+      expect(read(signedInId), {
+        'itemProjected': true,
+        'supplierSources': true,
+      });
+    },
+  );
 
   test(
     'reloads mounted field choices when the signed-in user changes',
@@ -284,8 +306,7 @@ void main() {
       const secondId = 'buyer-b@example.com';
       const balance = SuppliersByItemField.itemBalance;
       const projected = SuppliersByItemField.itemProjected;
-      final auth = setCurrentUser(firstId);
-      await storage.saveUser(_user(firstId));
+      await signIn(firstId);
       seed(firstId, {'itemBalance': false});
       seed(secondId, {'itemProjected': true});
       final report = await openReport();
@@ -293,12 +314,12 @@ void main() {
       expect(report.fieldVisibility.shows(balance), isFalse);
       expect(report.fieldVisibility.shows(projected), isFalse);
 
-      auth.currentUser.value = _user(secondId);
+      await signIn(secondId);
       await report.refreshFieldsScope();
       expect(report.fieldVisibility.shows(balance), isTrue);
       expect(report.fieldVisibility.shows(projected), isTrue);
 
-      auth.currentUser.value = _user('buyer-c@example.com');
+      await signIn('buyer-c@example.com');
       await report.refreshFieldsScope();
       expect(report.fieldVisibility.shows(balance), isTrue);
       expect(report.fieldVisibility.shows(projected), isFalse);
@@ -322,10 +343,10 @@ void main() {
   );
 
   test(
-    'falls back to the cached profile when the signed-in ID is blank',
+    'falls back to the initial cached profile before the live user arrives',
     () async {
       const cachedId = 'cached@example.com';
-      setCurrentUser('  ');
+      authentication.isAuthenticated.value = true;
       await storage.saveUser(_user(cachedId));
       seed(cachedId, {'itemBalance': false});
 
@@ -365,107 +386,229 @@ void main() {
     expect(database.writes, isEmpty);
   });
 
-  test('registers Stage 1 and 2 fields with stable previous IDs', () {
-    const defaults = SuppliersByItemFieldVisibility.defaults();
-    const added = {
-      'Item rows': [
+  test(
+    'preserves all released field IDs and separates Fields and View reset',
+    () async {
+      const defaults = SuppliersByItemFieldVisibility.defaults();
+      const added = {
+        'Item rows': [
+          'itemTemplateContext',
+          'templateVariantCount',
+          'itemOpenPoBadge',
+          'itemDraftPoBadge',
+        ],
+        'Supplier rows': [
+          'supplierLastBuyColumn',
+          'supplierOpenPoBadge',
+          'supplierDraftPoBadge',
+          'supplierMatchEmphasis',
+        ],
+        'BOM and tree labels': [
+          'bomDefaultMarker',
+          'bomDraftBadge',
+          'bomComponentCount',
+          'treeDepthLabel',
+        ],
+        'Report summary': [
+          'summaryItemCount',
+          'summarySupplierCount',
+          'summaryNoDirectCount',
+          'summaryStockByUom',
+        ],
+        'Search': ['searchMatchCount'],
+      };
+      const previous = [
+        'itemName',
+        'itemSupplierCount',
+        'itemBalance',
+        'itemStockUom',
+        'itemProjected',
+        'itemBelowReorder',
+        'itemReorderLevel',
+        'itemReorderQty',
+        'itemOpenOrders',
+        'itemDraftOrders',
+        'itemQtyReceived',
+        'supplierStatus',
+        'supplierOpenOrders',
+        'supplierStockUom',
+        'supplierDraftOrders',
+        'supplierPartNumber',
+        'supplierSources',
+        'supplierLastPurchase',
+        'supplierLastPurchaseReceipt',
+        'supplierQtyReceived',
+        'supplierLastPo',
+        'supplierRate',
+        'supplierRateCurrency',
+        'supplierRateUom',
+        'supplierRateSource',
+        'supplierRateDate',
+        'supplierRateDocument',
+        'supplierLeadTime',
+        'supplierLeadTimeReceipts',
+        'supplierPoCount',
+        'supplierReceiptCount',
+        'componentName',
+        'componentSupplierCount',
+        'componentQtyPerUnit',
+        'componentStockUom',
+        'componentBalance',
+        'componentProjected',
+        'componentLastPurchase',
+        'componentUsedInBoms',
+        'componentManufacturing',
+        'componentCycle',
+        'componentDepthLimit',
+      ];
+      const stage2 = {
+        'supplierGroupItemCount': 'Supplier rows',
+        'supplierGroupComponentCount': 'Supplier rows',
+        'componentMatchPath': 'BOM component rows',
+      };
+      final releasedIds = [
+        ...previous,
+        ...added.values.expand((ids) => ids),
+        ...stage2.keys,
+      ];
+      // The remaining released IDs defaulted on in b08ea347.
+      const releasedDefaultOff = {
+        'itemProjected',
+        'itemReorderLevel',
+        'itemReorderQty',
+        'itemOpenOrders',
+        'itemDraftOrders',
+        'itemQtyReceived',
+        'supplierDraftOrders',
+        'supplierPartNumber',
+        'supplierSources',
+        'supplierLastPurchase',
+        'supplierLastPurchaseReceipt',
+        'supplierQtyReceived',
+        'supplierLastPo',
+        'supplierRate',
+        'supplierRateSource',
+        'supplierRateDate',
+        'supplierRateDocument',
+        'supplierLeadTime',
+        'supplierLeadTimeReceipts',
+        'supplierPoCount',
+        'supplierReceiptCount',
+        'componentBalance',
+        'componentProjected',
+        'componentLastPurchase',
+        'componentUsedInBoms',
+      };
+      final releasedDefaults = {
+        for (final id in releasedIds) id: !releasedDefaultOff.contains(id),
+      };
+      expect(
+        SuppliersByItemField.values.map((field) => field.name),
+        releasedIds,
+      );
+      expect(releasedIds, hasLength(62));
+      for (final entry in added.entries) {
+        for (final id in entry.value) {
+          final field = SuppliersByItemField.values.byName(id);
+          expect(field.group.label, entry.key);
+          expect(defaults.shows(field), isTrue);
+        }
+      }
+      for (final entry in stage2.entries) {
+        final field = SuppliersByItemField.values.byName(entry.key);
+        expect(field.group.label, entry.value);
+        expect(defaults.shows(field), isTrue);
+      }
+
+      const protectedIds = {
+        'itemName',
+        'componentName',
+        'supplierStatus',
         'itemTemplateContext',
-        'templateVariantCount',
-        'itemOpenPoBadge',
-        'itemDraftPoBadge',
-      ],
-      'Supplier rows': [
-        'supplierLastBuyColumn',
-        'supplierOpenPoBadge',
-        'supplierDraftPoBadge',
-        'supplierMatchEmphasis',
-      ],
-      'BOM and tree labels': [
+        'itemBelowReorder',
+        'componentManufacturing',
+        'componentCycle',
+        'componentDepthLimit',
+        'componentMatchPath',
         'bomDefaultMarker',
         'bomDraftBadge',
-        'bomComponentCount',
         'treeDepthLabel',
-      ],
-      'Report summary': [
+      };
+      const viewIds = {
+        'componentUsedInBoms',
+        'supplierMatchEmphasis',
+        'templateVariantCount',
+        'supplierGroupItemCount',
+        'supplierGroupComponentCount',
+        'bomComponentCount',
         'summaryItemCount',
         'summarySupplierCount',
         'summaryNoDirectCount',
         'summaryStockByUom',
-      ],
-      'Search': ['searchMatchCount'],
-    };
-    const previous = [
-      'itemName',
-      'itemSupplierCount',
-      'itemBalance',
-      'itemStockUom',
-      'itemProjected',
-      'itemBelowReorder',
-      'itemReorderLevel',
-      'itemReorderQty',
-      'itemOpenOrders',
-      'itemDraftOrders',
-      'itemQtyReceived',
-      'supplierStatus',
-      'supplierOpenOrders',
-      'supplierStockUom',
-      'supplierDraftOrders',
-      'supplierPartNumber',
-      'supplierSources',
-      'supplierLastPurchase',
-      'supplierLastPurchaseReceipt',
-      'supplierQtyReceived',
-      'supplierLastPo',
-      'supplierRate',
-      'supplierRateCurrency',
-      'supplierRateUom',
-      'supplierRateSource',
-      'supplierRateDate',
-      'supplierRateDocument',
-      'supplierLeadTime',
-      'supplierLeadTimeReceipts',
-      'supplierPoCount',
-      'supplierReceiptCount',
-      'componentName',
-      'componentSupplierCount',
-      'componentQtyPerUnit',
-      'componentStockUom',
-      'componentBalance',
-      'componentProjected',
-      'componentLastPurchase',
-      'componentUsedInBoms',
-      'componentManufacturing',
-      'componentCycle',
-      'componentDepthLimit',
-    ];
-    const stage2 = {
-      'supplierGroupItemCount': 'Supplier rows',
-      'supplierGroupComponentCount': 'Supplier rows',
-      'componentMatchPath': 'BOM component rows',
-    };
-    expect(SuppliersByItemField.values.map((field) => field.name), [
-      ...previous,
-      ...added.values.expand((ids) => ids),
-      ...stage2.keys,
-    ]);
-    for (final entry in added.entries) {
-      for (final id in entry.value) {
-        final field = SuppliersByItemField.values.byName(id);
-        expect(field.group.label, entry.key);
-        expect(defaults.shows(field), isTrue);
+        'searchMatchCount',
+      };
+      const user = 'legacy-buyer';
+      final overrides = {
+        for (final entry in releasedDefaults.entries) entry.key: !entry.value,
+      };
+      void expectSelection(
+        SuppliersByItemFieldVisibility visibility,
+        Map<String, bool> expected,
+      ) {
+        expect({
+          for (final field in SuppliersByItemField.values)
+            field.name: visibility.shows(field),
+        }, expected);
       }
-    }
-    for (final entry in stage2.entries) {
-      final field = SuppliersByItemField.values.byName(entry.key);
-      expect(field.group.label, entry.value);
-      expect(defaults.shows(field), isTrue);
-    }
-  });
+
+      await signIn('fresh-buyer');
+      final fresh = await openReport();
+      expectSelection(fresh.fieldVisibility, releasedDefaults);
+      expect(database.records[key('fresh-buyer')], isNull);
+
+      final bytes = jsonEncode(overrides);
+      database.records[key(user)] = bytes;
+      await signIn(user);
+      final report = await openReport();
+      expect(database.records[key(user)], bytes);
+      expect(report.fieldVisibility.overrides, overrides);
+      for (final id in releasedIds) {
+        final field = SuppliersByItemField.values.byName(id);
+        expect(field.fixed, protectedIds.contains(id), reason: id);
+        expect(field.movedToView, viewIds.contains(id), reason: id);
+        expect(
+          report.fieldVisibility.shows(field),
+          protectedIds.contains(id) || overrides[id]!,
+          reason: id,
+        );
+      }
+
+      await report.resetFields();
+      expect(jsonDecode(database.records[key(user)]!), {
+        for (final id in viewIds) id: overrides[id],
+      });
+      expectSelection(report.fieldVisibility, {
+        ...releasedDefaults,
+        for (final id in viewIds) id: overrides[id]!,
+      });
+      await report.setFieldVisible(SuppliersByItemField.itemBalance, false);
+      await report.resetViewDisplayOptions();
+      expect(jsonDecode(database.records[key(user)]!), {'itemBalance': false});
+      expectSelection(report.fieldVisibility, {
+        ...releasedDefaults,
+        'itemBalance': false,
+      });
+      await report.resetFields();
+      expect(jsonDecode(database.records[key(user)]!), isEmpty);
+      expectSelection(report.fieldVisibility, releasedDefaults);
+      expect(api.runs, 2);
+    },
+  );
 
   test(
     'rate format choices survive disabling and re-enabling Supplier rate',
     () async {
-      await storage.saveUser(_user('buyer'));
+      await signIn('buyer');
       final report = await openReport();
       const rate = SuppliersByItemField.supplierRate;
       const currency = SuppliersByItemField.supplierRateCurrency;
@@ -518,7 +661,7 @@ void main() {
     () async {
       const user = 'Buyer::East@example.com';
       const other = 'https://next.example:444/Tenant%2Fdivision';
-      await storage.saveUser(_user(' $user '));
+      await signIn(' $user ');
       final report = await openReport();
       const balance = SuppliersByItemField.itemBalance;
       const projected = SuppliersByItemField.itemProjected;
@@ -531,12 +674,12 @@ void main() {
       await report.setFieldVisible(projected, true);
       expect(database.records[key(user, other)], '{"itemProjected":true}');
 
-      await storage.saveUser(_user('Buyer2'));
+      await signIn('Buyer2');
       await report.refreshFieldsScope();
       expect(report.fieldVisibility.shows(projected), isFalse);
       await report.setFieldVisible(balance, false);
       expect(database.records[key('Buyer2', other)], '{"itemBalance":false}');
-      await storage.saveUser(_user(user));
+      await signIn(user);
       await storage.saveBaseUrl(site);
       final fresh = await openReport(
         usingStorage: StorageService.withStorage(box, database: database),
@@ -561,7 +704,7 @@ void main() {
       };
       await box.write(oldKey(rawUser), legacy);
       await box.write(oldKey(user), {'itemProjected': true});
-      await storage.saveUser(_user(rawUser));
+      await signIn(rawUser);
       final first = await openReport();
 
       final claim =
@@ -586,7 +729,7 @@ void main() {
       const nextSite = 'https://next.example';
       await box.write(oldKey(user), {'itemBalance': false});
       seed(user, {});
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final report = await openReport();
       expect(report.fieldVisibility.overrides, isEmpty);
       expect(
@@ -608,7 +751,7 @@ void main() {
     final scoped = key(user);
     final claim = 'suppliers_by_item_fields_legacy_owner::$user';
     await box.write(oldKey(user), {'itemBalance': false});
-    await storage.saveUser(_user(user));
+    await signIn(user);
     database.rejectedWrites.add(scoped);
     final report = await openReport();
     expect(database.records[claim], site);
@@ -641,7 +784,7 @@ void main() {
       final scoped = key(user);
       final claim = 'suppliers_by_item_fields_legacy_owner::$user';
       await box.write(oldKey(user), legacy);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final claimGate = Completer<void>();
       database.writeGates[claim] = claimGate;
       database.rejectedWrites.add(claim);
@@ -680,14 +823,14 @@ void main() {
       const fallback = 'https://erp.example:8443/Tenant';
       await storage.saveBaseUrl('   ');
       database.records[DatabaseService.serverUrlKey] = fallback;
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final report = await openReport();
       await report.setFieldVisible(SuppliersByItemField.itemBalance, false);
       expect(database.records[key(user, fallback)], '{"itemBalance":false}');
 
       await box.write(oldKey('localBuyer'), {'itemBalance': false});
       await storage.saveBaseUrl('ssh://invalid.example');
-      await storage.saveUser(_user('localBuyer'));
+      await signIn('localBuyer');
       await report.refreshFieldsScope();
       expect(report.fieldsSessionOnly.value, isTrue);
       expect(report.fieldVisibility.overrides, isEmpty);
@@ -704,7 +847,7 @@ void main() {
       final scoped = key(user);
       seed(user, {'itemBalance': false});
       database.rejectedReads.add(scoped);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final report = await openReport();
       expect(report.fieldsLoadError.value, "Couldn't load settings");
       expect(report.fieldsEditable, isFalse);
@@ -722,7 +865,7 @@ void main() {
     () async {
       const firstUser = 'buyer-a';
       const secondUser = 'buyer-b';
-      await storage.saveUser(_user(firstUser));
+      await signIn(firstUser);
       final firstRead = Completer<void>();
       database.readGates[key(firstUser)] = firstRead;
       seed(firstUser, {'itemBalance': false});
@@ -736,7 +879,7 @@ void main() {
         database.reads,
         unorderedEquals([key(firstUser), viewKey(firstUser)]),
       );
-      await storage.saveUser(_user(secondUser));
+      await signIn(secondUser);
       await report.refreshFieldsScope();
       firstRead.complete();
       await firstPending;
@@ -757,7 +900,7 @@ void main() {
       var resolved = site;
       seed(user, {'itemBalance': false});
       seed(user, {'itemProjected': true}, nextSite);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final report = SuppliersByItemController(
         api: api,
         storage: storage,
@@ -782,7 +925,7 @@ void main() {
     () async {
       const user = 'buyer';
       final scoped = key(user);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final first = await openReport();
       final second = await openReport();
       final writeGate = Completer<void>();
@@ -812,7 +955,7 @@ void main() {
 
   test('keeps multiple edits in memory when no site is configured', () async {
     await storage.saveBaseUrl('');
-    await storage.saveUser(_user('buyer'));
+    await signIn('buyer');
     await box.write(oldKey('buyer'), {'supplierLeadTime': true});
     final report = await openReport();
     await report.setFieldVisible(SuppliersByItemField.itemBalance, false);
@@ -832,7 +975,7 @@ void main() {
       const oldOwner = 'buyer-a';
       const newOwner = 'buyer-b';
       const balance = SuppliersByItemField.itemBalance;
-      await storage.saveUser(_user(oldOwner));
+      await signIn(oldOwner);
       final report = await openReport();
       final oldWrite = Completer<void>();
       final newWrite = Completer<void>();
@@ -842,7 +985,7 @@ void main() {
 
       final oldPending = report.setFieldVisible(balance, false);
       expect(report.isSavingField(balance), isTrue);
-      await storage.saveUser(_user(newOwner));
+      await signIn(newOwner);
       await report.refreshFieldsScope();
       expect(report.isSavingField(balance), isFalse);
       final newPending = report.setFieldVisible(balance, false);
@@ -898,7 +1041,7 @@ void main() {
     () async {
       const user = 'Buyer::East';
       const nextSite = 'https://next.example:444/Tenant%2Fdivision';
-      await storage.saveUser(_user(' $user '));
+      await signIn(' $user ');
       final report = await openReport();
       await report.setGroup(SuppliersByItemGroup.supplier);
       await report.setSortField(SuppliersByItemSortField.lastPurchase);
@@ -930,7 +1073,7 @@ void main() {
           group: SuppliersByItemGroup.supplier,
         ).toJson(),
       );
-      await storage.saveUser(_user('different buyer'));
+      await signIn('different buyer');
       await report.refreshFieldsScope();
       expect(report.view.value, const SuppliersByItemView());
       await report.setSortField(SuppliersByItemSortField.supplierCount);
@@ -941,7 +1084,7 @@ void main() {
         ).toJson(),
       );
 
-      await storage.saveUser(_user(user));
+      await signIn(user);
       await storage.saveBaseUrl(site);
       final fresh = await openReport(
         usingStorage: StorageService.withStorage(box, database: database),
@@ -960,7 +1103,7 @@ void main() {
     () async {
       const user = 'buyer';
       final scoped = viewKey(user);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final first = await openReport();
       final second = await openReport();
       final writeGate = Completer<void>();
@@ -1003,7 +1146,7 @@ void main() {
     () async {
       const user = 'buyer';
       final scoped = viewKey(user);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       final first = await openReport();
       final second = await openReport();
       database.rejectedWrites.add(scoped);
@@ -1040,7 +1183,7 @@ void main() {
   test('an earlier failed View write cannot replace a queued choice', () async {
     const user = 'buyer';
     final scoped = viewKey(user);
-    await storage.saveUser(_user(user));
+    await signIn(user);
     final report = await openReport();
     final firstGate = Completer<void>();
     database.writeGates[scoped] = firstGate;
@@ -1070,7 +1213,7 @@ void main() {
       const user = 'buyer';
       const saved = SuppliersByItemView(group: SuppliersByItemGroup.supplier);
       final scoped = viewKey(user);
-      await storage.saveUser(_user(user));
+      await signIn(user);
       database.records[scoped] = jsonEncode(saved.toJson());
       database.rejectedReads.add(scoped);
       final report = await openReport();
@@ -1098,7 +1241,7 @@ void main() {
       database.readGates[oldKey] = pendingRead;
       database.records[oldKey] = '{"group":"supplier"}';
       final watchedStorage = _WatchedViewStorage(box, database);
-      await storage.saveUser(_user(oldUser));
+      await signIn(oldUser);
       final report = SuppliersByItemController(
         api: api,
         storage: watchedStorage,
@@ -1109,7 +1252,7 @@ void main() {
       expect(report.fieldsScopeLoading.value, isTrue);
       expect(watchedStorage.activeViewScopes, [scope(oldUser)]);
 
-      await storage.saveUser(_user(newUser));
+      await signIn(newUser);
       await report.refreshFieldsScope();
       expect(watchedStorage.activeViewScopes, [scope(newUser)]);
       final gate = Completer<void>();
@@ -1165,7 +1308,7 @@ void main() {
     'signed-in View choices stay in memory without a configured site',
     () async {
       await storage.saveBaseUrl('');
-      await storage.saveUser(_user('buyer'));
+      await signIn('buyer');
       expect(database.records, isNot(contains(DatabaseService.serverUrlKey)));
       final report = await openReport();
       expect(report.fieldsSessionOnly.value, isTrue);

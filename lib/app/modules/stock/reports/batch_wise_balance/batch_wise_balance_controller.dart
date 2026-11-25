@@ -1,19 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+
+import 'batch_wise_balance_fields.dart';
 
 class BatchWiseBalanceController extends GetxController {
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
+  late final fields = ScopedReportFieldsController.forReport(batchFields);
+  final scroll = ScrollController();
+  late final Worker _fieldsOwnerWorker;
 
   // ── Filter field controllers ──────────────────────────────────────
 
-  final fromDateController  = TextEditingController();
-  final toDateController    = TextEditingController();
-  final itemCodeController  = TextEditingController();
-  final batchNoController   = TextEditingController();
+  final fromDateController = TextEditingController();
+  final toDateController = TextEditingController();
+  final itemCodeController = TextEditingController();
+  final batchNoController = TextEditingController();
   final warehouseController = TextEditingController();
 
   late final Map<String, TextEditingController> filterControllers;
@@ -24,8 +33,12 @@ class BatchWiseBalanceController extends GetxController {
 
   // ── State ──────────────────────────────────────────────────
 
-  final isLoading  = false.obs;
+  final isLoading = false.obs;
   final reportData = <Map<String, dynamic>>[].obs;
+  final hasRun = false.obs;
+  final reportError = RxnString();
+  final resultRevision = 0.obs;
+  List<DeskColumn>? columns;
 
   /// Reactive map driving active filter chips in the screen.
   final activeFilters = <String, String>{}.obs;
@@ -35,38 +48,38 @@ class BatchWiseBalanceController extends GetxController {
   // (an instance field) can be wired into the descriptor at runtime.
   List<ReportFilterField> get filterFields => [
     const ReportFilterField(
-      key:        'from_date',
-      label:      'From Date',
-      type:       ReportFilterType.datePicker,
+      key: 'from_date',
+      label: 'From Date',
+      type: ReportFilterType.datePicker,
       prefixIcon: Icons.calendar_today_outlined,
     ),
     const ReportFilterField(
-      key:        'to_date',
-      label:      'To Date',
-      type:       ReportFilterType.datePicker,
+      key: 'to_date',
+      label: 'To Date',
+      type: ReportFilterType.datePicker,
       prefixIcon: Icons.calendar_today_outlined,
     ),
     const ReportFilterField(
-      key:        'item_code',
-      label:      'Item Code *',
+      key: 'item_code',
+      label: 'Item Code *',
       prefixIcon: Icons.category_outlined,
-      required:   true,
+      required: true,
     ),
     // batch_no: optional, batchBrowse type for DataWedge + manual entry
     ReportFilterField(
-      key:        'batch_no',
-      label:      'Batch No',
-      type:       ReportFilterType.batchBrowse,
+      key: 'batch_no',
+      label: 'Batch No',
+      type: ReportFilterType.batchBrowse,
       prefixIcon: Icons.qr_code_2_outlined,
-      focusNode:  batchNoFocusNode,
+      focusNode: batchNoFocusNode,
       // required: false (default) — batch filter is now optional
     ),
     // warehouse: doctypeLink picker fetches from Warehouse DocType
     const ReportFilterField(
-      key:         'warehouse',
-      label:       'Warehouse',
-      type:        ReportFilterType.doctypeLink,
-      prefixIcon:  Icons.warehouse_outlined,
+      key: 'warehouse',
+      label: 'Warehouse',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.warehouse_outlined,
       linkDoctype: 'Warehouse',
     ),
   ];
@@ -76,23 +89,38 @@ class BatchWiseBalanceController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    var owner = fields.ownerGeneration;
+    _fieldsOwnerWorker = ever(fields.state, (_) {
+      if (owner == fields.ownerGeneration) return;
+      owner = fields.ownerGeneration;
+      columns = null;
+      reportData.clear();
+      reportError.value = null;
+      hasRun.value = false;
+      isLoading.value = false;
+      resultRevision.value++;
+    });
+    unawaited(fields.bind());
     filterControllers = {
-      'from_date' : fromDateController,
-      'to_date'   : toDateController,
-      'item_code' : itemCodeController,
-      'batch_no'  : batchNoController,
-      'warehouse' : warehouseController,
+      'from_date': fromDateController,
+      'to_date': toDateController,
+      'item_code': itemCodeController,
+      'batch_no': batchNoController,
+      'warehouse': warehouseController,
     };
     // Pre-fill date range: today as both from and to.
     final today = _formatDate(DateTime.now());
     fromDateController.text = today;
-    toDateController.text   = today;
+    toDateController.text = today;
     // Reflect pre-filled dates in active filters immediately.
     _rebuildActiveFilters();
   }
 
   @override
   void onClose() {
+    _fieldsOwnerWorker.dispose();
+    fields.dispose();
+    scroll.dispose();
     for (final c in filterControllers.values) {
       c.dispose();
     }
@@ -112,9 +140,12 @@ class BatchWiseBalanceController extends GetxController {
     // Keep dates at today on clear.
     final today = _formatDate(DateTime.now());
     fromDateController.text = today;
-    toDateController.text   = today;
+    toDateController.text = today;
     _rebuildActiveFilters();
     reportData.clear();
+    hasRun.value = false;
+    reportError.value = null;
+    resultRevision.value++;
   }
 
   void clearFilter(String key) {
@@ -123,6 +154,7 @@ class BatchWiseBalanceController extends GetxController {
       filterControllers[key]!.text = _formatDate(DateTime.now());
     }
     _rebuildActiveFilters();
+    resultRevision.value++;
   }
 
   /// Runs the Batch-Wise Balance History report with current filter values.
@@ -131,25 +163,26 @@ class BatchWiseBalanceController extends GetxController {
   /// and are omitted from the API call when empty. From/To dates are sent
   /// as selected; a blank date falls back to today in the provider.
   Future<void> runReport() async {
+    if (isLoading.value) return;
     final itemCode = itemCodeController.text.trim();
     final fromDate = fromDateController.text.trim();
-    final toDate   = toDateController.text.trim();
+    final toDate = toDateController.text.trim();
 
     if (itemCode.isEmpty) {
       GlobalSnackbar.warning(
-        title:   'Filter Required',
+        title: 'Filter Required',
         message: 'Please enter an Item Code to run the report.',
       );
       return;
     }
 
-    // The report throws "From Date must be before To Date" server-side, which
-    // getBatchWiseBalance swallows into an empty list — catch it here instead.
+    // The server rejects a reversed range.
     // yyyy-MM-dd strings compare correctly as plain strings.
-    if (fromDate.isNotEmpty && toDate.isNotEmpty &&
+    if (fromDate.isNotEmpty &&
+        toDate.isNotEmpty &&
         fromDate.compareTo(toDate) > 0) {
       GlobalSnackbar.warning(
-        title:   'Invalid Date Range',
+        title: 'Invalid Date Range',
         message: 'From Date must be on or before To Date.',
       );
       return;
@@ -157,42 +190,59 @@ class BatchWiseBalanceController extends GetxController {
 
     _rebuildActiveFilters();
     isLoading.value = true;
+    reportError.value = null;
+    hasRun.value = false;
     reportData.clear();
+    final revision = ++resultRevision.value;
+    final owner = fields.ownerGeneration;
 
     try {
-      final batchNo   = batchNoController.text.trim();
+      final batchNo = batchNoController.text.trim();
       final warehouse = warehouseController.text.trim();
 
-      final rows = await _apiProvider.getBatchWiseBalance(
-        itemCode:  itemCode,
-        batchNo:   batchNo.isEmpty   ? null : batchNo,
+      final result = await _apiProvider.getBatchWiseBalanceReport(
+        itemCode: itemCode,
+        batchNo: batchNo.isEmpty ? null : batchNo,
         warehouse: warehouse.isEmpty ? null : warehouse,
-        fromDate:  fromDate.isEmpty  ? null : fromDate,
-        toDate:    toDate.isEmpty    ? null : toDate,
+        fromDate: fromDate.isEmpty ? null : fromDate,
+        toDate: toDate.isEmpty ? null : toDate,
       );
 
-      reportData.assignAll(rows);
+      if (isClosed ||
+          revision != resultRevision.value ||
+          owner != fields.ownerGeneration) {
+        return;
+      }
+      columns = result.columns;
+      fields.replaceDefinition(
+        batchFields.withColumns(columns, aliases: batchColumnAliases),
+      );
+      reportData.assignAll(result.rows);
+      hasRun.value = true;
     } catch (e) {
-      GlobalSnackbar.error(
-        title:   'Report Error',
-        message: readableReportError(
+      if (!isClosed &&
+          revision == resultRevision.value &&
+          owner == fields.ownerGeneration) {
+        reportError.value = readableReportError(
           e,
           reportName: 'Batch-Wise Balance History',
-        ),
-      );
+        );
+      }
     } finally {
-      isLoading.value = false;
+      if (!isClosed && owner == fields.ownerGeneration) {
+        isLoading.value = false;
+      }
     }
   }
 
   // ── Helpers ─────────────────────────────────────────────────
 
   static const _filterLabels = {
-    'from_date' : 'From',
-    'to_date'   : 'To',
-    'item_code' : 'Item',
-    'batch_no'  : 'Batch',
-    'warehouse' : 'Warehouse',
+    'from_date': 'From',
+    'to_date': 'To',
+    'item_code': 'Item',
+    'batch_no': 'Batch',
+    'warehouse': 'Warehouse',
   };
 
   void _rebuildActiveFilters() {

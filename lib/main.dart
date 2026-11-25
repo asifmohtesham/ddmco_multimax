@@ -7,6 +7,7 @@ import 'package:multimax/app/data/routes/app_pages.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/services/digest_worker.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/home/home_controller.dart';
 import 'package:multimax/app/modules/theme/theme_controller.dart';
 import 'package:multimax/app/data/services/database_service.dart';
@@ -103,6 +104,21 @@ Future<void> main() async {
   Get.put<StorageService>(StorageService(), permanent: true);
 
   Get.put<AuthenticationController>(AuthenticationController(), permanent: true);
+  Get.put<ReportOwnerSource>(
+    StorageReportOwnerSource(
+      auth: Get.find<AuthenticationController>(),
+      storage: Get.find<StorageService>(),
+      database: Get.find<DatabaseService>(),
+    ),
+    permanent: true,
+  );
+  Get.put<ReportFieldsStore>(
+    ScopedReportFieldsStore(
+      database: Get.find<DatabaseService>(),
+      storage: Get.find<StorageService>(),
+    ),
+    permanent: true,
+  );
 
   // Photos shared from the gallery. Registered after the auth controller,
   // whose isAuthenticated it watches; it holds a share through sign-in and

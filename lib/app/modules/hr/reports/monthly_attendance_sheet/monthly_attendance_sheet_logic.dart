@@ -50,22 +50,22 @@ enum SheetStatus {
   /// Attention first, so merging two shifts that disagree about a day keeps the
   /// one the user needs to act on.
   int get severity => switch (this) {
-        absent => 0,
-        halfDayAbsent => 1,
-        halfDayPresent => 2,
-        onLeave => 3,
-        workFromHome => 4,
-        present => 5,
-        weeklyOff => 6,
-        holiday => 7,
-        unmarked => 99,
-      };
+    absent => 0,
+    halfDayAbsent => 1,
+    halfDayPresent => 2,
+    onLeave => 3,
+    workFromHome => 4,
+    present => 5,
+    weeklyOff => 6,
+    holiday => 7,
+    unmarked => 99,
+  };
 
   /// Whether the day counts as one the employee was expected to work.
   bool get isWorkingDay => switch (this) {
-        holiday || weeklyOff || unmarked => false,
-        _ => true,
-      };
+    holiday || weeklyOff || unmarked => false,
+    _ => true,
+  };
 }
 
 /// One day column of the sheet, in the order the server returned it.
@@ -197,15 +197,17 @@ List<SheetDay> parseDayColumns(Object? columns) {
     final fieldname = column['fieldname']?.toString() ?? '';
     final match = _dayFieldname.firstMatch(fieldname);
     if (match == null) continue;
-    days.add(SheetDay(
-      key: fieldname,
-      label: column['label']?.toString() ?? '',
-      date: DateTime(
-        int.parse(match.group(3)!),
-        int.parse(match.group(2)!),
-        int.parse(match.group(1)!),
+    days.add(
+      SheetDay(
+        key: fieldname,
+        label: column['label']?.toString() ?? '',
+        date: DateTime(
+          int.parse(match.group(3)!),
+          int.parse(match.group(2)!),
+          int.parse(match.group(1)!),
+        ),
       ),
-    ));
+    );
   }
   return days;
 }
@@ -213,20 +215,21 @@ List<SheetDay> parseDayColumns(Object? columns) {
 /// Numeric columns of a summarized-view response that are Leave Types — the
 /// site's own Leave Type list, which varies per site.
 List<SheetSummaryColumn> parseLeaveTypeColumns(Object? columns) => [
-      for (final column in _maps(columns))
-        if (column['fieldtype'] == 'Float' &&
-            !kSheetTotalFields.contains(column['fieldname']?.toString()))
-          SheetSummaryColumn(
-            fieldname: column['fieldname']?.toString() ?? '',
-            label: column['label']?.toString() ?? '',
-          ),
-    ];
+  for (final column in _maps(columns))
+    if (column['fieldtype'] == 'Float' &&
+        (column['fieldname']?.toString().isNotEmpty ?? false) &&
+        !kSheetTotalFields.contains(column['fieldname']?.toString()))
+      SheetSummaryColumn(
+        fieldname: column['fieldname']?.toString() ?? '',
+        label: column['label']?.toString() ?? '',
+      ),
+];
 
 /// Detailed-view rows folded into one [SheetEmployee] per employee, preserving
 /// the server's ordering and carrying any `group_by` label down onto the rows
 /// that follow its marker.
 List<SheetEmployee> parseDetailed(Object? result, {String? groupByField}) {
-  final byEmployee = <String, SheetEmployee>{};
+  final byEmployee = <(String?, String), SheetEmployee>{};
   String? group;
 
   for (final row in _maps(result)) {
@@ -245,16 +248,15 @@ List<SheetEmployee> parseDetailed(Object? result, {String? groupByField}) {
       }
     });
 
-    final entry = byEmployee[employee] ??= SheetEmployee(
+    final entry = byEmployee[(group, employee)] ??= SheetEmployee(
       employee: employee,
       employeeName: row['employee_name']?.toString() ?? employee,
       group: group,
       shifts: [],
     );
-    entry.shifts.add(SheetShift(
-      shift: row['shift']?.toString() ?? '',
-      statuses: statuses,
-    ));
+    entry.shifts.add(
+      SheetShift(shift: row['shift']?.toString() ?? '', statuses: statuses),
+    );
   }
 
   return byEmployee.values.toList();
@@ -272,15 +274,17 @@ List<SheetSummary> parseSummarized(Object? result, {String? groupByField}) {
       continue;
     }
 
-    rows.add(SheetSummary(
-      employee: employee,
-      employeeName: row['employee_name']?.toString() ?? employee,
-      group: group,
-      values: {
-        for (final entry in row.entries)
-          if (entry.value is num) entry.key: entry.value as num,
-      },
-    ));
+    rows.add(
+      SheetSummary(
+        employee: employee,
+        employeeName: row['employee_name']?.toString() ?? employee,
+        group: group,
+        values: {
+          for (final entry in row.entries)
+            if (entry.value is num) entry.key: entry.value as num,
+        },
+      ),
+    );
   }
 
   return rows;
@@ -290,7 +294,9 @@ List<SheetSummary> parseSummarized(Object? result, {String? groupByField}) {
 Map<SheetStatus, int> totalCounts(List<SheetEmployee> employees) {
   final out = <SheetStatus, int>{};
   for (final employee in employees) {
-    employee.counts.forEach((status, n) => out[status] = (out[status] ?? 0) + n);
+    employee.counts.forEach(
+      (status, n) => out[status] = (out[status] ?? 0) + n,
+    );
   }
   return _bySeverity(out);
 }
@@ -298,9 +304,10 @@ Map<SheetStatus, int> totalCounts(List<SheetEmployee> employees) {
 /// `"16 employees · 234 present · 41 absent"` for the end-of-list footer.
 /// Days, never rates — summing a rate column is meaningless.
 String totalsLabel(List<SheetEmployee> employees) {
-  if (employees.isEmpty) return 'End of results';
+  if (employees.isEmpty) return 'End of list';
   final counts = totalCounts(employees);
   return [
+    'End of list',
     '${employees.length} employee${employees.length == 1 ? '' : 's'}',
     for (final entry in counts.entries)
       if (entry.value > 0) '${entry.value} ${entry.key.label.toLowerCase()}',

@@ -6,6 +6,7 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/filter_focus.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
 
 // ---------------------------------------------------------------------------
 // ReportFilterField descriptor
@@ -184,6 +185,7 @@ int activeFilterCount(Map<String, TextEditingController> controllers) =>
 /// fields are non-empty before calling [onRun]. [validate] can return an
 /// inline error message for invalid filter combinations.
 /// [runBusy] connects the Run control to the report's in-flight state.
+/// [titleOwner] scopes cached Link titles to the verified report owner.
 ///
 /// ### Usage
 /// ```dart
@@ -214,6 +216,7 @@ Future<void> showReportFilterSheet({
   required Map<String, TextEditingController> controllers,
   required VoidCallback onRun,
   RxBool? runBusy,
+  ReportFieldsController? titleOwner,
   String? Function()? validate,
   VoidCallback? onClear,
   Map<String, String> sectionLabels = const {},
@@ -244,6 +247,7 @@ Future<void> showReportFilterSheet({
       controllers:   controllers,
       onRun:         onRun,
       runBusy:       runBusy,
+      titleOwner:    titleOwner,
       validate:      validate,
       onClear:       onClear,
       sectionLabels: sectionLabels,
@@ -267,6 +271,7 @@ class _ReportFilterSheet extends StatelessWidget {
   final Map<String, TextEditingController> controllers;
   final VoidCallback                       onRun;
   final RxBool?                            runBusy;
+  final ReportFieldsController?            titleOwner;
   final String? Function()?                validate;
   final VoidCallback?                      onClear;
   final Map<String, String>                sectionLabels;
@@ -281,6 +286,7 @@ class _ReportFilterSheet extends StatelessWidget {
     required this.controllers,
     required this.onRun,
     this.runBusy,
+    this.titleOwner,
     this.validate,
     this.onClear,
     this.sectionLabels = const {},
@@ -385,6 +391,8 @@ class _ReportFilterSheet extends StatelessWidget {
                         field:      field,
                         controller: controllers[field.key]!,
                         activate:   field.key == focusKey,
+                        titleOwner:
+                            field.linkTitleField == null ? null : titleOwner,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -565,6 +573,7 @@ class _SheetSubheading extends StatelessWidget {
 class _FieldWidget extends StatefulWidget {
   final ReportFilterField     field;
   final TextEditingController controller;
+  final ReportFieldsController? titleOwner;
 
   /// Start editing this field as soon as the sheet opens.
   final bool activate;
@@ -573,6 +582,7 @@ class _FieldWidget extends StatefulWidget {
     required this.field,
     required this.controller,
     this.activate = false,
+    this.titleOwner,
   });
 
   @override
@@ -592,6 +602,7 @@ class _FieldWidgetState extends State<_FieldWidget> {
   /// What a title-backed link field shows (the title); the real controller
   /// keeps the ID the report is filtered by.
   TextEditingController? _display;
+  Worker? _titleOwnerWorker;
 
   bool get _hasTitle =>
       widget.field.type == ReportFilterType.doctypeLink &&
@@ -606,6 +617,19 @@ class _FieldWidgetState extends State<_FieldWidget> {
     if (_hasTitle) {
       _display = TextEditingController();
       _syncDisplay();
+      final owner = widget.titleOwner;
+      if (owner != null) {
+        var scope = owner.scope;
+        var generation = owner.ownerGeneration;
+        _titleOwnerWorker = ever(owner.state, (_) {
+          if (scope == owner.scope && generation == owner.ownerGeneration) {
+            return;
+          }
+          scope = owner.scope;
+          generation = owner.ownerGeneration;
+          setState(_syncDisplay);
+        });
+      }
     }
     if (widget.activate) {
       if (widget.field.focusNode == null) _ownFocus = FocusNode();
@@ -620,15 +644,26 @@ class _FieldWidgetState extends State<_FieldWidget> {
     if (display == null) return;
     final id = widget.controller.text.trim();
     final doctype = widget.field.linkDoctype!;
-    final title = id.isEmpty ? null : LinkTitleCache.peek(doctype, id);
+    final owner = widget.titleOwner;
+    final scope = owner?.scope;
+    final generation = owner?.ownerGeneration;
+    final title = id.isEmpty
+        ? null
+        : LinkTitleCache.peek(doctype, id, scope: scope);
     display.text = title ?? id;
-    if (id.isEmpty || title != null) return;
+    if (scope == null || id.isEmpty || title != null) return;
     final api = Get.isRegistered<ApiProvider>()
         ? Get.find<ApiProvider>()
         : ApiProvider();
-    LinkTitleCache.resolve(doctype, widget.field.linkTitleField!, id, api)
-        .then((resolved) {
+    LinkTitleCache.resolve(
+      doctype,
+      widget.field.linkTitleField!,
+      id,
+      api,
+      scope: scope,
+    ).then((resolved) {
       if (!mounted || resolved == null) return;
+      if (owner!.ownerGeneration != generation || owner.scope != scope) return;
       if (widget.controller.text.trim() != id) return;
       setState(() => display.text = resolved); // helper text shows the ID now
     });
@@ -636,6 +671,7 @@ class _FieldWidgetState extends State<_FieldWidget> {
 
   @override
   void dispose() {
+    _titleOwnerWorker?.dispose();
     widget.controller.removeListener(_onTextChanged);
     _display?.dispose();
     _ownFocus?.dispose();
@@ -882,7 +918,8 @@ class _FieldWidgetState extends State<_FieldWidget> {
 
     final isMultiple = field.type == ReportFilterType.doctypeMultiLink;
     final initialSelection = isMultiple ? splitMultiValue(ctrl.text) : null;
-    final selected = await showModalBottomSheet<List<String>>(
+    final owner = widget.titleOwner;
+    final selected = await showModalBottomSheet<_PickedLinks>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -892,12 +929,19 @@ class _FieldWidgetState extends State<_FieldWidget> {
         title:    field.label,
         filters:  field.linkFilters,
         titleField: field.linkTitleField,
+        titleOwner: owner,
         initialSelection: initialSelection,
       ),
     );
 
-    if (!mounted || selected == null) return;
-    ctrl.text = isMultiple ? joinMultiValue(selected) : selected.single;
+    if (!mounted ||
+        selected == null ||
+        owner?.ownerGeneration != selected.generation) {
+      return;
+    }
+    ctrl.text = isMultiple
+        ? joinMultiValue(selected.names)
+        : selected.names.single;
   }
 }
 
@@ -981,6 +1025,8 @@ class _ToggleChipsWidgetState extends State<_ToggleChipsWidget> {
 // _DoctypeLinkSheet — searchable DocType list picker
 // ---------------------------------------------------------------------------
 
+typedef _PickedLinks = ({List<String> names, int? generation});
+
 class _DoctypeLinkSheet extends StatefulWidget {
   final String                  doctype;
   final String                  title;
@@ -988,6 +1034,7 @@ class _DoctypeLinkSheet extends StatefulWidget {
 
   /// See [ReportFilterField.linkTitleField].
   final String?                 titleField;
+  final ReportFieldsController? titleOwner;
 
   /// A non-null list enables multi-selection, including when it starts empty.
   final List<String>? initialSelection;
@@ -997,6 +1044,7 @@ class _DoctypeLinkSheet extends StatefulWidget {
     required this.title,
     this.filters,
     this.titleField,
+    this.titleOwner,
     this.initialSelection,
   });
 
@@ -1013,6 +1061,8 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
       ? Get.find<ApiProvider>()
       : ApiProvider();
   Timer? _debounce;
+  Worker? _titleOwnerWorker;
+  String _query = '';
 
   List<LinkOption> _items = [];
   bool         _loading = true;
@@ -1021,12 +1071,32 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
   @override
   void initState() {
     super.initState();
+    final owner = widget.titleOwner;
+    if (owner != null) {
+      var generation = owner.ownerGeneration;
+      var scope = owner.scope;
+      var binding = owner.state.value.binding;
+      _titleOwnerWorker = ever(owner.state, (_) {
+        if (scope == owner.scope &&
+            generation == owner.ownerGeneration &&
+            binding == owner.state.value.binding) {
+          return;
+        }
+        scope = owner.scope;
+        generation = owner.ownerGeneration;
+        binding = owner.state.value.binding;
+        _debounce?.cancel();
+        _items = [];
+        _fetchItems(_query);
+      });
+    }
     _fetchItems('');
     _searchCtrl.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
+    _titleOwnerWorker?.dispose();
     _debounce?.cancel();
     _searchCtrl.removeListener(_onSearchChanged);
     _searchCtrl.dispose();
@@ -1036,6 +1106,8 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
 
   void _onSearchChanged() {
     final q = _searchCtrl.text.trim();
+    if (q == _query) return;
+    _query = q;
     _debounce?.cancel();
     _debounce = Timer(
       const Duration(milliseconds: 400),
@@ -1044,15 +1116,21 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
   }
 
   Future<void> _fetchItems(String q) async {
+    final owner = widget.titleOwner;
+    final scope = owner?.scope;
+    final generation = owner?.ownerGeneration;
+    bool isCurrent() =>
+        mounted && scope == owner?.scope && generation == owner?.ownerGeneration;
     setState(() {
       _loading  = true;
       _errorMsg = null;
     });
+    if (owner?.state.value.binding == true) return;
     try {
       // Shared link-option fetch: adds the doctype's active-record filter
       // (disabled = 0 / enabled = 1) so disabled records never show here.
       final titleField = widget.titleField;
-      final options = titleField == null || titleField.isEmpty
+      final options = scope == null || titleField == null || titleField.isEmpty
           ? [
               for (final name in await _apiProvider.searchLinkOptions(
                 widget.doctype,
@@ -1069,20 +1147,27 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
               filters:    widget.filters,
               limit:      50,
             );
-      if (mounted) {
+      if (isCurrent()) {
+        LinkTitleCache.remember(widget.doctype, options, scope: scope);
         setState(() {
           _items   = options;
           _loading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (isCurrent()) {
         setState(() {
           _loading  = false;
           _errorMsg = 'Failed to load ${widget.doctype}: $e';
         });
       }
     }
+  }
+
+  void _pick(BuildContext context, List<String> names) {
+    Navigator.of(context).pop<_PickedLinks>(
+      (names: names, generation: widget.titleOwner?.ownerGeneration),
+    );
   }
 
   @override
@@ -1142,7 +1227,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                     if (selection != null)
                       TextButton(
                         onPressed: () =>
-                            Navigator.of(ctx).pop(selection.toList()),
+                            _pick(ctx, selection.toList()),
                         child: const Text('Done'),
                       ),
                     IconButton(
@@ -1240,7 +1325,7 @@ class _DoctypeLinkSheetState extends State<_DoctypeLinkSheet> {
                                       title: Text(option.display),
                                       subtitle: subtitle,
                                       onTap: () =>
-                                          Navigator.of(ctx).pop([option.name]),
+                                          _pick(ctx, [option.name]),
                                       trailing: const Icon(
                                           Icons.chevron_right, size: 18),
                                     );

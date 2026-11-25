@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -37,6 +38,36 @@ void main() {
   // GetMaterialApp keeps its navigator/route state in a global singleton;
   // without a reset, route assertions in one test can leak into the next.
   tearDown(Get.reset);
+
+  testWidgets('short status leaves the customer code room on a phone',
+      (tester) async {
+    const code = 'CUSTOMER-0012';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: const Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 360,
+              child: PosDnItemRateTile(
+                row: {'status': 'New', 'ref_code': code},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final codeParagraph = tester.renderObject<RenderParagraph>(find.text(code));
+    final pill = find.byType(PosDnStatusPill);
+    final tile = find.byType(PosDnItemRateTile);
+    expect(
+      codeParagraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: code.length),
+      ),
+      hasLength(1),
+    );
+    expect(tester.getTopRight(pill).dx, tester.getTopRight(tile).dx - 16);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('New row: shows pill, hero code+item, both item names, numbers',
       (tester) async {
@@ -139,7 +170,7 @@ void main() {
       ],
     ));
     // Tap the card body (avoid the thumbnail and voucher chips).
-    await tester.tapAt(tester.getCenter(find.text('DN')));
+    await tester.tapAt(tester.getCenter(find.text('DN Item Name')));
     await tester.pumpAndSettle();
     expect(find.text('ITEM FORM STUB'), findsOneWidget);
     expect(Get.arguments, {'itemCode': '2001272'});

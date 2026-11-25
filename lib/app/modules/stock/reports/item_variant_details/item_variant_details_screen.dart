@@ -8,14 +8,37 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_anchor.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_owner_overlay.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
+
+typedef _OccurrenceId = (VariantGroup, String, int);
+typedef _TrackOccurrence = Widget Function(VariantGroup, String, int, Widget);
 
 class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
   const ItemVariantDetailsScreen({super.key});
 
   static const _headingExtent = 52.0;
+  static bool _wrapHeading(BuildContext context, String stockLabel) =>
+      MediaQuery.textScalerOf(context).scale(12) > 12 ||
+      stockLabel.runes.length > 22;
+
+  static double _groupHeadingExtent(BuildContext context, String stockLabel) {
+    if (!_wrapHeading(context, stockLabel)) return _headingExtent;
+    final scale = MediaQuery.textScalerOf(context);
+    final text = Theme.of(context).textTheme;
+    double lineHeight(TextStyle? style, double fallback) =>
+        scale.scale(style?.fontSize ?? fallback) * (style?.height ?? 1.3);
+    final title = lineHeight(text.titleMedium, 16);
+    final summary = lineHeight(text.bodySmall, 12);
+    return (2 * title + 2 * summary + 12).ceilToDouble();
+  }
+
   // Native groups measure one child per delegate, even when offscreen.
   static const _maxNativeGroups = 24;
 
@@ -105,279 +128,314 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
         if (query.isNotEmpty) controller.queueMatchedDetails(shown);
         final lazyGroups =
             grouped && !collapsed && groups.length > _maxNativeGroups;
-        final scrollView = RefreshIndicator(
+        final headingExtent = _groupHeadingExtent(context, _currentStockLabel);
+        final occurrenceIds = <_OccurrenceId>[
+          for (final match in groups) ...[
+            if (match.group.heading != null) (match.group, 'title', 0),
+            if (data!.isExpanded(match.group) && match.variants.isNotEmpty) ...[
+              if (match.group.heading != null) (match.group, 'subtotal', 0),
+              for (var index = 0; index < match.variants.length; index++)
+                (match.group, 'variant', index),
+            ],
+          ],
+        ];
+        final occurrenceIndices = {
+          for (final (index, id) in occurrenceIds.indexed) id: index,
+        };
+        return RefreshIndicator(
           onRefresh: controller.runReport,
           color: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
-          child: Scrollbar(
+          child: ReportFieldsResults(
+            controller: controller.fields,
+            scrollController: controller.scrollController,
+            result: (
+              data,
+              query,
+              stock,
+              controller.viewRevision.value,
+              query.isEmpty ? 0 : controller.searchRevision.value,
+            ),
+            occurrenceIds: occurrenceIds,
+            fallbacks: (id) => id is _OccurrenceId && id.$2 != 'title'
+                ? [(id.$1, 'title', 0)]
+                : const [],
             interactive: draggable,
             thumbVisibility: !busy && rowCount > 0,
-            controller: controller.scrollController,
-            child: CustomScrollView(
-              controller: controller.scrollController,
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                DocTypeListHeader(
-                  title: 'Item Variant Details',
-                  automaticallyImplyLeading: false,
-                  activeFilters: controller.activeFilters,
-                  onFilterTap: busy ? null : () => _openFilters(context),
-                  filterChipsBuilder: _buildFilterChips,
-                  onClearAllFilters: controller.clearFilters,
-                  extraActions: [
-                    IconButton(
-                      tooltip: 'Fields',
-                      icon: const Icon(Icons.view_agenda_outlined),
-                      onPressed: controller.reportColumns.isEmpty
-                          ? null
-                          : () => _openFields(context),
-                    ),
-                  ],
-                  extraActionsKey: controller.reportColumns.isNotEmpty,
-                  quickChips: [
-                    if (data != null)
-                      FilterChip(
-                        selected: stock,
-                        visualDensity: VisualDensity.compact,
-                        onSelected: controller.setInStock,
-                        label: Text(switch (controller.warehouseCount) {
-                          0 => 'In stock',
-                          1 => 'In stock in 1 warehouse',
-                          final count => 'In stock in $count warehouses',
-                        }),
-                      ),
-                  ],
-                  quickChipsKey: (stock, busy, controller.warehouseCount),
-                ),
-                if (!busy)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (data != null) ...[
-                            Text(
-                              [
-                                if (grouped) '${data.templateCount} templates',
-                                if (query.isNotEmpty || stock)
-                                  '${shown.length} of ${data.variants.length} variants'
-                                else
-                                  '${data.variants.length} variants',
-                              ].join(' · '),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: controller.searchController,
-                              onChanged: controller.search,
-                              textInputAction: TextInputAction.search,
-                              decoration: InputDecoration(
-                                labelText: 'Search loaded results',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIcon: query.isNotEmpty
-                                    ? IconButton(
-                                        tooltip: 'Clear search',
-                                        onPressed: () {
-                                          controller.searchController.clear();
-                                          controller.search('');
-                                        },
-                                        icon: const Icon(Icons.clear),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            Obx(() {
-                              final progress = controller.nameProgress.value;
-                              if (query.isEmpty) return const SizedBox.shrink();
-                              if (progress != null) {
-                                return Semantics(
-                                  liveRegion: true,
-                                  child: Text(
-                                    'Searching names… ${progress.done} / ${progress.total}',
-                                  ),
-                                );
-                              }
-                              if (controller.nameSearchIncomplete.value) {
-                                return Row(
-                                  children: [
-                                    const Expanded(
-                                      child: Text(
-                                        'Some item names could not be loaded.',
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: controller.retrySearchNames,
-                                      child: const Text('Retry'),
-                                    ),
-                                  ],
-                                );
-                              }
-                              return const SizedBox.shrink();
+            builder: (context, anchors) {
+              Widget track(
+                VariantGroup group,
+                String type,
+                int index,
+                Widget child,
+              ) {
+                final id = (group, type, index);
+                return anchors.row(id, occurrenceIndices[id]!, child);
+              }
+
+              final results = CustomScrollView(
+                controller: controller.scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  anchors.header(
+                    DocTypeListHeader(
+                      title: 'Item Variant Details',
+                      automaticallyImplyLeading: false,
+                      activeFilters: controller.activeFilters,
+                      onFilterTap: busy ? null : () => _openFilters(context),
+                      filterChipsBuilder: _buildFilterChips,
+                      onClearAllFilters: controller.clearFilters,
+                      extraActions: [
+                        ReportFieldsAction(controller: controller.fields),
+                      ],
+                      quickChips: [
+                        if (data != null)
+                          FilterChip(
+                            selected: stock,
+                            visualDensity: VisualDensity.compact,
+                            onSelected: controller.setInStock,
+                            label: Text(switch (controller.warehouseCount) {
+                              0 => 'In stock',
+                              1 => 'In stock in 1 warehouse',
+                              final count => 'In stock in $count warehouses',
                             }),
-                            if (grouped)
-                              Wrap(
-                                spacing: 8,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        controller.setAllExpanded(false),
-                                    child: const Text('Collapse All'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        controller.setAllExpanded(true),
-                                    child: const Text('Expand All'),
-                                  ),
-                                ],
-                              ),
-                            if (!draggable)
-                              Text(
-                                grouped
-                                    ? 'Collapse groups to drag the scrollbar'
-                                    : 'Swipe the list to scroll long results',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: cs.onSurfaceVariant),
-                              ),
-                          ],
-                        ],
-                      ),
+                          ),
+                      ],
+                      quickChipsKey: (stock, busy, controller.warehouseCount),
                     ),
                   ),
-
-                if (busy)
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else if (controller.reportData.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
+                  if (!busy)
+                    SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.all(32),
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              Icons.style_outlined,
-                              size: 64,
-                              color: cs.outlineVariant,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              controller.reportError.value ??
-                                  (controller.hasRun.value
-                                      ? 'No variants match these filters.'
-                                      : 'Select Items or Item Groups, then run the report.'),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: cs.onSurfaceVariant),
-                            ),
-                            const SizedBox(height: 24),
-                            FilledButton.tonalIcon(
-                              onPressed: () => _openFilters(context),
-                              icon: const Icon(Icons.filter_alt_outlined),
-                              label: const Text('Set Filters'),
-                            ),
+                            if (data != null) ...[
+                              Text(
+                                [
+                                  if (grouped)
+                                    '${data.templateCount} templates',
+                                  if (query.isNotEmpty || stock)
+                                    '${shown.length} of ${data.variants.length} variants'
+                                  else
+                                    '${data.variants.length} variants',
+                                ].join(' · '),
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: controller.searchController,
+                                onChanged: controller.search,
+                                textInputAction: TextInputAction.search,
+                                decoration: InputDecoration(
+                                  labelText: 'Search loaded results',
+                                  prefixIcon: const Icon(Icons.search),
+                                  suffixIcon: query.isNotEmpty
+                                      ? IconButton(
+                                          tooltip: 'Clear search',
+                                          onPressed: () {
+                                            controller.searchController.clear();
+                                            controller.search('');
+                                          },
+                                          icon: const Icon(Icons.clear),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              Obx(() {
+                                final progress = controller.nameProgress.value;
+                                if (query.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                if (progress != null) {
+                                  return Semantics(
+                                    liveRegion: true,
+                                    child: Text(
+                                      'Searching names… ${progress.done} / ${progress.total}',
+                                    ),
+                                  );
+                                }
+                                if (controller.nameSearchIncomplete.value) {
+                                  return Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Some item names could not be loaded.',
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: controller.retrySearchNames,
+                                        child: const Text('Retry'),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              }),
+                              if (grouped)
+                                Wrap(
+                                  spacing: 8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          controller.setAllExpanded(false),
+                                      child: const Text('Collapse All'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () =>
+                                          controller.setAllExpanded(true),
+                                      child: const Text('Expand All'),
+                                    ),
+                                  ],
+                                ),
+                              if (!draggable)
+                                Text(
+                                  grouped
+                                      ? 'Collapse groups to drag the scrollbar'
+                                      : 'Swipe the list to scroll long results',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: cs.onSurfaceVariant),
+                                ),
+                            ],
                           ],
                         ),
                       ),
                     ),
-                  )
-                else if (data != null) ...[
-                  if (lazyGroups)
-                    _lazyGroupSliver(data, groups, filtered)
-                  else
-                    ..._resultSlivers(data, groups, filtered, cs),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        12,
-                        16,
-                        12,
-                        80 + bottomPadding,
+
+                  if (busy)
+                    const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (controller.reportData.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.style_outlined,
+                                size: 64,
+                                color: cs.outlineVariant,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                controller.reportError.value ??
+                                    (controller.hasRun.value
+                                        ? 'No variants match these filters.'
+                                        : 'Select Items or Item Groups, then run the report.'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: cs.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 24),
+                              FilledButton.tonalIcon(
+                                onPressed: () => _openFilters(context),
+                                icon: const Icon(Icons.filter_alt_outlined),
+                                label: const Text('Set Filters'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      child: shown.isEmpty
-                          ? Obx(() {
-                              if (controller.nameProgress.value != null ||
-                                  (query.isNotEmpty &&
-                                      controller.nameSearchIncomplete.value)) {
-                                return const SizedBox.shrink();
-                              }
-                              return Text(
-                                'No variants match.',
+                    )
+                  else if (data != null) ...[
+                    if (lazyGroups)
+                      _lazyGroupSliver(
+                        data,
+                        groups,
+                        filtered,
+                        track,
+                        headingExtent,
+                      )
+                    else
+                      ..._resultSlivers(
+                        data,
+                        groups,
+                        filtered,
+                        cs,
+                        track,
+                        anchors.topObstruction,
+                        headingExtent,
+                      ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          12,
+                          16,
+                          12,
+                          80 + bottomPadding,
+                        ),
+                        child: shown.isEmpty
+                            ? Obx(() {
+                                if (controller.nameProgress.value != null ||
+                                    (query.isNotEmpty &&
+                                        controller
+                                            .nameSearchIncomplete
+                                            .value)) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Text(
+                                  'No variants match.',
+                                  textAlign: TextAlign.center,
+                                  style: footerStyle,
+                                );
+                              })
+                            : Text(
+                                [
+                                  'End of list',
+                                  'Quantity totals for shown results',
+                                  ...variantQuantitySummary(
+                                    shown,
+                                    controller.reportColumns,
+                                  ),
+                                ].join('\n'),
                                 textAlign: TextAlign.center,
                                 style: footerStyle,
-                              );
-                            })
-                          : Text(
-                              [
-                                'End of list',
-                                'Quantity totals for shown results',
-                                ...variantQuantitySummary(
-                                  shown,
-                                  controller.reportColumns,
-                                ),
-                              ].join('\n'),
-                              textAlign: TextAlign.center,
-                              style: footerStyle,
-                            ),
+                              ),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
-            ),
+              );
+              return Stack(
+                children: [
+                  results,
+                  if (lazyGroups)
+                    Positioned(
+                      top:
+                          MediaQuery.paddingOf(context).top +
+                          kToolbarHeight +
+                          DocTypeListHeader.chipRowHeight,
+                      left: 12,
+                      right: 12,
+                      height: headingExtent,
+                      child: ValueListenableBuilder(
+                        valueListenable: controller.stickyHeading,
+                        builder: (context, sticky, _) {
+                          if (sticky == null ||
+                              !data!.isExpanded(sticky.group)) {
+                            return const SizedBox.shrink();
+                          }
+                          return ClipRect(
+                            child: Transform.translate(
+                              offset: Offset(0, sticky.offset),
+                              child: anchors.topObstruction(
+                                _groupTitle(sticky.group),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         );
-        return Stack(
-          children: [
-            scrollView,
-            if (lazyGroups)
-              Positioned(
-                top:
-                    MediaQuery.paddingOf(context).top +
-                    kToolbarHeight +
-                    DocTypeListHeader.chipRowHeight,
-                left: 12,
-                right: 12,
-                height: _headingExtent,
-                child: ValueListenableBuilder(
-                  valueListenable: controller.stickyHeading,
-                  builder: (context, sticky, _) {
-                    if (sticky == null || !data!.isExpanded(sticky.group)) {
-                      return const SizedBox.shrink();
-                    }
-                    return ClipRect(
-                      child: Transform.translate(
-                        offset: Offset(0, sticky.offset),
-                        child: _groupTitle(sticky.group),
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        );
       }),
-    );
-  }
-
-  void _openFields(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (_) => _FieldsSheet(
-        controller: controller,
-        preserveAnchor: () {
-          if (!controller.scrollController.hasClients) return;
-          final viewport =
-              controller.scrollController.position.context.notificationContext;
-          if (viewport != null) {
-            _preserveVariantAnchor(viewport, controller.scrollController);
-          }
-        },
-      ),
     );
   }
 
@@ -445,32 +503,52 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     group: group,
     expanded: true,
     summary: group.variantCountLabel,
+    currentStockLabel: _currentStockLabel,
     onTap: () => controller.toggleGroup(group),
   );
 
-  Widget _collapsedTitle(VariantGroup group, int shown, bool filtered) {
-    final summary = group.collapsedSummary(shown, filtered: filtered);
+  Widget _collapsedTitle(
+    VariantGroup group,
+    int shown,
+    bool filtered,
+    double minHeight,
+  ) {
+    final summary = group.collapsedSummary(
+      shown,
+      filtered: filtered,
+      currentStockLabel: _currentStockLabel,
+    );
     return Obx(() {
       final cached = controller.detailsFor(group.code).value;
       final name = (group.heading?['item_name'] ?? cached?['item_name'])
           ?.toString()
           .trim();
-      return _GroupTitle(
-        group: group,
-        expanded: false,
-        name: name,
-        summary: summary,
-        onTap: () => controller.toggleGroup(group),
+      return ConstrainedBox(
+        constraints: BoxConstraints(minHeight: minHeight),
+        child: _GroupTitle(
+          group: group,
+          expanded: false,
+          name: name,
+          summary: summary,
+          currentStockLabel: _currentStockLabel,
+          onTap: () => controller.toggleGroup(group),
+        ),
       );
     });
   }
+
+  String get _currentStockLabel =>
+      variantColumnLabel(controller.reportColumns, 'current_stock')!;
 
   Widget _lazyGroupSliver(
     VariantResults data,
     List<({VariantGroup group, List<VariantRow> variants})> groups,
     bool filtered,
+    _TrackOccurrence track,
+    double headingExtent,
   ) {
-    final entries = <({VariantGroup group, VariantRow? row, bool title})>[];
+    final entries =
+        <({VariantGroup group, VariantRow? row, bool title, int index})>[];
     final counts = {
       for (final match in groups) match.group: match.variants.length,
     };
@@ -478,20 +556,24 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       final group = match.group;
       final heading = group.heading;
       if (heading != null) {
-        entries.add((group: group, row: null, title: true));
+        entries.add((group: group, row: null, title: true, index: 0));
       }
       if (!data.isExpanded(group) || match.variants.isEmpty) continue;
       if (heading != null) {
-        entries.add((group: group, row: null, title: false));
+        entries.add((group: group, row: null, title: false, index: 0));
       }
       entries.addAll(
-        match.variants.map((row) => (group: group, row: row, title: false)),
+        match.variants.indexed.map(
+          ((int, VariantRow) entry) =>
+              (group: group, row: entry.$2, title: false, index: entry.$1),
+        ),
       );
     }
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       sliver: _StickyGroupList(
         sticky: controller.stickyHeading,
+        headingExtent: headingExtent,
         groupAt: (index) {
           final entry = entries[index];
           return (
@@ -504,30 +586,48 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
         delegate: SliverChildBuilderDelegate((context, index) {
           final entry = entries[index];
           if (entry.title) {
-            return SizedBox(
-              height: _headingExtent,
-              child: data.isExpanded(entry.group) && counts[entry.group]! > 0
-                  ? _groupTitle(entry.group)
+            final expanded =
+                data.isExpanded(entry.group) && counts[entry.group]! > 0;
+            return track(
+              entry.group,
+              'title',
+              0,
+              expanded
+                  ? SizedBox(
+                      height: headingExtent,
+                      child: _groupTitle(entry.group),
+                    )
                   : _collapsedTitle(
                       entry.group,
                       counts[entry.group]!,
                       filtered,
+                      headingExtent,
                     ),
             );
           }
           final row = entry.row;
           if (row == null) {
-            return _GroupBody(
-              child: _TemplateHeader(
-                row: entry.group.heading!,
-                columns: controller.reportColumns,
+            return track(
+              entry.group,
+              'subtotal',
+              0,
+              _GroupBody(
+                child: _TemplateHeader(
+                  row: entry.group.heading!,
+                  columns: controller.reportColumns,
+                ),
               ),
             );
           }
           final templateCode = entry.group.heading == null
               ? null
               : entry.group.code;
-          final tile = _variantTile(row, templateCode);
+          final tile = track(
+            entry.group,
+            'variant',
+            entry.index,
+            _variantTile(row, templateCode),
+          );
           if (templateCode == null) return tile;
           return _GroupBody(
             last:
@@ -548,21 +648,30 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
     List<({VariantGroup group, List<VariantRow> variants})> groups,
     bool filtered,
     ColorScheme scheme,
+    _TrackOccurrence track,
+    Widget Function(Widget) topObstruction,
+    double headingExtent,
   ) {
     final slivers = <Widget>[];
     final columns = controller.reportColumns;
-    Widget variants(List<VariantRow> rows, String? templateCode) =>
-        SliverList.builder(
-          itemCount: rows.length,
-          itemBuilder: (context, index) =>
-              _variantTile(rows[index], templateCode),
-        );
+    Widget variants(
+      VariantGroup group,
+      List<VariantRow> rows,
+      String? templateCode,
+    ) => SliverList.builder(
+      itemCount: rows.length,
+      itemBuilder: (context, index) => track(
+        group,
+        'variant',
+        index,
+        _variantTile(rows[index], templateCode),
+      ),
+    );
     Widget inset(Widget sliver, VariantGroup group) => SliverPadding(
       key: ObjectKey(group),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       sliver: sliver,
     );
-    // Fixed-extent runs can seek straight to a heading on a thumb jump.
     var collapsed = <({VariantGroup group, List<VariantRow> variants})>[];
     void flushCollapsed() {
       if (collapsed.isEmpty) return;
@@ -570,13 +679,18 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       collapsed = [];
       slivers.add(
         inset(
-          SliverFixedExtentList.builder(
-            itemExtent: _headingExtent,
+          SliverList.builder(
             itemCount: run.length,
-            itemBuilder: (context, index) => _collapsedTitle(
+            itemBuilder: (context, index) => track(
               run[index].group,
-              run[index].variants.length,
-              filtered,
+              'title',
+              0,
+              _collapsedTitle(
+                run[index].group,
+                run[index].variants.length,
+                filtered,
+                headingExtent,
+              ),
             ),
           ),
           run.first.group,
@@ -594,7 +708,7 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
       }
       flushCollapsed();
       if (heading == null) {
-        slivers.add(inset(variants(match.variants, null), group));
+        slivers.add(inset(variants(group, match.variants, null), group));
       } else {
         slivers.add(
           inset(
@@ -605,17 +719,29 @@ class ItemVariantDetailsScreen extends GetView<ItemVariantDetailsController> {
                 sliver: SliverMainAxisGroup(
                   slivers: [
                     PinnedHeaderSliver(
-                      child: SizedBox(
-                        height: _headingExtent,
-                        child: _groupTitle(group),
+                      child: topObstruction(
+                        track(
+                          group,
+                          'title',
+                          0,
+                          SizedBox(
+                            height: headingExtent,
+                            child: _groupTitle(group),
+                          ),
+                        ),
                       ),
                     ),
                     SliverToBoxAdapter(
-                      child: _TemplateHeader(row: heading, columns: columns),
+                      child: track(
+                        group,
+                        'subtotal',
+                        0,
+                        _TemplateHeader(row: heading, columns: columns),
+                      ),
                     ),
                     SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      sliver: variants(match.variants, group.code),
+                      sliver: variants(group, match.variants, group.code),
                     ),
                   ],
                 ),
@@ -650,11 +776,17 @@ void _openImageViewer(
   BuildContext context, {
   required List<_GalleryItem> items,
   required int initialIndex,
+  required ReportFieldsController fields,
+  required int generation,
 }) {
   showDialog<void>(
     context: context,
     useSafeArea: false,
-    builder: (_) => _ImageGallery(items: items, initialIndex: initialIndex),
+    builder: (_) => ReportFieldsOwnerOverlay(
+      fields: fields,
+      generation: generation,
+      builder: (_) => _ImageGallery(items: items, initialIndex: initialIndex),
+    ),
   );
 }
 
@@ -671,10 +803,12 @@ typedef _GroupAt =
 class _StickyGroupList extends SliverList {
   final ValueNotifier<StickyVariantHeading?> sticky;
   final _GroupAt groupAt;
+  final double headingExtent;
 
   const _StickyGroupList({
     required this.sticky,
     required this.groupAt,
+    required this.headingExtent,
     required super.delegate,
   });
 
@@ -684,6 +818,7 @@ class _StickyGroupList extends SliverList {
         childManager: context as SliverMultiBoxAdaptorElement,
         sticky: sticky,
         groupAt: groupAt,
+        headingExtent: headingExtent,
       );
 
   @override
@@ -693,6 +828,7 @@ class _StickyGroupList extends SliverList {
   ) {
     renderObject
       ..groupAt = groupAt
+      ..headingExtent = headingExtent
       ..markNeedsLayout();
   }
 }
@@ -700,6 +836,7 @@ class _StickyGroupList extends SliverList {
 class _RenderStickyGroupList extends RenderSliverList {
   final ValueNotifier<StickyVariantHeading?> sticky;
   _GroupAt groupAt;
+  double headingExtent;
   StickyVariantHeading? _next;
   bool _scheduled = false;
 
@@ -707,6 +844,7 @@ class _RenderStickyGroupList extends RenderSliverList {
     required super.childManager,
     required this.sticky,
     required this.groupAt,
+    required this.headingExtent,
   });
 
   @override
@@ -731,8 +869,7 @@ class _RenderStickyGroupList extends RenderSliverList {
           }
           active = entry.group;
         } else if (entry.group != active) {
-          offset = (top - boundary - ItemVariantDetailsScreen._headingExtent)
-              .clamp(-ItemVariantDetailsScreen._headingExtent, 0.0);
+          offset = (top - boundary - headingExtent).clamp(-headingExtent, 0.0);
           break;
         }
       }
@@ -826,6 +963,7 @@ class _GroupTitle extends StatelessWidget {
   final bool expanded;
   final String? name;
   final String summary;
+  final String currentStockLabel;
   final VoidCallback onTap;
 
   const _GroupTitle({
@@ -833,23 +971,32 @@ class _GroupTitle extends StatelessWidget {
     required this.expanded,
     this.name,
     required this.summary,
+    required this.currentStockLabel,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lines =
+        ItemVariantDetailsScreen._wrapHeading(context, currentStockLabel)
+        ? 2
+        : 1;
     final codeLabel = name == null || name!.isEmpty || name == group.code
         ? group.code
         : '${group.code}, $name';
     final stockSummary = expanded
-        ? group.collapsedSummary(group.variants.length, filtered: false)
+        ? group.collapsedSummary(
+            group.variants.length,
+            filtered: false,
+            currentStockLabel: currentStockLabel,
+          )
         : summary;
     return Semantics(
       header: true,
       button: true,
       expanded: expanded,
-      label: 'Template $codeLabel, ${stockSummary.replaceAll(' · ', ', ')}',
+      label: 'Template $codeLabel, ${stockSummary.replaceFirst(' · ', ', ')}',
       onTap: onTap,
       excludeSemantics: true,
       child: Material(
@@ -870,14 +1017,15 @@ class _GroupTitle extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _code(theme),
+                          _code(theme, lines),
                           Text(
                             summary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            maxLines: expanded ? lines : null,
+                            overflow: expanded ? TextOverflow.ellipsis : null,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -897,11 +1045,11 @@ class _GroupTitle extends StatelessWidget {
     );
   }
 
-  Widget _code(ThemeData theme) => Text(
+  Widget _code(ThemeData theme, int lines) => Text(
     name == null || name!.isEmpty || name == group.code
         ? group.code
         : '${group.code} · $name',
-    maxLines: 1,
+    maxLines: lines,
     overflow: TextOverflow.ellipsis,
     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
   );
@@ -970,79 +1118,6 @@ class _TemplateHeader extends StatelessWidget {
 
 // ── Variant tile ──────────────────────────────────────────────────────────────
 
-class _FieldsSheet extends StatelessWidget {
-  const _FieldsSheet({required this.controller, required this.preserveAnchor});
-
-  final ItemVariantDetailsController controller;
-  final VoidCallback preserveAnchor;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.75,
-      maxChildSize: 0.95,
-      builder: (context, scroll) => Obx(() {
-        return ListView(
-          controller: scroll,
-          padding: EdgeInsets.only(
-            bottom: 16 + MediaQuery.viewPaddingOf(context).bottom,
-          ),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Fields',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      preserveAnchor();
-                      controller.resetFields();
-                    },
-                    child: const Text('Reset to defaults'),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                'Item code and name are always shown. '
-                'These choices apply to variant cards.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-            for (final column in controller.reportColumns)
-              if (column['fieldname'] case final String field)
-                CheckboxListTile(
-                  dense: true,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Text(column['label']?.toString() ?? field),
-                  value: controller.showsField(field),
-                  onChanged: isFixedVariantField(field)
-                      ? null
-                      : (_) {
-                          preserveAnchor();
-                          controller.toggleField(field);
-                        },
-                ),
-          ],
-        );
-      }),
-    );
-  }
-}
-
 class _VariantTile extends StatefulWidget {
   final Map<String, dynamic> row;
   final List<Map<String, dynamic>> columns;
@@ -1087,41 +1162,43 @@ class _VariantTileState extends State<_VariantTile> {
       onPaint: () => controller.queueNearbyDetails(itemCode),
       child: Obx(() {
         final details = detail.value;
+        final fields = controller.fields.state.value;
+        final generation = controller.fields.ownerGeneration;
         final reportName = row['item_name']?.toString().trim() ?? '';
         final itemName = reportName.isEmpty
             ? (details?['item_name']?.toString() ?? '')
             : reportName;
-        final itemGroup = controller.showsField('item_group')
+        final itemGroup = fields.shows('item_group')
             ? (row['item_group'] ?? details?['item_group'])?.toString() ?? ''
             : '';
-        final columnsByField = {
-          for (final column in columns) column['fieldname']: column['label'],
-        };
         final chips = selectedVariantValues(
           row,
           columns,
-          controller.showsField,
+          fields.shows,
         ).toList();
-        final currentStock = controller.showsField('current_stock')
+        final currentStock = fields.shows('current_stock')
             ? formatStockQuantity(
                 row['current_stock'],
-                controller.showsField('stock_uom') ? stockUom : null,
+                fields.shows('stock_uom') ? stockUom : null,
               )
             : '';
         final imageUrl = _imageUrl(details?['image'] as String?);
         final height = templateCode == null ? 200.0 : 84.0;
         final stockRows = controller.stockBalances[itemCode];
+        final stockError = controller.stockErrors[itemCode];
+        final stockBalanceLabel =
+            controller.stockBalanceLabels[itemCode] ?? 'Balance Qty';
         final isStockLoading = controller.loadingStock[itemCode] == true;
         final isExpanded = stockRows != null;
 
         void openGallery() {
+          if (generation != controller.fields.ownerGeneration) return;
           // Collect all variant images in report order so the gallery
           // can slide between items; open at the tapped item's index.
           final items = <_GalleryItem>[];
           var startIndex = 0;
           for (final r in variantRowsOf(controller.reportData)) {
-            final code =
-                r['variant_name']?.toString() ?? r['item']?.toString() ?? '';
+            final code = variantCode(r);
             final url = _imageUrl(
               controller.itemDetails[code]?['image'] as String?,
             );
@@ -1137,7 +1214,13 @@ class _VariantTileState extends State<_VariantTile> {
             );
           }
           if (items.isEmpty) return;
-          _openImageViewer(context, items: items, initialIndex: startIndex);
+          _openImageViewer(
+            context,
+            items: items,
+            initialIndex: startIndex,
+            fields: controller.fields,
+            generation: generation,
+          );
         }
 
         Widget card({Widget? banner, bool broken = false}) => Card.outlined(
@@ -1215,6 +1298,8 @@ class _VariantTileState extends State<_VariantTile> {
                                         padding: const EdgeInsets.only(top: 1),
                                         child: Text(
                                           itemGroup,
+                                          semanticsLabel:
+                                              '${fields.label('item_group')} $itemGroup',
                                           style: text.labelSmall?.copyWith(
                                             color: cs.onSurfaceVariant,
                                           ),
@@ -1240,7 +1325,7 @@ class _VariantTileState extends State<_VariantTile> {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          '${columnsByField['current_stock'] ?? 'Current Stock'} $currentStock',
+                          '${fields.label('current_stock')} $currentStock',
                           style: text.labelMedium?.copyWith(
                             color: zeroStock
                                 ? cs.onSurfaceVariant
@@ -1315,7 +1400,29 @@ class _VariantTileState extends State<_VariantTile> {
 
                     // ── Stock section ────────────────────────────────
                     if (isExpanded)
-                      _StockSection(rows: stockRows, stockUom: stockUom),
+                      _StockSection(
+                        rows: stockRows,
+                        stockUom: stockUom,
+                        balanceLabel: stockBalanceLabel,
+                      ),
+                    if (stockError != null)
+                      Semantics(
+                        liveRegion: true,
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, color: cs.error),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(stockError)),
+                            TextButton(
+                              onPressed: isStockLoading
+                                  ? null
+                                  : () =>
+                                        controller.fetchStockBalance(itemCode),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1410,7 +1517,7 @@ class _AttrChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        '$label: $value',
+        label.isEmpty ? value : '$label: $value',
         style: text.labelSmall?.copyWith(
           color: cs.onSecondaryContainer,
           fontWeight: FontWeight.w600,
@@ -1425,7 +1532,12 @@ class _AttrChip extends StatelessWidget {
 class _StockSection extends StatelessWidget {
   final List<Map<String, dynamic>> rows;
   final Object? stockUom;
-  const _StockSection({required this.rows, required this.stockUom});
+  final String balanceLabel;
+  const _StockSection({
+    required this.rows,
+    required this.stockUom,
+    required this.balanceLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1467,12 +1579,15 @@ class _StockSection extends StatelessWidget {
                   '${rows.length} rack${rows.length != 1 ? 's' : ''}',
                   style: text.labelMedium?.copyWith(color: cs.onSurfaceVariant),
                 ),
-                const Spacer(),
-                Text(
-                  'Total  ${formatStockQuantity(totalQty, stockUom)}',
-                  style: text.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: totalQty > 0 ? cs.primary : cs.onSurfaceVariant,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Total · $balanceLabel ${formatStockQuantity(totalQty, stockUom)}',
+                    textAlign: TextAlign.end,
+                    style: text.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: totalQty > 0 ? cs.primary : cs.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -1493,6 +1608,7 @@ class _StockSection extends StatelessWidget {
                   rack: r['rack']?.toString() ?? '—',
                   qty: (r['qty'] as num?) ?? 0,
                   stockUom: stockUom,
+                  balanceLabel: balanceLabel,
                 ),
                 if (!isLast)
                   Divider(
@@ -1516,10 +1632,12 @@ class _StockRow extends StatelessWidget {
   final String rack;
   final num qty;
   final Object? stockUom;
+  final String balanceLabel;
   const _StockRow({
     required this.rack,
     required this.qty,
     required this.stockUom,
+    required this.balanceLabel,
   });
 
   Color _qtyColor(ColorScheme cs, Brightness brightness) {
@@ -1537,6 +1655,7 @@ class _StockRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final color = _qtyColor(cs, Theme.of(context).brightness);
+    final quantity = formatStockQuantity(qty, stockUom);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1556,7 +1675,8 @@ class _StockRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              formatStockQuantity(qty, stockUom),
+              quantity,
+              semanticsLabel: '$balanceLabel $quantity',
               style: text.labelMedium?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w700,

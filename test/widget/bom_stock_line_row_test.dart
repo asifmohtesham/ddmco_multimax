@@ -12,10 +12,10 @@ void main() {
       'in_stock_qty': 84, 'running_total': 84, 'required_qty': 108, 'shortage_qty': 24,
     }));
     expect(find.text('STRAPS IT 35mm'), findsOneWidget);
-    expect(find.text('In Stock'), findsOneWidget);
-    expect(find.text('Avail'), findsOneWidget);
-    expect(find.text('Need'), findsOneWidget);
-    expect(find.text('Short'), findsOneWidget);
+    expect(find.text('In Stock Qty'), findsOneWidget);
+    expect(find.text('Running Total'), findsOneWidget);
+    expect(find.text('Required Qty'), findsOneWidget);
+    expect(find.text('Shortage Qty'), findsOneWidget);
     expect(find.text('108'), findsOneWidget);
     expect(find.text('24'), findsOneWidget);
   });

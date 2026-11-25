@@ -96,6 +96,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
   final _scrollController = ScrollController();
   final _searchInput = TextEditingController();
   final _searchFocus = FocusNode();
+  final _fieldsFocus = FocusNode(debugLabel: 'Suppliers by Item Fields');
   final _toolbarKey = GlobalKey(debugLabel: 'Suppliers by Item toolbar');
   final _searchHeaderKey = GlobalKey(
     debugLabel: 'Suppliers by Item search header',
@@ -105,6 +106,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
   final _paintedSupplier = ValueNotifier<SuppliersByItemRowKey?>(null);
   final _treeKey = GlobalKey<_SuppliersTreeState>();
   var _wasCurrent = true;
+  var _fieldsOpen = false;
   final _draft = {
     for (final field in _filterFields) field.key: TextEditingController(),
   };
@@ -126,12 +128,26 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
     _scrollController.dispose();
     _searchInput.dispose();
     _searchFocus.dispose();
+    _fieldsFocus.dispose();
     _pinnedSupplier.dispose();
     _paintedSupplier.dispose();
     for (final input in _draft.values) {
       input.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _openFields() async {
+    if (_fieldsOpen) return;
+    _fieldsOpen = true;
+    try {
+      await showSuppliersByItemFields(context, _controller);
+    } finally {
+      _fieldsOpen = false;
+      if (mounted && ModalRoute.isCurrentOf(context) == true) {
+        _fieldsFocus.requestFocus();
+      }
+    }
   }
 
   void _loadDraft() {
@@ -290,10 +306,10 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                     quickChipsKey: loading,
                     extraActions: [
                       IconButton(
+                        focusNode: _fieldsFocus,
                         tooltip: 'Fields',
                         icon: const Icon(Icons.view_agenda_outlined),
-                        onPressed: () =>
-                            showSuppliersByItemFields(context, _controller),
+                        onPressed: _openFields,
                       ),
                       AsyncIconButton(
                         busy: _controller.isLoading,
@@ -312,6 +328,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                         child: _ResultsHeader(
                           summary: showResults ? summary : null,
                           fields: fields,
+                          fieldLabel: _controller.fieldLabel,
                           searchInput: _searchInput,
                           searchFocus: _searchFocus,
                           query: query,
@@ -410,6 +427,7 @@ class _SuppliersByItemScreenState extends State<SuppliersByItemScreen> {
                         hasResults: _controller.nodes.isNotEmpty,
                         excludesUnknownUom: summary.hasUnknownStockUom,
                         bottomPadding: padding.bottom,
+                        fieldLabel: _controller.fieldLabel,
                       ),
                     ),
                   ],
@@ -494,7 +512,10 @@ class _ViewChipState extends State<_ViewChip> {
   Widget build(BuildContext context) => Obx(() {
     final view = widget.controller.view.value;
     final group = suppliersByItemGroupLabel(view.group);
-    final sort = suppliersByItemSortLabel(view.sortField);
+    final sort = suppliersByItemSortLabel(
+      view.sortField,
+      widget.controller.fieldLabel,
+    );
     final direction = suppliersByItemDirectionLabel(
       view.sortField,
       view.sortDirection,
@@ -771,6 +792,7 @@ class _ResultsHeader extends StatelessWidget {
   const _ResultsHeader({
     required this.summary,
     required this.fields,
+    required this.fieldLabel,
     required this.searchInput,
     required this.searchFocus,
     required this.query,
@@ -782,6 +804,7 @@ class _ResultsHeader extends StatelessWidget {
 
   final SuppliersByItemSummary? summary;
   final SuppliersByItemFieldVisibility fields;
+  final String Function(SuppliersByItemField) fieldLabel;
   final TextEditingController searchInput;
   final FocusNode searchFocus;
   final String query;
@@ -798,7 +821,12 @@ class _ResultsHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (result != null) _SummaryStrip(summary: result, fields: fields),
+          if (result != null)
+            _SummaryStrip(
+              summary: result,
+              fields: fields,
+              fieldLabel: fieldLabel,
+            ),
           TextField(
             controller: searchInput,
             focusNode: searchFocus,
@@ -887,10 +915,15 @@ class _MatchCountState extends State<_MatchCount> {
 }
 
 class _SummaryStrip extends StatelessWidget {
-  const _SummaryStrip({required this.summary, required this.fields});
+  const _SummaryStrip({
+    required this.summary,
+    required this.fields,
+    required this.fieldLabel,
+  });
 
   final SuppliersByItemSummary summary;
   final SuppliersByItemFieldVisibility fields;
+  final String Function(SuppliersByItemField) fieldLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -916,14 +949,16 @@ class _SummaryStrip extends StatelessWidget {
         ),
       if (fields.shows(SuppliersByItemField.summaryStockByUom))
         _SummaryCell(
-          caption: SuppliersByItemField.summaryStockByUom.label,
+          caption: fieldLabel(SuppliersByItemField.itemBalance),
           value: switch (stock.length) {
             0 => '-',
             1 => suppliersByItemQuantity(
               stock.values.single,
               stock.keys.single,
             ),
-            _ => 'Balance Qty by Stock UOM',
+            _ =>
+              '${fieldLabel(SuppliersByItemField.itemBalance)} by '
+                  '${fieldLabel(SuppliersByItemField.itemStockUom)}',
           },
           onPressed: stock.length > 1 ? () => _showStock(context, stock) : null,
         ),
@@ -976,7 +1011,8 @@ class _SummaryStrip extends StatelessWidget {
               Semantics(
                 header: true,
                 child: Text(
-                  'Balance Qty by Stock UOM',
+                  '${fieldLabel(SuppliersByItemField.itemBalance)} by '
+                  '${fieldLabel(SuppliersByItemField.itemStockUom)}',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
@@ -1581,6 +1617,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     return SuppliersByItemDisplayTile(
       entry: row,
       shows: fields.shows,
+      fieldLabel: view.fieldLabel,
+      columnLabel: view.columnLabel,
       includeDrafts: view.filters.value.includeDrafts,
       supplierFilterActive: view.filters.value.suppliers.isNotEmpty,
       expanded: view.isBranchExpanded(row.key),
@@ -1663,7 +1701,11 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
     final view = widget.controller;
     final filters = view.filters.value;
     final indexByKey = visible?.indexByKey ?? const {};
-    final columnRuns = suppliersByItemColumnRuns(rows, widget.fields.shows);
+    final columnRuns = suppliersByItemColumnRuns(
+      rows,
+      widget.fields.shows,
+      view.fieldLabel,
+    );
     final list = SliverList.builder(
       key: _listKey,
       itemCount: rows.length,
@@ -1685,6 +1727,8 @@ class _SuppliersTreeState extends State<_SuppliersTree> {
               ? SuppliersByItemDisplayTile(
                   entry: row,
                   shows: widget.fields.shows,
+                  fieldLabel: view.fieldLabel,
+                  columnLabel: view.columnLabel,
                   includeDrafts: filters.includeDrafts,
                   supplierFilterActive: filters.suppliers.isNotEmpty,
                   expanded: view.isBranchExpanded(key),

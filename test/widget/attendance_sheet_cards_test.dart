@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/hr/attendance/month/attendance_month_screen.dart';
+import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_fields.dart';
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_logic.dart';
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/widgets/attendance_sheet_cards.dart';
 import 'package:multimax/main.dart';
@@ -40,23 +41,78 @@ final _days = parseDayColumns(const [
 ]);
 
 void main() {
-  for (final brightness in Brightness.values) {
-    final mode = brightness == Brightness.dark ? 'dark' : 'light';
-
-    testWidgets('employee card renders collapsed in $mode mode',
-        (tester) async {
-      final employee = parseDetailed(_twoShiftRows).single;
-
-      await tester.pumpWidget(_host(
-        brightness: brightness,
+  testWidgets('Employee subtitle announces the returned employee header', (
+    tester,
+  ) async {
+    final definition = monthlyAttendanceFields(
+      columns: const [
+        (fieldname: 'employee', label: 'Personalnummer'),
+        (fieldname: 'shift', label: 'Schicht'),
+      ],
+    );
+    final employee = parseDetailed(_twoShiftRows).single;
+    Future<void> pump(bool showShifts) => tester.pumpWidget(
+      _host(
+        brightness: Brightness.light,
         child: SheetEmployeeCard(
           employee: employee,
           days: _days,
           month: DateTime(2026, 9),
           expanded: false,
           onTap: () {},
+          fields: (
+            definition: definition,
+            snapshot: (
+              overrides: {'shift': showShifts},
+              revision: 0,
+              loaded: true,
+              saving: false,
+              failure: null,
+            ),
+            binding: false,
+            sessionOnly: true,
+            resetting: false,
+            retrying: false,
+            pendingKeys: const <String>{},
+          ),
         ),
-      ));
+      ),
+    );
+    await pump(true);
+    expect(
+      find.bySemanticsLabel(
+        RegExp('Personalnummer HR-EMP-00001, Schicht Morning / Afternoon'),
+      ),
+      findsOneWidget,
+    );
+    await pump(false);
+    expect(
+      find.bySemanticsLabel(RegExp('Personalnummer HR-EMP-00001')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel(RegExp('Schicht')), findsNothing);
+  });
+
+  for (final brightness in Brightness.values) {
+    final mode = brightness == Brightness.dark ? 'dark' : 'light';
+
+    testWidgets('employee card renders collapsed in $mode mode', (
+      tester,
+    ) async {
+      final employee = parseDetailed(_twoShiftRows).single;
+
+      await tester.pumpWidget(
+        _host(
+          brightness: brightness,
+          child: SheetEmployeeCard(
+            employee: employee,
+            days: _days,
+            month: DateTime(2026, 9),
+            expanded: false,
+            onTap: () {},
+          ),
+        ),
+      );
 
       expect(find.text('Asif Mohtesham'), findsOneWidget);
       expect(find.text('HR-EMP-00001 · Morning / Afternoon'), findsOneWidget);
@@ -84,20 +140,28 @@ void main() {
         },
       ]).single;
 
-      await tester.pumpWidget(_host(
-        brightness: brightness,
-        child: SheetSummaryCard(
-          summary: summary,
-          leaveTypes: const [
-            SheetSummaryColumn(fieldname: 'sick_leave', label: 'Sick Leave'),
-            SheetSummaryColumn(
-                fieldname: 'casual_leave', label: 'Casual Leave'),
-          ],
+      await tester.pumpWidget(
+        _host(
+          brightness: brightness,
+          child: SheetSummaryCard(
+            summary: summary,
+            leaveTypes: const [
+              SheetSummaryColumn(fieldname: 'sick_leave', label: 'Sick Leave'),
+              SheetSummaryColumn(
+                fieldname: 'casual_leave',
+                label: 'Casual Leave',
+              ),
+            ],
+          ),
         ),
-      ));
+      );
 
-      expect(find.text('Absent 2'), findsOneWidget);
-      expect(find.text('Unmarked 23'), findsOneWidget);
+      expect(find.text('Total Absent 2'), findsOneWidget);
+      expect(find.text('Unmarked Days 23'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp('Employee HR-EMP-00001')),
+        findsOneWidget,
+      );
       // Only leave types with a non-zero count are shown.
       expect(find.text('Sick Leave 3'), findsOneWidget);
       expect(find.text('Casual Leave 0'), findsNothing);
@@ -108,16 +172,18 @@ void main() {
   testWidgets('expanding shows one calendar per shift', (tester) async {
     final employee = parseDetailed(_twoShiftRows).single;
 
-    await tester.pumpWidget(_host(
-      brightness: Brightness.light,
-      child: SheetEmployeeCard(
-        employee: employee,
-        days: _days,
-        month: DateTime(2026, 9),
-        expanded: true,
-        onTap: () {},
+    await tester.pumpWidget(
+      _host(
+        brightness: Brightness.light,
+        child: SheetEmployeeCard(
+          employee: employee,
+          days: _days,
+          month: DateTime(2026, 9),
+          expanded: true,
+          onTap: () {},
+        ),
       ),
-    ));
+    );
 
     expect(find.byType(AttendanceCalendarGrid), findsNWidgets(2));
     expect(find.text('Morning'), findsOneWidget);
@@ -129,16 +195,18 @@ void main() {
     var tapped = false;
     final employee = parseDetailed(_twoShiftRows).single;
 
-    await tester.pumpWidget(_host(
-      brightness: Brightness.light,
-      child: SheetEmployeeCard(
-        employee: employee,
-        days: _days,
-        month: DateTime(2026, 9),
-        expanded: false,
-        onTap: () => tapped = true,
+    await tester.pumpWidget(
+      _host(
+        brightness: Brightness.light,
+        child: SheetEmployeeCard(
+          employee: employee,
+          days: _days,
+          month: DateTime(2026, 9),
+          expanded: false,
+          onTap: () => tapped = true,
+        ),
       ),
-    ));
+    );
 
     await tester.tap(find.text('Asif Mohtesham'));
     expect(tapped, isTrue);
@@ -147,17 +215,19 @@ void main() {
   testWidgets('a Date Range run offers no expansion', (tester) async {
     final employee = parseDetailed(_twoShiftRows).single;
 
-    await tester.pumpWidget(_host(
-      brightness: Brightness.light,
-      child: SheetEmployeeCard(
-        employee: employee,
-        days: _days,
-        month: DateTime(2026, 9),
-        expanded: false,
-        canExpand: false,
-        onTap: () {},
+    await tester.pumpWidget(
+      _host(
+        brightness: Brightness.light,
+        child: SheetEmployeeCard(
+          employee: employee,
+          days: _days,
+          month: DateTime(2026, 9),
+          expanded: false,
+          canExpand: false,
+          onTap: () {},
+        ),
       ),
-    ));
+    );
 
     expect(find.byIcon(Icons.expand_more), findsNothing);
     expect(tester.takeException(), isNull);

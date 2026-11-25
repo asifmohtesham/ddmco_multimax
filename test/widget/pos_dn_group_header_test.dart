@@ -25,8 +25,8 @@ void main() {
 
     expect(find.text('Straps'), findsOneWidget);
     expect(find.textContaining('3'), findsWidgets);   // count
-    expect(find.textContaining('12'), findsWidgets);  // POS qty
-    expect(find.textContaining('10'), findsWidgets);  // DN qty
+    expect(find.text('POS Qty 12'), findsOneWidget);
+    expect(find.text('DN Qty 10'), findsOneWidget);
 
     await tester.tap(find.byType(PosDnGroupHeader));
     expect(toggled, 1);

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_widgets.dart';
+import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_fields.dart';
 import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_logic.dart';
 import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/widgets/utilization_card.dart';
+import 'package:multimax/app/modules/hr/reports/shift_attendance/shift_attendance_fields.dart';
 import 'package:multimax/app/modules/hr/reports/shift_attendance/shift_attendance_logic.dart';
 import 'package:multimax/app/modules/hr/reports/shift_attendance/widgets/shift_attendance_card.dart';
 import 'package:multimax/main.dart';
@@ -52,6 +56,150 @@ final _util = parseUtilization(const [
 ]).single;
 
 void main() {
+  testWidgets(
+    'Shift and utilization identities retain returned spoken labels',
+    (tester) async {
+      final shiftDefinition = shiftAttendanceFields.withColumns(const [
+        (fieldname: 'shift', label: 'Schicht'),
+        (fieldname: 'employee', label: 'Mitarbeiter-ID'),
+        (fieldname: 'shift_start', label: 'Schichtbeginn'),
+        (fieldname: 'shift_end', label: 'Schichtende'),
+      ]);
+      final utilizationDefinition = utilizationFields.withColumns(const [
+        (fieldname: 'employee', label: 'Personalnummer'),
+        (fieldname: 'department', label: 'Abteilung'),
+      ]);
+      Future<void> pump(bool showDetails) => tester.pumpWidget(
+        _host(
+          brightness: Brightness.light,
+          child: Column(
+            children: [
+              ShiftAttendanceCard(
+                row: _late,
+                fields: _fields(shiftDefinition, {
+                  'shift_start': showDetails,
+                  'shift_end': showDetails,
+                }),
+              ),
+              ShiftAttendanceCard(
+                row: parseShiftAttendance(const [
+                  {'employee': 'E-SHIFT', 'attendance_date': '2026-11-13'},
+                ]).single,
+                fields: _fields(shiftDefinition),
+              ),
+              UtilizationCard(
+                row: _util,
+                fields: _fields(utilizationDefinition, {
+                  'department': showDetails,
+                }),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await pump(true);
+      expect(
+        find.bySemanticsLabel(
+          RegExp(
+            'Schicht Morning \\(Fri\\), Schichtbeginn 08:00, Schichtende 12:00',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp('Mitarbeiter-ID E-SHIFT')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp('Personalnummer HR-EMP-00007, Abteilung Warehouse - MM'),
+        ),
+        findsOneWidget,
+      );
+
+      await pump(false);
+      expect(
+        find.bySemanticsLabel(RegExp('Schicht Morning \\(Fri\\)')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp('Schichtbeginn|Schichtende')),
+        findsNothing,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp('Personalnummer HR-EMP-00007')),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel(RegExp('Abteilung')), findsNothing);
+    },
+  );
+
+  testWidgets('Employee identity uses space left by the trailing percentage', (
+    tester,
+  ) async {
+    final row = parseUtilization(const [
+      {
+        'employee': 'HR-EMP-000017-A',
+        'employee_name': 'Alexandra MoA',
+        'per_util': 80,
+        'per_util_billed_only': 0,
+      },
+    ]).single;
+    final shortCaption = utilizationFields.withColumns(const [
+      (fieldname: 'per_util_billed_only', label: 'B/T'),
+    ]);
+    Future<void> pump(FieldsState? fields, {double scale = 1}) =>
+        tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(fontFamily: 'Ahem'),
+            home: Center(
+              child: SizedBox(
+                width: 360,
+                child: MediaQuery(
+                  data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                  child: UtilizationCard(row: row, fields: fields),
+                ),
+              ),
+            ),
+          ),
+        );
+    final name = find.text(row.employeeName);
+    final id = find.text(row.employee);
+    void expectIdentityFits() {
+      expect(
+        tester.renderObject<RenderParagraph>(name).didExceedMaxLines,
+        isFalse,
+      );
+      expect(
+        tester
+            .renderObject<RenderParagraph>(
+              find.descendant(of: id, matching: find.byType(RichText)),
+            )
+            .didExceedMaxLines,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+    }
+
+    await pump(_fields(shortCaption));
+    expectIdentityFits();
+    expect(
+      tester.getTopLeft(find.text('80%')).dy,
+      lessThan(tester.getBottomRight(name).dy),
+    );
+
+    await pump(_fields(shortCaption, {'per_util_billed_only': false}));
+    expectIdentityFits();
+
+    await pump(null, scale: 2);
+    expect(
+      tester.getTopLeft(find.text('% Utilization (B / T) 0%')).dy,
+      greaterThan(tester.getTopLeft(id).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   for (final brightness in Brightness.values) {
     final isDark = brightness == Brightness.dark;
     final mode = isDark ? 'dark' : 'light';
@@ -68,7 +216,7 @@ void main() {
       expect(find.text('Morning (Fri) · 08:00–12:00'), findsOneWidget);
       expect(find.text('Present'), findsOneWidget);
       expect(find.text('08:05'), findsOneWidget);
-      expect(find.text('late 5m 33s'), findsOneWidget);
+      expect(find.text('Late Entry By 5m 33s'), findsOneWidget);
       expect(find.text('—'), findsOneWidget); // no check-out
       expect(find.text('0h'), findsOneWidget);
       expect(find.text('No check-out'), findsOneWidget);
@@ -110,7 +258,7 @@ void main() {
       expect(find.text('Jawwad Bilgi'), findsOneWidget);
       expect(find.text('HR-EMP-00007 · Warehouse - MM'), findsOneWidget);
       expect(find.text('41.9%'), findsOneWidget);
-      expect(find.text('billed 0%'), findsOneWidget);
+      expect(find.text('% Utilization (B / T) 0%'), findsOneWidget);
       expect(find.text('100h 30m'), findsOneWidget);
       expect(find.text('139h 30m'), findsOneWidget);
       expect(find.text('240h'), findsOneWidget);
@@ -164,3 +312,22 @@ void main() {
     });
   }
 }
+
+FieldsState _fields(
+  ReportFieldsDefinition definition, [
+  Map<String, bool> choices = const {},
+]) => (
+  definition: definition,
+  snapshot: (
+    overrides: choices,
+    revision: 0,
+    loaded: true,
+    saving: false,
+    failure: null,
+  ),
+  binding: false,
+  sessionOnly: true,
+  resetting: false,
+  retrying: false,
+  pendingKeys: const {},
+);

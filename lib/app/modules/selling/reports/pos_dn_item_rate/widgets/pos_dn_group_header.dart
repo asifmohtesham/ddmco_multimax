@@ -11,6 +11,9 @@ class PosDnGroupHeader extends StatelessWidget {
   final bool isSecondary;
   final bool isExpanded;
   final VoidCallback onToggle;
+  final String posCaption;
+  final String dnCaption;
+  final String? groupCaption;
 
   const PosDnGroupHeader({
     super.key,
@@ -18,14 +21,18 @@ class PosDnGroupHeader extends StatelessWidget {
     required this.isSecondary,
     required this.isExpanded,
     required this.onToggle,
+    this.posCaption = 'POS Qty',
+    this.dnCaption = 'DN Qty',
+    this.groupCaption,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final bg =
-        isSecondary ? cs.surfaceContainerLow : cs.surfaceContainerHighest;
+    final bg = isSecondary
+        ? cs.surfaceContainerLow
+        : cs.surfaceContainerHighest;
 
     return Padding(
       padding: EdgeInsets.only(left: isSecondary ? 16 : 0, bottom: 6, top: 2),
@@ -42,18 +49,27 @@ class PosDnGroupHeader extends StatelessWidget {
                 AnimatedExpandIcon(isExpanded: isExpanded),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    node.key,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight:
-                          isSecondary ? FontWeight.w600 : FontWeight.w700,
-                      color: cs.onSurface,
+                  child: Semantics(
+                    label: groupCaption,
+                    child: Text(
+                      node.key,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: isSecondary
+                            ? FontWeight.w600
+                            : FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
                     ),
                   ),
                 ),
                 _CountBadge(count: node.count),
                 const SizedBox(width: 10),
-                _QtyTotals(posQty: node.posQty, dnQty: node.dnQty),
+                Flexible(
+                  child: _QtyTotals(
+                    pos: '$posCaption ${formatQty(node.posQty)}',
+                    dn: '$dnCaption ${formatQty(node.dnQty)}',
+                  ),
+                ),
               ],
             ),
           ),
@@ -79,16 +95,19 @@ class _CountBadge extends StatelessWidget {
       child: Text(
         '$count',
         style: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w700, color: cs.primary),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: cs.primary,
+        ),
       ),
     );
   }
 }
 
 class _QtyTotals extends StatelessWidget {
-  final num posQty;
-  final num dnQty;
-  const _QtyTotals({required this.posQty, required this.dnQty});
+  final String pos;
+  final String dn;
+  const _QtyTotals({required this.pos, required this.dn});
 
   @override
   Widget build(BuildContext context) {
@@ -102,8 +121,8 @@ class _QtyTotals extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('POS ${formatQty(posQty)}', style: style),
-        Text('DN ${formatQty(dnQty)}', style: style),
+        Text(pos, textAlign: TextAlign.end, style: style),
+        Text(dn, textAlign: TextAlign.end, style: style),
       ],
     );
   }

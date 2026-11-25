@@ -116,9 +116,9 @@ void main() {
       ]);
     });
 
-    test('falls back to the fieldname when a column has no label', () {
+    test('falls back to the verified column label when absent', () {
       expect(templateTotals({'open_orders': 2}, const []), [
-        (label: 'open_orders', value: '2'),
+        (label: 'Open Sales Orders', value: '2'),
       ]);
     });
   });

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
@@ -5,6 +7,9 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+
+import 'stock_balance_fields.dart';
 
 class StockBalanceController extends GetxController {
   final ApiProvider _api = Get.find<ApiProvider>();
@@ -33,6 +38,15 @@ class StockBalanceController extends GetxController {
   final reportData    = <Map<String, dynamic>>[].obs;
   final reportColumns = <Map<String, dynamic>>[].obs;
   final activeFilters = <String, String>{}.obs;
+  final hasRun = false.obs;
+  final reportError = RxnString();
+  final resultsScroll = ScrollController();
+  final reportFields = ScopedReportFieldsController.forReport(stockBalanceFields());
+  late final Worker _fieldsOwnerWorker;
+  int _fieldsOwnerGeneration = 0;
+  int _reportGeneration = 0;
+  int get reportGeneration => _reportGeneration;
+  ({String fromDate, String toDate})? _reportPeriod;
 
   // ── View preferences (persisted) ─────────────────────────────────────────
   // Client-side toggles over the already-loaded rows — they never re-query.
@@ -170,10 +184,21 @@ class StockBalanceController extends GetxController {
     hideEmpty.value  = _storage.getSbHideEmpty();
     showImages.value = _storage.getSbShowImages();
     _rebuildActiveFilters();
+    _fieldsOwnerGeneration = reportFields.ownerGeneration;
+    _fieldsOwnerWorker = ever(reportFields.state, (_) {
+      final owner = reportFields.ownerGeneration;
+      if (owner == _fieldsOwnerGeneration) return;
+      _fieldsOwnerGeneration = owner;
+      _clearResult();
+    });
+    unawaited(reportFields.bind());
   }
 
   @override
   void onClose() {
+    _fieldsOwnerWorker.dispose();
+    reportFields.dispose();
+    resultsScroll.dispose();
     for (final c in filterControllers.values) {
       c.dispose();
     }
@@ -200,8 +225,18 @@ class StockBalanceController extends GetxController {
     }
     _applyDefaults();
     _rebuildActiveFilters();
+    _clearResult();
+  }
+
+  void _clearResult() {
+    ++_reportGeneration;
+    isLoading.value = false;
+    hasRun.value = false;
+    reportError.value = null;
     reportData.clear();
     reportColumns.clear();
+    _reportPeriod = null;
+    reportFields.replaceDefinition(stockBalanceFields());
   }
 
   /// Desk defaults (stock_balance.js): From = one month back, To = today,
@@ -238,8 +273,16 @@ class StockBalanceController extends GetxController {
   }
 
   Future<void> runReport() async {
+    if (isLoading.value) return;
+    final run = ++_reportGeneration;
+    final owner = reportFields.ownerGeneration;
+    bool isCurrent() =>
+        !isClosed &&
+        run == _reportGeneration &&
+        owner == reportFields.ownerGeneration;
     _rebuildActiveFilters();
     isLoading.value = true;
+    reportError.value = null;
     reportData.clear();
     reportColumns.clear();
     // A fresh result set may have a different warehouse list, so drop the
@@ -247,13 +290,15 @@ class StockBalanceController extends GetxController {
     _resetQuickView();
 
     try {
-      final itemCodes     = splitMultiValue(itemCodeController.text);
-      final warehouses    = splitMultiValue(warehouseController.text);
-      final itemGroup     = itemGroupController.text.trim();
-      final customerCode  = customerCodeController.text.trim();
+      final itemCodes = splitMultiValue(itemCodeController.text);
+      final warehouses = splitMultiValue(warehouseController.text);
+      final itemGroup = itemGroupController.text.trim();
+      final customerCode = customerCodeController.text.trim();
       final warehouseType = warehouseTypeController.text.trim();
-      final rack          = rackController.text.trim();
-      final includeUom    = includeUomController.text.trim();
+      final rack = rackController.text.trim();
+      final includeUom = includeUomController.text.trim();
+      final fromDate = fromDateController.text.trim();
+      final toDate = toDateController.text.trim();
 
       // Resolve Customer Code → parent item codes (the report has no customer
       // filter). Intersect with any picked Items.
@@ -261,12 +306,14 @@ class StockBalanceController extends GetxController {
       if (customerCode.isNotEmpty) {
         customerItemCodes = await _api.resolveItemsByCustomerCode(customerCode);
       }
+      if (!isCurrent()) return;
       final allowedItems = resolveItemCodeFilter(itemCodes, customerItemCodes);
 
       // No matching items → empty report rather than the unfiltered set.
       if (allowedItems != null && allowedItems.isEmpty) {
+        hasRun.value = true;
         GlobalSnackbar.info(
-          title:   'Customer Code',
+          title: 'Customer Code',
           message: 'No items found for the selected filters.',
         );
         return;
@@ -278,22 +325,23 @@ class StockBalanceController extends GetxController {
       // we always narrow rows client-side below — a no-op when the server
       // already filtered (mirrors the web report's grid filter).
       final result = await _api.getStockBalanceReport(
-        fromDate:              fromDateController.text.trim(),
-        toDate:                toDateController.text.trim(),
-        itemCodes:             allowedItems,
-        warehouses:            warehouses,
-        itemGroup:             itemGroup.isEmpty ? null : itemGroup,
-        warehouseType:         warehouseType.isEmpty ? null : warehouseType,
-        rack:                  rack.isEmpty ? null : rack,
-        includeUom:            includeUom.isEmpty ? null : includeUom,
-        showDimensionWise:     dimensionWiseController.text == '1',
-        showVariantAttributes: variantAttrsController.text  == '1',
-        showStockAgeing:       stockAgeingController.text   == '1',
-        ignoreClosingBalance:  ignoreClosingController.text == '1',
-        includeZeroStockItems: includeZeroController.text   == '1',
+        fromDate: fromDate,
+        toDate: toDate,
+        itemCodes: allowedItems,
+        warehouses: warehouses,
+        itemGroup: itemGroup.isEmpty ? null : itemGroup,
+        warehouseType: warehouseType.isEmpty ? null : warehouseType,
+        rack: rack.isEmpty ? null : rack,
+        includeUom: includeUom.isEmpty ? null : includeUom,
+        showDimensionWise: dimensionWiseController.text == '1',
+        showVariantAttributes: variantAttrsController.text == '1',
+        showStockAgeing: stockAgeingController.text == '1',
+        ignoreClosingBalance: ignoreClosingController.text == '1',
+        includeZeroStockItems: includeZeroController.text == '1',
       );
-
+      if (!isCurrent()) return;
       reportColumns.assignAll(result.columns);
+      reportFields.replaceDefinition(stockBalanceFields(result.columns));
 
       final rows = allowedItems == null
           ? result.rows
@@ -309,11 +357,13 @@ class StockBalanceController extends GetxController {
       final ccMap = viewItemCodes.isEmpty
           ? const <String, String>{}
           : await _api.getItemCustomerCodes(viewItemCodes);
+      if (!isCurrent()) return;
       if (ccMap.isNotEmpty &&
           !reportColumns.any((c) => c['fieldname'] == 'customer_code')) {
-        reportColumns.add(
-          {'fieldname': 'customer_code', 'label': 'Customer Code'},
-        );
+        reportColumns.add({
+          'fieldname': 'customer_code',
+          'label': 'Customer Code',
+        });
       }
 
       // Surface the item image (also omitted by the report) as an absolute URL
@@ -321,17 +371,20 @@ class StockBalanceController extends GetxController {
       final imgMap = viewItemCodes.isEmpty
           ? const <String, String>{}
           : await _api.getItemImages(viewItemCodes);
+      if (!isCurrent()) return;
 
       var enriched = attachCustomerCode(rows, ccMap);
       enriched = attachItemImages(enriched, imgMap, _api.baseUrl);
+      _reportPeriod = (fromDate: fromDate, toDate: toDate);
       reportData.assignAll(enriched);
+      hasRun.value = true;
     } catch (e) {
-      GlobalSnackbar.error(
-        title:   'Report Error',
-        message: readableReportError(e, reportName: 'Stock Balance'),
-      );
+      if (!isCurrent()) return;
+      final message = readableReportError(e, reportName: 'Stock Balance');
+      reportError.value = message;
+      GlobalSnackbar.error(title: 'Report Error', message: message);
     } finally {
-      isLoading.value = false;
+      if (isCurrent()) isLoading.value = false;
     }
   }
 
@@ -397,16 +450,19 @@ class StockBalanceController extends GetxController {
   // ── Drill-downs (tap-to-navigate bottom sheets) ──────────────────────────
 
   /// Stock Ledger entries for a tile's item + warehouse over the report period.
-  Future<List<Map<String, dynamic>>> fetchStockLedger(
+  Future<StockLedgerReportResult> Function() stockLedgerLoader(
     String itemCode,
     String warehouse,
-  ) =>
-      _api.getStockLedgerEntries(
-        itemCode: itemCode,
-        warehouse: warehouse,
-        fromDate: fromDateController.text.trim(),
-        toDate: toDateController.text.trim(),
-      );
+  ) {
+    final fromDate = _reportPeriod?.fromDate ?? fromDateController.text.trim();
+    final toDate = _reportPeriod?.toDate ?? toDateController.text.trim();
+    return () => _api.getStockLedgerReport(
+      itemCode: itemCode,
+      warehouse: warehouse,
+      fromDate: fromDate,
+      toDate: toDate,
+    );
+  }
 
   /// Sales-Order reservations behind a tile's reserved figure.
   Future<List<Map<String, dynamic>>> fetchReservations(

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_logic.dart';
 
@@ -28,19 +28,17 @@ class _NamesApi extends Fake implements ApiProvider {
       >[];
 
   @override
-  Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
+  Future<RackStockBalanceResult> getStockBalanceDimensionResult({
     required String itemCode,
-    String? warehouse,
     List<String> warehouses = const [],
-    String? batchNo,
-  }) {
+  }) async {
     final reply = Completer<List<Map<String, dynamic>>>();
     stockRequests.add((
       itemCode: itemCode,
       warehouses: warehouses,
       reply: reply,
     ));
-    return reply.future;
+    return (columns: const <DeskColumn>[], rows: await reply.future);
   }
 
   @override
@@ -92,10 +90,6 @@ class _DetailFieldsApi extends ApiProvider {
   }
 }
 
-class _EmptyStorage {
-  Object? read(String key) => null;
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -104,11 +98,7 @@ void main() {
 
   setUp(() {
     api = Get.put<ApiProvider>(_NamesApi()) as _NamesApi;
-    controller = Get.put(
-      ItemVariantDetailsController(
-        storage: StorageService.withStorage(_EmptyStorage()),
-      ),
-    );
+    controller = Get.put(ItemVariantDetailsController());
     controller.filterControllers['item']!.text = 'Example';
   });
   tearDown(Get.reset);

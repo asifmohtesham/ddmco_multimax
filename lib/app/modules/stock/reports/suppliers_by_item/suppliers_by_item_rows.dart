@@ -15,6 +15,9 @@ import 'suppliers_by_item_fields.dart';
 import 'suppliers_by_item_layout.dart';
 
 typedef _Field = SuppliersByItemField;
+typedef SuppliersByItemFieldCaption = String Function(SuppliersByItemField);
+typedef SuppliersByItemColumnCaption = String Function(String, String);
+String _defaultCaption(_Field field) => field.label;
 typedef _Detail = ({String label, String value});
 typedef _ItemPresentation = ({
   String? name,
@@ -29,6 +32,7 @@ typedef _PurchasePresentation = ({
   String? spokenLastBuy,
   String? status,
   bool matched,
+  bool filterMatch,
   List<_Badge> badges,
   List<_Detail> details,
 });
@@ -54,8 +58,9 @@ bool _isComponent(SuppliersByItemRow row) =>
 /// the flat list leave their parents' sibling runs intact.
 Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   Iterable<SuppliersByItemLayoutRow> rows,
-  bool Function(SuppliersByItemField) shows,
-) {
+  bool Function(SuppliersByItemField) shows, [
+  SuppliersByItemFieldCaption label = _defaultCaption,
+]) {
   final runs = <List<SuppliersByItemLayoutRow>>[];
   final active = <SuppliersByItemRowKey?, List<SuppliersByItemLayoutRow>>{};
   final suppliersByParent =
@@ -92,7 +97,7 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
   final byRow = <SuppliersByItemRowKey, SuppliersByItemColumnRun>{};
   for (final siblings in [...runs, ...suppliersByParent.values]) {
     if (siblings.length < 2) continue;
-    final run = SuppliersByItemColumnRun._(siblings, shows);
+    final run = SuppliersByItemColumnRun._(siblings, shows, label);
     for (final row in siblings) {
       byRow[row.key] = run;
     }
@@ -101,10 +106,11 @@ Map<SuppliersByItemRowKey, SuppliersByItemColumnRun> suppliersByItemColumnRuns(
 }
 
 class SuppliersByItemColumnRun {
-  SuppliersByItemColumnRun._(this._rows, this._shows);
+  SuppliersByItemColumnRun._(this._rows, this._shows, this._label);
 
   final List<SuppliersByItemLayoutRow> _rows;
   final bool Function(SuppliersByItemField) _shows;
+  final SuppliersByItemFieldCaption _label;
   ({
     double width,
     TextDirection direction,
@@ -132,6 +138,7 @@ class SuppliersByItemColumnRun {
       for (final row in _rows) {
         final label = _lastBuyLabel(
           strictReportDate((row.pairNode ?? row.node).row.lastPurchaseDate),
+          _label(_Field.supplierLastBuyColumn),
         );
         final width = measured.putIfAbsent(
           label,
@@ -177,7 +184,7 @@ class SuppliersByItemColumnRun {
     if (required > maximum) return null;
     final measured = <String, double>{};
     for (final row in _rows) {
-      final values = _itemMetrics(row, _shows);
+      final values = _itemMetrics(row, _shows, _label);
       for (var i = 0; i < values.length; i++) {
         final value = values[i].value;
         final width = measured.putIfAbsent(
@@ -207,6 +214,8 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     this.onToggleEvidence,
     this.columnRun,
     this.parentOutputUom,
+    this.fieldLabel = _defaultCaption,
+    this.columnLabel,
   });
 
   final SuppliersByItemLayoutRow entry;
@@ -219,13 +228,13 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
   final VoidCallback? onToggleEvidence;
   final SuppliersByItemColumnRun? columnRun;
   final String? parentOutputUom;
+  final SuppliersByItemFieldCaption fieldLabel;
+  final SuppliersByItemColumnCaption? columnLabel;
 
   SuppliersByItemRow get _row => entry.node.row;
 
   String? get _depthLabel =>
-      entry.depth > _maxIndentDepth && shows(_Field.treeDepthLabel)
-      ? 'Depth ${entry.depth}'
-      : null;
+      entry.depth > _maxIndentDepth ? 'Depth ${entry.depth}' : null;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -248,15 +257,14 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     final isTemplate = _row.kind == SuppliersByItemRowKind.template;
     final unit = _stockUom(
       isComponent ? _Field.componentStockUom : _Field.itemStockUom,
+      forceUnit: isTemplate,
     );
-    final name = shows(isComponent ? _Field.componentName : _Field.itemName)
-        ? _row.distinctItemName
-        : null;
+    final name = _row.distinctItemName;
     final hasComparableQuantities = !isTemplate || _row.stockUom != null;
     final componentPurchaseDate = pairOccurrence
         ? entry.pairNode?.row.lastPurchaseDate
         : _row.lastPurchaseDate;
-    final metrics = _itemMetrics(entry, shows);
+    final metrics = _itemMetrics(entry, shows, fieldLabel);
     final showsPlaceholder =
         expanded &&
         entry.children.any(
@@ -264,17 +272,18 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
         );
     final badges = [
       if (!isTemplate && !entry.hasDirectSupplier && !showsPlaceholder)
-        _Badge(_Field.summaryNoDirectCount.label, 'Disabled'),
+        _Badge(fieldLabel(_Field.summaryNoDirectCount), 'Disabled'),
       if (!pairOccurrence && !isComponent && !isTemplate)
         ..._poBadges(_row, supplier: false, detailsVisible: true),
-      if (!isComponent &&
-          shows(_Field.itemBelowReorder) &&
-          _row.isBelowReorderLevel)
-        _Badge(_Field.itemBelowReorder.label, 'On Hold'),
+      if (!isComponent && _row.isBelowReorderLevel)
+        _Badge(
+          '${fieldLabel(_Field.itemProjected)} below ${fieldLabel(_Field.itemReorderLevel)}',
+          'On Hold',
+        ),
     ];
     final qualifiers = [
-      if (shows(_Field.itemTemplateContext) && entry.templateContext != null)
-        '${_Field.itemTemplateContext.label} ${entry.templateContext}',
+      if (entry.templateContext != null)
+        '${fieldLabel(_Field.itemTemplateContext)} ${entry.templateContext}',
       if (isTemplate && shows(_Field.templateVariantCount))
         countLabel(entry.variantCount, 'variant'),
       ?_depthLabel,
@@ -285,52 +294,55 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
           isComponent ? _Field.componentProjected : _Field.itemProjected,
         ))
           if (_amount(_row.projectedQty, unit) case final value?)
-            (label: _Field.itemProjected.label, value: value),
+            (label: fieldLabel(_Field.itemProjected), value: value),
         if (!isComponent) ...[
           if (shows(_Field.itemReorderLevel))
             if (_amount(_row.reorderLevel, unit) case final value?)
-              (label: _Field.itemReorderLevel.label, value: value),
+              (label: fieldLabel(_Field.itemReorderLevel), value: value),
           if (shows(_Field.itemReorderQty))
             if (_amount(_row.reorderQty, unit) case final value?)
-              (label: _Field.itemReorderQty.label, value: value),
+              (label: fieldLabel(_Field.itemReorderQty), value: value),
           if (shows(_Field.itemOpenOrders))
             if (_amount(_row.openOrderQty, unit) case final value?)
-              (label: _Field.itemOpenOrders.label, value: value),
-          if (shows(_Field.itemDraftOrders))
+              (label: fieldLabel(_Field.itemOpenOrders), value: value),
+          if (includeDrafts && shows(_Field.itemDraftOrders))
             if (_amount(_row.draftOrderQty, unit) case final value?)
-              (label: _Field.itemDraftOrders.label, value: value),
+              (label: fieldLabel(_Field.itemDraftOrders), value: value),
           if (shows(_Field.itemQtyReceived))
             if (_amount(_row.totalQtyReceived, unit) case final value?)
-              (label: _Field.itemQtyReceived.label, value: value),
+              (label: fieldLabel(_Field.itemQtyReceived), value: value),
         ],
       ],
       if (isComponent) ...[
         if (shows(_Field.componentQtyPerUnit))
           if (_amount(_row.bomQtyPerUnit, unit) case final value?)
             (
-              label: _Field.componentQtyPerUnit.label,
+              label: fieldLabel(_Field.componentQtyPerUnit),
               value:
                   '$value per ${unit == null ? 'unit' : entry.parentOutputUom ?? parentOutputUom ?? 'unit'}',
             ),
         if (shows(_Field.componentLastPurchase))
           if (componentPurchaseDate case final value?)
-            (label: _Field.supplierLastPurchase.label, value: value),
+            (label: fieldLabel(_Field.supplierLastPurchase), value: value),
         if (shows(_Field.componentUsedInBoms))
           if (_row.usedInBomCount case final count?)
             (label: 'Used in', value: countLabel(count, 'BOM')),
       ],
     ];
+    final unavailableUnit = '${fieldLabel(_Field.itemStockUom)} unavailable';
+    final unitSuffix = '($unavailableUnit)';
     final warnings = [
-      if (isComponent &&
-          shows(_Field.componentManufacturing) &&
-          _row.includeInManufacturing == false)
+      if (!isComponent &&
+          _row.stockUom == null &&
+          _row.hasStockQuantities &&
+          !metrics.any((metric) => metric.value.endsWith(unitSuffix)) &&
+          !details.any((detail) => detail.value.endsWith(unitSuffix)) &&
+          !badges.any((badge) => badge.label.endsWith(unitSuffix)))
+        unavailableUnit,
+      if (isComponent && _row.includeInManufacturing == false)
         'Not used in manufacturing',
-      if (isComponent && shows(_Field.componentCycle) && _row.bomCycle)
-        'BOM cycle detected',
-      if (isComponent &&
-          shows(_Field.componentDepthLimit) &&
-          _row.bomDepthLimit)
-        'BOM depth limit reached',
+      if (isComponent && _row.bomCycle) 'BOM cycle detected',
+      if (isComponent && _row.bomDepthLimit) 'BOM depth limit reached',
     ];
     return (
       name: name,
@@ -349,7 +361,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     return _TileSurface(
       label: [
         '$role ${_row.itemTitle}',
-        if (item.name case final name?) '${_Field.itemName.label} $name',
+        if (item.name case final name?) '${fieldLabel(_Field.itemName)} $name',
         for (final metric in item.metrics) _metricSemantics(metric),
         ...item.qualifiers,
         for (final badge in item.badges) badge.label,
@@ -377,23 +389,24 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
 
   _PurchasePresentation _purchasePresentation(SuppliersByItemRow pair) {
     final date = strictReportDate(pair.lastPurchaseDate);
-    final lastBuy = shows(_Field.supplierLastBuyColumn)
-        ? _lastBuyLabel(date)
+    final lastBuy = date == null || shows(_Field.supplierLastBuyColumn)
+        ? _lastBuyLabel(date, fieldLabel(_Field.supplierLastBuyColumn))
         : null;
     final status = _visibleSupplierStatus(pair.supplierStatus);
     return (
       lastBuy: lastBuy,
       spokenLastBuy: lastBuy == null
           ? null
-          : '${_Field.supplierLastBuyColumn.label} ${date == null ? 'unavailable' : DateFormat('d MMMM yyyy').format(date)}',
+          : '${fieldLabel(_Field.supplierLastBuyColumn)} ${date == null ? 'unavailable' : DateFormat('d MMMM yyyy').format(date)}',
       status: status == entry.groupSupplierStatus ? null : status,
       matched: _highlightMatch(pair.matchedSupplier),
+      filterMatch: supplierFilterActive && pair.matchedSupplier,
       badges: _poBadges(
         pair,
         supplier: true,
         detailsVisible: onToggleEvidence != null && evidenceExpanded,
       ),
-      details: _supplierDetails(pair, shows, date),
+      details: _supplierDetails(pair, shows, date, fieldLabel, includeDrafts),
     );
   }
 
@@ -401,10 +414,9 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
       shows(_Field.supplierMatchEmphasis) && supplierFilterActive && matched;
 
   String? _visibleSupplierStatus(String? status) =>
-      shows(_Field.supplierStatus) &&
-          (status == 'Disabled' ||
-              status == 'On Hold' ||
-              (status?.startsWith('On Hold ') ?? false))
+      (status == 'Disabled' ||
+          status == 'On Hold' ||
+          (status?.startsWith('On Hold ') ?? false))
       ? status
       : null;
 
@@ -419,9 +431,9 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
           label: [
             _spokenSupplier(entry.supplierLabel, entry.hasNamedSupplier),
             ?purchase.spokenLastBuy,
-            if (purchase.matched) 'Matches Suppliers filter',
+            if (purchase.filterMatch) 'Matches Suppliers filter',
             if (purchase.status case final status?)
-              '${_Field.supplierStatus.label} $status',
+              '${fieldLabel(_Field.supplierStatus)} $status',
             for (final badge in purchase.badges) badge.label,
             ?_depthLabel,
           ].join(', '),
@@ -439,10 +451,16 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
               ),
               if (purchase.status != null ||
                   purchase.badges.isNotEmpty ||
+                  (purchase.filterMatch && !purchase.matched) ||
                   _depthLabel != null)
                 _RowWrap(
                   children: [
                     ..._purchaseBadges(purchase),
+                    if (purchase.filterMatch && !purchase.matched)
+                      Text(
+                        'Matches Suppliers filter',
+                        style: _mutedStyle(context),
+                      ),
                     if (_depthLabel case final label?)
                       Text(label, style: _mutedStyle(context)),
                   ],
@@ -458,18 +476,22 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
 
   Widget _group(BuildContext context, SuppliersByItemSupplierGroup group) {
     final matched = _highlightMatch(group.matchedSupplier);
+    final filterMatch = supplierFilterActive && group.matchedSupplier;
     final status = _visibleSupplierStatus(group.supplierStatus);
     final counts = [
-      if (shows(_Field.supplierGroupItemCount) && group.directItemCount > 0)
+      if ((shows(_Field.supplierGroupItemCount) ||
+              group.retainedDirectItemCount != null) &&
+          group.directItemCount > 0)
         _groupCount(
-          _Field.supplierGroupItemCount.label,
+          fieldLabel(_Field.supplierGroupItemCount),
           group.directItemCount,
           group.retainedDirectItemCount,
         ),
-      if (shows(_Field.supplierGroupComponentCount) &&
+      if ((shows(_Field.supplierGroupComponentCount) ||
+              group.retainedComponentMatchCount != null) &&
           group.componentMatchCount > 0)
         _groupCount(
-          _Field.supplierGroupComponentCount.label,
+          fieldLabel(_Field.supplierGroupComponentCount),
           group.componentMatchCount,
           group.retainedComponentMatchCount,
         ),
@@ -480,8 +502,8 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
             ? group.label
             : _spokenSupplier(group.label, group.hasNamedSupplier),
         ...counts,
-        if (matched) 'Matches Suppliers filter',
-        if (status != null) '${_Field.supplierStatus.label} $status',
+        if (filterMatch) 'Matches Suppliers filter',
+        if (status != null) '${fieldLabel(_Field.supplierStatus)} $status',
       ].join(', '),
       heading: true,
       onTap: onToggleBranch,
@@ -498,6 +520,8 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
                 Text(group.label, style: _pairTitle(context, matched)),
                 for (final count in counts)
                   Text(count, style: _mutedStyle(context)),
+                if (filterMatch && !matched)
+                  Text('Matches Suppliers filter', style: _mutedStyle(context)),
                 if (status != null)
                   SupplierStatusPill(
                     status: status,
@@ -517,7 +541,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     final purchase = _purchasePresentation(entry.pairNode!.row);
     final item = _itemPresentation(pairOccurrence: true);
     final owner = entry.ownerNode!.row.itemTitle;
-    final path = shows(_Field.componentMatchPath) ? entry.componentPath : null;
+    final path = entry.componentPath;
     final identity = entry.isComponentMatch
         ? 'Component ${_row.itemTitle} for $owner'
         : _row.itemTitle;
@@ -565,13 +589,14 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
         _TileSurface(
           label: [
             spokenIdentity,
-            if (item.name case final name?) '${_Field.itemName.label} $name',
+            if (item.name case final name?)
+              '${fieldLabel(_Field.itemName)} $name',
             ...qualifiers,
             _spokenSupplier(entry.supplierLabel, entry.hasNamedSupplier),
             ?purchase.spokenLastBuy,
-            if (purchase.matched) 'Matches Suppliers filter',
+            if (purchase.filterMatch) 'Matches Suppliers filter',
             if (purchase.status case final status?)
-              '${_Field.supplierStatus.label} $status',
+              '${fieldLabel(_Field.supplierStatus)} $status',
             for (final badge in purchase.badges) badge.label,
             if (itemSection) 'Item',
             for (final metric in item.metrics) _metricSemantics(metric),
@@ -610,6 +635,8 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
                     for (final label in qualifiers) Text(label, style: muted),
                   ],
                 ),
+              if (purchase.filterMatch && !purchase.matched)
+                Text('Matches Suppliers filter', style: muted),
               if (supplierBadgeSection) ...[
                 _SectionTitle(label: entry.supplierLabel),
                 _RowWrap(children: purchaseBadges),
@@ -654,10 +681,9 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
 
   Widget _bom(BuildContext context) {
     final draft = _row.bomStatus == 'Draft';
-    final showDraft = shows(_Field.bomDraftBadge) && draft;
+    final showDraft = draft;
     final labels = [
-      if (shows(_Field.bomDefaultMarker) && _row.bomIsDefault && !draft)
-        'Default BOM',
+      if (_row.bomIsDefault && !draft) 'Default BOM',
       if (shows(_Field.bomComponentCount))
         if (_row.componentCount case final count?)
           countLabel(count, 'component'),
@@ -698,14 +724,25 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
       spacing: 8,
       runSpacing: 4,
       children: [
-        Text(_Field.summaryNoDirectCount.label, style: _mutedStyle(context)),
+        Text(
+          fieldLabel(_Field.summaryNoDirectCount),
+          style: _mutedStyle(context),
+        ),
         if (_depthLabel case final label?)
           Text(label, style: _mutedStyle(context)),
       ],
     ),
   );
 
-  String? _stockUom(_Field field) => _displayUnit(_row, shows(field));
+  String _spokenSupplier(String identity, bool hasName) {
+    final column = hasName ? 'supplier_name' : 'tree_label';
+    final fallback = hasName ? 'Supplier Name' : 'Item / Supplier';
+    final label = columnLabel?.call(column, fallback) ?? fallback;
+    return '$label $identity';
+  }
+
+  String? _stockUom(_Field field, {bool forceUnit = false}) =>
+      _displayUnit(_row, forceUnit || shows(field), fieldLabel(field));
 
   List<_Badge> _poBadges(
     SuppliersByItemRow row, {
@@ -715,6 +752,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
     final unit = _displayUnit(
       row,
       shows(supplier ? _Field.supplierStockUom : _Field.itemStockUom),
+      fieldLabel(_Field.itemStockUom),
     );
     return [
       if (shows(
@@ -726,7 +764,7 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
               )) &&
           (row.openOrderQty ?? 0) > 0)
         if (_amount(row.openOrderQty, unit) case final value?)
-          _Badge('${_Field.itemOpenOrders.label} $value', 'Submitted'),
+          _Badge('${fieldLabel(_Field.itemOpenOrders)} $value', 'Submitted'),
       if (includeDrafts &&
           shows(
             supplier ? _Field.supplierDraftPoBadge : _Field.itemDraftPoBadge,
@@ -737,49 +775,57 @@ class SuppliersByItemDisplayTile extends StatelessWidget {
               )) &&
           (row.draftOrderQty ?? 0) > 0)
         if (_amount(row.draftOrderQty, unit) case final value?)
-          _Badge('${_Field.itemDraftOrders.label} $value', 'On Hold'),
+          _Badge('${fieldLabel(_Field.itemDraftOrders)} $value', 'On Hold'),
     ];
   }
 }
 
-String _spokenSupplier(String label, bool hasName) =>
-    '${hasName ? 'Supplier Name' : 'Item / Supplier'} $label';
-
 List<_Detail> _itemMetrics(
   SuppliersByItemLayoutRow entry,
   bool Function(SuppliersByItemField) shows,
+  SuppliersByItemFieldCaption fieldLabel,
 ) {
   final row = entry.node.row;
   final component = _isComponent(row);
+  final template = row.kind == SuppliersByItemRowKind.template;
   return [
-    if ((row.kind != SuppliersByItemRowKind.template || row.stockUom != null) &&
-        shows(component ? _Field.componentBalance : _Field.itemBalance))
+    if (template
+        ? row.stockUom != null
+        : shows(component ? _Field.componentBalance : _Field.itemBalance))
       (
-        label: _Field.itemBalance.label,
+        label: fieldLabel(_Field.itemBalance),
         value:
             _amount(
               row.balanceQty,
               _displayUnit(
                 row,
-                shows(
-                  component ? _Field.componentStockUom : _Field.itemStockUom,
-                ),
+                template ||
+                    shows(
+                      component
+                          ? _Field.componentStockUom
+                          : _Field.itemStockUom,
+                    ),
+                fieldLabel(_Field.itemStockUom),
               ),
             ) ??
             '-',
       ),
-    if (shows(
-      component ? _Field.componentSupplierCount : _Field.itemSupplierCount,
-    ))
+    if ((template && entry.directSupplierCount != null) ||
+        shows(
+          component ? _Field.componentSupplierCount : _Field.itemSupplierCount,
+        ))
       (
-        label: _Field.itemSupplierCount.label,
+        label: fieldLabel(_Field.itemSupplierCount),
         value: entry.directSupplierCount?.toString() ?? '-',
       ),
   ];
 }
 
-String? _displayUnit(SuppliersByItemRow row, bool showsUnit) => showsUnit
-    ? row.stockUom ?? '(${_Field.itemStockUom.label} unavailable)'
+String? _displayUnit(SuppliersByItemRow row, bool showsUnit, String label) =>
+    row.stockUom == null
+    ? '($label unavailable)'
+    : showsUnit
+    ? row.stockUom
     : null;
 
 bool suppliersByItemHasDetails(
@@ -789,10 +835,12 @@ bool suppliersByItemHasDetails(
   row,
   shows,
   strictReportDate(row.lastPurchaseDate),
+  _defaultCaption,
+  true,
 ).isNotEmpty;
 
-String _lastBuyLabel(DateTime? date) =>
-    '${_Field.supplierLastBuyColumn.label} ${date == null ? '-' : DateFormat('d MMM yy').format(date)}';
+String _lastBuyLabel(DateTime? date, String label) =>
+    '$label ${date == null ? '-' : DateFormat('d MMM yy').format(date)}';
 
 String? _supplierAmount(num? quantity, String? unit) {
   if (quantity == null || !quantity.isFinite) return null;
@@ -806,41 +854,47 @@ List<_Detail> _supplierDetails(
   SuppliersByItemRow row,
   bool Function(SuppliersByItemField) shows,
   DateTime? purchaseDate,
+  SuppliersByItemFieldCaption fieldLabel,
+  bool includeDrafts,
 ) {
-  final unit = _displayUnit(row, shows(_Field.supplierStockUom));
+  final unit = _displayUnit(
+    row,
+    shows(_Field.supplierStockUom),
+    fieldLabel(_Field.supplierStockUom),
+  );
   final rate = row.lastRate;
   final days = row.leadTimeDays?.toStringAsFixed(1);
   return [
     if (shows(_Field.supplierOpenOrders))
       if (_supplierAmount(row.openOrderQty, unit) case final value?)
-        (label: _Field.supplierOpenOrders.label, value: value),
-    if (shows(_Field.supplierDraftOrders))
+        (label: fieldLabel(_Field.supplierOpenOrders), value: value),
+    if (includeDrafts && shows(_Field.supplierDraftOrders))
       if (_supplierAmount(row.draftOrderQty, unit) case final value?)
-        (label: _Field.supplierDraftOrders.label, value: value),
+        (label: fieldLabel(_Field.supplierDraftOrders), value: value),
     if (shows(_Field.supplierPartNumber))
       if (row.supplierPartNumber case final value?)
-        (label: _Field.supplierPartNumber.label, value: value),
+        (label: fieldLabel(_Field.supplierPartNumber), value: value),
     if (shows(_Field.supplierSources))
       if (row.sources case final value?)
-        (label: _Field.supplierSources.label, value: value),
+        (label: fieldLabel(_Field.supplierSources), value: value),
     if (shows(_Field.supplierLastPurchase) && purchaseDate != null)
       (
-        label: _Field.supplierLastPurchase.label,
+        label: fieldLabel(_Field.supplierLastPurchase),
         value: DateFormat('d MMM yyyy').format(purchaseDate),
       ),
     if (shows(_Field.supplierLastPurchaseReceipt))
       if (row.lastPurchaseReceipt case final value?)
-        (label: _Field.supplierLastPurchaseReceipt.label, value: value),
+        (label: fieldLabel(_Field.supplierLastPurchaseReceipt), value: value),
     if (shows(_Field.supplierQtyReceived))
       if (_supplierAmount(row.totalQtyReceived, unit) case final value?)
-        (label: _Field.supplierQtyReceived.label, value: value),
+        (label: fieldLabel(_Field.supplierQtyReceived), value: value),
     if (shows(_Field.supplierLastPo))
       if (row.lastPoDate case final value?)
-        (label: _Field.supplierLastPo.label, value: value),
+        (label: fieldLabel(_Field.supplierLastPo), value: value),
     if (rate != null) ...[
       if (shows(_Field.supplierRate))
         (
-          label: _Field.supplierRate.label,
+          label: fieldLabel(_Field.supplierRate),
           value: [
             if (shows(_Field.supplierRateCurrency)) ?row.currency,
             FormattingHelper.formatAmount(rate.toDouble()),
@@ -850,28 +904,28 @@ List<_Detail> _supplierDetails(
         ),
       if (shows(_Field.supplierRateSource))
         if (row.rateSource case final value?)
-          (label: _Field.supplierRateSource.label, value: value),
+          (label: fieldLabel(_Field.supplierRateSource), value: value),
       if (shows(_Field.supplierRateDate))
         if (row.rateDate case final value?)
-          (label: _Field.supplierRateDate.label, value: value),
+          (label: fieldLabel(_Field.supplierRateDate), value: value),
       if (shows(_Field.supplierRateDocument))
         if (row.rateDocument case final value?)
-          (label: _Field.supplierRateDocument.label, value: value),
+          (label: fieldLabel(_Field.supplierRateDocument), value: value),
     ],
     if (shows(_Field.supplierLeadTime) && days != null)
       (
-        label: _Field.supplierLeadTime.label,
+        label: fieldLabel(_Field.supplierLeadTime),
         value: '$days ${days == '1.0' ? 'day' : 'days'}',
       ),
     if (shows(_Field.supplierLeadTimeReceipts))
       if (row.leadTimeReceipts case final count?)
-        (label: _Field.supplierLeadTimeReceipts.label, value: '$count'),
+        (label: fieldLabel(_Field.supplierLeadTimeReceipts), value: '$count'),
     if (shows(_Field.supplierPoCount))
       if (row.poCount case final count?)
-        (label: _Field.supplierPoCount.label, value: '$count'),
+        (label: fieldLabel(_Field.supplierPoCount), value: '$count'),
     if (shows(_Field.supplierReceiptCount))
       if (row.receiptCount case final count?)
-        (label: _Field.supplierReceiptCount.label, value: '$count'),
+        (label: fieldLabel(_Field.supplierReceiptCount), value: '$count'),
   ];
 }
 
@@ -1414,12 +1468,14 @@ class SuppliersByItemFooter extends StatelessWidget {
     required this.hasResults,
     required this.excludesUnknownUom,
     required this.bottomPadding,
+    this.fieldLabel = _defaultCaption,
   });
 
   final Map<String, SuppliersByItemQuantityTotals> totals;
   final bool hasResults;
   final bool excludesUnknownUom;
   final double bottomPadding;
+  final SuppliersByItemFieldCaption fieldLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1428,13 +1484,13 @@ class SuppliersByItemFooter extends StatelessWidget {
         final foldedOrder = a.toLowerCase().compareTo(b.toLowerCase());
         return foldedOrder == 0 ? a.compareTo(b) : foldedOrder;
       });
-    final quantities = <String, num? Function(SuppliersByItemQuantityTotals)>{
-      _Field.itemBalance.label: (total) => total.balanceQty,
-      _Field.itemProjected.label: (total) => total.projectedQty,
-      _Field.itemOpenOrders.label: (total) => total.openOrderQty,
-      _Field.itemReorderQty.label: (total) => total.reorderQty,
-      _Field.itemDraftOrders.label: (total) => total.draftOrderQty,
-      _Field.itemQtyReceived.label: (total) => total.totalQtyReceived,
+    final quantities = <_Field, num? Function(SuppliersByItemQuantityTotals)>{
+      _Field.itemBalance: (total) => total.balanceQty,
+      _Field.itemProjected: (total) => total.projectedQty,
+      _Field.itemOpenOrders: (total) => total.openOrderQty,
+      _Field.itemReorderQty: (total) => total.reorderQty,
+      _Field.itemDraftOrders: (total) => total.draftOrderQty,
+      _Field.itemQtyReceived: (total) => total.totalQtyReceived,
     };
     final metrics = {
       for (final metric in quantities.entries)
@@ -1456,7 +1512,7 @@ class SuppliersByItemFooter extends StatelessWidget {
         MediaQuery.textScalerOf(context).scale(textSize) >= 2 * textSize;
     final labelWidth = metrics.keys.fold(
       0.0,
-      (widest, label) => max(widest, _width(context, label, style)),
+      (widest, field) => max(widest, _width(context, fieldLabel(field), style)),
     );
     return Padding(
       padding: EdgeInsets.fromLTRB(12, 12, 12, bottomPadding + 16),
@@ -1475,7 +1531,10 @@ class SuppliersByItemFooter extends StatelessWidget {
           if (hasResults) ...[
             const SizedBox(height: 8),
             if (totals.isEmpty)
-              Text('No quantities with a known Stock UOM', style: style),
+              Text(
+                'No quantities with a known ${fieldLabel(_Field.itemStockUom)}',
+                style: style,
+              ),
             LayoutBuilder(
               builder: (context, constraints) {
                 final valueWidth =
@@ -1495,7 +1554,7 @@ class SuppliersByItemFooter extends StatelessWidget {
                     for (final metric in metrics.entries)
                       _metric(
                         context,
-                        label: metric.key,
+                        label: fieldLabel(metric.key),
                         values: metric.value,
                         labelWidth: labelWidth,
                         labelStyle: style,
@@ -1510,7 +1569,7 @@ class SuppliersByItemFooter extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Quantities without a Stock UOM are excluded',
+                  'Quantities without a ${fieldLabel(_Field.itemStockUom)} are excluded',
                   style: style,
                   textAlign: TextAlign.center,
                 ),

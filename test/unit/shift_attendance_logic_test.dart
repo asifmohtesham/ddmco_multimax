@@ -203,12 +203,13 @@ void main() {
       expect(totals.missingPunch, 1);
       expect(
         totals.label,
-        '5 records · 4 employees · 14h 53m worked · 1 late · 1 early exit · 1 missing a punch',
+        'End of list · 5 records · 4 employees · Total Working Hours '
+        '14h 53m · 1 late · 1 early exit · 1 missing a punch',
       );
     });
 
     test('empty', () {
-      expect(ShiftAttendanceTotals.of(const []).label, 'End of results');
+      expect(ShiftAttendanceTotals.of(const []).label, 'End of list');
     });
   });
 }

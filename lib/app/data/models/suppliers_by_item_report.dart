@@ -1,3 +1,30 @@
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+
+class SuppliersByItemReport {
+  const SuppliersByItemReport({required this.nodes, this.columns});
+
+  final List<SuppliersByItemNode> nodes;
+  final List<DeskColumn>? columns;
+
+  factory SuppliersByItemReport.fromMessage(Map message) {
+    final rawRows = message['result'];
+    if (rawRows is! List) {
+      throw const SuppliersByItemReportException(
+        'The server returned an invalid Suppliers by Item response.',
+      );
+    }
+    final rawColumns = message['columns'];
+    final columns = rawColumns is List ? decodeDeskColumns(rawColumns) : null;
+    final rows = [
+      for (final raw in rawRows) decodeDeskRow(raw, columns ?? const []),
+    ];
+    return SuppliersByItemReport(
+      nodes: SuppliersByItemNode.parseRows(rows),
+      columns: columns,
+    );
+  }
+}
+
 class SuppliersByItemFilters {
   const SuppliersByItemFilters({
     this.items = const [],

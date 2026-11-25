@@ -87,8 +87,10 @@ void main() {
       );
 
       expect(find.text('BELTS FORMAL AUTO CP'), findsOneWidget);
-      expect(find.text('OPENING'), findsOneWidget);
-      expect(find.text('BALANCE'), findsOneWidget);
+      expect(find.text('Opening Qty'), findsOneWidget);
+      expect(find.text('In Qty'), findsOneWidget);
+      expect(find.text('Out Qty'), findsOneWidget);
+      expect(find.text('Balance Qty'), findsOneWidget);
       // Rack surfaced on the location line, not as a chip.
       expect(find.textContaining('BLOCK 1'), findsOneWidget);
       expect(find.text('Rack: KA-WH-DXB3-BLOCK 1'), findsNothing);
@@ -236,7 +238,7 @@ void main() {
     expect(customer, isTrue);
 
     // Tapping the ledger strip (card body) opens the ledger.
-    await tester.tap(find.text('OPENING'));
+    await tester.tap(find.text('Opening Qty'));
     expect(ledger, isTrue);
   });
 }

@@ -337,13 +337,14 @@ void main() {
       expect(find.text('Legacy placeholder for OTHER'), findsNothing);
       expect(find.text('Hide BOM components'), findsOneWidget);
       expect(find.text('Component PART for KIT'), findsOneWidget);
-      expect(find.text('KIT › BOM-KIT › PART'), findsNothing);
+      expect(find.text('KIT › BOM-KIT › PART'), findsOneWidget);
       expect(find.text('Items 1'), findsNothing);
       expect(find.text('BOM components 1'), findsNothing);
       expect(
-        find.textContaining(RegExp(r'^Last Purchase Date (?:\d+ \w+ \d+|-)$')),
+        find.textContaining(RegExp(r'^Last Purchase Date \d+ \w+ \d+$')),
         findsNothing,
       );
+      expect(find.text('Last Purchase Date -'), findsNWidgets(2));
       expect(find.textContaining('supplier details'), findsNothing);
       expect(find.text('Open Order Qty'), findsNothing);
       expect(
@@ -502,8 +503,9 @@ void main() {
         groupBySupplier: true,
         hideFields: [_Field.supplierStatus],
       );
-      expect(find.text('Disabled'), findsNothing);
-      expect(find.text('On Hold'), findsNothing);
+      expect(_within(shared, 'Disabled'), findsOneWidget);
+      expect(_within(mixedPairs, 'Disabled'), findsOneWidget);
+      expect(_within(mixedPairs, 'On Hold'), findsOneWidget);
       expect(sharedPairs, findsNWidgets(2));
       expect(mixedPairs, findsNWidgets(2));
       expect(
@@ -539,7 +541,8 @@ void main() {
         expect(find.text('Same name ($supplier)'), findsOneWidget);
         expect(
           find.bySemanticsLabel(
-            'Item KIT, Supplier Name Same name ($supplier)',
+            'Item KIT, Supplier Name Same name ($supplier), '
+            'Last Purchase Date unavailable',
           ),
           findsOneWidget,
         );
@@ -583,7 +586,10 @@ void main() {
         'Item / Supplier Imported vendor',
         'Supplier Name Vendor Name',
       ]) {
-        expect(find.bySemanticsLabel(label), findsOneWidget);
+        expect(
+          find.bySemanticsLabel('$label, Last Purchase Date unavailable'),
+          findsOneWidget,
+        );
       }
       await _pumpRows(
         tester,
@@ -593,12 +599,12 @@ void main() {
       );
       for (final label in [
         'Supplier Name Vendor Name',
-        'Item A, Supplier Name Vendor Name',
-        'Item B, Supplier Name Vendor Name',
+        'Item A, Supplier Name Vendor Name, Last Purchase Date unavailable',
+        'Item B, Supplier Name Vendor Name, Last Purchase Date unavailable',
         'Item / Supplier ID-ONLY',
-        'Item A, Item / Supplier ID-ONLY',
+        'Item A, Item / Supplier ID-ONLY, Last Purchase Date unavailable',
         'Item / Supplier Imported vendor',
-        'Item A, Item / Supplier Imported vendor',
+        'Item A, Item / Supplier Imported vendor, Last Purchase Date unavailable',
       ]) {
         expect(find.bySemanticsLabel(label), findsOneWidget);
       }
@@ -679,9 +685,10 @@ void main() {
     expect(_within(pair('B'), 'Last Purchase Date 2026-03-01'), findsNothing);
     expect(_within(pair('C'), 'Last Purchase Date 2026-03-01'), findsNothing);
     expect(
-      find.textContaining(RegExp(r'^Last Purchase Date (?:\d+ \w+ \d+|-)$')),
+      find.textContaining(RegExp(r'^Last Purchase Date \d+ \w+ \d+$')),
       findsNothing,
     );
+    expect(_within(pair('C'), 'Last Purchase Date -'), findsOneWidget);
 
     await _pumpRows(
       tester,

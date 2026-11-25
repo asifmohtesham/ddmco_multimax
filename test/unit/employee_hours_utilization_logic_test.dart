@@ -106,12 +106,14 @@ void main() {
     test('sums the hour columns only', () {
       expect(
         utilizationTotalsLabel(parseUtilization(_rows)),
-        '2 employees · 120h billed · 172h 30m non-billed · 187h 30m untracked · of 480h',
+        'End of list · 2 employees · Billed Hours (B) 120h · '
+        'Non-Billed Hours (NB) 172h 30m · Untracked Hours (U) 187h 30m · '
+        'Total Hours (T) 480h',
       );
     });
 
     test('empty', () {
-      expect(utilizationTotalsLabel(const []), 'End of results');
+      expect(utilizationTotalsLabel(const []), 'End of list');
     });
   });
 }

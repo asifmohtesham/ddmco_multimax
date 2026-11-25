@@ -11,6 +11,7 @@ class PosDnGroupByBar extends StatelessWidget {
   final ValueChanged<PosDnGroupField?> onSecondaryChanged;
   final VoidCallback onExpandAll;
   final VoidCallback onCollapseAll;
+  final Map<String, String> captions;
 
   const PosDnGroupByBar({
     super.key,
@@ -20,7 +21,11 @@ class PosDnGroupByBar extends StatelessWidget {
     required this.onSecondaryChanged,
     required this.onExpandAll,
     required this.onCollapseAll,
+    this.captions = const {},
   });
+
+  String? _label(PosDnGroupField? field) =>
+      field == null ? null : captions[field.key] ?? field.label;
 
   Future<void> _pick(
     BuildContext context, {
@@ -34,22 +39,26 @@ class PosDnGroupByBar extends StatelessWidget {
     ];
     final chosen = await showModalBottomSheet<Object?>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       builder: (ctx) {
         final cs = Theme.of(ctx).colorScheme;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final f in options)
-                ListTile(
-                  title: Text(f?.label ?? 'None'),
-                  trailing: f == current
-                      ? Icon(Icons.check, color: cs.primary)
-                      : null,
-                  // Wrap null in a sentinel so it survives the pop.
-                  onTap: () => Navigator.pop(ctx, f ?? _none),
-                ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final f in options)
+                  ListTile(
+                    title: Text(_label(f) ?? 'None'),
+                    trailing: f == current
+                        ? Icon(Icons.check, color: cs.primary)
+                        : null,
+                    // Wrap null in a sentinel so it survives the pop.
+                    onTap: () => Navigator.pop(ctx, f ?? _none),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -67,9 +76,12 @@ class PosDnGroupByBar extends StatelessWidget {
 
     return Row(
       children: [
-        Text('Group by:',
-            style: theme.textTheme.labelMedium
-                ?.copyWith(color: cs.onSurfaceVariant)),
+        Text(
+          'Group by:',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Wrap(
@@ -78,8 +90,12 @@ class PosDnGroupByBar extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               ActionChip(
-                avatar: Icon(Icons.layers_outlined, size: 16, color: cs.primary),
-                label: Text(primary?.label ?? 'Group by'),
+                avatar: Icon(
+                  Icons.layers_outlined,
+                  size: 16,
+                  color: cs.primary,
+                ),
+                label: Text(_label(primary) ?? 'Group by'),
                 onPressed: () => _pick(
                   context,
                   current: primary,
@@ -89,9 +105,12 @@ class PosDnGroupByBar extends StatelessWidget {
               ),
               if (primary != null)
                 ActionChip(
-                  avatar: Icon(Icons.subdirectory_arrow_right,
-                      size: 16, color: cs.primary),
-                  label: Text(secondary?.label ?? '+ Then by'),
+                  avatar: Icon(
+                    Icons.subdirectory_arrow_right,
+                    size: 16,
+                    color: cs.primary,
+                  ),
+                  label: Text(_label(secondary) ?? '+ Then by'),
                   onPressed: () => _pick(
                     context,
                     current: secondary,

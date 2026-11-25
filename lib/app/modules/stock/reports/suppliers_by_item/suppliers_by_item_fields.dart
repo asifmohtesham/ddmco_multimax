@@ -160,6 +160,63 @@ enum SuppliersByItemField {
   final String label;
   final bool onByDefault;
   final String? qualifier;
+
+  String? get column => switch (this) {
+    itemName || componentName => 'item_name',
+    itemSupplierCount || componentSupplierCount => 'supplier_count',
+    itemBalance || componentBalance => 'balance_qty',
+    itemStockUom || supplierStockUom || componentStockUom => 'stock_uom',
+    itemProjected || componentProjected => 'projected_qty',
+    itemReorderLevel => 'reorder_level',
+    itemReorderQty => 'reorder_qty',
+    itemOpenOrders ||
+    supplierOpenOrders ||
+    itemOpenPoBadge ||
+    supplierOpenPoBadge => 'open_order_qty',
+    itemDraftOrders ||
+    supplierDraftOrders ||
+    itemDraftPoBadge ||
+    supplierDraftPoBadge => 'draft_order_qty',
+    itemQtyReceived || supplierQtyReceived => 'total_qty_received',
+    supplierStatus => 'supplier_status',
+    supplierPartNumber => 'supplier_part_number',
+    supplierSources => 'sources',
+    supplierLastPurchase ||
+    componentLastPurchase ||
+    supplierLastBuyColumn => 'last_purchase_date',
+    supplierLastPurchaseReceipt => 'last_purchase_receipt',
+    supplierLastPo => 'last_po_date',
+    supplierRate => 'last_rate',
+    supplierRateCurrency => 'currency',
+    supplierRateUom => 'rate_uom',
+    supplierRateSource => 'rate_source',
+    supplierRateDate => 'rate_date',
+    supplierRateDocument => 'rate_document',
+    supplierLeadTime => 'lead_time_days',
+    supplierLeadTimeReceipts => 'lead_time_receipts',
+    supplierPoCount => 'po_count',
+    supplierReceiptCount => 'receipt_count',
+    componentQtyPerUnit => 'bom_qty_per_unit',
+    _ => null,
+  };
+
+  bool get fixed => switch (this) {
+    itemName ||
+    componentName ||
+    supplierStatus ||
+    itemTemplateContext ||
+    itemBelowReorder ||
+    componentManufacturing ||
+    componentCycle ||
+    componentDepthLimit ||
+    componentMatchPath ||
+    bomDefaultMarker ||
+    bomDraftBadge ||
+    treeDepthLabel => true,
+    _ => false,
+  };
+
+  bool get movedToView => column == null && !fixed;
 }
 
 class SuppliersByItemFieldVisibility {
@@ -171,12 +228,13 @@ class SuppliersByItemFieldVisibility {
   final Map<String, bool> overrides;
 
   bool shows(SuppliersByItemField field) =>
-      overrides[field.name] ?? field.onByDefault;
+      field.fixed || (overrides[field.name] ?? field.onByDefault);
 
   SuppliersByItemFieldVisibility withField(
     SuppliersByItemField field,
     bool visible,
   ) {
+    if (field.fixed) return this;
     final updated = Map<String, bool>.of(overrides);
     if (visible == field.onByDefault) {
       updated.remove(field.name);

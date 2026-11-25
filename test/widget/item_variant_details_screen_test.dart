@@ -11,13 +11,239 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
-import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_controller.dart';
+import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_fields.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/stock/reports/item_variant_details/item_variant_details_screen.dart';
 import 'package:multimax/main.dart' show buildAppTheme;
+
+import '../support/report_fields_test_kit.dart';
+
+void registerItemVariantDetailsFieldsContract() {
+  testWidgets('Item Variant Details leaf switches preserve v16 subtotals', (
+    tester,
+  ) async {
+    Get.testMode = true;
+    addTearDown(Get.reset);
+    await tester.binding.setSurfaceSize(const Size(520, 1450));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = Get.put<ApiProvider>(_FakeApi()) as _FakeApi;
+    Get.put(AuthenticationController());
+    final report = Get.put(ItemVariantDetailsController());
+    api.report.complete((
+      columns: [
+        {'fieldname': 'variant_name', 'label': 'Item'},
+        {'fieldname': 'current_stock', 'label': 'Current Stock'},
+        {'fieldname': 'stock_uom', 'label': 'Stock UOM'},
+        {'fieldname': 'in_production', 'label': 'In Production'},
+        {'fieldname': 'open_orders', 'label': 'Open Sales Orders'},
+      ],
+      rows: [
+        {
+          'variant_name': 'Template A',
+          'indent': 0,
+          'stock_uom': 'Nos',
+          'current_stock': 6,
+          'in_production': 0,
+          'open_orders': 3,
+        },
+        {
+          'variant_name': 'Variant A',
+          'indent': 1,
+          'stock_uom': 'Nos',
+          'current_stock': 6,
+          'in_production': 0,
+          'open_orders': 3,
+        },
+        {'variant_name': 'Mixed Template', 'indent': 0, 'current_stock': null},
+        {
+          'variant_name': 'Variant B',
+          'indent': 1,
+          'stock_uom': 'Nos',
+          'current_stock': 0,
+          'in_production': 0,
+          'open_orders': 0,
+        },
+        {
+          'variant_name': 'Variant C',
+          'indent': 1,
+          'stock_uom': 'Box',
+          'current_stock': 5,
+          'in_production': 2,
+          'open_orders': 1,
+        },
+      ],
+    ));
+    report.filterControllers['item']!.text = 'Template A';
+    await tester.pumpWidget(
+      const GetMaterialApp(home: ItemVariantDetailsScreen()),
+    );
+    await report.runReport();
+    await tester.pumpAndSettle();
+    final driver = WidgetReportFieldsDriver(tester, ReportFieldsTestOwner());
+    final leaf = find.ancestor(
+      of: find.text('Variant A'),
+      matching: find.byType(Card),
+    );
+    Finder inLeaf(String text) => find.descendant(
+      of: leaf,
+      matching: find.text(text, findRichText: true),
+    );
+
+    expect(inLeaf('Current Stock 6 Nos'), findsOneWidget);
+    await driver.openFields();
+    await driver.setVisible('in_production', true);
+    await driver.setVisible('open_orders', true);
+    await driver.setVisible('current_stock', false);
+    await driver.dismiss();
+    expect(inLeaf('Current Stock 6 Nos'), findsNothing);
+    expect(inLeaf('Stock UOM: Nos'), findsOneWidget);
+    expect(inLeaf('In Production: 0'), findsOneWidget);
+    expect(inLeaf('Open Sales Orders: 3'), findsOneWidget);
+
+    await driver.openFields();
+    await driver.setVisible('stock_uom', false);
+    await driver.setVisible('in_production', false);
+    await driver.setVisible('open_orders', false);
+    await driver.dismiss();
+    expect(inLeaf('Stock UOM: Nos'), findsNothing);
+    expect(inLeaf('In Production: 0'), findsNothing);
+    expect(inLeaf('Open Sales Orders: 3'), findsNothing);
+    for (final subtotal in [
+      'Current Stock  6 Nos',
+      'In Production  0 Nos',
+      'Open Sales Orders  3',
+    ]) {
+      expect(find.text(subtotal, findRichText: true), findsOneWidget);
+    }
+    await tester.tap(find.text('Collapse All'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 variant · Current Stock 6 Nos'), findsOneWidget);
+    expect(find.text('2 variants'), findsOneWidget);
+    await driver.scrollToEnd();
+    expect(
+      find.text(
+        'End of list\nQuantity totals for shown results\n'
+        'Current Stock 6 Nos\nIn Production 0 Nos\n'
+        'Current Stock 5 Box\nIn Production 2 Box',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Item Variant Details settings persist and protect identity', (
+    tester,
+  ) async {
+    Get.testMode = true;
+    addTearDown(Get.reset);
+    final config = ReportFieldsTestConfig();
+    const fieldsKey =
+        'item_variant_details_fields::https%3A%2F%2Fone.example::Buyer';
+    const controlKey =
+        'item_variant_details_fields::https%3A%2F%2Fone.example::Seller';
+    config.values[controlKey] = '{"older_attribute":false}';
+    final storage = ReportFieldsTestStorage();
+    final owner = ReportFieldsTestOwner()
+      ..change('https://one.example', 'Buyer');
+    final api = Get.put<ApiProvider>(_FakeApi(), permanent: true) as _FakeApi;
+    Get.put(AuthenticationController(), permanent: true);
+    final products = (
+      columns: [
+        {'fieldname': 'item_code', 'label': 'Product Code'},
+        {'fieldname': 'material', 'label': 'Composition'},
+        {'fieldname': 'current_stock', 'label': 'In Inventory'},
+        {'fieldname': 'stock_uom', 'label': 'Stock UOM'},
+      ],
+      rows: [
+        {
+          'item_code': 'Variant A',
+          'item_name': 'Belt A',
+          'material': 'Cotton',
+          'current_stock': 0,
+          'stock_uom': 'Nos',
+        },
+      ],
+    );
+    api.report.complete(products);
+
+    late ItemVariantDetailsController report;
+    Future<void> mount() async {
+      report = Get.put(
+        ItemVariantDetailsController(
+          fields: ScopedReportFieldsController(
+            definition: itemVariantFields(),
+            owner: owner,
+            store: ScopedReportFieldsStore(database: config, storage: storage),
+          ),
+        ),
+      );
+      report.filterControllers['item']!.text = 'Template A';
+      await tester.pumpWidget(
+        const GetMaterialApp(home: ItemVariantDetailsScreen()),
+      );
+      await report.runReport();
+      await tester.pumpAndSettle();
+    }
+
+    final driver = WidgetReportFieldsDriver(tester, owner);
+    await mount();
+    expect(find.text('Composition: Cotton'), findsOneWidget);
+    expect(find.text('In Inventory 0 Nos'), findsOneWidget);
+    await driver.openFields();
+    expect((await driver.read('item_code')).onChanged, isNull);
+    await driver.setVisible('material', false);
+    await driver.setVisible('stock_uom', false);
+    await driver.setVisible('current_stock', false);
+    await driver.dismiss();
+    expect(find.text('Composition: Cotton'), findsNothing);
+    expect(find.text('Variant A'), findsOneWidget);
+    expect(find.text('Belt A'), findsOneWidget);
+    expect(find.textContaining('End of list'), findsOneWidget);
+    expect(find.textContaining('In Inventory 0 Nos'), findsOneWidget);
+    expect(api.requests, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await Get.delete<ItemVariantDetailsController>(force: true);
+    await mount();
+    expect(find.text('Composition: Cotton'), findsNothing);
+    await driver.openFields();
+    await driver.switchOwner(site: 'https://other.example', user: 'Buyer');
+    await report.runReport();
+    await tester.pumpAndSettle();
+    expect((await driver.read('material')).value, isTrue);
+    await driver.switchOwner(site: 'https://one.example', user: 'Seller');
+    await report.runReport();
+    await tester.pumpAndSettle();
+    expect((await driver.read('material')).value, isTrue);
+    await driver.switchOwner(site: 'https://one.example', user: 'Buyer');
+    await report.runReport();
+    await tester.pumpAndSettle();
+    expect((await driver.read('material')).value, isFalse);
+    api.reportOverride = (
+      columns: products.columns
+          .where((column) => column['fieldname'] != 'material')
+          .toList(),
+      rows: products.rows,
+    );
+    await report.runReport();
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(CheckboxListTile, 'Composition'), findsNothing);
+    await driver.reset();
+    expect(config.values[fieldsKey], '{}');
+    expect(config.values[controlKey], '{"older_attribute":false}');
+    await driver.dismiss();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await Get.delete<ItemVariantDetailsController>(force: true);
+    api.reportOverride = null;
+    await mount();
+    expect(find.text('Composition: Cotton'), findsOneWidget);
+  });
+}
 
 Rect groupRect(WidgetTester tester, Finder finder) {
   final sliver = tester.renderObject<RenderSliver>(finder);
@@ -31,10 +257,13 @@ Rect groupRect(WidgetTester tester, Finder finder) {
 
 class _FakeApi extends ApiProvider {
   late final report = Completer<ItemVariantDetailsResult>();
+  ItemVariantDetailsResult? reportOverride;
   final requests = <Map<String, dynamic>>[];
   final detailRequests = <List<String>>[];
   final stockRequests = <({String itemCode, List<String> warehouses})>[];
   final stockRows = <Map<String, dynamic>>[];
+  Map<String, dynamic>? stockResponse;
+  bool stockFails = false;
   final details = <String, Map<String, dynamic>>{};
 
   Completer<void>? detailGate;
@@ -51,18 +280,24 @@ class _FakeApi extends ApiProvider {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getStockBalanceWithDimension({
+  Future<RackStockBalanceResult> getStockBalanceDimensionResult({
     required String itemCode,
-    String? warehouse,
-    String? batchNo,
     List<String> warehouses = const [],
   }) async {
     stockRequests.add((itemCode: itemCode, warehouses: warehouses));
-    return stockRows
-        .where(
-          (row) => warehouses.isEmpty || warehouses.contains(row['warehouse']),
-        )
-        .toList();
+    if (stockFails) throw StateError('stock check failed');
+    if (stockResponse case final response?) {
+      return ApiProvider.parseRackStockBalanceResult(response);
+    }
+    return (
+      columns: const <DeskColumn>[],
+      rows: stockRows
+          .where(
+            (row) =>
+                warehouses.isEmpty || warehouses.contains(row['warehouse']),
+          )
+          .toList(),
+    );
   }
 
   @override
@@ -70,7 +305,7 @@ class _FakeApi extends ApiProvider {
     List<String> items = const [],
     List<String> itemGroups = const [],
     List<String> warehouses = const [],
-  }) {
+  }) async {
     requests.add(
       ApiProvider.itemVariantDetailsFilters(
         items: items,
@@ -78,7 +313,7 @@ class _FakeApi extends ApiProvider {
         warehouses: warehouses,
       ),
     );
-    return report.future;
+    return reportOverride ?? await report.future;
   }
 
   @override
@@ -113,20 +348,6 @@ class _FakeApi extends ApiProvider {
   }
 }
 
-class _FieldsBox {
-  Object? value;
-
-  Object? read(String key) {
-    expect(key, 'ivd_fields');
-    return value;
-  }
-
-  Future<void> write(String key, Object? next) async {
-    expect(key, 'ivd_fields');
-    value = next;
-  }
-}
-
 void main() {
   late _FakeApi api;
 
@@ -150,9 +371,10 @@ void main() {
     WidgetTester tester, {
     Object? preset,
     ThemeMode mode = ThemeMode.dark,
+    double width = 390,
     double height = 850,
   }) async {
-    await tester.binding.setSurfaceSize(Size(390, height));
+    await tester.binding.setSurfaceSize(Size(width, height));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       GetMaterialApp(
@@ -169,11 +391,7 @@ void main() {
             name: '/variants',
             page: () => const ItemVariantDetailsScreen(),
             binding: BindingsBuilder(
-              () => Get.lazyPut(
-                () => ItemVariantDetailsController(
-                  storage: StorageService.withStorage(_FieldsBox()),
-                ),
-              ),
+              () => Get.lazyPut(ItemVariantDetailsController.new),
             ),
           ),
         ],
@@ -209,31 +427,44 @@ void main() {
   test(
     'field overrides persist across reports with different columns',
     () async {
-      final box = _FieldsBox();
-      final storage = StorageService.withStorage(box);
-      final first = ItemVariantDetailsController(storage: storage)..onInit();
-      expect(first.showsField('material'), isTrue);
-      expect(first.showsField('avg_buying_price_list_rate'), isFalse);
-      first.toggleField('material');
-      first.toggleField('avg_buying_price_list_rate');
-      await Future<void>.delayed(Duration.zero);
+      final storage = ReportFieldsTestStorage()
+        ..legacyValues['item_variant_details'] = {'material': false};
+      final config = ReportFieldsTestConfig();
+      final owner = ReportFieldsTestOwner()..change('https://one.example', 'X');
+      ItemVariantDetailsController mount(List<DeskColumn> columns) {
+        final fields = ScopedReportFieldsController(
+          definition: itemVariantFields(columns),
+          owner: owner,
+          store: ScopedReportFieldsStore(database: config, storage: storage),
+        );
+        return ItemVariantDetailsController(fields: fields)..onInit();
+      }
 
-      final reopened = ItemVariantDetailsController(storage: storage)..onInit();
-      reopened.reportColumns.assignAll([
-        {'fieldname': 'colour', 'label': 'Colour'},
+      final first = mount(const [
+        (fieldname: 'material', label: 'Material'),
+        (fieldname: 'avg_buying_price_list_rate', label: 'Buying Rate'),
       ]);
-      expect(reopened.showsField('colour'), isTrue);
-      reopened.toggleField('colour');
-      await Future<void>.delayed(Duration.zero);
-      expect(storage.getItemVariantFields(), {
-        'material': false,
-        'avg_buying_price_list_rate': true,
-        'colour': false,
-      });
-      expect(reopened.showsField('material'), isFalse);
-      reopened.resetFields();
-      await Future<void>.delayed(Duration.zero);
-      expect(storage.getItemVariantFields(), isEmpty);
+      await first.fields.bind();
+      expect(first.fields.shows('material'), isFalse);
+      expect(first.fields.shows('avg_buying_price_list_rate'), isFalse);
+      await first.fields.setVisible('avg_buying_price_list_rate', true);
+
+      final reopened = mount(const [(fieldname: 'colour', label: 'Colour')]);
+      await reopened.fields.bind();
+      expect(reopened.fields.shows('colour'), isTrue);
+      await reopened.fields.setVisible('colour', false);
+      final key = ScopedReportFieldsStore.configKey(
+        'item_variant_details',
+        owner.current!.scope,
+      );
+      expect(
+        config.values[key],
+        '{"material":false,"avg_buying_price_list_rate":true,"colour":false}',
+      );
+      expect(reopened.fields.shows('material'), isFalse);
+      await reopened.fields.resetToDefaults();
+      expect(config.values[key], '{}');
+      expect(storage.legacyValues['item_variant_details'], {'material': false});
       first.onClose();
       reopened.onClose();
     },
@@ -326,6 +557,287 @@ void main() {
     );
     expect(api.requests, hasLength(1));
   });
+
+  for (final groups in [1, 26]) {
+    testWidgets('Fields anchors an exposed variant with $groups templates', (
+      tester,
+    ) async {
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: [
+          {'fieldname': 'variant_name', 'label': 'Variant'},
+          {'fieldname': 'current_stock', 'label': 'Current Stock'},
+        ],
+        rows: [
+          for (var group = 0; group < groups; group++) ...[
+            {'variant_name': 'Template-$group', 'indent': 0},
+            for (var index = 0; index < (group == 0 ? 40 : 1); index++)
+              {
+                'variant_name': 'Variant-$group-$index',
+                'current_stock': 3,
+                'indent': 1,
+              },
+          ],
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+
+      final controller = Get.find<ItemVariantDetailsController>();
+      final group = controller.results.value!.groups.first;
+      final driver = WidgetReportFieldsDriver(tester, ReportFieldsTestOwner());
+      final position = controller.scrollController.position;
+      expect(
+        find.byType(PinnedHeaderSliver),
+        groups == 1 ? findsOneWidget : findsNothing,
+      );
+      position.jumpTo(1250);
+      await tester.pumpAndSettle();
+
+      const headingHeight = 52.0;
+      double offset(Object id) => driver.readPaintedOffset(id) - headingHeight;
+      final id = List.generate(40, (index) => (group, 'variant', index))
+          .firstWhere((id) {
+            return find.byKey(ValueKey<Object>(id)).evaluate().isNotEmpty &&
+                offset(id) > 20 &&
+                offset(id) < 300;
+          });
+      position.jumpTo(position.pixels + offset(id) + 14);
+      await tester.pumpAndSettle();
+      final before = offset(id);
+      expect(before, closeTo(-14, 1));
+      final variant = find.byKey(ValueKey<Object>(id));
+      final stockLine = find.descendant(
+        of: variant,
+        matching: find.text('Current Stock 3'),
+      );
+      expect(stockLine, findsOneWidget);
+
+      await driver.openFields();
+      await driver.setVisible('current_stock', false);
+      await driver.dismiss();
+      expect(variant, findsOneWidget);
+      expect(stockLine, findsNothing);
+      expect(offset(id), closeTo(before, 1));
+
+      await driver.openFields();
+      await driver.reset();
+      await driver.dismiss();
+      expect(variant, findsOneWidget);
+      expect(stockLine, findsOneWidget);
+      expect(offset(id), closeTo(before, 1));
+    });
+
+    testWidgets('group headings wrap at 2x text with $groups templates', (
+      tester,
+    ) async {
+      const caption = 'Stock disponible à la date du rapport';
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: [
+          {'fieldname': 'variant_name', 'label': 'Product'},
+          {'fieldname': 'current_stock', 'label': caption},
+        ],
+        rows: [
+          for (var index = 0; index < groups; index++) ...[
+            {
+              'variant_name': 'Template-$index',
+              'current_stock': 3,
+              'indent': 0,
+            },
+            {'variant_name': 'Product-$index', 'current_stock': 3, 'indent': 1},
+          ],
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpAndSettle();
+      expect(find.text('Template-0'), findsWidgets);
+      expect(tester.takeException(), isNull);
+
+      Get.find<ItemVariantDetailsController>().setAllExpanded(false);
+      await tester.pumpAndSettle();
+      final summary = find.text('1 variant · $caption 3');
+      expect(summary, findsWidgets);
+      expect(
+        tester.renderObject<RenderParagraph>(summary.first).didExceedMaxLines,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'collapsed template shows the full German stock caption at 240dp',
+    (tester) async {
+      const caption = 'Aktueller Lagerbestand';
+      await open(tester, preset: 'ACP-25', width: 240);
+      api.report.complete((
+        columns: [
+          {'fieldname': 'current_stock', 'label': caption},
+        ],
+        rows: [
+          {'variant_name': 'ACP-25', 'current_stock': 936, 'indent': 0},
+          {'variant_name': 'Product-1', 'current_stock': 600, 'indent': 1},
+          {'variant_name': 'Product-2', 'current_stock': 336, 'indent': 1},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      Get.find<ItemVariantDetailsController>().setAllExpanded(false);
+      await tester.pumpAndSettle();
+
+      final summary = find.text('2 variants · $caption 936');
+      final paragraph = tester.renderObject<RenderParagraph>(summary);
+      final heading = find
+          .ancestor(of: summary, matching: find.byType(InkWell))
+          .first;
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(
+        tester.getRect(heading).contains(tester.getRect(summary).center),
+        isTrue,
+      );
+      expect(
+        tester.getBottomLeft(summary).dy,
+        lessThanOrEqualTo(tester.getBottomLeft(heading).dy),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'template speech preserves punctuation inside the stock caption',
+    (tester) async {
+      const caption = 'Current Stock · Main Warehouse';
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: [
+          {'fieldname': 'current_stock', 'label': caption},
+        ],
+        rows: [
+          {'variant_name': 'ACP-25', 'current_stock': 3, 'indent': 0},
+          {'variant_name': 'Product-1', 'current_stock': 3, 'indent': 1},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      Get.find<ItemVariantDetailsController>().setAllExpanded(false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 variant · $caption 3'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Template ACP-25, 1 variant, $caption 3'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Check Stock retries unreadable rack balances and speaks quantities',
+    (tester) async {
+      await open(tester, preset: 'ACP-25');
+      api.report.complete((
+        columns: [
+          {'fieldname': 'current_stock', 'label': 'Aktueller Lagerbestand'},
+        ],
+        rows: [
+          {'variant_name': 'Variant A', 'stock_uom': 'Nos'},
+        ],
+      ));
+      const columns = [
+        {'fieldname': 'rack', 'label': 'Regal'},
+        {'fieldname': 'bal_qty', 'label': 'Bilanzmenge'},
+      ];
+      api.stockResponse = {
+        'columns': columns,
+        'result': [
+          ['Rack A', null],
+          ['Rack B', 5],
+        ],
+      };
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Check Stock'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('No stock in any rack.'), findsNothing);
+      expect(find.textContaining('Total · Bilanzmenge'), findsNothing);
+
+      api.stockResponse = {
+        'columns': columns,
+        'result': [
+          ['Rack A', 0],
+          ['Rack B', 5],
+        ],
+      };
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rack A'), findsOneWidget);
+      expect(find.text('Rack B'), findsOneWidget);
+      expect(find.text('Total · Bilanzmenge 5 Nos'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp(r'Rack A\s+Bilanzmenge 0 Nos')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'Rack B\s+Bilanzmenge 5 Nos')),
+        findsOneWidget,
+      );
+      expect(api.stockRequests, hasLength(2));
+
+      await tester.tap(find.text('Hide Stock'));
+      await tester.pumpAndSettle();
+      expect(find.text('Total · Bilanzmenge 5 Nos'), findsNothing);
+      api.stockResponse = {
+        'columns': [
+          {'fieldname': 'rack', 'label': 'Regal'},
+          {'fieldname': 'bal_qty'},
+        ],
+        'result': [
+          ['Rack C', 7],
+        ],
+      };
+      await tester.tap(find.text('Check Stock'));
+      await tester.pumpAndSettle();
+      expect(find.text('Total · Balance Qty 7 Nos'), findsOneWidget);
+      expect(find.textContaining('Total · Bilanzmenge'), findsNothing);
+      expect(api.stockRequests.map((request) => request.itemCode), [
+        'Variant A',
+        'Variant A',
+        'Variant A',
+      ]);
+    },
+  );
+
+  testWidgets(
+    'rack check failure offers Retry and successful empty is distinct',
+    (tester) async {
+      await open(tester, preset: 'ACP-25');
+      api.stockFails = true;
+      api.report.complete((
+        columns: <Map<String, dynamic>>[],
+        rows: [
+          {'variant_name': 'Variant A'},
+        ],
+      ));
+      await tester.tap(find.text('Run Report'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Check Stock'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Could not run Stock Balance. Try again.'),
+        findsOneWidget,
+      );
+      expect(find.text('No stock in any rack.'), findsNothing);
+      api.stockFails = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('No stock in any rack.'), findsOneWidget);
+      expect(api.stockRequests, hasLength(2));
+    },
+  );
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {
     testWidgets('Images use compact placeholders in ${mode.name}', (
@@ -509,55 +1021,51 @@ void main() {
     );
   });
 
-  testWidgets(
-    'large reports scroll under the pinned filter toolbar',
-    (tester) async {
-      await open(tester, preset: {'item_code': 'ACP-25'});
-      await tester.tap(find.text('Run Report'));
-      await tester.pump();
-      api.report.complete((
-        columns: <Map<String, dynamic>>[],
-        rows: <Map<String, dynamic>>[
-          for (var index = 0; index < 501; index++)
-            {'variant_name': 'Variant $index'},
-        ],
-      ));
-      await tester.pumpAndSettle();
+  testWidgets('large reports scroll under the pinned filter toolbar', (
+    tester,
+  ) async {
+    await open(tester, preset: {'item_code': 'ACP-25'});
+    await tester.tap(find.text('Run Report'));
+    await tester.pump();
+    api.report.complete((
+      columns: <Map<String, dynamic>>[],
+      rows: <Map<String, dynamic>>[
+        for (var index = 0; index < 501; index++)
+          {'variant_name': 'Variant $index'},
+      ],
+    ));
+    await tester.pumpAndSettle();
 
-      final controller = Get.find<ItemVariantDetailsController>();
-      final scrollbar = tester
-          .widgetList<Scrollbar>(find.byType(Scrollbar))
-          .singleWhere((bar) => bar.controller == controller.scrollController);
-      expect(scrollbar.thumbVisibility, isTrue);
-      expect(scrollbar.interactive, isFalse);
-      expect(
-        find.text('Swipe the list to scroll long results'),
-        findsOneWidget,
-      );
+    final controller = Get.find<ItemVariantDetailsController>();
+    final scrollbar = tester
+        .widgetList<Scrollbar>(find.byType(Scrollbar))
+        .singleWhere((bar) => bar.controller == controller.scrollController);
+    expect(scrollbar.thumbVisibility, isTrue);
+    expect(scrollbar.interactive, isFalse);
+    expect(find.text('Swipe the list to scroll long results'), findsOneWidget);
 
-      final filter = find.byTooltip('1 filter active — tap to edit');
-      final results = find.byType(CustomScrollView);
-      await tester.drag(results, const Offset(0, -300));
-      await tester.pumpAndSettle();
-      final scrolledOffset = controller.scrollController.offset;
-      expect(scrolledOffset, greaterThan(0));
-      final filterTop = tester.getTopLeft(filter).dy;
-      expect(filterTop, inInclusiveRange(0, kToolbarHeight));
+    final filter = find.byTooltip('1 filter active — tap to edit');
+    final results = find.byType(CustomScrollView);
+    await tester.drag(results, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    final scrolledOffset = controller.scrollController.offset;
+    expect(scrolledOffset, greaterThan(0));
+    final filterTop = tester.getTopLeft(filter).dy;
+    expect(filterTop, inInclusiveRange(0, kToolbarHeight));
 
-      await tester.drag(results, const Offset(0, -300));
-      await tester.pumpAndSettle();
-      expect(controller.scrollController.offset, greaterThan(scrolledOffset));
-      expect(tester.getTopLeft(filter).dy, filterTop);
-      await tester.tap(filter.hitTestable());
-      await tester.pumpAndSettle();
-      expect(find.text('Item Variant Details Filters'), findsOneWidget);
-    },
-  );
+    await tester.drag(results, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(controller.scrollController.offset, greaterThan(scrolledOffset));
+    expect(tester.getTopLeft(filter).dy, filterTop);
+    await tester.tap(filter.hitTestable());
+    await tester.pumpAndSettle();
+    expect(find.text('Item Variant Details Filters'), findsOneWidget);
+  });
 
   testWidgets(
     'collapsed headings keep their extent and stock context in dark mode',
     (tester) async {
-      await open(tester, preset: 'ACP-25');
+      await open(tester, preset: 'ACP-25', width: 520);
       api.report.complete((
         columns: <Map<String, dynamic>>[],
         rows: [
@@ -758,17 +1266,19 @@ void main() {
       if (warehouses.isNotEmpty) {
         expect(find.text('Rack B'), findsOneWidget);
         expect(find.text('2.5 Nos'), findsOneWidget);
-        expect(find.text('Total  4 Nos'), findsOneWidget);
+        expect(find.text('Total · Balance Qty 4 Nos'), findsOneWidget);
       } else {
-        expect(find.text('Total  1.5 Nos'), findsOneWidget);
+        expect(find.text('Total · Balance Qty 1.5 Nos'), findsOneWidget);
       }
       expect(find.textContaining('pcs'), findsNothing);
     });
   }
 
-  testWidgets('the card gallery banner sits inside the card outline', (
+  testWidgets('the card gallery fits the outline and closes on owner change', (
     tester,
   ) async {
+    final owner = ReportFieldsTestOwner()..change('https://a.example', 'Buyer');
+    Get.put<ReportOwnerSource>(owner);
     await open(tester, preset: 'ACP-25');
     api.detailGate = Completer<void>();
     api.details['2002506'] = {'image': 'https://example.invalid/belt.png'};
@@ -799,6 +1309,12 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.byType(ItemImagePreview), findsOneWidget);
+
+    owner.change('https://b.example', 'Buyer');
+    await tester.pumpAndSettle();
+    expect(find.byType(ItemImagePreview), findsNothing);
+    expect(find.text('2002506'), findsNothing);
+    expect(find.byType(ItemVariantDetailsScreen), findsOneWidget);
   });
 
   testWidgets('each template enclosure owns only its heading and variants', (

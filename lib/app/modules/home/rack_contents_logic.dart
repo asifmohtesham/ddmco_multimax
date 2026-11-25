@@ -7,6 +7,7 @@
 library;
 
 import 'package:multimax/app/core/utils/html_text.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 
 /// Item fields the rack card shows that the Stock Balance report does not
 /// carry. Item Name, Item Group and the stock UOM already arrive with the
@@ -71,7 +72,7 @@ class RackContentsEntry {
   // From the Stock Balance row.
   final String itemCode;
   final String itemName;
-  final double balanceQty;
+  final double? balanceQty;
   final String? stockUom;
   final String? itemGroup;
   final String? batchNo;
@@ -94,10 +95,19 @@ class RackContentsSnapshot {
   const RackContentsSnapshot({
     required this.entries,
     this.itemDetailsFailed = false,
+    this.columns,
+    this.baseUrl,
+    this.isCurrentOwner,
   });
 
   final List<RackContentsEntry> entries;
   final bool itemDetailsFailed;
+  final List<DeskColumn>? columns;
+  final String? baseUrl;
+
+  /// Checks the app session captured when the scan started, including changes
+  /// before a deferred modal builder has mounted.
+  final bool Function()? isCurrentOwner;
 }
 
 /// Merges the rack's Stock Balance [rows] with [itemFields] (from
@@ -116,16 +126,17 @@ List<RackContentsEntry> mergeRackContents(
   ];
 }
 
-RackContentsEntry _entry(
-  Map<String, dynamic> row,
-  Map<String, dynamic>? item,
-) {
+RackContentsEntry _entry(Map<String, dynamic> row, Map<String, dynamic>? item) {
   final code = _text(row['item_code']) ?? 'Unknown';
   final name = _text(row['item_name']) ?? code;
+  final quantity = row['bal_qty'] ?? row['balance_qty'];
+  final balance = quantity is num
+      ? quantity.toDouble()
+      : double.tryParse(quantity?.toString() ?? '');
   return RackContentsEntry(
     itemCode: code,
     itemName: name,
-    balanceQty: (row['bal_qty'] as num?)?.toDouble() ?? 0.0,
+    balanceQty: balance?.isFinite == true ? balance : null,
     stockUom: _text(row['stock_uom']),
     itemGroup: _text(row['item_group']),
     batchNo: _text(row['batch_no']),
@@ -174,15 +185,15 @@ List<RackContentsEntry> filterRackContents(
 }
 
 String _searchText(RackContentsEntry e) => [
-      e.itemCode,
-      e.itemName,
-      e.variantOf,
-      e.brand,
-      e.itemGroup,
-      e.batchNo,
-      e.countryOfOrigin,
-      e.description,
-    ].whereType<String>().join('\n').toLowerCase();
+  e.itemCode,
+  e.itemName,
+  e.variantOf,
+  e.brand,
+  e.itemGroup,
+  e.batchNo,
+  e.countryOfOrigin,
+  e.description,
+].whereType<String>().join('\n').toLowerCase();
 
 bool _matchesAll(String haystack, List<String> words) =>
     words.every(haystack.contains);
@@ -193,10 +204,9 @@ bool isSameDay(DateTime date, DateTime today) =>
     date.month == today.month &&
     date.day == today.day;
 
-/// Sum of the rack's Balance Qty — the end-of-list total. Quantities only;
-/// no rate or value is ever summed.
+/// Sum of the measured balances. The footer marks missing terms separately.
 double rackQtyTotal(List<RackContentsEntry> entries) =>
-    entries.fold(0.0, (sum, e) => sum + e.balanceQty);
+    entries.fold(0.0, (sum, e) => sum + (e.balanceQty ?? 0));
 
 /// The one stock UOM every entry shares, or null when they differ (or none
 /// has one) — a total across mixed units must not be labelled with one.

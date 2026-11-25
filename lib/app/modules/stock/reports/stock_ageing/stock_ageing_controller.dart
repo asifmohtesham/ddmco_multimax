@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Response;
@@ -5,8 +7,11 @@ import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_cache.dart';
+import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_fields.dart';
 import 'package:multimax/app/modules/stock/reports/stock_ageing/stock_ageing_logic.dart';
 
 /// Stock → Reports → Stock Ageing.
@@ -22,24 +27,27 @@ class StockAgeingController extends GetxController {
     Future<Response> Function({Map<String, dynamic>? filters})? run,
     String Function()? company,
     String Function()? baseUrl,
-    List<String>? Function()? loadCardFields,
-    void Function(List<String> fields)? saveCardFields,
-  })  : _cache = cache ?? StockAgeingCache(),
-        _baseUrl = baseUrl ?? (() => Get.find<ApiProvider>().baseUrl),
-        _loadCardFields = loadCardFields ??
-            (() => Get.find<StorageService>().getStockAgeingCardFields()),
-        _saveCardFields = saveCardFields ??
-            ((f) => Get.find<StorageService>().saveStockAgeingCardFields(f)),
-        _run = run ?? Get.find<ApiProvider>().runStockAgeingCustom,
-        _sessionCompany =
-            company ?? (() => Get.find<StorageService>().getCompany());
+    ReportFieldsController? fields,
+    ReportFieldsController? view,
+  }) : _cache = cache ?? StockAgeingCache(),
+       _baseUrl = baseUrl ?? (() => Get.find<ApiProvider>().baseUrl),
+       fields =
+           fields ??
+           ScopedReportFieldsController.forReport(stockAgeingFields()),
+       view = view ?? ScopedReportFieldsController.forReport(stockAgeingView),
+       _run = run ?? Get.find<ApiProvider>().runStockAgeingCustom,
+       _sessionCompany =
+           company ?? (() => Get.find<StorageService>().getCompany());
 
   final StockAgeingCache _cache;
   final Future<Response> Function({Map<String, dynamic>? filters}) _run;
   final String Function() _sessionCompany;
   final String Function() _baseUrl;
-  final List<String>? Function() _loadCardFields;
-  final void Function(List<String> fields) _saveCardFields;
+  final ReportFieldsController fields;
+  final ReportFieldsController view;
+  Worker? _ownerWorker;
+  final scrollController = ScrollController();
+  final resultRevision = 0.obs;
 
   // ── Filter controllers (keys match the report's filter fieldnames) ───────
 
@@ -68,57 +76,57 @@ class StockAgeingController extends GetxController {
   };
 
   List<ReportFilterField> get filterFields => const [
-        ReportFilterField(
-          key: 'to_date',
-          label: 'As On Date *',
-          type: ReportFilterType.datePicker,
-          prefixIcon: Icons.calendar_today_outlined,
-          required: true,
-        ),
-        ReportFilterField(
-          key: 'warehouse_type',
-          label: 'Warehouse Type',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.category_outlined,
-          linkDoctype: 'Warehouse Type',
-        ),
-        ReportFilterField(
-          key: 'warehouse',
-          label: 'Warehouse',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.warehouse_outlined,
-          linkDoctype: 'Warehouse',
-        ),
-        ReportFilterField(
-          key: 'item_code',
-          label: 'Item',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.inventory_2_outlined,
-          linkDoctype: 'Item',
-        ),
-        ReportFilterField(
-          key: 'brand',
-          label: 'Brand',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.sell_outlined,
-          linkDoctype: 'Brand',
-        ),
-        ReportFilterField(
-          key: 'range',
-          label: 'Ageing Range *',
-          prefixIcon: Icons.straighten_outlined,
-          hint: '30, 60, 90',
-          required: true,
-        ),
-      ];
+    ReportFilterField(
+      key: 'to_date',
+      label: 'As On Date *',
+      type: ReportFilterType.datePicker,
+      prefixIcon: Icons.calendar_today_outlined,
+      required: true,
+    ),
+    ReportFilterField(
+      key: 'warehouse_type',
+      label: 'Warehouse Type',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.category_outlined,
+      linkDoctype: 'Warehouse Type',
+    ),
+    ReportFilterField(
+      key: 'warehouse',
+      label: 'Warehouse',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.warehouse_outlined,
+      linkDoctype: 'Warehouse',
+    ),
+    ReportFilterField(
+      key: 'item_code',
+      label: 'Item',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.inventory_2_outlined,
+      linkDoctype: 'Item',
+    ),
+    ReportFilterField(
+      key: 'brand',
+      label: 'Brand',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.sell_outlined,
+      linkDoctype: 'Brand',
+    ),
+    ReportFilterField(
+      key: 'range',
+      label: 'Ageing Range *',
+      prefixIcon: Icons.straighten_outlined,
+      hint: '30, 60, 90',
+      required: true,
+    ),
+  ];
 
   List<ReportFilterToggle> get filterToggles => const [
-        ReportFilterToggle(
-          key: 'show_warehouse_wise_stock',
-          label: 'Show Warehouse-wise Stock',
-          icon: Icons.warehouse_outlined,
-        ),
-      ];
+    ReportFilterToggle(
+      key: 'show_warehouse_wise_stock',
+      label: 'Show Warehouse-wise Stock',
+      icon: Icons.warehouse_outlined,
+    ),
+  ];
 
   // ── State ────────────────────────────────────────────────────────────────
 
@@ -135,11 +143,9 @@ class StockAgeingController extends GetxController {
   final searchController = TextEditingController();
   final sort = 'age'.obs;
 
-  /// Optional fields shown on each row card (persisted per device).
-  final cardFields = <String>{}.obs;
-
-  /// The report's columns in server order, with their verbatim labels.
+  /// The effective columns, with a separate interval for saved bucket labels.
   final columns = <ReportColumn>[].obs;
+  final rawColumns = <DeskColumn>[].obs;
 
   /// Filters that differ from the report's saved defaults, for the chip row.
   final activeFilters = <String, String>{}.obs;
@@ -152,6 +158,7 @@ class StockAgeingController extends GetxController {
 
   /// Set when a fetch fails and there are no rows to show.
   final errorMessage = RxnString();
+  final hasRun = false.obs;
 
   /// The report's saved default filters (`message.custom_filters`); empty
   /// until the first default run or cache read.
@@ -166,12 +173,25 @@ class StockAgeingController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    cardFields.assignAll(StockAgeingLogic.decodeCardFields(_loadCardFields()));
-    _restore();
+    var ownerGeneration = fields.ownerGeneration;
+    _ownerWorker = ever(fields.state, (_) {
+      if (ownerGeneration == fields.ownerGeneration) return;
+      ownerGeneration = fields.ownerGeneration;
+      _clearOwner();
+      // Start the new binding after the owner listener has finished dispatching.
+      final generation = ownerGeneration;
+      unawaited(Future.microtask(() => _restore(generation)));
+    });
+    unawaited(view.bind());
+    unawaited(_restore(ownerGeneration));
   }
 
   @override
   void onClose() {
+    _ownerWorker?.dispose();
+    fields.dispose();
+    view.dispose();
+    scrollController.dispose();
     for (final c in filterControllers.values) {
       c.dispose();
     }
@@ -179,9 +199,35 @@ class StockAgeingController extends GetxController {
     super.onClose();
   }
 
-  Future<void> _restore() async {
-    final snapshot = await _cache.read();
-    if (isClosed) return;
+  bool _current(int generation) =>
+      !isClosed && generation == fields.ownerGeneration;
+
+  void _clearOwner() {
+    _rerun = false;
+    _defaults = {};
+    isLoading.value = false;
+    hasRun.value = false;
+    errorMessage.value = null;
+    _seedControllers(const {});
+    activeFilters.clear();
+    searchController.clear();
+    searchQuery.value = '';
+    sort.value = 'age';
+    columns.clear();
+    rawColumns.clear();
+    buckets.clear();
+    rows.clear();
+    asOn.value = '';
+    fetchedAt.value = null;
+    resultRevision.value++;
+  }
+
+  Future<void> _restore(int generation) async {
+    await fields.bind();
+    if (!_current(generation)) return;
+    final scope = fields.scope;
+    final snapshot = scope == null ? null : await _cache.read(scope);
+    if (!_current(generation)) return;
     if (snapshot == null) {
       await runReport();
       return;
@@ -198,11 +244,11 @@ class StockAgeingController extends GetxController {
   // ── Derived view ─────────────────────────────────────────────────────────
 
   List<Map<String, dynamic>> get visibleRows => StockAgeingLogic.filterAndSort(
-        rows,
-        search: searchQuery.value,
-        sort: sort.value,
-        buckets: buckets,
-      );
+    rows,
+    search: searchQuery.value,
+    sort: sort.value,
+    buckets: buckets,
+  );
 
   StockAgeingTotals totalsOf(List<Map<String, dynamic>> shown) =>
       StockAgeingLogic.totals(shown, buckets);
@@ -210,17 +256,6 @@ class StockAgeingController extends GetxController {
   /// Absolute image URL for [row], or null when the item has no image.
   String? imageUrlOf(Map<String, dynamic> row) =>
       StockAgeingLogic.imageUrl(row['image'], _baseUrl());
-
-  /// [field] is a column fieldname or [StockAgeingLogic.ageBarField].
-  void toggleCardField(String field) {
-    if (!cardFields.remove(field)) cardFields.add(field);
-    _saveCardFields(cardFields.toList());
-  }
-
-  void resetCardFields() {
-    cardFields.assignAll(StockAgeingLogic.defaultCardFields);
-    _saveCardFields(cardFields.toList());
-  }
 
   void setSort(String v) => sort.value = v;
   void onSearchChanged(String v) => searchQuery.value = v;
@@ -265,9 +300,9 @@ class StockAgeingController extends GetxController {
       return current['to_date'] == '' && current['range'] == '';
     }
     Map<String, dynamic> editable(Map<String, dynamic> m) => {
-          for (final k in _filterKeys)
-            if (m.containsKey(k)) k: m[k],
-        };
+      for (final k in _filterKeys)
+        if (m.containsKey(k)) k: m[k],
+    };
     return StockAgeingLogic.sameFilters(editable(current), editable(_defaults));
   }
 
@@ -307,6 +342,8 @@ class StockAgeingController extends GetxController {
   /// defaults are not known yet) the server's saved filters are used, as on
   /// the Desk; otherwise the user's filters are sent.
   Future<void> runReport() async {
+    final generation = fields.ownerGeneration;
+    final scope = fields.scope;
     if (isLoading.value) {
       // Never drop a request: the sheet may have changed since the run in
       // flight was started.
@@ -337,16 +374,21 @@ class StockAgeingController extends GetxController {
     errorMessage.value = null;
     try {
       final response = await _run(filters: filters);
-      if (isClosed) return;
+      if (!_current(generation)) return;
       final message = response.data is Map ? response.data['message'] : null;
-      if (message is! Map) {
+      if (message is! Map || message['result'] is! List) {
         throw const FormatException('Unexpected response from the server.');
       }
 
       final columns = message['columns'] is List
           ? List<dynamic>.from(message['columns'] as List)
           : const <dynamic>[];
-      final parsed = StockAgeingLogic.parseRows(message['result']);
+      final parsed = StockAgeingLogic.parseRows(
+        message['result'],
+        columns: StockAgeingLogic.deskColumns(columns),
+        addTotalRow:
+            message['add_total_row'] == true || message['add_total_row'] == 1,
+      );
       final now = DateTime.now();
 
       if (useDefaults) {
@@ -355,37 +397,35 @@ class StockAgeingController extends GetxController {
           fetchedAt: now,
           columns: columns,
           rows: parsed,
-          defaults:
-              custom is Map ? Map<String, dynamic>.from(custom) : const {},
+          defaults: custom is Map
+              ? Map<String, dynamic>.from(custom)
+              : const {},
         );
         _show(snapshot);
         // A cache failure must not hide a successful fetch.
         try {
-          await _cache.write(snapshot);
+          if (scope != null) await _cache.write(scope, snapshot);
         } catch (_) {}
       } else {
-        // The server's bucket titles are frozen; rebuild them for the range
-        // this run was calculated with.
-        final ranged = StockAgeingLogic.applyRange(
-            columns, filters!['range']?.toString());
-        this.columns.assignAll(StockAgeingLogic.parseColumns(ranged));
-        buckets.assignAll(StockAgeingLogic.parseBuckets(ranged));
+        _applySchema(columns, filters!['range']?.toString());
         rows.assignAll(parsed);
         fetchedAt.value = now;
         asOn.value = filters['to_date'].toString();
+        hasRun.value = true;
+        resultRevision.value++;
         _rebuildActiveFilters();
       }
     } catch (e) {
-      if (isClosed) return;
+      if (!_current(generation)) return;
       final text = readableReportError(e, reportName: 'Stock Ageing');
-      // Keep whatever is on screen; only an empty screen shows the error.
-      if (rows.isEmpty) errorMessage.value = text;
+      // Keep whatever is on screen and provide a retry alongside it.
+      errorMessage.value = text;
       GlobalSnackbar.error(title: 'Report Error', message: text);
     } finally {
-      isLoading.value = false;
+      if (_current(generation)) isLoading.value = false;
     }
 
-    if (_rerun && !isClosed) {
+    if (_rerun && _current(generation)) {
       _rerun = false;
       await runReport();
     }
@@ -397,15 +437,20 @@ class StockAgeingController extends GetxController {
     final untouched = _sheetIsDefault();
     _defaults = snapshot.defaults;
     if (untouched) _seedControllers(_defaults);
-    // Likewise for a default run: its range is the saved one, which the
-    // frozen titles need not match if the report was re-saved carelessly.
-    final ranged = StockAgeingLogic.applyRange(
-        snapshot.columns, _defaults['range']?.toString());
-    columns.assignAll(StockAgeingLogic.parseColumns(ranged));
-    buckets.assignAll(StockAgeingLogic.parseBuckets(ranged));
+    _applySchema(snapshot.columns, _defaults['range']?.toString());
     rows.assignAll(snapshot.rows);
     fetchedAt.value = snapshot.fetchedAt;
     asOn.value = _defaults['to_date']?.toString() ?? '';
+    hasRun.value = true;
+    resultRevision.value++;
     _rebuildActiveFilters();
+  }
+
+  void _applySchema(List<dynamic> raw, String? range) {
+    rawColumns.assignAll(StockAgeingLogic.deskColumns(raw));
+    final effective = StockAgeingLogic.effectiveColumns(raw, range);
+    columns.assignAll(effective);
+    buckets.assignAll(StockAgeingLogic.parseBuckets(effective));
+    fields.replaceDefinition(stockAgeingFields(effective));
   }
 }

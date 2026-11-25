@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart' as dio;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,14 +8,56 @@ import 'package:get/get.dart';
 import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/services/permission_service.dart';
 import 'package:multimax/app/modules/auth/authentication_controller.dart';
+import 'package:multimax/app/modules/global_widgets/count_badge.dart';
+import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
+import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_grouping.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_screen.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_group_header.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/widgets/pos_dn_item_rate_tile.dart';
 
+class _LegacyReportApi extends ApiProvider {
+  Completer<dio.Response>? responseGate;
+
+  @override
+  Future<dio.Response> runPosDnItemRateReport({
+    List<String> posUploads = const [],
+    String? fromDate,
+    String? toDate,
+    List<String> customers = const [],
+    List<String> customerGroups = const [],
+    List<String> itemGroups = const [],
+    bool showMapped = false,
+    bool onlyCoded = false,
+  }) async => await responseGate?.future ?? dio.Response(
+    requestOptions: dio.RequestOptions(path: '/api/method/report'),
+    statusCode: 200,
+    data: const {
+      'message': {
+        'columns': [
+          'Status',
+          {'fieldname': 'other_qty', 'label': 'POS Qty'},
+          null,
+          'Customer Code:Data:90',
+          'POS QTY:Float:60',
+          'DN Qty',
+          'POS #',
+          'Invoice Serial Number',
+        ],
+        'result': [
+          ['No delivery line', 99, '', 'C-17', 6, null, 'POS-42', 3],
+        ],
+      },
+    },
+  );
+}
+
 void main() {
+  late _LegacyReportApi api;
+
   setUpAll(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -23,7 +68,8 @@ void main() {
 
   setUp(() {
     Get.testMode = true;
-    Get.put(ApiProvider());
+    api = _LegacyReportApi();
+    Get.put<ApiProvider>(api);
     Get.put(PermissionService());
     Get.put(AuthenticationController());
     Get.put(PosDnItemRateController());
@@ -46,6 +92,27 @@ void main() {
     await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
     await tester.pump();
     expect(find.textContaining('Run Report'), findsWidgets);
+  });
+
+  testWidgets('legacy POS columns preserve the identities, Fields and totals',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = Get.find<PosDnItemRateController>();
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await controller.runReport();
+    await tester.pumpAndSettle();
+
+    final parsed = controller.reportRows.single;
+    expect(parsed['other_qty'], 99);
+    expect(parsed['upload_qty'], 6);
+    expect(controller.fields.state.value.label('upload_qty'), 'POS QTY');
+    expect(find.text('No delivery line'), findsWidgets);
+    expect(find.text('C-17'), findsOneWidget);
+    expect(find.text('POS-42 · Invoice Serial Number 3'), findsOneWidget);
+    expect(find.text('End of list · 1 row'), findsOneWidget);
+    expect(find.text('6'), findsNWidgets(2));
   });
 
   testWidgets('renders summary counts and one tile per row', (tester) async {
@@ -109,6 +176,56 @@ void main() {
     await tester.pump();
     expect(find.text('Report not deployed on this instance.'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('a pending toolbar run repaints the skeleton as Retry', (
+    tester,
+  ) async {
+    api.responseGate = Completer<dio.Response>();
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Run report').hitTestable());
+    await tester.pump();
+    expect(find.byType(DocCardSkeletonList), findsOneWidget);
+
+    api.responseGate!.completeError(StateError('report unavailable'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byType(DocCardSkeletonList), findsNothing);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(Get.find<PosDnItemRateController>().isRunning.value, isFalse);
+  });
+
+  testWidgets('removing a Customer Group chip updates the live filter badge', (
+    tester,
+  ) async {
+    final controller = Get.find<PosDnItemRateController>();
+    controller.customerGroups.add('Retail');
+    await controller.runReport();
+    await tester.pumpWidget(const GetMaterialApp(home: PosDnItemRateScreen()));
+    await tester.pumpAndSettle();
+    final revision = controller.resultRevision.value;
+
+    void expectBadge(int count, String tooltip) {
+      expect(
+        tester.widget<CountBadge>(find.byType(CountBadge).hitTestable()).count,
+        count,
+      );
+      expect(find.byTooltip(tooltip).hitTestable(), findsOneWidget);
+    }
+
+    expectBadge(2, '2 filters active — tap to edit');
+    final groupChip = find.widgetWithText(FilterChipWidget, 'Groups: 1');
+    await tester.tap(
+      find.descendant(of: groupChip, matching: find.byIcon(Icons.close)),
+    );
+    await tester.pumpAndSettle();
+    expectBadge(1, '1 filter active — tap to edit');
+    expect(groupChip, findsNothing);
+    expect(controller.customerGroups, isEmpty);
+    expect(controller.resultRevision.value, revision);
   });
 
   testWidgets('shows an end-of-list footer with summed quantities',

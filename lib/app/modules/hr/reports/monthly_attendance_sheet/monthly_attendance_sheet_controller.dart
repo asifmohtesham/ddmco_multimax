@@ -6,7 +6,12 @@ import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart'
+    show decodeHrReportRows;
 import 'package:multimax/app/modules/hr/reports/monthly_attendance_sheet/monthly_attendance_sheet_logic.dart';
+import 'monthly_attendance_sheet_fields.dart';
 
 /// Controller for the HRMS **Monthly Attendance Sheet** script report.
 ///
@@ -65,6 +70,14 @@ class MonthlyAttendanceSheetController extends GetxController {
   final activeFilters = <String, String>{}.obs;
 
   final scrollController = ScrollController();
+  final fields = ScopedReportFieldsController.forReport(
+    monthlyAttendanceFields(),
+  );
+  final resultRevision = 0.obs;
+  List<DeskColumn> reportColumns = const [];
+  late final Worker _fieldsOwnerWorker;
+  (bool, bool) _fieldShape = (false, true);
+  final _result = Rxn<({bool summarized, DateTime? month, String label})>();
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
@@ -78,11 +91,17 @@ class MonthlyAttendanceSheetController extends GetxController {
   String? get groupByField =>
       groupBy.isEmpty ? null : groupBy.toLowerCase().replaceAll(' ', '_');
 
-  bool get isEmpty => isSummarized ? summaries.isEmpty : employees.isEmpty;
+  bool get resultSummarized => _result.value?.summarized ?? false;
 
-  String get periodLabel => isMonthMode
-      ? DateFormat('MMMM yyyy').format(month.value)
-      : '${startDateController.text} → ${endDateController.text}';
+  DateTime? get resultMonth =>
+      _result.value == null ? month.value : _result.value!.month;
+
+  bool get resultMonthMode => resultMonth != null;
+
+  bool get isEmpty => resultSummarized ? summaries.isEmpty : employees.isEmpty;
+
+  String get periodLabel =>
+      _result.value?.label ?? DateFormat('MMMM yyyy').format(month.value);
 
   /// Next month is only reachable up to the current one — the report has
   /// nothing to say about a month that has not started.
@@ -110,6 +129,19 @@ class MonthlyAttendanceSheetController extends GetxController {
       'group_by': groupByController,
       'summarized_view': summarizedController,
     };
+    var owner = fields.ownerGeneration;
+    var scope = fields.scope;
+    _fieldsOwnerWorker = ever(fields.state, (_) {
+      if (owner != fields.ownerGeneration) {
+        owner = fields.ownerGeneration;
+        _clearOwnerResults();
+      }
+      if (scope != fields.scope) {
+        scope = fields.scope;
+        _refreshEmployeeFilter();
+      }
+    });
+    fields.bind();
     _rebuildActiveFilters();
   }
 
@@ -121,6 +153,8 @@ class MonthlyAttendanceSheetController extends GetxController {
 
   @override
   void onClose() {
+    _fieldsOwnerWorker.dispose();
+    fields.dispose();
     for (final controller in filterControllers.values) {
       controller.dispose();
     }
@@ -131,97 +165,105 @@ class MonthlyAttendanceSheetController extends GetxController {
   // ── Filter descriptors ────────────────────────────────────────────────────
 
   List<ReportFilterField> get filterFields => const [
-        ReportFilterField(
-          key: 'company',
-          label: 'Company',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.business_outlined,
-          linkDoctype: 'Company',
-          required: true,
-        ),
-        ReportFilterField(
-          key: 'employee',
-          label: 'Employee',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.badge_outlined,
-          linkDoctype: 'Employee',
-          linkTitleField: 'employee_name',
-        ),
-        ReportFilterField(
-          key: 'department',
-          label: 'Department',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.account_tree_outlined,
-          linkDoctype: 'Department',
-        ),
-        ReportFilterField(
-          key: 'branch',
-          label: 'Branch',
-          type: ReportFilterType.doctypeLink,
-          prefixIcon: Icons.location_city_outlined,
-          linkDoctype: 'Branch',
-        ),
-        ReportFilterField(
-          key: 'start_date',
-          label: 'Start Date',
-          type: ReportFilterType.datePicker,
-          prefixIcon: Icons.calendar_today_outlined,
-        ),
-        ReportFilterField(
-          key: 'end_date',
-          label: 'End Date',
-          type: ReportFilterType.datePicker,
-          prefixIcon: Icons.event_outlined,
-        ),
-      ];
+    ReportFilterField(
+      key: 'company',
+      label: 'Company',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.business_outlined,
+      linkDoctype: 'Company',
+      required: true,
+    ),
+    ReportFilterField(
+      key: 'employee',
+      label: 'Employee',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.badge_outlined,
+      linkDoctype: 'Employee',
+      linkTitleField: 'employee_name',
+    ),
+    ReportFilterField(
+      key: 'department',
+      label: 'Department',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.account_tree_outlined,
+      linkDoctype: 'Department',
+    ),
+    ReportFilterField(
+      key: 'branch',
+      label: 'Branch',
+      type: ReportFilterType.doctypeLink,
+      prefixIcon: Icons.location_city_outlined,
+      linkDoctype: 'Branch',
+    ),
+    ReportFilterField(
+      key: 'start_date',
+      label: 'Start Date',
+      type: ReportFilterType.datePicker,
+      prefixIcon: Icons.calendar_today_outlined,
+    ),
+    ReportFilterField(
+      key: 'end_date',
+      label: 'End Date',
+      type: ReportFilterType.datePicker,
+      prefixIcon: Icons.event_outlined,
+    ),
+  ];
 
   Map<String, String> get filterSectionLabels => const {
-        'company': 'Scope',
-        'start_date': 'Date range (used when Period is "Date Range")',
-      };
+    'company': 'Scope',
+    'start_date': 'Date range (used when Period is "Date Range")',
+  };
 
   List<ReportFilterChipGroup> get filterChipGroups => const [
-        ReportFilterChipGroup(
-          key: 'filter_based_on',
-          label: 'Period',
-          options: [
-            ReportFilterChipOption(
-                value: modeMonth, label: 'Month', icon: Icons.calendar_month),
-            ReportFilterChipOption(
-                value: modeDateRange,
-                label: 'Date Range',
-                icon: Icons.date_range),
-          ],
+    ReportFilterChipGroup(
+      key: 'filter_based_on',
+      label: 'Period',
+      options: [
+        ReportFilterChipOption(
+          value: modeMonth,
+          label: 'Month',
+          icon: Icons.calendar_month,
         ),
-        ReportFilterChipGroup(
-          key: 'group_by',
-          label: 'Group By',
-          options: [
-            ReportFilterChipOption(value: 'Branch', label: 'Branch'),
-            ReportFilterChipOption(value: 'Grade', label: 'Grade'),
-            ReportFilterChipOption(value: 'Department', label: 'Department'),
-            ReportFilterChipOption(value: 'Designation', label: 'Designation'),
-          ],
+        ReportFilterChipOption(
+          value: modeDateRange,
+          label: 'Date Range',
+          icon: Icons.date_range,
         ),
-        ReportFilterChipGroup(
-          key: 'summarized_view',
-          label: 'View',
-          options: [
-            ReportFilterChipOption(
-                value: '1', label: 'Summarized', icon: Icons.functions),
-          ],
+      ],
+    ),
+    ReportFilterChipGroup(
+      key: 'group_by',
+      label: 'Group By',
+      options: [
+        ReportFilterChipOption(value: 'Branch', label: 'Branch'),
+        ReportFilterChipOption(value: 'Grade', label: 'Grade'),
+        ReportFilterChipOption(value: 'Department', label: 'Department'),
+        ReportFilterChipOption(value: 'Designation', label: 'Designation'),
+      ],
+    ),
+    ReportFilterChipGroup(
+      key: 'summarized_view',
+      label: 'View',
+      options: [
+        ReportFilterChipOption(
+          value: '1',
+          label: 'Summarized',
+          icon: Icons.functions,
         ),
-      ];
+      ],
+    ),
+  ];
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   void previousMonth() {
+    if (isRunning.value) return;
     month.value = DateTime(month.value.year, month.value.month - 1);
     runReport();
   }
 
   void nextMonth() {
-    if (isCurrentMonth) return;
+    if (isRunning.value || isCurrentMonth) return;
     month.value = DateTime(month.value.year, month.value.month + 1);
     runReport();
   }
@@ -287,6 +329,21 @@ class MonthlyAttendanceSheetController extends GetxController {
     if (isRunning.value) return;
 
     final filters = buildFilters();
+    final owner = fields.ownerGeneration;
+    final summarized = isSummarized;
+    final monthMode = isMonthMode;
+    final submittedMonth = monthMode ? month.value : null;
+    final submittedLabel = submittedMonth == null
+        ? '${filters['start_date']} → ${filters['end_date']}'
+        : DateFormat('MMMM yyyy').format(submittedMonth);
+    final grouping = groupByField;
+    resultRevision.value++;
+    if (_fieldShape != (summarized, monthMode)) {
+      _fieldShape = (summarized, monthMode);
+      fields.replaceDefinition(
+        monthlyAttendanceFields(summarized: summarized, monthMode: monthMode),
+      );
+    }
     if ((filters['company'] as String).isEmpty) {
       errorMessage.value = 'Select a company to run the report.';
       hasRun.value = true;
@@ -296,7 +353,8 @@ class MonthlyAttendanceSheetController extends GetxController {
     if (!isMonthMode &&
         ((filters['start_date'] as String).isEmpty ||
             (filters['end_date'] as String).isEmpty)) {
-      errorMessage.value = 'Set a start and end date, or switch Period to Month.';
+      errorMessage.value =
+          'Set a start and end date, or switch Period to Month.';
       hasRun.value = true;
       _clearResults();
       return;
@@ -306,33 +364,66 @@ class MonthlyAttendanceSheetController extends GetxController {
     _rebuildActiveFilters();
     try {
       final response = await _api.getReport(reportName, filters: filters);
+      if (isClosed || owner != fields.ownerGeneration) return;
       final message = response.data is Map ? response.data['message'] : null;
-      final columns = message is Map ? message['columns'] : null;
-      final result = message is Map ? message['result'] : null;
+      if (message is! Map) throw StateError('Missing report response');
+      final columns = message['columns'];
+      reportColumns = decodeDeskColumns(columns);
+      final result = decodeHrReportRows(message['result'], reportColumns);
+      final types = summarized
+          ? parseLeaveTypeColumns(columns)
+          : const <SheetSummaryColumn>[];
+      fields.replaceDefinition(
+        monthlyAttendanceFields(
+          summarized: summarized,
+          monthMode: monthMode,
+          columns: columns is List ? reportColumns : null,
+          leaveTypes: types,
+        ),
+      );
 
-      if (isSummarized) {
-        leaveTypes.assignAll(parseLeaveTypeColumns(columns));
-        summaries.assignAll(parseSummarized(result, groupByField: groupByField));
+      if (summarized) {
+        leaveTypes.assignAll(types);
+        summaries.assignAll(parseSummarized(result, groupByField: grouping));
         days.clear();
         employees.clear();
       } else {
         days.assignAll(parseDayColumns(columns));
-        employees.assignAll(parseDetailed(result, groupByField: groupByField));
+        employees.assignAll(parseDetailed(result, groupByField: grouping));
         summaries.clear();
         leaveTypes.clear();
       }
       expanded.clear();
+      _result.value = (
+        summarized: summarized,
+        month: submittedMonth,
+        label: submittedLabel,
+      );
       errorMessage.value = null;
     } catch (e) {
+      if (isClosed || owner != fields.ownerGeneration) return;
       _clearResults();
       errorMessage.value = readableReportError(e, reportName: reportName);
     } finally {
-      hasRun.value = true;
-      isRunning.value = false;
+      if (!isClosed && owner == fields.ownerGeneration) {
+        hasRun.value = true;
+        isRunning.value = false;
+      }
     }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  void _clearOwnerResults() {
+    reportColumns = const [];
+    _clearResults();
+    _result.value = null;
+    _fieldShape = (false, true);
+    errorMessage.value = null;
+    hasRun.value = false;
+    isRunning.value = false;
+    resultRevision.value++;
+  }
 
   void _clearResults() {
     days.clear();
@@ -359,13 +450,14 @@ class MonthlyAttendanceSheetController extends GetxController {
   /// The period bar owns the month/range, so it is deliberately not a chip.
   void _rebuildActiveFilters() {
     activeFilters.clear();
-    _resolveEmployeeTitle();
     _filterLabels.forEach((key, label) {
+      if (key == 'employee') {
+        _refreshEmployeeFilter();
+        return;
+      }
       final value = filterControllers[key]?.text.trim() ?? '';
       if (value.isEmpty) return;
-      activeFilters[key] = key == 'employee'
-          ? '$label: ${linkChipValue('Employee', value)}'
-          : '$label: $value';
+      activeFilters[key] = '$label: $value';
     });
     if (isSummarized) activeFilters['summarized_view'] = 'Summarized';
   }
@@ -374,11 +466,25 @@ class MonthlyAttendanceSheetController extends GetxController {
 
   /// An employee set without the picker (e.g. kept from an earlier run) has
   /// no remembered name yet: look it up once, then relabel the chip.
-  void _resolveEmployeeTitle() {
+  void _refreshEmployeeFilter() {
     final id = employeeController.text.trim();
-    if (id.isEmpty || LinkTitleCache.peek('Employee', id) != null) return;
-    LinkTitleCache.resolve('Employee', 'employee_name', id, _api).then((title) {
-      if (title == null || isClosed) return;
+    if (id.isEmpty) {
+      activeFilters.remove('employee');
+      return;
+    }
+    final scope = fields.scope;
+    final title = LinkTitleCache.peek('Employee', id, scope: scope);
+    activeFilters['employee'] = 'Employee: ${title ?? id}';
+    if (scope == null || title != null) return;
+    final owner = fields.ownerGeneration;
+    LinkTitleCache.resolve(
+      'Employee',
+      'employee_name',
+      id,
+      _api,
+      scope: scope,
+    ).then((title) {
+      if (title == null || isClosed || owner != fields.ownerGeneration) return;
       if (employeeController.text.trim() == id) {
         activeFilters['employee'] = 'Employee: $title';
       }

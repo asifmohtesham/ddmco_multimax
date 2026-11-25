@@ -1,19 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/data/utils/formatting_helper.dart';
+import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart'
     show showItemImagePreview;
 import 'package:multimax/app/modules/global_widgets/list_empty_state.dart';
 import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_anchor.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_sheet.dart';
+import 'package:multimax/app/modules/home/rack_contents_fields.dart';
 import 'package:multimax/app/modules/home/rack_contents_logic.dart';
 import 'package:multimax/app/modules/home/rack_scan_logic.dart'
     show rackLookupFailure;
 
 /// Loads the rack's contents as on a date; throws when the Stock Balance
 /// request fails.
-typedef RackContentsLoader = Future<RackContentsSnapshot> Function(
-    DateTime asOf);
+typedef RackContentsLoader =
+    Future<RackContentsSnapshot> Function(DateTime asOf);
 
 /// Dashboard rack scan result: every item on [rackId] with its Balance Qty
 /// from the Stock Balance report and its Item master fields.
@@ -30,13 +39,18 @@ class RackContentsSheet extends StatefulWidget {
     required this.rackId,
     required this.entries,
     required this.baseUrl,
+    this.warehouse,
+    this.columns,
     this.itemDetailsFailed = false,
+    this.initialOwnerIsCurrent,
     this.asOf,
     this.loadAsOf,
     this.onItemTap,
   });
 
   final String rackId;
+  final String? warehouse;
+  final List<DeskColumn>? columns;
 
   /// The contents as on [asOf], already loaded when the sheet opens.
   final List<RackContentsEntry> entries;
@@ -44,6 +58,7 @@ class RackContentsSheet extends StatefulWidget {
   /// Server origin that Item `image` paths are relative to.
   final String baseUrl;
   final bool itemDetailsFailed;
+  final bool Function()? initialOwnerIsCurrent;
 
   /// The day [entries] were taken at; null means today.
   final DateTime? asOf;
@@ -60,8 +75,16 @@ class RackContentsSheet extends StatefulWidget {
 
 class _RackContentsSheetState extends State<RackContentsSheet> {
   late DateTime _asOf;
-  late List<RackContentsEntry> _entries;
-  late bool _itemDetailsFailed;
+  List<RackContentsEntry> _entries = const [];
+  bool _itemDetailsFailed = false;
+  String _baseUrl = '';
+  List<DeskColumn>? _columns;
+  late final _fields = ScopedReportFieldsController.forReport(
+    rackContentsFields(),
+  );
+  late final Worker _ownerWorker;
+  int _ownerGeneration = 0;
+  bool _hasResult = false;
   bool _loading = false;
   String? _loadError;
 
@@ -74,12 +97,36 @@ class _RackContentsSheetState extends State<RackContentsSheet> {
   void initState() {
     super.initState();
     _asOf = widget.asOf ?? DateTime.now();
-    _entries = widget.entries;
-    _itemDetailsFailed = widget.itemDetailsFailed;
+    _ownerGeneration = _fields.ownerGeneration;
+    _ownerWorker = ever(_fields.state, (_) {
+      final owner = _fields.ownerGeneration;
+      if (owner == _ownerGeneration) return;
+      _ownerGeneration = owner;
+      setState(() {
+        _entries = const [];
+        _hasResult = false;
+        _itemDetailsFailed = false;
+        _baseUrl = '';
+        _loadError = null;
+        _columns = null;
+        _loading = false;
+      });
+    });
+    unawaited(_fields.bind());
+    if (widget.initialOwnerIsCurrent?.call() ?? true) {
+      _entries = widget.entries;
+      _hasResult = true;
+      _itemDetailsFailed = widget.itemDetailsFailed;
+      _baseUrl = widget.baseUrl;
+      _columns = widget.columns;
+      _fields.replaceDefinition(rackContentsFields(widget.columns));
+    }
   }
 
   @override
   void dispose() {
+    _ownerWorker.dispose();
+    _fields.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -106,26 +153,39 @@ class _RackContentsSheetState extends State<RackContentsSheet> {
   Future<void> _load(DateTime date) async {
     final loader = widget.loadAsOf;
     if (loader == null || _loading) return;
+    final owner = _fields.ownerGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
       final snapshot = await loader(date);
-      if (!mounted) return;
+      if (!mounted ||
+          owner != _fields.ownerGeneration ||
+          snapshot.isCurrentOwner?.call() == false) {
+        return;
+      }
+      _fields.replaceDefinition(rackContentsFields(snapshot.columns));
       setState(() {
         _asOf = date;
         _entries = snapshot.entries;
+        _hasResult = true;
         _itemDetailsFailed = snapshot.itemDetailsFailed;
+        _baseUrl = snapshot.baseUrl ?? _baseUrl;
+        _columns = snapshot.columns;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || owner != _fields.ownerGeneration) return;
       final failure = rackLookupFailure(e);
-      setState(() => _loadError =
-          'Could not load stock as on ${_dateLabel.format(date)}. '
-              '${failure.message}');
+      setState(
+        () => _loadError =
+            'Could not load stock as on ${_dateLabel.format(date)}. '
+            '${failure.message}',
+      );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && owner == _fields.ownerGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -137,170 +197,189 @@ class _RackContentsSheetState extends State<RackContentsSheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
     final shown = filterRackContents(_entries, _query);
+    final ids = rackContentsOccurrenceIds(widget.rackId, shown);
 
     return Container(
       decoration: BoxDecoration(
         color: scheme.fg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20.0)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      // The list clears the system nav bar itself, so its last card can
-      // scroll clear of the gesture bar rather than being cut off above it.
       child: SafeArea(
         bottom: false,
         child: DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
+          initialChildSize: .7,
+          minChildSize: .5,
+          maxChildSize: .95,
           expand: false,
-          builder: (context, scrollController) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Rack Contents',
-                                style: TextStyle(
-                                    color: scheme.textMuted, fontSize: 12)),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.rackId,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: scheme.text),
-                            ),
-                          ],
-                        ),
+          builder: (context, scroll) => Obx(() {
+            final fields = _fields.state.value;
+            return ReportFieldsResults(
+              controller: _fields,
+              scrollController: scroll,
+              result: (_entries, _query, _asOf),
+              occurrenceIds: ids,
+              builder: (context, anchors) => CustomScrollView(
+                controller: scroll,
+                slivers: [
+                  anchors.header(
+                    DocTypeListHeader(
+                      title: 'Rack Contents',
+                      extraActions: [ReportFieldsAction(controller: _fields)],
+                    ),
+                  ),
+                  SliverToBoxAdapter(child: _rackControls(context)),
+                  if (shown.isEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: bottomInset),
+                        child: _emptyState(context),
                       ),
-                      IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                        style: IconButton.styleFrom(
-                            backgroundColor: scheme.subtle),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      OutlinedButton.icon(
-                        key: const ValueKey('rack-as-of'),
-                        onPressed: widget.loadAsOf == null || _loading
-                            ? null
-                            : _pickDate,
-                        icon: _loading
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: scheme.textMuted,
-                                ),
-                              )
-                            : const Icon(Icons.calendar_today, size: 16),
-                        label: Text(
-                          'As on ${_dateLabel.format(_asOf)}'
-                          '${_isToday ? ' · Today' : ''}',
-                        ),
-                      ),
-                      if (!_isToday && widget.loadAsOf != null)
-                        TextButton(
-                          onPressed:
-                              _loading ? null : () => _load(DateTime.now()),
-                          child: const Text('Today'),
-                        ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: _RackSearchField(
-                    controller: _search,
-                    onChanged: (q) => setState(() => _query = q),
-                    onClear: _clearSearch,
-                  ),
-                ),
-                if (_loadError != null)
-                  _HeaderNote(
-                    key: const ValueKey('rack-load-error'),
-                    icon: Icons.error_outline,
-                    text: _loadError!,
-                    color: isDark ? AppColors.red300 : AppColors.red700,
-                  ),
-                if (_itemDetailsFailed)
-                  _HeaderNote(
-                    icon: Icons.info_outline,
-                    text: 'Item details could not be loaded.',
-                    color: scheme.textMuted,
-                  ),
-                // The divider becomes the progress bar while another date
-                // loads; the old list stays until the new one replaces it.
-                if (_loading)
-                  const LinearProgressIndicator(minHeight: 2)
-                else
-                  const Divider(height: 2, thickness: 1),
-                Expanded(
-                  child: Scrollbar(
-                    controller: scrollController,
-                    child: shown.isEmpty
-                        // Still a scrollable on the sheet's controller, so
-                        // the sheet keeps dragging when nothing is listed.
-                        ? ListView(
-                            controller: scrollController,
-                            padding: EdgeInsets.only(bottom: bottomInset),
-                            children: [_emptyState(context)],
-                          )
-                        : ListView.separated(
-                            controller: scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                            itemCount: shown.length + 1,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              if (index == shown.length) {
-                                return ListEndFooter(
-                                  hasMore: false,
-                                  bottomPadding: bottomInset,
-                                  label: rackContentsFooterLabel(
-                                    shown,
-                                    outOf: _entries.length,
-                                  ),
-                                );
-                              }
-                              final entry = shown[index];
-                              return RackContentsCard(
+                    )
+                  else ...[
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      sliver: SliverList.builder(
+                        itemCount: shown.length,
+                        itemBuilder: (context, index) {
+                          final entry = shown[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: anchors.row(
+                              ids[index],
+                              index,
+                              RackContentsCard(
                                 entry: entry,
-                                imageUrl:
-                                    itemImageUrl(widget.baseUrl, entry.image),
+                                fields: fields,
+                                columns: _columns,
+                                imageUrl: itemImageUrl(_baseUrl, entry.image),
                                 onTap: widget.onItemTap == null
                                     ? null
                                     : () => widget.onItemTap!(entry.itemCode),
-                              );
-                            },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ListEndFooter(
+                          hasMore: false,
+                          bottomPadding: bottomInset,
+                          label: rackContentsFooterLabel(
+                            shown,
+                            outOf: _entries.length,
+                            balanceLabel: _rackLabel(fields, 'bal_qty'),
                           ),
-                  ),
-                ),
-              ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             );
-          },
+          }),
         ),
       ),
+    );
+  }
+
+  Widget _rackControls(BuildContext context) {
+    final scheme = context.scheme;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final warehouse = widget.warehouse;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.rackId,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: scheme.text,
+                ),
+              ),
+              if (warehouse != null && warehouse.isNotEmpty)
+                Text(
+                  warehouse,
+                  semanticsLabel:
+                      '${rackContentsIdentityLabel(_columns, 'warehouse')} $warehouse',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.textMuted,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                key: const ValueKey('rack-as-of'),
+                onPressed: widget.loadAsOf == null || _loading
+                    ? null
+                    : _pickDate,
+                icon: _loading
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: scheme.textMuted,
+                        ),
+                      )
+                    : const Icon(Icons.calendar_today, size: 16),
+                label: Text(
+                  'As on ${_dateLabel.format(_asOf)}'
+                  '${_isToday ? ' · Today' : ''}',
+                ),
+              ),
+              if (!_isToday && widget.loadAsOf != null)
+                TextButton(
+                  onPressed: _loading ? null : () => _load(DateTime.now()),
+                  child: const Text('Today'),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: _RackSearchField(
+            controller: _search,
+            onChanged: (query) => setState(() => _query = query),
+            onClear: _clearSearch,
+          ),
+        ),
+        if (_loadError != null)
+          _HeaderNote(
+            key: const ValueKey('rack-load-error'),
+            icon: Icons.error_outline,
+            text: _loadError!,
+            color: isDark ? AppColors.red300 : AppColors.red700,
+          ),
+        if (_itemDetailsFailed)
+          _HeaderNote(
+            icon: Icons.info_outline,
+            text: 'Item details could not be loaded.',
+            color: scheme.textMuted,
+          ),
+        if (_loading)
+          const LinearProgressIndicator(minHeight: 2)
+        else
+          const Divider(height: 2, thickness: 1),
+      ],
     );
   }
 
@@ -309,14 +388,22 @@ class _RackContentsSheetState extends State<RackContentsSheet> {
     return ListEmptyState(
       hasActiveFilters: _entries.isNotEmpty,
       emptyIcon: Icons.inventory_2_outlined,
-      emptyTitle: 'Rack was empty',
-      emptyMessage: 'Nothing was on ${widget.rackId} on $date.',
+      emptyTitle: _hasResult ? 'Rack was empty' : 'Reload rack contents',
+      emptyMessage: _hasResult
+          ? 'Nothing was on ${widget.rackId} on $date.'
+          : 'Load stock for this account.',
       filteredTitle: 'No matching items',
       filteredMessage:
           'Nothing on ${widget.rackId} on $date matches "${_query.trim()}".',
       onClearFilters: _clearSearch,
       onReload: () => _load(_asOf),
-      emptyAction: _isToday || widget.loadAsOf == null
+      emptyAction: !_hasResult && widget.loadAsOf != null
+          ? FilledButton.tonalIcon(
+              onPressed: _loading ? null : () => _load(_asOf),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reload'),
+            )
+          : _isToday || widget.loadAsOf == null
           ? null
           : FilledButton.tonalIcon(
               onPressed: _loading ? null : () => _load(DateTime.now()),
@@ -401,17 +488,30 @@ class _HeaderNote extends StatelessWidget {
 /// "End of list" marker with the item count and Balance Qty total of the
 /// cards shown. While a search narrows the list, [outOf] (the rack's full
 /// count) is named too. The unit is named only when every row shares one.
-String rackContentsFooterLabel(List<RackContentsEntry> entries, {int? outOf}) {
+String rackContentsFooterLabel(
+  List<RackContentsEntry> entries, {
+  int? outOf,
+  String balanceLabel = 'Balance Qty',
+}) {
   final count = entries.length;
   final total = FormattingHelper.formatQtyGrouped(rackQtyTotal(entries));
   final uom = sharedStockUom(entries);
+  final missing = entries.where((entry) => entry.balanceQty == null).length;
+  final amount = switch (missing) {
+    0 => '$total${uom == null ? '' : ' $uom'}',
+    _ when missing == count => 'unavailable',
+    _ => '$total${uom == null ? '' : ' $uom'} (incomplete)',
+  };
   final items = outOf != null && outOf != count
       ? '$count of $outOf items'
       : count == 1
-          ? '1 item'
-          : '$count items';
-  return 'End of list · $items · Balance Qty $total${uom == null ? '' : ' $uom'}';
+      ? '1 item'
+      : '$count items';
+  return 'End of list · $items · $balanceLabel $amount';
 }
+
+String _rackLabel(FieldsState? fields, String key) =>
+    fields?.label(key) ?? rackContentsLabels[key]!;
 
 /// One item on the rack. Balance Qty is the largest figure on the card;
 /// Variant Of is the most prominent Item field, then the item's identity,
@@ -422,9 +522,13 @@ class RackContentsCard extends StatelessWidget {
     required this.entry,
     required this.imageUrl,
     this.onTap,
+    this.fields,
+    this.columns,
   });
 
   final RackContentsEntry entry;
+  final FieldsState? fields;
+  final List<DeskColumn>? columns;
 
   /// Full image URL, or null for the placeholder.
   final String? imageUrl;
@@ -436,14 +540,18 @@ class RackContentsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = context.scheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final empty = entry.balanceQty == 0;
+    final balance = entry.balanceQty;
+    final balanceLabel = _rackLabel(fields, 'bal_qty');
+    final visibleQuantity = fields?.shows('bal_qty') ?? true;
 
-    final fields = <(String, String)>[
+    final details = <(String, String)>[
       if (entry.countryOfOrigin != null)
         ('Country of Origin', entry.countryOfOrigin!),
-      if (entry.itemGroup != null) ('Item Group', entry.itemGroup!),
+      if (entry.itemGroup != null && (fields?.shows('item_group') ?? true))
+        (_rackLabel(fields, 'item_group'), entry.itemGroup!),
       if (entry.brand != null) ('Brand', entry.brand!),
-      if (entry.batchNo != null) ('Batch No', entry.batchNo!),
+      if (entry.batchNo != null)
+        (rackContentsIdentityLabel(columns, 'batch_no'), entry.batchNo!),
     ];
 
     return Material(
@@ -475,9 +583,13 @@ class RackContentsCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (entry.variantOf != null) ...[
-                          Text('Variant Of',
-                              style: TextStyle(
-                                  fontSize: 11, color: scheme.textMuted)),
+                          Text(
+                            'Variant Of',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: scheme.textMuted,
+                            ),
+                          ),
                           Text(
                             entry.variantOf!,
                             maxLines: 1,
@@ -492,6 +604,8 @@ class RackContentsCard extends StatelessWidget {
                         ],
                         Text(
                           entry.itemName,
+                          semanticsLabel:
+                              '${rackContentsIdentityLabel(columns, 'item_name')} ${entry.itemName}',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -503,6 +617,8 @@ class RackContentsCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           entry.itemCode,
+                          semanticsLabel:
+                              '${rackContentsIdentityLabel(columns, 'item_code')} ${entry.itemCode}',
                           style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 13,
@@ -512,38 +628,64 @@ class RackContentsCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(minWidth: 64),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          FormattingHelper.formatQtyGrouped(entry.balanceQty),
-                          key: const ValueKey('rack-card-qty'),
-                          style: TextStyle(
-                            fontSize: 28,
-                            height: 1.1,
-                            fontWeight: FontWeight.w800,
-                            color: empty ? scheme.textMuted : scheme.text,
-                          ),
-                        ),
-                        if (entry.stockUom != null)
-                          Text(entry.stockUom!,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: scheme.textMuted)),
-                        Text('Balance Qty',
+                  if (balance != null && visibleQuantity) ...[
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: 64,
+                        maxWidth: (MediaQuery.sizeOf(context).width * .30)
+                            .clamp(64.0, 160.0),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            FormattingHelper.formatQtyGrouped(balance),
+                            key: const ValueKey('rack-card-qty'),
                             style: TextStyle(
-                                fontSize: 10, color: scheme.textMuted)),
-                      ],
+                              fontSize: 28,
+                              height: 1.1,
+                              fontWeight: FontWeight.w800,
+                              color: balance == 0
+                                  ? scheme.textMuted
+                                  : scheme.text,
+                            ),
+                          ),
+                          if (entry.stockUom != null &&
+                              (fields?.shows('stock_uom') ?? true))
+                            Text(
+                              entry.stockUom!,
+                              semanticsLabel:
+                                  '${_rackLabel(fields, 'stock_uom')} ${entry.stockUom}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: scheme.textMuted,
+                              ),
+                            ),
+                          Text(
+                            balanceLabel,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: scheme.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
+              if (balance == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '$balanceLabel unavailable',
+                    style: TextStyle(color: scheme.textMuted),
+                  ),
+                ),
               if (entry.disabled ||
-                  fields.isNotEmpty ||
+                  details.isNotEmpty ||
                   entry.description != null) ...[
                 const SizedBox(height: 10),
                 Wrap(
@@ -556,7 +698,7 @@ class RackContentsCard extends StatelessWidget {
                         base: AppColors.red500,
                         ink: isDark ? AppColors.red300 : AppColors.red700,
                       ),
-                    for (final (label, value) in fields)
+                    for (final (label, value) in details)
                       _LabelledValue(label: label, value: value),
                   ],
                 ),
@@ -642,11 +784,7 @@ class _StatusTag extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: ink,
-        ),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ink),
       ),
     );
   }
@@ -672,23 +810,25 @@ class _RackItemImage extends StatelessWidget {
     final scheme = context.scheme;
 
     Widget placeholder() => Container(
-          key: const ValueKey('rack-card-image-placeholder'),
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: scheme.fg,
-            border: Border.all(color: scheme.border),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(Icons.inventory_2_outlined,
-              size: size * 0.45, color: scheme.textSubtle),
-        );
+      key: const ValueKey('rack-card-image-placeholder'),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: scheme.fg,
+        border: Border.all(color: scheme.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        Icons.inventory_2_outlined,
+        size: size * 0.45,
+        color: scheme.textSubtle,
+      ),
+    );
 
     final src = url;
     if (src == null) return placeholder();
 
-    final cache =
-        (size * MediaQuery.devicePixelRatioOf(context)).round();
+    final cache = (size * MediaQuery.devicePixelRatioOf(context)).round();
     return GestureDetector(
       onTap: () => showItemImagePreview(context, src, itemCode, itemName),
       child: ClipRRect(

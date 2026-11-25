@@ -8,42 +8,19 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
 import 'package:multimax/app/modules/global_widgets/item_image.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_anchor.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/selectable_filter_chip.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_controller.dart';
 import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_sheets.dart';
 
+import 'stock_balance_fields.dart';
+
 class StockBalanceScreen extends GetView<StockBalanceController> {
   const StockBalanceScreen({super.key});
-
-  // ── Standard fields that never render as attribute chips ───────────────────
-  //
-  // Every column the tile renders explicitly is listed here so it can't also
-  // leak into the residual-chip Wrap. ERPNext's Stock Balance report emits the
-  // balance/valuation columns as `bal_qty` / `bal_val` / `val_rate`; the older
-  // `balance_qty` / `valuation_rate` spellings are kept too so neither
-  // convention slips through (this is what previously left the hero badge — which
-  // read a non-existent `balance_qty` — disagreeing with a leaked "Balance Qty"
-  // chip). The rack / inventory-dimension column is deliberately NOT skipped: the
-  // tile detects it by name and consumes it in the location line, then drops it
-  // from the chip row itself.
-  static const _skipFields = {
-    // identity + grouping (head + location line)
-    'item_code', 'item_name', 'item_group', 'brand', 'description',
-    'warehouse', 'stock_uom',
-    // movement ledger
-    'opening_qty', 'opening_val',
-    'in_qty', 'in_val',
-    'out_qty', 'out_val',
-    // balance + valuation (ERPNext names + legacy/alt spellings)
-    'bal_qty', 'bal_val', 'val_rate',
-    'balance_qty', 'balance_val', 'balance_value', 'valuation_rate',
-    // commitment + customer (availability bar / footer)
-    'reserved_stock', 'reserved_qty',
-    'customer_code',
-    // dropped from the tile entirely
-    'company',
-  };
 
   // ── Filter chip builder ───────────────────────────────────────────────────
   //
@@ -57,12 +34,14 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
     final chips = <Widget>[];
     // Relies on being called synchronously inside the parent Obx() rebuild.
     controller.activeFilters.forEach((key, label) {
-      chips.add(FilterChipWidget(
-        icon: Icons.filter_alt_outlined,
-        label: label,
-        onDeleted: () => controller.clearFilter(key),
-        onTap: () => _openFilters(context, focusKey: key),
-      ));
+      chips.add(
+        FilterChipWidget(
+          icon: Icons.filter_alt_outlined,
+          label: label,
+          onDeleted: () => controller.clearFilter(key),
+          onTap: () => _openFilters(context, focusKey: key),
+        ),
+      );
     });
     return chips;
   }
@@ -78,6 +57,7 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
         controllers: controller.filterControllers,
         toggles: StockBalanceController.toggles,
         togglesLabel: 'Display Options',
+        runBusy: controller.isLoading,
         onRun: controller.runReport,
         onClear: controller.clearFilters,
       );
@@ -97,162 +77,243 @@ class StockBalanceScreen extends GetView<StockBalanceController> {
         }
         final visible = controller.visibleRows;
         if (visible.isEmpty) return const SizedBox.shrink();
-        return _TotalBar(totals: computeStockBalanceTotals(visible));
+        return _TotalBar(
+          totals: computeStockBalanceTotals(visible),
+          fields: controller.reportFields.state.value,
+        );
       }),
       body: Obx(() {
         final loading = controller.isLoading.value;
         final hasData = !loading && controller.reportData.isNotEmpty;
-        // Standard columns are rendered explicitly by the tile; only the
-        // remainder (variant attributes, unmapped dimensions) become chips.
-        final attrCols = controller.reportColumns
-            .where(
-                (c) => !_skipFields.contains(c['fieldname'] as String? ?? ''))
-            .toList();
-        final visible = hasData ? controller.visibleRows : const [];
+        final fields = controller.reportFields.state.value;
+        final owner = controller.reportFields.ownerGeneration;
+        final error = controller.reportError.value;
+        final hasRun = controller.hasRun.value;
+        final attrCols = stockBalanceResidualColumns(controller.reportColumns);
+        final visible = hasData
+            ? controller.visibleRows
+            : const <Map<String, dynamic>>[];
+        final dimensions = stockBalanceDimensionKeys(controller.reportColumns);
+        final occurrenceIds = stockBalanceOccurrenceIds(
+          visible,
+          controller.reportColumns,
+        );
         final showImages = controller.showImages.value;
+        final scroll = controller.resultsScroll;
 
         return RefreshIndicator(
           onRefresh: controller.runReport,
           color: cs.primary,
           backgroundColor: cs.surfaceContainerHighest,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // ── Unified header ──────────────────────────────────────
-              DocTypeListHeader(
-                title: 'Stock Balance',
-                automaticallyImplyLeading: false,
-                activeFilters: controller.activeFilters,
-                onFilterTap: () => _openFilters(context),
-                filterChipsBuilder: _buildFilterChips,
-                onClearAllFilters: controller.clearFilters,
-              ),
-
-              // ── Warehouse pills + state filter ──────────────────────
-              if (hasData)
-                SliverToBoxAdapter(
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    decoration: BoxDecoration(
-                      color: cs.surface,
-                      border:
-                          Border(bottom: BorderSide(color: cs.outlineVariant)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Single-tap warehouse facet — only worth showing when
-                        // the result set spans more than one warehouse.
-                        if (controller.distinctWarehouses.length > 1) ...[
-                          _WarehouseChips(
-                            warehouses: controller.distinctWarehouses,
-                            selected: controller.quickWarehouse.value,
-                            onSelected: controller.setQuickWarehouse,
-                          ),
-                          const SizedBox(height: 10),
-                        ],
-                        _SegmentedStateFilter(
-                          state: controller.quickState.value,
-                          onState: controller.setQuickState,
-                        ),
-                      ],
-                    ),
+          child: ReportFieldsResults(
+            controller: controller.reportFields,
+            scrollController: scroll,
+            result: (
+              controller.reportGeneration,
+              controller.quickWarehouse.value,
+              controller.quickState.value,
+              controller.quickSearch.value,
+              controller.quickSort.value,
+              controller.hideEmpty.value,
+              controller.activeFilters.toString(),
+            ),
+            occurrenceIds: occurrenceIds,
+            builder: (context, anchors) => CustomScrollView(
+              controller: scroll,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                // ── Unified header ──────────────────────────────────────
+                anchors.header(
+                  DocTypeListHeader(
+                    title: 'Stock Balance',
+                    automaticallyImplyLeading: false,
+                    activeFilters: controller.activeFilters,
+                    onFilterTap: () => _openFilters(context),
+                    filterChipsBuilder: _buildFilterChips,
+                    onClearAllFilters: controller.clearFilters,
+                    extraActions: [
+                      ReportFieldsAction(controller: controller.reportFields),
+                    ],
                   ),
                 ),
 
-              // ── Results ────────────────────────────────────────────
-              if (loading)
-                const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (controller.reportData.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _EmptyState(
-                    icon: Icons.inventory_2_outlined,
-                    message: 'Set filters and run the report',
-                    actionLabel: 'Set Filters',
-                    actionIcon: Icons.filter_alt_outlined,
-                    onAction: () => _openFilters(context),
+                // ── Warehouse pills + state filter ──────────────────────
+                if (hasData)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      decoration: BoxDecoration(
+                        color: cs.surface,
+                        border: Border(
+                          bottom: BorderSide(color: cs.outlineVariant),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Single-tap warehouse facet — only worth showing when
+                          // the result set spans more than one warehouse.
+                          if (controller.distinctWarehouses.length > 1) ...[
+                            _WarehouseChips(
+                              warehouses: controller.distinctWarehouses,
+                              selected: controller.quickWarehouse.value,
+                              onSelected: controller.setQuickWarehouse,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          _SegmentedStateFilter(
+                            state: controller.quickState.value,
+                            onState: controller.setQuickState,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                )
-              else if (visible.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _EmptyState(
-                    icon: Icons.search_off_outlined,
-                    message: 'No items match these filters',
-                    actionLabel: 'Clear quick filters',
-                    actionIcon: Icons.filter_alt_off_outlined,
-                    onAction: controller.clearQuickFilters,
-                  ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
+
+                // ── Results ────────────────────────────────────────────
+                if (loading)
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (error != null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(
+                      icon: Icons.error_outline,
+                      message: error,
+                      actionLabel: 'Retry',
+                      actionIcon: Icons.refresh,
+                      onAction: controller.runReport,
+                    ),
+                  )
+                else if (controller.reportData.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(
+                      icon: Icons.inventory_2_outlined,
+                      message: hasRun
+                          ? 'No stock balances in the selected period'
+                          : 'Set filters and run the report',
+                      actionLabel: 'Set Filters',
+                      actionIcon: Icons.filter_alt_outlined,
+                      onAction: () => _openFilters(context),
+                    ),
+                  )
+                else if (visible.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(
+                      icon: Icons.search_off_outlined,
+                      message: 'No items match these filters',
+                      actionLabel: 'Clear quick filters',
+                      actionIcon: Icons.filter_alt_off_outlined,
+                      onAction: controller.clearQuickFilters,
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
                         final row = visible[index];
                         final itemCode = (row['item_code'] ?? '').toString();
                         final itemName = (row['item_name'] ?? '').toString();
                         final warehouse = (row['warehouse'] ?? '').toString();
-                        final reserved = _readNum(
-                            row, const ['reserved_stock', 'reserved_qty']);
-                        final customer =
-                            (row['customer_code'] ?? '').toString();
+                        final reserved = _readNum(row, const [
+                          'reserved_stock',
+                          'reserved_qty',
+                        ]);
+                        final customer = (row['customer_code'] ?? '')
+                            .toString();
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: _BalanceTile(
-                            row: row,
-                            attrCols: attrCols,
-                            showImage: showImages,
-                            onWarehouseTap: () =>
-                                controller.setQuickWarehouse(warehouse),
-                            onLedgerTap: itemCode.isEmpty
-                                ? null
-                                : () => showStockLedgerSheet(
+                          child: anchors.row(
+                            occurrenceIds[index],
+                            index,
+                            _BalanceTile(
+                              row: row,
+                              attrCols: attrCols,
+                              fields: fields,
+                              dimensions: dimensions,
+                              showImage: showImages,
+                              onWarehouseTap: () =>
+                                  controller.setQuickWarehouse(warehouse),
+                              onLedgerTap: itemCode.isEmpty
+                                  ? null
+                                  : () => showStockLedgerSheet(
                                       context,
                                       itemCode: itemCode,
                                       itemName: itemName,
                                       warehouse: warehouse,
-                                      entries: controller.fetchStockLedger(
-                                          itemCode, warehouse),
+                                      ownerIsCurrent: () =>
+                                          owner ==
+                                          controller.reportFields.ownerGeneration,
+                                      load: controller.stockLedgerLoader(
+                                        itemCode,
+                                        warehouse,
+                                      ),
                                     ),
-                            onReservedTap: reserved > 0
-                                ? () => showReservationsSheet(
+                              onReservedTap: reserved > 0
+                                  ? () => showReservationsSheet(
                                       context,
                                       itemCode: itemCode,
                                       itemName: itemName,
                                       reserved: reserved,
-                                      reservations: controller.fetchReservations(
-                                          itemCode, warehouse),
+                                      reservedLabel: _stockLabel(
+                                        fields,
+                                        'reserved_stock',
+                                      ),
+                                      reservations: controller
+                                          .fetchReservations(
+                                            itemCode,
+                                            warehouse,
+                                          ),
                                     )
-                                : null,
-                            onCustomerTap: customer.isEmpty
-                                ? null
-                                : () => showCustomerItemsSheet(
+                                  : null,
+                              onCustomerTap: customer.isEmpty
+                                  ? null
+                                  : () => showCustomerItemsSheet(
                                       context,
                                       customerCode: customer,
-                                      items:
-                                          controller.itemsForCustomer(customer),
+                                      itemLabel: _stockLabel(
+                                        fields,
+                                        'item_code',
+                                      ),
+                                      balanceLabel: _stockLabel(
+                                        fields,
+                                        'bal_qty',
+                                      ),
+                                      items: controller.itemsForCustomer(
+                                        customer,
+                                      ),
                                       onFilter: () => controller
                                           .applyCustomerFilter(customer),
                                     ),
+                            ),
                           ),
                         );
-                      },
-                      childCount: visible.length,
+                      }, childCount: visible.length),
                     ),
                   ),
-                ),
-            ],
+                if (visible.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: ListEndFooter(
+                      hasMore: false,
+                      label: 'End of list',
+                      bottomPadding: MediaQuery.paddingOf(context).bottom,
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       }),
     );
   }
 }
+
+String _stockLabel(FieldsState? fields, String key) =>
+    fields?.label(key) ?? stockBalanceHeaderLabels[key]!;
 
 // ── Empty / no-match state ──────────────────────────────────────────────────────
 
@@ -489,12 +550,13 @@ class _WarehouseChips extends StatelessWidget {
 
 class _TotalBar extends StatelessWidget {
   final StockBalanceTotals totals;
-  const _TotalBar({required this.totals});
+  final FieldsState? fields;
+  const _TotalBar({required this.totals, this.fields});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final muted  = cs.onSurfaceVariant;
+    final muted = cs.onSurfaceVariant;
     final subtle = cs.onSurfaceVariant.withValues(alpha: 0.7);
 
     // The total balance carries the same red/green/neutral signal as a row.
@@ -502,10 +564,9 @@ class _TotalBar extends StatelessWidget {
     final balColor = totals.balance < 0
         ? (isDark ? AppColors.red300 : AppColors.red700)
         : totals.balance > 0
-            ? (isDark ? AppColors.green300 : AppColors.green700)
-            : cs.onSurface;
-    final ledgerAccent =
-        totals.balance < 0 ? cs.error : AppColors.green500;
+        ? (isDark ? AppColors.green300 : AppColors.green700)
+        : cs.onSurface;
+    final ledgerAccent = totals.balance < 0 ? cs.error : AppColors.green500;
 
     return Material(
       color: cs.surface,
@@ -536,46 +597,54 @@ class _TotalBar extends StatelessWidget {
                           ),
                           TextSpan(text: _plural(totals.itemCount, 'item')),
                           TextSpan(
-                              text: '  ·  ', style: TextStyle(color: cs.outline)),
+                            text: '  ·  ',
+                            style: TextStyle(color: cs.outline),
+                          ),
                           TextSpan(
-                              text:
-                                  _plural(totals.warehouseCount, 'warehouse')),
+                            text: _plural(totals.warehouseCount, 'warehouse'),
+                          ),
                         ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'TOTAL VALUE',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.6,
-                          color: subtle,
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * .45,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _stockLabel(fields, 'bal_val'),
+                          textAlign: TextAlign.end,
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.6,
+                            color: subtle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        FormattingHelper.formatAmount(totals.value),
-                        style: TextStyle(
-                          fontSize: 18,
-                          height: 1,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                        const SizedBox(height: 2),
+                        Text(
+                          FormattingHelper.formatAmount(totals.value),
+                          textAlign: TextAlign.end,
+                          style: TextStyle(
+                            fontSize: 18,
+                            height: 1,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurface,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 9),
               _Ledger(
+                fields: fields,
                 opening: FormattingHelper.formatQtyGrouped(totals.opening),
                 inText: totals.inQty == 0
                     ? FormattingHelper.formatQtyGrouped(0)
@@ -637,6 +706,7 @@ Widget buildStockBalanceTileForTest({
   required Map<String, dynamic> row,
   required List<Map<String, dynamic>> attrCols,
   bool showImage = false,
+  FieldsState? fields,
   VoidCallback? onWarehouseTap,
   VoidCallback? onLedgerTap,
   VoidCallback? onReservedTap,
@@ -645,6 +715,8 @@ Widget buildStockBalanceTileForTest({
     _BalanceTile(
       row: row,
       attrCols: attrCols,
+      fields: fields,
+      dimensions: stockBalanceDimensionKeys(attrCols),
       showImage: showImage,
       onWarehouseTap: onWarehouseTap,
       onLedgerTap: onLedgerTap,
@@ -681,8 +753,10 @@ Widget buildStockBalanceWarehouseChipsForTest({
 // ── Result tile ──────────────────────────────────────────────────────────────
 
 class _BalanceTile extends StatelessWidget {
-  final Map<String, dynamic>       row;
+  final Map<String, dynamic> row;
   final List<Map<String, dynamic>> attrCols;
+  final FieldsState? fields;
+  final Set<String> dimensions;
   final bool showImage;
   final VoidCallback? onWarehouseTap;
 
@@ -693,6 +767,8 @@ class _BalanceTile extends StatelessWidget {
   const _BalanceTile({
     required this.row,
     required this.attrCols,
+    required this.dimensions,
+    this.fields,
     this.showImage = false,
     this.onWarehouseTap,
     this.onLedgerTap,
@@ -701,6 +777,8 @@ class _BalanceTile extends StatelessWidget {
   });
 
   static const _mono = 'monospace';
+
+  bool _shows(String key) => fields?.shows(key) ?? key != 'reserved_stock';
 
   // Reads the first present (non-blank) value among [keys].
   dynamic _pick(List<String> keys) {
@@ -722,40 +800,35 @@ class _BalanceTile extends StatelessWidget {
 
     final itemCode = row['item_code']?.toString() ?? '—';
     final itemName = row['item_name']?.toString() ?? '';
-    final uom      = _pick(['stock_uom'])?.toString() ?? '';
+    final uom = _pick(['stock_uom'])?.toString() ?? '';
     final warehouse = row['warehouse']?.toString().trim() ?? '';
 
-    final balance  = _toDouble(_pick(['bal_qty', 'balance_qty']));
-    final opening  = _toDouble(_pick(['opening_qty']));
-    final inQty    = _toDouble(_pick(['in_qty']));
-    final outQty   = _toDouble(_pick(['out_qty']));
+    final balance = _toDouble(_pick(['bal_qty', 'balance_qty']));
+    final opening = _toDouble(_pick(['opening_qty']));
+    final rawIn = _pick(['in_qty']);
+    final rawOut = _pick(['out_qty']);
+    final inQty = _toDouble(rawIn);
+    final outQty = _toDouble(rawOut);
+    final noMovement =
+        double.tryParse('$rawIn') == 0 && double.tryParse('$rawOut') == 0;
     final reserved = _toDouble(_pick(['reserved_stock', 'reserved_qty']));
-    final rate     = _toDouble(_pick(['val_rate', 'valuation_rate']));
-    final value    = _toDouble(_pick(['bal_val', 'balance_value', 'balance_val']));
+    final rate = _toDouble(_pick(['val_rate', 'valuation_rate']));
+    final value = _toDouble(_pick(['bal_val', 'balance_value', 'balance_val']));
     final customer = _pick(['customer_code'])?.toString();
+    final hasMeta = _shows('val_rate') || _shows('bal_val') || customer != null;
+    final reservation = _pick(['reserved_stock', 'reserved_qty']);
 
-    // The rack / inventory-dimension column has an instance-defined fieldname;
-    // find it by name so dimension-wise mode surfaces the rack on the location
-    // line, and exclude it from the residual chips below.
-    Map<String, dynamic>? rackCol;
-    for (final c in attrCols) {
-      final fn = (c['fieldname']?.toString() ?? '').toLowerCase();
-      final lb = (c['label']?.toString() ?? '').toLowerCase();
-      if (fn.contains('rack') || lb.contains('rack')) {
-        rackCol = c;
-        break;
-      }
-    }
+    final rackCol = attrCols.where(stockBalanceRackColumn).firstOrNull;
     final rackName = rackCol == null
         ? null
-        : _pick([rackCol['fieldname']?.toString() ?? ''])?.toString();
+        : stockBalanceColumnValue(row, rackCol)?.toString();
 
     final extraCols = attrCols.where((c) => c != rackCol).toList();
 
-    final state  = stockBalanceStateFor(balance, reserved);
-    final style  = _stateStyle(state, cs);
+    final state = stockBalanceStateFor(balance, reserved);
+    final style = _stateStyle(state, cs);
     final accent = style.accent;
-    final fg     = style.fg;
+    final fg = style.fg;
     final tintBg = Color.alphaBlend(accent.withValues(alpha: 0.13), cs.surface);
     final tintBd = accent.withValues(alpha: 0.30);
 
@@ -774,71 +847,91 @@ class _BalanceTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                // 1 ── Head: thumbnail + identity + hero balance ───────
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showImage) ...[
-                      ItemThumbnail(
-                        imageUrl: _pick(['item_image'])?.toString(),
-                        itemCode: itemCode,
-                        itemName: itemName,
-                      ),
-                      const SizedBox(width: 10),
-                    ],
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+              // 1 ── Head: thumbnail + identity + hero balance ───────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showImage) ...[
+                    ItemThumbnail(
+                      imageUrl: _pick(['item_image'])?.toString(),
+                      itemCode: itemCode,
+                      itemName: itemName,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          itemCode,
+                          semanticsLabel:
+                              '${_stockLabel(fields, 'item_code')} $itemCode',
+                          style: TextStyle(
+                            fontFamily: _mono,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        if (itemName.isNotEmpty && itemName != itemCode) ...[
+                          const SizedBox(height: 1),
                           Text(
-                            itemCode,
+                            itemName,
+                            semanticsLabel:
+                                '${_stockLabel(fields, 'item_name')} $itemName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontFamily: _mono,
-                              fontSize: 12,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                              color: cs.onSurfaceVariant,
+                              height: 1.2,
+                              color: cs.onSurface,
                             ),
                           ),
-                          if (itemName.isNotEmpty && itemName != itemCode) ...[
-                            const SizedBox(height: 1),
-                            Text(
-                              itemName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w600,
-                                height: 1.2,
-                                color: cs.onSurface,
-                              ),
-                            ),
-                          ],
                         ],
-                      ),
+                      ],
                     ),
+                  ),
+                  if (_shows('bal_qty')) ...[
                     const SizedBox(width: 12),
                     _BalanceBox(
                       qty: FormattingHelper.formatQty(balance),
-                      uom: uom,
+                      qtyLabel: _stockLabel(fields, 'bal_qty'),
+                      uom: _shows('stock_uom') ? uom : '',
+                      uomLabel: _stockLabel(fields, 'stock_uom'),
                       fg: fg,
                       bg: tintBg,
                       border: tintBd,
                     ),
                   ],
-                ),
+                ],
+              ),
 
-                // 2 ── Location line ───────────────────────────────────
-                const SizedBox(height: 9),
-                _LocationLine(
-                  warehouse: warehouse,
-                  rack: rackName,
-                  onWarehouseTap: onWarehouseTap,
-                ),
+              // 2 ── Location line ───────────────────────────────────
+              const SizedBox(height: 9),
+              _LocationLine(
+                warehouse: warehouse,
+                warehouseLabel: _stockLabel(fields, 'warehouse'),
+                rack: rackName,
+                rackLabel: rackCol == null
+                    ? 'Rack'
+                    : stockBalanceColumnLabel(rackCol),
+                onWarehouseTap: onWarehouseTap,
+              ),
 
-                // 3 ── Ledger strip ────────────────────────────────────
+              // 3 ── Ledger strip ────────────────────────────────────
+              if ([
+                'opening_qty',
+                'in_qty',
+                'out_qty',
+                'bal_qty',
+              ].any(_shows)) ...[
                 const SizedBox(height: 11),
                 _Ledger(
+                  fields: fields,
+                  configurable: true,
                   opening: FormattingHelper.formatQty(opening),
                   inText: inQty == 0
                       ? FormattingHelper.formatQty(0)
@@ -852,51 +945,65 @@ class _BalanceTile extends StatelessWidget {
                   accent: accent,
                   balanceFg: fg,
                 ),
+              ],
 
-                // 4 ── Commitment: availability bar OR status note ─────
-                const SizedBox(height: 11),
-                if (balance > 0)
-                  _AvailabilityBar(
-                    available: availabilitySplit(balance, reserved).available,
-                    reserved: availabilitySplit(balance, reserved).reserved,
-                    onReservedTap: onReservedTap,
-                  )
-                else if (balance < 0)
-                  _StatusNote(
-                    icon: Icons.warning_amber_rounded,
-                    text: 'Negative stock — issued beyond on-hand qty',
-                    fg: fg,
-                    bg: Color.alphaBlend(
-                        accent.withValues(alpha: 0.11), cs.surface),
-                    border: accent.withValues(alpha: 0.24),
-                  )
-                else
-                  _StatusNote(
-                    icon: Icons.inventory_2_outlined,
-                    text: 'Out of stock — no movement in period',
-                    fg: cs.onSurfaceVariant,
-                    bg: cs.surfaceContainerHighest,
-                    border: cs.outlineVariant,
+              // 4 ── Commitment: availability bar OR status note ─────
+              const SizedBox(height: 11),
+              if (balance > 0)
+                _AvailabilityBar(
+                  available: availabilitySplit(balance, reserved).available,
+                  reserved: availabilitySplit(balance, reserved).reserved,
+                  onReservedTap: onReservedTap,
+                )
+              else if (balance < 0)
+                _StatusNote(
+                  icon: Icons.warning_amber_rounded,
+                  text: 'Negative stock — issued beyond on-hand qty',
+                  fg: fg,
+                  bg: Color.alphaBlend(
+                    accent.withValues(alpha: 0.11),
+                    cs.surface,
                   ),
+                  border: accent.withValues(alpha: 0.24),
+                )
+              else
+                _StatusNote(
+                  icon: Icons.inventory_2_outlined,
+                  text: noMovement
+                      ? 'Out of stock — no movement in period'
+                      : 'Out of stock',
+                  fg: cs.onSurfaceVariant,
+                  bg: cs.surfaceContainerHighest,
+                  border: cs.outlineVariant,
+                ),
+              if (balance <= 0 && reserved > 0 && onReservedTap != null)
+                TextButton(
+                  onPressed: onReservedTap,
+                  child: const Text('View warehouse reservations'),
+                ),
 
-                // 5 ── Residual chips (variant attrs / unmapped columns) ─
-                ..._buildResidualChips(extraCols),
+              // 5 ── Residual chips (variant attrs / unmapped columns) ─
+              ..._buildResidualChips(extraCols, reservation),
 
-                // 6 ── Meta footer: rate / value / customer ────────────
+              // 6 ── Meta footer: rate / value / customer ────────────
+              if (hasMeta) ...[
                 const SizedBox(height: 11),
                 _DashedDivider(color: cs.outlineVariant),
                 const SizedBox(height: 10),
                 _MetaFooter(
-                  rate: rate,
-                  value: value,
+                  rate: _shows('val_rate') ? rate : null,
+                  rateLabel: _stockLabel(fields, 'val_rate'),
+                  value: _shows('bal_val') ? value : null,
+                  valueLabel: _stockLabel(fields, 'bal_val'),
                   customerCode: customer,
                   onCustomerTap: onCustomerTap,
                 ),
               ],
-            ),
+            ],
           ),
-        ],
-      );
+        ),
+      ],
+    );
 
     return Material(
       color: cs.surface,
@@ -911,12 +1018,32 @@ class _BalanceTile extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildResidualChips(List<Map<String, dynamic>> cols) {
-    final chips = <Widget>[];
+  List<Widget> _buildResidualChips(
+    List<Map<String, dynamic>> cols,
+    Object? reserved,
+  ) {
+    final chips = <Widget>[
+      if (reserved != null && _shows('reserved_stock'))
+        _AttrChip(
+          label: _stockLabel(fields, 'reserved_stock'),
+          value: reserved.toString(),
+        ),
+    ];
     for (final col in cols) {
       final fieldname = col['fieldname']?.toString() ?? '';
-      final label     = col['label']?.toString() ?? fieldname;
-      final val       = row[fieldname];
+      final label = stockBalanceColumnLabel(col);
+      final displayed =
+          dimensions.contains(fieldname) ||
+          (label.isEmpty || fields == null
+              ? stockBalanceLegacyVisible(col)
+              : _shows(fieldname));
+      if (!displayed) continue;
+      final val = stockBalanceColumnValue(
+        row,
+        col,
+        legacyMapLookup: !dimensions.contains(fieldname) &&
+            fields?.snapshot.overrides[fieldname] != true,
+      );
       if (val == null || val.toString().trim().isEmpty) continue;
       chips.add(_AttrChip(label: label, value: val.toString()));
     }
@@ -959,14 +1086,18 @@ _StateStyle _stateStyle(StockBalanceState state, ColorScheme cs) {
 
 class _BalanceBox extends StatelessWidget {
   final String qty;
+  final String qtyLabel;
   final String uom;
+  final String uomLabel;
   final Color fg;
   final Color bg;
   final Color border;
 
   const _BalanceBox({
     required this.qty,
+    required this.qtyLabel,
     required this.uom,
+    required this.uomLabel,
     required this.fg,
     required this.bg,
     required this.border,
@@ -976,7 +1107,10 @@ class _BalanceBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      constraints: const BoxConstraints(minWidth: 62),
+      constraints: BoxConstraints(
+        minWidth: 62,
+        maxWidth: (MediaQuery.sizeOf(context).width * .42).clamp(62.0, 240.0),
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       decoration: BoxDecoration(
         color: bg,
@@ -989,6 +1123,8 @@ class _BalanceBox extends StatelessWidget {
         children: [
           Text(
             qty,
+            semanticsLabel: '$qtyLabel $qty',
+            textAlign: TextAlign.end,
             style: TextStyle(
               fontSize: 24,
               height: 1,
@@ -1002,6 +1138,8 @@ class _BalanceBox extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               uom.toUpperCase(),
+              semanticsLabel: '$uomLabel $uom',
+              textAlign: TextAlign.end,
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
@@ -1020,28 +1158,36 @@ class _BalanceBox extends StatelessWidget {
 
 class _LocationLine extends StatelessWidget {
   final String warehouse;
+  final String warehouseLabel;
   final String? rack;
+  final String rackLabel;
   final VoidCallback? onWarehouseTap;
 
   const _LocationLine({
     required this.warehouse,
+    required this.warehouseLabel,
     this.rack,
+    required this.rackLabel,
     this.onWarehouseTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final muted   = cs.onSurfaceVariant;
-    final subtle  = cs.onSurfaceVariant.withValues(alpha: 0.7);
-    final base    = TextStyle(fontSize: 12.5, color: muted, height: 1.2);
-    final strong  = base.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600);
+    final muted = cs.onSurfaceVariant;
+    final subtle = cs.onSurfaceVariant.withValues(alpha: 0.7);
+    final base = TextStyle(fontSize: 12.5, color: muted, height: 1.2);
+    final strong = base.copyWith(
+      color: cs.onSurface,
+      fontWeight: FontWeight.w600,
+    );
     final hasRack = rack != null && rack!.trim().isNotEmpty;
 
     // Warehouse — tappable when a handler is given (sets the warehouse quick
     // filter). Allowed to ellipsize; the rack below never does.
     Widget warehouseText = Text(
       warehouse.isEmpty ? '—' : warehouse,
+      semanticsLabel: '$warehouseLabel ${warehouse.isEmpty ? '—' : warehouse}',
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: strong,
@@ -1080,7 +1226,9 @@ class _LocationLine extends StatelessWidget {
                       TextSpan(
                         style: base,
                         children: [
-                          const TextSpan(text: 'Rack '),
+                          TextSpan(
+                            text: '${rackLabel.isEmpty ? 'Rack' : rackLabel} ',
+                          ),
                           TextSpan(text: rack!.trim(), style: strong),
                         ],
                       ),
@@ -1089,7 +1237,9 @@ class _LocationLine extends StatelessWidget {
                   : Text(
                       'No rack assigned',
                       style: base.copyWith(
-                          color: subtle, fontStyle: FontStyle.italic),
+                        color: subtle,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
             ),
           ],
@@ -1102,16 +1252,20 @@ class _LocationLine extends StatelessWidget {
 // ── Ledger strip ───────────────────────────────────────────────────────────────
 
 class _Ledger extends StatelessWidget {
+  final FieldsState? fields;
+  final bool configurable;
   final String opening;
   final String inText;
   final String outText;
   final String balance;
-  final bool   inZero;
-  final bool   outZero;
-  final Color  accent;
-  final Color  balanceFg;
+  final bool inZero;
+  final bool outZero;
+  final Color accent;
+  final Color balanceFg;
 
   const _Ledger({
+    this.fields,
+    this.configurable = false,
     required this.opening,
     required this.inText,
     required this.outText,
@@ -1135,7 +1289,7 @@ class _Ledger extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              k.toUpperCase(),
+              _stockLabel(fields, k),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 9.5,
@@ -1162,10 +1316,45 @@ class _Ledger extends StatelessWidget {
     }
 
     Widget divider() => Container(
-          width: 1,
-          margin: const EdgeInsets.symmetric(vertical: 7),
-          color: cs.outlineVariant,
-        );
+      width: 1,
+      margin: const EdgeInsets.symmetric(vertical: 7),
+      color: cs.outlineVariant,
+    );
+
+    bool show(String key) => !configurable || (fields?.shows(key) ?? true);
+    final cells = <Widget>[
+      if (show('opening_qty')) cell('opening_qty', opening, cs.onSurface),
+      if (show('in_qty'))
+        cell(
+          'in_qty',
+          inText,
+          inZero
+              ? subtle
+              : (cs.brightness == Brightness.dark
+                    ? AppColors.green300
+                    : AppColors.green700),
+        ),
+      if (show('out_qty'))
+        cell(
+          'out_qty',
+          outText,
+          outZero
+              ? subtle
+              : (cs.brightness == Brightness.dark
+                    ? AppColors.red300
+                    : AppColors.red700),
+        ),
+      if (show('bal_qty'))
+        cell(
+          'bal_qty',
+          balance,
+          balanceFg,
+          bg: Color.alphaBlend(
+            accent.withValues(alpha: 0.09),
+            cs.surfaceContainerHighest,
+          ),
+        ),
+    ];
 
     return Container(
       decoration: BoxDecoration(
@@ -1179,39 +1368,10 @@ class _Ledger extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: cell('Opening', opening, cs.onSurface)),
-              divider(),
-              Expanded(
-                child: cell(
-                    'In',
-                    inText,
-                    inZero
-                        ? subtle
-                        : (cs.brightness == Brightness.dark
-                            ? AppColors.green300
-                            : AppColors.green700)),
-              ),
-              divider(),
-              Expanded(
-                child: cell(
-                    'Out',
-                    outText,
-                    outZero
-                        ? subtle
-                        : (cs.brightness == Brightness.dark
-                            ? AppColors.red300
-                            : AppColors.red700)),
-              ),
-              divider(),
-              Expanded(
-                child: cell(
-                  'Balance',
-                  balance,
-                  balanceFg,
-                  bg: Color.alphaBlend(
-                      accent.withValues(alpha: 0.09), cs.surfaceContainerHighest),
-                ),
-              ),
+              for (final (index, cell) in cells.indexed) ...[
+                if (index > 0) divider(),
+                Expanded(child: cell),
+              ],
             ],
           ),
         ),
@@ -1376,14 +1536,18 @@ class _StatusNote extends StatelessWidget {
 // ── Meta footer ────────────────────────────────────────────────────────────────
 
 class _MetaFooter extends StatelessWidget {
-  final double  rate;
-  final double  value;
+  final double? rate;
+  final double? value;
+  final String rateLabel;
+  final String valueLabel;
   final String? customerCode;
   final VoidCallback? onCustomerTap;
 
   const _MetaFooter({
     required this.rate,
     required this.value,
+    required this.rateLabel,
+    required this.valueLabel,
     this.customerCode,
     this.onCustomerTap,
   });
@@ -1436,15 +1600,14 @@ class _MetaFooter extends StatelessWidget {
             spacing: 14,
             runSpacing: 4,
             children: [
-              _metaItem('Rate', rate, subtle, cs),
-              _metaItem('Value', value, subtle, cs),
+              if (rate case final amount?)
+                _metaItem(rateLabel, amount, subtle, cs),
+              if (value case final amount?)
+                _metaItem(valueLabel, amount, subtle, cs),
             ],
           ),
         ),
-        if (hasCust) ...[
-          const SizedBox(width: 8),
-          custTag,
-        ],
+        if (hasCust) ...[const SizedBox(width: 8), custTag],
       ],
     );
   }

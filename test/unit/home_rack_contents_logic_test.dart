@@ -5,19 +5,20 @@ import 'package:multimax/app/modules/home/rack_contents_logic.dart';
 /// A Stock Balance row for rack KA-WH-DXB1-121D as ERPNext 16.55 returns it
 /// (trimmed): the report carries no Item image or Country of Origin.
 Map<String, dynamic> _row(String code, double qty, {String? name}) => {
-      'item_code': code,
-      'item_name': name ?? 'BELTS LADIES PU',
-      'item_group': 'Belts',
-      'stock_uom': 'Nos',
-      'bal_qty': qty,
-      'rack': 'KA-WH-DXB1-121D',
-      'Colour': 'MIX',
-    };
+  'item_code': code,
+  'item_name': name ?? 'BELTS LADIES PU',
+  'item_group': 'Belts',
+  'stock_uom': 'Nos',
+  'bal_qty': qty,
+  'rack': 'KA-WH-DXB1-121D',
+  'Colour': 'MIX',
+};
 
 /// The `/api/resource/Item` reply for the same codes, as the live server
 /// sent it on 15/11/2026.
-Map<String, dynamic> _itemBody(List<Map<String, dynamic>> data) =>
-    {'data': data};
+Map<String, dynamic> _itemBody(List<Map<String, dynamic>> data) => {
+  'data': data,
+};
 
 void main() {
   group('rackItemFields', () {
@@ -47,10 +48,12 @@ void main() {
 
   group('itemFieldsByCode', () {
     test('keys the Item list reply by name', () {
-      final byCode = itemFieldsByCode(_itemBody([
-        {'name': '3000247', 'image': '/files/3000247-SGPU-14.jpg'},
-        {'name': '2002849', 'image': null},
-      ]));
+      final byCode = itemFieldsByCode(
+        _itemBody([
+          {'name': '3000247', 'image': '/files/3000247-SGPU-14.jpg'},
+          {'name': '2002849', 'image': null},
+        ]),
+      );
       expect(byCode.keys, ['3000247', '2002849']);
       expect(byCode['3000247']!['image'], '/files/3000247-SGPU-14.jpg');
     });
@@ -60,36 +63,39 @@ void main() {
     });
 
     test('a body without a data list is a FormatException', () {
-      expect(() => itemFieldsByCode({'message': []}),
-          throwsA(isA<FormatException>()));
-      expect(() => itemFieldsByCode('<html>'),
-          throwsA(isA<FormatException>()));
+      expect(
+        () => itemFieldsByCode({'message': []}),
+        throwsA(isA<FormatException>()),
+      );
+      expect(() => itemFieldsByCode('<html>'), throwsA(isA<FormatException>()));
       expect(() => itemFieldsByCode(null), throwsA(isA<FormatException>()));
     });
   });
 
   group('mergeRackContents', () {
     final rows = [_row('3000247', 36), _row('2002654', 0, name: '2002654')];
-    final items = itemFieldsByCode(_itemBody([
-      {
-        'name': '3000247',
-        'image': '/files/3000247-SGPU-14.jpg',
-        'variant_of': 'SGPU-14',
-        'country_of_origin': 'China',
-        'brand': 'FOCUS',
-        'description': '<div><p>BELTS LADIES PU</p></div>',
-        'disabled': 0,
-      },
-      {
-        'name': '2002654',
-        'image': null,
-        'variant_of': 'SGPU-52',
-        'country_of_origin': 'China',
-        'brand': null,
-        'description': '2002654',
-        'disabled': 1,
-      },
-    ]));
+    final items = itemFieldsByCode(
+      _itemBody([
+        {
+          'name': '3000247',
+          'image': '/files/3000247-SGPU-14.jpg',
+          'variant_of': 'SGPU-14',
+          'country_of_origin': 'China',
+          'brand': 'FOCUS',
+          'description': '<div><p>BELTS LADIES PU</p></div>',
+          'disabled': 0,
+        },
+        {
+          'name': '2002654',
+          'image': null,
+          'variant_of': 'SGPU-52',
+          'country_of_origin': 'China',
+          'brand': null,
+          'description': '2002654',
+          'disabled': 1,
+        },
+      ]),
+    );
 
     test('adds Item fields to each report row, in report order', () {
       final merged = mergeRackContents(rows, items);
@@ -118,16 +124,20 @@ void main() {
     });
 
     test('keeps a description that says more, as one line of plain text', () {
-      final merged = mergeRackContents([
-        _row('3000253', 72),
-      ], {
-        '3000253': {
-          'name': '3000253',
-          'description':
-              '<p>BELTS LADIES PU-FOCUS</p><p>110-115CM &amp; 25mm</p>',
+      final merged = mergeRackContents(
+        [_row('3000253', 72)],
+        {
+          '3000253': {
+            'name': '3000253',
+            'description':
+                '<p>BELTS LADIES PU-FOCUS</p><p>110-115CM &amp; 25mm</p>',
+          },
         },
-      });
-      expect(merged.single.description, 'BELTS LADIES PU-FOCUS 110-115CM & 25mm');
+      );
+      expect(
+        merged.single.description,
+        'BELTS LADIES PU-FOCUS 110-115CM & 25mm',
+      );
     });
 
     test('a failed fetch (null) keeps the report data alone', () {
@@ -152,18 +162,34 @@ void main() {
       expect(mergeRackContents([row], null).single.variantOf, 'SGPU-14');
     });
 
-    test('a row without item_name shows the code; missing qty is 0', () {
-      final merged = mergeRackContents([
-        {'item_code': '3000247'},
-      ], null);
-      expect(merged.single.itemName, '3000247');
-      expect(merged.single.balanceQty, 0);
-    });
+    test(
+      'a row without item_name shows the code and keeps unknown quantities',
+      () {
+        final merged = mergeRackContents([
+          {'item_code': '3000247'},
+          _row('zero', 0),
+          {'item_code': 'blank', 'bal_qty': ''},
+          {'item_code': 'invalid', 'bal_qty': 'invalid'},
+          {'item_code': 'nonfinite', 'bal_qty': 'NaN'},
+        ], null);
+        expect(merged.first.itemName, '3000247');
+        expect(merged.map((entry) => entry.balanceQty), [
+          null,
+          0,
+          null,
+          null,
+          null,
+        ]);
+      },
+    );
   });
 
   group('totals', () {
-    final entries = mergeRackContents(
-        [_row('a', 36), _row('b', 0), _row('c', 12.5)], null);
+    final entries = mergeRackContents([
+      _row('a', 36),
+      _row('b', 0),
+      _row('c', 12.5),
+    ], null);
 
     test('rackQtyTotal sums Balance Qty', () {
       expect(rackQtyTotal(entries), 48.5);
@@ -172,8 +198,10 @@ void main() {
 
     test('sharedStockUom names the unit only when every row shares it', () {
       expect(sharedStockUom(entries), 'Nos');
-      final mixed = mergeRackContents(
-          [_row('a', 1), {..._row('b', 1), 'stock_uom': 'Pair'}], null);
+      final mixed = mergeRackContents([
+        _row('a', 1),
+        {..._row('b', 1), 'stock_uom': 'Pair'},
+      ], null);
       expect(sharedStockUom(mixed), isNull);
       expect(sharedStockUom(const []), isNull);
     });
@@ -204,16 +232,18 @@ void main() {
       expect(filterRackContents(all, '   '), all);
     });
 
-    test('matches code, name, variant, brand, batch and description, any case',
-        () {
-      expect(filterRackContents(all, '3000'), [belt]);
-      expect(filterRackContents(all, 'wallet'), [wallet]);
-      expect(filterRackContents(all, 'sgpu'), [belt]);
-      expect(filterRackContents(all, 'Arrow'), [wallet]);
-      expect(filterRackContents(all, 'b-0091'), [wallet]);
-      expect(filterRackContents(all, 'LEATHER'), [wallet]);
-      expect(filterRackContents(all, 'china'), [belt]);
-    });
+    test(
+      'matches code, name, variant, brand, batch and description, any case',
+      () {
+        expect(filterRackContents(all, '3000'), [belt]);
+        expect(filterRackContents(all, 'wallet'), [wallet]);
+        expect(filterRackContents(all, 'sgpu'), [belt]);
+        expect(filterRackContents(all, 'Arrow'), [wallet]);
+        expect(filterRackContents(all, 'b-0091'), [wallet]);
+        expect(filterRackContents(all, 'LEATHER'), [wallet]);
+        expect(filterRackContents(all, 'china'), [belt]);
+      },
+    );
 
     test('every word must match, in any order', () {
       expect(filterRackContents(all, 'focus belts'), [belt]);
@@ -224,28 +254,42 @@ void main() {
 
   group('isSameDay', () {
     test('compares the calendar day only', () {
-      expect(isSameDay(DateTime(2026, 11, 16, 23, 59),
-          DateTime(2026, 11, 16, 0, 1)), isTrue);
-      expect(isSameDay(DateTime(2026, 11, 15), DateTime(2026, 11, 16)),
-          isFalse);
-      expect(isSameDay(DateTime(2025, 11, 16), DateTime(2026, 11, 16)),
-          isFalse);
+      expect(
+        isSameDay(DateTime(2026, 11, 16, 23, 59), DateTime(2026, 11, 16, 0, 1)),
+        isTrue,
+      );
+      expect(
+        isSameDay(DateTime(2026, 11, 15), DateTime(2026, 11, 16)),
+        isFalse,
+      );
+      expect(
+        isSameDay(DateTime(2025, 11, 16), DateTime(2026, 11, 16)),
+        isFalse,
+      );
     });
   });
 
   group('itemImageUrl', () {
     test('joins a server-relative path to the base URL', () {
-      expect(itemImageUrl('https://erp.domain.com', '/files/a.jpg'),
-          'https://erp.domain.com/files/a.jpg');
-      expect(itemImageUrl('https://erp.domain.com/', '/files/a.jpg'),
-          'https://erp.domain.com/files/a.jpg');
-      expect(itemImageUrl('https://erp.domain.com', 'files/a.jpg'),
-          'https://erp.domain.com/files/a.jpg');
+      expect(
+        itemImageUrl('https://erp.domain.com', '/files/a.jpg'),
+        'https://erp.domain.com/files/a.jpg',
+      );
+      expect(
+        itemImageUrl('https://erp.domain.com/', '/files/a.jpg'),
+        'https://erp.domain.com/files/a.jpg',
+      );
+      expect(
+        itemImageUrl('https://erp.domain.com', 'files/a.jpg'),
+        'https://erp.domain.com/files/a.jpg',
+      );
     });
 
     test('keeps an absolute URL and returns null for no image', () {
-      expect(itemImageUrl('https://erp.domain.com', 'https://cdn.example/a.jpg'),
-          'https://cdn.example/a.jpg');
+      expect(
+        itemImageUrl('https://erp.domain.com', 'https://cdn.example/a.jpg'),
+        'https://cdn.example/a.jpg',
+      );
       expect(itemImageUrl('https://erp.domain.com', null), isNull);
       expect(itemImageUrl('https://erp.domain.com', '  '), isNull);
     });

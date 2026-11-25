@@ -5,6 +5,26 @@
 library;
 
 import 'package:intl/intl.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+
+/// Keep positional cells associated with the original column index. Known
+/// aliases cover older Frappe header strings for the same measures.
+List<Map<String, dynamic>> decodeHrReportRows(
+  Object? raw,
+  List<DeskColumn> columns, {
+  Map<String, List<String>> aliases = const {},
+}) => [
+  if (raw is List)
+    for (final entry in raw)
+      if (decodeDeskRow(entry, columns) case final row?)
+        {
+          ...row,
+          for (final alias in aliases.entries)
+            if (!row.containsKey(alias.key))
+              for (final key in alias.value)
+                if (row.containsKey(key)) alias.key: row[key],
+        },
+];
 
 /// Rows of a `frappe.desk.query_report.run` response as string-keyed maps;
 /// anything that is not a map (a total row, a stray scalar) is skipped.

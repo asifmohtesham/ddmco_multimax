@@ -1,7 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:multimax/app/data/constants/app_theme.dart';
 import 'package:multimax/app/modules/global_widgets/app_avatar.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
+import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_fields.dart';
 import 'package:multimax/app/modules/hr/reports/employee_hours_utilization/employee_hours_utilization_logic.dart';
 
 /// Segment fills — the report's own three hour buckets. Untracked is a
@@ -13,9 +17,15 @@ const Color kNonBilledFill = AppColors.purple500;
 /// billed / non-billed / untracked hours against the period's total, and the
 /// hour figures behind it.
 class UtilizationCard extends StatelessWidget {
-  const UtilizationCard({super.key, required this.row});
+  const UtilizationCard({super.key, required this.row, this.fields});
 
   final EmployeeUtilizationRow row;
+  final FieldsState? fields;
+
+  bool _shows(String key) => fields?.shows(key) ?? true;
+
+  String _label(String key) =>
+      fields?.label(key) ?? utilizationFields.label(key)!;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +35,36 @@ class UtilizationCard extends StatelessWidget {
         ? (isDark ? AppColors.red300 : AppColors.red700)
         : (isDark ? AppColors.green300 : AppColors.green700);
     final (billed, nonBilled, untracked) = row.shares;
+    final showDepartment = _shows('department') && row.department != null;
+    final utilization = formatPercent(row.utilization);
+    final hours = [
+      ('billed_hours', row.billedHours, kBilledFill),
+      ('non_billed_hours', row.nonBilledHours, kNonBilledFill),
+      ('untracked_hours', row.untrackedHours, s.borderStrong),
+      ('total_hours', row.totalHours, null),
+    ];
+    final visibleHours = hours.where((entry) => _shows(entry.$1)).toList();
+    final nameStyle = TextStyle(
+      fontSize: 13.5,
+      fontWeight: FontWeight.w700,
+      color: s.text,
+    );
+    final detailStyle = TextStyle(fontSize: 11, color: s.textMuted);
+    final percentStyle = TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.w800,
+      color: pctInk,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final billedText = _shows('per_util_billed_only')
+        ? '${_label('per_util_billed_only')} '
+              '${formatPercent(row.billedUtilization)}'
+        : null;
+    final billedCaption = billedText == null
+        ? null
+        : Text(billedText, textAlign: TextAlign.end, style: detailStyle);
+    const avatarSize = 32.0;
+    const avatarGap = 10.0;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -37,98 +77,144 @@ class UtilizationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              AppAvatar(initials: _initials(row.employeeName), size: 32),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      row.employeeName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: s.text,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final available = math.max(
+                0.0,
+                constraints.maxWidth - avatarSize - avatarGap,
+              );
+              // Keep the employee name and ID readable when a returned
+              // caption or the device's text scale needs more room.
+              final identityWidth = billedText == null
+                  ? 0.0
+                  : math.max(
+                      _textWidth(context, row.employeeName, nameStyle),
+                      _textWidth(context, row.employee, detailStyle),
+                    );
+              final percentLimit = available / 2;
+              final showBilledInline =
+                  billedText != null &&
+                  math.max(
+                        _textWidth(context, billedText, detailStyle),
+                        _textWidth(context, utilization, percentStyle),
+                      ) <=
+                      math.min(percentLimit, available - identityWidth);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      AppAvatar(
+                        initials: _initials(row.employeeName),
+                        size: avatarSize,
                       ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      [
-                        row.employee,
-                        if (row.department != null) row.department!,
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: s.textMuted),
-                    ),
+                      const SizedBox(width: avatarGap),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              row.employeeName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: nameStyle,
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              [
+                                row.employee,
+                                if (showDepartment) row.department!,
+                              ].join(' · '),
+                              semanticsLabel: [
+                                '${_label('employee')} ${row.employee}',
+                                if (showDepartment)
+                                  '${_label('department')} ${row.department}',
+                              ].join(', '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: detailStyle,
+                            ),
+                          ],
+                        ),
+                      ),
+                      ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: percentLimit),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              utilization,
+                              semanticsLabel:
+                                  '${_label('per_util')} $utilization, '
+                                  '${row.belowTarget ? 'Below target' : 'At or above target'}',
+                              textAlign: TextAlign.end,
+                              style: percentStyle,
+                            ),
+                            if (showBilledInline) billedCaption!,
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (billedCaption != null && !showBilledInline) billedCaption,
+                ],
+              );
+            },
+          ),
+          if (visibleHours.length == hours.length) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.xs),
+              child: SizedBox(
+                height: 10,
+                child: Row(
+                  children: [
+                    _segment(billed, kBilledFill),
+                    _segment(nonBilled, kNonBilledFill),
+                    _segment(untracked, s.borderStrong),
+                    _segment(1 - billed - nonBilled - untracked, s.subtle),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    formatPercent(row.utilization),
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: pctInk,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  Text(
-                    'billed ${formatPercent(row.billedUtilization)}',
-                    style: TextStyle(fontSize: 11, color: s.textMuted),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.xs),
-            child: SizedBox(
-              height: 10,
-              child: Row(
-                children: [
-                  _segment(billed, kBilledFill),
-                  _segment(nonBilled, kNonBilledFill),
-                  _segment(untracked, s.borderStrong),
-                  _segment(1 - billed - nonBilled - untracked, s.subtle),
-                ],
-              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              _Legend(
-                color: kBilledFill,
-                label: 'Billed',
-                value: formatHours(row.billedHours),
-              ),
-              _Legend(
-                color: kNonBilledFill,
-                label: 'Non-billed',
-                value: formatHours(row.nonBilledHours),
-              ),
-              _Legend(
-                color: s.borderStrong,
-                label: 'Untracked',
-                value: formatHours(row.untrackedHours),
-              ),
-              _Legend(label: 'of', value: formatHours(row.totalHours)),
-            ],
-          ),
+          ],
+          if (visibleHours.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                for (final (key, value, color) in visibleHours)
+                  _Legend(
+                    color: color,
+                    label: _label(key),
+                    value: formatHours(value),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  static double _textWidth(
+    BuildContext context,
+    String value,
+    TextStyle style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: value,
+        style: DefaultTextStyle.of(context).style.merge(style),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
   }
 
   /// Flex needs integers; thousandths keep thin segments visible.
@@ -171,7 +257,12 @@ class _Legend extends StatelessWidget {
           ),
           const SizedBox(width: 4),
         ],
-        Text('$label ', style: TextStyle(fontSize: 11, color: s.textMuted)),
+        Flexible(
+          child: Text(
+            '$label ',
+            style: TextStyle(fontSize: 11, color: s.textMuted),
+          ),
+        ),
         Text(
           value,
           style: TextStyle(

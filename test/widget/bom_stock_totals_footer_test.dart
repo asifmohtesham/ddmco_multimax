@@ -20,10 +20,10 @@ void main() {
       ),
     ));
     expect(find.text('Total'), findsOneWidget);
-    expect(find.text('Stock'), findsOneWidget);
+    expect(find.text('In Stock Qty'), findsOneWidget);
     expect(find.text('16239'), findsOneWidget);
-    expect(find.text('Need'), findsNothing);
-    expect(find.text('Short'), findsNothing);
+    expect(find.text('Required Qty'), findsNothing);
+    expect(find.text('Shortage Qty'), findsNothing);
   });
 
   testWidgets('with demand: shows Stock + Need + Short', (tester) async {
@@ -35,9 +35,9 @@ void main() {
         ),
       ),
     ));
-    expect(find.text('Stock'), findsOneWidget);
-    expect(find.text('Need'), findsOneWidget);
-    expect(find.text('Short'), findsOneWidget);
+    expect(find.text('In Stock Qty'), findsOneWidget);
+    expect(find.text('Required Qty'), findsOneWidget);
+    expect(find.text('Shortage Qty'), findsOneWidget);
     expect(find.text('7644'), findsOneWidget);
     expect(find.text('2004'), findsOneWidget);
   });

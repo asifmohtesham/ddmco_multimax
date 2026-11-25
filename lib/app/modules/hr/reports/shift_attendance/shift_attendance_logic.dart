@@ -16,6 +16,7 @@ library;
 
 import 'package:intl/intl.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
+import 'shift_attendance_fields.dart';
 
 /// Which punch, if any, the record is missing — the reason its hours read 0.
 enum MissingPunch { none, checkIn, checkOut, both }
@@ -180,12 +181,16 @@ class ShiftAttendanceTotals {
   final int early;
   final int missingPunch;
 
-  String get label {
-    if (records == 0) return 'End of results';
+  String get label =>
+      labelWithWorkingHours(shiftAttendanceFields.label('working_hours')!);
+
+  String labelWithWorkingHours(String caption) {
+    if (records == 0) return 'End of list';
     return [
+      'End of list',
       '$records record${records == 1 ? '' : 's'}',
       '$employees employee${employees == 1 ? '' : 's'}',
-      '${formatHours(hours)} worked',
+      '$caption ${formatHours(hours)}',
       if (late > 0) '$late late',
       if (early > 0) '$early early exit${early == 1 ? '' : 's'}',
       if (missingPunch > 0) '$missingPunch missing a punch',

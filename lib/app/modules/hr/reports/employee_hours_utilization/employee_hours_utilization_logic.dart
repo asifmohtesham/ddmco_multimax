@@ -14,7 +14,9 @@
 ///   Hours is unset; the report needs read/report access on **Timesheet**.
 library;
 
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart';
+import 'employee_hours_utilization_fields.dart';
 
 /// Desk colours the summary red below this average utilisation.
 const double kUtilizationTarget = 70.0;
@@ -100,15 +102,21 @@ String formatPercent(double value) {
 }
 
 /// End-of-list totals: hour columns sum; the percentage columns never do.
-String utilizationTotalsLabel(List<EmployeeUtilizationRow> rows) {
-  if (rows.isEmpty) return 'End of results';
+String utilizationTotalsLabel(
+  List<EmployeeUtilizationRow> rows, {
+  FieldsState? fields,
+}) {
+  if (rows.isEmpty) return 'End of list';
   double sum(double Function(EmployeeUtilizationRow) pick) =>
       rows.fold(0, (total, row) => total + pick(row));
+  String measure(String key, double hours) =>
+      '${fields?.label(key) ?? utilizationFields.label(key)!} ${formatHours(hours)}';
   return [
+    'End of list',
     '${rows.length} employee${rows.length == 1 ? '' : 's'}',
-    '${formatHours(sum((r) => r.billedHours))} billed',
-    '${formatHours(sum((r) => r.nonBilledHours))} non-billed',
-    '${formatHours(sum((r) => r.untrackedHours))} untracked',
-    'of ${formatHours(sum((r) => r.totalHours))}',
+    measure('billed_hours', sum((r) => r.billedHours)),
+    measure('non_billed_hours', sum((r) => r.nonBilledHours)),
+    measure('untracked_hours', sum((r) => r.untrackedHours)),
+    measure('total_hours', sum((r) => r.totalHours)),
   ].join(' · ');
 }

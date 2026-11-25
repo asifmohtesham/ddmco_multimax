@@ -22,14 +22,31 @@ import 'package:multimax/app/data/services/storage_service.dart';
 import 'package:multimax/app/data/services/global_search_service.dart';
 import 'package:multimax/app/data/services/link_title_cache.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+
+typedef BatchWiseBalanceResult = ({
+  List<DeskColumn>? columns,
+  List<Map<String, dynamic>> rows,
+});
+
+typedef StockLedgerReportResult = ({
+  List<DeskColumn> columns,
+  List<Map<String, dynamic>> rows,
+});
 
 typedef ItemVariantDetailsResult = ({
   List<Map<String, dynamic>> columns,
   List<Map<String, dynamic>> rows,
 });
 
+typedef RackStockBalanceResult = ({
+  List<DeskColumn> columns,
+  List<Map<String, dynamic>> rows,
+});
+
 class ApiProvider {
   static const String defaultBaseUrl = "https://erp.domain.com";
+  static const stockBalancePositionalRowKey = '#stock_balance_positional_row';
 
   bool _dioInitialised = false;
   Future<void>? _dioInitialization;
@@ -958,12 +975,19 @@ class ApiProvider {
     }
 
     if (response.statusCode != 200) {
-      return (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
+      throw DioException.badResponse(
+        statusCode: response.statusCode ?? 0,
+        requestOptions: response.requestOptions,
+        response: response,
+      );
     }
 
-    return parseStockBalanceResponse(
-      response.data['message'] as Map<String, dynamic>?,
-    );
+    final data = response.data;
+    final message = data is Map ? data['message'] : null;
+    if (message is! Map<String, dynamic> || message['result'] is! List) {
+      throw const FormatException('Stock Balance response has no result list');
+    }
+    return parseStockBalanceResponse(message);
   }
 
   // ---------------------------------------------------------------------------
@@ -998,36 +1022,17 @@ class ApiProvider {
   }) async {
     if (!_dioInitialised) await _initDio();
 
-    final storage = Get.find<StorageService>();
-    final String company = storage.getCompany();
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    String dateOrToday(String? d) =>
-        (d == null || d.trim().isEmpty) ? today : d.trim();
-
-    final Map<String, dynamic> filters = {
-      "company"   : company,
-      "from_date" : dateOrToday(fromDate),
-      "to_date"   : dateOrToday(toDate),
-      "item_code" : itemCode,
-    };
-
-    if (batchNo   != null && batchNo.isNotEmpty)   filters["batch_no"]  = batchNo;
-    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
-
+    final company = Get.find<StorageService>().getCompany();
     late final Response response;
     try {
-      response = await _dio.get(
-        '/api/method/frappe.desk.query_report.run',
-        queryParameters: {
-          'report_name'           : 'Batch-Wise Balance History',
-          'filters'               : json.encode(filters),
-          'ignore_prepared_report': 'true',
-          'are_default_filters'   : 'false',
-          '_'                     : DateTime.now().millisecondsSinceEpoch,
-        },
+      response = await _requestBatchWiseBalance(
+        company: company,
+        itemCode: itemCode,
+        batchNo: batchNo,
+        warehouse: warehouse,
+        fromDate: fromDate,
+        toDate: toDate,
       );
-    } on DioException {
-      return [];
     } catch (_) {
       return [];
     }
@@ -1043,22 +1048,16 @@ class ApiProvider {
       final firstRow = rawRows.firstWhere((r) => r != null, orElse: () => null);
 
       if (firstRow is Map) {
-        // Fix 1: Map rows from Batch-Wise Balance History report carry the
-        // balance under 'balance_qty', not 'qty'.  Normalise to 'qty' so
-        // fetchBatchBalance() (which reads r['qty']) gets the correct value.
-        return rawRows
-            .whereType<Map>()
-            .map((r) {
-              final m = Map<String, dynamic>.from(r);
-              m['qty'] ??= _toDouble(
-                m['balance_qty'] ?? m['bal_qty'] ?? m['balance'],
-              );
-              return m;
-            })
-            .toList();
+        // Item sheets and forms use 'qty', including on older report shapes.
+        return rawRows.whereType<Map>().map((r) {
+          final m = Map<String, dynamic>.from(r);
+          m['qty'] ??= _toDouble(
+            m['balance_qty'] ?? m['bal_qty'] ?? m['balance'],
+          );
+          return m;
+        }).toList();
       }
 
-      // List rows — resolve column indices
       final rawColumns = message['columns'] as List<dynamic>?;
       if (rawColumns == null) return [];
 
@@ -1094,6 +1093,184 @@ class ApiProvider {
     } catch (_) {
       return [];
     }
+  }
+
+  Future<BatchWiseBalanceResult> getBatchWiseBalanceReport({
+    required String itemCode,
+    String? batchNo,
+    String? warehouse,
+    String? fromDate,
+    String? toDate,
+  }) async {
+    if (!_dioInitialised) await _initDio();
+    final response = await _requestBatchWiseBalance(
+      company: Get.find<StorageService>().getCompany(),
+      itemCode: itemCode,
+      batchNo: batchNo,
+      warehouse: warehouse,
+      fromDate: fromDate,
+      toDate: toDate,
+    );
+    if (response.statusCode != 200 || response.data is! Map) {
+      throw const FormatException('Batch-Wise Balance History response');
+    }
+    return parseBatchWiseBalanceReport(response.data['message']);
+  }
+
+  static BatchWiseBalanceResult parseBatchWiseBalanceReport(Object? message) {
+    if (message is! Map || message['result'] is! List) {
+      throw const FormatException('Batch-Wise Balance History results');
+    }
+    final rawColumns = message['columns'];
+    final sourceColumns = decodeDeskColumns(rawColumns);
+    final columns = rawColumns is List
+        ? _batchReportColumns(rawColumns, sourceColumns)
+        : null;
+    final renamed = [
+      if (columns != null)
+        for (final (index, column) in columns.indexed)
+          if (sourceColumns[index].fieldname != column.fieldname)
+            (sourceColumns[index].fieldname, column.fieldname),
+    ];
+    final rows = <Map<String, dynamic>>[];
+    const identities = ['item', 'item_name', 'warehouse', 'batch', 'batch_no'];
+    final result = message['result'] as List;
+    final hasAppendedTotal = _stockReportAddsTotal(message);
+    for (final (index, raw) in result.indexed) {
+      final row = decodeDeskRow(raw, sourceColumns);
+      if (row == null || row.isEmpty) continue;
+      for (final (sourceKey, key) in renamed) {
+        if (row.containsKey(sourceKey)) {
+          row.putIfAbsent(key, () => row[sourceKey]);
+        }
+      }
+      if (row['_is_total'] == true || row['is_total_row'] == true) continue;
+      final identity = [
+        for (final key in identities)
+          if (row[key]?.toString().trim() case final value? when value.isNotEmpty)
+            value,
+      ];
+      final first = raw is List && raw.isNotEmpty
+          ? raw.first
+          : row['item'] ?? row['item_name'];
+      final firstLabel = first?.toString().trim().toLowerCase();
+      if ((firstLabel == 'total' ||
+              firstLabel == 'grand total' ||
+              hasAppendedTotal && raw is List && index == result.length - 1) &&
+          (identity.isEmpty ||
+              identity.every((value) => value == first?.toString().trim()))) {
+        continue;
+      }
+      if (!row.containsKey('batch') && row.containsKey('batch_no')) {
+        row['batch'] = row['batch_no'];
+      }
+      for (final alias in ['bal_qty', 'balance']) {
+        if (row.containsKey(alias)) row.putIfAbsent('balance_qty', () => row[alias]);
+      }
+      rows.add(Map.unmodifiable(row));
+    }
+    return (columns: columns, rows: List.unmodifiable(rows));
+  }
+
+  static List<DeskColumn> _batchReportColumns(
+    List rawColumns,
+    List<DeskColumn> columns,
+  ) {
+    // Desk derives fieldnames from the translated legacy headers. The three
+    // Link targets and remaining types identify the standard report layout.
+    const standard = [
+      ('item', 'Link', 'Item'),
+      ('item_name', 'Data', ''),
+      ('description', 'Data', ''),
+      ('warehouse', 'Link', 'Warehouse'),
+      ('batch', 'Link', 'Batch'),
+      ('opening_qty', 'Float', ''),
+      ('in_qty', 'Float', ''),
+      ('out_qty', 'Float', ''),
+      ('balance_qty', 'Float', ''),
+      ('valuation_rate', 'Float', ''),
+      ('balance_value', 'Currency', ''),
+      ('uom', 'Data', ''),
+    ];
+    const aliases = {
+      'item_code': 'item',
+      'batch_no': 'batch',
+      'bal_qty': 'balance_qty',
+      'balance': 'balance_qty',
+      'val_rate': 'valuation_rate',
+      'bal_val': 'balance_value',
+      'stock_uom': 'uom',
+    };
+    final known = {for (final (key, _, _) in standard) key};
+    final sourceKeys = columns.map((column) => column.fieldname).toSet();
+    final stableKeys = [
+      for (final column in columns)
+        if (aliases[column.fieldname] case final alias?
+            when !sourceKeys.contains(alias))
+          alias
+        else
+          column.fieldname,
+    ];
+    final standardLayout =
+        columns.length == standard.length &&
+        sourceKeys.length == columns.length &&
+        columns.indexed.every((entry) {
+          final (index, column) = entry;
+          final (key, type, target) = standard[index];
+          final raw = rawColumns[index];
+          final legacy = raw is String
+              ? raw.split(':').elementAtOrNull(1)?.split('/')
+              : null;
+          final fieldtype = raw is Map ? raw['fieldtype'] : legacy?.firstOrNull;
+          final options = raw is Map ? raw['options'] : legacy?.elementAtOrNull(1);
+          final stable = stableKeys[index];
+          return column.fieldname.isNotEmpty &&
+              (!known.contains(stable) || key == stable) &&
+              (fieldtype == type ||
+                  type == 'Data' && (fieldtype == null || fieldtype == '')) &&
+              (target.isEmpty || options == target);
+        });
+    return List.unmodifiable([
+      for (final (index, column) in columns.indexed)
+        (
+          fieldname: standardLayout ? standard[index].$1 : stableKeys[index],
+          label: column.label,
+        ),
+    ]);
+  }
+
+  Future<Response> _requestBatchWiseBalance({
+    required String company,
+    required String itemCode,
+    String? batchNo,
+    String? warehouse,
+    String? fromDate,
+    String? toDate,
+  }) {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    String dateOrToday(String? d) =>
+        (d == null || d.trim().isEmpty) ? today : d.trim();
+
+    final Map<String, dynamic> filters = {
+      "company"   : company,
+      "from_date" : dateOrToday(fromDate),
+      "to_date"   : dateOrToday(toDate),
+      "item_code" : itemCode,
+    };
+
+    if (batchNo   != null && batchNo.isNotEmpty)   filters["batch_no"]  = batchNo;
+    if (warehouse != null && warehouse.isNotEmpty) filters["warehouse"] = warehouse;
+
+    return _dio.get(
+        '/api/method/frappe.desk.query_report.run',
+        queryParameters: {
+          'report_name'           : 'Batch-Wise Balance History',
+          'filters'               : json.encode(filters),
+          'ignore_prepared_report': 'true',
+          'are_default_filters'   : 'false',
+          '_'                     : DateTime.now().millisecondsSinceEpoch,
+        },
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1217,14 +1394,29 @@ class ApiProvider {
     try {
       final rawCols = message['columns'] as List<dynamic>? ?? [];
       final rawRows = message['result']  as List<dynamic>? ?? [];
-      final columns = rawCols
-          .whereType<Map>()
-          .map((c) => Map<String, dynamic>.from(c))
-          .toList();
-      final rows = rawRows
-          .whereType<Map>()
-          .map((r) => Map<String, dynamic>.from(r))
-          .toList();
+      final descriptors = decodeDeskColumns(rawCols);
+      final columns = [
+        for (final (index, raw) in rawCols.indexed)
+          if (descriptors[index].fieldname.isNotEmpty)
+            {
+              if (raw is Map) ...Map<String, dynamic>.from(raw),
+              'fieldname': descriptors[index].fieldname,
+              'label': descriptors[index].label,
+              if (raw is String && raw.split(':').length > 1) ...{
+                'fieldtype': raw.split(':')[1].split('/').first,
+                if (raw.split(':')[1].contains('/'))
+                  'options': raw.split(':')[1].split('/').last,
+              },
+            },
+      ];
+      final addsTotal = _stockReportAddsTotal(message);
+      final rows = [
+        for (final (index, raw) in rawRows.indexed)
+          if (!(addsTotal && raw is List && index == rawRows.length - 1))
+            if (decodeDeskRow(raw, descriptors) case final row?
+                when !_stockReportFlag(row['is_total_row']))
+              row,
+      ];
       return (columns: columns, rows: rows);
     } catch (_) {
       return empty;
@@ -1233,63 +1425,86 @@ class ApiProvider {
 
   static ({List<Map<String, dynamic>> columns, List<Map<String, dynamic>> rows})
       parseStockBalanceResponse(Map<String, dynamic>? message) {
-    const empty = (columns: <Map<String, dynamic>>[], rows: <Map<String, dynamic>>[]);
-    if (message == null) return empty;
-    try {
-      final rawCols = message['columns'] as List<dynamic>? ?? [];
-      final rawRows = message['result']  as List<dynamic>? ?? [];
-      if (rawRows.isEmpty) return empty;
-
-      String fn(dynamic col) {
-        if (col is Map) return (col['fieldname'] as String? ?? '').toLowerCase();
-        final s       = col.toString().toLowerCase();
-        final lastDot = s.lastIndexOf('.');
-        return lastDot >= 0
-            ? s.substring(lastDot + 1).replaceAll('`', '')
-            : s;
+    final columnsValue = message?['columns'];
+    final rawColumns = columnsValue is List ? columnsValue : const [];
+    final columns = decodeDeskColumns(rawColumns);
+    final rowsValue = message?['result'];
+    final rawRows = rowsValue is List ? rowsValue : const [];
+    final rows = <Map<String, dynamic>>[];
+    final mapKeys = <Object?>{};
+    var positional = false;
+    for (final (index, raw) in rawRows.indexed) {
+      final row = decodeDeskRow(raw, columns);
+      if (row == null || row.isEmpty || _stockReportFlag(row['is_total_row'])) {
+        continue;
       }
-
-      String lbl(dynamic col) {
-        if (col is Map) return (col['label'] as String? ?? '');
-        return col.toString();
+      // The first cell holds Frappe's translated caption, even when the
+      // requested column order puts a detail identity in that position.
+      if (raw is List &&
+          index == rawRows.length - 1 &&
+          !_stockReportFlag(message?['skip_total_row']) &&
+          (_stockReportAddsTotal(message) || raw.firstOrNull == 'Total') &&
+          ['warehouse', 'item_code', 'item', 'item_name', 'stock_uom'].every(
+            (key) =>
+                key == columns.firstOrNull?.fieldname ||
+                row[key]?.toString().trim().isNotEmpty != true,
+          )) {
+        continue;
       }
-
-      final columns = rawCols
-          .map((c) => <String, dynamic>{'fieldname': fn(c), 'label': lbl(c)})
-          .toList();
-
-      // Find first non-null row to determine row format (Map vs List).
-      // Avoid firstWhere with orElse: () => null — the inferred return type
-      // conflicts with the list element type and throws at runtime.
-      dynamic firstRow;
-      for (final r in rawRows) {
-        if (r != null) { firstRow = r; break; }
+      if (raw is List) {
+        positional = true;
+        row[stockBalancePositionalRowKey] = true;
+      } else if (raw is Map) {
+        mapKeys.addAll(raw.keys);
       }
-
-      if (firstRow is Map) {
-        final rows = rawRows
-            .whereType<Map>()
-            .map((r) => Map<String, dynamic>.from(r))
-            .toList();
-        return (columns: columns, rows: rows);
+      // The legacy string header Item yields the slug `item`.
+      if (row['item_code'] == null && row.containsKey('item')) {
+        row['item_code'] = row['item'];
       }
-
-      final fieldnames = rawCols.map(fn).toList();
-      final rows = rawRows
-          .whereType<List>()
-          .map((r) {
-            final row = <String, dynamic>{};
-            for (var i = 0; i < fieldnames.length && i < r.length; i++) {
-              row[fieldnames[i]] = r[i];
-            }
-            return row;
-          })
-          .toList();
-
-      return (columns: columns, rows: rows);
-    } catch (_) {
-      return empty;
+      rows.add(Map.unmodifiable(row));
     }
+    final exactKeys = {for (final column in columns) column.fieldname};
+    return (
+      columns: List.unmodifiable([
+        for (final (index, column) in columns.indexed)
+          _stockBalanceColumn(rawColumns[index], column, exactKeys, mapKeys,
+              positional),
+      ]),
+      rows: List.unmodifiable(rows),
+    );
+  }
+
+  static bool _stockReportFlag(Object? flag) =>
+      flag == true || flag == 1 || flag == '1';
+
+  static bool _stockReportAddsTotal(Map? message) =>
+      _stockReportFlag(message?['add_total_row']) &&
+      !_stockReportFlag(message?['skip_total_row']);
+
+  static Map<String, dynamic> _stockBalanceColumn(
+    Object? raw,
+    DeskColumn column,
+    Set<String> exactKeys,
+    Set<Object?> mapKeys,
+    bool positional,
+  ) {
+    final legacy = column.fieldname.toLowerCase();
+    final useLegacy = legacy != column.fieldname && !exactKeys.contains(legacy);
+    final legacyType = raw is String ? raw.split(':').elementAtOrNull(1) : null;
+    final typeParts = legacyType?.split('/');
+    return Map.unmodifiable({
+      if (raw is Map)
+        for (final entry in raw.entries)
+          if (entry.key is String) entry.key as String: entry.value,
+      if (typeParts?.firstOrNull case final type?) 'fieldtype': type,
+      if (typeParts?.elementAtOrNull(1) case final options?) 'options': options,
+      'fieldname': column.fieldname,
+      'label': column.label,
+      'legacy_fieldname': legacy,
+      'legacy_fallback': useLegacy,
+      'legacy_visible': legacy == column.fieldname || positional ||
+          (useLegacy && mapKeys.contains(legacy)),
+    });
   }
 
   /// Exposed as a public static method so unit tests can exercise the parsing
@@ -1472,6 +1687,33 @@ class ApiProvider {
     String? warehouse,
     List<String> warehouses = const [],
     String? batchNo,
+  }) async => (
+    await _queryStockBalanceDimension(
+      itemCode: itemCode,
+      warehouse: warehouse,
+      warehouses: warehouses,
+      batchNo: batchNo,
+      reportErrors: false,
+    )
+  ).rows;
+
+  /// The Item Variant Details check distinguishes a rejected lookup from empty
+  /// stock and uses the Stock Balance caption from the same report response.
+  Future<RackStockBalanceResult> getStockBalanceDimensionResult({
+    required String itemCode,
+    List<String> warehouses = const [],
+  }) => _queryStockBalanceDimension(
+    itemCode: itemCode,
+    warehouses: warehouses,
+    reportErrors: true,
+  );
+
+  Future<RackStockBalanceResult> _queryStockBalanceDimension({
+    required String itemCode,
+    required List<String> warehouses,
+    required bool reportErrors,
+    String? warehouse,
+    String? batchNo,
   }) async {
     if (!_dioInitialised) await _initDio();
 
@@ -1504,16 +1746,61 @@ class ApiProvider {
           '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
       );
-    } on DioException {
-      return [];
     } catch (_) {
-      return [];
+      if (reportErrors) rethrow;
+      return (columns: const <DeskColumn>[], rows: const <Map<String, dynamic>>[]);
     }
 
-    if (response.statusCode != 200) return [];
+    if (reportErrors) {
+      final message = response.data is Map ? response.data['message'] : null;
+      if (response.statusCode != 200 || message is! Map || message['result'] is! List) {
+        throw const FormatException('The server returned an invalid stock report.');
+      }
+      return parseRackStockBalanceResult(message);
+    }
+    if (response.statusCode != 200) {
+      return (columns: const <DeskColumn>[], rows: const <Map<String, dynamic>>[]);
+    }
+    return (
+      columns: const <DeskColumn>[],
+      rows: _parseLegacyStockBalanceDimension(response.data),
+    );
+  }
 
+  static RackStockBalanceResult parseRackStockBalanceResult(Map message) {
+    final columns = decodeDeskColumns(message['columns']);
+    final rawRows = message['result'];
+    if (rawRows is! List) {
+      throw const FormatException('The server returned an invalid stock report.');
+    }
+    final rows = <Map<String, dynamic>>[];
+    for (final raw in rawRows) {
+      final row = decodeDeskRow(raw, columns);
+      if (row == null) continue;
+      final rack = row['rack']?.toString().trim() ?? '';
+      if (rack.isEmpty) continue;
+      final qty = _stockReportNumber(
+        row['bal_qty'] ?? row['balance_qty'] ?? row['qty'],
+      );
+      if (qty == null) {
+        throw const FormatException(
+          'The server returned a rack without a balance quantity.',
+        );
+      }
+      rows.add({
+        'rack': rack,
+        'qty': qty,
+        if (row['warehouse'] is String) 'warehouse': row['warehouse'],
+      });
+    }
+    return (columns: columns, rows: rows);
+  }
+
+  static List<Map<String, dynamic>> _parseLegacyStockBalanceDimension(
+    dynamic response,
+  ) {
     try {
-      final message = response.data['message'] as Map<String, dynamic>?;
+      final message = response['message'] as Map<String, dynamic>?;
       if (message == null) return [];
       final rawRows = message['result'] as List<dynamic>?;
       if (rawRows == null || rawRows.isEmpty) return [];
@@ -1771,6 +2058,10 @@ class ApiProvider {
   /// Runs the read-only Suppliers by Item script report.
   Future<List<SuppliersByItemNode>> runSuppliersByItem(
     SuppliersByItemFilters filters,
+  ) async => (await runSuppliersByItemReport(filters)).nodes;
+
+  Future<SuppliersByItemReport> runSuppliersByItemReport(
+    SuppliersByItemFilters filters,
   ) async {
     if (!_dioInitialised) await _initDio();
 
@@ -1803,13 +2094,12 @@ class ApiProvider {
       throw _suppliersByItemPermissionDenied;
     }
     final message = data is Map ? data['message'] : null;
-    final result = message is Map ? message['result'] : null;
-    if (result is! List) {
+    if (message is! Map) {
       throw const SuppliersByItemReportException(
         'The server returned an invalid Suppliers by Item response.',
       );
     }
-    return SuppliersByItemNode.parseRows(result);
+    return SuppliersByItemReport.fromMessage(message);
   }
 
   static const _suppliersByItemPermissionDenied =
@@ -2160,9 +2450,7 @@ class ApiProvider {
       orderBy: '$titleField asc',
     );
     final data = response.data is Map ? response.data['data'] : null;
-    final options = parseLinkOptions(data, titleField);
-    LinkTitleCache.remember(doctype, options);
-    return options;
+    return parseLinkOptions(data, titleField);
   }
 
   /// All Warehouse names (the warehouse list is small enough to prefetch and
@@ -2305,13 +2593,29 @@ class ApiProvider {
     }
   }
 
-  /// Fetches Stock Ledger entries for [itemCode] in [warehouse] over the
-  /// [fromDate]–[toDate] period, for the ledger drill-down sheet.
-  ///
-  /// Returns rows `{date, voucher_type, voucher_no, qty, balance}` oldest →
-  /// newest (`qty` = signed actual_qty, `balance` = qty_after_transaction).
-  /// Fail-open: returns `[]` on any error so the sheet shows an empty state.
+  /// Legacy list projection of the ledger for callers with fail-open handling.
   Future<List<Map<String, dynamic>>> getStockLedgerEntries({
+    required String itemCode,
+    required String warehouse,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    try {
+      final result = await getStockLedgerReport(
+        itemCode: itemCode,
+        warehouse: warehouse,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
+      return _legacyStockLedgerRows(result.rows);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Stock Ledger's movement records and returned headers. Network and
+  /// malformed replies propagate so the ledger can distinguish them from empty.
+  Future<StockLedgerReportResult> getStockLedgerReport({
     required String itemCode,
     required String warehouse,
     required String fromDate,
@@ -2326,8 +2630,7 @@ class ApiProvider {
       'from_date': fromDate,
       'to_date'  : toDate,
     };
-    try {
-      final response = await _dio.get(
+    final response = await _dio.get(
         '/api/method/frappe.desk.query_report.run',
         queryParameters: {
           'report_name'           : 'Stock Ledger',
@@ -2336,69 +2639,94 @@ class ApiProvider {
           'are_default_filters'   : 'false',
           '_'                     : DateTime.now().millisecondsSinceEpoch,
         },
+    );
+    if (response.statusCode != 200) {
+      throw DioException.badResponse(
+        statusCode: response.statusCode ?? 0,
+        requestOptions: response.requestOptions,
+        response: response,
       );
-      if (response.statusCode != 200) return [];
-      return parseStockLedgerEntries(
-          response.data['message'] as Map<String, dynamic>?);
-    } catch (_) {
-      return [];
     }
+    final data = response.data;
+    final message = data is Map ? data['message'] : null;
+    if (message is! Map || message['result'] is! List) {
+      throw const FormatException('Stock Ledger response has no result list');
+    }
+    return parseStockLedgerReport(message);
   }
 
-  /// Normalises a Stock Ledger report `message` into ledger rows. Exposed as a
-  /// static so the parsing is unit-testable without a live connection.
   static List<Map<String, dynamic>> parseStockLedgerEntries(
-      Map<String, dynamic>? message) {
-    if (message == null) return [];
-    try {
-      final rawCols = message['columns'] as List<dynamic>? ?? [];
-      final rawRows = message['result']  as List<dynamic>? ?? [];
-      if (rawRows.isEmpty) return [];
+    Map<String, dynamic>? message,
+  ) => _legacyStockLedgerRows(parseStockLedgerReport(message).rows);
 
-      String fn(dynamic c) {
-        if (c is Map) return (c['fieldname'] as String? ?? '').toLowerCase();
-        final s = c.toString().toLowerCase();
-        final i = s.lastIndexOf('.');
-        return i >= 0 ? s.substring(i + 1).replaceAll('`', '') : s;
+  static List<Map<String, dynamic>> _legacyStockLedgerRows(
+    List<Map<String, dynamic>> rows,
+  ) => [
+    for (final row in rows)
+      {
+        'date': row['date'],
+        'voucher_type': row['voucher_type'],
+        'voucher_no': row['voucher_no'],
+        'qty': row['qty'] ?? 0.0,
+        'balance': row['balance'] ?? 0.0,
+      },
+  ];
+
+  static StockLedgerReportResult parseStockLedgerReport(Map? message) {
+    final columns = decodeDeskColumns(message?['columns']);
+    final rawRows = message?['result'];
+    final rows = <Map<String, dynamic>>[];
+    if (rawRows is List) {
+      final addsTotal = _stockReportAddsTotal(message);
+      for (final (index, raw) in rawRows.indexed) {
+        if (addsTotal && raw is List && index == rawRows.length - 1) continue;
+        final row = decodeDeskRow(raw, columns);
+        if (row == null || _stockReportFlag(row['is_total_row'])) continue;
+        final voucher = (row['voucher_no'] ?? row['voucher_#'] ?? '').toString();
+        final timestamp = (row['posting_datetime'] ?? row['date'] ??
+            [row['posting_date'], row['posting_time']].whereType<String>().join(' '))
+            .toString();
+        final date = (row['posting_date'] ?? row['date'] ?? '').toString();
+        // Opening and closing markers have neither a voucher nor a date.
+        // When a positional grand total places a caption in the date column,
+        // only a genuine timestamp can identify a voucherless movement.
+        if (voucher.trim().isEmpty && DateTime.tryParse(timestamp.trim()) == null) {
+          continue;
+        }
+        final actual = _stockReportNumber(row['actual_qty']);
+        final inQty = _stockReportNumber(row['in_qty']);
+        final outQty = _stockReportNumber(row['out_qty']);
+        // A single nonzero side identifies the direction. A zero on one
+        // side alone cannot tell us whether the missing side moved stock.
+        final signed = actual ?? switch ((inQty, outQty)) {
+          (final incoming?, final outgoing?) => incoming + outgoing,
+          (final incoming?, null) when incoming != 0 => incoming,
+          (null, final outgoing?) when outgoing != 0 => outgoing,
+          _ => null,
+        };
+        rows.add(Map.unmodifiable({
+          ...row,
+          'date': date,
+          'timestamp': timestamp,
+          'voucher_type': (row['voucher_type'] ?? '').toString(),
+          'voucher_no': voucher,
+          'qty': signed,
+          'balance': _stockReportNumber(
+            row['qty_after_transaction'] ?? row['balance_qty'],
+          ),
+          'in_qty': inQty ?? signed?.clamp(0.0, double.infinity),
+          'out_qty': outQty ?? signed?.clamp(double.negativeInfinity, 0.0),
+        }));
       }
-
-      dynamic first;
-      for (final r in rawRows) {
-        if (r != null) { first = r; break; }
-      }
-      late final List<Map<String, dynamic>> mapRows;
-      if (first is Map) {
-        mapRows = rawRows
-            .whereType<Map>()
-            .map((r) => Map<String, dynamic>.from(r))
-            .toList();
-      } else {
-        final names = rawCols.map(fn).toList();
-        mapRows = rawRows.whereType<List>().map((r) {
-          final m = <String, dynamic>{};
-          for (var i = 0; i < names.length && i < r.length; i++) {
-            m[names[i]] = r[i];
-          }
-          return m;
-        }).toList();
-      }
-
-      double toNum(dynamic v) =>
-          v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0.0;
-
-      return mapRows
-          .where((r) => r['voucher_no'] != null || r['posting_date'] != null)
-          .map((r) => <String, dynamic>{
-                'date': (r['posting_date'] ?? r['date'] ?? '').toString(),
-                'voucher_type': (r['voucher_type'] ?? '').toString(),
-                'voucher_no': (r['voucher_no'] ?? '').toString(),
-                'qty': toNum(r['actual_qty']),
-                'balance': toNum(r['qty_after_transaction']),
-              })
-          .toList();
-    } catch (_) {
-      return [];
     }
+    return (columns: columns, rows: List.unmodifiable(rows));
+  }
+
+  static double? _stockReportNumber(Object? value) {
+    final number = value is num
+        ? value.toDouble()
+        : double.tryParse(value?.toString() ?? '');
+    return number?.isFinite == true ? number : null;
   }
 
   /// Sales-Order reservations behind the reserved figure for [itemCode] in

@@ -10,6 +10,8 @@ import 'package:dio/dio.dart';
 import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/data/providers/item_provider.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_store.dart';
 import 'package:multimax/app/modules/home/widgets/scan_bottom_sheets.dart';
 import 'package:multimax/app/modules/home/rack_scan_logic.dart';
 import 'package:multimax/app/modules/home/rack_contents_logic.dart';
@@ -53,6 +55,10 @@ import 'package:multimax/app/modules/notification_settings/notification_settings
 
 enum ActiveScreen { home, purchaseReceipt, stockEntry, deliveryNote, packingSlip, posUpload, todo, item, batch, bom }
 
+class _RackOwnerChanged implements Exception {
+  const _RackOwnerChanged();
+}
+
 class HomeController extends GetxController {
   final AuthenticationController _authController = Get.find<AuthenticationController>();
   final ApiProvider _apiProvider = Get.find<ApiProvider>();
@@ -87,6 +93,8 @@ class HomeController extends GetxController {
   /// Worker that routes hardware (DataWedge) scans to [onScan].
   /// Disposed in [onClose].
   Worker? _scanWorker;
+  Unsubscribe? _stopWatchingRackOwner;
+  int _rackOwnerGeneration = 0;
 
   var selectedDrawerIndex = 0.obs;
   var activeScreen = ActiveScreen.home.obs;
@@ -509,6 +517,9 @@ class HomeController extends GetxController {
   @override
   void onClose() {
     _scanWorker?.dispose();
+    _stopWatchingRackOwner?.call();
+    _stopWatchingRackOwner = null;
+    _rackOwnerGeneration++;
     // barcodeController is deliberately NOT disposed. GetX runs onClose
     // synchronously when the route is disposed (router_report.dart), while the
     // screen can still rebuild once before it unmounts; its scan box then
@@ -1174,6 +1185,8 @@ class HomeController extends GetxController {
       final contents =
           await _loadRackContents(rackCode, location.warehouseName, today);
 
+      if (contents.isCurrentOwner?.call() == false) return ScanOutcome.error;
+
       if (contents.entries.isEmpty) {
         GlobalSnackbar.info(title: 'Empty Rack', message: 'No items found in rack $rackCode');
         return ScanOutcome.empty;
@@ -1181,9 +1194,12 @@ class HomeController extends GetxController {
       Get.bottomSheet(
         RackContentsSheet(
           rackId: rackCode,
+          warehouse: location.warehouseName,
           entries: contents.entries,
-          baseUrl: _apiProvider.baseUrl,
+          columns: contents.columns,
+          baseUrl: contents.baseUrl ?? _apiProvider.baseUrl,
           itemDetailsFailed: contents.itemDetailsFailed,
+          initialOwnerIsCurrent: contents.isCurrentOwner,
           asOf: today,
           loadAsOf: (date) =>
               _loadRackContents(rackCode, location.warehouseName, date),
@@ -1193,6 +1209,8 @@ class HomeController extends GetxController {
         backgroundColor: Colors.transparent,
       );
       return ScanOutcome.ok;
+    } on _RackOwnerChanged {
+      return ScanOutcome.error;
     } catch (e) {
       final failure = rackLookupFailure(e);
       GlobalSnackbar.error(title: failure.title, message: failure.message);
@@ -1210,17 +1228,41 @@ class HomeController extends GetxController {
     String warehouse,
     DateTime asOf,
   ) async {
+    if (isClosed) throw const _RackOwnerChanged();
+    if (Get.isRegistered<ReportOwnerSource>()) {
+      _stopWatchingRackOwner ??= Get.find<ReportOwnerSource>().watch(() {
+        _rackOwnerGeneration++;
+      });
+    }
+    final session = _apiProvider.rackWarehouseSession;
+    final generation = _rackOwnerGeneration;
+    bool isCurrentOwner() =>
+        !isClosed &&
+        generation == _rackOwnerGeneration &&
+        session == _apiProvider.rackWarehouseSession;
+    void verifyOwner() {
+      if (!isCurrentOwner()) throw const _RackOwnerChanged();
+    }
+
+    verifyOwner();
     final response = await _itemProvider.getWarehouseStock(
       warehouse,
       rack: rackCode,
       asOf: asOf,
     );
-    final rackItems = rackRowsFromStockBalance(response.data, rackCode);
-    if (rackItems.isEmpty) return const RackContentsSnapshot(entries: []);
-    final itemFields = await _fetchRackItemFields(rackItems);
+    verifyOwner();
+    final result = rackResultFromStockBalance(response.data, rackCode);
+    final itemFields = result.rows.isEmpty
+        ? const <String, Map<String, dynamic>>{}
+        : await _fetchRackItemFields(result.rows);
+    verifyOwner();
+    final columns = result.columns;
     return RackContentsSnapshot(
-      entries: mergeRackContents(rackItems, itemFields),
+      entries: List.unmodifiable(mergeRackContents(result.rows, itemFields)),
       itemDetailsFailed: itemFields == null,
+      columns: columns == null ? null : decodeDeskColumns(columns),
+      baseUrl: _apiProvider.baseUrl,
+      isCurrentOwner: isCurrentOwner,
     );
   }
 

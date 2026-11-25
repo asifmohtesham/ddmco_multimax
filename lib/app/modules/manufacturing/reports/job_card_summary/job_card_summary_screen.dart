@@ -6,7 +6,12 @@ import 'package:multimax/app/data/routes/app_routes.dart';
 import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/list_end_footer.dart';
 import 'package:multimax/app/modules/global_widgets/report_filter_sheet.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_anchor.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_sheet.dart';
+import 'package:multimax/app/modules/manufacturing/reports/bom_stock_customer_code/widgets/bom_stock_format.dart';
 import 'package:multimax/app/modules/manufacturing/reports/job_card_summary/job_card_summary_controller.dart';
 
 class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
@@ -18,31 +23,31 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
 
   static const _fields = <ReportFilterField>[
     ReportFilterField(
-      key:        'from_date',
-      label:      'From Date *',
+      key: 'from_date',
+      label: 'From Date *',
       prefixIcon: Icons.calendar_today_outlined,
-      type:       ReportFilterType.datePicker,
-      required:   true,
+      type: ReportFilterType.datePicker,
+      required: true,
     ),
     ReportFilterField(
-      key:        'to_date',
-      label:      'To Date *',
+      key: 'to_date',
+      label: 'To Date *',
       prefixIcon: Icons.event_outlined,
-      type:       ReportFilterType.datePicker,
-      required:   true,
+      type: ReportFilterType.datePicker,
+      required: true,
     ),
     ReportFilterField(
-      key:         'work_order',
-      label:       'Work Order',
-      prefixIcon:  Icons.assignment_outlined,
-      type:        ReportFilterType.doctypeLink,
+      key: 'work_order',
+      label: 'Work Order',
+      prefixIcon: Icons.assignment_outlined,
+      type: ReportFilterType.doctypeLink,
       linkDoctype: 'Work Order',
     ),
     ReportFilterField(
-      key:         'production_item',
-      label:       'Production Item',
-      prefixIcon:  Icons.category_outlined,
-      type:        ReportFilterType.doctypeLink,
+      key: 'production_item',
+      label: 'Production Item',
+      prefixIcon: Icons.category_outlined,
+      type: ReportFilterType.doctypeLink,
       linkDoctype: 'Item',
     ),
     ReportFilterField(
@@ -68,6 +73,7 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
         fields: _fields,
         controllers: controller.filterControllers,
         onRun: controller.runReport,
+        runBusy: controller.isLoading,
         onClear: controller.clearFilters,
         sectionLabels: _sectionLabels,
       );
@@ -77,12 +83,14 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
     // across every list and report screen.
     final chips = <Widget>[];
     controller.activeFilters.forEach((key, label) {
-      chips.add(FilterChipWidget(
-        icon: Icons.filter_alt_outlined,
-        label: label,
-        onDeleted: () => controller.clearFilter(key),
-        onTap: () => _openFilters(context, focusKey: key),
-      ));
+      chips.add(
+        FilterChipWidget(
+          icon: Icons.filter_alt_outlined,
+          label: label,
+          onDeleted: () => controller.clearFilter(key),
+          onTap: () => _openFilters(context, focusKey: key),
+        ),
+      );
     });
     return chips;
   }
@@ -96,91 +104,143 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
     return AppShellScaffold(
       backgroundColor: cs.surfaceContainerLow,
       body: Obx(() {
-        return RefreshIndicator(
-          onRefresh: controller.runReport,
-          color: cs.primary,
-          backgroundColor: cs.surfaceContainerHighest,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // ── Header (title + filter chips + filter button) ─────────────
-              DocTypeListHeader(
-                title: 'Job Card Summary',
-                automaticallyImplyLeading: false,
-                activeFilters: controller.activeFilters
-                    .map((k, v) => MapEntry(k, v as dynamic))
-                    .obs,
-                onFilterTap: () => _openFilters(context),
-                filterChipsBuilder: _buildFilterChips,
-                onClearAllFilters:  controller.clearFilters,
-              ),
+        final rows = controller.reportData.toList(growable: false);
+        final fields = controller.fields.state.value;
+        final completedLabel = fields.label('total_completed_qty')!;
+        final ids = [
+          for (final (i, row) in rows.indexed)
+            (row['name'] ?? (row['work_order'], row['posting_date']), i),
+        ];
+        return ReportFieldsResults(
+          controller: controller.fields,
+          scrollController: controller.scrollController,
+          result: controller.resultRevision.value,
+          occurrenceIds: ids,
+          builder: (_, anchors) => Obx(
+            () => RefreshIndicator(
+              onRefresh: controller.runReport,
+              color: cs.primary,
+              backgroundColor: cs.surfaceContainerHighest,
+              child: CustomScrollView(
+                controller: controller.scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  // ── Header (title + filter chips + filter button) ─────────────
+                  anchors.header(
+                    DocTypeListHeader(
+                      title: 'Job Card Summary',
+                      automaticallyImplyLeading: false,
+                      activeFilters: controller.activeFilters
+                          .map((k, v) => MapEntry(k, v as dynamic))
+                          .obs,
+                      onFilterTap: () => _openFilters(context),
+                      filterChipsBuilder: _buildFilterChips,
+                      onClearAllFilters: controller.clearFilters,
+                      extraActions: [
+                        ReportFieldsAction(controller: controller.fields),
+                      ],
+                    ),
+                  ),
 
-              // ── Loading ───────────────────────────────────────────────────
-              if (controller.isLoading.value)
-                const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                )
-
-              // ── Empty state ───────────────────────────────────────────────
-              else if (controller.reportData.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.summarize_outlined,
-                              size: 64, color: cs.outlineVariant),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No Job Cards found for the selected date range.\nAdjust filters and tap Run Report.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: cs.onSurfaceVariant),
+                  // ── Loading ───────────────────────────────────────────────────
+                  if (controller.isLoading.value)
+                    const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  // ── Empty state ───────────────────────────────────────────────
+                  else if (rows.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.summarize_outlined,
+                                size: 64,
+                                color: cs.outlineVariant,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                controller.errorMessage.value ??
+                                    (controller.hasResult.value
+                                        ? 'No Job Cards found for the selected date range.\nAdjust filters and tap Run Report.'
+                                        : 'Set a date range and tap Run Report.'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: cs.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 24),
+                              FilledButton.tonalIcon(
+                                onPressed: controller.errorMessage.value == null
+                                    ? () => _openFilters(context)
+                                    : controller.runReport,
+                                icon: const Icon(Icons.filter_alt_outlined),
+                                label: Text(
+                                  controller.errorMessage.value == null
+                                      ? 'Set Filters'
+                                      : 'Retry',
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 24),
-                          FilledButton.tonalIcon(
-                            onPressed: () => _openFilters(context),
-                            icon:  const Icon(Icons.filter_alt_outlined),
-                            label: const Text('Set Filters'),
-                          ),
-                        ],
+                        ),
+                      ),
+                    )
+                  // ── Chart ─────────────────────────────────────────────────────────────────
+                  else ...[
+                    SliverToBoxAdapter(
+                      child: _ProductionChart(
+                        data: controller.dailyProductionData,
+                        measureLabel: completedLabel,
                       ),
                     ),
-                  ),
-                )
 
-              // ── Chart ─────────────────────────────────────────────────────────────────
-              else ...[
-                  SliverToBoxAdapter(
-                    child: _ProductionChart(
-                      data: controller.dailyProductionData,
-                    ),
-                  ),
-
-                  // ── Results ─────────────────────────────────────────────────────────────
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                          final row = controller.reportData[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _JobCardSummaryTile(row: row),
+                    // ── Results ─────────────────────────────────────────────────────────────
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return anchors.row(
+                            ids[index],
+                            index,
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _JobCardSummaryTile(
+                                row: rows[index],
+                                fields: fields,
+                              ),
+                            ),
                           );
-                        },
-                        childCount: controller.reportData.length,
+                        }, childCount: rows.length),
                       ),
                     ),
-                  ),
+                    if (controller.hasResult.value)
+                      SliverToBoxAdapter(
+                        child: ListEndFooter(
+                          hasMore: false,
+                          bottomPadding: MediaQuery.paddingOf(context).bottom,
+                          label:
+                              'End of list · $completedLabel '
+                              '${_formatCompletedTotal(controller.totalCompletedQty)}',
+                        ),
+                      ),
+                  ],
                 ],
-            ],
+              ),
+            ),
           ),
         );
       }),
     );
+  }
+
+  static String _formatCompletedTotal(num total) {
+    final formatted = formatQty(total);
+    return total != 0 && num.tryParse(formatted) == 0
+        ? total.toString()
+        : formatted;
   }
 }
 
@@ -200,41 +260,68 @@ class JobCardSummaryScreen extends GetView<JobCardSummaryController> {
 
 class _JobCardSummaryTile extends StatelessWidget {
   final Map<String, dynamic> row;
-  const _JobCardSummaryTile({required this.row});
+  final FieldsState fields;
+  const _JobCardSummaryTile({required this.row, required this.fields});
 
   // Status → color mapping (x700 light / x300 dark so the chip text stays
   // readable on its tint in both themes).
-  Color _statusColor(String status, ColorScheme cs) {
+  (Color tint, Color ink) _statusColors(String status, ColorScheme cs) {
     final dark = cs.brightness == Brightness.dark;
-    return switch (status) {
+    final existingInk = switch (status) {
       'Completed' => dark ? AppColors.green300 : AppColors.green700,
       'Work In Progress' => cs.primary,
       'Open' => dark ? AppColors.orange300 : AppColors.orange700,
-      _ => cs.outline,
+      _ => null,
     };
+    if (existingInk != null) {
+      return (existingInk.withValues(alpha: 0.12), existingInk);
+    }
+    return status == 'On Hold'
+        ? (
+            AppColors.orange500.withValues(alpha: 0.13),
+            dark ? AppColors.orange300 : AppColors.orange700,
+          )
+        : (
+            AppColors.gray500.withValues(alpha: 0.13),
+            dark ? AppColors.gray300 : AppColors.gray700,
+          );
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs    = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
-    final name          = row['name']?.toString()               ?? '—';
-    final workOrder     = row['work_order']?.toString()         ?? '—';
-    final productionItem = row['production_item']?.toString()   ?? '';
-    final itemName      = row['item_name']?.toString()          ?? '';
-    final operation     = row['operation']?.toString()          ?? '';
-    final workstation   = row['workstation']?.toString()        ?? '';
-    final postingDate   = row['posting_date']?.toString()       ?? '';
-    final status        = row['status']?.toString()             ?? '';
-    final completedQty  = row['total_completed_qty'];
-    final timeInMins    = row['total_time_in_mins'];
+    final name = row['name']?.toString() ?? '—';
+    final workOrder = row['work_order']?.toString() ?? '—';
+    final productionItem = row['production_item']?.toString() ?? '';
+    final itemName = row['item_name']?.toString() ?? '';
+    final operation = fields.shows('operation')
+        ? row['operation']?.toString() ?? ''
+        : '';
+    final workstation = fields.shows('workstation')
+        ? row['workstation']?.toString() ?? ''
+        : '';
+    final postingDate = row['posting_date']?.toString() ?? '';
+    final status = row['status']?.toString() ?? '';
+    final (statusTint, statusInk) = _statusColors(status, cs);
+    final completedQty = row['total_completed_qty'];
+    final timeInMins = JobCardSummaryController.measure(
+      row['total_time_in_mins'],
+    );
+    final showWorkOrder = fields.shows('work_order');
+    final showQty = fields.shows('total_completed_qty');
+    final showTime = fields.shows('total_time_in_mins');
+    final showMetadata =
+        showWorkOrder ||
+        postingDate.isNotEmpty ||
+        productionItem.isNotEmpty ||
+        operation.isNotEmpty ||
+        workstation.isNotEmpty;
 
-    final qtyText  = completedQty != null
-        ? completedQty.toString()
-        : '—';
+    final qtyText = completedQty != null ? completedQty.toString() : '—';
     final timeText = timeInMins != null
-        ? '${(timeInMins as num).toStringAsFixed(2)} min'
+        ? '${timeInMins.toStringAsFixed(2)} min'
         : '—';
 
     return Material(
@@ -243,10 +330,8 @@ class _JobCardSummaryTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Get.toNamed(
-          AppRoutes.JOB_CARD_FORM,
-          arguments: {'name': name},
-        ),
+        onTap: () =>
+            Get.toNamed(AppRoutes.JOB_CARD_FORM, arguments: {'name': name}),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Column(
@@ -262,13 +347,17 @@ class _JobCardSummaryTile extends StatelessWidget {
                       color: cs.primaryContainer,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.assignment_ind_outlined,
-                        size: 20, color: cs.onPrimaryContainer),
+                    child: Icon(
+                      Icons.assignment_ind_outlined,
+                      size: 20,
+                      color: cs.onPrimaryContainer,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       name,
+                      semanticsLabel: '${fields.label('name')} $name',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -277,15 +366,18 @@ class _JobCardSummaryTile extends StatelessWidget {
                   if (status.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
-                        color: _statusColor(status, cs).withValues(alpha: 0.12),
+                        color: statusTint,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         status,
+                        semanticsLabel: '${fields.label('status')} $status',
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: _statusColor(status, cs),
+                          color: statusInk,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -293,47 +385,79 @@ class _JobCardSummaryTile extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 10),
-              const Divider(height: 1),
-              const SizedBox(height: 10),
+              if (showMetadata) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+              ],
 
               // ── Row 2: Work Order + date ───────────────────────────────────
-              Row(
-                children: [
-                  Icon(Icons.precision_manufacturing_outlined,
-                      size: 14, color: cs.onSurfaceVariant),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      workOrder,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
+              if (showWorkOrder || postingDate.isNotEmpty)
+                LayoutBuilder(
+                  builder: (context, constraints) => Row(
+                    children: [
+                      if (showWorkOrder) ...[
+                        Icon(
+                          Icons.precision_manufacturing_outlined,
+                          size: 14,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            workOrder,
+                            semanticsLabel:
+                                '${fields.label('work_order')} $workOrder',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (postingDate.isNotEmpty)
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: showWorkOrder
+                                ? constraints.maxWidth / 2
+                                : constraints.maxWidth,
+                          ),
+                          child: Text(
+                            postingDate,
+                            semanticsLabel:
+                                '${fields.label('posting_date')} $postingDate',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  if (postingDate.isNotEmpty)
-                    Text(
-                      postingDate,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
-                    ),
-                ],
-              ),
+                ),
 
               // ── Row 3: Production item ────────────────────────────────────
               if (productionItem.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(Icons.category_outlined,
-                        size: 14, color: cs.onSurfaceVariant),
+                    Icon(
+                      Icons.category_outlined,
+                      size: 14,
+                      color: cs.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         itemName.isNotEmpty
                             ? '$productionItem · $itemName'
                             : productionItem,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        semanticsLabel: [
+                          '${fields.label('production_item')} $productionItem',
+                          if (itemName.isNotEmpty)
+                            '${fields.label('item_name')} $itemName',
+                        ].join(', '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -346,42 +470,63 @@ class _JobCardSummaryTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(Icons.build_outlined,
-                        size: 14, color: cs.onSurfaceVariant),
+                    Icon(
+                      Icons.build_outlined,
+                      size: 14,
+                      color: cs.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 4),
-                    Text(
-                      [if (operation.isNotEmpty) operation,
-                        if (workstation.isNotEmpty) workstation]
-                          .join(' · '),
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                    Flexible(
+                      child: Text(
+                        [
+                          if (operation.isNotEmpty) operation,
+                          if (workstation.isNotEmpty) workstation,
+                        ].join(' · '),
+                        semanticsLabel: [
+                          if (operation.isNotEmpty)
+                            '${fields.label('operation')} $operation',
+                          if (workstation.isNotEmpty)
+                            '${fields.label('workstation')} $workstation',
+                        ].join(', '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ],
 
-              const SizedBox(height: 10),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-
-              // ── Row 5: Completed qty + time ───────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _StatBadge(
-                    icon:  Icons.check_circle_outline_rounded,
-                    label: 'Qty Completed',
-                    value: qtyText,
-                    color: Colors.green.shade600,
-                  ),
-                  _StatBadge(
-                    icon:  Icons.timer_outlined,
-                    label: 'Time',
-                    value: timeText,
-                    color: cs.primary,
-                  ),
-                ],
-              ),
+              if (showQty || showTime) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (showQty)
+                      Flexible(
+                        child: _StatBadge(
+                          icon: Icons.check_circle_outline_rounded,
+                          label: fields.label('total_completed_qty')!,
+                          value: qtyText,
+                          color: cs.brightness == Brightness.dark
+                              ? AppColors.green300
+                              : AppColors.green700,
+                        ),
+                      ),
+                    if (showTime)
+                      Flexible(
+                        child: _StatBadge(
+                          icon: Icons.timer_outlined,
+                          label: fields.label('total_time_in_mins')!,
+                          value: timeText,
+                          color: cs.primary,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -394,9 +539,9 @@ class _JobCardSummaryTile extends StatelessWidget {
 
 class _StatBadge extends StatelessWidget {
   final IconData icon;
-  final String   label;
-  final String   value;
-  final Color    color;
+  final String label;
+  final String value;
+  final Color color;
 
   const _StatBadge({
     required this.icon,
@@ -413,24 +558,26 @@ class _StatBadge extends StatelessWidget {
       children: [
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 4),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            Text(
-              value,
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: color,
-                fontFeatures: const [ui.FontFeature.tabularFigures()],
+              Text(
+                value,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  fontFeatures: const [ui.FontFeature.tabularFigures()],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -443,7 +590,8 @@ class _StatBadge extends StatelessWidget {
 
 class _ProductionChart extends StatefulWidget {
   final List<DailyProduction> data;
-  const _ProductionChart({required this.data});
+  final String measureLabel;
+  const _ProductionChart({required this.data, required this.measureLabel});
 
   @override
   State<_ProductionChart> createState() => _ProductionChartState();
@@ -452,27 +600,30 @@ class _ProductionChart extends StatefulWidget {
 class _ProductionChartState extends State<_ProductionChart> {
   bool _expanded = true;
 
-  static const double _barWidth    = 22;
-  static const double _groupGap    = 24;
+  static const double _barWidth = 22;
+  static const double _groupGap = 24;
   static const double _chartHeight = 150;
-  static const double _labelArea   = 32;
-  static const double _topPadding  = 16;
+  static const double _labelArea = 32;
+  static const double _topPadding = 16;
 
   void _onTap(BuildContext context, DailyProduction d) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('${d.date}  •  Completed: ${_fmt(d.completed)}'),
-      duration: const Duration(seconds: 2),
-      behavior: SnackBarBehavior.floating,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${d.date}  •  ${widget.measureLabel}: ${_fmt(d.completed)}',
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
-  String _fmt(double v) => v == v.truncateToDouble()
-      ? v.toInt().toString()
-      : v.toStringAsFixed(1);
+  String _fmt(double v) =>
+      v == v.truncateToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
 
   @override
   Widget build(BuildContext context) {
-    final cs   = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final data = widget.data;
 
     return Padding(
@@ -483,16 +634,22 @@ class _ProductionChartState extends State<_ProductionChart> {
           // Header row
           Row(
             children: [
-              Text(
-                'Completed Qty by Day',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Text(
+                  'Completed Qty by Day',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              const Spacer(),
               if (data.isNotEmpty && _expanded) ...[
-                _LegendDot(color: cs.primary, label: 'Completed'),
+                Flexible(
+                  child: _LegendDot(
+                    color: cs.primary,
+                    label: widget.measureLabel,
+                  ),
+                ),
                 const SizedBox(width: 6),
               ],
               GestureDetector(
@@ -515,27 +672,29 @@ class _ProductionChartState extends State<_ProductionChart> {
                 : CrossFadeState.showSecond,
             firstChild: data.isEmpty
                 ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: Text(
-                  'No date data available',
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant, fontSize: 12),
-                ),
-              ),
-            )
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'No date data available',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  )
                 : _ChartBody(
-              data:           data,
-              barWidth:       _barWidth,
-              groupGap:       _groupGap,
-              chartHeight:    _chartHeight,
-              labelArea:      _labelArea,
-              topPadding:     _topPadding,
-              colorBar:       cs.primary,
-              colorGrid:      cs.outlineVariant.withValues(alpha: 0.3),
-              colorLabel:     cs.onSurfaceVariant,
-              onTap: (d) => _onTap(context, d),
-            ),
+                    data: data,
+                    barWidth: _barWidth,
+                    groupGap: _groupGap,
+                    chartHeight: _chartHeight,
+                    labelArea: _labelArea,
+                    topPadding: _topPadding,
+                    colorBar: cs.primary,
+                    colorGrid: cs.outlineVariant.withValues(alpha: 0.3),
+                    colorLabel: cs.onSurfaceVariant,
+                    onTap: (d) => _onTap(context, d),
+                  ),
             secondChild: const SizedBox(height: 0),
           ),
         ],
@@ -549,7 +708,7 @@ class _ProductionChartState extends State<_ProductionChart> {
 class _ChartBody extends StatelessWidget {
   final List<DailyProduction> data;
   final double barWidth, groupGap, chartHeight, labelArea, topPadding;
-  final Color  colorBar, colorGrid, colorLabel;
+  final Color colorBar, colorGrid, colorLabel;
   final void Function(DailyProduction) onTap;
 
   const _ChartBody({
@@ -567,7 +726,10 @@ class _ChartBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxVal     = data.fold<double>(0, (m, d) => d.completed > m ? d.completed : m);
+    final maxVal = data.fold<double>(
+      0,
+      (m, d) => d.completed > m ? d.completed : m,
+    );
     final totalWidth = data.length * (barWidth + groupGap);
     final totalHeight = chartHeight + labelArea + topPadding;
 
@@ -577,22 +739,23 @@ class _ChartBody extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: GestureDetector(
           onTapUp: (details) {
-            final idx = (details.localPosition.dx / (barWidth + groupGap)).floor();
+            final idx = (details.localPosition.dx / (barWidth + groupGap))
+                .floor();
             if (idx >= 0 && idx < data.length) onTap(data[idx]);
           },
           child: CustomPaint(
             size: Size(totalWidth, totalHeight),
             painter: _BarPainter(
-              data:        data,
-              maxVal:      maxVal == 0 ? 1 : maxVal,
-              barWidth:    barWidth,
-              groupGap:    groupGap,
+              data: data,
+              maxVal: maxVal == 0 ? 1 : maxVal,
+              barWidth: barWidth,
+              groupGap: groupGap,
               chartHeight: chartHeight,
-              labelArea:   labelArea,
-              topPadding:  topPadding,
-              colorBar:    colorBar,
-              colorGrid:   colorGrid,
-              colorLabel:  colorLabel,
+              labelArea: labelArea,
+              topPadding: topPadding,
+              colorBar: colorBar,
+              colorGrid: colorGrid,
+              colorLabel: colorLabel,
             ),
           ),
         ),
@@ -606,7 +769,7 @@ class _ChartBody extends StatelessWidget {
 class _BarPainter extends CustomPainter {
   final List<DailyProduction> data;
   final double maxVal, barWidth, groupGap, chartHeight, labelArea, topPadding;
-  final Color  colorBar, colorGrid, colorLabel;
+  final Color colorBar, colorGrid, colorLabel;
 
   _BarPainter({
     required this.data,
@@ -623,9 +786,9 @@ class _BarPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paintBar  = Paint()..color = colorBar.withValues(alpha: 0.85);
+    final paintBar = Paint()..color = colorBar.withValues(alpha: 0.85);
     final paintGrid = Paint()
-      ..color       = colorGrid
+      ..color = colorGrid
       ..strokeWidth = 0.5;
 
     // Grid lines at 0 %, 50 %, 100 % — offset down by topPadding
@@ -637,15 +800,16 @@ class _BarPainter extends CustomPainter {
     final tp = TextPainter(textDirection: TextDirection.ltr);
 
     for (int i = 0; i < data.length; i++) {
-      final d      = data[i];
-      final xBase  = i * (barWidth + groupGap);
-      final barH   = (d.completed / maxVal) * chartHeight;
-      final barTop = topPadding + chartHeight - barH;  // shifted down by topPadding
+      final d = data[i];
+      final xBase = i * (barWidth + groupGap);
+      final barH = (d.completed / maxVal) * chartHeight;
+      final barTop =
+          topPadding + chartHeight - barH; // shifted down by topPadding
 
       canvas.drawRRect(
         RRect.fromRectAndCorners(
           Rect.fromLTWH(xBase, barTop, barWidth, barH),
-          topLeft:  const Radius.circular(3),
+          topLeft: const Radius.circular(3),
           topRight: const Radius.circular(3),
         ),
         paintBar,
@@ -659,8 +823,8 @@ class _BarPainter extends CustomPainter {
         tp.text = TextSpan(
           text: qtyStr,
           style: TextStyle(
-            color:      colorBar,
-            fontSize:   8,
+            color: colorBar,
+            fontSize: 8,
             fontWeight: FontWeight.w700,
           ),
         );
@@ -669,7 +833,9 @@ class _BarPainter extends CustomPainter {
           canvas,
           Offset(
             xBase + (barWidth - tp.width) / 2,
-            barTop - tp.height - 2,   // guaranteed ≥ 0 because topPadding=16 > label height
+            barTop -
+                tp.height -
+                2, // guaranteed ≥ 0 because topPadding=16 > label height
           ),
         );
       }
@@ -679,9 +845,25 @@ class _BarPainter extends CustomPainter {
       try {
         final parts = d.date.split('-');
         if (parts.length == 3) {
-          final dt   = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-          const mons = ['Jan','Feb','Mar','Apr','May','Jun',
-            'Jul','Aug','Sep','Oct','Nov','Dec'];
+          final dt = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+          );
+          const mons = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+          ];
           label = '${mons[dt.month - 1]} ${dt.day}';
         }
       } catch (_) {}
@@ -695,7 +877,7 @@ class _BarPainter extends CustomPainter {
         canvas,
         Offset(
           xBase + (barWidth - tp.width) / 2,
-          topPadding + chartHeight + 6,   // also shifted down by topPadding
+          topPadding + chartHeight + 6, // also shifted down by topPadding
         ),
       );
     }
@@ -709,7 +891,7 @@ class _BarPainter extends CustomPainter {
 // ── Legend dot ────────────────────────────────────────────────────────────────
 
 class _LegendDot extends StatelessWidget {
-  final Color  color;
+  final Color color;
   final String label;
   const _LegendDot({required this.color, required this.label});
 
@@ -719,17 +901,23 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 10, height: 10,
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
         const SizedBox(width: 4),
-        Text(label,
+        Flexible(
+          child: Text(
+            label,
             style: TextStyle(
-                fontSize: 10,
-                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              fontSize: 10,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ],
     );
   }

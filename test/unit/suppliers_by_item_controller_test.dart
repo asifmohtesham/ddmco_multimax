@@ -47,9 +47,9 @@ class _ReportAdapter implements HttpClientAdapter {
 
 class _EmptyApi extends ApiProvider {
   @override
-  Future<List<SuppliersByItemNode>> runSuppliersByItem(
+  Future<SuppliersByItemReport> runSuppliersByItemReport(
     SuppliersByItemFilters filters,
-  ) async => [];
+  ) async => const SuppliersByItemReport(nodes: []);
 }
 
 class _ReportApi extends Fake implements ApiProvider {
@@ -57,11 +57,11 @@ class _ReportApi extends Fake implements ApiProvider {
   late Future<List<SuppliersByItemNode>> Function() respond;
 
   @override
-  Future<List<SuppliersByItemNode>> runSuppliersByItem(
+  Future<SuppliersByItemReport> runSuppliersByItemReport(
     SuppliersByItemFilters filters,
-  ) {
+  ) async {
     requests.add(filters);
-    return respond();
+    return SuppliersByItemReport(nodes: await respond());
   }
 }
 

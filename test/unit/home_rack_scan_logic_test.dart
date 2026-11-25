@@ -82,9 +82,38 @@ void main() {
       );
     });
 
+    test('keeps positional stock rows and their source labels for the rack', () {
+      final report = rackResultFromStockBalance({
+        'message': {
+          'columns': [
+            {'fieldname': 'item_code', 'label': 'Item'},
+            {'fieldname': 'rack', 'label': 'Rack'},
+            {'fieldname': 'batch_no', 'label': 'Batch'},
+            {'fieldname': 'bal_qty', 'label': 'Saldo'},
+          ],
+          'result': [
+            ['Total Tools', rack, 'B1', 0],
+            ['Total Tools', 'Other rack', 'B2', 1],
+            ['Total Tools', rack, 'B3', 4],
+            ['Total', '', '', 5],
+          ],
+          'add_total_row': true,
+        },
+      }, rack);
+
+      expect(report.columns!.last['label'], 'Saldo');
+      expect(report.rows.map((row) => row['batch_no']), ['B1', 'B3']);
+      expect(report.rows.map((row) => row['bal_qty']), [0, 4]);
+    });
+
     test('accepts a v15 body with no total row', () {
-      final body = _body([_row('3000247', rack, 36)]);
-      expect(rackRowsFromStockBalance(body, rack), hasLength(1));
+      final rows = [_row('3000247', rack, 36)];
+      final result = rackResultFromStockBalance({
+        'message': {'result': rows},
+      }, rack);
+      expect(result.rows, hasLength(1));
+      expect(result.columns, isNull);
+      expect(rackResultFromStockBalance(_body(rows), rack).columns, isEmpty);
     });
 
     test('returns empty for a rack with no rows (Empty Rack, not an error)', () {

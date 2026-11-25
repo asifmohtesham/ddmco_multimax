@@ -382,6 +382,90 @@ void main() {
       expect(result.columns, isEmpty);
       expect(result.rows, isEmpty);
     });
+
+    test('positional attributes retain original column indices and case', () {
+      final result = ApiProvider.parseItemVariantDetailsResponse({
+        'columns': [
+          {'fieldname': 'Model', 'label': 'Modèle'},
+          null,
+          'Item Code:Link/Item:120',
+          {'fieldname': 'current_stock', 'label': 'Current Stock'},
+        ],
+        'result': [
+          ['Blue', 'ignored', 'ITEM-01', 0],
+        ],
+      });
+      expect(result.columns.map((column) => column['label']), [
+        'Modèle',
+        'Item Code',
+        'Current Stock',
+      ]);
+      expect(variantCode(result.rows.single), 'ITEM-01');
+      expect(result.rows.single['Model'], 'Blue');
+      expect(result.rows.single['current_stock'], 0);
+    });
+
+    test('a flagged grand total is not a variant or template heading', () {
+      final result = ApiProvider.parseItemVariantDetailsResponse({
+        'columns': ['Item:Link/Item:100', 'Current Stock:Float:100'],
+        'add_total_row': 1,
+        'skip_total_row': 0,
+        'result': [
+          {'item': 'Parent template', 'indent': 0},
+          {'item': 'Variant A', 'current_stock': 4},
+          ['Total', 6],
+          ['Gesamt', 10],
+        ],
+      });
+      expect(result.rows.map(variantCode), ['Parent template', 'Variant A', 'Total']);
+      final variants = variantRowsOf(result.rows);
+      expect(variants.map(variantCode), ['Variant A', 'Total']);
+      expect(variants.fold<num>(0, (sum, row) => sum + (row['current_stock'] as num)), 10);
+
+      final skipped = ApiProvider.parseItemVariantDetailsResponse({
+        'columns': ['Item:Link/Item:100'],
+        'add_total_row': true,
+        'skip_total_row': true,
+        'result': [
+          ['Total'],
+        ],
+      });
+      expect(variantCode(skipped.rows.single), 'Total');
+    });
+  });
+
+  test('rack stock resolves balance quantity before other balance columns', () {
+    final result = ApiProvider.parseRackStockBalanceResult({
+      'columns': [
+        'Balance Value:Currency:120',
+        'Rack:Link/Rack:100',
+        {'fieldname': 'bal_qty', 'label': 'Solde'},
+      ],
+      'result': [
+        [990, 'Rack A', 0],
+        {'rack': 'Rack B', 'bal_qty': -2.5, 'warehouse': 'East'},
+        [990, '', 3],
+      ],
+    });
+    expect(result.columns.last.label, 'Solde');
+    expect(result.rows, [
+      {'rack': 'Rack A', 'qty': 0.0},
+      {'rack': 'Rack B', 'qty': -2.5, 'warehouse': 'East'},
+    ]);
+  });
+
+  test('rack stock fails when any named rack has an unavailable balance', () {
+    for (final unknown in [null, '', 'not measured', 'NaN']) {
+      expect(
+        () => ApiProvider.parseRackStockBalanceResult({
+          'result': [
+            {'rack': 'R-2', 'bal_qty': 5},
+            {'rack': 'R-1', 'bal_qty': unknown},
+          ],
+        }),
+        throwsFormatException,
+      );
+    }
   });
 }
 

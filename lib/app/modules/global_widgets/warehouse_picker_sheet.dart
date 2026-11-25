@@ -36,25 +36,14 @@ class WarehousePickerSheet extends StatefulWidget {
 
 class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
-  late List<String> _filtered;
 
   @override
   void initState() {
     super.initState();
-    _filtered = List<String>.from(widget.warehouses);
     _searchCtrl.addListener(_onSearch);
   }
 
-  void _onSearch() {
-    final q = _searchCtrl.text.toLowerCase();
-    setState(() {
-      _filtered = q.isEmpty
-          ? List<String>.from(widget.warehouses)
-          : widget.warehouses
-              .where((w) => w.toLowerCase().contains(q))
-              .toList();
-    });
-  }
+  void _onSearch() => setState(() {});
 
   @override
   void dispose() {
@@ -83,6 +72,12 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final query = _searchCtrl.text.toLowerCase();
+    final filtered = query.isEmpty
+        ? widget.warehouses
+        : widget.warehouses
+            .where((warehouse) => warehouse.toLowerCase().contains(query))
+            .toList();
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
       padding: const EdgeInsets.all(16),
@@ -112,16 +107,16 @@ class _WarehousePickerSheetState extends State<WarehousePickerSheet> {
           Expanded(
             child: widget.isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _filtered.isEmpty
+                : filtered.isEmpty
                     ? const Center(child: Text('No warehouses found'))
                     : Material(
                         color: Colors.transparent,
                         child: ListView.separated(
-                          itemCount: _filtered.length,
+                          itemCount: filtered.length,
                           separatorBuilder: (_, __) =>
                               const Divider(height: 1),
                           itemBuilder: (ctx, i) {
-                            final wh = _filtered[i];
+                            final wh = filtered[i];
                             final isGroup = widget.groupNames.contains(wh);
                             return ListTile(
                               title: Text(wh),

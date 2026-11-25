@@ -5,6 +5,9 @@ import 'package:multimax/app/modules/global_widgets/async_action_buttons.dart';
 import 'package:multimax/app/modules/global_widgets/doc_card_skeleton.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_anchor.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_sheet.dart';
 import 'package:multimax/app/modules/global_widgets/result_count_pill.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_grouping.dart';
 import 'package:multimax/app/modules/selling/reports/pos_dn_item_rate/pos_dn_item_rate_controller.dart';
@@ -33,34 +36,51 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
   List<Widget> _buildFilterChips(BuildContext context) {
     final chips = <Widget>[];
     controller.activeFilters.forEach((key, label) {
-      chips.add(FilterChipWidget(
-        icon: Icons.filter_alt_outlined,
-        label: label,
-        onDeleted: () => controller.clearFilter(key),
-        onTap: () =>
-            showPosDnItemRateFilterSheet(context, controller, focusKey: key),
-      ));
+      chips.add(
+        FilterChipWidget(
+          icon: Icons.filter_alt_outlined,
+          label: label,
+          onDeleted: () => controller.clearFilter(key),
+          onTap: () =>
+              showPosDnItemRateFilterSheet(context, controller, focusKey: key),
+        ),
+      );
     });
     return chips;
   }
 
-  Widget _buildDisplayItem(BuildContext context, DisplayItem item) {
+  Widget _buildDisplayItem(
+    DisplayItem item,
+    FieldsState fields,
+    Map<String, String> captions,
+  ) {
     switch (item.kind) {
       case DisplayKind.primaryHeader:
       case DisplayKind.secondaryHeader:
         final key = item.collapseKey!;
+        final grouping = item.kind == DisplayKind.secondaryHeader
+            ? controller.secondaryGroup.value
+            : controller.primaryGroup.value;
         return PosDnGroupHeader(
           key: ValueKey(key),
           node: item.node!,
           isSecondary: item.kind == DisplayKind.secondaryHeader,
           isExpanded: !controller.collapsedGroups.contains(key),
           onToggle: () => controller.toggleGroupCollapsed(key),
+          posCaption: captions['upload_qty'] ?? 'POS Qty',
+          dnCaption: captions['dn_qty'] ?? 'DN Qty',
+          groupCaption: grouping == null
+              ? null
+              : captions[grouping.key] ?? grouping.label,
         );
       case DisplayKind.row:
         return Padding(
-          key: ObjectKey(item.row!),
           padding: const EdgeInsets.only(bottom: 10),
-          child: PosDnItemRateTile(row: item.row!),
+          child: PosDnItemRateTile(
+            row: item.row!,
+            fields: fields,
+            captions: captions,
+          ),
         );
     }
   }
@@ -72,44 +92,80 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
     return AppShellScaffold(
       backgroundColor: cs.surfaceContainerLow,
       body: Obx(() {
+        final running = controller.isRunning.value;
+        final error = controller.errorMessage.value;
+        final hasRun = controller.hasRun.value;
+        final hasReportRows = controller.reportRows.isNotEmpty;
+        final hasQueryFilters = controller.activeFilters.isNotEmpty;
         final rows = controller.filteredRows;
         final counts = controller.counts;
+        final fields = controller.fields.state.value;
+        final captions = controller.captions.value;
+        final display = controller.isGrouped
+            ? controller.displayItems
+            : [for (final row in rows) DisplayItem.row(row)];
+        final rowIds = _rowIds(controller.reportRows);
+        final occurrences = [
+          for (final entry in display)
+            if (entry.collapseKey case final key?) key else rowIds[entry.row]!,
+        ];
+        final parents = {
+          for (final (index, item) in display.indexed)
+            if (item.parentKey case final parent?) occurrences[index]: parent,
+        };
         final bottomInset = MediaQuery.of(context).padding.bottom;
         return RefreshIndicator(
           onRefresh: controller.runReport,
           color: cs.primary,
-          child: Scrollbar(
-            controller: _scrollCtrl,
-            child: CustomScrollView(
+          child: ReportFieldsResults(
+            controller: controller.fields,
+            scrollController: _scrollCtrl,
+            occurrenceIds: occurrences,
+            result: (
+              controller.resultRevision.value,
+              controller.statusFilter.value,
+              controller.searchQuery.value,
+              controller.primaryGroup.value,
+              controller.secondaryGroup.value,
+            ),
+            fallbacks: (id) sync* {
+              Object? next = parents[id];
+              while (next != null) {
+                yield next;
+                next = parents[next];
+              }
+            },
+            builder: (context, anchors) => CustomScrollView(
               controller: _scrollCtrl,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                DocTypeListHeader(
-                  title: 'POS & DN Item Rate',
-                  automaticallyImplyLeading: false,
-                  searchQuery: controller.searchQuery,
-                  onSearchChanged: controller.setSearchQuery,
-                  onSearchClear: () => controller.setSearchQuery(''),
-                  activeFilters: controller.activeFilters
-                      .map((k, v) => MapEntry(k, v as dynamic))
-                      .obs,
-                  onFilterTap: () =>
-                      showPosDnItemRateFilterSheet(context, controller),
-                  filterChipsBuilder: _buildFilterChips,
-                  onClearAllFilters: controller.clearFilters,
-                  extraActionsKey: controller.isRunning.value,
-                  extraActions: [
-                    AsyncIconButton(
-                      busy: controller.isRunning,
-                      onPressed: controller.runReport,
-                      icon: const Icon(Icons.refresh),
-                      tooltip: 'Run report',
-                    ),
-                  ],
+                anchors.header(
+                  DocTypeListHeader(
+                    title: 'POS & DN Item Rate',
+                    automaticallyImplyLeading: false,
+                    searchQuery: controller.searchQuery,
+                    onSearchChanged: controller.setSearchQuery,
+                    onSearchClear: () => controller.setSearchQuery(''),
+                    activeFilters: controller.activeFilters,
+                    onFilterTap: () =>
+                        showPosDnItemRateFilterSheet(context, controller),
+                    filterChipsBuilder: _buildFilterChips,
+                    onClearAllFilters: controller.clearFilters,
+                    extraActionsKey: running,
+                    extraActions: [
+                      ReportFieldsAction(controller: controller.fields),
+                      AsyncIconButton(
+                        busy: controller.isRunning,
+                        onPressed: controller.runReport,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Run report',
+                      ),
+                    ],
+                  ),
                 ),
 
                 // ── Summary strip (mobile stand-in for the Desk banner) ──
-                if (controller.reportRows.isNotEmpty)
+                if (hasReportRows)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -121,8 +177,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                   ),
 
                 // ── Status chips ─────────────────────────────────────────
-                if (!controller.isRunning.value &&
-                    controller.reportRows.isNotEmpty)
+                if (!running && hasReportRows)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -135,8 +190,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                   ),
 
                 // ── Group-by bar ─────────────────────────────────────────
-                if (!controller.isRunning.value &&
-                    controller.reportRows.isNotEmpty)
+                if (!running && hasReportRows)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
@@ -147,13 +201,13 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                         onSecondaryChanged: controller.setSecondaryGroup,
                         onExpandAll: controller.expandAllGroups,
                         onCollapseAll: controller.collapseAllGroups,
+                        captions: captions,
                       ),
                     ),
                   ),
 
                 // ── Result count pill ────────────────────────────────────
-                if (!controller.isRunning.value &&
-                    controller.reportRows.isNotEmpty)
+                if (!running && hasReportRows)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -163,7 +217,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                         hasActiveFilters:
                             controller.statusFilter.value != 'ALL' ||
                             controller.searchQuery.value.trim().isNotEmpty ||
-                            controller.activeFilters.isNotEmpty,
+                            hasQueryFilters,
                         noun: 'row',
                         icon: Icons.receipt_long_outlined,
                       ),
@@ -171,10 +225,9 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                   ),
 
                 // ── Body ──────────────────────────────────────────────────
-                if (controller.isRunning.value)
+                if (running)
                   const SliverToBoxAdapter(child: DocCardSkeletonList())
-                else if (controller.errorMessage.value != null &&
-                    controller.reportRows.isEmpty)
+                else if (error != null && !hasReportRows)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
@@ -183,11 +236,14 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.error_outline,
-                                size: 64, color: cs.error),
+                            Icon(
+                              Icons.error_outline,
+                              size: 64,
+                              color: cs.error,
+                            ),
                             const SizedBox(height: 16),
                             Text(
-                              controller.errorMessage.value!,
+                              error,
                               textAlign: TextAlign.center,
                               style: TextStyle(color: cs.onSurfaceVariant),
                             ),
@@ -202,7 +258,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                       ),
                     ),
                   )
-                else if (!controller.hasRun.value)
+                else if (!hasRun)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
@@ -211,8 +267,11 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.receipt_long_outlined,
-                                size: 64, color: cs.outlineVariant),
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 64,
+                              color: cs.outlineVariant,
+                            ),
                             const SizedBox(height: 16),
                             Text(
                               'Runs over the last 30 days by default.\n'
@@ -223,7 +282,9 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                             const SizedBox(height: 24),
                             FilledButton.tonalIcon(
                               onPressed: () => showPosDnItemRateFilterSheet(
-                                  context, controller),
+                                context,
+                                controller,
+                              ),
                               icon: const Icon(Icons.filter_alt_outlined),
                               label: const Text('Run Report'),
                             ),
@@ -232,7 +293,7 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                       ),
                     ),
                   )
-                else if (controller.reportRows.isEmpty)
+                else if (!hasReportRows)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
@@ -258,61 +319,57 @@ class _PosDnItemRateScreenState extends State<PosDnItemRateScreen> {
                       ),
                     ),
                   )
-                else if (!controller.isGrouped) ...[
+                else ...[
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
-                        (context, index) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: PosDnItemRateTile(row: rows[index]),
+                        (context, index) => anchors.row(
+                          occurrences[index],
+                          index,
+                          _buildDisplayItem(display[index], fields, captions),
                         ),
-                        childCount: rows.length,
+                        childCount: display.length,
                       ),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding:
-                          EdgeInsets.fromLTRB(12, 4, 12, 16 + bottomInset),
+                      padding: EdgeInsets.fromLTRB(12, 4, 12, 16 + bottomInset),
                       child: _EndOfListFooter(
                         totals: PosDnItemRateController.sumTotals(rows),
+                        posCaption: captions['upload_qty'] ?? 'POS Qty',
+                        dnCaption: captions['dn_qty'] ?? 'DN Qty',
                       ),
                     ),
                   ),
-                ] else
-                  ...(() {
-                    // Capture once — displayItems reruns groupRows+flatten
-                    // on every access, so read it exactly once per build.
-                    final display = controller.displayItems;
-                    return [
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) =>
-                                _buildDisplayItem(context, display[index]),
-                            childCount: display.length,
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding:
-                              EdgeInsets.fromLTRB(12, 4, 12, 16 + bottomInset),
-                          child: _EndOfListFooter(
-                            totals: PosDnItemRateController.sumTotals(rows),
-                          ),
-                        ),
-                      ),
-                    ];
-                  })(),
+                ],
               ],
             ),
           ),
         );
       }),
     );
+  }
+
+  Map<Map<String, dynamic>, Object> _rowIds(List<Map<String, dynamic>> rows) {
+    final occurrences = <(Object?, Object?, Object?, Object?), int>{};
+    final ids = Map<Map<String, dynamic>, Object>.identity();
+    for (final row in rows) {
+      final identity = (
+        row['pos_upload'],
+        row['idx'],
+        row['item_code'],
+        row['dn_name'],
+      );
+      final occurrence = occurrences.update(
+        identity,
+        (index) => index + 1,
+        ifAbsent: () => 0,
+      );
+      ids[row] = (identity, occurrence);
+    }
+    return ids;
   }
 }
 
@@ -342,7 +399,10 @@ class _SummaryStrip extends StatelessWidget {
               '$n $label',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: accent),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: accent,
+              ),
             ),
           ),
         ),
@@ -417,7 +477,13 @@ class _StatusChipRow extends StatelessWidget {
 /// currently-shown rows). Rate is intentionally not summed.
 class _EndOfListFooter extends StatelessWidget {
   final Map<String, num> totals;
-  const _EndOfListFooter({required this.totals});
+  final String posCaption;
+  final String dnCaption;
+  const _EndOfListFooter({
+    required this.totals,
+    required this.posCaption,
+    required this.dnCaption,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -431,9 +497,12 @@ class _EndOfListFooter extends StatelessWidget {
             Expanded(child: Divider(color: cs.outlineVariant)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text('End of list · $count row${count == 1 ? '' : 's'}',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: cs.onSurfaceVariant)),
+              child: Text(
+                'End of list · $count row${count == 1 ? '' : 's'}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
             ),
             Expanded(child: Divider(color: cs.outlineVariant)),
           ],
@@ -446,11 +515,26 @@ class _EndOfListFooter extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: cs.outlineVariant),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          child: Column(
             children: [
-              _Total(label: 'Total POS Qty', value: totals['pos_qty'] ?? 0),
-              _Total(label: 'Total DN Qty', value: totals['dn_qty'] ?? 0),
+              const Text('Totals'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Flexible(
+                    child: _Total(
+                      label: posCaption,
+                      value: totals['pos_qty'] ?? 0,
+                    ),
+                  ),
+                  Flexible(
+                    child: _Total(
+                      label: dnCaption,
+                      value: totals['dn_qty'] ?? 0,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -474,12 +558,19 @@ class _Total extends StatelessWidget {
         : d.toStringAsFixed(2);
     return Column(
       children: [
-        Text(label,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: cs.onSurfaceVariant)),
-        Text(text,
-            style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700, fontFamily: 'ShureTechMono')),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+        Text(
+          text,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontFamily: 'ShureTechMono',
+          ),
+        ),
       ],
     );
   }

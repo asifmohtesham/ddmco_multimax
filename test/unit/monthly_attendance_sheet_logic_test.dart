@@ -45,8 +45,11 @@ void main() {
     test('takes only the day columns, in server order', () {
       final days = parseDayColumns(detailedColumns);
 
-      expect(days.map((d) => d.key),
-          ['01-09-2026', '02-09-2026', '03-09-2026']);
+      expect(days.map((d) => d.key), [
+        '01-09-2026',
+        '02-09-2026',
+        '03-09-2026',
+      ]);
       expect(days.first.label, '1 Tue');
       expect(days.first.dayNumber, '1');
       expect(days.first.date, DateTime(2026, 9, 1));
@@ -163,8 +166,10 @@ void main() {
         },
       ], groupByField: 'department');
 
-      expect(employees.map((e) => e.employee),
-          ['HR-EMP-00003', 'HR-EMP-00004']);
+      expect(employees.map((e) => e.employee), [
+        'HR-EMP-00003',
+        'HR-EMP-00004',
+      ]);
       expect(employees.first.group, 'Production');
       expect(employees.last.group, 'Sales');
     });
@@ -217,11 +222,7 @@ void main() {
         'fieldname': 'leave_without_pay',
         'fieldtype': 'Float',
       },
-      {
-        'label': 'Sick Leave',
-        'fieldname': 'sick_leave',
-        'fieldtype': 'Float',
-      },
+      {'label': 'Sick Leave', 'fieldname': 'sick_leave', 'fieldtype': 'Float'},
       {
         'label': 'Total Late Entries',
         'fieldname': 'total_late_entries',
@@ -237,8 +238,10 @@ void main() {
     test('discovers the site Leave Type columns, excluding fixed totals', () {
       final leaveTypes = parseLeaveTypeColumns(summarizedColumns);
 
-      expect(leaveTypes.map((c) => c.fieldname),
-          ['leave_without_pay', 'sick_leave']);
+      expect(leaveTypes.map((c) => c.fieldname), [
+        'leave_without_pay',
+        'sick_leave',
+      ]);
       expect(leaveTypes.first.label, 'Leave Without Pay');
       for (final field in kSheetTotalFields) {
         expect(leaveTypes.map((c) => c.fieldname), isNot(contains(field)));
@@ -296,7 +299,7 @@ void main() {
     });
 
     test('falls back to the plain end marker with no rows', () {
-      expect(totalsLabel(const []), 'End of results');
+      expect(totalsLabel(const []), 'End of list');
     });
   });
 }

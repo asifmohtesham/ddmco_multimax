@@ -6,35 +6,47 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:multimax/app/data/providers/api_provider.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
-import 'package:multimax/app/modules/hr/reports/common/hr_report_support.dart'
-    show reportMaps;
+import 'package:multimax/app/modules/stock/reports/stock_balance/stock_balance_fields.dart';
 
 /// Rows of a `frappe.desk.query_report.run` Stock Balance body whose `rack`
 /// is [rackCode].
 ///
-/// ERPNext v16 appends the report's total row as a positional list
-/// (`["Total", "", …]`) after the map rows; it and any other non-map entry are
-/// skipped. The rack match is still applied client-side even though the
-/// request filters by rack, so a server that ignores the filter cannot put
-/// another rack's stock in the sheet.
+/// The rack match is applied client-side even when the request filters by
+/// rack. The Stock Balance adapter removes the server total and handles both
+/// named and positional data rows.
 ///
 /// Throws [FormatException] when the body has no `message.result` list.
 List<Map<String, dynamic>> rackRowsFromStockBalance(
   Object? body,
   String rackCode,
-) {
+) => rackResultFromStockBalance(body, rackCode).rows;
+
+({List<Map<String, dynamic>>? columns, List<Map<String, dynamic>> rows})
+rackResultFromStockBalance(Object? body, String rackCode) {
   final message = body is Map ? body['message'] : null;
-  final result = message is Map ? message['result'] : null;
-  if (result is! List) {
+  if (message is! Map || message['result'] is! List) {
     throw const FormatException(
       'Stock Balance response has no message.result list',
     );
   }
-  return [
-    for (final row in reportMaps(result))
-      if (row['rack']?.toString() == rackCode) row,
-  ];
+  final result = ApiProvider.parseStockBalanceResponse(
+    Map<String, dynamic>.from(message),
+  );
+  final rackColumn = result.columns.where(stockBalanceRackColumn).firstOrNull;
+  return (
+    columns: message['columns'] is List ? result.columns : null,
+    rows: List.unmodifiable([
+      for (final row in result.rows)
+        if ((rackColumn == null
+                    ? row['rack']
+                    : stockBalanceColumnValue(row, rackColumn))
+                ?.toString() ==
+            rackCode)
+          row,
+    ]),
+  );
 }
 
 /// Snackbar title and message for a rack look-up that threw [error].
@@ -50,7 +62,8 @@ List<Map<String, dynamic>> rackRowsFromStockBalance(
   if (error is FormatException) {
     return (
       title: 'Unexpected Response',
-      message: 'The server sent a Stock Balance reply the app does not '
+      message:
+          'The server sent a Stock Balance reply the app does not '
           'recognise.',
     );
   }

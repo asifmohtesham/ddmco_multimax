@@ -25,6 +25,7 @@ import 'package:multimax/app/modules/global_widgets/app_shell_scaffold.dart';
 import 'package:multimax/app/modules/global_widgets/count_badge.dart';
 import 'package:multimax/app/modules/global_widgets/doctype_list_header.dart';
 import 'package:multimax/app/modules/global_widgets/filter_chip_widget.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
 import 'package:multimax/app/modules/item/form/item_form_controller.dart';
 import 'package:multimax/app/modules/item/form/widgets/item_suppliers_card.dart';
 import 'package:multimax/app/modules/stock/reports/suppliers_by_item/suppliers_by_item_binding.dart';
@@ -40,6 +41,42 @@ import 'package:multimax/main.dart' show buildAppTheme;
 import '../helpers/auth_fakes.dart';
 
 const reportFont = 'SuppliersReportTestInter';
+
+// Deployed Desk schema from docs/suppliers_by_item_report.md.
+List<DeskColumn> _localizedColumns({bool expandBom = false}) => [
+  for (final (fieldname, label) in [
+    ('tree_label', 'Item / Supplier'),
+    ('item_name', 'Item Name'),
+    if (expandBom) ('bom_qty_per_unit', 'Stücklistenmenge'),
+    ('balance_qty', 'Available Stock'),
+    ('projected_qty', 'Projected Qty'),
+    ('reorder_level', 'Reorder Level'),
+    ('reorder_qty', 'Reorder Qty'),
+    ('supplier_name', 'Supplier Name'),
+    ('supplier_status', 'Supplier Status'),
+    ('supplier_part_number', 'Supplier Part Number'),
+    ('sources', 'Sources'),
+    ('open_order_qty', 'Open Order Qty'),
+    ('draft_order_qty', 'Draft Order Qty'),
+    ('lead_time_days', 'Lead Time (Days)'),
+    ('lead_time_receipts', 'Lead Time Receipts'),
+    ('po_count', 'PO Count'),
+    ('receipt_count', 'Receipt Count'),
+    ('last_purchase_date', 'Letzter Einkauf'),
+    ('last_purchase_receipt', 'Last Purchase Receipt'),
+    ('last_rate', 'Last Rate'),
+    ('rate_source', 'Rate Source'),
+    ('rate_date', 'Rate Date'),
+    ('rate_document', 'Rate Document'),
+    ('currency', 'Currency'),
+    ('rate_uom', 'Rate UOM'),
+    ('total_qty_received', 'Total Qty Received'),
+    ('stock_uom', 'Stock UOM'),
+    ('last_po_date', 'Last PO Date'),
+    ('supplier_count', 'Supplier Count'),
+  ])
+    (fieldname: fieldname, label: label),
+];
 
 class _FieldPreferenceBox extends Fake implements GetStorage {
   final _values = <String, Object?>{};
@@ -93,7 +130,9 @@ class _FieldsDatabase extends Fake implements DatabaseService {
 }
 
 _FieldsDatabase _useFieldPreferences(String owner) {
-  Get.find<AuthenticationController>().currentUser.value = _fieldUser(owner);
+  final auth = Get.find<AuthenticationController>();
+  auth.isAuthenticated.value = true;
+  auth.currentUser.value = _fieldUser(owner);
   final database = _FieldsDatabase();
   Get.put(
     StorageService.withStorage(_FieldPreferenceBox(), database: database),
@@ -110,6 +149,17 @@ Finder rowWith(String text) => find.ancestor(
 
 Finder within(Finder row, String text) =>
     find.descendant(of: row, matching: find.text(text));
+
+Iterable<CheckboxListTile> _configuredFieldsTiles(
+  WidgetTester tester,
+  Finder sheet,
+) {
+  final list = tester.widget<ListView>(
+    find.descendant(of: sheet, matching: find.byType(ListView)),
+  );
+  return (list.childrenDelegate as SliverChildListDelegate).children
+      .whereType<CheckboxListTile>();
+}
 
 SuppliersByItemController currentReport() =>
     Get.find<SuppliersByItemController>(
@@ -154,13 +204,14 @@ double pinnedBottom(
 class _FakeApi extends FakeApiProvider {
   final requests = <SuppliersByItemFilters>[];
   Future<List<SuppliersByItemNode>> Function() load = () async => [];
+  List<DeskColumn>? columns;
 
   @override
-  Future<List<SuppliersByItemNode>> runSuppliersByItem(
+  Future<SuppliersByItemReport> runSuppliersByItemReport(
     SuppliersByItemFilters filters,
-  ) {
+  ) async {
     requests.add(filters);
-    return load();
+    return SuppliersByItemReport(nodes: await load(), columns: columns);
   }
 
   @override
@@ -315,6 +366,154 @@ const _supplierViewRows = [
     'row_type': 'placeholder',
   },
 ];
+
+void registerSuppliersByItemFieldsContract() {
+  testWidgets(
+    'Suppliers Fields protects legacy identities and resets by surface',
+    (tester) async {
+      Get.testMode = true;
+      addTearDown(Get.reset);
+      final api = Get.put<ApiProvider>(_FakeApi()) as _FakeApi;
+      Get.put(AuthenticationController());
+      final database = _useFieldPreferences('reader@example.com');
+      const key =
+          'suppliers_by_item_fields::https%3A%2F%2Ferp.example'
+          '::reader%40example.com';
+      const saved =
+          '{"itemName":false,"supplierStatus":false,'
+          '"itemBalance":false,"summaryItemCount":false}';
+      database.records[key] = saved;
+      api.columns = _localizedColumns();
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {
+          'node_id': 'item:KIT',
+          'item_code': 'KIT',
+          'item_name': 'Travel Kit',
+          'balance_qty': 4,
+          'stock_uom': 'Nos',
+        },
+        {
+          'node_id': 'supplier:KIT:VENDOR',
+          'parent_id': 'item:KIT',
+          'supplier': 'VENDOR',
+          'supplier_status': 'Disabled',
+          'last_purchase_date': '2025-10-01',
+        },
+      ]);
+      await tester.binding.setSurfaceSize(const Size(500, 940));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        GetMaterialApp(
+          home: const Scaffold(),
+          getPages: [
+            GetPage(
+              name: AppRoutes.SUPPLIERS_BY_ITEM,
+              page: () => const SuppliersByItemScreen(),
+              binding: SuppliersByItemBinding(),
+              transition: Transition.noTransition,
+            ),
+          ],
+        ),
+      );
+      Get.toNamed(AppRoutes.SUPPLIERS_BY_ITEM);
+      await tester.pumpAndSettle();
+      final semantics = tester.ensureSemantics();
+      final item = reportRow('item:KIT');
+      final supplier = reportRow('supplier:KIT:VENDOR');
+      final footer = find.byType(SuppliersByItemFooter);
+      void expectBalance(bool visible) {
+        expect(
+          within(item, 'Available Stock 4 Nos'),
+          visible ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.bySemanticsLabel(RegExp(r'^Item KIT,.*Available Stock 4 Nos')),
+          visible ? findsOneWidget : findsNothing,
+        );
+        final metric = find
+            .ancestor(
+              of: within(footer, 'Available Stock'),
+              matching: find.byType(Padding),
+            )
+            .first;
+        expect(within(metric, '4 Nos'), findsOneWidget);
+        expect(within(footer, 'Balance Qty'), findsNothing);
+      }
+
+      expectBalance(false);
+      expect(within(supplier, 'Letzter Einkauf 1 Oct 25'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^Item / Supplier VENDOR,.*Letzter Einkauf 1 October 2025'),
+        ),
+        findsOneWidget,
+      );
+      expect(database.records[key], saved);
+      expect(find.text('Travel Kit'), findsOneWidget);
+      expect(find.text('Disabled'), findsOneWidget);
+
+      final fields = find.byTooltip('Fields');
+      final sheet = find.byType(DraggableScrollableSheet);
+      final balance = find.byKey(
+        const ValueKey(SuppliersByItemField.itemBalance),
+      );
+      await tester.tap(fields);
+      await tester.pumpAndSettle();
+      final tiles = _configuredFieldsTiles(tester, sheet);
+      for (final field in [
+        SuppliersByItemField.itemName,
+        SuppliersByItemField.supplierStatus,
+      ]) {
+        final locked = tiles.singleWhere((tile) => tile.key == ValueKey(field));
+        expect(locked.value, isTrue);
+        expect(locked.onChanged, isNull);
+      }
+      expect(within(balance, 'Available Stock'), findsOneWidget);
+      expect(tester.widget<CheckboxListTile>(balance).value, isFalse);
+      expect(
+        tiles.map((tile) => tile.key),
+        isNot(contains(const ValueKey(SuppliersByItemField.summaryItemCount))),
+      );
+      await tester.tap(find.text('Reset to defaults'));
+      await tester.pumpAndSettle();
+      expect(database.records[key], '{"summaryItemCount":false}');
+      expect(tester.widget<CheckboxListTile>(balance).value, isTrue);
+      Navigator.of(tester.element(sheet)).pop();
+      await tester.pumpAndSettle();
+      expectBalance(true);
+      await tester.tap(fields);
+      await tester.pumpAndSettle();
+      await tester.tap(balance);
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(sheet)).pop();
+      await tester.pumpAndSettle();
+      expectBalance(false);
+      semantics.dispose();
+
+      await tester.tap(find.byKey(const ValueKey('suppliers-by-item-view')));
+      await tester.pumpAndSettle();
+      final moved = find.byKey(
+        const ValueKey(SuppliersByItemField.summaryItemCount),
+      );
+      expect(tester.widget<CheckboxListTile>(moved).value, isFalse);
+      final resetView = find.text('Reset display options');
+      await tester.ensureVisible(resetView);
+      await tester.tap(resetView);
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(moved).value, isTrue);
+      expect(database.records[key], '{"itemBalance":false}');
+      await tester.tap(find.widgetWithText(TextButton, 'Done'));
+      await tester.pumpAndSettle();
+      expect(find.text('Travel Kit'), findsOneWidget);
+      expect(find.text('Disabled'), findsOneWidget);
+      expect(
+        find.text('End of list · Totals for all loaded items'),
+        findsOneWidget,
+      );
+      expect(api.requests, hasLength(1));
+    },
+  );
+}
 
 void main() {
   late _FakeApi api;
@@ -613,7 +812,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Items 1'), findsNothing);
     expect(find.text('BOM components 1'), findsNothing);
-    expect(within(frame, 'KIT › BOM-KIT-001 › FRAME'), findsNothing);
+    expect(within(frame, 'KIT › BOM-KIT-001 › FRAME'), findsOneWidget);
     expect(within(frame, 'Component FRAME for KIT'), findsOneWidget);
 
     for (final field in SuppliersByItemField.values) {
@@ -891,7 +1090,10 @@ void main() {
         closeTo(pinnedBottom(tester), 0.5),
       );
 
-      await controller.setFieldVisible(SuppliersByItemField.itemName, false);
+      await controller.setFieldVisible(
+        SuppliersByItemField.supplierLastBuyColumn,
+        false,
+      );
       await tester.pumpAndSettle();
       await tester.pump();
       expect(
@@ -1132,7 +1334,7 @@ void main() {
     expect(scroll.offset, closeTo(restored, 0.5));
   });
 
-  testWidgets('Fields sheet and rows follow the signed-in user while mounted', (
+  testWidgets('Suppliers clears the tree and Fields schema on owner change', (
     tester,
   ) async {
     const firstId = 'buyer-a@example.com';
@@ -1144,6 +1346,10 @@ void main() {
         '{"itemBalance":false}';
     database.records['$prefix${Uri.encodeComponent(secondId)}'] =
         '{"itemProjected":true}';
+    api.columns = const [
+      (fieldname: 'balance_qty', label: 'Site A balance'),
+      (fieldname: 'projected_qty', label: 'Site A projected'),
+    ];
     api.load = () async => SuppliersByItemNode.parseRows([
       {
         'node_id': 'item:KIT',
@@ -1152,40 +1358,122 @@ void main() {
         'stock_uom': 'Nos',
       },
     ]);
-    final balanceRow = within(reportRow('item:KIT'), 'Balance Qty 4 Nos');
-    final projectedRow = within(reportRow('item:KIT'), 'Projected Qty 7 Nos');
     final balanceField = find.byKey(
       const ValueKey(SuppliersByItemField.itemBalance),
     );
     final projectedField = find.byKey(
       const ValueKey(SuppliersByItemField.itemProjected),
     );
+    final oldBalanceCaption = within(balanceField, 'Site A balance');
 
     await openReport(tester);
     await tester.pumpAndSettle();
-    expect(balanceRow, findsNothing);
-    expect(projectedRow, findsNothing);
+    expect(reportRow('item:KIT'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Fields'));
     await tester.pumpAndSettle();
     expect(tester.widget<CheckboxListTile>(balanceField).value, isFalse);
     expect(tester.widget<CheckboxListTile>(projectedField).value, isFalse);
+    expect(oldBalanceCaption, findsOneWidget);
 
     auth.currentUser.value = _fieldUser(secondId);
     await tester.pumpAndSettle();
     expect(tester.widget<CheckboxListTile>(balanceField).value, isTrue);
     expect(tester.widget<CheckboxListTile>(projectedField).value, isTrue);
+    expect(oldBalanceCaption, findsNothing);
 
     Navigator.of(tester.element(balanceField)).pop();
     await tester.pumpAndSettle();
-    expect(balanceRow, findsOneWidget);
-    expect(projectedRow, findsOneWidget);
+    expect(reportRow('item:KIT'), findsNothing);
+    expect(currentReport().summary.itemCount, 0);
+    expect(api.requests, hasLength(1));
 
+    api.columns = null;
+    await tester.tap(find.byTooltip('Refresh report'));
+    await tester.pumpAndSettle();
+    expect(within(reportRow('item:KIT'), 'Balance Qty 4 Nos'), findsOneWidget);
+    expect(
+      within(reportRow('item:KIT'), 'Projected Qty 7 Nos'),
+      findsOneWidget,
+    );
     auth.currentUser.value = _fieldUser('buyer-c@example.com');
     await tester.pumpAndSettle();
-    expect(balanceRow, findsOneWidget);
-    expect(projectedRow, findsNothing);
-    expect(api.requests, hasLength(1));
+    expect(reportRow('item:KIT'), findsNothing);
+    expect(api.requests, hasLength(2));
+  });
+
+  testWidgets('Suppliers ignores a run from before an owner round trip', (
+    tester,
+  ) async {
+    final auth = Get.find<AuthenticationController>();
+    _useFieldPreferences('Alice');
+    await openReport(tester);
+    await tester.pumpAndSettle();
+    final report = currentReport();
+    final oldRows = Completer<List<SuppliersByItemNode>>();
+    api.load = () => oldRows.future;
+    final stale = report.run();
+    expect(report.isLoading.value, isTrue);
+
+    auth.currentUser.value = _fieldUser('Bob');
+    auth.currentUser.value = _fieldUser('Alice');
+    final newRows = Completer<List<SuppliersByItemNode>>();
+    api.load = () => newRows.future;
+    final fresh = report.run();
+    oldRows.complete(
+      SuppliersByItemNode.parseRows([
+        {'node_id': 'item:OLD'},
+      ]),
+    );
+    await stale;
+    expect(report.isLoading.value, isTrue);
+    expect(report.nodes, isEmpty);
+
+    newRows.complete(
+      SuppliersByItemNode.parseRows([
+        {'node_id': 'item:NEW'},
+      ]),
+    );
+    await fresh;
+    await tester.pumpAndSettle();
+    expect(reportRow('item:NEW'), findsOneWidget);
+    expect(reportRow('item:OLD'), findsNothing);
+  });
+
+  testWidgets('Suppliers keeps Guest and stale-cache display choices local', (
+    tester,
+  ) async {
+    final database = _useFieldPreferences('Guest');
+    final auth = Get.find<AuthenticationController>();
+    final storage = Get.find<StorageService>();
+    await storage.saveUser(_fieldUser('Guest'));
+    await openReport(tester);
+    await tester.pumpAndSettle();
+    final report = currentReport();
+    const moved = SuppliersByItemField.summaryItemCount;
+    expect(report.fieldsSessionOnly.value, isTrue);
+    await report.setFieldVisible(moved, false);
+    expect(report.fieldVisibility.shows(moved), isFalse);
+    expect(database.records.keys, [DatabaseService.serverUrlKey]);
+
+    final alice = _fieldUser('Alice');
+    await storage.saveUser(alice);
+    auth.currentUser.value = alice;
+    await tester.pumpAndSettle();
+    expect(report.fieldsSessionOnly.value, isFalse);
+    expect(report.fieldVisibility.shows(moved), isTrue);
+
+    auth.currentUser.value = null;
+    await tester.pumpAndSettle();
+    expect(report.fieldsSessionOnly.value, isTrue);
+    await report.setFieldVisible(moved, false);
+    expect(report.fieldVisibility.shows(moved), isFalse);
+    expect(database.records.keys, [DatabaseService.serverUrlKey]);
+
+    auth.currentUser.value = alice;
+    await tester.pumpAndSettle();
+    expect(report.fieldsSessionOnly.value, isFalse);
+    expect(report.fieldVisibility.shows(moved), isTrue);
   });
 
   testWidgets(
@@ -1254,34 +1542,39 @@ void main() {
       Future<void> toggle(
         SuppliersByItemField field, {
         required bool was,
+        bool locked = false,
       }) async {
         final tile = find.byKey(ValueKey(field));
-        await tester.scrollUntilVisible(
-          tile.hitTestable(),
-          140,
-          scrollable: sheetScroll,
-        );
+        await tester.scrollUntilVisible(tile, 140, scrollable: sheetScroll);
         expect(tester.widget<CheckboxListTile>(tile).value, was);
+        if (locked) {
+          expect(tester.widget<CheckboxListTile>(tile).onChanged, isNull);
+          return;
+        }
         await tester.tap(tile);
         await tester.pumpAndSettle();
         expect(tester.widget<CheckboxListTile>(tile).value, !was);
       }
 
-      await toggle(SuppliersByItemField.itemName, was: true);
+      await toggle(SuppliersByItemField.itemName, was: true, locked: true);
       await toggle(SuppliersByItemField.itemBalance, was: true);
       await toggle(SuppliersByItemField.itemProjected, was: false);
-      await toggle(SuppliersByItemField.supplierStatus, was: true);
+      await toggle(
+        SuppliersByItemField.supplierStatus,
+        was: true,
+        locked: true,
+      );
       await toggle(SuppliersByItemField.supplierSources, was: false);
       await toggle(SuppliersByItemField.componentQtyPerUnit, was: true);
 
       Navigator.of(tester.element(sheetScroll)).pop();
       await tester.pumpAndSettle();
       expect(find.text('KIT'), findsOneWidget);
-      expect(find.text('Travel kit'), findsNothing);
+      expect(find.text('Travel kit'), findsOneWidget);
       expect(within(reportRow('item:KIT'), 'Balance Qty 4 Nos'), findsNothing);
       expect(find.text('Projected Qty 7 Nos'), findsOneWidget);
       expect(find.text('Supply Co'), findsOneWidget);
-      expect(find.text('Disabled'), findsNothing);
+      expect(find.text('Disabled'), findsOneWidget);
       expect(find.text('Purchase Order, Batch'), findsNothing);
       await tester.tap(find.text('Supply Co'));
       await tester.pumpAndSettle();
@@ -1319,14 +1612,19 @@ void main() {
     },
   );
 
-  void loadAnchorRows(String Function(int) nameFor) {
+  void loadAnchorRows(
+    String Function(int) nameFor, {
+    bool balanceUnits = false,
+  }) {
     api.load = () async => SuppliersByItemNode.parseRows([
       for (var index = 0; index < 40; index++) ...[
         {
           'node_id': 'item:ROW-$index',
-          'item_name': nameFor(index),
+          'item_name': balanceUnits ? 'Item $index' : nameFor(index),
           'balance_qty': 39 - index,
-          'stock_uom': 'Nos',
+          'stock_uom': balanceUnits && nameFor(index) != 'Item $index'
+              ? nameFor(index)
+              : 'Nos',
         },
         {
           'node_id': 'supplier:ROW-$index:SUP',
@@ -1381,6 +1679,7 @@ void main() {
           'item_name': 'Item $index',
           'balance_qty': 39 - index,
           'stock_uom': 'Nos',
+          'reorder_level': 7,
         },
         {
           'node_id': 'supplier:ROW-$index:SUP',
@@ -1403,6 +1702,18 @@ void main() {
     Future<void> changeFields(Finder control) async {
       await tester.tap(fields);
       await tester.pumpAndSettle();
+      if (control.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(
+          control,
+          140,
+          scrollable: find.descendant(
+            of: sheet,
+            matching: find.byType(Scrollable),
+          ),
+        );
+      } else {
+        await tester.ensureVisible(control);
+      }
       await tester.tap(control);
       await tester.pumpAndSettle();
       Navigator.of(tester.element(sheet)).pop();
@@ -1412,15 +1723,16 @@ void main() {
     }
 
     await changeFields(
-      find.byKey(const ValueKey(SuppliersByItemField.itemName)),
+      find.byKey(const ValueKey(SuppliersByItemField.itemReorderLevel)),
     );
-    final hiddenPixels = scroll.offset;
-    expect(hiddenPixels, lessThan(originalPixels));
-    expect(find.text('Item 4'), findsNothing);
+    final expandedPixels = scroll.offset;
+    expect(expandedPixels, greaterThan(originalPixels));
+    expect(find.text('Item 4'), findsOneWidget);
+    expect(within(anchor, 'Reorder Level 7 Nos'), findsOneWidget);
 
     await changeFields(find.text('Reset to defaults'));
-    expect(scroll.offset, greaterThan(hiddenPixels));
-    expect(find.text('Item 4'), findsOneWidget);
+    expect(scroll.offset, lessThan(expandedPixels));
+    expect(within(anchor, 'Reorder Level 7 Nos'), findsNothing);
   });
 
   setUpAll(() async {
@@ -1727,6 +2039,30 @@ void main() {
     });
   }
 
+  testWidgets('View and summary use the same returned balance caption', (
+    tester,
+  ) async {
+    api.columns = const [(fieldname: 'balance_qty', label: 'Bilanzmenge')];
+    api.load = () async => SuppliersByItemNode.parseRows([
+      {'node_id': 'item:SKU', 'balance_qty': 12, 'stock_uom': 'Nos'},
+      {'node_id': 'item:BOX', 'balance_qty': 3, 'stock_uom': 'Box'},
+    ]);
+    await openReport(tester, hideFields: [SuppliersByItemField.itemBalance]);
+    await tester.pumpAndSettle();
+
+    final summary = find.widgetWithText(TextButton, 'Bilanzmenge by Stock UOM');
+    expect(summary.hitTestable(), findsOneWidget);
+    await openView(tester);
+    const field = SuppliersByItemField.summaryStockByUom;
+    expect(
+      within(find.byKey(const ValueKey(field)), 'Bilanzmenge'),
+      findsOneWidget,
+    );
+    await selectView(tester, field);
+    await doneWithView(tester);
+    expect(summary.hitTestable(), findsNothing);
+  });
+
   testWidgets(
     'Balance Qty by Stock UOM requires two known units with a Balance Qty',
     (tester) async {
@@ -1798,11 +2134,9 @@ void main() {
       expect(find.text('Items 1'), findsOneWidget);
       expect(find.text('OTHER'), findsOneWidget);
       expect(find.text('ACP-25'), findsNothing);
-      await currentReport().setFieldVisible(
-        SuppliersByItemField.searchMatchCount,
-        false,
-      );
-      await tester.pumpAndSettle();
+      await openView(tester);
+      await selectView(tester, SuppliersByItemField.searchMatchCount);
+      await doneWithView(tester);
       expect(find.text('Items 1'), findsNothing);
       expect(find.text('OTHER'), findsOneWidget);
 
@@ -1875,10 +2209,38 @@ void main() {
     fail('No report row is visible below the toolbar');
   }
 
-  Future<void> toggleItemName(WidgetTester tester) async {
+  void loadTallReorderRows(bool Function(int) tall) {
+    api.columns = [
+      (
+        fieldname: 'reorder_level',
+        label: List.filled(75, 'Reorder level').join(' '),
+      ),
+    ];
+    api.load = () async => SuppliersByItemNode.parseRows([
+      for (var i = 0; i < 40; i++) ...[
+        {
+          'node_id': 'item:ROW-$i',
+          'item_name': 'Item $i',
+          'balance_qty': 39 - i,
+          'stock_uom': 'Nos',
+          if (tall(i)) 'reorder_level': 7,
+        },
+        {
+          'node_id': 'supplier:ROW-$i:SUP',
+          'parent_id': 'item:ROW-$i',
+          'supplier': 'SUP',
+        },
+      ],
+    ]);
+  }
+
+  Future<void> toggleAnchorField(
+    WidgetTester tester,
+    SuppliersByItemField key,
+  ) async {
     await tester.tap(find.byTooltip('Fields'));
     await tester.pumpAndSettle();
-    final field = find.byKey(const ValueKey(SuppliersByItemField.itemName));
+    final field = find.byKey(ValueKey(key));
     final sheetScroll = find.descendant(
       of: find.byType(DraggableScrollableSheet),
       matching: find.byType(Scrollable),
@@ -1901,6 +2263,7 @@ void main() {
       (index) => index == 2
           ? List.filled(60, 'Wrapping description').join(' ')
           : 'Item $index',
+      balanceUnits: true,
     );
     await openReport(tester, size: const Size(320, 500));
     await tester.pumpAndSettle();
@@ -1911,7 +2274,7 @@ void main() {
       closeTo(toolbarBottom(tester) - 100, 0.01),
     );
 
-    await toggleItemName(tester);
+    await toggleAnchorField(tester, SuppliersByItemField.itemBalance);
     await tester.pump();
 
     expectFirstVisibleRow(tester, 2);
@@ -1924,22 +2287,14 @@ void main() {
   testWidgets('finds the anchor again after growing rows evict it', (
     tester,
   ) async {
-    loadAnchorRows(
-      (index) => index < 4
-          ? List.filled(60, 'Wrapping description').join(' ')
-          : 'Item $index',
-    );
-    await openReport(
-      tester,
-      size: const Size(320, 480),
-      hideFields: [SuppliersByItemField.itemName],
-    );
+    loadTallReorderRows((index) => index < 4);
+    await openReport(tester, size: const Size(320, 480));
     await tester.pumpAndSettle();
     await scrollIntoRow(tester, 4, 8);
     expectFirstVisibleRow(tester, 4);
     final before = tester.renderObject(anchorRow(4));
 
-    await toggleItemName(tester);
+    await toggleAnchorField(tester, SuppliersByItemField.itemReorderLevel);
     await tester.pump();
 
     expectFirstVisibleRow(tester, 4);
@@ -1959,6 +2314,7 @@ void main() {
       (index) => index < 5
           ? 'Item $index with a wrapped description that takes another line'
           : 'Item $index',
+      balanceUnits: true,
     );
     await openReport(tester, size: const Size(360, 560));
     await tester.pumpAndSettle();
@@ -1969,12 +2325,12 @@ void main() {
     Get.toNamed(AppRoutes.SUPPLIERS_BY_ITEM, preventDuplicates: false);
     await tester.pumpAndSettle();
     expect(find.textContaining('Item 0 with'), findsOneWidget);
-    await toggleItemName(tester);
+    await toggleAnchorField(tester, SuppliersByItemField.itemBalance);
     expect(find.textContaining('Item 0 with'), findsNothing);
     Get.back<void>();
     await tester.pumpAndSettle();
 
-    expect(find.text('Item 5'), findsNothing);
+    expect(find.text('Item 5'), findsOneWidget);
     expectFirstVisibleRow(tester, 5);
     expect(
       tester.getTopLeft(anchorRow(5)).dy,
@@ -2019,7 +2375,7 @@ void main() {
         closeTo(smallerBottom - 8, 0.5),
       );
 
-      await currentReport().resetFields();
+      await currentReport().resetViewDisplayOptions();
       await tester.pumpAndSettle();
       await tester.pump();
       expect(toolbarBottom(tester), closeTo(originalBottom, 0.5));
@@ -2033,20 +2389,15 @@ void main() {
   testWidgets('a user drag cancels pending restoration of an evicted row', (
     tester,
   ) async {
-    loadAnchorRows(
-      (index) => index < 8
-          ? List.filled(60, 'Wrapping description').join(' ')
-          : 'Item $index',
-    );
-    await openReport(
-      tester,
-      size: const Size(320, 590),
-      hideFields: [SuppliersByItemField.itemName],
-    );
+    loadTallReorderRows((index) => index < 8);
+    await openReport(tester, size: const Size(320, 590));
     await tester.pumpAndSettle();
     final scroll = await scrollIntoRow(tester, 8, 8);
     final original = tester.renderObject(anchorRow(8));
-    await currentReport().setFieldVisible(SuppliersByItemField.itemName, true);
+    await currentReport().setFieldVisible(
+      SuppliersByItemField.itemReorderLevel,
+      true,
+    );
     await tester.pump();
     expect(original.attached, isFalse);
     final firstCorrection = scroll.offset;
@@ -2072,12 +2423,12 @@ void main() {
   testWidgets(
     'restoring near the shortened list end uses the visible scroll limit',
     (tester) async {
-      loadAnchorRows(
-        (index) => index >= 36
-            ? List.filled(36, 'Wrapping description').join(' ')
-            : 'Item $index',
+      loadTallReorderRows((index) => index >= 36);
+      await openReport(
+        tester,
+        size: const Size(370, 720),
+        showFields: [SuppliersByItemField.itemReorderLevel],
       );
-      await openReport(tester, size: const Size(370, 720));
       await tester.pumpAndSettle();
       final scroll = await scrollIntoRow(tester, 37, 8);
       expectFirstVisibleRow(tester, 37);
@@ -2085,7 +2436,7 @@ void main() {
       expect(top, closeTo(toolbarBottom(tester) - 8, 0.5));
 
       await currentReport().setFieldVisible(
-        SuppliersByItemField.itemName,
+        SuppliersByItemField.itemReorderLevel,
         false,
       );
       await tester.pumpAndSettle();
@@ -2370,8 +2721,12 @@ void main() {
   );
 
   testWidgets(
-    'promoted variant keeps its supplier when Variant of is toggled',
+    'promoted variant retains its supplier and protected template context',
     (tester) async {
+      final database = _useFieldPreferences('buyer');
+      const key = 'suppliers_by_item_fields::https%3A%2F%2Ferp.example::buyer';
+      const saved = '{"itemTemplateContext":false}';
+      database.records[key] = saved;
       api.load = () async => SuppliersByItemNode.parseRows([
         {'node_id': 'template:MIX', 'template': 'MIX'},
         {
@@ -2396,25 +2751,21 @@ void main() {
 
       await tester.tap(find.byTooltip('Fields'));
       await tester.pumpAndSettle();
-      final toggle = find.byKey(
-        const ValueKey(SuppliersByItemField.itemTemplateContext),
-      );
-      await tester.scrollUntilVisible(
-        toggle,
-        140,
-        scrollable: find.descendant(
-          of: find.byType(DraggableScrollableSheet),
-          matching: find.byType(Scrollable),
+      final sheet = find.byType(DraggableScrollableSheet);
+      final tiles = _configuredFieldsTiles(
+        tester,
+        sheet,
+      ).map((tile) => tile.key);
+      expect(tiles, contains(const ValueKey(SuppliersByItemField.itemBalance)));
+      expect(
+        tiles,
+        isNot(
+          contains(const ValueKey(SuppliersByItemField.itemTemplateContext)),
         ),
       );
-      await tester.tap(toggle);
+      Navigator.of(tester.element(sheet)).pop();
       await tester.pumpAndSettle();
-      expect(within(item, 'Variant Of MIX'), findsNothing);
-      expect(item, findsOneWidget);
-      expect(supplier, findsOneWidget);
-
-      await tester.tap(toggle);
-      await tester.pumpAndSettle();
+      expect(database.records[key], saved);
       expect(within(item, 'Variant Of MIX'), findsOneWidget);
       expect(item, findsOneWidget);
       expect(supplier, findsOneWidget);
@@ -2905,13 +3256,94 @@ void main() {
     expect(reportRow('none:7:2002492'), findsOneWidget);
     expect(find.text('No supplier recorded'), findsNWidgets(3));
     expect(within(reportRow('bom:PARTS'), 'Default BOM'), findsNothing);
-    expect(within(reportRow('bom:PARTS'), 'Draft BOM'), findsNothing);
+    expect(within(reportRow('bom:PARTS'), 'Draft BOM'), findsOneWidget);
     expect(within(reportRow('bom:PARTS'), '1 component'), findsNothing);
-    expect(find.text('Optional item name'), findsNothing);
-    expect(find.text('Supplier Count 1'), findsNothing);
+    expect(find.text('Optional item name'), findsOneWidget);
+    expect(
+      within(reportRow('template:ACP-25'), 'Supplier Count 1'),
+      findsOneWidget,
+    );
+    expect(within(reportRow('item:2002506'), 'Supplier Count 1'), findsNothing);
     expect(find.text('Draft Order Qty'), findsNothing);
     expect(find.text('Total Qty Received'), findsOneWidget);
   });
+
+  testWidgets('All fields off preserves only the affected stock unit warning', (
+    tester,
+  ) async {
+    api.load = () async => SuppliersByItemNode.parseRows([
+      {'node_id': 'item:KNOWN', 'balance_qty': 8, 'stock_uom': 'Nos'},
+      {'node_id': 'item:LEGACY', 'balance_qty': 3},
+    ]);
+    await openReport(tester, size: const Size(390, 890));
+    await tester.pumpAndSettle();
+    final missing = reportRow('item:LEGACY');
+    final known = reportRow('item:KNOWN');
+    expect(
+      within(missing, 'Balance Qty 3 (Stock UOM unavailable)'),
+      findsOneWidget,
+    );
+    expect(within(missing, 'Stock UOM unavailable'), findsNothing);
+
+    for (final field in SuppliersByItemField.values.where(
+      (field) => field.column != null && !field.fixed,
+    )) {
+      await currentReport().setFieldVisible(field, false);
+    }
+    await tester.pumpAndSettle();
+    expect(
+      within(missing, 'Balance Qty 3 (Stock UOM unavailable)'),
+      findsNothing,
+    );
+    expect(within(missing, 'Stock UOM unavailable'), findsOneWidget);
+    expect(within(known, 'Stock UOM unavailable'), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp(r'Item LEGACY,.*Stock UOM unavailable')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'A computed template supplier count survives hiding leaf counts',
+    (tester) async {
+      api.load = () async => SuppliersByItemNode.parseRows([
+        {..._acp25Rows[0]}..remove('supplier_count'),
+        for (final row in [_acp25Rows[1], _acp25Rows[3]]) ...[
+          {...row, 'supplier_count': 1},
+          {
+            'node_id': 'supplier:${row['item_code']}:PING',
+            'parent_id': row['node_id'],
+            'supplier': 'PING',
+          },
+        ],
+      ]);
+      await openReport(tester, size: const Size(390, 890));
+      await tester.pumpAndSettle();
+
+      final template = reportRow('template:ACP-25');
+      final leaves = ['2002492', '2002506'];
+      expect(within(template, 'Supplier Count 1'), findsOneWidget);
+      for (final leaf in leaves) {
+        expect(
+          find.bySemanticsLabel(RegExp('^Item $leaf,.*Supplier Count 1')),
+          findsOneWidget,
+        );
+      }
+      await currentReport().setFieldVisible(
+        SuppliersByItemField.itemSupplierCount,
+        false,
+      );
+      await tester.pumpAndSettle();
+      expect(within(template, 'Supplier Count 1'), findsOneWidget);
+      for (final leaf in leaves) {
+        expect(reportRow('item:$leaf'), findsOneWidget);
+        expect(
+          find.bySemanticsLabel(RegExp('^Item $leaf,.*Supplier Count 1')),
+          findsNothing,
+        );
+      }
+    },
+  );
 
   testWidgets('Rate currency and UOM depend on Supplier rate', (tester) async {
     await openReport(tester);
@@ -3027,7 +3459,7 @@ void main() {
   }
 
   testWidgets(
-    'Last Purchase Date aligns across suppliers and releases the column when hidden',
+    'Last Purchase Date hides measured dates and preserves unavailable status',
     (tester) async {
       const sources =
           'Purchase Order (Draft), Batch (draft PO), '
@@ -3128,10 +3560,19 @@ void main() {
         false,
       );
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining(RegExp(r'^Last Purchase Date ')),
-        findsNothing,
-      );
+      expect(valid, findsNothing);
+      for (final identity in ['Second Supplier', 'Invalid Date Supplier']) {
+        expect(
+          within(rowWith(identity), 'Last Purchase Date -'),
+          findsOneWidget,
+        );
+        expect(
+          find.bySemanticsLabel(
+            RegExp('Supplier Name $identity, Last Purchase Date unavailable'),
+          ),
+          findsOneWidget,
+        );
+      }
       expect(within(supplier, 'Open Order Qty'), findsOneWidget);
       expect(within(supplier, 'Last Purchase Date'), findsOneWidget);
       expect(
@@ -3298,8 +3739,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(orderQty(both, 'Open Order Qty'), findsNothing);
         expect(orderQty(item, 'Draft Order Qty'), findsNothing);
-        expect(within(both, hold), findsNothing);
-        expect(within(draft, 'Disabled'), findsNothing);
+        expect(within(both, hold), findsOneWidget);
+        expect(within(draft, 'Disabled'), findsOneWidget);
         expect(within(bom, 'Draft BOM'), findsOneWidget);
       },
     );
@@ -3397,6 +3838,7 @@ void main() {
     const component = 'component:$bom|1|2002400';
     const missing = 'none:$component';
     const draft = 'bom:12:item:3000339|BOM-3000339-002';
+    api.columns = _localizedColumns(expandBom: true);
     api.load = () async => SuppliersByItemNode.parseRows([
       {
         'row_type': 'item',
@@ -3411,6 +3853,7 @@ void main() {
         'item_code': '3000339',
         'supplier': 'DIRECT',
         'supplier_name': 'Item Vendor',
+        'last_purchase_date': '2025-10-03',
       },
       {
         'row_type': 'bom',
@@ -3464,8 +3907,15 @@ void main() {
       ],
     );
     await tester.pumpAndSettle();
+    final semantics = tester.ensureSemantics();
 
     expect(within(rowWith('3000339'), 'Supplier Count 1'), findsOneWidget);
+    final supplier = reportRow('supplier:3000339:DIRECT');
+    expect(within(supplier, 'Letzter Einkauf 3 Oct 25'), findsOneWidget);
+    final spokenPurchase = find.bySemanticsLabel(
+      RegExp(r'^Supplier Name Item Vendor,.*Letzter Einkauf 3 October 2025'),
+    );
+    expect(spokenPurchase, findsOneWidget);
 
     final title = find.text('BOM-3000339-001');
     expect(within(reportRow(bom), 'Default BOM'), findsOneWidget);
@@ -3485,8 +3935,8 @@ void main() {
     final componentTile = rowWith('2002400');
     for (final detail in [
       'Component with a descriptive name',
-      'BOM Qty per Unit 2.5 Nos per unit',
-      'Balance Qty 4 Nos',
+      'Stücklistenmenge 2.5 Nos per unit',
+      'Available Stock 4 Nos',
       'Used in 3 BOMs',
       'Not used in manufacturing',
       'BOM cycle detected',
@@ -3496,6 +3946,14 @@ void main() {
         findsOneWidget,
       );
     }
+    final spokenComponentBalance = find.bySemanticsLabel(
+      RegExp(r'^Component 2002400,.*Available Stock 4 Nos'),
+    );
+    final spokenRequirement = find.bySemanticsLabel(
+      RegExp(r'^Component 2002400,.*Stücklistenmenge 2\.5 Nos per unit'),
+    );
+    expect(spokenComponentBalance, findsOneWidget);
+    expect(spokenRequirement, findsOneWidget);
     final manufacturingNote = tester.widget<Text>(
       find.text('Not used in manufacturing'),
     );
@@ -3509,6 +3967,33 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    final fields = currentReport();
+    await fields.setFieldVisible(SuppliersByItemField.componentBalance, false);
+    await fields.setFieldVisible(
+      SuppliersByItemField.componentQtyPerUnit,
+      false,
+    );
+    await fields.setFieldVisible(
+      SuppliersByItemField.supplierLastBuyColumn,
+      false,
+    );
+    await tester.pumpAndSettle();
+    expect(within(componentTile, 'Available Stock 4 Nos'), findsNothing);
+    expect(
+      within(componentTile, 'Stücklistenmenge 2.5 Nos per unit'),
+      findsNothing,
+    );
+    expect(within(supplier, 'Letzter Einkauf 3 Oct 25'), findsNothing);
+    expect(spokenComponentBalance, findsNothing);
+    expect(spokenRequirement, findsNothing);
+    expect(spokenPurchase, findsNothing);
+    semantics.dispose();
+    expect(
+      within(componentTile, 'Component with a descriptive name'),
+      findsOneWidget,
+    );
+    expect(within(supplier, 'Item Vendor'), findsOneWidget);
 
     await tester.tap(title);
     await tester.pumpAndSettle();
@@ -4135,12 +4620,20 @@ void main() {
     (tester) async {
       final database = _useFieldPreferences('buyer@example.com');
       api.load = () async => SuppliersByItemNode.parseRows([
-        {'node_id': 'item:KIT', 'item_name': 'Travel Kit'},
+        {
+          'node_id': 'item:KIT',
+          'item_name': 'Travel Kit',
+          'balance_qty': 3,
+          'stock_uom': 'Nos',
+        },
       ]);
       await openReport(tester);
       await tester.pumpAndSettle();
       final sheet = find.byType(DraggableScrollableSheet);
-      final name = find.byKey(const ValueKey(SuppliersByItemField.itemName));
+      final balance = find.byKey(
+        const ValueKey(SuppliersByItemField.itemBalance),
+      );
+      final figure = within(reportRow('item:KIT'), 'Balance Qty 3 Nos');
       final report = currentReport();
       const error = "Couldn't save Fields. Your choices apply to this session.";
 
@@ -4149,17 +4642,18 @@ void main() {
         await tester.pumpAndSettle();
         final pending = Completer<void>();
         database.onSave = () => pending.future;
-        await tester.tap(name);
+        await tester.ensureVisible(balance);
+        await tester.tap(balance);
         await tester.pump();
         expect(within(sheet, 'Saving Fields…'), findsOneWidget);
-        expect(tester.widget<CheckboxListTile>(name).onChanged, isNull);
+        expect(tester.widget<CheckboxListTile>(balance).onChanged, isNull);
         return pending;
       }
 
       final first = await beginSave();
-      expect(tester.widget<CheckboxListTile>(name).value, isFalse);
+      expect(tester.widget<CheckboxListTile>(balance).value, isFalse);
       expect(
-        report.fieldVisibility.shows(SuppliersByItemField.itemName),
+        report.fieldVisibility.shows(SuppliersByItemField.itemBalance),
         isFalse,
       );
       first.completeError(StateError('disk rejected write'));
@@ -4177,10 +4671,11 @@ void main() {
       await tester.tap(within(sheet, 'Retry'));
       await tester.pumpAndSettle();
       expect(within(sheet, error), findsNothing);
-      expect(database.records.values, contains('{"itemName":false}'));
+      expect(database.records.values, contains('{"itemBalance":false}'));
       Navigator.of(tester.element(sheet)).pop();
       await tester.pumpAndSettle();
-      expect(find.text('Travel Kit'), findsNothing);
+      expect(find.text('Travel Kit'), findsOneWidget);
+      expect(figure, findsNothing);
 
       final second = await beginSave();
       Navigator.of(tester.element(sheet)).pop();
@@ -4190,6 +4685,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(error).hitTestable(), findsOneWidget);
       expect(find.text('Travel Kit'), findsOneWidget);
+      expect(figure, findsOneWidget);
       database.onSave = null;
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();

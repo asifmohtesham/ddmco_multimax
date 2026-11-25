@@ -5,16 +5,19 @@ import 'package:multimax/app/data/services/data_wedge_service.dart';
 import 'package:multimax/app/data/services/scan_service.dart';
 import 'package:multimax/app/data/utils/report_error.dart';
 import 'package:multimax/app/modules/global_widgets/global_snackbar.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_field.dart';
+import 'package:multimax/app/modules/global_widgets/report_fields/report_fields_controller.dart';
+import 'bom_search_fields.dart';
 
 class BomSearchController extends GetxController {
-  final ApiProvider      _api  = Get.find<ApiProvider>();
-  final DataWedgeService _dw   = Get.find<DataWedgeService>();
-  final ScanService      _scan = Get.find<ScanService>();
+  final ApiProvider _api = Get.find<ApiProvider>();
+  final DataWedgeService _dw = Get.find<DataWedgeService>();
+  final ScanService _scan = Get.find<ScanService>();
 
   // ── Filter controllers ────────────────────────────────────────────────────
 
-  final itemController  = TextEditingController();
-  final bomController   = TextEditingController();
+  final itemController = TextEditingController();
+  final bomController = TextEditingController();
   final item1Controller = TextEditingController();
   final item2Controller = TextEditingController();
   final item3Controller = TextEditingController();
@@ -37,35 +40,58 @@ class BomSearchController extends GetxController {
 
   // ── State ──────────────────────────────────────────────────────────────
 
-  final isLoading     = false.obs;
-  final isResolving   = false.obs;
-  final reportData    = <Map<String, dynamic>>[].obs;
+  final isLoading = false.obs;
+  final isResolving = false.obs;
+  final reportData = <Map<String, dynamic>>[].obs;
   final activeFilters = <String, String>{}.obs;
+  final hasResult = false.obs;
+  final errorMessage = RxnString();
+  final resultRevision = 0.obs;
+  final scrollController = ScrollController();
+  final fields = ScopedReportFieldsController.forReport(bomSearchFields);
+  List<DeskColumn> reportColumns = const [];
+  late final Worker _scanWorker;
+  late final Worker _fieldsOwnerWorker;
+  var _requestId = 0;
 
   // ── Lifecycle ───────────────────────────────────────────────────────
 
   @override
   void onInit() {
     super.onInit();
-
     filterControllers = {
-      'item'  : itemController,
-      'bom'   : bomController,
-      'item1' : item1Controller,
-      'item2' : item2Controller,
-      'item3' : item3Controller,
-      'item4' : item4Controller,
-      'item5' : item5Controller,
+      'item': itemController,
+      'bom': bomController,
+      'item1': item1Controller,
+      'item2': item2Controller,
+      'item3': item3Controller,
+      'item4': item4Controller,
+      'item5': item5Controller,
     };
 
     _scanKeys = ['item1', 'item2', 'item3', 'item4', 'item5'];
 
+    var owner = fields.ownerGeneration;
+    _fieldsOwnerWorker = ever(fields.state, (_) {
+      if (owner == fields.ownerGeneration) return;
+      owner = fields.ownerGeneration;
+      reportColumns = const [];
+      clearFilters();
+      isResolving.value = false;
+      isLoading.value = false;
+    });
+    fields.bind();
+
     // Subscribe to DataWedge scan stream.
-    ever(_dw.scannedCode, _handleScan);
+    _scanWorker = ever(_dw.scannedCode, _handleScan);
   }
 
   @override
   void onClose() {
+    _fieldsOwnerWorker.dispose();
+    fields.dispose();
+    _scanWorker.dispose();
+    scrollController.dispose();
     for (final c in filterControllers.values) c.dispose();
     item1Focus.dispose();
     item2Focus.dispose();
@@ -109,18 +135,26 @@ class BomSearchController extends GetxController {
   /// shown on failure — the immediately-written code is already in the field
   /// and is sufficient for the BOM Search filter.
   Future<void> _refineInBackground(
-      String code, String targetKey, String alreadyWritten) async {
+    String code,
+    String targetKey,
+    String alreadyWritten,
+  ) async {
     isResolving.value = true;
+    final owner = fields.ownerGeneration;
     try {
       final result = await _scan.processScan(code);
+      if (isClosed || owner != fields.ownerGeneration) return;
       if (result.isSuccess && result.itemData != null) {
         final resolvedCode = result.itemData!.itemCode;
-        if (resolvedCode != alreadyWritten) {
+        if (resolvedCode != alreadyWritten &&
+            filterControllers[targetKey]?.text == alreadyWritten) {
           filterControllers[targetKey]?.text = resolvedCode;
         }
       }
     } finally {
-      isResolving.value = false;
+      if (!isClosed && owner == fields.ownerGeneration) {
+        isResolving.value = false;
+      }
     }
   }
 
@@ -163,22 +197,33 @@ class BomSearchController extends GetxController {
     for (final c in filterControllers.values) c.clear();
     activeFilters.clear();
     reportData.clear();
+    hasResult.value = false;
+    errorMessage.value = null;
+    resultRevision.value++;
+    _requestId++;
   }
 
   void clearFilter(String key) {
     filterControllers[key]?.clear();
     activeFilters.remove(key);
+    resultRevision.value++;
   }
 
   Future<void> runReport() async {
+    if (isLoading.value) return;
+    final owner = fields.ownerGeneration;
+    final requestId = ++_requestId;
+    resultRevision.value++;
     _rebuildActiveFilters();
     isLoading.value = true;
+    hasResult.value = false;
+    errorMessage.value = null;
     reportData.clear();
 
     try {
       final response = await _api.searchBom(
-        item:  itemController.text.trim(),
-        bom:   bomController.text.trim(),
+        item: itemController.text.trim(),
+        bom: bomController.text.trim(),
         item1: item1Controller.text.trim(),
         item2: item2Controller.text.trim(),
         item3: item3Controller.text.trim(),
@@ -186,33 +231,63 @@ class BomSearchController extends GetxController {
         item5: item5Controller.text.trim(),
       );
 
-      if (response.statusCode == 200) {
-        final message = response.data['message'] as Map<String, dynamic>?;
-        if (message != null) {
-          final rawRows = message['result'] as List<dynamic>? ?? [];
-          reportData.assignAll(rawRows.whereType<Map<String, dynamic>>());
-        }
+      if (isClosed ||
+          owner != fields.ownerGeneration ||
+          requestId != _requestId) {
+        return;
       }
-    } catch (e) {
-      GlobalSnackbar.error(
-        title:   'BOM Search Error',
-        message: readableReportError(e, reportName: 'BOM Search'),
+      final message = response.data is Map ? response.data['message'] : null;
+      if (response.statusCode != 200 || message is! Map) {
+        throw StateError('Missing report response');
+      }
+      final rawRows = message['result'];
+      if (rawRows is! List) {
+        throw StateError('Missing BOM Search result list');
+      }
+      final rawColumns = message['columns'];
+      reportColumns = decodeDeskColumns(rawColumns);
+      fields.replaceDefinition(
+        bomSearchFields.withColumns(
+          rawColumns is List ? reportColumns : null,
+          aliases: bomSearchFieldsAliases,
+        ),
       );
+      reportData.assignAll([
+        for (final raw in rawRows)
+          if (decodeDeskRow(raw, reportColumns) case final row?)
+            {
+              ...row,
+              'parent': row['parent'] ?? row['bom'],
+              'doctype': row['doctype'] ?? row['type'],
+            },
+      ]);
+      hasResult.value = true;
+    } catch (e) {
+      if (isClosed ||
+          owner != fields.ownerGeneration ||
+          requestId != _requestId) {
+        return;
+      }
+      final error = readableReportError(e, reportName: 'BOM Search');
+      errorMessage.value = error;
+      GlobalSnackbar.error(title: 'BOM Search Error', message: error);
     } finally {
-      isLoading.value = false;
+      if (!isClosed && owner == fields.ownerGeneration) {
+        isLoading.value = false;
+      }
     }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
 
   static const _labels = {
-    'item'  : 'Item',
-    'bom'   : 'BOM No',
-    'item1' : 'Item Code 1',
-    'item2' : 'Item Code 2',
-    'item3' : 'Item Code 3',
-    'item4' : 'Item Code 4',
-    'item5' : 'Item Code 5',
+    'item': 'Item',
+    'bom': 'BOM No',
+    'item1': 'Item Code 1',
+    'item2': 'Item Code 2',
+    'item3': 'Item Code 3',
+    'item4': 'Item Code 4',
+    'item5': 'Item Code 5',
   };
 
   void _rebuildActiveFilters() {

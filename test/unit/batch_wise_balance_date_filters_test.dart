@@ -58,7 +58,7 @@ class _RecordingApi extends ApiProvider {
   final calls = <Map<String, String?>>[];
 
   @override
-  Future<List<Map<String, dynamic>>> getBatchWiseBalance({
+  Future<BatchWiseBalanceResult> getBatchWiseBalanceReport({
     required String itemCode,
     String? batchNo,
     String? warehouse,
@@ -72,7 +72,7 @@ class _RecordingApi extends ApiProvider {
       'fromDate': fromDate,
       'toDate': toDate,
     });
-    return [];
+    return (columns: null, rows: const <Map<String, dynamic>>[]);
   }
 }
 

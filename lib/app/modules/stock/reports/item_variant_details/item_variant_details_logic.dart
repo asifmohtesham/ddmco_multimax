@@ -24,6 +24,28 @@ const _rateFields = {
   'avg_selling_price_list_rate',
 };
 
+const variantColumnLabels = {
+  'item_group': 'Item Group',
+  'current_stock': 'Current Stock',
+  'stock_uom': 'Stock UOM',
+  'avg_buying_price_list_rate': 'Avg. Buying Price List Rate',
+  'avg_selling_price_list_rate': 'Avg. Selling Price List Rate',
+  'in_production': 'In Production',
+  'open_orders': 'Open Sales Orders',
+};
+
+String? variantColumnLabel(List<VariantRow> columns, String key) {
+  for (final column in columns) {
+    if ((column['fieldname'], column['label']) case (
+      final String field,
+      final String label,
+    ) when field == key && label.trim().isNotEmpty) {
+      return label;
+    }
+  }
+  return variantColumnLabels[key];
+}
+
 bool isFixedVariantField(String field) =>
     const {'variant_name', 'item', 'item_code', 'item_name'}.contains(field);
 
@@ -58,7 +80,7 @@ Iterable<({String label, String value})> selectedVariantValues(
     final currency = row['currency']?.toString().trim() ?? '';
     final rate = _rateFields.contains(field) ? num.tryParse(value) : null;
     yield (
-      label: column['label']?.toString() ?? field,
+      label: variantColumnLabel([column], field) ?? '',
       value: rate == null
           ? value
           : NumberFormat.currency(
@@ -130,16 +152,11 @@ List<({String label, String value})> templateTotals(
   Map<String, dynamic> row,
   List<Map<String, dynamic>> columns,
 ) {
-  final labels = {
-    for (final c in columns)
-      if (c['fieldname'] is String)
-        c['fieldname'] as String: (c['label'] as String?) ?? '',
-  };
   return [
     for (final field in kTemplateTotalFields)
       if (formatReportNumber(row[field]).trim().isNotEmpty)
         (
-          label: (labels[field]?.isNotEmpty ?? false) ? labels[field]! : field,
+          label: variantColumnLabel(columns, field)!,
           value: formatStockQuantity(
             row[field],
             field == 'open_orders' ? null : row['stock_uom'],
@@ -191,21 +208,23 @@ List<String> variantQuantitySummary(
       }
     }
   }
-  final labels = {
-    for (final column in columns) column['fieldname']: column['label'],
-  };
   return [
     for (final entry in totalsByUom.entries)
       for (final field in quantityFields)
         if (entry.value.containsKey(field))
-          '${labels[field] ?? (field == 'current_stock' ? 'Current Stock' : 'In Production')} '
+          '${variantColumnLabel(columns, field)} '
               '${formatReportNumber(entry.value[field])}'
               '${entry.key.isEmpty ? '' : ' ${entry.key}'}',
   ];
 }
 
-String variantCode(Map<String, dynamic> row) =>
-    (row['variant_name'] ?? row['item'] ?? '').toString();
+String variantCode(Map<String, dynamic> row) {
+  for (final key in const ['variant_name', 'item', 'item_code', 'item_name']) {
+    final value = row[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
 
 typedef VariantRow = Map<String, dynamic>;
 
@@ -218,13 +237,17 @@ class VariantGroup {
   String get variantCountLabel =>
       '${variants.length} ${variants.length == 1 ? 'variant' : 'variants'}';
 
-  String collapsedSummary(int shown, {required bool filtered}) {
+  String collapsedSummary(
+    int shown, {
+    required bool filtered,
+    String currentStockLabel = 'Current Stock',
+  }) {
     final count = filtered ? '$shown of ${variants.length}' : variantCountLabel;
     final stock = formatStockQuantity(
       heading?['current_stock'],
       heading?['stock_uom'],
     );
-    return stock.isEmpty ? count : '$count · Current Stock $stock';
+    return stock.isEmpty ? count : '$count · $currentStockLabel $stock';
   }
 
   String get code => heading == null ? '' : variantCode(heading!);
